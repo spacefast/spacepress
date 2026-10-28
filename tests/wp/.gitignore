@@ -1,1 +1,4 @@
 cache/*.zip
+.harness.json
+.harness-state
+.plugin/

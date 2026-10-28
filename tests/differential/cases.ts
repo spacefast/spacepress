@@ -119,6 +119,7 @@ export default defineConfig({
       return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?"];
     }),
     templates: run(() => ITEMS.map(label)),
+    templateTernary: run(() => ITEMS.map((i) => `${i.qty > 0 ? i.name : "none"}!` + (i.qty > 5 ? " lots" : ""))),
     closures: run(() => {
       let count = 0;
       const bump = () => {

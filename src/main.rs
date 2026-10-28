@@ -171,13 +171,14 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         ));
     }
     let client_files = client::files(&schema, &action_results, runtime_file);
+    let gen_ts = schema_php::gen_ts(ext.register_name.unwrap_or("schema"), !schema.globals.is_empty());
     Ok(Built {
         client_files,
         schema,
         functions_php,
         snapshot,
         migrations,
-        gen_ts: schema_php::gen_ts(ext.register_name.unwrap_or("schema")),
+        gen_ts,
         warnings,
         hints: ext.hints,
     })

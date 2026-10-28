@@ -1747,9 +1747,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// The value as a PHP string expression, safe to join with `.`.
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
         Ok(match &v.ty {
-            Ty::Str => v.php.clone(),
+            Ty::Str => v.wrapped(),
             Ty::Num | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
@@ -1763,7 +1764,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Out::new(format!("{} + {}", a.wrapped(), b.wrapped()), Ty::Num)
                 } else if a.ty == Ty::Str || b.ty == Ty::Str {
                     let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
-                    Out::new(format!("{} . {}", paren_concat(&x), paren_concat(&y)), Ty::Str)
+                    Out::new(format!("{x} . {y}"), Ty::Str)
                 } else {
                     return err_help(
                         span,
@@ -3750,15 +3751,6 @@ fn paren(s: &str) -> String {
 }
 
 /// `.` binds tighter than `+`/`-`... in PHP 8 they're equal-precedence-ish; parenthesize non-trivial parts.
-fn paren_concat(s: &str) -> String {
-    let simple_literal = s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') && !s[1..s.len() - 1].contains('\'');
-    if simple_literal || !s.contains(' ') {
-        s.to_string()
-    } else {
-        format!("({s})")
-    }
-}
-
 fn pad(n: usize) -> String {
     "    ".repeat(n)
 }

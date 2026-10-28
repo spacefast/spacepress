@@ -1,0 +1,263 @@
+//! Zero's own intermediate form. oxc's arena AST is lowered into this once per
+//! module (see `lower.rs`); both backends read it: the build-time evaluator
+//! (`eval.rs`) and the PHP compiler (`compile.rs`). Anything outside the
+//! supported subset is rejected during lowering, so neither backend has to
+//! handle it.
+
+use crate::diag::Span;
+use std::rc::Rc;
+
+pub type P<T> = Box<T>;
+
+#[derive(Debug)]
+pub struct Module {
+    pub id: usize,
+    pub path: std::path::PathBuf,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug)]
+pub struct Func {
+    pub name: Option<String>,
+    pub params: Vec<Param>,
+    pub body: FnBody,
+    pub is_async: bool,
+    pub is_arrow: bool,
+    pub ret: Option<TyAnn>,
+    pub type_params: Vec<String>,
+    pub span: Span,
+    /// Module the function was declared in, for resolving types.
+    pub module: usize,
+}
+
+#[derive(Debug)]
+pub enum FnBody {
+    Expr(Expr),
+    Block(Vec<Stmt>),
+}
+
+#[derive(Debug)]
+pub struct Param {
+    pub pat: Pat,
+    pub ann: Option<TyAnn>,
+    pub default: Option<Expr>,
+    pub optional: bool,
+    pub rest: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pat {
+    Id(String, Span),
+    Obj { props: Vec<(String, Pat)>, rest: Option<(String, Span)>, span: Span },
+    Arr { elems: Vec<Option<Pat>>, rest: Option<(String, Span)>, span: Span },
+    Default(P<Pat>, Rc<Expr>),
+}
+
+impl Pat {
+    pub fn span(&self) -> Span {
+        match self {
+            Pat::Id(_, s) | Pat::Obj { span: s, .. } | Pat::Arr { span: s, .. } => *s,
+            Pat::Default(p, _) => p.span(),
+        }
+    }
+
+    pub fn names(&self, out: &mut Vec<String>) {
+        match self {
+            Pat::Id(n, _) => out.push(n.clone()),
+            Pat::Obj { props, rest, .. } => {
+                for (_, p) in props {
+                    p.names(out);
+                }
+                if let Some((r, _)) = rest {
+                    out.push(r.clone());
+                }
+            }
+            Pat::Arr { elems, rest, .. } => {
+                for p in elems.iter().flatten() {
+                    p.names(out);
+                }
+                if let Some((r, _)) = rest {
+                    out.push(r.clone());
+                }
+            }
+            Pat::Default(p, _) => p.names(out),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclKind {
+    Const,
+    Let,
+}
+
+#[derive(Debug)]
+pub enum ImportName {
+    Default,
+    Namespace,
+    Named(String),
+}
+
+#[derive(Debug)]
+pub struct ImportSpec {
+    pub imported: ImportName,
+    pub local: String,
+    pub type_only: bool,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum Stmt {
+    Decl { kind: DeclKind, pat: Pat, ann: Option<TyAnn>, init: Option<Expr>, span: Span },
+    Func(Rc<Func>),
+    Expr(Expr),
+    Return(Option<Expr>, Span),
+    If(Expr, Vec<Stmt>, Option<Vec<Stmt>>),
+    For { init: Option<P<Stmt>>, test: Option<Expr>, update: Option<Expr>, body: Vec<Stmt>, span: Span },
+    ForOf { kind: DeclKind, pat: Pat, iter: Expr, body: Vec<Stmt>, span: Span },
+    While(Expr, Vec<Stmt>),
+    Break(Span),
+    Continue(Span),
+    Throw(Expr),
+    Try { block: Vec<Stmt>, param: Option<(String, Span)>, handler: Option<Vec<Stmt>>, finalizer: Option<Vec<Stmt>> },
+    Switch { disc: Expr, cases: Vec<(Option<Expr>, Vec<Stmt>)>, span: Span },
+    Block(Vec<Stmt>),
+    TypeAlias { name: String, params: Vec<String>, ty: TyAnn },
+    Import { source: String, specs: Vec<ImportSpec>, type_only: bool, span: Span },
+    /// `export { a as b }` / `export { a } from "x"` — re-exports.
+    ExportNames { names: Vec<(String, String)>, from: Option<String>, span: Span },
+    /// `export * from "x"`
+    ExportAll { from: String, span: Span },
+    ExportDefault(Expr),
+    /// Marks the following declaration's names as exported.
+    Exported(P<Stmt>),
+}
+
+#[derive(Debug)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnOp {
+    Neg,
+    Plus,
+    Not,
+    TypeOf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Exp,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    /// `===`, and `==` against a null/undefined literal (lowered to `IsNullish`).
+    Eq,
+    Ne,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogOp {
+    And,
+    Or,
+    Nullish,
+}
+
+#[derive(Debug)]
+pub enum ArrEl {
+    Item(Expr),
+    Spread(Expr),
+}
+
+#[derive(Debug)]
+pub enum PropKey {
+    Static(String),
+    Computed(Expr),
+}
+
+#[derive(Debug)]
+pub enum Prop {
+    KV(PropKey, Expr),
+    Spread(Expr),
+}
+
+#[derive(Debug)]
+pub enum ExprKind {
+    Num(f64),
+    Str(String),
+    Bool(bool),
+    Null,
+    Undefined,
+    Template(Vec<String>, Vec<Expr>),
+    Regex { pattern: String, flags: String },
+    Ident(String),
+    Array(Vec<ArrEl>),
+    Object(Vec<Prop>),
+    Func(Rc<Func>),
+    Unary(UnOp, P<Expr>),
+    Binary(BinOp, P<Expr>, P<Expr>),
+    /// `x == null` / `x != null`: nullish check (true when `negated` is false and x is nullish).
+    IsNullish(P<Expr>, bool),
+    Logical(LogOp, P<Expr>, P<Expr>),
+    Cond(P<Expr>, P<Expr>, P<Expr>),
+    /// `op` is `None` for plain `=`.
+    Assign { op: Option<AssignOp>, target: P<Expr>, value: P<Expr> },
+    Update { inc: bool, prefix: bool, target: P<Expr> },
+    Call { callee: P<Expr>, args: Vec<ArrEl>, optional: bool, type_args: Vec<TyAnn> },
+    New { callee: P<Expr>, args: Vec<ArrEl> },
+    Member { obj: P<Expr>, prop: String, optional: bool, prop_span: Span },
+    Index { obj: P<Expr>, index: P<Expr>, optional: bool },
+    /// Optional-chain boundary: a nullish `?.` inside short-circuits to undefined here.
+    Chain(P<Expr>),
+    Await(P<Expr>),
+    /// `e as T` / `<T>e` / `e satisfies T`. `as const` is dropped during lowering.
+    As(P<Expr>, TyAnn),
+    NonNull(P<Expr>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    Bin(BinOp),
+    Log(LogOp),
+}
+
+/// TypeScript type annotations, kept syntactic; resolved in `types.rs`.
+#[derive(Debug, Clone)]
+pub enum TyAnn {
+    Num,
+    Str,
+    Bool,
+    Null,
+    Undefined,
+    Void,
+    Any,
+    Unknown,
+    Never,
+    StrLit(String),
+    NumLit(f64),
+    BoolLit(bool),
+    Array(P<TyAnn>),
+    Tuple(Vec<TyAnn>),
+    Obj(Vec<(String, TyAnn, bool)>),
+    /// `Record<string, T>` and `{ [k: string]: T }`.
+    Map(P<TyAnn>),
+    Union(Vec<TyAnn>),
+    Fn(Vec<(TyAnn, bool)>, P<TyAnn>),
+    /// Named reference with type arguments, e.g. `Item`, `Promise<T>`, `InferSelect<typeof items>`.
+    Ref(String, Vec<TyAnn>, Span),
+    /// `typeof a.b.c`
+    Query(Vec<String>, Span),
+    /// `T["key"]`
+    Indexed(P<TyAnn>, String),
+    /// `keyof T`
+    KeyOf(P<TyAnn>),
+}

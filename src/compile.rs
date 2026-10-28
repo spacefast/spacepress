@@ -145,6 +145,8 @@ struct FnCtx {
     captures: Option<Vec<(String, bool)>>,
     outer: Option<Box<FnCtx>>,
     tmp: usize,
+    /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
+    switch_depth: usize,
 }
 
 pub struct Compiler<'a, 'p> {
@@ -277,6 +279,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: None,
             outer: None,
             tmp: 0,
+            switch_depth: 0,
         };
         let generics: HashMap<String, Ty> = f.type_params.iter().map(|t| (t.clone(), Ty::Unknown)).collect();
         let mut param_tys = Vec::new();
@@ -341,6 +344,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         fx.by_ref = mutated_params(&f);
+        // Recursive calls need the signature before the body is compiled.
+        if let Some(ret) = &fx.ret {
+            let ret = if f.is_async {
+                Ty::Promise(Box::new(ret.clone()))
+            } else {
+                ret.clone()
+            };
+            self.helper_types
+                .insert(closure_key(closure), Ty::Fn(param_tys.clone(), Box::new(ret)));
+        }
+        check_aliasing(&f)?;
         let saved = self.fx.replace(fx);
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
@@ -858,7 +872,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => String::new(),
                 };
                 let _ = writeln!(out, "{p}for ({init_php}; {test_php}; {update_php}) {{");
-                out.push_str(&self.block(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
@@ -893,21 +907,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.bind_pattern(pat, &tmp, &el, mutable, &mut out, indent + 1)?;
                     }
                 }
-                out.push_str(&self.block(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
             Stmt::While(test, body) => {
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
-                out.push_str(&self.block(body, indent + 1)?);
+                out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
             }
             Stmt::Break(_) => {
                 let _ = writeln!(out, "{p}break;");
             }
             Stmt::Continue(_) => {
-                let _ = writeln!(out, "{p}continue;");
+                // In PHP a `switch` counts as a loop level for `continue`.
+                match self.fx().switch_depth {
+                    0 => writeln!(out, "{p}continue;"),
+                    n => writeln!(out, "{p}continue {};", n + 1),
+                }
+                .ok();
             }
             Stmt::Throw(e) => {
                 let v = self.throw_value(e)?;
@@ -965,7 +984,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let _ = writeln!(out, "{p}    default:");
                         }
                     }
-                    out.push_str(&self.block(body, indent + 2)?);
+                    self.fx().switch_depth += 1;
+                    let inner = self.block(body, indent + 2);
+                    self.fx().switch_depth -= 1;
+                    out.push_str(&inner?);
                 }
                 let _ = writeln!(out, "{p}}}");
             }
@@ -976,6 +998,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Exported(inner) => return self.stmt(inner, indent),
         }
         Ok(out)
+    }
+
+    fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
+        let saved = std::mem::take(&mut self.fx().switch_depth);
+        let r = self.block(body, indent);
+        self.fx().switch_depth = saved;
+        r
     }
 
     fn tmp_var(&mut self) -> String {
@@ -1618,6 +1647,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             BinOp::Eq | BinOp::Ne => {
+                self.check_identity_eq(&a, &b, span)?;
                 let eq = self.strict_eq(&a, &b);
                 if op == BinOp::Eq {
                     Out::new(eq, Ty::Bool)
@@ -1626,6 +1656,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         })
+    }
+
+    /// `===` on arrays/objects compares identity in JS; PHP arrays have none.
+    fn check_identity_eq(&self, a: &Out, b: &Out, span: Span) -> Result<()> {
+        let by_ref = |t: &Ty| matches!(t.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::Obj(_) | Ty::Map(_));
+        if by_ref(&a.ty) && by_ref(&b.ty) {
+            return err_help(
+                span,
+                "`===` between arrays or objects compares identity, which compiled code can't preserve",
+                "compare a field (`a.id === b.id`), or check for null (`a === null`)",
+            );
+        }
+        Ok(())
     }
 
     fn strict_eq(&self, a: &Out, b: &Out) -> String {
@@ -1678,7 +1721,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         name
                     }
                 };
-                let ty = self.helper_types.get(&key).cloned().unwrap_or(Ty::Unknown);
+                let Some(ty) = self.helper_types.get(&key).cloned() else {
+                    return err_help(
+                        span,
+                        format!("`{n}` calls itself, so it needs a return type"),
+                        format!("annotate it: `function {n}(...): number`"),
+                    );
+                };
                 let mut out = Out::atom(format!("'\\\\ZeroApp\\\\{name}'"), ty);
                 out.helper = Some(format!("\\ZeroApp\\{name}"));
                 Ok(out)
@@ -1709,7 +1758,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("`{n}` is {}, which can't be used in PHP", data.describe()),
                     );
                 };
-                Ok(Out::atom(php_json(&json), ty_of_json(&json)))
+                let ty = match &b.ann {
+                    Some((ann, module)) => self.resolve_ann(ann, *module, &HashMap::new())?,
+                    None => ty_of_json(&json),
+                };
+                Ok(Out::atom(php_json(&json), ty))
             }
         }
     }
@@ -1799,6 +1852,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             captures: Some(Vec::new()),
             outer: None,
             tmp: 0,
+            switch_depth: 0,
         };
         if f.is_async {
             return err_help(
@@ -1813,6 +1867,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
         self.fx = Some(inner);
+        check_aliasing(f)?;
         let result = self.closure_body(f, &param_tys);
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));
@@ -2032,14 +2087,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 t
             }
         };
+        // `x?.length` on a nullable value: evaluate once, short-circuit to null.
+        let guarded = |c: &mut Self, f: &dyn Fn(&str) -> String| {
+            if optional && o.ty.is_nullable() {
+                let tmp = c.tmp_var();
+                format!("(({tmp} = {}) === null ? null : {})", o.php, f(&tmp))
+            } else {
+                f(&o.php)
+            }
+        };
         Ok(match (&base, prop) {
-            (Ty::Str, "length") => Out::atom(format!("mb_strlen({})", o.php), Ty::Num),
+            (Ty::Str, "length") => {
+                let php = guarded(self, &|x| format!("\\Zero\\Js::length({x})"));
+                Out::atom(php, suffix_null(Ty::Num))
+            }
             (Ty::Array(_) | Ty::Tuple(_), "length") => {
-                let php = if optional {
-                    format!("(({}) === null ? null : count({}))", o.php, o.php)
-                } else {
-                    format!("count({})", o.php)
-                };
+                let php = guarded(self, &|x| format!("count({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Error, "message") => Out::atom(format!("{}->getMessage()", o.wrapped()), Ty::Str),
@@ -2755,7 +2818,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "the comparator must return a number");
                 }
                 let fp = f.map(|f| format!(", {}", f.php)).unwrap_or_default();
-                if m == "sort" {
+                // Sorting a temporary (`[...xs].sort()`) mutates nothing anyone can see.
+                if m == "sort" && a.place.is_some() {
                     Out::atom(format!("\\Zero\\Js::sort({}{fp})", place()?), Ty::Array(Box::new(el)))
                 } else {
                     Out::atom(format!("\\Zero\\Js::sorted({}{fp})", a.php), Ty::Array(Box::new(el)))
@@ -2788,7 +2852,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Num,
                 )
             }
-            "reverse" => Out::atom(format!("\\Zero\\Js::reverse({})", place()?), Ty::Array(Box::new(el))),
+            "reverse" if a.place.is_some() => {
+                Out::atom(format!("\\Zero\\Js::reverse({})", place()?), Ty::Array(Box::new(el)))
+            }
+            "reverse" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
             "toReversed" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
@@ -3591,5 +3658,224 @@ fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, Strin
             Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out),
             _ => {}
         }
+    }
+}
+
+/// JS shares arrays and objects by reference; compiled PHP copies them when
+/// they're stored. Code that stores a local container inside another value
+/// and then mutates it would silently diverge, so it's a build error.
+fn check_aliasing(f: &Func) -> Result<()> {
+    struct Walk {
+        /// Local name → span where it was stored into another value.
+        stored: HashMap<String, Span>,
+    }
+    fn root(e: &Expr) -> Option<&str> {
+        match &e.kind {
+            ExprKind::Ident(n) => Some(n),
+            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } | ExprKind::NonNull(obj) => root(obj),
+            _ => None,
+        }
+    }
+    const MUTATORS: &[&str] = &["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill"];
+    impl Walk {
+        fn mutated(&self, name: &str, span: Span) -> Result<()> {
+            if let Some(at) = self.stored.get(name) {
+                let _ = at;
+                return err_help(
+                    span,
+                    format!("`{name}` was stored in another value earlier, so changing it here wouldn't show up there"),
+                    "build the value completely before storing it, or change it through the place you stored it",
+                );
+            }
+            Ok(())
+        }
+        /// Bare identifiers placed inside array/object literals or passed into db calls get copied.
+        fn note_stores(&mut self, e: &Expr) {
+            match &e.kind {
+                ExprKind::Array(items) => {
+                    for it in items {
+                        if let ArrEl::Item(x) = it {
+                            self.note_store(x);
+                        }
+                    }
+                }
+                ExprKind::Object(props) => {
+                    for p in props {
+                        if let Prop::KV(_, x) = p {
+                            self.note_store(x);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn note_store(&mut self, x: &Expr) {
+            if let ExprKind::Ident(n) = &x.kind {
+                self.stored.entry(n.clone()).or_insert(x.span);
+            }
+        }
+        fn expr(&mut self, e: &Expr) -> Result<()> {
+            match &e.kind {
+                ExprKind::Assign { target, value, .. } => {
+                    self.expr(value)?;
+                    if !matches!(target.kind, ExprKind::Ident(_))
+                        && let Some(r) = root(target)
+                    {
+                        self.mutated(r, target.span)?;
+                    }
+                    if !matches!(target.kind, ExprKind::Ident(_)) {
+                        self.note_store(value);
+                    }
+                    self.note_stores(value);
+                }
+                ExprKind::Update { target, .. } => {
+                    if !matches!(target.kind, ExprKind::Ident(_))
+                        && let Some(r) = root(target)
+                    {
+                        self.mutated(r, target.span)?;
+                    }
+                }
+                ExprKind::Call { callee, args, .. } => {
+                    if let ExprKind::Member { obj, prop, .. } = &callee.kind
+                        && MUTATORS.contains(&prop.as_str())
+                        && let Some(r) = root(obj)
+                    {
+                        self.mutated(r, e.span)?;
+                    }
+                    self.expr(callee)?;
+                    for a in args {
+                        let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
+                        self.expr(x)?;
+                        if let ArrEl::Item(x) = a
+                            && matches!(&callee.kind, ExprKind::Member { prop, .. } if prop == "push" || prop == "unshift")
+                        {
+                            self.note_store(x);
+                        }
+                        self.note_stores(x);
+                    }
+                }
+                ExprKind::Array(_) | ExprKind::Object(_) => {
+                    self.note_stores(e);
+                    match &e.kind {
+                        ExprKind::Array(items) => {
+                            for it in items {
+                                let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
+                                self.expr(x)?;
+                            }
+                        }
+                        ExprKind::Object(props) => {
+                            for p in props {
+                                let (Prop::KV(_, x) | Prop::Spread(x)) = p;
+                                self.expr(x)?;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
+                    self.expr(a)?;
+                    self.expr(b)?;
+                }
+                ExprKind::Cond(a, b, c) => {
+                    self.expr(a)?;
+                    self.expr(b)?;
+                    self.expr(c)?;
+                }
+                ExprKind::Unary(_, x)
+                | ExprKind::Await(x)
+                | ExprKind::Chain(x)
+                | ExprKind::As(x, _)
+                | ExprKind::NonNull(x)
+                | ExprKind::IsNullish(x, _)
+                | ExprKind::Member { obj: x, .. } => self.expr(x)?,
+                ExprKind::Index { obj, index, .. } => {
+                    self.expr(obj)?;
+                    self.expr(index)?;
+                }
+                ExprKind::Template(_, xs) => {
+                    for x in xs {
+                        self.expr(x)?;
+                    }
+                }
+                // Nested functions are checked on their own.
+                _ => {}
+            }
+            Ok(())
+        }
+        fn stmts(&mut self, stmts: &[Stmt]) -> Result<()> {
+            for s in stmts {
+                match s {
+                    Stmt::Decl { init: Some(e), .. } => {
+                        self.expr(e)?;
+                        self.note_stores(e);
+                    }
+                    Stmt::Expr(e) | Stmt::Throw(e) | Stmt::Return(Some(e), _) => self.expr(e)?,
+                    Stmt::If(t, a, b) => {
+                        self.expr(t)?;
+                        self.stmts(a)?;
+                        if let Some(b) = b {
+                            self.stmts(b)?;
+                        }
+                    }
+                    Stmt::Block(b) => self.stmts(b)?,
+                    Stmt::While(t, b) => {
+                        self.expr(t)?;
+                        self.stmts(b)?;
+                    }
+                    Stmt::For {
+                        init,
+                        test,
+                        update,
+                        body,
+                        ..
+                    } => {
+                        if let Some(i) = init {
+                            self.stmts(std::slice::from_ref(i))?;
+                        }
+                        if let Some(t) = test {
+                            self.expr(t)?;
+                        }
+                        if let Some(u) = update {
+                            self.expr(u)?;
+                        }
+                        self.stmts(body)?;
+                    }
+                    Stmt::ForOf { iter, body, .. } => {
+                        self.expr(iter)?;
+                        self.stmts(body)?;
+                    }
+                    Stmt::Try {
+                        block,
+                        handler,
+                        finalizer,
+                        ..
+                    } => {
+                        self.stmts(block)?;
+                        if let Some(h) = handler {
+                            self.stmts(h)?;
+                        }
+                        if let Some(f) = finalizer {
+                            self.stmts(f)?;
+                        }
+                    }
+                    Stmt::Switch { disc, cases, .. } => {
+                        self.expr(disc)?;
+                        for (t, b) in cases {
+                            if let Some(t) = t {
+                                self.expr(t)?;
+                            }
+                            self.stmts(b)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+    }
+    let mut w = Walk { stored: HashMap::new() };
+    match &f.body {
+        FnBody::Expr(e) => w.expr(e),
+        FnBody::Block(b) => w.stmts(b),
     }
 }

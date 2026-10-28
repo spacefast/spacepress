@@ -128,6 +128,8 @@ pub struct Binding {
     pub mutable: bool,
     /// Declared at module top level (vs. inside a build-time function call).
     pub module_level: bool,
+    /// `const x: T = ...`: the declared type, used when compiled code reads `x`.
+    pub ann: Option<(crate::ir::TyAnn, usize)>,
 }
 
 impl Scope {

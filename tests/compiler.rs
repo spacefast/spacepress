@@ -238,3 +238,58 @@ fn copy(from: &Path, to: &Path) {
         }
     }
 }
+
+/// Every action in tests/differential/cases.ts runs under Node and as compiled
+/// PHP; the results must be identical. This is what "supported" means.
+#[test]
+fn compiled_php_matches_node_on_every_differential_case() {
+    let dir = root().join("tests/differential");
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(dir.join("cases.ts"))
+        .output();
+    let Ok(node) = node else {
+        panic!("node is required for differential tests");
+    };
+    assert!(
+        node.status.success(),
+        "node failed:\n{}",
+        String::from_utf8_lossy(&node.stderr)
+    );
+    let expected: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+
+    let tmp = std::env::temp_dir().join(format!("zero-diff-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(
+        built.status.success(),
+        "build failed:\n{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let mut mismatches = Vec::new();
+    for (name, want) in expected.as_object().unwrap() {
+        let out = Command::new("php")
+            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+            .args(["action", name])
+            .output()
+            .unwrap();
+        let got: serde_json::Value = serde_json::from_slice(&out.stdout)
+            .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&out.stdout) }));
+        let got = match got.get("error") {
+            Some(e) => serde_json::json!({ "error": e["detail"] }),
+            None => got,
+        };
+        if &got != want {
+            mismatches.push(format!("{name}\n  node: {want}\n  php:  {got}"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(
+        mismatches.is_empty(),
+        "compiled PHP disagrees with Node:\n{}",
+        mismatches.join("\n")
+    );
+}

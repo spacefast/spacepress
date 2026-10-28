@@ -447,6 +447,12 @@ final class Js
         return mb_substr($s, (int) $i, 1);
     }
 
+    /** `String.prototype.length`: UTF-16 code units (astral characters count twice). */
+    public static function length(string $s): int
+    {
+        return intdiv(strlen((string) mb_convert_encoding($s, 'UTF-16LE', 'UTF-8')), 2);
+    }
+
     public static function strAt(string $s, int|float $i): ?string
     {
         $len = mb_strlen($s);

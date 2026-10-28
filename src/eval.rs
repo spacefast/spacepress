@@ -309,6 +309,7 @@ impl<'p> Evaluator<'p> {
                     value,
                     mutable: false,
                     module_level: true,
+                    ann: None,
                 },
             );
         }
@@ -380,7 +381,11 @@ impl<'p> Evaluator<'p> {
     fn exec(&mut self, stmt: &Stmt, scope: &Rc<Scope>) -> R<Flow> {
         match stmt {
             Stmt::Decl {
-                kind, pat, init, span, ..
+                kind,
+                pat,
+                init,
+                span,
+                ann,
             } => {
                 self.tick(*span)?;
                 let v = match init {
@@ -388,6 +393,11 @@ impl<'p> Evaluator<'p> {
                     None => Value::Undef,
                 };
                 self.bind_pattern(pat, v, scope, *kind == DeclKind::Let)?;
+                if let (Pat::Id(name, _), Some(a)) = (pat, ann)
+                    && let Some(b) = scope.vars.borrow_mut().get_mut(name)
+                {
+                    b.ann = Some((a.clone(), scope.module));
+                }
             }
             Stmt::Func(_) | Stmt::TypeAlias { .. } => {}
             Stmt::Expr(e) => {
@@ -1427,6 +1437,7 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
                 value: closure,
                 mutable: false,
                 module_level,
+                ann: None,
             },
         );
     }
@@ -1440,6 +1451,7 @@ fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
             value,
             mutable,
             module_level,
+            ann: None,
         },
     );
 }

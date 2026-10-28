@@ -4,15 +4,23 @@ declare(strict_types=1);
 
 namespace Zero;
 
-/** Boots a generated app and serves its REST API and CLI. */
+use Zero\Store\SqliteMedia;
+use Zero\Store\SqliteStore;
+
+/**
+ * Boots a generated app and serves its REST API (§4.8) and CLI. Target-agnostic: the standalone
+ * front controller uses App::boot($root) (SQLite + bearer tokens + local media); the WP plugin passes
+ * its own Store/Auth/Media and calls handle() with the path after its REST prefix.
+ */
 final class App
 {
+    public const PREFIX = '/api';
     private const LIST_LIMIT = 50;
     private const MAX_LIST_LIMIT = 200;
     private const CORS = [
         'Access-Control-Allow-Origin' => '*',
         'Access-Control-Allow-Methods' => 'GET, POST, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers' => 'content-type',
+        'Access-Control-Allow-Headers' => 'content-type, authorization',
     ];
     private const TITLES = [
         'invalid_input' => 'Invalid input',
@@ -23,6 +31,9 @@ final class App
         'unique_violation' => 'Unique violation',
         'reference_violation' => 'Reference violation',
         'rejected' => 'Rejected',
+        'unauthenticated' => 'Unauthenticated',
+        'forbidden' => 'Forbidden',
+        'payload_too_large' => 'Payload too large',
         'internal' => 'Internal error',
     ];
 
@@ -30,42 +41,68 @@ final class App
         public readonly string $root,
         public readonly Schema $schema,
         public readonly Db $db,
+        public readonly Store $store,
+        public readonly Auth $auth,
     ) {
     }
 
-    /** @param ?bool $migrate null = apply pending migrations unless ZERO_AUTO_MIGRATE=0 */
-    public static function boot(string $appRoot, ?bool $migrate = null): self
+    /**
+     * Boot an app root. With no Store/Auth/Media the standalone services are built (SQLite at
+     * env ZERO_DB_PATH or <root>/data/zero.sqlite, bearer tokens, <root>/public/uploads).
+     *
+     * @param ?bool $migrate standalone only; null = apply pending migrations unless ZERO_AUTO_MIGRATE=0
+     */
+    public static function boot(string $appRoot, ?Store $store = null, ?Auth $auth = null, ?Media $media = null, ?bool $migrate = null): self
     {
         $schema = Schema::load($appRoot . '/zero/app/schema.php');
         $functions = $appRoot . '/zero/app/functions.php';
         if (is_file($functions)) {
             require_once $functions;
         }
-        $path = getenv('ZERO_DB_PATH') ?: $appRoot . '/data/zero.sqlite';
-        $db = new Db(Db::connect($path), $schema);
-        Db::setInstance($db);
-        $app = new self($appRoot, $schema, $db);
-        if ($migrate ?? getenv('ZERO_AUTO_MIGRATE') !== '0') {
-            $app->migrate();
+        if ($store === null) {
+            $store = new SqliteStore(SqliteStore::connect(getenv('ZERO_DB_PATH') ?: $appRoot . '/data/zero.sqlite'), $schema);
+            $auth ??= new Identity($store);
+            $media ??= new SqliteMedia($store, $appRoot . '/public');
+            if ($migrate ?? getenv('ZERO_AUTO_MIGRATE') !== '0') {
+                $store->migrate($appRoot . '/zero/app/migrations');
+            }
         }
+        if ($auth === null || $media === null) {
+            throw new \LogicException('App::boot needs Auth and Media when a Store is given');
+        }
+        $db = new Db($store, $schema, $media, $schema->target());
+        Db::setInstance($db);
 
-        return $app;
+        return new self($appRoot, $schema, $db, $store, $auth);
     }
 
-    /** @return list<string> applied migration ids */
+    /** @return list<string> applied migration ids (standalone) */
     public function migrate(): array
     {
-        return (new Migrator($this->db->pdo(), $this->root . '/zero/app/migrations'))->migrate();
+        if (!$this->store instanceof SqliteStore) {
+            throw new \LogicException('migrate is standalone-only; the WP plugin migrates on activation');
+        }
+
+        return $this->store->migrate($this->root . '/zero/app/migrations');
     }
 
-    /** Validate input against an action's schema and run its handler. */
-    public function runAction(string $name, mixed $input): mixed
+    public function identity(): Identity
+    {
+        return $this->auth instanceof Identity ? $this->auth : throw new HttpError(404, 'not_found', 'Users and tokens are managed by WordPress on this target');
+    }
+
+    /** Validate input against an action's schema, check its access, run its handler. */
+    public function runAction(string $name, mixed $input, ?Viewer $viewer = null): mixed
     {
         $action = $this->schema->action($name);
-        $input = Schema::validateInput($action['input'] ?? [], $input);
+        if ($viewer !== null) {
+            Access::require($action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name");
+        }
+        $ctx = $this->db->hookCtx();
+        $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
         $fn = '\\ZeroApp\\' . $action['handler'];
 
-        return $fn($input);
+        return $fn($input, $ctx);
     }
 
     // ================================================================ HTTP
@@ -76,90 +113,208 @@ final class App
         $uri = $_SERVER['REQUEST_URI'] ?? '/';
         $query = [];
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
-        [$status, $headers, $body] = $this->handle($method, (string) parse_url($uri, PHP_URL_PATH), $query, (string) file_get_contents('php://input'));
+        $path = (string) parse_url($uri, PHP_URL_PATH);
+        $headers = self::requestHeaders();
+        if ($path !== self::PREFIX && !str_starts_with($path, self::PREFIX . '/')) {
+            [$status, $out, $body] = self::respond(HttpError::notFound("No route for $path"));
+        } elseif ($method === 'POST' && $_FILES === [] && $_POST === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > self::iniBytes('post_max_size')
+            && str_starts_with($headers['content-type'] ?? '', 'multipart/')) {
+            [$status, $out, $body] = self::respond(new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts'));
+        } else {
+            [$status, $out, $body] = $this->handle($method, substr($path, strlen(self::PREFIX)), $query, (string) file_get_contents('php://input'), $headers, $_FILES, $_POST);
+        }
         http_response_code($status);
-        foreach ($headers as $name => $value) {
+        foreach ($out as $name => $value) {
             header("$name: $value");
         }
         echo $body;
     }
 
     /**
+     * One API request. $path is relative to the API prefix ('/posts/1'). $files/$form are the
+     * multipart parts (PHP's $_FILES/$_POST shape) for POST /media.
+     *
      * @param array<string, mixed> $query
+     * @param array<string, string> $headers lower-cased names
      * @return array{int, array<string, string>, string}
      */
-    public function handle(string $method, string $path, array $query, string $body): array
+    public function handle(string $method, string $path, array $query, string $body, array $headers = [], array $files = [], array $form = []): array
     {
         if ($method === 'OPTIONS') {
             return [204, self::CORS, ''];
         }
         try {
-            [$status, $data] = $this->db->transaction(fn () => $this->route($method, $path, $query, $body));
+            [$status, $data] = $this->db->transaction(function () use ($method, $path, $query, $body, $headers, $files, $form) {
+                $this->db->promoteDue();
+                $user = $this->auth->resolve(array_change_key_case($headers, CASE_LOWER));
+                $this->db->setActor($user);
+                try {
+                    return $this->route($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $files, $form);
+                } finally {
+                    $this->db->setActor(null);
+                }
+            });
 
             return [$status, ['Content-Type' => 'application/json'] + self::CORS, Js::jsonStringify(['data' => $data]) ?? '{}'];
         } catch (\Throwable $e) {
-            $problem = self::problem($e);
-
-            return [$problem['status'], ['Content-Type' => 'application/problem+json'] + self::CORS, Js::jsonStringify($problem) ?? '{}'];
+            return self::respond($e);
         }
     }
 
+    /** @return array{int, array<string, string>, string} */
+    private static function respond(\Throwable $e): array
+    {
+        $problem = self::problem($e);
+
+        return [$problem['status'], ['Content-Type' => 'application/problem+json'] + self::CORS, Js::jsonStringify($problem) ?? '{}'];
+    }
+
     /** @return array{int, mixed} */
-    private function route(string $method, string $path, array $query, string $body): array
+    private function route(string $method, string $path, array $query, string $body, Viewer $viewer, array $files, array $form): array
     {
         $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($s) => $s !== '')));
-        if (($segments[0] ?? '') !== 'api' || count($segments) < 2 || count($segments) > 3) {
-            throw HttpError::notFound("No route for $path");
-        }
-        [, $name, $id] = $segments + [2 => null];
+        $n = count($segments);
+        $name = $segments[0] ?? '';
+        $notFound = static fn () => HttpError::notFound("No route for " . self::PREFIX . $path);
 
-        if ($name === '_schema' && $id === null) {
-            self::allow($method, ['GET']);
+        switch (true) {
+            case $name === '_schema' && $n === 1:
+                self::allow($method, ['GET']);
 
-            return [200, $this->schema->describe()];
-        }
-        // A collection literally named "actions" only loses the ids that are action names.
-        if ($name === 'actions' && $id !== null
-            && (!$this->schema->hasCollection('actions') || isset($this->schema->actions()[$id]))) {
-            self::allow($method, ['POST']);
+                return [200, $this->schema->describe()];
+            case $name === 'me' && $n === 1:
+                self::allow($method, ['GET']);
 
-            return [200, $this->runAction($id, self::parseBody($body))];
+                return [200, $viewer->user];
+            case $name === 'auth' && $n === 2 && $segments[1] === 'token':
+                self::allow($method, ['POST']);
+                $in = self::object(self::parseBody($body));
+                if (!is_string($in['name'] ?? null) || !is_string($in['password'] ?? null)) {
+                    throw HttpError::invalidInput('name and password are required', is_string($in['name'] ?? null) ? '/password' : '/name');
+                }
+
+                return [200, $this->auth->login($in['name'], $in['password'])];
+            case $name === 'actions' && $n === 2:
+                self::allow($method, ['POST']);
+
+                return [200, $this->runAction($segments[1], self::parseBody($body), $viewer)];
+            case $name === 'globals' && $n === 2:
+                self::allow($method, ['GET', 'PATCH']);
+
+                return $method === 'GET'
+                    ? [200, $this->db->globalGet($segments[1], $viewer)]
+                    : [200, $this->db->globalUpdate($segments[1], self::object(self::parseBody($body)), $viewer)];
+            case $name === 'media':
+                return $this->mediaRoute($method, $segments, $query, $viewer, $files, $form);
+            case $n < 1 || $n > 5:
+                throw $notFound();
         }
+
         if (!$this->schema->hasCollection($name)) {
             throw HttpError::notFound("Unknown collection '$name'");
         }
         $spec = $this->schema->collection($name);
 
-        if ($id === null) {
+        if ($n === 1) {
             self::allow($method, ['GET', 'POST']);
             if ($method === 'GET') {
                 $this->gate($spec, 'list');
 
-                return [200, $this->db->findMany($name, self::listOptions($query))];
+                return [200, $this->db->findMany($name, self::listOptions($query), $viewer)];
             }
             $this->gate($spec, 'create');
-            $data = self::parseBody($body);
-            if (array_is_list($data) && $data !== []) {
-                throw HttpError::invalidInput('Body must be a JSON object', '');
+            $data = self::object(self::parseBody($body));
+
+            return [201, $this->db->insert($name, $data, true, $viewer)[0]];
+        }
+
+        $pk = $this->pkFromPath($spec, $segments[1]);
+        $where = [$spec['primaryKey'] => $pk];
+        $missing = static fn () => HttpError::notFound("No $name row with {$spec['primaryKey']} {$segments[1]}");
+
+        if ($n === 2) {
+            self::allow($method, ['GET', 'PATCH', 'DELETE']);
+            $this->gate($spec, ['GET' => 'get', 'PATCH' => 'update', 'DELETE' => 'delete'][$method]);
+
+            return match ($method) {
+                'GET' => [200, $this->db->findFirst($name, ['where' => $where] + (isset($query['with']) ? ['with' => self::withOption($query['with'])] : []), $viewer) ?? throw $missing()],
+                'PATCH' => [200, $this->db->update($name, self::object(self::parseBody($body)), $where, true, $viewer)[0] ?? throw $missing()],
+                'DELETE' => [200, $this->db->delete($name, $where, true, $viewer)[0] ?? throw $missing()],
+            };
+        }
+
+        if ($segments[2] !== 'revisions') {
+            throw $notFound();
+        }
+        $this->gate($spec, 'update');
+        if ($n === 3) {
+            self::allow($method, ['GET']);
+
+            return [200, array_map(fn (array $r) => [
+                'id' => $r['id'],
+                'at' => $r['at'],
+                'user' => $r['userId'] === null ? null : (($u = $this->auth->user($r['userId'])) === null ? null : ['id' => $u['id'], 'name' => $u['name']]),
+            ], $this->db->revisions($name, $pk, $viewer))];
+        }
+        if (!preg_match('/^\d{1,18}$/D', $segments[3])) {
+            throw HttpError::notFound("No revision {$segments[3]}");
+        }
+        $rid = (int) $segments[3];
+        if ($n === 4) {
+            self::allow($method, ['GET']);
+
+            return [200, $this->db->revision($name, $pk, $rid, $viewer)];
+        }
+        if ($segments[4] !== 'restore') {
+            throw $notFound();
+        }
+        self::allow($method, ['POST']);
+
+        return [200, $this->db->restoreRevision($name, $pk, $rid, $viewer)];
+    }
+
+    /** @return array{int, mixed} */
+    private function mediaRoute(string $method, array $segments, array $query, Viewer $viewer, array $files, array $form): array
+    {
+        $n = count($segments);
+        if ($n === 1) {
+            self::allow($method, ['GET', 'POST']);
+            if ($method === 'GET') {
+                $opts = self::listOptions($query);
+                if (isset($opts['with'])) {
+                    throw HttpError::invalidQuery('media has no relations', '/with');
+                }
+
+                return [200, $this->db->mediaList($opts)];
+            }
+            $file = $files['file'] ?? null;
+            if (!is_array($file) || is_array($file['error'] ?? null)) {
+                throw HttpError::invalidInput('Send the file as multipart/form-data field "file"', '/file');
+            }
+            $err = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+                throw new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts');
+            }
+            if ($err !== UPLOAD_ERR_OK) {
+                throw HttpError::invalidInput('The upload failed (error ' . $err . ')', '/file');
+            }
+            $alt = $form['alt'] ?? null;
+            if ($alt !== null && !is_string($alt)) {
+                throw HttpError::invalidInput('alt must be a string', '/alt');
             }
 
-            return [201, $this->db->insert($name, $data, true)[0]];
+            return [201, $this->db->mediaUpload((string) $file['tmp_name'], (string) ($file['name'] ?? 'file'), $alt, $viewer)];
         }
-
-        self::allow($method, ['GET', 'PATCH', 'DELETE']);
-        $this->gate($spec, ['GET' => 'get', 'PATCH' => 'update', 'DELETE' => 'delete'][$method]);
-        $where = [$spec['primaryKey'] => $this->pkFromPath($spec, $id)];
-        $opts = ['where' => $where];
-        if ($method === 'GET' && isset($query['with'])) {
-            $opts['with'] = self::withOption($query['with']);
+        if ($n !== 2) {
+            throw HttpError::notFound('No such media route');
         }
-        $row = $this->db->findFirst($name, $opts) ?? throw HttpError::notFound("No $name row with {$spec['primaryKey']} $id");
+        self::allow($method, ['GET', 'DELETE']);
+        $id = preg_match('/^\d{1,18}$/D', $segments[1]) ? (int) $segments[1] : -1;
+        $missing = static fn () => HttpError::notFound("No media with id {$segments[1]}");
 
-        return match ($method) {
-            'GET' => [200, $row],
-            'PATCH' => [200, $this->db->update($name, self::object(self::parseBody($body)), $where, true)[0] ?? $row],
-            'DELETE' => [200, $this->db->delete($name, $where, true)[0] ?? $row],
-        };
+        return $method === 'GET'
+            ? [200, $this->db->mediaGet($id) ?? throw $missing()]
+            : [200, $this->db->mediaDelete($id, $viewer) ?? throw $missing()];
     }
 
     private static function allow(string $method, array $allowed): void
@@ -195,6 +350,10 @@ final class App
         if (isset($query['where'])) {
             $opts['where'] = self::queryJson($query['where'], '/where');
         }
+        if (isset($query['status'])) {
+            $status = ['status' => self::queryString($query['status'], '/status')];
+            $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $status]] : $status;
+        }
         if (isset($query['orderBy'])) {
             $opts['orderBy'] = [];
             foreach (explode(',', self::queryString($query['orderBy'], '/orderBy')) as $part) {
@@ -215,9 +374,19 @@ final class App
         return $opts;
     }
 
+    /** `with=author,comments` or JSON `with={"author":true}`. */
     private static function withOption(mixed $value): array
     {
-        $names = array_filter(array_map('trim', explode(',', self::queryString($value, '/with'))), static fn ($s) => $s !== '');
+        $s = trim(self::queryString($value, '/with'));
+        if (str_starts_with($s, '{')) {
+            $with = self::queryJson($s, '/with');
+            if (!is_array($with) || ($with !== [] && array_is_list($with))) {
+                throw HttpError::invalidQuery('with must be an object', '/with');
+            }
+
+            return $with;
+        }
+        $names = array_filter(array_map('trim', explode(',', $s)), static fn ($x) => $x !== '');
 
         return array_fill_keys($names, true);
     }
@@ -270,6 +439,38 @@ final class App
         return $v;
     }
 
+    /** @return array<string, string> lower-cased request headers */
+    private static function requestHeaders(): array
+    {
+        $out = [];
+        foreach (function_exists('getallheaders') ? (getallheaders() ?: []) : [] as $k => $v) {
+            $out[strtolower((string) $k)] = (string) $v;
+        }
+        foreach ($_SERVER as $k => $v) {
+            if (is_string($v) && str_starts_with((string) $k, 'HTTP_')) {
+                $out[strtolower(str_replace('_', '-', substr((string) $k, 5)))] ??= $v;
+            }
+        }
+        if (isset($_SERVER['CONTENT_TYPE'])) {
+            $out['content-type'] ??= (string) $_SERVER['CONTENT_TYPE'];
+        }
+
+        return $out;
+    }
+
+    private static function iniBytes(string $key): int
+    {
+        $v = trim((string) ini_get($key));
+        $n = (int) $v;
+
+        return match (strtolower(substr($v, -1))) {
+            'g' => $n << 30,
+            'm' => $n << 20,
+            'k' => $n << 10,
+            default => $n,
+        } ?: PHP_INT_MAX;
+    }
+
     /** RFC 9457 problem document for any throwable. */
     public static function problem(\Throwable $e): array
     {
@@ -296,7 +497,7 @@ final class App
     {
         return match ($status) {
             400 => 'Bad request', 401 => 'Unauthorized', 403 => 'Forbidden', 404 => 'Not found',
-            405 => 'Method not allowed', 409 => 'Conflict', 422 => 'Unprocessable content',
+            405 => 'Method not allowed', 409 => 'Conflict', 413 => 'Payload too large', 422 => 'Unprocessable content',
             429 => 'Too many requests', 500 => 'Internal error', default => 'Error',
         };
     }
@@ -304,7 +505,7 @@ final class App
     // ================================================================ CLI
 
     /**
-     * Run a CLI command. Returns [exit code, stdout JSON].
+     * Run a CLI command (trusted: no access checks). Returns [exit code, stdout JSON].
      *
      * @param list<string> $args arguments after the script name
      * @return array{int, string}
@@ -320,33 +521,110 @@ final class App
         }
     }
 
+    private const USAGE = 'Usage: zero.php migrate | publish-due | action <name> [json] | find <collection> [opts]'
+        . ' | insert <collection> <json> | update <collection> <where> <set> | delete <collection> <where>'
+        . ' | user add <name> --role <role> [--password [value]] | user list | user role <name> <role> | user remove <name>'
+        . ' | token create <user> [--name <label>] | token list [user] | token revoke <id>';
+
     private function cliCommand(array $args): mixed
     {
-        $cmd = $args[0] ?? '';
-        $json = static function (int $i, bool $required = true) use ($args): mixed {
-            if (!isset($args[$i])) {
+        [$pos, $flags] = self::cliArgs($args);
+        $cmd = $pos[0] ?? '';
+        $json = static function (int $i, bool $required = true) use ($pos): mixed {
+            if (!isset($pos[$i])) {
                 return $required ? throw HttpError::invalidInput('Missing JSON argument ' . $i) : null;
             }
 
-            return self::parseBody($args[$i]);
+            return self::parseBody($pos[$i]);
         };
         if ($cmd === 'migrate') {
             return ['applied' => $this->migrate()];
         }
-        $usage = 'Usage: zero.php migrate | action <name> [json] | find <collection> [opts] | insert <collection> <json>'
-            . ' | update <collection> <where> <set> | delete <collection> <where>';
-        if (!in_array($cmd, ['action', 'find', 'insert', 'update', 'delete'], true) || !isset($args[1])) {
-            throw new HttpError(400, 'invalid_command', $usage);
-        }
-        $name = $args[1];
+        $usage = static fn () => new HttpError(400, 'invalid_command', self::USAGE);
 
-        return $this->db->transaction(fn () => match ($cmd) {
-            'action' => $this->runAction($name, $json(2, false)),
-            'find' => $this->db->findMany($name, self::object($json(2, false) ?? [])),
-            'insert' => $this->db->insert($name, self::rows($json(2)), true),
-            'update' => $this->db->update($name, self::object($json(3)), self::object($json(2)), true),
-            'delete' => $this->db->delete($name, self::object($json(2)), true),
+        return $this->db->transaction(function () use ($cmd, $pos, $flags, $json, $usage) {
+            $promoted = $this->db->promoteDue();
+            if ($cmd === 'publish-due') {
+                return ['promoted' => (object) $promoted];
+            }
+            $sub = $pos[1] ?? null;
+            if ($cmd === 'user' || $cmd === 'users') {
+                $id = $this->identity();
+
+                return match ($sub) {
+                    'add', 'create' => $id->addUser($pos[2] ?? throw $usage(), (string) ($flags['role'] ?? throw HttpError::invalidInput('--role is required', '/role')), self::password($flags)),
+                    'list' => $id->listUsers(),
+                    'role' => $id->setRole($pos[2] ?? throw $usage(), $pos[3] ?? throw $usage()),
+                    'remove' => $id->removeUser($pos[2] ?? throw $usage()),
+                    default => throw $usage(),
+                };
+            }
+            if ($cmd === 'token' || $cmd === 'tokens') {
+                $id = $this->identity();
+
+                return match ($sub) {
+                    'create' => $id->createToken($pos[2] ?? throw $usage(), isset($flags['name']) ? (string) $flags['name'] : null),
+                    'list' => $id->listTokens($pos[2] ?? null),
+                    'revoke' => $id->revokeToken(preg_match('/^\d+$/D', $pos[2] ?? '') ? (int) $pos[2] : throw $usage()),
+                    default => throw $usage(),
+                };
+            }
+            if (!in_array($cmd, ['action', 'find', 'insert', 'update', 'delete'], true) || $sub === null) {
+                throw $usage();
+            }
+
+            return match ($cmd) {
+                'action' => $this->runAction($sub, $json(2, false)),
+                'find' => $this->db->findMany($sub, self::object($json(2, false) ?? [])),
+                'insert' => $this->db->insert($sub, self::rows($json(2)), true),
+                'update' => $this->db->update($sub, self::object($json(3)), self::object($json(2)), true),
+                'delete' => $this->db->delete($sub, self::object($json(2)), true),
+            };
         });
+    }
+
+    /**
+     * Split argv into positionals and --flags. `--flag value`, `--flag=value`; a flag followed by
+     * nothing or another flag is `true`.
+     *
+     * @return array{list<string>, array<string, string|true>}
+     */
+    private static function cliArgs(array $args): array
+    {
+        $pos = [];
+        $flags = [];
+        for ($i = 0; $i < count($args); $i++) {
+            $a = $args[$i];
+            if (str_starts_with($a, '--') && strlen($a) > 2) {
+                $eq = strpos($a, '=');
+                if ($eq !== false) {
+                    $flags[substr($a, 2, $eq - 2)] = substr($a, $eq + 1);
+                } elseif (isset($args[$i + 1]) && !str_starts_with($args[$i + 1], '--')) {
+                    $flags[substr($a, 2)] = $args[++$i];
+                } else {
+                    $flags[substr($a, 2)] = true;
+                }
+            } else {
+                $pos[] = $a;
+            }
+        }
+
+        return [$pos, $flags];
+    }
+
+    /** --password <value> | --password=<value> | --password (read one line from stdin). */
+    private static function password(array $flags): ?string
+    {
+        $p = $flags['password'] ?? null;
+        if ($p === true) {
+            $line = fgets(STDIN);
+            $p = $line === false ? '' : rtrim($line, "\r\n");
+        }
+        if ($p === '') {
+            throw HttpError::invalidInput('password must not be empty', '/password');
+        }
+
+        return $p;
     }
 
     private static function rows(mixed $v): array

@@ -12,7 +12,7 @@ require $root . '/zero/runtime/bootstrap.php';
 $args = array_slice($argv, 1);
 try {
     // `migrate` applies migrations itself; everything else auto-migrates per ZERO_AUTO_MIGRATE.
-    $app = \Zero\App::boot($root, ($args[0] ?? '') === 'migrate' ? false : null);
+    $app = \Zero\App::boot($root, migrate: ($args[0] ?? '') === 'migrate' ? false : null);
     [$code, $out] = $app->cli($args);
 } catch (\Throwable $e) {
     [$code, $out] = [1, \Zero\Js::jsonStringify(['error' => \Zero\App::problem($e)])];

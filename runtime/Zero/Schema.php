@@ -5,12 +5,25 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * Read-only view of the generated schema.php plus the value codecs shared by
- * the write pipeline, filters, and action input validation.
+ * Read-only view of the generated schema.php (version 2, design §2) plus the value codecs shared
+ * by the write pipeline, filters, globals and action input validation (§3.4).
+ *
+ * Values exist in three forms:
+ *  - input: whatever the client/hook sent;
+ *  - normalized (JS form): coerced + validated, nested defaults applied — what hooks, rules and
+ *    responses see (`normalize`);
+ *  - storage: int|float|string|null as written by every store (`store`; JSON text for the
+ *    JSON-valued types). `encode` = store(normalize(..)). `decode` turns storage back into JS form.
  */
 final class Schema
 {
-    /** @param array{collections?: array<string, array>, actions?: array<string, array>} $raw */
+    public const ROLES = ['subscriber', 'author', 'editor', 'admin'];
+    private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
+    private const STRING_TYPES = ['text', 'email', 'url', 'slug', 'richText'];
+    private const LIST_TYPES = ['mediaList', 'select', 'repeater', 'blocks'];
+    private const SLUG_RE = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
+
+    /** @param array{version?: int, collections?: array<string, array>, globals?: array<string, array>, actions?: array<string, array>} $raw */
     public function __construct(private readonly array $raw)
     {
     }
@@ -21,14 +34,33 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
+        if (($raw['version'] ?? null) !== 2) {
+            throw new \RuntimeException('schema.php version 2 required');
+        }
 
         return new self($raw);
+    }
+
+    public function name(): string
+    {
+        return (string) ($this->raw['name'] ?? 'app');
+    }
+
+    public function target(): string
+    {
+        return (string) ($this->raw['target'] ?? 'standalone');
     }
 
     /** @return array<string, array> */
     public function collections(): array
     {
         return $this->raw['collections'] ?? [];
+    }
+
+    /** @return array<string, array> */
+    public function globals(): array
+    {
+        return $this->raw['globals'] ?? [];
     }
 
     /** @return array<string, array> */
@@ -48,30 +80,66 @@ final class Schema
             ?? throw HttpError::notFound("Unknown collection '$name'");
     }
 
+    public function global(string $name): array
+    {
+        return $this->raw['globals'][$name]
+            ?? throw HttpError::notFound("Unknown global '$name'");
+    }
+
     public function action(string $name): array
     {
         return $this->raw['actions'][$name]
             ?? throw HttpError::notFound("Unknown action '$name'");
     }
 
-    /** Public description: no function names. */
+    /** Public description (§2): no function names, hooks, beforeCreateFills or WP identifiers. */
     public function describe(): array
     {
         $collections = [];
         foreach ($this->collections() as $name => $c) {
             $collections[$name] = [
+                'key' => $c['key'] ?? $name,
+                'label' => $c['label'] ?? $name,
+                'editor' => $c['editor'] ?? false,
+                'drafts' => $c['drafts'] ?? false,
+                'revisions' => $c['revisions'] ?? false,
+                'title' => $c['title'] ?? null,
+                'content' => $c['content'] ?? null,
+                'slug' => $c['slug'] ?? null,
                 'primaryKey' => $c['primaryKey'],
                 'columns' => array_map(self::publicColumn(...), $c['columns']),
                 'relations' => $c['relations'] ?? [],
+                'access' => array_map(self::accessSummary(...), Access::collectionRules($c)),
                 'api' => $c['api'] ?? [],
+            ];
+        }
+        $globals = [];
+        foreach ($this->globals() as $name => $g) {
+            $globals[$name] = [
+                'label' => $g['label'] ?? $name,
+                'fields' => array_map(self::publicColumn(...), $g['fields']),
+                'access' => array_map(self::accessSummary(...), Access::globalRules($g)),
             ];
         }
         $actions = [];
         foreach ($this->actions() as $name => $a) {
-            $actions[$name] = ['input' => array_map(self::publicColumn(...), $a['input'] ?? [])];
+            $actions[$name] = [
+                'input' => array_map(self::publicColumn(...), $a['input'] ?? []),
+                'access' => self::accessSummary($a['access'] ?? Access::DEFAULT_WRITE),
+            ];
         }
 
-        return ['collections' => $collections, 'actions' => $actions];
+        return ['name' => $this->name(), 'target' => $this->target(), 'collections' => $collections, 'globals' => $globals, 'actions' => $actions];
+    }
+
+    private static function accessSummary(array $rule): string|bool
+    {
+        return match (true) {
+            isset($rule['fn']) => 'rule',
+            isset($rule['role']) => (string) $rule['role'],
+            ($rule['allow'] ?? false) === true => 'anyone',
+            default => false,
+        };
     }
 
     private static function publicColumn(array $col): array
@@ -81,16 +149,30 @@ final class Schema
                 $col[$k] = ['fn' => true];
             }
         }
+        if (isset($col['rules']['validate'])) {
+            $col['rules']['validate'] = true;
+        }
+        if (isset($col['fields'])) {
+            $col['fields'] = array_map(self::publicColumn(...), $col['fields']);
+        }
+        if (isset($col['layouts'])) {
+            $col['layouts'] = array_map(static fn (array $fields) => array_map(self::publicColumn(...), $fields), $col['layouts']);
+        }
 
         return $col;
     }
 
-    // ---------------------------------------------------------------- codecs
+    // ================================================================ generators
 
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
         return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false);
+    }
+
+    public static function isJsonType(string $type): bool
+    {
+        return in_array($type, self::JSON_TYPES, true);
     }
 
     /** Resolve a `default` / `onUpdate` spec. */
@@ -100,7 +182,7 @@ final class Schema
             return $spec['value'];
         }
         if ($spec['now'] ?? false) {
-            return $type === 'date' ? gmdate('Y-m-d') : Js::iso(Js::now());
+            return $type === 'date' ? gmdate('Y-m-d', intdiv(Js::now(), 1000)) : Js::iso(Js::now());
         }
         if (isset($spec['fn'])) {
             $fn = '\\ZeroApp\\' . $spec['fn'];
@@ -111,12 +193,25 @@ final class Schema
         throw new \LogicException('Invalid generator spec');
     }
 
+    // ================================================================ codecs
+
     /**
-     * Validate an input value and convert it to its SQLite storage form.
+     * Validate an input value and convert it to its storage form (v1 entry point; no rules).
      *
      * @throws HttpError invalid_input
      */
     public static function encode(array $col, mixed $v, string $name, string $pointer): int|float|string|null
+    {
+        return self::store($col, self::normalize($col, $v, $name, $pointer));
+    }
+
+    /**
+     * Coerce + type-check an input value into its JS form. Nested values get every sub-key, with
+     * sub-field defaults applied. Rules (min/max/pattern/validate) are NOT run here: see checkRules.
+     *
+     * @throws HttpError invalid_input with an RFC 6901 pointer to the offending (nested) value
+     */
+    public static function normalize(array $col, mixed $v, string $name, string $pointer): mixed
     {
         if ($v === null) {
             if ($col['notNull'] ?? false) {
@@ -126,28 +221,160 @@ final class Schema
             return null;
         }
         $type = $col['type'];
-        $stored = match ($type) {
-            'integer' => match (true) {
+        $bad = static fn (): HttpError => HttpError::invalidInput("$name must be " . self::expected($type), $pointer);
+        $out = match ($type) {
+            'integer', 'media' => match (true) {
                 is_int($v) => $v,
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
-                default => null,
+                default => throw $bad(),
             },
-            'real' => (is_int($v) || is_float($v)) && Js::isFinite($v) ? (float) $v : null,
-            'text' => is_string($v) ? $v : null,
-            'boolean' => is_bool($v) ? (int) $v : null,
-            'timestamp' => self::timestamp($v),
-            'date' => is_string($v) && self::isDate($v) ? $v : null,
-            'json' => Js::jsonStringify($v),
+            'real' => (is_int($v) || is_float($v)) && Js::isFinite($v) ? (float) $v : throw $bad(),
+            'text', 'richText' => is_string($v) ? $v : throw $bad(),
+            'email' => is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false ? $v : throw $bad(),
+            'url' => is_string($v) && preg_match('#^https?://#i', $v) && filter_var($v, FILTER_VALIDATE_URL) !== false ? $v : throw $bad(),
+            'slug' => is_string($v) && strlen($v) <= 200 && preg_match(self::SLUG_RE, $v) ? $v : throw $bad(),
+            'boolean' => is_bool($v) ? $v : throw $bad(),
+            'timestamp' => self::timestamp($v) ?? throw $bad(),
+            'date' => is_string($v) && self::isDate($v) ? $v : throw $bad(),
+            'json' => self::jsonValue($v) ?? throw $bad(),
+            'mediaList' => self::idList($v, $name, $pointer) ?? throw $bad(),
+            'select' => self::selectList($col, $v, $name, $pointer) ?? throw $bad(),
+            'group' => self::isObject($v) ? self::normalizeFields($col['fields'] ?? [], $v, $pointer) : throw $bad(),
+            'repeater' => is_array($v) && array_is_list($v) ? self::repeater($col, $v, $name, $pointer) : throw $bad(),
+            'blocks' => is_array($v) && array_is_list($v) ? self::blocks($col, $v, $name, $pointer) : throw $bad(),
             default => throw new \LogicException("Unknown column type '$type'"),
         };
-        if ($stored === null) {
-            throw HttpError::invalidInput("$name must be " . self::expected($type), $pointer);
-        }
-        if (isset($col['enum']) && !in_array($v, $col['enum'], true)) {
+        if (isset($col['enum']) && $type !== 'select' && !in_array($out, $col['enum'], true)) {
             throw HttpError::invalidInput("$name must be one of: " . implode(', ', $col['enum']), $pointer);
         }
 
-        return $stored;
+        return $out;
+    }
+
+    /** JS form → storage form. */
+    public static function store(array $col, mixed $v): int|float|string|null
+    {
+        if ($v === null) {
+            return null;
+        }
+        if (self::isJsonType($col['type'])) {
+            return Js::jsonStringify($v);
+        }
+
+        return is_bool($v) ? (int) $v : $v;
+    }
+
+    /**
+     * Normalize an object against a field map (group items, repeater rows, block items, globals, action
+     * input): unknown keys rejected, absent fields → default or null, notNull enforced.
+     */
+    public static function normalizeFields(array $fields, mixed $obj, string $base): array
+    {
+        if ($obj === null) {
+            $obj = [];
+        }
+        if (!self::isObject($obj)) {
+            throw HttpError::invalidInput('Expected an object', $base);
+        }
+        foreach ($obj as $k => $_) {
+            if (!isset($fields[$k])) {
+                throw HttpError::invalidInput("Unknown field '$k'", $base . HttpError::seg($k));
+            }
+        }
+        $out = [];
+        foreach ($fields as $name => $f) {
+            $name = (string) $name;
+            $ptr = $base . HttpError::seg($name);
+            if (!array_key_exists($name, $obj)) {
+                if (isset($f['default'])) {
+                    $obj[$name] = self::generate($f['default'], $f['type']);
+                } elseif ($f['notNull'] ?? false) {
+                    throw HttpError::invalidInput("$name is required", $ptr);
+                } else {
+                    $out[$name] = null;
+                    continue;
+                }
+            }
+            $out[$name] = self::normalize($f, $obj[$name], $name, $ptr);
+        }
+
+        return $out;
+    }
+
+    private static function repeater(array $col, array $items, string $name, string $pointer): array
+    {
+        $out = [];
+        foreach ($items as $i => $item) {
+            $out[] = self::normalizeFields($col['fields'] ?? [], self::isObject($item) ? $item : throw HttpError::invalidInput("$name items must be objects", "$pointer/$i"), "$pointer/$i");
+        }
+
+        return $out;
+    }
+
+    private static function blocks(array $col, array $items, string $name, string $pointer): array
+    {
+        $out = [];
+        $layouts = $col['layouts'] ?? [];
+        foreach ($items as $i => $item) {
+            if (!self::isObject($item)) {
+                throw HttpError::invalidInput("$name items must be objects", "$pointer/$i");
+            }
+            $layout = $item['layout'] ?? null;
+            if (!is_string($layout) || !isset($layouts[$layout])) {
+                throw HttpError::invalidInput('layout must be one of: ' . implode(', ', array_keys($layouts)), "$pointer/$i/layout");
+            }
+            unset($item['layout']);
+            $out[] = ['layout' => $layout] + self::normalizeFields($layouts[$layout], $item, "$pointer/$i");
+        }
+
+        return $out;
+    }
+
+    /** @return ?list<int> */
+    private static function idList(mixed $v, string $name, string $pointer): ?array
+    {
+        if (!is_array($v) || !array_is_list($v)) {
+            return null;
+        }
+        $out = [];
+        foreach ($v as $i => $id) {
+            if (!(is_int($id) || (is_float($id) && Js::isInteger($id)))) {
+                throw HttpError::invalidInput("$name items must be media ids", "$pointer/$i");
+            }
+            $out[] = (int) $id;
+        }
+
+        return $out;
+    }
+
+    /** @return ?list<string> */
+    private static function selectList(array $col, mixed $v, string $name, string $pointer): ?array
+    {
+        if (!is_array($v) || !array_is_list($v)) {
+            return null;
+        }
+        $enum = $col['enum'] ?? [];
+        foreach ($v as $i => $item) {
+            if (!is_string($item) || !in_array($item, $enum, true)) {
+                throw HttpError::invalidInput("$name items must be one of: " . implode(', ', $enum), "$pointer/$i");
+            }
+            if (array_search($item, $v, true) !== $i) {
+                throw HttpError::invalidInput("$name has a duplicate value '$item'", "$pointer/$i");
+            }
+        }
+
+        return $v;
+    }
+
+    private static function jsonValue(mixed $v): mixed
+    {
+        // Anything JSON can carry; Closures/objects can't come from JSON input but may come from hooks.
+        return Js::jsonStringify($v) === null ? null : $v;
+    }
+
+    private static function isObject(mixed $v): bool
+    {
+        return is_array($v) && ($v === [] || !array_is_list($v));
     }
 
     private static function expected(string $type): string
@@ -155,10 +382,18 @@ final class Schema
         return match ($type) {
             'integer' => 'an integer',
             'real' => 'a finite number',
-            'text' => 'a string',
+            'text', 'richText' => 'a string',
+            'email' => 'an email address',
+            'url' => 'an absolute http(s) URL',
+            'slug' => 'a slug (lowercase letters, digits and single hyphens, at most 200 characters)',
             'boolean' => 'a boolean',
             'timestamp' => 'an ISO-8601 timestamp or epoch milliseconds',
             'date' => 'a date (YYYY-MM-DD)',
+            'media' => 'a media id',
+            'mediaList' => 'a list of media ids',
+            'select' => 'a list of options',
+            'group' => 'an object',
+            'repeater', 'blocks' => 'a list of objects',
             default => 'a JSON value',
         };
     }
@@ -193,7 +428,7 @@ final class Schema
             && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
     }
 
-    /** Stored SQLite value → JS-facing value. */
+    /** Stored value → JS-facing value. */
     public static function decode(array $col, mixed $v): mixed
     {
         if ($v === null) {
@@ -201,12 +436,40 @@ final class Schema
         }
 
         return match ($col['type']) {
-            'integer' => (int) $v,
+            'integer', 'media' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            'json' => json_decode((string) $v, true),
+            'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? json_decode($v, true) : $v),
+            'repeater' => array_map(
+                static fn ($item) => self::fillFields($col['fields'] ?? [], $item),
+                (array) (is_string($v) ? json_decode($v, true) : $v),
+            ),
+            'blocks' => array_map(
+                static fn ($item) => is_array($item) && isset($col['layouts'][$item['layout'] ?? ''])
+                    ? ['layout' => $item['layout']] + self::fillFields($col['layouts'][$item['layout']], $item)
+                    : $item,
+                (array) (is_string($v) ? json_decode($v, true) : $v),
+            ),
             default => (string) $v,
         };
+    }
+
+    /** Every sub-key present (stores other than SQLite may omit empty sub-fields). */
+    private static function fillFields(array $fields, mixed $obj): mixed
+    {
+        if (!is_array($obj)) {
+            return $obj;
+        }
+        $out = [];
+        foreach ($fields as $name => $f) {
+            // Sub-values are already JSON-decoded: json passes through; scalars are coerced (WP's
+            // get_field returns numbers/booleans as strings); nested structures recurse.
+            $v = $obj[$name] ?? null;
+            $out[$name] = $f['type'] === 'json' ? $v : self::decode($f, $v);
+        }
+
+        return $out;
     }
 
     /** Decode a full row: every column key present, in schema order. */
@@ -220,38 +483,141 @@ final class Schema
         return $row;
     }
 
+    // ================================================================ rules
+
     /**
-     * Validate an action/input object against a column map: unknown keys rejected,
-     * defaults applied, values coerced and decoded back to their JS form.
+     * Run min/max, pattern, validate (in that order; first failure wins) on a normalized value and,
+     * recursively, on its sub-fields. $ctx is the validate ctx: ['data' => row, 'user' => ?array, 'target' => string].
+     *
+     * @throws HttpError invalid_input
      */
-    public static function validateInput(array $columns, mixed $input, string $base = ''): array
+    public static function checkRules(array $col, mixed $v, string $name, string $pointer, array $ctx): void
+    {
+        if ($v === null) {
+            return;
+        }
+        $type = $col['type'];
+        $rules = $col['rules'] ?? [];
+        if (isset($rules['min']) || isset($rules['max'])) {
+            [$size, $unit] = match (true) {
+                in_array($type, self::STRING_TYPES, true) => [mb_strlen($v, 'UTF-8'), 'character'],
+                in_array($type, self::LIST_TYPES, true) => [count($v), 'item'],
+                default => [$v, null],
+            };
+            foreach (['min' => 'at least', 'max' => 'at most'] as $k => $words) {
+                if (!isset($rules[$k]) || ($k === 'min' ? $size >= $rules[$k] : $size <= $rules[$k])) {
+                    continue;
+                }
+                $n = $rules[$k];
+                $what = $unit === null ? Js::str($n) : Js::str($n) . " $unit" . ($n == 1 ? '' : 's');
+                throw HttpError::invalidInput(
+                    $unit === 'item' ? "$name must have $words $what" : "$name must be $words $what",
+                    $pointer,
+                );
+            }
+        }
+        if (isset($rules['pattern']) && is_string($v)) {
+            $re = Js::re($rules['pattern']['source'], $rules['pattern']['flags'] ?? '');
+            if (!$re->test($v)) {
+                throw HttpError::invalidInput("$name must match $re", $pointer);
+            }
+        }
+        if (isset($rules['validate'])) {
+            $fn = '\\ZeroApp\\' . $rules['validate'];
+            $value = $v;
+            $r = $fn($value, $ctx);
+            if (is_string($r)) {
+                throw HttpError::invalidInput($r, $pointer);
+            }
+            if ($r === false) {
+                throw HttpError::invalidInput("$name is invalid", $pointer);
+            }
+        }
+        match ($type) {
+            'group' => self::checkFields($col['fields'] ?? [], $v, $pointer, $ctx),
+            'repeater' => array_map(
+                static fn ($item, $i) => self::checkFields($col['fields'] ?? [], $item, "$pointer/$i", $ctx),
+                $v,
+                array_keys($v),
+            ),
+            'blocks' => array_map(
+                static fn ($item, $i) => self::checkFields($col['layouts'][$item['layout']] ?? [], $item, "$pointer/$i", $ctx),
+                $v,
+                array_keys($v),
+            ),
+            default => null,
+        };
+    }
+
+    public static function checkFields(array $fields, array $obj, string $base, array $ctx): void
+    {
+        foreach ($fields as $name => $f) {
+            self::checkRules($f, $obj[$name] ?? null, (string) $name, $base . HttpError::seg($name), $ctx);
+        }
+    }
+
+    /**
+     * Media ids referenced by a normalized value, with the pointer of each, for existence/accept checks.
+     *
+     * @return list<array{int, string, string}> [id, pointer, accept]
+     */
+    public static function mediaRefs(array $col, mixed $v, string $pointer): array
+    {
+        if ($v === null) {
+            return [];
+        }
+        $accept = $col['accept'] ?? 'any';
+
+        return match ($col['type']) {
+            'media' => [[$v, $pointer, $accept]],
+            'mediaList' => array_map(static fn ($id, $i) => [$id, "$pointer/$i", $accept], $v, array_keys($v)),
+            'group' => self::fieldMediaRefs($col['fields'] ?? [], $v, $pointer),
+            'repeater' => array_merge([], ...array_map(
+                static fn ($item, $i) => self::fieldMediaRefs($col['fields'] ?? [], $item, "$pointer/$i"),
+                $v,
+                array_keys($v),
+            )),
+            'blocks' => array_merge([], ...array_map(
+                static fn ($item, $i) => self::fieldMediaRefs($col['layouts'][$item['layout']] ?? [], $item, "$pointer/$i"),
+                $v,
+                array_keys($v),
+            )),
+            default => [],
+        };
+    }
+
+    private static function fieldMediaRefs(array $fields, array $obj, string $base): array
+    {
+        $out = [];
+        foreach ($fields as $name => $f) {
+            array_push($out, ...self::mediaRefs($f, $obj[$name] ?? null, $base . HttpError::seg($name)));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Validate an action input object: unknown keys rejected, defaults applied, values coerced,
+     * rules run (validate ctx.data = the input). Returns the JS form.
+     */
+    public static function validateInput(array $columns, mixed $input, string $base = '', ?array $user = null, string $target = 'standalone'): array
     {
         if ($input === null) {
             $input = [];
         }
-        if (!is_array($input) || ($input !== [] && array_is_list($input))) {
-            throw HttpError::invalidInput('Input must be a JSON object', $base === '' ? '' : $base);
+        if (!self::isObject($input)) {
+            throw HttpError::invalidInput('Input must be a JSON object', $base);
         }
-        foreach ($input as $k => $_) {
-            if (!isset($columns[$k])) {
-                throw HttpError::invalidInput("Unknown field '$k'", $base . HttpError::seg($k));
-            }
-        }
-        $out = [];
-        foreach ($columns as $name => $col) {
-            if (!array_key_exists($name, $input)) {
-                if (isset($col['default'])) {
-                    $input[$name] = self::generate($col['default'], $col['type']);
-                } elseif ($col['notNull'] ?? false) {
-                    throw HttpError::invalidInput("$name is required", $base . HttpError::seg($name));
-                } else {
-                    $out[$name] = null;
-                    continue;
-                }
-            }
-            $out[$name] = self::decode($col, self::encode($col, $input[$name], $name, $base . HttpError::seg($name)));
-        }
+        $out = self::normalizeFields($columns, $input, $base);
+        self::checkFields($columns, $out, $base, ['data' => $out, 'user' => $user, 'target' => $target]);
 
         return $out;
+    }
+
+    public static function roleRank(string $role): int
+    {
+        $i = array_search($role, self::ROLES, true);
+
+        return $i === false ? -1 : $i;
     }
 }

@@ -1146,8 +1146,20 @@ final class Js
 
     // ---------------------------------------------------------------- misc
 
+    /**
+     * Epoch ms. `ZERO_NOW` (ISO string or epoch ms) pins the clock for time-travel tests (§9.1);
+     * it is read on every call so an in-process test can move it.
+     */
     public static function now(): int
     {
+        $pinned = getenv('ZERO_NOW');
+        if ($pinned !== false && $pinned !== '') {
+            $ms = preg_match('/^-?\d+$/D', $pinned) ? (int) $pinned : self::date($pinned);
+            if (is_int($ms)) {
+                return $ms;
+            }
+        }
+
         return (int) floor(microtime(true) * 1000);
     }
 

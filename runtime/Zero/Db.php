@@ -5,47 +5,29 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * Query + write pipeline over SQLite. Every write (REST, CLI, hooks, actions)
- * goes through insert/update/delete so defaults, coercion, and hooks always run.
+ * The one pipeline (§3.3): every read and write (REST, CLI, hooks, actions, editor saves) goes through
+ * here, so defaults, coercion, rules, access, drafts, revisions, FK actions and hooks always run the
+ * same way. Storage is a Store; Db never builds SQL itself (Sql does) and never parses driver errors.
+ *
+ * A null $viewer means trusted (hooks, actions, CLI): no access checks, every status visible.
+ * The request's user (`actor`) is what hooks/validators see as ctx.user, trusted or not.
  */
 final class Db
 {
     private const MAX_HOOK_DEPTH = 8;
-    private const CMP = ['eq' => '=', 'ne' => '<>', 'gt' => '>', 'gte' => '>=', 'lt' => '<', 'lte' => '<='];
     private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with'];
 
     private static ?self $instance = null;
 
     private int $depth = 0;
-    private bool $inTransaction = false;
-    private int $aliases = 0;
+    private ?array $actor = null;
 
-    public function __construct(private readonly \PDO $pdo, private readonly Schema $schema)
-    {
-        if ($pdo instanceof \Pdo\Sqlite) { // PHP 8.4+
-            $pdo->createFunction('zero_like', self::like(...), 3, \Pdo\Sqlite::DETERMINISTIC);
-        } else {
-            $pdo->sqliteCreateFunction('zero_like', self::like(...), 3, \PDO::SQLITE_DETERMINISTIC);
-        }
-    }
-
-    /** Open (and configure) a SQLite connection. */
-    public static function connect(string $path): \PDO
-    {
-        $dir = dirname($path);
-        if ($path !== ':memory:' && !is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-            throw new \RuntimeException("Cannot create database directory $dir");
-        }
-        $dsn = 'sqlite:' . $path;
-        $pdo = class_exists(\Pdo\Sqlite::class) ? \Pdo\Sqlite::connect($dsn) : new \PDO($dsn);
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        $pdo->setAttribute(\PDO::ATTR_STRINGIFY_FETCHES, false);
-        $pdo->exec('PRAGMA busy_timeout = 5000');
-        $pdo->exec('PRAGMA journal_mode = WAL');
-        $pdo->exec('PRAGMA foreign_keys = ON');
-
-        return $pdo;
+    public function __construct(
+        private readonly Store $store,
+        private readonly Schema $schema,
+        private readonly Media $media,
+        private readonly string $target = 'standalone',
+    ) {
     }
 
     public static function setInstance(self $db): void
@@ -58,9 +40,9 @@ final class Db
         return self::$instance ?? throw new \LogicException('Zero\Db is not initialised; call App::boot() first');
     }
 
-    public function pdo(): \PDO
+    public function store(): Store
     {
-        return $this->pdo;
+        return $this->store;
     }
 
     public function schema(): Schema
@@ -68,114 +50,149 @@ final class Db
         return $this->schema;
     }
 
-    /** Run $fn in one BEGIN IMMEDIATE transaction (joins an open one). Any throwable rolls back. */
+    public function media(): Media
+    {
+        return $this->media;
+    }
+
+    public function target(): string
+    {
+        return $this->target;
+    }
+
+    /** The user hooks and validators see as ctx.user for the rest of this request/command. */
+    public function setActor(?array $user): void
+    {
+        $this->actor = $user;
+    }
+
+    public function actor(): ?array
+    {
+        return $this->actor;
+    }
+
+    /** @return array{user: ?array, target: string} */
+    public function hookCtx(): array
+    {
+        return ['user' => $this->actor, 'target' => $this->target];
+    }
+
+    /** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
     public function transaction(callable $fn): mixed
     {
-        if ($this->inTransaction) {
-            return $fn();
-        }
-        $this->pdo->exec('BEGIN IMMEDIATE');
-        $this->inTransaction = true;
-        try {
-            $result = $fn();
-            $this->pdo->exec('COMMIT');
+        return $this->store->transaction($fn);
+    }
 
-            return $result;
-        } catch (\Throwable $e) {
-            try {
-                $this->pdo->exec('ROLLBACK');
-            } catch (\PDOException) {
-                // SQLite may already have rolled back on its own.
+    /**
+     * Lazy scheduled promotion (§6.3) for every drafts collection. No hooks, no revisions.
+     *
+     * @return array<string, list<int|string>> collection => promoted pks (only non-empty)
+     */
+    public function promoteDue(): array
+    {
+        $now = Js::iso(Js::now());
+        $out = [];
+        foreach ($this->schema->collections() as $name => $spec) {
+            if ($spec['drafts'] ?? false) {
+                $pks = $this->store->promoteDue((string) $name, $now);
+                if ($pks !== []) {
+                    $out[$name] = $pks;
+                }
             }
-            throw $e;
-        } finally {
-            $this->inTransaction = false;
         }
+
+        return $out;
     }
 
     // ================================================================ reads
 
     /** @return list<array> */
-    public function findMany(string $collection, array $opts = []): array
+    public function findMany(string $collection, array $opts = [], ?Viewer $viewer = null): array
     {
-        return $this->project($this->fetch($collection, $opts, ''), $collection, $opts, '');
+        return $this->project($this->fetch($collection, $opts, '', $viewer), $collection, $opts, '');
     }
 
-    public function findFirst(string $collection, array $opts = []): ?array
+    public function findFirst(string $collection, array $opts = [], ?Viewer $viewer = null): ?array
     {
-        return $this->findMany($collection, ['limit' => 1] + $opts)[0] ?? null;
+        return $this->findMany($collection, ['limit' => 1] + $opts, $viewer)[0] ?? null;
     }
 
     /**
-     * Full decoded rows (relations from `with` attached, `columns` not yet applied).
-     * With $partition = [column, values], rows are restricted to column IN values and
+     * Full decoded rows (relations/media from `with` attached, `columns` not yet applied).
+     * With $partition = [column, encoded values], rows are restricted to column IN values and
      * limit/offset apply per distinct column value.
      *
      * @param ?array{string, list<mixed>} $partition
+     * @param list<array> $guards extra filters (access) — read guards are added here when $viewer is set
      * @return list<array>
      */
-    private function fetch(string $collection, array $opts, string $ptr, ?array $partition = null): array
+    private function fetch(string $collection, array $opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = []): array
     {
-        $spec = $this->collectionSpec($collection, $ptr);
+        if (!$this->schema->hasCollection($collection)) {
+            throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
+        }
+        $spec = $this->schema->collection($collection);
         foreach ($opts as $k => $_) {
             if (!in_array($k, self::QUERY_OPTS, true)) {
                 throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));
             }
         }
-        $alias = $this->alias();
-        $params = [];
-        $conds = [];
-        if (isset($opts['where'])) {
-            $conds[] = $this->filter($collection, $opts['where'], $alias, $ptr . '/where', $params);
+        if ($viewer !== null) {
+            array_push($guards, ...$this->readGuards($collection, $viewer));
         }
-        if ($partition !== null) {
-            [$col, $values] = $partition;
-            if ($values === []) {
-                return [];
-            }
-            $conds[] = "$alias." . self::q($col) . ' IN (' . self::placeholders($values) . ')';
-            array_push($params, ...$values);
+        if ($partition !== null && $partition[1] === []) {
+            return [];
         }
-        $order = $this->orderBy($spec, $opts['orderBy'] ?? [], $ptr . '/orderBy');
-        $limit = self::count($opts, 'limit', $ptr);
-        $offset = self::count($opts, 'offset', $ptr);
-
-        $from = ' FROM ' . self::q($collection) . ' ' . $alias . ($conds === [] ? '' : ' WHERE ' . implode(' AND ', $conds));
-        if ($partition !== null && ($limit !== null || $offset !== null)) {
-            // Per-parent limit/offset in one query: number rows within each parent key.
-            $window = $order !== [] ? $order : [[self::q($spec['primaryKey']), 'ASC']];
-            $over = 'PARTITION BY ' . $alias . '.' . self::q($partition[0]) . ' ORDER BY ' . self::orderSql($window, $alias . '.');
-            $sql = "SELECT * FROM (SELECT $alias.*, ROW_NUMBER() OVER ($over) AS __zero_rn$from)"
-                . ' WHERE __zero_rn > ' . ($offset ?? 0)
-                . ($limit === null ? '' : ' AND __zero_rn <= ' . (($offset ?? 0) + $limit))
-                . ($order === [] ? '' : ' ORDER BY ' . self::orderSql($order, ''));
-        } else {
-            $sql = "SELECT $alias.*$from" . ($order === [] ? '' : ' ORDER BY ' . self::orderSql($order, $alias . '.'));
-            if ($limit !== null || $offset !== null) {
-                $sql .= ' LIMIT ' . ($limit ?? -1) . ' OFFSET ' . ($offset ?? 0);
-            }
-        }
-
+        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards);
         $rows = array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
-            $this->run($sql, $params)->fetchAll(),
+            $this->store->select($collection, $q),
         );
         if (isset($opts['with']) && $rows !== []) {
-            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with');
+            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer);
         }
 
         return $rows;
     }
 
-    /** Load each requested relation with one query, never N+1. */
-    private function attach(string $collection, array $rows, mixed $with, string $ptr): array
+    /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
+    private function readGuards(string $collection, Viewer $viewer): array
+    {
+        $spec = $this->schema->collection($collection);
+        $rule = Access::collectionRules($spec)['read'];
+        $r = Access::evaluate($rule, $viewer, 'read');
+        if ($r === false) {
+            throw Access::deny($viewer->user, "read $collection");
+        }
+        $guards = is_array($r) ? [$r] : [];
+        if (($spec['drafts'] ?? false) && Access::isShorthand($rule)
+            && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'))) {
+            $guards[] = ['status' => 'published'];
+        }
+
+        return $guards;
+    }
+
+    /** Load each requested relation with one query, never N+1; populate media columns in place. */
+    private function attach(string $collection, array $rows, mixed $with, string $ptr, ?Viewer $viewer): array
     {
         if (!is_array($with) || ($with !== [] && array_is_list($with))) {
             throw HttpError::invalidQuery('with must be an object', $ptr);
         }
-        $relations = $this->schema->collection($collection)['relations'] ?? [];
+        $spec = $this->schema->collection($collection);
+        $relations = $spec['relations'] ?? [];
         foreach ($with as $name => $opts) {
+            $name = (string) $name;
             $rptr = $ptr . HttpError::seg($name);
+            $mediaCol = $spec['columns'][$name] ?? null;
+            if ($mediaCol !== null && in_array($mediaCol['type'], ['media', 'mediaList'], true)) {
+                if ($opts === true) {
+                    $rows = $this->populateMedia($rows, $name, $mediaCol['type'] === 'mediaList');
+                } elseif ($opts !== false && $opts !== null) {
+                    throw HttpError::invalidQuery('Media columns take `true`', $rptr);
+                }
+                continue;
+            }
             $rel = $relations[$name] ?? throw HttpError::invalidQuery("Unknown relation '$name'", $rptr);
             if ($opts === false || $opts === null) {
                 continue;
@@ -195,7 +212,7 @@ final class Db
                 static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
                 array_values($keys),
             );
-            $children = $this->fetch($rel['collection'], $opts, $rptr, [$rel['to'], $values]);
+            $children = $this->fetch($rel['collection'], $opts, $rptr, $viewer, [$rel['to'], $values]);
             $groups = [];
             foreach ($this->project($children, $rel['collection'], $opts, $rptr) as $i => $child) {
                 $groups[self::key($children[$i][$rel['to']])][] = $child;
@@ -206,6 +223,29 @@ final class Db
             }
             unset($row);
         }
+
+        return $rows;
+    }
+
+    private function populateMedia(array $rows, string $col, bool $list): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            foreach ($list ? ($row[$col] ?? []) : [$row[$col]] as $id) {
+                if ($id !== null) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+        $media = $this->media->getMany(array_keys($ids));
+        foreach ($rows as &$row) {
+            if ($list) {
+                $row[$col] = $row[$col] === null ? null : array_values(array_filter(array_map(static fn ($id) => $media[$id] ?? null, $row[$col])));
+            } else {
+                $row[$col] = $row[$col] === null ? null : ($media[$row[$col]] ?? null);
+            }
+        }
+        unset($row);
 
         return $rows;
     }
@@ -235,224 +275,21 @@ final class Db
         return array_map(static fn (array $row) => array_diff_key($row, $drop), $rows);
     }
 
-    /** @return list<array{string, string}> [quoted column, ASC|DESC] */
-    private function orderBy(array $spec, mixed $orderBy, string $ptr): array
-    {
-        if (!is_array($orderBy)) {
-            throw HttpError::invalidQuery('orderBy must be an object', $ptr);
-        }
-        $out = [];
-        foreach ($orderBy as $col => $dir) {
-            if (!isset($spec['columns'][$col])) {
-                throw HttpError::invalidQuery("Unknown column '$col'", $ptr . HttpError::seg($col));
-            }
-            if ($dir !== 'asc' && $dir !== 'desc') {
-                throw HttpError::invalidQuery("orderBy direction must be 'asc' or 'desc'", $ptr . HttpError::seg($col));
-            }
-            $out[] = [self::q((string) $col), strtoupper($dir)];
-        }
-
-        return $out;
-    }
-
-    /** @param list<array{string, string}> $order */
-    private static function orderSql(array $order, string $prefix): string
-    {
-        return implode(', ', array_map(static fn ($o) => $prefix . $o[0] . ' ' . $o[1], $order));
-    }
-
-    private static function count(array $opts, string $key, string $ptr): ?int
-    {
-        $v = $opts[$key] ?? null;
-        if ($v === null) {
-            return null;
-        }
-        if (!Js::isInteger($v) || $v < 0) {
-            throw HttpError::invalidQuery("$key must be a non-negative integer", $ptr . '/' . $key);
-        }
-
-        return (int) $v;
-    }
-
-    // ================================================================ filters
-
-    /** Compile a filter object into SQL against table alias $alias, appending bound values. */
-    private function filter(string $collection, mixed $where, string $alias, string $ptr, array &$params): string
-    {
-        if (!is_array($where) || ($where !== [] && array_is_list($where))) {
-            throw HttpError::invalidQuery('Filter must be an object', $ptr);
-        }
-        $spec = $this->schema->collection($collection);
-        $parts = [];
-        foreach ($where as $key => $value) {
-            $kptr = $ptr . HttpError::seg($key);
-            $key = (string) $key;
-            if ($key === 'OR' || $key === 'AND') {
-                $parts[] = $this->combine($key, $value, $kptr, function ($f, $p) use ($collection, $alias, &$params) {
-                    return $this->filter($collection, $f, $alias, $p, $params);
-                });
-            } elseif ($key === 'NOT') {
-                $parts[] = 'NOT (' . $this->filter($collection, $value, $alias, $kptr, $params) . ')';
-            } elseif (isset($spec['columns'][$key])) {
-                $parts[] = $this->fieldFilter($spec['columns'][$key], "$alias." . self::q($key), $value, $kptr, $params);
-            } elseif (isset($spec['relations'][$key])) {
-                $parts[] = $this->relationFilter($collection, $spec['relations'][$key], $value, $alias, $kptr, $params);
-            } else {
-                throw HttpError::invalidQuery("Unknown column or relation '$key'", $kptr);
-            }
-        }
-
-        return $parts === [] ? '1' : implode(' AND ', $parts);
-    }
-
-    private function combine(string $op, mixed $list, string $ptr, callable $compile): string
-    {
-        if (!is_array($list) || !array_is_list($list)) {
-            throw HttpError::invalidQuery("$op must be an array", $ptr);
-        }
-        if ($list === []) {
-            return $op === 'OR' ? '0' : '1';
-        }
-        $sql = [];
-        foreach ($list as $i => $f) {
-            $sql[] = '(' . $compile($f, $ptr . '/' . $i) . ')';
-        }
-
-        return '(' . implode(" $op ", $sql) . ')';
-    }
-
-    private function fieldFilter(array $col, string $sqlCol, mixed $value, string $ptr, array &$params): string
-    {
-        if ($value === null) {
-            return "$sqlCol IS NULL";
-        }
-        if (!is_array($value)) {
-            return $this->compare($col, $sqlCol, 'eq', $value, $ptr, $params);
-        }
-        if ($value === [] || array_is_list($value)) {
-            throw HttpError::invalidQuery('Field filter must be a value or an operator object', $ptr);
-        }
-        $parts = [];
-        foreach ($value as $op => $arg) {
-            $optr = $ptr . HttpError::seg($op);
-            $parts[] = match ($op) {
-                'eq', 'ne', 'gt', 'gte', 'lt', 'lte' => $this->compare($col, $sqlCol, $op, $arg, $optr, $params),
-                'in', 'notIn' => $this->inList($col, $sqlCol, $op === 'notIn', $arg, $optr, $params),
-                'like', 'notLike', 'ilike', 'notIlike' => $this->likeFilter($sqlCol, $op, $arg, $optr, $params),
-                'isNull', 'isNotNull' => ($op === 'isNull') === Js::truthy($arg) ? "$sqlCol IS NULL" : "$sqlCol IS NOT NULL",
-                'NOT' => 'NOT (' . $this->fieldFilter($col, $sqlCol, $arg, $optr, $params) . ')',
-                'OR', 'AND' => $this->combine($op, $arg, $optr, function ($f, $p) use ($col, $sqlCol, &$params) {
-                    return $this->fieldFilter($col, $sqlCol, $f, $p, $params);
-                }),
-                default => throw HttpError::invalidQuery("Unknown operator '$op'", $optr),
-            };
-        }
-
-        return implode(' AND ', $parts);
-    }
-
-    private function compare(array $col, string $sqlCol, string $op, mixed $arg, string $ptr, array &$params): string
-    {
-        if ($arg === null) {
-            return match ($op) {
-                'eq' => "$sqlCol IS NULL",
-                'ne' => "$sqlCol IS NOT NULL",
-                default => throw HttpError::invalidQuery("$op does not accept null", $ptr),
-            };
-        }
-        $params[] = $this->filterValue($col, $arg, $ptr);
-
-        return "$sqlCol " . self::CMP[$op] . ' ?';
-    }
-
-    private function inList(array $col, string $sqlCol, bool $negate, mixed $list, string $ptr, array &$params): string
-    {
-        if (!is_array($list) || !array_is_list($list)) {
-            throw HttpError::invalidQuery('Expected an array', $ptr);
-        }
-        if ($list === []) {
-            return $negate ? '1' : '0';
-        }
-        foreach ($list as $i => $v) {
-            $params[] = $this->filterValue($col, $v, $ptr . '/' . $i);
-        }
-
-        return $sqlCol . ($negate ? ' NOT IN (' : ' IN (') . self::placeholders($list) . ')';
-    }
-
-    private function likeFilter(string $sqlCol, string $op, mixed $pattern, string $ptr, array &$params): string
-    {
-        if (!is_string($pattern)) {
-            throw HttpError::invalidQuery("$op expects a string pattern", $ptr);
-        }
-        $params[] = $pattern;
-        $ci = $op === 'ilike' || $op === 'notIlike' ? 1 : 0;
-        $sql = "zero_like($sqlCol, ?, $ci)";
-
-        return str_starts_with($op, 'not') ? "NOT $sql" : $sql;
-    }
-
-    private function relationFilter(string $collection, array $rel, mixed $value, string $alias, string $ptr, array &$params): string
-    {
-        $inner = $this->alias();
-        $sql = 'EXISTS (SELECT 1 FROM ' . self::q($rel['collection']) . " $inner WHERE $inner." . self::q($rel['to'])
-            . " = $alias." . self::q($rel['from']);
-        if ($value === false) {
-            return 'NOT ' . $sql . ')';
-        }
-        if ($value !== true) {
-            $sql .= ' AND ' . $this->filter($rel['collection'], $value, $inner, $ptr, $params);
-        }
-
-        return $sql . ')';
-    }
-
-    private function filterValue(array $col, mixed $v, string $ptr): int|float|string|null
-    {
-        unset($col['enum'], $col['notNull']);
-        try {
-            return Schema::encode($col, $v, ltrim(strrchr($ptr, '/') ?: $ptr, '/'), $ptr);
-        } catch (HttpError $e) {
-            throw HttpError::invalidQuery($e->getMessage(), $ptr);
-        }
-    }
-
-    /** SQL LIKE with PostgreSQL semantics: `%`, `_`, backslash escapes; case-sensitive unless $ci. */
-    private static function like(mixed $value, mixed $pattern, int $ci): ?int
-    {
-        static $cache = [];
-        if ($value === null || $pattern === null) {
-            return null;
-        }
-        $re = $cache[$ci . $pattern] ??= '/^' . preg_replace_callback(
-            '/\\\\(.)|%|_|[^%_\\\\]+|\\\\$/su',
-            static fn (array $m) => match (true) {
-                $m[0] === '%' => '.*',
-                $m[0] === '_' => '.',
-                isset($m[1]) && $m[1] !== '' => preg_quote($m[1], '/'),
-                default => preg_quote($m[0], '/'),
-            },
-            (string) $pattern,
-        ) . '$/sDu' . ($ci ? 'i' : '');
-
-        return (int) preg_match($re, is_float($value) ? Js::numStr($value) : (string) $value);
-    }
-
     // ================================================================ writes
 
     /** @return ?list<array> */
-    public function insert(string $collection, array $values, bool $returning = false): ?array
+    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null): ?array
     {
         $rows = $values !== [] && array_is_list($values) ? $values : [$values];
 
-        return $this->nested(function () use ($collection, $rows, $returning) {
+        return $this->nested(function () use ($collection, $rows, $returning, $viewer) {
             $spec = $this->schema->collection($collection);
             $out = [];
             foreach ($rows as $data) {
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
-                $out[] = $this->createOne($collection, $spec, $data);
+                $out[] = $this->createOne($collection, $spec, $data, $viewer);
             }
 
             return $returning ? $out : null;
@@ -460,12 +297,13 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function update(string $collection, array $set, array $where, bool $returning = false): ?array
+    public function update(string $collection, array $set, array $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
-        return $this->nested(function () use ($collection, $set, $where, $returning) {
+        return $this->nested(function () use ($collection, $set, $where, $returning, $viewer) {
             $spec = $this->schema->collection($collection);
+            $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
-            foreach ($this->fetch($collection, ['where' => $where], '') as $existing) {
+            foreach ($this->fetch($collection, ['where' => $where], '', null, null, $guards) as $existing) {
                 $out[] = $this->updateOne($collection, $spec, $existing, $set);
             }
 
@@ -474,62 +312,96 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function delete(string $collection, array $where, bool $returning = false): ?array
+    public function delete(string $collection, array $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
-        return $this->nested(function () use ($collection, $where, $returning) {
-            $spec = $this->schema->collection($collection);
-            $hooks = $spec['hooks'] ?? [];
-            $rows = $this->fetch($collection, ['where' => $where], '');
+        return $this->nested(function () use ($collection, $where, $returning, $viewer) {
+            $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
+            $rows = $this->fetch($collection, ['where' => $where], '', null, null, $guards);
             foreach ($rows as $row) {
-                $this->hook($hooks, 'beforeDelete', $row);
-                $this->write('DELETE FROM ' . self::q($collection) . ' WHERE ' . self::q($spec['primaryKey']) . ' = ?', [$this->pkValue($spec, $row)]);
-                $this->hook($hooks, 'afterDelete', $row);
+                $this->deleteOne($collection, $row);
             }
 
             return $returning ? $rows : null;
         });
     }
 
-    private function createOne(string $collection, array $spec, array $data): array
+    /** update/delete rule → filters for the row select; throws 401/403 when false. */
+    private function writeGuards(string $collection, string $op, Viewer $viewer, ?array $data): array
+    {
+        $r = Access::evaluate(Access::collectionRules($this->schema->collection($collection))[$op], $viewer, $op, $data);
+        if ($r === false) {
+            throw Access::deny($viewer->user, "$op $collection rows");
+        }
+
+        return is_array($r) ? [$r] : [];
+    }
+
+    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer): array
     {
         $columns = $spec['columns'];
         $this->rejectUnknown($columns, $data);
+        $statusGiven = array_key_exists('status', $data);
         foreach ($columns as $name => $col) {
             if (!array_key_exists($name, $data) && isset($col['default'])) {
                 $data[$name] = Schema::generate($col['default'], $col['type']);
             }
         }
+        if ($spec['drafts'] ?? false) {
+            $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
+        }
         $fills = $spec['beforeCreateFills'] ?? [];
         foreach ($columns as $name => $col) {
-            if (Schema::isRequired($col) && !array_key_exists($name, $data) && !in_array($name, $fills, true)) {
+            if (Schema::isRequired($col) && !array_key_exists($name, $data) && !in_array($name, $fills, true)
+                && ($spec['slug'] ?? null) !== $name) {
                 throw HttpError::invalidInput("$name is required", HttpError::seg($name));
             }
         }
+        if ($viewer !== null) {
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
+        }
+        $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeCreate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
-            $r = $fn($data);
+            $r = $fn($data, $ctx);
             if (is_array($r)) {
                 $data = $r;
             }
             $this->rejectUnknown($columns, $data);
         }
-        $insert = [];
+
+        $norm = [];
         foreach ($columns as $name => $col) {
+            $name = (string) $name;
+            if ($this->derivesSlug($spec, $name, $data, !array_key_exists($name, $data))) {
+                continue;
+            }
             if (array_key_exists($name, $data)) {
-                $insert[$name] = Schema::encode($col, $data[$name], $name, HttpError::seg($name));
+                $norm[$name] = Schema::normalize($col, $data[$name], $name, HttpError::seg($name));
             } elseif (Schema::isRequired($col)) {
                 throw HttpError::invalidInput("$name is required", HttpError::seg($name));
             }
         }
-        $sql = 'INSERT INTO ' . self::q($collection) . ($insert === []
-            ? ' DEFAULT VALUES'
-            : ' (' . implode(', ', array_map(self::q(...), array_keys($insert))) . ') VALUES (' . self::placeholders($insert) . ')');
-        $this->write($sql, array_values($insert));
+        $slugCol = $spec['slug'] ?? null;
+        if ($slugCol !== null && !array_key_exists($slugCol, $norm)) {
+            $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm, null);
+        }
+        $full = $norm + array_fill_keys(array_keys($columns), null);
+        $this->checkValues($columns, $norm, $full);
 
-        $pk = $spec['primaryKey'];
-        $pkValue = $insert[$pk] ?? (int) $this->pdo->lastInsertId();
-        $row = $this->readByPk($collection, $spec, $pkValue);
-        $this->hook($spec['hooks'] ?? [], 'afterCreate', $row);
+        $insert = [];
+        foreach ($norm as $name => $v) {
+            $insert[$name] = Schema::store($columns[$name], $v);
+        }
+        try {
+            $pk = $this->store->insert($collection, $insert);
+        } catch (\Throwable $e) {
+            throw $this->store->mapError($e);
+        }
+        [$row, $raw] = $this->readByPk($collection, $spec, $pk);
+        if ($spec['revisions'] ?? false) {
+            $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
+        }
+        $this->hook($spec, 'afterCreate', $row);
 
         return $row;
     }
@@ -544,29 +416,196 @@ final class Db
                 $patch[$name] = Schema::generate($col['onUpdate'], $col['type']);
             }
         }
+        if (($spec['drafts'] ?? false) && (array_key_exists('status', $patch) || array_key_exists('publishedAt', $patch))) {
+            $patch = $this->draftRules($patch, null, $existing);
+        }
         $previous = $existing;
+        $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeUpdate'];
-            $r = $fn($patch, $existing);
+            $r = $fn($patch, $existing, $ctx);
             if (is_array($r)) {
                 $patch = $r;
             }
             $this->checkPatch($spec, $previous, $patch);
         }
         unset($patch[$pk]);
-        $set = [];
+        $norm = [];
         foreach ($patch as $name => $value) {
-            $set[$name] = Schema::encode($columns[$name], $value, $name, HttpError::seg($name));
+            $name = (string) $name;
+            if ($this->derivesSlug($spec, $name, $patch, false)) {
+                continue;
+            }
+            $norm[$name] = Schema::normalize($columns[$name], $value, $name, HttpError::seg($name));
         }
+        $slugCol = $spec['slug'] ?? null;
         $pkValue = $this->pkValue($spec, $previous);
-        if ($set !== []) {
-            $assign = implode(', ', array_map(static fn ($c) => self::q($c) . ' = ?', array_keys($set)));
-            $this->write('UPDATE ' . self::q($collection) . " SET $assign WHERE " . self::q($pk) . ' = ?', [...array_values($set), $pkValue]);
+        if ($slugCol !== null && array_key_exists($slugCol, $patch) && !array_key_exists($slugCol, $norm)) {
+            $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm + $previous, $pkValue);
         }
-        $row = $this->readByPk($collection, $spec, $pkValue);
-        $this->hook($spec['hooks'] ?? [], 'afterUpdate', $row, $previous);
+        $this->checkValues($columns, $norm, $norm + $previous);
+
+        $set = [];
+        foreach ($norm as $name => $v) {
+            $set[$name] = Schema::store($columns[$name], $v);
+        }
+        try {
+            $this->store->update($collection, $pkValue, $set);
+        } catch (\Throwable $e) {
+            throw $this->store->mapError($e);
+        }
+        [$row, $raw] = $this->readByPk($collection, $spec, $pkValue);
+        if ($spec['revisions'] ?? false) {
+            $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
+        }
+        $this->hook($spec, 'afterUpdate', $row, $previous);
 
         return $row;
+    }
+
+    private function deleteOne(string $collection, array $row): void
+    {
+        $spec = $this->schema->collection($collection);
+        $this->hook($spec, 'beforeDelete', $row);
+        $this->referentialActions($collection, $row);
+        try {
+            $this->store->delete($collection, $this->pkValue($spec, $row));
+        } catch (\Throwable $e) {
+            throw $this->store->mapError($e);
+        }
+        $this->hook($spec, 'afterDelete', $row);
+    }
+
+    /**
+     * FK actions in the pipeline (§4.2, §11.12): for every column referencing this collection, apply
+     * its onDelete to the rows pointing at $row before $row goes. Hooks and revisions apply.
+     */
+    private function referentialActions(string $collection, array $row): void
+    {
+        foreach ($this->schema->collections() as $child => $cspec) {
+            foreach ($cspec['columns'] as $col => $c) {
+                $ref = $c['references'] ?? null;
+                if ($ref === null || $ref['collection'] !== $collection || $row[$ref['column']] === null) {
+                    continue;
+                }
+                $where = [$col => $row[$ref['column']]];
+                $action = strtolower($ref['onDelete'] ?? 'no action');
+                if ($action === 'cascade') {
+                    $this->delete((string) $child, $where);
+                } elseif ($action === 'set null' || $action === 'set default') {
+                    $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c['type']) : null;
+                    $this->update((string) $child, [$col => $value], $where);
+                } elseif ($this->fetch((string) $child, ['where' => $where, 'limit' => 1], '', null) !== []) {
+                    throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
+                }
+            }
+        }
+    }
+
+    /**
+     * §6.1 transitions. $defaultStatus: 'published' when status was absent on create. $existing: the
+     * row being updated (null on create).
+     */
+    private function draftRules(array $data, ?string $defaultStatus, ?array $existing): array
+    {
+        if ($defaultStatus !== null) {
+            $data['status'] = $defaultStatus;
+        }
+        $status = array_key_exists('status', $data) ? $data['status'] : ($existing['status'] ?? null);
+        $hasAt = array_key_exists('publishedAt', $data) && $data['publishedAt'] !== null;
+        $now = Js::iso(Js::now());
+        if ($status === 'published' && !$hasAt) {
+            // Re-saving an already published row (publishedAt untouched) keeps its date.
+            $keep = $existing !== null && !array_key_exists('publishedAt', $data) && $existing['status'] === 'published'
+                && $existing['publishedAt'] !== null;
+            if (!$keep) {
+                $data['publishedAt'] = $now;
+            }
+        } elseif ($status === 'scheduled') {
+            $at = array_key_exists('publishedAt', $data) ? $data['publishedAt'] : ($existing['publishedAt'] ?? null);
+            $iso = $at === null ? null : Schema::normalize(['type' => 'timestamp'], $at, 'publishedAt', '/publishedAt');
+            if ($iso === null || $iso <= $now) {
+                throw HttpError::invalidInput('scheduled rows need a future publishedAt', '/publishedAt');
+            }
+        }
+
+        return $data;
+    }
+
+    /** True when this column is the slug and must be derived (absent/empty on create, null on update). */
+    private function derivesSlug(array $spec, string $name, array $data, bool $absent): bool
+    {
+        if (($spec['slug'] ?? null) !== $name || !isset($spec['columns'][$name]['source'])) {
+            return false;
+        }
+
+        return $absent || $data[$name] === null || $data[$name] === '';
+    }
+
+    private function deriveSlug(string $collection, array $spec, array $row, int|string|null $self): ?string
+    {
+        $slugCol = $spec['slug'];
+        $source = $spec['columns'][$slugCol]['source'] ?? null;
+        $text = $source === null ? null : ($row[$source] ?? null);
+        if (!is_string($text)) {
+            return null;
+        }
+        $base = self::slugify($text);
+        if ($base === '') {
+            return null;
+        }
+        $pk = $spec['primaryKey'];
+        for ($n = 1; ; $n++) {
+            $candidate = $n === 1 ? $base : $base . '-' . $n;
+            $where = [$slugCol => $candidate];
+            if ($self !== null) {
+                $where[$pk] = ['ne' => $self];
+            }
+            if ($this->fetch($collection, ['where' => $where, 'limit' => 1], '', null) === []) {
+                return $candidate;
+            }
+        }
+    }
+
+    public static function slugify(string $s): string
+    {
+        if (class_exists(\Transliterator::class) && ($t = \Transliterator::create('Any-Latin; Latin-ASCII')) !== null) {
+            $s = (string) $t->transliterate($s);
+        }
+        $s = trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower($s)), '-');
+
+        return rtrim(substr($s, 0, 190), '-');
+    }
+
+    /** Rules (min/max/pattern/validate, nested) + media and reference existence for written values. */
+    private function checkValues(array $columns, array $norm, array $full): void
+    {
+        $ctx = ['data' => $full, 'user' => $this->actor, 'target' => $this->target];
+        foreach ($norm as $name => $v) {
+            Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx);
+        }
+        $refs = [];
+        foreach ($norm as $name => $v) {
+            array_push($refs, ...Schema::mediaRefs($columns[$name], $v, HttpError::seg($name)));
+        }
+        if ($refs !== []) {
+            $media = $this->media->getMany(array_map(static fn ($r) => $r[0], $refs));
+            foreach ($refs as [$id, $ptr, $accept]) {
+                $m = $media[$id] ?? throw HttpError::invalidInput("No media with id $id", $ptr);
+                if ($accept === 'image' && !str_starts_with((string) $m['mime'], 'image/')) {
+                    throw HttpError::invalidInput('Only images are accepted here', $ptr);
+                }
+            }
+        }
+        foreach ($norm as $name => $v) {
+            $ref = $columns[$name]['references'] ?? null;
+            if ($ref === null || $v === null) {
+                continue;
+            }
+            if ($this->fetch($ref['collection'], ['where' => [$ref['column'] => $v], 'limit' => 1], '', null) === []) {
+                throw new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
+            }
+        }
     }
 
     private function rejectUnknown(array $columns, array $data): void
@@ -588,34 +627,36 @@ final class Db
     }
 
     /** Call a hook that receives rows (afterCreate/afterUpdate/before|afterDelete); result ignored. */
-    private function hook(array $hooks, string $name, array $row, ?array $previous = null): void
+    private function hook(array $spec, string $name, array $row, ?array $previous = null): void
     {
-        if (!isset($hooks[$name])) {
+        if (!isset($spec['hooks'][$name])) {
             return;
         }
-        $fn = '\\ZeroApp\\' . $hooks[$name];
+        $fn = '\\ZeroApp\\' . $spec['hooks'][$name];
+        $ctx = $this->hookCtx();
         if ($previous === null) {
-            $fn($row);
+            $fn($row, $ctx);
         } else {
-            $fn($row, $previous);
+            $fn($row, $previous, $ctx);
         }
     }
 
-    private function readByPk(string $collection, array $spec, int|float|string $pk): array
+    /** @return array{array, array} [decoded row, storage-form row] */
+    private function readByPk(string $collection, array $spec, int|string $pk): array
     {
-        $raw = $this->run('SELECT * FROM ' . self::q($collection) . ' WHERE ' . self::q($spec['primaryKey']) . ' = ?', [$pk])->fetch();
-        if ($raw === false) {
-            throw new \RuntimeException("Row $collection/$pk vanished after write");
-        }
+        $q = Sql::select($this->schema, $this->store, $collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1]);
+        $raw = $this->store->select($collection, $q)[0] ?? throw new \RuntimeException("Row $collection/$pk vanished after write");
+        $raw = array_intersect_key($raw, $spec['columns']);
 
-        return Schema::decodeRow($spec['columns'], $raw);
+        return [Schema::decodeRow($spec['columns'], $raw), $raw];
     }
 
-    private function pkValue(array $spec, array $row): int|float|string
+    private function pkValue(array $spec, array $row): int|string
     {
         $pk = $spec['primaryKey'];
+        $v = Schema::encode($spec['columns'][$pk], $row[$pk], $pk, HttpError::seg($pk));
 
-        return Schema::encode($spec['columns'][$pk], $row[$pk], $pk, HttpError::seg($pk));
+        return is_float($v) ? (int) $v : $v;
     }
 
     private function nested(callable $fn): mixed
@@ -625,76 +666,209 @@ final class Db
         }
         $this->depth++;
         try {
-            return $fn();
+            return $this->store->transaction($fn);
         } finally {
             $this->depth--;
         }
     }
 
-    /** Execute a write, mapping SQLite constraint failures onto problem codes. */
-    private function write(string $sql, array $params): void
+    // ================================================================ editor saves (WP, §4.9)
+
+    /**
+     * After a wp-admin/core REST save: afterCreate (no $previousRow) or afterUpdate, with the row
+     * re-read through the store. Counts toward MAX_HOOK_DEPTH. Runs in one transaction.
+     */
+    public function afterEditorSave(string $collection, int|string $pk, ?array $previousRow, ?array $user = null): void
     {
+        $this->asEditor($user, function () use ($collection, $pk, $previousRow) {
+            $spec = $this->schema->collection($collection);
+            [$row] = $this->readByPk($collection, $spec, $pk);
+            $previousRow === null ? $this->hook($spec, 'afterCreate', $row) : $this->hook($spec, 'afterUpdate', $row, $previousRow);
+        });
+    }
+
+    /** Before an editor-side delete: beforeDelete($row) and the pipeline FK actions. */
+    public function beforeEditorDelete(string $collection, array $row, ?array $user = null): void
+    {
+        $this->asEditor($user, function () use ($collection, $row) {
+            $spec = $this->schema->collection($collection);
+            $this->hook($spec, 'beforeDelete', $row);
+            $this->referentialActions($collection, $row);
+        });
+    }
+
+    /** After an editor-side delete: afterDelete($row). */
+    public function afterEditorDelete(string $collection, array $row, ?array $user = null): void
+    {
+        $this->asEditor($user, fn () => $this->hook($this->schema->collection($collection), 'afterDelete', $row));
+    }
+
+    private function asEditor(?array $user, callable $fn): void
+    {
+        $prev = $this->actor;
+        $this->actor = $user;
         try {
-            $this->run($sql, $params);
-        } catch (\PDOException $e) {
-            $msg = $e->getMessage();
-            if (preg_match('/UNIQUE constraint failed: ([^\s]+(?:, [^\s]+)*)/', $msg, $m)) {
-                $cols = array_map(static fn ($c) => substr($c, strrpos($c, '.') + 1), explode(', ', $m[1]));
-                throw new HttpError(409, 'unique_violation', 'A row with this ' . implode(', ', $cols) . ' already exists', count($cols) === 1 ? HttpError::seg($cols[0]) : null);
-            }
-            if (str_contains($msg, 'FOREIGN KEY constraint failed')) {
-                throw new HttpError(409, 'reference_violation', 'This change would break a reference between rows');
-            }
-            if (preg_match('/NOT NULL constraint failed: \S+\.(\S+)/', $msg, $m)) {
-                throw HttpError::invalidInput("{$m[1]} is required", HttpError::seg($m[1]));
-            }
-            if (str_contains($msg, 'CHECK constraint failed')) {
-                throw HttpError::invalidInput('A check constraint failed');
-            }
-            throw $e;
+            $this->nested($fn);
+        } finally {
+            $this->actor = $prev;
         }
     }
 
-    private function run(string $sql, array $params): \PDOStatement
-    {
-        $stmt = $this->pdo->prepare($sql);
-        foreach (array_values($params) as $i => $v) {
-            $stmt->bindValue($i + 1, $v, match (true) {
-                $v === null => \PDO::PARAM_NULL,
-                is_int($v) => \PDO::PARAM_INT,
-                default => \PDO::PARAM_STR,
-            });
-        }
-        $stmt->execute();
+    // ================================================================ revisions (§6.4)
 
-        return $stmt;
+    /** @return list<array{id: int, at: string, userId: ?int}> newest first; needs update access on the row */
+    public function revisions(string $collection, int|string $pk, ?Viewer $viewer = null): array
+    {
+        $this->requireRevisable($collection, $pk, $viewer);
+
+        return array_map(
+            static fn (array $r) => ['id' => $r['id'], 'at' => $r['at'], 'userId' => $r['userId']],
+            $this->store->revisions($collection, $pk),
+        );
+    }
+
+    /** The full decoded row at a revision. */
+    public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    {
+        $this->requireRevisable($collection, $pk, $viewer);
+        $rev = $this->store->revision($collection, $pk, $revisionId)
+            ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
+
+        return Schema::decodeRow($this->schema->collection($collection)['columns'], $rev['row']);
+    }
+
+    /**
+     * Restore: the revision's user columns become an update patch (pk, system columns and onUpdate
+     * columns excluded), run through the full update pipeline.
+     */
+    public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    {
+        $spec = $this->schema->collection($collection);
+        $row = $this->revision($collection, $pk, $revisionId, $viewer);
+        $patch = [];
+        foreach ($spec['columns'] as $name => $col) {
+            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])) {
+                $patch[$name] = $row[$name];
+            }
+        }
+
+        return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+            ?? throw HttpError::notFound("No $collection row $pk");
+    }
+
+    private function requireRevisable(string $collection, int|string $pk, ?Viewer $viewer): void
+    {
+        $spec = $this->schema->collection($collection);
+        if (!($spec['revisions'] ?? false)) {
+            throw HttpError::notFound("$collection keeps no revisions");
+        }
+        $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, null);
+        if ($this->fetch($collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1], '', null, null, $guards) === []) {
+            throw HttpError::notFound("No $collection row $pk");
+        }
+    }
+
+    // ================================================================ globals (§3.6)
+
+    /** Current values (JS form); never-written fields read as their defaults. */
+    public function globalGet(string $name, ?Viewer $viewer = null): array
+    {
+        $g = $this->schema->global($name);
+        if ($viewer !== null) {
+            Access::require(Access::globalRules($g)['read'], $viewer, 'read', null, "read $name");
+        }
+        $stored = $this->store->globalRead($name) ?? [];
+        $out = [];
+        foreach ($g['fields'] as $field => $f) {
+            if (array_key_exists($field, $stored)) {
+                $out[$field] = Schema::decode($f, $stored[$field]);
+            } else {
+                $out[$field] = isset($f['default']) ? Schema::normalize($f, Schema::generate($f['default'], $f['type']), (string) $field, '') : null;
+            }
+        }
+
+        return $out;
+    }
+
+    public function globalUpdate(string $name, array $patch, ?Viewer $viewer = null): array
+    {
+        $g = $this->schema->global($name);
+        if ($viewer !== null) {
+            Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name");
+        }
+        $fields = $g['fields'];
+        $this->rejectUnknown($fields, $patch);
+
+        return $this->transaction(function () use ($name, $fields, $patch) {
+            $current = $this->globalGet($name);
+            $norm = [];
+            foreach ($patch as $field => $v) {
+                $norm[$field] = Schema::normalize($fields[$field], $v, (string) $field, HttpError::seg($field));
+            }
+            $this->checkValues($fields, $norm, $norm + $current);
+            $values = [];
+            foreach ($norm + $current as $field => $v) {
+                $values[$field] = Schema::store($fields[$field], $v);
+            }
+            $this->store->globalWrite($name, $values);
+
+            return $this->globalGet($name);
+        });
+    }
+
+    // ================================================================ media (§4.6)
+
+    public function mediaUpload(string $tmpPath, string $filename, ?string $alt, ?Viewer $viewer = null): array
+    {
+        if ($viewer !== null) {
+            Access::require(Access::MEDIA['create'], $viewer, 'create', null, 'upload media');
+        }
+
+        return $this->transaction(fn () => $this->media->upload($tmpPath, $filename, $this->actor, $alt));
+    }
+
+    public function mediaGet(int $id): ?array
+    {
+        return $this->media->get($id);
+    }
+
+    public function mediaList(array $opts): array
+    {
+        return $this->media->list($opts);
+    }
+
+    /** Delete a media row: null `media` columns and drop the id from `mediaList` columns first (hooks + revisions apply). */
+    public function mediaDelete(int $id, ?Viewer $viewer = null): ?array
+    {
+        if ($viewer !== null) {
+            Access::require(Access::MEDIA['delete'], $viewer, 'delete', null, 'delete media');
+        }
+
+        return $this->nested(function () use ($id) {
+            $row = $this->media->get($id);
+            if ($row === null) {
+                return null;
+            }
+            foreach ($this->schema->collections() as $c => $spec) {
+                foreach ($spec['columns'] as $col => $def) {
+                    if ($def['type'] === 'media') {
+                        $this->update((string) $c, [$col => null], [$col => $id]);
+                    } elseif ($def['type'] === 'mediaList') {
+                        $pk = $spec['primaryKey'];
+                        foreach ($this->fetch((string) $c, ['where' => [$col => ['has' => $id]]], '', null) as $r) {
+                            $kept = array_values(array_filter($r[$col], static fn ($x) => $x !== $id));
+                            $this->update((string) $c, [$col => $kept], [$pk => $r[$pk]]);
+                        }
+                    }
+                }
+            }
+            $this->media->delete($id);
+
+            return $row;
+        });
     }
 
     // ================================================================ helpers
-
-    private function collectionSpec(string $collection, string $ptr): array
-    {
-        if (!$this->schema->hasCollection($collection)) {
-            throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
-        }
-
-        return $this->schema->collection($collection);
-    }
-
-    private function alias(): string
-    {
-        return 't' . $this->aliases++;
-    }
-
-    public static function q(string $ident): string
-    {
-        return '"' . str_replace('"', '""', $ident) . '"';
-    }
-
-    private static function placeholders(array $values): string
-    {
-        return implode(', ', array_fill(0, count($values), '?'));
-    }
 
     private static function key(mixed $v): string
     {

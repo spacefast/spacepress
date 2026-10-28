@@ -30,7 +30,9 @@ $files = [
         <?php
         declare(strict_types=1);
         $now = ['now' => true];
+        $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
         return [
+            'version' => 2,
             'collections' => [
                 'locations' => [
                     'primaryKey' => 'id',
@@ -49,6 +51,7 @@ $files = [
                     ],
                     'hooks' => ['beforeCreate' => 'locations__beforeCreate'],
                     'beforeCreateFills' => ['code'],
+                    'access' => $open,
                     'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
                 ],
                 'items' => [
@@ -66,6 +69,7 @@ $files = [
                         'location' => ['kind' => 'one', 'collection' => 'locations', 'from' => 'locationId', 'to' => 'id', 'optional' => true],
                     ],
                     'hooks' => ['beforeCreate' => 'items__beforeCreate', 'afterUpdate' => 'items__afterUpdate'],
+                    'access' => $open,
                     'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
                 ],
                 'logs' => [
@@ -77,6 +81,7 @@ $files = [
                     ],
                     'relations' => [],
                     'hooks' => ['afterCreate' => 'logs__afterCreate'],
+                    'access' => $open,
                     'api' => ['list' => true, 'get' => true, 'create' => false, 'update' => false, 'delete' => false],
                 ],
             ],
@@ -87,6 +92,7 @@ $files = [
                         'amount' => ['type' => 'integer', 'notNull' => true, 'default' => ['value' => 5]],
                     ],
                     'handler' => 'action__restock',
+                    'access' => ['role' => 'anyone'],
                 ],
             ],
         ];
@@ -196,12 +202,9 @@ $rebuild = <<<'SQL'
     CREATE UNIQUE INDEX "locations_name_unique" ON "locations" ("name");
     SQL;
 
-$copy = [];
-foreach (glob($runtime . '/Zero/*.php') as $f) {
-    $copy['zero/runtime/' . basename($f)] = file_get_contents($f);
-}
-$copy['zero/bin/zero.php'] = file_get_contents($runtime . '/bin/zero.php');
-foreach ($files + $copy as $rel => $content) {
+require __DIR__ . '/blog_app.php';
+copyRuntime($root);
+foreach ($files as $rel => $content) {
     @mkdir(dirname("$root/$rel"), 0777, true);
     file_put_contents("$root/$rel", $content);
 }
@@ -214,42 +217,7 @@ register_shutdown_function(static function () use ($root): void {
     exec('rm -rf ' . escapeshellarg($root));
 });
 
-// ================================================================ tiny harness
-
-$passed = 0;
-$failed = 0;
-
-function check(string $label, bool $ok, mixed $detail = null): void
-{
-    global $passed, $failed;
-    if ($ok) {
-        $passed++;
-        return;
-    }
-    $failed++;
-    echo "FAIL  $label" . ($detail === null ? '' : "\n      " . json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR)) . "\n";
-}
-
-function eq(string $label, mixed $actual, mixed $expected): void
-{
-    check($label, $actual === $expected, ['expected' => $expected, 'actual' => $actual]);
-}
-
-/** Run $fn, expect an HttpError (or JsError) with the given status/code/pointer. */
-function problem(string $label, callable $fn, int $status, string $code, ?string $pointer = null): ?\Throwable
-{
-    try {
-        $fn();
-    } catch (\Throwable $e) {
-        $p = App::problem($e);
-        check($label, $p['status'] === $status && $p['code'] === $code && ($p['pointer'] ?? null) === $pointer, $p);
-
-        return $e;
-    }
-    check($label, false, 'no exception thrown');
-
-    return null;
-}
+require __DIR__ . '/harness.php';
 
 function names(array $rows): array
 {
@@ -261,9 +229,10 @@ function names(array $rows): array
 require $root . '/zero/runtime/bootstrap.php';
 $app = App::boot($root);
 $db = \Zero\db();
+$pdo = $app->store->pdo();
 check('boot creates data/zero.sqlite', is_file("$root/data/zero.sqlite"));
-eq('init migration recorded', $db->pdo()->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN), ['0001_init']);
-eq('foreign keys on after boot', (int) $db->pdo()->query('PRAGMA foreign_keys')->fetchColumn(), 1);
+eq('init migration recorded', $pdo->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN), ['0001_init']);
+eq('foreign keys on after boot', (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn(), 1);
 eq('second migrate is a no-op', $app->migrate(), []);
 
 // ================================================================ write pipeline: create
@@ -274,7 +243,7 @@ eq('by-ref beforeCreate mutation is kept (trim + fill)', [$garage['name'], $gara
 eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['shelf', true]);
 check('default now: timestamps in ISO ms UTC', preg_match($tsPattern, $garage['createdAt']) === 1 && $garage['createdAt'] === $garage['updatedAt'], $garage);
 eq('json column round-trips', $garage['meta'], ['floor' => 1, 'tags' => ['a/b', 'é']]);
-eq('json stored with unescaped slashes/unicode', $db->pdo()->query('SELECT meta FROM locations')->fetchColumn(), '{"floor":1,"tags":["a/b","é"]}');
+eq('json stored with unescaped slashes/unicode', $pdo->query('SELECT meta FROM locations')->fetchColumn(), '{"floor":1,"tags":["a/b","é"]}');
 
 [$attic, $basement] = $db->insert('locations', [
     ['name' => 'Attic', 'kind' => 'bin', 'active' => false, 'updatedAt' => '2000-01-01T00:00:00Z'],
@@ -311,7 +280,7 @@ problem('NaN for real', fn () => $db->insert('items', ['name' => 'x', 'price' =>
 problem('bad timestamp', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'yesterday-ish']), 422, 'invalid_input', '/seenAt');
 problem('impossible calendar date', fn () => $db->insert('items', ['name' => 'x', 'bestBefore' => '2023-02-29']), 422, 'invalid_input', '/bestBefore');
 problem('unique_violation with pointer', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
-problem('reference_violation', fn () => $db->insert('items', ['name' => 'x', 'locationId' => 99999]), 409, 'reference_violation');
+problem('reference_violation names the column', fn () => $db->insert('items', ['name' => 'x', 'locationId' => 99999]), 409, 'reference_violation', '/locationId');
 
 // ================================================================ reads
 
@@ -398,14 +367,14 @@ $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['i
 file_put_contents("$root/zero/app/migrations/0002_rebuild_locations.sql", $rebuild);
 eq('CLI migrate applies the rebuild', $cli('migrate'), [0, ['data' => ['applied' => ['0002_rebuild_locations']]]]);
 eq('child rows survive a parent rebuild (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('rebuilt table has the new column', array_column($db->pdo()->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[8] ?? null, 'note');
+eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[8] ?? null, 'note');
 problem('unique index recreated by the rebuild', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 
 file_put_contents("$root/zero/app/migrations/0003_orphan.sql", "DELETE FROM \"locations\" WHERE \"name\" = 'Garage';\n--> statement-breakpoint\nSELECT 1;");
 [$code, $out] = $cli('migrate');
 check('migration leaving broken FKs fails and names the table', $code === 1 && str_contains($out['error']['detail'] ?? '', 'items -> locations'), $out);
-eq('failed migration rolled back and not recorded', [count($db->findMany('locations', ['where' => ['name' => 'Garage']])), $db->pdo()->query("SELECT COUNT(*) FROM __zero_migrations WHERE id = '0003_orphan'")->fetchColumn()], [1, 0]);
-check('foreign keys back on after a failed migration', (int) $db->pdo()->query('PRAGMA foreign_keys')->fetchColumn() === 1);
+eq('failed migration rolled back and not recorded', [count($db->findMany('locations', ['where' => ['name' => 'Garage']])), $pdo->query("SELECT COUNT(*) FROM __zero_migrations WHERE id = '0003_orphan'")->fetchColumn()], [1, 0]);
+check('foreign keys back on after a failed migration', (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn() === 1);
 [$code, $out] = $cli('insert', 'items', '{"name":"ghost"}');
 check('CLI auto-migrate refuses to run past a broken migration', $code === 1 && ($out['error']['code'] ?? null) === 'internal', $out);
 unlink("$root/zero/app/migrations/0003_orphan.sql");
@@ -499,7 +468,7 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 
 $r = http('OPTIONS', '/api/items');
 eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null],
-    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type']);
+    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization']);
 
 $r = http('GET', '/api/_schema');
 check('GET /api/_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'
@@ -530,7 +499,7 @@ $isProblem('invalid JSON body', http('POST', '/api/items', raw: '{"name":'), 400
 $isProblem('coercion error with pointer', http('POST', '/api/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/api/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
-$isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation');
+$isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
 
 $r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => 7]);
 eq('PATCH', [$r['status'], $r['json']['data']['qty'] ?? null], [200, 7]);
@@ -561,5 +530,4 @@ $isProblem('deleted row is gone', http('GET', "/api/items/{$widget['id']}"), 404
 
 stopServer();
 
-echo "db_test: $passed passed, $failed failed\n";
-exit($failed === 0 ? 0 : 1);
+finish('db_test');

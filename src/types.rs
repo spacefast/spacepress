@@ -169,6 +169,7 @@ impl Ty {
             Ty::Obj(fields) => {
                 let f: Vec<String> = fields
                     .iter()
+                    .filter(|(k, _)| !k.starts_with('\u{0}'))
                     .take(4)
                     .map(|(k, (t, o))| format!("{k}{}: {}", if *o { "?" } else { "" }, t.describe()))
                     .collect();
@@ -193,18 +194,88 @@ impl Ty {
         match self {
             Ty::Obj(fields) => fields.get(name).cloned(),
             Ty::Map(t) => Some(((**t).clone(), false)),
+            // A union of objects (blocks items): fields every member has.
+            Ty::Union(items) if items.iter().all(|t| matches!(t, Ty::Obj(_))) => {
+                let mut tys = Vec::new();
+                let mut optional = false;
+                let mut found = false;
+                for t in items {
+                    match t.field(name) {
+                        Some((ft, o)) => {
+                            found = true;
+                            tys.push(ft);
+                            optional |= o;
+                        }
+                        None => optional = true,
+                    }
+                }
+                found.then(|| (Ty::union(tys), optional))
+            }
             _ => None,
         }
     }
 }
 
-fn col_select(c: &Column, json_ty: impl Fn(&Column) -> Ty) -> Ty {
-    let base = match c.ty {
-        ColType::Integer | ColType::Real => Ty::Num,
-        ColType::Text | ColType::Timestamp | ColType::Date => Ty::Str,
+/// The value type a column holds, before nullability.
+pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
+    match c.ty {
+        ColType::Integer | ColType::Real | ColType::Media => Ty::Num,
+        ColType::Text
+        | ColType::Timestamp
+        | ColType::Date
+        | ColType::Email
+        | ColType::Url
+        | ColType::Slug
+        | ColType::RichText => Ty::Str,
         ColType::Boolean => Ty::Bool,
         ColType::Json => json_ty(c),
-    };
+        ColType::MediaList => Ty::Array(Box::new(Ty::Num)),
+        ColType::Select => Ty::Array(Box::new(Ty::Str)),
+        ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), insert),
+        ColType::Repeater => Ty::Array(Box::new(fields_obj(
+            c.fields.as_ref().expect("repeater fields"),
+            insert,
+        ))),
+        ColType::Blocks => Ty::Array(Box::new(Ty::union(c.layouts.as_ref().expect("layouts").iter().map(
+            |(name, fields)| {
+                let Ty::Obj(mut f) = fields_obj(fields, insert) else {
+                    unreachable!()
+                };
+                f.shift_insert(0, "layout".into(), (Ty::Str, false));
+                // Not a real field: names the layout so `item.layout === "hero"` can narrow.
+                f.insert(layout_marker(name), (Ty::Never, true));
+                Ty::Obj(f)
+            },
+        )))),
+    }
+}
+
+/// The hidden key that tags a blocks item type with its layout.
+pub fn layout_marker(name: &str) -> String {
+    format!("\u{0}layout:{name}")
+}
+
+/// The layout a blocks item type stands for.
+pub fn layout_of(t: &Ty) -> Option<&str> {
+    let Ty::Obj(f) = t else { return None };
+    f.keys().find_map(|k| k.strip_prefix("\u{0}layout:"))
+}
+
+/// Sub-fields as an object type: every key present on read; optional ones may be omitted on write.
+fn fields_obj(fields: &IndexMap<String, Column>, insert: bool) -> Ty {
+    Ty::Obj(
+        fields
+            .values()
+            .map(|f| {
+                let t = col_select(f, &|_| Ty::Unknown, insert);
+                (f.name.clone(), (t, insert && f.optional_on_insert()))
+            })
+            .collect(),
+    )
+}
+
+fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
+    let base = col_base(c, json_ty, insert);
     if c.not_null { base } else { base.nullable() }
 }
 
@@ -213,7 +284,7 @@ thread_local! {
     pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<String, Ty>> = Default::default();
 }
 
-fn json_ty(table: &str) -> impl Fn(&Column) -> Ty + '_ {
+pub fn json_ty(table: &str) -> impl Fn(&Column) -> Ty + '_ {
     move |c: &Column| {
         JSON_TYPES.with(|m| {
             m.borrow()
@@ -225,10 +296,14 @@ fn json_ty(table: &str) -> impl Fn(&Column) -> Ty + '_ {
 }
 
 pub fn row_of(c: &Collection) -> Ty {
+    columns_row(&c.columns, &json_ty(&c.table))
+}
+
+pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     Ty::Obj(
-        c.columns
+        columns
             .values()
-            .map(|col| (col.name.clone(), (col_select(col, json_ty(&c.table)), false)))
+            .map(|col| (col.name.clone(), (col_select(col, json_ty, false), false)))
             .collect(),
     )
 }
@@ -239,17 +314,26 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     let c = &schema.collections[table];
+    columns_insert(&c.columns, &json_ty(table))
+}
+
+pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     Ty::Obj(
-        c.columns
+        columns
             .values()
             .map(|col| {
                 (
                     col.name.clone(),
-                    (col_select(col, json_ty(table)), col.optional_on_insert()),
+                    (col_select(col, json_ty, true), col.optional_on_insert()),
                 )
             })
             .collect(),
     )
+}
+
+/// A global's values: always complete (unset fields read as their defaults or null).
+pub fn global_row(g: &crate::schema::Global) -> Ty {
+    columns_row(&g.fields, &|_| Ty::Unknown)
 }
 
 pub fn partial(t: Ty) -> Ty {
@@ -265,7 +349,7 @@ pub fn action_input(columns: &IndexMap<String, Column>) -> Ty {
         columns
             .values()
             .map(|c| {
-                let base = col_select(c, |_| Ty::Unknown);
+                let base = col_select(c, &|_| Ty::Unknown, false);
                 let required = c.not_null || c.default.is_some();
                 let t = if c.not_null || c.default.is_some() {
                     base.non_null()
@@ -277,6 +361,58 @@ pub fn action_input(columns: &IndexMap<String, Column>) -> Ty {
             })
             .collect(),
     )
+}
+
+fn obj(fields: &[(&str, Ty)]) -> Ty {
+    Ty::Obj(
+        fields
+            .iter()
+            .map(|(k, t)| (k.to_string(), (t.clone(), false)))
+            .collect(),
+    )
+}
+
+/// `{ id, name, role }` (§5.1).
+pub fn user() -> Ty {
+    obj(&[("id", Ty::Num), ("name", Ty::Str), ("role", Ty::Str)])
+}
+
+/// `ctx` for hooks and actions (§1.7).
+pub fn hook_ctx() -> Ty {
+    obj(&[("user", user().nullable()), ("target", Ty::Str)])
+}
+
+/// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
+pub fn access_ctx(data: Ty) -> Ty {
+    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", Ty::Str), ("op", Ty::Str)]) else {
+        unreachable!()
+    };
+    f.insert("data".into(), (data.nullable(), true));
+    Ty::Obj(f)
+}
+
+/// `ctx` for `.validate` (§1.2): the whole row being written.
+pub fn validate_ctx() -> Ty {
+    obj(&[
+        ("data", Ty::Map(Box::new(Ty::Unknown))),
+        ("user", user().nullable()),
+        ("target", Ty::Str),
+    ])
+}
+
+/// A media row (§4.6), what `with: { cover: true }` puts in place of the id.
+pub fn media_row() -> Ty {
+    obj(&[
+        ("id", Ty::Num),
+        ("url", Ty::Str),
+        ("mime", Ty::Str),
+        ("size", Ty::Num),
+        ("width", Ty::Num.nullable()),
+        ("height", Ty::Num.nullable()),
+        ("alt", Ty::Str.nullable()),
+        ("filename", Ty::Str),
+        ("createdAt", Ty::Str),
+    ])
 }
 
 /// A row with relations loaded by `with`.

@@ -1,8 +1,9 @@
 # Zero
 
 Write `zero.config.ts` (Drizzle-style collections, relations, hooks, and actions).
-`zero build` compiles it with Rust into a plain PHP app. Rust runs only at build
-time; at runtime it's all PHP, with no JS engine and no Composer.
+`zero build` compiles it with Rust into a plain PHP app, or with `--target wp`
+into a WordPress plugin (custom post types + Secure Custom Fields). Rust runs
+only at build time; at runtime it's all PHP, with no JS engine and no Composer.
 
 **Status: early.** The pantry example builds and runs end to end. Expect the API
 to move.
@@ -23,9 +24,14 @@ curl localhost:8787/api/shopping_list            # the afterCreate hook added Eg
 curl -X POST localhost:8787/api/actions/consume -d '{"itemId":1}'
 ```
 
-`zero check` compiles without writing anything. `zero build` writes the app to
-`.zero/app` and new migrations to `zero/migrations/`. Commit the migrations, and
-deploy `.zero/app` to any PHP host.
+Writes need a user: `zero users add me --role editor` then `zero tokens create
+me`, and send `Authorization: Bearer <token>`.
+
+`zero check` compiles for both targets without writing anything. `zero build`
+writes new migrations to `zero/migrations/{sqlite,wp}/` and the typed client to
+`zero/client/` (commit both), and the app to `.zero/app`. `zero build --target
+wp` writes the plugin to `.zero/wp/zero-<name>/` and `zero-<name>.zip`; `zero
+dev --wp` boots it in a throwaway WordPress (docker).
 
 ## How it works
 
@@ -41,10 +47,10 @@ deploy `.zero/app` to any PHP host.
    type-checked against the schema and compiled to PHP: native operators where
    the types make it safe, `Zero\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
-5. **Emit.** The output is SQLite migrations (diffed against a committed
-   snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types `db` in your
-   editor), and the PHP runtime: the database, the REST API, the hook pipeline,
-   and the JS-semantics helpers.
+5. **Emit.** The output is SQLite and MySQL migrations (diffed against one
+   committed snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types
+   `db` in your editor), the typed client, and the PHP runtime: the database,
+   the REST API, the hook pipeline, and the JS-semantics helpers.
 
 Here's the hook above, as written and as compiled:
 
@@ -77,7 +83,7 @@ function items__beforeCreate(array &$data)
 ## Tests
 
 ```sh
-cargo test                     # rejections + pantry built, served by php -S, driven over HTTP
+cargo test                     # rejections, blog golden, pantry over HTTP, Node↔PHP differential
 tests/php/run.sh               # runtime: JS parity (checked against node) + DB/HTTP suite
 cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
 ```
@@ -91,8 +97,10 @@ cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
 | `src/eval.rs`, `src/value.rs` | the build-time evaluator |
 | `src/extract.rs` | evaluated config → schema + functions to compile |
 | `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
-| `src/migrate.rs` | snapshots and SQLite migration planning |
+| `src/migrate.rs` | snapshots and SQLite/MySQL migration planning |
 | `src/schema_php.rs` | `schema.php` and `zero.gen.ts` |
+| `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
 | `runtime/` | the PHP runtime, embedded into the binary |
 | `types/zero/` | TypeScript declarations for `"zero"` |
 | `examples/pantry/` | home pantry tracker |
+| `examples/blog/` | the CMS example (both targets) |

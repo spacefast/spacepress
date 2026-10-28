@@ -59,6 +59,16 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "date",
     "timestamp",
     "json",
+    "email",
+    "url",
+    "slug",
+    "richText",
+    "media",
+    "select",
+    "group",
+    "repeater",
+    "blocks",
+    "global",
     "defineRelations",
     "defineConfig",
     "action",
@@ -66,7 +76,24 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "HttpError",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
-const ZERO_TYPES: &[&str] = &["InferSelectModel", "InferInsertModel", "Config", "Register"];
+const ZERO_TYPES: &[&str] = &[
+    "InferSelectModel",
+    "InferInsertModel",
+    "Config",
+    "Register",
+    "User",
+    "Role",
+    "HookCtx",
+    "AccessCtx",
+    "ValidateCtx",
+    "AccessRule",
+    "AccessConfig",
+    "CollectionOptions",
+    "FieldsConfig",
+    "BlockValue",
+    "Global",
+    "AnyGlobal",
+];
 
 pub const GLOBALS: &[&str] = &[
     "Math",
@@ -731,6 +758,7 @@ impl<'p> Evaluator<'p> {
                 optional,
                 type_args,
             } => {
+                let mut call_span = e.span;
                 let f = match &callee.kind {
                     ExprKind::Member {
                         obj,
@@ -741,6 +769,13 @@ impl<'p> Evaluator<'p> {
                         let recv = self.eval(obj, scope)?;
                         if *o && matches!(recv, Value::Null | Value::Undef) {
                             return Err(Ctl::Short);
+                        }
+                        if matches!(recv, Value::Column(_)) {
+                            // Column modifiers point at `.max(...)`, not at the start of the chain.
+                            call_span = Span {
+                                start: prop_span.start,
+                                ..e.span
+                            };
                         }
                         self.get_prop(&recv, prop, *prop_span)?
                     }
@@ -761,7 +796,7 @@ impl<'p> Evaluator<'p> {
                     c.ts_type = Some((t.clone(), scope.module));
                     return Ok(Value::Column(Rc::new(c)));
                 }
-                self.call(&f, argv, e.span)?
+                self.call(&f, argv, call_span)?
             }
             ExprKind::New { callee, args } => {
                 let f = self.eval(callee, scope)?;
@@ -1041,44 +1076,34 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Column(ty) => {
-                let mut c = ColBuilder::new(*ty, span);
-                match arg(0) {
-                    Value::Undef => {}
-                    Value::Object(o) => {
-                        for (k, v) in o.borrow().iter() {
-                            if !(k == "enum" && *ty == ColType::Text) {
-                                return err(span, format!("{}() has no option `{k}`", ty.name()));
-                            }
-                            let Value::Array(items) = v else {
-                                return err(span, "`enum` must be an array of strings");
-                            };
-                            let mut values = Vec::new();
-                            for item in items.borrow().iter() {
-                                match item {
-                                    Value::Str(s) => values.push(s.to_string()),
-                                    other => {
-                                        return err(
-                                            span,
-                                            format!("enum values must be strings, got {}", other.describe()),
-                                        );
-                                    }
-                                }
-                            }
-                            if values.is_empty() {
-                                return err(span, "`enum` needs at least one value");
-                            }
-                            c.enum_values = Some(values);
-                        }
-                    }
+            Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
+            Builtin::Field(name) => self.make_column(name, &args, span),
+            Builtin::DefineGlobal => {
+                let Value::Str(name) = arg(0) else {
+                    return err(span, "global() needs a name first: `global(\"settings\", { ... })`");
+                };
+                let fields_val = arg(1);
+                let fields = self.fields_object(
+                    &fields_val,
+                    span,
+                    "global() needs an object of fields as its second argument",
+                )?;
+                let options = match arg(2) {
+                    Value::Undef => None,
+                    o @ Value::Object(_) => Some(o),
                     other => {
                         return err(
                             span,
-                            format!("{}() takes an options object, not {}", ty.name(), other.describe()),
+                            format!("global options must be an object, not {}", other.describe()),
                         );
                     }
-                }
-                Ok(Value::Column(Rc::new(c)))
+                };
+                Ok(Value::Global(Rc::new(GlobalVal {
+                    name: name.to_string(),
+                    fields,
+                    options,
+                    span,
+                })))
             }
             Builtin::Id => {
                 let mut c = ColBuilder::new(ColType::Integer, span);
@@ -1160,6 +1185,175 @@ impl<'p> Evaluator<'p> {
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
         }
+    }
+
+    /// An object of column builders (collection columns, sub-fields, layouts, global fields).
+    fn fields_object(&self, v: &Value, span: Span, what: &str) -> R<IndexMap<String, Rc<ColBuilder>>> {
+        let Value::Object(o) = v else {
+            return err(span, what.to_string());
+        };
+        let mut out = IndexMap::new();
+        for (k, f) in o.borrow().iter() {
+            match f {
+                Value::Column(c) => {
+                    out.insert(k.clone(), c.clone());
+                }
+                other => {
+                    return err_help(
+                        self.key_span(v, k).unwrap_or(span),
+                        format!("field `{k}` is {}, not a column", other.describe()),
+                        "fields are built with text(), integer(), media(), ...",
+                    );
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// `text()`, `email()`, `select({ options })`, `group({ fields })`, ...
+    fn make_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
+        let ty = match builder {
+            "integer" => ColType::Integer,
+            "real" => ColType::Real,
+            "text" => ColType::Text,
+            "boolean" => ColType::Boolean,
+            "date" => ColType::Date,
+            "timestamp" => ColType::Timestamp,
+            "json" => ColType::Json,
+            "email" => ColType::Email,
+            "url" => ColType::Url,
+            "slug" => ColType::Slug,
+            "richText" => ColType::RichText,
+            "media" => ColType::Media,
+            "select" => ColType::Text,
+            "group" => ColType::Group,
+            "repeater" => ColType::Repeater,
+            "blocks" => ColType::Blocks,
+            _ => unreachable!("unknown builder {builder}"),
+        };
+        let mut c = ColBuilder::new(ty, span);
+        let opts_val = args.first().cloned().unwrap_or(Value::Undef);
+        let allowed: &[&str] = match builder {
+            "text" => &["enum", "multiline"],
+            "slug" => &["source"],
+            "media" => &["accept", "multiple"],
+            "select" => &["options", "multiple"],
+            "group" | "repeater" => &["fields"],
+            "blocks" => &["layouts"],
+            _ => &[],
+        };
+        let required: Option<&str> = match builder {
+            "select" => Some("options"),
+            "group" | "repeater" => Some("fields"),
+            "blocks" => Some("layouts"),
+            _ => None,
+        };
+        let opts = match &opts_val {
+            Value::Undef => IndexMap::new(),
+            Value::Object(o) => o.borrow().clone(),
+            other => {
+                return err(
+                    span,
+                    format!("{builder}() takes an options object, not {}", other.describe()),
+                );
+            }
+        };
+        if let Some(r) = required
+            && !opts.contains_key(r)
+        {
+            return err_help(
+                span,
+                format!("{builder}() needs `{r}`"),
+                match builder {
+                    "select" => "select({ options: [\"a\", \"b\"] })",
+                    "blocks" => "blocks({ layouts: { hero: { heading: text() } } })",
+                    _ => "group({ fields: { title: text() } })",
+                },
+            );
+        }
+        let strings = |v: &Value, what: &str, sp: Span| -> R<Vec<String>> {
+            let Value::Array(items) = v else {
+                return err(sp, format!("`{what}` must be an array of strings"));
+            };
+            let mut values = Vec::new();
+            for item in items.borrow().iter() {
+                match item {
+                    Value::Str(s) => values.push(s.to_string()),
+                    other => return err(sp, format!("{what} values must be strings, got {}", other.describe())),
+                }
+            }
+            if values.is_empty() {
+                return err(sp, format!("`{what}` needs at least one value"));
+            }
+            Ok(values)
+        };
+        let mut multiple = false;
+        for (k, v) in &opts {
+            let ksp = self.key_span(&opts_val, k).unwrap_or(span);
+            if !allowed.contains(&k.as_str()) {
+                let mut d = Diag::new(ksp, format!("{builder}() has no option `{k}`"));
+                if let Some(s) = suggest(k, allowed.iter().copied()) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                }
+                return Err(Ctl::Err(d));
+            }
+            let flag = |v: &Value| match v {
+                Value::Bool(b) => Ok(*b),
+                other => err(ksp, format!("`{k}` must be true or false, not {}", other.describe())),
+            };
+            match k.as_str() {
+                "enum" | "options" => c.enum_values = Some(strings(v, k, ksp)?),
+                "multiline" => c.multiline = flag(v)?,
+                "multiple" => multiple = flag(v)?,
+                "source" => match v {
+                    Value::Str(s) => c.source = Some(s.to_string()),
+                    other => return err(ksp, format!("`source` must be a column name, not {}", other.describe())),
+                },
+                "accept" => match v {
+                    Value::Str(s) if &**s == "image" || &**s == "any" => c.accept = Some(s.to_string()),
+                    other => {
+                        return err_help(
+                            ksp,
+                            format!("`accept` can't be {}", other.describe()),
+                            "use \"image\" or \"any\"",
+                        );
+                    }
+                },
+                "fields" => c.fields = Some(self.fields_object(v, ksp, "`fields` must be an object of columns")?),
+                "layouts" => {
+                    let Value::Object(lo) = v else {
+                        return err(ksp, "`layouts` must be an object like `{ hero: { heading: text() } }`");
+                    };
+                    let mut layouts = IndexMap::new();
+                    for (lk, lv) in lo.borrow().iter() {
+                        let lsp = self.key_span(v, lk).unwrap_or(ksp);
+                        layouts.insert(
+                            lk.clone(),
+                            self.fields_object(lv, lsp, &format!("layout `{lk}` must be an object of columns"))?,
+                        );
+                    }
+                    if layouts.is_empty() {
+                        return err(ksp, "`layouts` needs at least one layout");
+                    }
+                    c.layouts = Some(layouts);
+                }
+                _ => unreachable!(),
+            }
+        }
+        if multiple {
+            c.ty = if builder == "media" {
+                ColType::MediaList
+            } else {
+                ColType::Select
+            };
+        }
+        if builder == "media" && c.accept.is_none() {
+            c.accept = Some("any".into());
+        }
+        if builder == "slug" {
+            c.unique = true;
+        }
+        Ok(Value::Column(Rc::new(c)))
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
@@ -1398,6 +1592,16 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "date" => Builtin::Column(ColType::Date),
         "timestamp" => Builtin::Column(ColType::Timestamp),
         "json" => Builtin::Column(ColType::Json),
+        "email" => Builtin::Field("email"),
+        "url" => Builtin::Field("url"),
+        "slug" => Builtin::Field("slug"),
+        "richText" => Builtin::Field("richText"),
+        "media" => Builtin::Field("media"),
+        "select" => Builtin::Field("select"),
+        "group" => Builtin::Field("group"),
+        "repeater" => Builtin::Field("repeater"),
+        "blocks" => Builtin::Field("blocks"),
+        "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
         "defineConfig" => Builtin::DefineConfig,
         "action" => Builtin::Action,
@@ -1496,9 +1700,54 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             DefaultVal::Fn(f)
         }
     };
+    if let Some(why) = modifier_invalid(&c, m) {
+        return err_help(span, why.0, why.1);
+    }
+    let mod_name: Option<&'static str> = MODIFIERS.iter().copied().find(|x| *x == m);
+    if let Some(name) = mod_name {
+        c.mods.push((name, span));
+    }
     match m {
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
+        "min" | "max" => {
+            let n = match arg(0) {
+                Value::Num(n) if n.is_finite() => n,
+                other => return err(span, format!("`.{m}()` needs a number, not {}", other.describe())),
+            };
+            let counts = !matches!(c.ty, ColType::Integer | ColType::Real);
+            if counts && (n < 0.0 || n.fract() != 0.0) {
+                return err(
+                    span,
+                    format!("`.{m}()` here is a length or count, so it needs a whole number ≥ 0"),
+                );
+            }
+            if m == "min" {
+                c.min = Some(n);
+            } else {
+                c.max = Some(n);
+            }
+        }
+        "pattern" => match arg(0) {
+            Value::Regex(p, f) => {
+                if let Some(bad) = f.chars().find(|x| matches!(x, 'g' | 'y')) {
+                    return err_help(
+                        span,
+                        format!("the `{bad}` flag makes a pattern stateful"),
+                        "drop it: `.pattern(/^[a-z]+$/i)`",
+                    );
+                }
+                c.pattern = Some((p.to_string(), f.to_string()));
+            }
+            other => {
+                return err_help(
+                    span,
+                    format!("`.pattern()` needs a RegExp literal, not {}", other.describe()),
+                    "write `.pattern(/^[a-z0-9-]+$/)`",
+                );
+            }
+        },
+        "validate" => c.validate = Some(closure_arg()?),
         "primaryKey" => {
             c.primary_key = true;
             c.not_null = true;
@@ -1570,27 +1819,70 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             c.references = Some((f, on_delete, on_update, span));
         }
         _ => {
-            const METHODS: &[&str] = &[
-                "notNull",
-                "unique",
-                "primaryKey",
-                "default",
-                "defaultNow",
-                "$default",
-                "$defaultFn",
-                "$onUpdate",
-                "$onUpdateFn",
-                "references",
-                "$type",
-            ];
             let mut d = Diag::new(span, format!("columns have no method `{m}`"));
-            if let Some(s) = suggest(m, METHODS.iter().copied()) {
+            if let Some(s) = suggest(m, MODIFIERS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(Ctl::Err(d));
         }
     }
     Ok(Value::Column(Rc::new(c)))
+}
+
+const MODIFIERS: &[&str] = &[
+    "notNull",
+    "unique",
+    "primaryKey",
+    "default",
+    "defaultNow",
+    "$default",
+    "$defaultFn",
+    "$onUpdate",
+    "$onUpdateFn",
+    "references",
+    "$type",
+    "min",
+    "max",
+    "pattern",
+    "validate",
+];
+
+/// "a text column", "an email column".
+pub fn kind_phrase(ty: ColType) -> String {
+    let n = ty.name();
+    let article = if n.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {n} column")
+}
+
+/// The §1.2 table: which modifiers each column kind accepts. Returns (message, fix).
+fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
+    use ColType as T;
+    let ty = c.ty;
+    let ok = match m {
+        "min" | "max" => !matches!(ty, T::Boolean | T::Date | T::Timestamp | T::Json | T::Media | T::Group),
+        "pattern" => ty.is_stringy(),
+        "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
+        "references" => matches!(ty, T::Integer | T::Real),
+        "default" | "$default" | "$defaultFn" => ty != T::Media,
+        "$type" => ty == T::Json,
+        _ => true,
+    };
+    if ok {
+        return None;
+    }
+    let fix = match (m, ty) {
+        ("min" | "max", T::Date | T::Timestamp) => "compare dates in `.validate((v) => ...)`".to_string(),
+        ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
+            "use `.validate((value) => ... )` for custom checks".to_string()
+        }
+        ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        _ => "remove it".into(),
+    };
+    Some((format!("`.{m}()` isn't valid on {}", kind_phrase(ty)), fix))
 }
 
 impl ColBuilder {
@@ -1602,11 +1894,21 @@ impl ColBuilder {
             auto_increment: false,
             unique: false,
             enum_values: None,
+            multiline: false,
+            accept: None,
+            source: None,
+            min: None,
+            max: None,
+            pattern: None,
+            validate: None,
+            fields: None,
+            layouts: None,
             default: None,
             on_update: None,
             references: None,
             ts_type: None,
             span,
+            mods: Vec::new(),
         }
     }
 }

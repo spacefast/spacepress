@@ -1,5 +1,5 @@
 import { collection, id, defineConfig, action } from "zero";
-const n = collection("n", { id: id() });
+const n = collection("n", { id: id() }, { editor: false });
 export default defineConfig({
   schema: { n },
   actions: {

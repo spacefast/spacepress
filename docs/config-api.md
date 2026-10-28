@@ -113,6 +113,17 @@ export default defineConfig({
 | `timestamp()` | TEXT (UTC ISO-8601 with ms) | `string` |
 | `date()` | TEXT `YYYY-MM-DD` | `string` |
 | `json()` / `json().$type<T>()` | TEXT (JSON) | `unknown` / `T` |
+| `text({ multiline: true })` | TEXT | `string` (textarea in wp-admin) |
+| `email()` / `url()` | TEXT, validated | `string` |
+| `slug({ source? })` | TEXT, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, derived from `source` when omitted | `string` |
+| `richText()` | TEXT (HTML) | `string` |
+| `media({ accept? })` | INTEGER media id | `number` (a media row with `with: { col: true }`) |
+| `media({ multiple: true })` | TEXT (JSON ids) | `number[]` |
+| `select({ options })` | same as `text({ enum })` | union of the options |
+| `select({ options, multiple: true })` | TEXT (JSON) | `option[]` |
+| `group({ fields })` | TEXT (JSON) | `{ ...fields }` |
+| `repeater({ fields })` | TEXT (JSON) | `{ ...fields }[]` |
+| `blocks({ layouts })` | TEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
 
 Modifiers (each returns a new builder; builders are immutable so shared field
 sets are safe): `.notNull()`, `.default(value)`, `.defaultNow()`
@@ -121,7 +132,16 @@ insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
 update; `() => new Date()` on a timestamp is recognized as "now"),
 `.unique()`, `.primaryKey()`, `.references(() => other.col, { onDelete,
 onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
-`.$type<T>()` (type only).
+`.$type<T>()` (type only), `.min(n)` / `.max(n)` (numbers: bounds; strings:
+length; lists: item count), `.pattern(/re/)` (strings), `.validate((value, ctx)
+=> true | "message")` (compiled to PHP, runs on every write).
+
+Each modifier is checked against the column kind (design §1.2): `.max()` on a
+boolean, `.pattern()` on a number, `.references()` on text and so on fail the
+build at the modifier. `.unique()` text needs `.max(≤191)` (MySQL index limit).
+Sub-fields of `group`/`repeater`/`blocks` can't use `id()`, `.primaryKey()`,
+`.unique()`, `.references()`, `slug()`, `blocks()`, or `.$onUpdate()`, and nest
+at most 3 deep.
 
 Column keys are the SQL column names.
 
@@ -130,8 +150,48 @@ Column keys are the SQL column names.
 `collection(name, columns, options?)`. `name` is the table name and the
 REST path segment (`/api/<name>`); the key under `schema` is the name used in
 `db.query.<key>` and in `hooks`/`relations`. A collection with no primary key
-is a build error. Options: `{ api?: { list?, get?, create?, update?, delete? } }`
-(booleans, default all `true`).
+is a build error.
+
+| option | default | meaning |
+|---|---|---|
+| `label` | title-cased name | wp-admin menus, client docs |
+| `editor` | `true` | WordPress: posts + SCF fields (wp-admin editing). `false`: a plain table everywhere |
+| `drafts` | `editor` | adds system columns `status` (`draft \| published \| scheduled`) and `publishedAt` |
+| `revisions` | `editor` | keep a revision per write |
+| `title` | a `title: text()` column | the WordPress post title; must be `text().notNull()`; required when `editor` |
+| `content` | a `content: richText()` column | the WordPress post content |
+| `access` | read `"anyone"`, writes `"editor"` | see below |
+| `api` | all `true` | `{ list?, get?, create?, update?, delete? }` |
+
+Rejected: an editor collection without a title, names longer than 15
+characters on editor collections (WordPress post types are ≤ 20 with the
+`zero_` prefix), the reserved names `media`, `globals`, `actions`, `me`,
+`_schema`, `auth`, two `slug()` columns, `drafts: false` with `editor: true`,
+and user columns named `status`/`publishedAt` on drafts collections.
+
+### Access
+
+`access: { read, create, update, delete }`, each one of `true`/`false`,
+`"anyone"`, `"authenticated"`, a role (`"subscriber" < "author" < "editor" <
+"admin"`, that role or higher), or `(ctx) => boolean | filter` with `ctx = {
+user, target, op, data? }`. Functions are compiled to PHP like hooks; they
+can't use `db`. A returned filter is checked against the collection like any
+literal filter and is ANDed into reads, updates and deletes; create rules
+return a boolean. Actions take `access` too (default `"editor"`).
+
+## Globals
+
+`global(name, fields, { label?, access?: { read?, update? } })`, registered in
+`defineConfig({ globals: { name } })`. One record per global; fields use the
+sub-field rules, and notNull fields need a default. `GET`/`PATCH
+/api/globals/<name>`.
+
+## defineConfig
+
+`defineConfig({ name?, target?, schema, relations?, globals?, hooks?, actions? })`.
+`name` (a slug, default: the project directory) names the WordPress plugin
+`zero-<name>`; `target` (`"standalone"` or `"wp"`) is the default for
+`zero build`.
 
 ## Relations
 
@@ -146,18 +206,20 @@ the single `one` relation pointing back.
 
 | hook | arguments | notes |
 |---|---|---|
-| `beforeCreate` | `(data: Insert)` | mutate `data` or return a replacement |
-| `afterCreate` | `(row: Row)` | |
-| `beforeUpdate` | `(patch: Partial<Insert>, existing: Row)` | mutate `patch` or return a replacement |
-| `afterUpdate` | `(row: Row, previous: Row)` | |
-| `beforeDelete` / `afterDelete` | `(row: Row)` | throw to abort |
+| `beforeCreate` | `(data: Insert, ctx)` | mutate `data` or return a replacement |
+| `afterCreate` | `(row: Row, ctx)` | |
+| `beforeUpdate` | `(patch: Partial<Insert>, existing: Row, ctx)` | mutate `patch` or return a replacement |
+| `afterUpdate` | `(row: Row, previous: Row, ctx)` | |
+| `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
+
+`ctx` is `{ user: { id, name, role } | null, target: "standalone" | "wp" }`.
 
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 
 ## Actions
 
-`action({ input: { ...columns }, handler(input) { ... } })` → `POST /api/actions/<name>`.
+`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /api/actions/<name>`.
 `input` uses column builders for validation; the return value is the response `data`.
 
 ## Database API (hooks and actions only)
@@ -176,6 +238,14 @@ isNotNull, OR, AND, NOT } }`, top-level `OR`/`AND`/`NOT`, relation keys
 (`{ location: { kind: "fridge" } }` or `{ location: true }`). `orderBy` is
 `{ col: "asc" | "desc" }`. Column, relation, and operator names in literal
 filters are checked at build time.
+
+List columns (`select({ multiple })`, `media({ multiple })`) take `has`,
+`isNull`/`isNotNull` and `eq: []`; JSON columns (`json`, `group`, `repeater`,
+`blocks`) take `eq`/`ne` on the whole value and `isNull`/`isNotNull`, and
+neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
+can't be compared at all (their WordPress meta is spread over many rows).
+These are build errors with the same message the runtime returns.
+`with: { cover: true }` on a media column puts the media row in place of the id.
 
 `await` on these calls compiles to plain blocking PHP calls.
 

@@ -11,7 +11,7 @@ use crate::eval::{Evaluator, GLOBALS, to_json};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
-use crate::schema::{HookKind, RelKind, Schema};
+use crate::schema::{ColType, HookKind, Owner, RelKind, Schema};
 use crate::types::{self, Builder, BuilderKind, JSON_TYPES, Ty};
 use crate::value::*;
 use indexmap::IndexMap;
@@ -147,6 +147,11 @@ struct FnCtx {
     tmp: usize,
     /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
     switch_depth: usize,
+    /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
+    no_db: bool,
+    /// Set while compiling an access rule's own body: (collection table, op). Its returns are
+    /// `true`/`false` or a filter literal checked against that collection.
+    access: Option<(Option<String>, String)>,
 }
 
 pub struct Compiler<'a, 'p> {
@@ -161,6 +166,8 @@ pub struct Compiler<'a, 'p> {
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
     fx: Option<FnCtx>,
+    /// Inferred result type of each action handler (for the typed client).
+    pub action_results: HashMap<String, Ty>,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -189,6 +196,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             pending: Vec::new(),
             output: String::new(),
             fx: None,
+            action_results: HashMap::new(),
         }
     }
 
@@ -234,6 +242,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot))?;
+            if let Slot::ActionHandler { action } = &root.slot
+                && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
+            {
+                let ret = match &**ret {
+                    Ty::Promise(t) => (**t).clone(),
+                    t => t.clone(),
+                };
+                self.action_results.insert(action.clone(), ret);
+            }
             self.helpers.entry(key).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
@@ -244,18 +261,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn root_params(&self, slot: &Slot) -> Vec<Ty> {
+        let ctx = types::hook_ctx();
         match slot {
             Slot::Hook { table, kind } => {
                 let row = types::row(self.schema, table);
                 match kind {
-                    HookKind::BeforeCreate => vec![types::insert(self.schema, table)],
-                    HookKind::BeforeUpdate => vec![types::partial(types::insert(self.schema, table)), row],
-                    HookKind::AfterUpdate => vec![row.clone(), row],
-                    _ => vec![row],
+                    HookKind::BeforeCreate => vec![types::insert(self.schema, table), ctx],
+                    HookKind::BeforeUpdate => vec![types::partial(types::insert(self.schema, table)), row, ctx],
+                    HookKind::AfterUpdate => vec![row.clone(), row, ctx],
+                    _ => vec![row, ctx],
                 }
             }
-            Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input)],
-            Slot::Default { .. } | Slot::OnUpdate { .. } | Slot::ActionDefault { .. } => vec![],
+            Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input), ctx],
+            Slot::Access { owner, op } => {
+                let data = match owner {
+                    Owner::Collection(t) if op == "create" => types::partial(types::insert(self.schema, t)),
+                    Owner::Collection(t) if op == "update" => types::partial(types::insert(self.schema, t)),
+                    Owner::Global(g) if op == "update" => types::partial(types::global_row(&self.schema.globals[g])),
+                    _ => Ty::Map(Box::new(Ty::Unknown)),
+                };
+                vec![types::access_ctx(data)]
+            }
+            Slot::Validate { at } => {
+                let col = self.schema.column_at(at);
+                vec![
+                    types::col_base(col, &types::json_ty(owner_table(&at.owner)), false),
+                    types::validate_ctx(),
+                ]
+            }
+            Slot::Default { .. } | Slot::OnUpdate { .. } => vec![],
         }
     }
 
@@ -280,6 +314,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
+            no_db: matches!(slot, Some(Slot::Access { .. })),
+            access: match slot {
+                Some(Slot::Access { owner, op }) => Some((
+                    match owner {
+                        Owner::Collection(t) => Some(t.clone()),
+                        _ => None,
+                    },
+                    op.clone(),
+                )),
+                _ => None,
+            },
         };
         let generics: HashMap<String, Ty> = f.type_params.iter().map(|t| (t.clone(), Ty::Unknown)).collect();
         let mut param_tys = Vec::new();
@@ -414,8 +459,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut body = prologue;
         match &f.body {
             FnBody::Expr(e) => {
-                let v = self.expr(e)?;
-                let v = self.finish_value(v, e.span)?;
+                let v = self.return_value(e)?;
                 self.note_return(&v.ty, e.span)?;
                 let _ = writeln!(body, "    return {};", v.php);
             }
@@ -814,9 +858,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Stmt::Return(e, span) => match e {
                 Some(e) => {
-                    let v = self.expr(e)?;
-                    let v = self.finish_value(v, e.span)?;
-                    let v = self.coerce_return(v, e.span)?;
+                    let v = self.return_value(e)?;
                     self.note_return(&v.ty, *span)?;
                     let _ = writeln!(out, "{p}return {};", v.php);
                 }
@@ -1015,8 +1057,60 @@ impl<'a, 'p> Compiler<'a, 'p> {
         format!("${name}")
     }
 
-    fn coerce_return(&mut self, v: Out, _span: Span) -> Result<Out> {
-        Ok(v)
+    /// A `return` operand. In an access rule it must be a boolean or a filter literal (§1.6).
+    fn return_value(&mut self, e: &Expr) -> Result<Out> {
+        let Some((table, op)) = self.fx().access.clone() else {
+            let v = self.expr(e)?;
+            return self.finish_value(v, e.span);
+        };
+        match &e.kind {
+            ExprKind::Cond(t, a, b) => {
+                let narrow = self.narrowing(t);
+                let tc = self.cond(t)?;
+                self.fx().scopes.push(HashMap::new());
+                self.apply_narrowing(&narrow, true);
+                let av = self.return_value(a);
+                self.fx().scopes.pop();
+                let av = av?;
+                self.fx().scopes.push(HashMap::new());
+                self.apply_narrowing(&narrow, false);
+                let bv = self.return_value(b);
+                self.fx().scopes.pop();
+                let bv = bv?;
+                Ok(Out::new(
+                    format!("{} ? {} : {}", paren(&tc), av.wrapped(), bv.wrapped()),
+                    Ty::union([av.ty, bv.ty]),
+                ))
+            }
+            ExprKind::Object(_) => match table {
+                Some(t) if op != "create" => {
+                    let php = self.filter(&t, e, true)?;
+                    Ok(Out::atom(php, Ty::Map(Box::new(Ty::Unknown))))
+                }
+                Some(_) => err_help(
+                    e.span,
+                    "create rules return a boolean",
+                    "a new row has nothing to filter; return true or false (check `ctx.data` if needed)",
+                ),
+                None => err_help(
+                    e.span,
+                    format!("{op} rules here return a boolean"),
+                    "filters only apply to collection read, update, and delete rules",
+                ),
+            },
+            _ => {
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                if v.ty == Ty::Bool {
+                    return Ok(v);
+                }
+                err_help(
+                    e.span,
+                    format!("access rules return true, false, or a filter, not {}", v.ty.describe()),
+                    "write a filter inline (`{ status: \"published\" }`) or turn the value into a boolean",
+                )
+            }
+        }
     }
 
     fn throw_value(&mut self, e: &Expr) -> Result<String> {
@@ -1183,30 +1277,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn collect_narrowing(&mut self, test: &Expr, negate: bool, out: &mut Vec<(String, Ty, Ty)>) {
-        let local_ty = |c: &mut Self, n: &str| -> Option<Ty> {
-            c.fx.as_ref()?
-                .scopes
-                .iter()
-                .rev()
-                .find_map(|s| s.get(n))
-                .map(|l| l.ty.clone())
-        };
         match &test.kind {
-            ExprKind::Ident(n) => {
-                if let Some(t) = local_ty(self, n) {
+            ExprKind::Ident(_) | ExprKind::Member { .. } | ExprKind::Chain(_) => {
+                if let Some((n, t)) = self.path_ty(test) {
                     let (yes, no) = (t.non_null(), t.clone());
-                    out.push(if negate {
-                        (n.clone(), no, yes)
-                    } else {
-                        (n.clone(), yes, no)
-                    });
+                    out.push(if negate { (n, no, yes) } else { (n, yes, no) });
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
             ExprKind::IsNullish(inner, negated) => {
-                if let ExprKind::Ident(n) = &inner.kind
-                    && let Some(t) = local_ty(self, n)
-                {
+                if let Some((n, t)) = self.path_ty(inner) {
                     // `x == null` true → null branch; false → non-null.
                     let is_null_branch = *negated == negate;
                     let (yes, no) = if is_null_branch {
@@ -1214,16 +1294,40 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         (t.non_null(), Ty::Null)
                     };
-                    out.push((n.clone(), yes, no));
+                    out.push((n, yes, no));
                 }
             }
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r) => {
-                let (id, other) = match (&l.kind, &r.kind) {
-                    (ExprKind::Ident(n), o) | (o, ExprKind::Ident(n)) => (n, o),
-                    _ => return,
+                // `item.layout === "hero"` picks that member of a blocks item union.
+                let (member, lit) = match (&l.kind, &r.kind) {
+                    (ExprKind::Member { obj, prop, .. }, ExprKind::Str(s)) if prop == "layout" => (Some(obj), s),
+                    (ExprKind::Str(s), ExprKind::Member { obj, prop, .. }) if prop == "layout" => (Some(obj), s),
+                    _ => (None, &String::new()),
                 };
-                if matches!(other, ExprKind::Null | ExprKind::Undefined)
-                    && let Some(t) = local_ty(self, id)
+                if let Some(obj) = member
+                    && let Some((n, t)) = self.path_ty(obj)
+                    && let Ty::Union(items) = t.non_null()
+                    && items.iter().any(|i| types::layout_of(i).is_some())
+                {
+                    let (hit, miss): (Vec<Ty>, Vec<Ty>) = items
+                        .iter()
+                        .cloned()
+                        .partition(|i| types::layout_of(i) == Some(lit.as_str()));
+                    let yes_is_hit = (*op == BinOp::Eq) != negate;
+                    let (yes, no) = if yes_is_hit {
+                        (Ty::union(hit), Ty::union(miss))
+                    } else {
+                        (Ty::union(miss), Ty::union(hit))
+                    };
+                    out.push((n, yes, no));
+                    return;
+                }
+                let (subject, other) = match (&l.kind, &r.kind) {
+                    (ExprKind::Null | ExprKind::Undefined, _) => (r, l),
+                    _ => (l, r),
+                };
+                if matches!(other.kind, ExprKind::Null | ExprKind::Undefined)
+                    && let Some((n, t)) = self.path_ty(subject)
                 {
                     let is_null_branch = (*op == BinOp::Eq) != negate;
                     let (yes, no) = if is_null_branch {
@@ -1231,24 +1335,86 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         (t.non_null(), Ty::Null)
                     };
-                    out.push((id.clone(), yes, no));
+                    out.push((n, yes, no));
                 }
             }
             ExprKind::Logical(LogOp::And, l, r) if !negate => {
+                let start = out.len();
                 self.collect_narrowing(l, false, out);
+                // The right side is checked with the left side's narrowing applied.
+                let left: Vec<_> = out[start..].to_vec();
+                self.fx().scopes.push(HashMap::new());
+                self.apply_narrowing(&left, true);
                 self.collect_narrowing(r, false, out);
-                // Only the "true" side is sound for both operands.
-                for n in out.iter_mut() {
-                    n.2 = local_ty(self, &n.0).unwrap_or(n.2.clone());
+                self.fx().scopes.pop();
+                // Only the "true" side is sound for both operands: the false side keeps the declared type.
+                for entry in &mut out[start..] {
+                    if let Some(declared) = self.declared_path_ty(&entry.0) {
+                        entry.2 = declared;
+                    }
                 }
             }
             _ => {}
         }
     }
 
+    /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local.
+    fn path_ty(&mut self, e: &Expr) -> Option<(String, Ty)> {
+        let path = self.path_of(e)?;
+        let saved_tmp = self.fx().tmp;
+        let t = self.expr(e).ok().map(|o| o.ty);
+        self.fx().tmp = saved_tmp;
+        Some((path, t?))
+    }
+
+    fn path_of(&self, e: &Expr) -> Option<String> {
+        match &e.kind {
+            ExprKind::Ident(n) => {
+                let fx = self.fx.as_ref()?;
+                fx.scopes.iter().any(|s| s.contains_key(n)).then(|| n.clone())
+            }
+            ExprKind::Member { obj, prop, .. } => Some(format!("{}.{prop}", self.path_of(obj)?)),
+            ExprKind::Chain(inner) | ExprKind::NonNull(inner) => self.path_of(inner),
+            _ => None,
+        }
+    }
+
+    /// The type a path had before any narrowing in the current branch stack (outermost entry).
+    fn declared_path_ty(&self, name: &str) -> Option<Ty> {
+        self.fx
+            .as_ref()?
+            .scopes
+            .iter()
+            .find_map(|s| s.get(name))
+            .map(|l| l.ty.clone())
+    }
+
+    /// A narrowed type recorded for a member path (`ctx.user` after `if (ctx.user)`).
+    fn narrowed_path(&self, path: &str) -> Option<Ty> {
+        self.fx
+            .as_ref()?
+            .scopes
+            .iter()
+            .rev()
+            .find_map(|s| s.get(path))
+            .map(|l| l.ty.clone())
+    }
+
     fn apply_narrowing(&mut self, n: &[(String, Ty, Ty)], truthy: bool) {
         for (name, yes, no) in n {
             let t = if truthy { yes.clone() } else { no.clone() };
+            if name.contains('.') {
+                // Member path: a type override read by `member()`, never a PHP variable.
+                self.fx().scopes.last_mut().expect("scope").insert(
+                    name.clone(),
+                    Local {
+                        php: String::new(),
+                        ty: t,
+                        mutable: false,
+                    },
+                );
+                continue;
+            }
             let Some(local) = self.fx().scopes.iter().rev().find_map(|s| s.get(name)).cloned() else {
                 continue;
             };
@@ -1736,7 +1902,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let t = self.table_of(c, span)?;
                 Ok(Out::atom(php_str(&t), Ty::Collection(t)))
             }
-            Value::Builtin(Builtin::Db) => Ok(Out::atom("\\Zero\\db()", Ty::Db)),
+            Value::Builtin(Builtin::Db) => {
+                if self.fx().no_db {
+                    return err_help(
+                        span,
+                        "access rules can't query; put that in a hook",
+                        "return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`",
+                    );
+                }
+                Ok(Out::atom("\\Zero\\db()", Ty::Db))
+            }
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
             Value::Builtin(_)
             | Value::Column(_)
@@ -1853,6 +2028,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
+            no_db: self.fx().no_db,
+            access: None,
         };
         if f.is_async {
             return err_help(
@@ -2071,7 +2248,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             _ => {}
         }
-        let o = self.finish_value(o, obj.span)?;
+        let mut o = self.finish_value(o, obj.span)?;
+        if let Some(path) = self.path_of(obj)
+            && let Some(t) = self.narrowed_path(&path)
+        {
+            o.ty = t;
+        }
         let base = o.ty.non_null();
         if o.ty.is_nullable() && !optional {
             return err_help(
@@ -2107,8 +2289,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             (Ty::Error, "message") => Out::atom(format!("{}->getMessage()", o.wrapped()), Ty::Str),
             (Ty::Regex, "source" | "flags") => Out::atom(format!("{}->{prop}", o.wrapped()), Ty::Str),
-            (Ty::Obj(_) | Ty::Map(_), _) => {
+            (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
+                    if matches!(base, Ty::Union(_)) {
+                        return err(prop_span, format!("{} has no property `{prop}`", base.describe()));
+                    }
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
@@ -3031,7 +3216,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         for (rel, nested) in with_rels {
-            row = types::with_relations(self.schema, table, row, &rel, nested);
+            row = match rel.strip_prefix('\u{0}') {
+                // A media column populated in place.
+                Some(col) => match row {
+                    Ty::Obj(mut f) => {
+                        f.insert(col.to_string(), (nested, false));
+                        Ty::Obj(f)
+                    }
+                    other => other,
+                },
+                None => types::with_relations(self.schema, table, row, &rel, nested),
+            };
         }
         Ok((format!("[{}]", parts.join(", ")), row))
     }
@@ -3046,6 +3241,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let Prop::KV(PropKey::Static(rel), v) = p else {
                 return err(e.span, "`with` keys must be relation names");
             };
+            if let Some(col) = self.schema.collections[table].columns.get(rel)
+                && matches!(col.ty, ColType::Media | ColType::MediaList)
+            {
+                if !matches!(v.kind, ExprKind::Bool(true)) {
+                    return err(v.span, format!("`with.{rel}` loads the media row; use `true`"));
+                }
+                parts.push(format!("{} => true", php_str(rel)));
+                let m = types::media_row();
+                let t = if col.ty == ColType::MediaList {
+                    Ty::Array(Box::new(m))
+                } else {
+                    m
+                };
+                rels.push((format!("\u{0}{rel}"), if col.not_null { t } else { t.nullable() }));
+                continue;
+            }
             let r = self.check_relation(table, rel, v.span)?.clone();
             match &v.kind {
                 ExprKind::Bool(true) => {
@@ -3072,7 +3283,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let Prop::KV(PropKey::Static(col), dir) = p else {
                 return err(e.span, "`orderBy` keys must be column names");
             };
-            self.check_column(table, col, dir.span)?;
+            let c = self.check_column(table, col, dir.span)?;
+            if c.ty.is_json_kind() {
+                return err(dir.span, "`orderBy` isn't supported on JSON columns");
+            }
+            if c.ty.is_list_kind() {
+                return err(dir.span, "`orderBy` isn't supported on list columns");
+            }
+            let coll = &self.schema.collections[table];
+            if coll.editor && coll.content.as_deref() == Some(col.as_str()) {
+                return err(
+                    dir.span,
+                    format!("`orderBy` on `{col}` isn't supported on editor collections"),
+                );
+            }
             match &dir.kind {
                 ExprKind::Str(d) if d == "asc" || d == "desc" => {
                     parts.push(format!("{} => {}", php_str(col), php_str(d)))
@@ -3140,7 +3364,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let c = &self.schema.collections[table];
                     if let Some(col) = c.columns.get(name) {
                         let col = col.clone();
-                        self.field_filter(&col, v)?
+                        let editor = c.editor;
+                        self.field_filter(&col, v, editor)?
                     } else if c.relations.contains_key(name) {
                         if !allow_relations {
                             return err(v.span, "relation filters only work in findMany/findFirst");
@@ -3165,9 +3390,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(format!("[{}]", parts.join(", ")))
     }
 
-    fn field_filter(&mut self, col: &crate::schema::Column, e: &Expr) -> Result<String> {
+    /// `editor`: the collection is post-backed on WordPress (§3.5.1 limits what can be filtered).
+    fn field_filter(&mut self, col: &crate::schema::Column, e: &Expr, editor: bool) -> Result<String> {
+        let spread_meta = |op: &str, span: Span| -> Result<()> {
+            if editor && col.ty.is_structured() {
+                return err_help(
+                    span,
+                    format!(
+                        "`{op}` on `{}` isn't supported on editor collections; filter on a scalar column",
+                        col.name
+                    ),
+                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or `editor: false`",
+                );
+            }
+            Ok(())
+        };
         let col_ty = col_value_ty(col);
-        let ExprKind::Object(props) = &e.kind else {
+        let is_json = col.ty.is_json_kind();
+        let is_list = col.ty.is_list_kind();
+        // `{ tags: ["a"] }` / `{ seo: {...} }`: a whole value, compared with `eq`.
+        let whole_value = match &e.kind {
+            ExprKind::Object(props) => {
+                is_json
+                    && !props
+                        .iter()
+                        .all(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))
+            }
+            ExprKind::Array(_) => is_list || is_json,
+            _ => true,
+        };
+        if whole_value {
             let v = self.expr(e)?;
             let v = self.finish_value(v, e.span)?;
             if !assignable(&v.ty, &col_ty.clone().nullable()) {
@@ -3181,21 +3433,56 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ),
                 );
             }
+            if v.ty != Ty::Null {
+                spread_meta("eq", e.span)?;
+            }
+            if is_list && !matches!(&e.kind, ExprKind::Array(a) if a.is_empty()) && v.ty != Ty::Null {
+                return err_help(
+                    e.span,
+                    "`eq` isn't supported on list columns; use `has`",
+                    format!("write `{{ {}: {{ has: ... }} }}`", col.name),
+                );
+            }
             return Ok(self.filter_value(col, &v));
+        }
+        let ExprKind::Object(props) = &e.kind else {
+            unreachable!("non-objects are whole values")
         };
         let mut parts = Vec::new();
         for p in props {
             let Prop::KV(PropKey::Static(op), v) = p else {
                 return err(e.span, "filter operators must be plain names");
             };
+            if (is_json || is_list) && !matches!(op.as_str(), "isNull" | "isNotNull" | "NOT" | "OR" | "AND") {
+                let allowed = if is_json {
+                    matches!(op.as_str(), "eq" | "ne")
+                } else {
+                    op == "has" || (op == "eq" && matches!(&v.kind, ExprKind::Array(a) if a.is_empty()))
+                };
+                if !allowed && FILTER_OPS.contains(&op.as_str()) {
+                    return Err(if is_json {
+                        Diag::new(v.span, format!("`{op}` isn't supported on JSON columns"))
+                    } else {
+                        Diag::new(v.span, format!("`{op}` isn't supported on list columns; use `has`"))
+                    });
+                }
+            }
+            if matches!(op.as_str(), "eq" | "ne") && !matches!(v.kind, ExprKind::Null | ExprKind::Undefined) {
+                spread_meta(op, v.span)?;
+            }
             let php = match op.as_str() {
                 "eq" | "ne" | "gt" | "gte" | "lt" | "lte" => {
                     let x = self.expr(v)?;
                     let x = self.finish_value(x, v.span)?;
-                    let want = if matches!(col.ty, crate::schema::ColType::Timestamp | crate::schema::ColType::Date) {
+                    let want = if matches!(col.ty, ColType::Timestamp | ColType::Date) {
                         Ty::union([Ty::Str, Ty::Num, Ty::Date])
                     } else {
                         col_ty.clone()
+                    };
+                    let want = if matches!(op.as_str(), "eq" | "ne") {
+                        want.nullable()
+                    } else {
+                        want
                     };
                     if !assignable(&x.ty, &want) {
                         return err(
@@ -3209,6 +3496,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                     self.filter_value(col, &x)
+                }
+                "has" => {
+                    let Ty::Array(el) = &col_ty else {
+                        return err(v.span, "`has` is only supported on list columns");
+                    };
+                    let x = self.expr(v)?;
+                    let x = self.finish_value(x, v.span)?;
+                    if !assignable(&x.ty, el) {
+                        return err(
+                            v.span,
+                            format!(
+                                "`{}` holds {}, but this is {}",
+                                col.name,
+                                el.describe(),
+                                x.ty.describe()
+                            ),
+                        );
+                    }
+                    x.php
                 }
                 "in" | "notIn" => {
                     let x = self.expr(v)?;
@@ -3228,7 +3534,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ExprKind::Bool(true) => "true".into(),
                     _ => return err(v.span, format!("`{op}` takes `true`")),
                 },
-                "NOT" => self.field_filter(col, v)?,
+                "NOT" => self.field_filter(col, v, editor)?,
                 "OR" | "AND" => {
                     let ExprKind::Array(items) = &v.kind else {
                         return err(v.span, format!("`{op}` takes an array"));
@@ -3238,32 +3544,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let ArrEl::Item(x) = it else {
                             return err(v.span, "spread isn't supported here");
                         };
-                        subs.push(self.field_filter(col, x)?);
+                        subs.push(self.field_filter(col, x, editor)?);
                     }
                     format!("[{}]", subs.join(", "))
                 }
                 other => {
-                    let ops = [
-                        "eq",
-                        "ne",
-                        "gt",
-                        "gte",
-                        "lt",
-                        "lte",
-                        "in",
-                        "notIn",
-                        "like",
-                        "ilike",
-                        "notLike",
-                        "notIlike",
-                        "isNull",
-                        "isNotNull",
-                        "NOT",
-                        "OR",
-                        "AND",
-                    ];
                     let mut d = Diag::new(v.span, format!("unknown filter operator `{other}`"));
-                    if let Some(s) = suggest(other, ops) {
+                    if let Some(s) = suggest(other, FILTER_OPS.iter().copied()) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
                     return Err(d);
@@ -3277,8 +3564,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (crate::schema::ColType::Timestamp, Ty::Date | Ty::Num) => format!("\\Zero\\Js::iso({})", v.php),
-            (crate::schema::ColType::Date, Ty::Date | Ty::Num) => format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Date | Ty::Num) => format!("\\Zero\\Js::iso({})", v.php),
+            (ColType::Date, Ty::Date | Ty::Num) => format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php),
             _ => v.php.clone(),
         }
     }
@@ -3406,13 +3693,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 }
 
+const FILTER_OPS: &[&str] = &[
+    "eq",
+    "ne",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "in",
+    "notIn",
+    "like",
+    "ilike",
+    "notLike",
+    "notIlike",
+    "isNull",
+    "isNotNull",
+    "has",
+    "NOT",
+    "OR",
+    "AND",
+];
+
 fn col_value_ty(c: &crate::schema::Column) -> Ty {
-    use crate::schema::ColType;
     match c.ty {
-        ColType::Integer | ColType::Real => Ty::Num,
-        ColType::Text | ColType::Timestamp | ColType::Date => Ty::Str,
-        ColType::Boolean => Ty::Bool,
         ColType::Json => Ty::Unknown,
+        _ => types::col_base(c, &|_| Ty::Unknown, false),
+    }
+}
+
+/// The table a column path belongs to, for `json().$type<T>()` lookups.
+fn owner_table(o: &Owner) -> &str {
+    match o {
+        Owner::Collection(t) => t,
+        _ => "",
     }
 }
 

@@ -1,5 +1,6 @@
 //! The evaluated schema: plain data produced by running `zero.config.ts` at
-//! build time. Migrations, schema.php, and generated types all derive from it.
+//! build time. Migrations, schema.php, the typed client, and generated types
+//! all derive from it.
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
@@ -13,6 +14,17 @@ pub enum ColType {
     Timestamp,
     Date,
     Json,
+    Email,
+    Url,
+    Slug,
+    RichText,
+    Media,
+    MediaList,
+    /// `select({ multiple: true })`. A single select is `Text` with `enum`.
+    Select,
+    Group,
+    Repeater,
+    Blocks,
 }
 
 impl ColType {
@@ -25,7 +37,40 @@ impl ColType {
             ColType::Timestamp => "timestamp",
             ColType::Date => "date",
             ColType::Json => "json",
+            ColType::Email => "email",
+            ColType::Url => "url",
+            ColType::Slug => "slug",
+            ColType::RichText => "richText",
+            ColType::Media => "media",
+            ColType::MediaList => "mediaList",
+            ColType::Select => "select",
+            ColType::Group => "group",
+            ColType::Repeater => "repeater",
+            ColType::Blocks => "blocks",
         }
+    }
+
+    /// Strings validated by length/pattern.
+    pub fn is_stringy(self) -> bool {
+        matches!(self, ColType::Text | ColType::Email | ColType::Url | ColType::Slug)
+    }
+
+    /// Stored as JSON text and filtered as a whole value (§3.5 `json` kind).
+    pub fn is_json_kind(self) -> bool {
+        matches!(
+            self,
+            ColType::Json | ColType::Group | ColType::Repeater | ColType::Blocks
+        )
+    }
+
+    /// Lists filtered with `has` (§3.5 `serialized-list` kind).
+    pub fn is_list_kind(self) -> bool {
+        matches!(self, ColType::MediaList | ColType::Select)
+    }
+
+    /// Group/repeater/blocks: their meta is spread over many rows on WordPress.
+    pub fn is_structured(self) -> bool {
+        matches!(self, ColType::Group | ColType::Repeater | ColType::Blocks)
     }
 }
 
@@ -68,6 +113,23 @@ pub struct Reference {
     pub on_update: Option<RefAction>,
 }
 
+/// Value rules checked by the runtime after coercion (§1.2).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Rules {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    /// JavaScript source and flags of a RegExp literal.
+    pub pattern: Option<(String, String)>,
+    /// Compiled validator (function name in functions.php).
+    pub validate: Option<String>,
+}
+
+impl Rules {
+    pub fn is_empty(&self) -> bool {
+        self.min.is_none() && self.max.is_none() && self.pattern.is_none() && self.validate.is_none()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
@@ -77,14 +139,49 @@ pub struct Column {
     pub auto_increment: bool,
     pub unique: bool,
     pub enum_values: Option<Vec<String>>,
+    pub multiline: bool,
+    /// `media({ accept })`: "image" | "any".
+    pub accept: Option<String>,
+    /// `slug({ source })`.
+    pub source: Option<String>,
     pub default: Option<DefaultKind>,
     pub on_update: Option<DefaultKind>,
     pub references: Option<Reference>,
+    pub rules: Rules,
+    /// Sub-fields of a group or repeater.
+    pub fields: Option<IndexMap<String, Column>>,
+    /// Layouts of a blocks column: layout name → sub-fields.
+    pub layouts: Option<IndexMap<String, IndexMap<String, Column>>>,
+    /// Added by the compiler (drafts `status` / `publishedAt`).
+    pub system: bool,
     /// `json().$type<T>()` annotation and the module it was written in.
     pub ts_type: Option<(crate::ir::TyAnn, usize)>,
 }
 
 impl Column {
+    pub fn new(name: &str, ty: ColType) -> Column {
+        Column {
+            name: name.to_string(),
+            ty,
+            not_null: false,
+            primary_key: false,
+            auto_increment: false,
+            unique: false,
+            enum_values: None,
+            multiline: false,
+            accept: None,
+            source: None,
+            default: None,
+            on_update: None,
+            references: None,
+            rules: Rules::default(),
+            fields: None,
+            layouts: None,
+            system: false,
+            ts_type: None,
+        }
+    }
+
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         !self.not_null || self.default.is_some() || self.auto_increment
@@ -153,24 +250,65 @@ pub struct Api {
     pub delete: bool,
 }
 
+pub const ROLES: [&str; 4] = ["subscriber", "author", "editor", "admin"];
+
+/// One access rule (§1.6), as schema.php stores it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Access {
+    Allow(bool),
+    /// "anyone" | "authenticated" | a role.
+    Role(String),
+    /// Compiled function name.
+    Fn(String),
+}
+
+impl Access {
+    pub fn editor() -> Access {
+        Access::Role("editor".into())
+    }
+    pub fn anyone() -> Access {
+        Access::Role("anyone".into())
+    }
+}
+
+/// Operations a collection's access config covers, in schema.php order.
+pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
+
 #[derive(Debug, Clone)]
 pub struct Collection {
     /// Key under `schema` in the config (`shoppingList`).
     pub key: String,
     /// Table name and REST path segment (`shopping_list`).
     pub table: String,
+    pub label: String,
+    pub editor: bool,
+    pub drafts: bool,
+    pub revisions: bool,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub slug: Option<String>,
     pub columns: IndexMap<String, Column>,
     pub relations: IndexMap<String, Relation>,
     /// Hook → compiled PHP function name.
     pub hooks: IndexMap<HookKind, String>,
     /// Required columns the beforeCreate hook assigns (checked after the hook).
     pub before_create_fills: Vec<String>,
+    /// op ("read" | "create" | "update" | "delete") → rule.
+    pub access: IndexMap<String, Access>,
     pub api: Api,
 }
 
 impl Collection {
     pub fn primary_key(&self) -> Option<&Column> {
         self.columns.values().find(|c| c.primary_key)
+    }
+
+    /// Is this column a WordPress core post column (not postmeta) on WP?
+    pub fn is_core_column(&self, col: &str) -> bool {
+        self.columns.get(col).is_some_and(|c| c.primary_key || c.system)
+            || self.title.as_deref() == Some(col)
+            || self.content.as_deref() == Some(col)
+            || self.slug.as_deref() == Some(col)
     }
 }
 
@@ -179,17 +317,153 @@ pub struct Action {
     pub name: String,
     pub input: IndexMap<String, Column>,
     pub handler: String,
+    pub access: Access,
+}
+
+#[derive(Debug, Clone)]
+pub struct Global {
+    pub name: String,
+    pub label: String,
+    pub fields: IndexMap<String, Column>,
+    /// "read" / "update" → rule.
+    pub access: IndexMap<String, Access>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    Standalone,
+    Wp,
+}
+
+impl Target {
+    pub fn name(self) -> &'static str {
+        match self {
+            Target::Standalone => "standalone",
+            Target::Wp => "wp",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Target> {
+        match s {
+            "standalone" => Some(Target::Standalone),
+            "wp" => Some(Target::Wp),
+            _ => None,
+        }
+    }
+
+    /// Default REST prefix (§4.8).
+    pub fn base_path(self) -> &'static str {
+        match self {
+            Target::Standalone => "/api",
+            Target::Wp => "/wp-json/zero/v1",
+        }
+    }
+}
+
+/// Where a column lives, for attaching compiled functions after evaluation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Owner {
+    Collection(String),
+    Global(String),
+    Action(String),
+}
+
+/// A column (or a sub-field of one): `[col]`, `[col, sub]`, `[col, layout, sub]`, ...
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColPath {
+    pub owner: Owner,
+    pub path: Vec<String>,
 }
 
 /// The whole app, keyed by table name.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Schema {
+    pub name: String,
+    pub target: Target,
     pub collections: IndexMap<String, Collection>,
+    pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
+}
+
+impl Default for Schema {
+    fn default() -> Self {
+        Schema {
+            name: String::new(),
+            target: Target::Standalone,
+            collections: IndexMap::new(),
+            globals: IndexMap::new(),
+            actions: IndexMap::new(),
+        }
+    }
 }
 
 impl Schema {
     pub fn by_key(&self, key: &str) -> Option<&Collection> {
         self.collections.values().find(|c| c.key == key)
     }
+
+    /// The column a path names. Paths come from the extractor, so they always resolve.
+    pub fn column_at(&self, at: &ColPath) -> &Column {
+        let top = match &at.owner {
+            Owner::Collection(t) => &self.collections[t].columns,
+            Owner::Global(g) => &self.globals[g].fields,
+            Owner::Action(a) => &self.actions[a].input,
+        };
+        let mut col = &top[&at.path[0]];
+        let mut rest = &at.path[1..];
+        while !rest.is_empty() {
+            if let Some(layouts) = &col.layouts {
+                col = &layouts[&rest[0]][&rest[1]];
+                rest = &rest[2..];
+            } else {
+                col = &col.fields.as_ref().expect("sub-fields")[&rest[0]];
+                rest = &rest[1..];
+            }
+        }
+        col
+    }
+
+    pub fn column_mut(&mut self, at: &ColPath) -> &mut Column {
+        let top = match &at.owner {
+            Owner::Collection(t) => &mut self.collections.get_mut(t).expect("collection").columns,
+            Owner::Global(g) => &mut self.globals.get_mut(g).expect("global").fields,
+            Owner::Action(a) => &mut self.actions.get_mut(a).expect("action").input,
+        };
+        let mut col = top.get_mut(&at.path[0]).expect("column");
+        let mut rest = &at.path[1..];
+        while !rest.is_empty() {
+            if let Some(layouts) = col.layouts.as_mut() {
+                col = layouts
+                    .get_mut(&rest[0])
+                    .expect("layout")
+                    .get_mut(&rest[1])
+                    .expect("layout field");
+                rest = &rest[2..];
+            } else {
+                col = col
+                    .fields
+                    .as_mut()
+                    .expect("sub-fields")
+                    .get_mut(&rest[0])
+                    .expect("sub-field");
+                rest = &rest[1..];
+            }
+        }
+        col
+    }
+}
+
+/// "shopping_list" → "Shopping List".
+pub fn title_case(name: &str) -> String {
+    name.split(['_', '-'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

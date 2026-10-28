@@ -32,6 +32,7 @@ pub enum Value {
     ColRef(Rc<ColRefVal>),
     Relation(Rc<RelVal>),
     Action(Rc<ActionVal>),
+    Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
 }
 
@@ -47,6 +48,10 @@ pub enum Builtin {
     Collection,
     Column(ColType),
     Id,
+    /// email, url, slug, richText, media, select, group, repeater, blocks
+    Field(&'static str),
+    /// `global(name, fields, options)` from "zero".
+    DefineGlobal,
     DefineRelations,
     DefineConfig,
     Action,
@@ -69,10 +74,43 @@ pub struct ColBuilder {
     pub auto_increment: bool,
     pub unique: bool,
     pub enum_values: Option<Vec<String>>,
+    pub multiline: bool,
+    pub accept: Option<String>,
+    pub source: Option<String>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub pattern: Option<(String, String)>,
+    pub validate: Option<Rc<Closure>>,
+    /// group / repeater sub-fields.
+    pub fields: Option<IndexMap<String, Rc<ColBuilder>>>,
+    /// blocks layouts.
+    pub layouts: Option<IndexMap<String, IndexMap<String, Rc<ColBuilder>>>>,
     pub default: Option<DefaultVal>,
     pub on_update: Option<DefaultVal>,
     pub references: Option<RefBuilder>,
     pub ts_type: Option<(TyAnn, usize)>,
+    pub span: Span,
+    /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
+    pub mods: Vec<(&'static str, Span)>,
+}
+
+impl ColBuilder {
+    /// Span of the modifier call, or of the builder when it wasn't called explicitly.
+    pub fn span_of(&self, m: &str) -> Span {
+        self.mods
+            .iter()
+            .rev()
+            .find(|(k, _)| *k == m)
+            .map(|(_, s)| *s)
+            .unwrap_or(self.span)
+    }
+}
+
+#[derive(Debug)]
+pub struct GlobalVal {
+    pub name: String,
+    pub fields: IndexMap<String, Rc<ColBuilder>>,
+    pub options: Option<Value>,
     pub span: Span,
 }
 
@@ -205,6 +243,7 @@ impl Value {
             Value::ColRef(r) => format!("column {}.{}", r.collection.table, r.column),
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
+            Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{p}/{f}"),
         }
     }

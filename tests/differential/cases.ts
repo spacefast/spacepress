@@ -1,8 +1,43 @@
-// Every action here runs under Node and as compiled PHP; results must be identical.
-// Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, id, defineConfig, action } from "zero";
+// Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
+// results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
+import { collection, id, text, integer, defineConfig, action } from "zero";
 
-const n = collection("n", { id: id() });
+const n = collection("n", { id: id() }, { editor: false });
+
+// Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
+export const ACCESS_CTXS = [
+  { user: null, target: "standalone" },
+  { user: { id: 7, name: "Sub", role: "subscriber" }, target: "wp" },
+  { user: { id: 3, name: "Ed", role: "editor" }, target: "standalone", data: { title: "Hi", ownerId: 3 } },
+  { user: { id: 9, name: "Al", role: "author" }, target: "standalone", data: { title: "", ownerId: 9 } },
+  { user: { id: 1, name: "Root", role: "admin" }, target: "standalone", data: { title: "Mine", ownerId: 1 } },
+];
+export const VALIDATE_VALUES = {
+  "docs.title": ["Hello", "http://spam", "  ", "Ärtsoppa är god"],
+  "docs.score": [0, 7, 11, 2.5],
+};
+export const VALIDATE_CTX = { data: { title: "x", score: 1 }, user: { id: 1, name: "A", role: "admin" }, target: "wp" };
+
+const RANK = ["subscriber", "author", "editor", "admin"];
+
+export const docs = collection("docs", {
+  id: id(),
+  title: text().notNull().validate((v) => v.includes("http://") ? "No links" : v.trim().length === 0 ? "blank" : true),
+  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.target}` : undefined)),
+  ownerId: integer(),
+}, {
+  title: "title",
+  access: {
+    read: (ctx) => ctx.user && ctx.user.role !== "subscriber" ? true : { status: "published" },
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { ownerId: ctx.user?.id ?? -1 },
+    create: (ctx) => {
+      if (!ctx.user) return false;
+      if (RANK.indexOf(ctx.user.role) >= 2) return true;
+      return (ctx.data?.title ?? "").length > 0 && ctx.data?.ownerId === ctx.user.id;
+    },
+    delete: (ctx) => ctx.target === "wp" ? false : ctx.user?.role === "admin",
+  },
+});
 
 type Item = { name: string; qty: number; tags: string[] };
 const ITEMS: Item[] = [
@@ -22,8 +57,9 @@ function label(i: Item): string {
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 export default defineConfig({
-  schema: { n },
+  schema: { n, docs },
   actions: {
+    hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.target] }),
     numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
     numberFormatting: run(() => [String(1e21), String(1e-7), String(123.456), String(-0), (1.005).toFixed(2), (2.5).toFixed(0)]),
     truthiness: run(() => ["", "0", 0, -0, null, [], {}].map((v) => (v ? "t" : "f")).join("")),

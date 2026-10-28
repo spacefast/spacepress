@@ -65,7 +65,47 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-bad-reference",
         "`aName` is integer() but references a.name, which is text()",
-        "zero.config.ts:3:46",
+        "zero.config.ts:3:56",
+    );
+    // §1.2: modifiers per column kind, pointing at the modifier call.
+    rejects(
+        "reject-modifier-kind",
+        "`.max()` isn't valid on a boolean column",
+        "zero.config.ts:2:55",
+    );
+    // §1.3: sub-fields hold plain values.
+    rejects(
+        "reject-subfield-unique",
+        "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
+        "zero.config.ts:2:76",
+    );
+    // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
+    rejects(
+        "reject-editor-no-title",
+        "editor collection \"notes\" has no title",
+        "zero.config.ts:2:15",
+    );
+    rejects("reject-reserved-name", "\"media\" is reserved", "zero.config.ts:2:15");
+    rejects(
+        "reject-post-type-length",
+        "WordPress post types are limited to 20 characters and Zero prefixes `zero_`",
+        "zero.config.ts:2:18",
+    );
+    rejects(
+        "reject-unique-length",
+        "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
+        "zero.config.ts:2:52",
+    );
+    rejects(
+        "reject-drafts-reserved",
+        "`status` is reserved: drafts add these",
+        "zero.config.ts:2:80",
+    );
+    // §1.5
+    rejects(
+        "reject-global-required",
+        "global fields that are notNull need a default (`title`)",
+        "zero.config.ts:3:38",
     );
 }
 
@@ -97,11 +137,39 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "missing required field `x`",
         "zero.config.ts:5:",
     );
+    // §3.5: literal filters use the runtime's operator rules and its exact message.
+    rejects(
+        "reject-list-operator",
+        "`in` isn't supported on list columns; use `has`",
+        "zero.config.ts:5:",
+    );
+}
+
+/// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
+#[test]
+fn rejects_access_rules_that_cant_hold() {
+    rejects(
+        "reject-access-create-filter",
+        "create rules return a boolean",
+        "zero.config.ts:3:31",
+    );
+    rejects(
+        "reject-access-query",
+        "access rules can't query; put that in a hook",
+        "zero.config.ts:3:41",
+    );
+    rejects(
+        "reject-access-filter-column",
+        "\"posts\" has no column or relation `ownr`",
+        "zero.config.ts:3:39",
+    );
 }
 
 struct Server {
     child: Child,
     port: u16,
+    /// Bearer token sent with every request (writes default to `"editor"` access).
+    token: Option<String>,
 }
 
 impl Drop for Server {
@@ -127,7 +195,11 @@ impl Server {
             assert!(Instant::now() < deadline, "php -S didn't start");
             std::thread::yield_now();
         }
-        Server { child, port }
+        Server {
+            child,
+            port,
+            token: None,
+        }
     }
 
     /// Returns (status, body).
@@ -135,8 +207,13 @@ impl Server {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         let body = body.unwrap_or("");
         // One write: php -S rejects requests whose head arrives in pieces.
+        let auth = self
+            .token
+            .as_ref()
+            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .unwrap_or_default();
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         s.write_all(request.as_bytes()).unwrap();
@@ -166,14 +243,37 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(project.join("zero/migrations/0001_init.sql").is_file());
+    // Both dialects get a migration from the shared snapshot; MySQL only for editor:false tables.
+    assert!(project.join("zero/migrations/sqlite/0001_init.sql").is_file());
+    let wp = std::fs::read_to_string(project.join("zero/migrations/wp/0001_init.sql")).unwrap();
+    assert!(wp.contains("CREATE TABLE `{prefix}zero_items`"), "{wp}");
     // A second build with no changes adds no migration.
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    assert!(!project.join("zero/migrations/sqlite/0002_update.sql").exists());
+    assert!(!project.join("zero/migrations/wp/0002_update.sql").exists());
+
+    // Writes default to editor access: mint a token through the `zero users|tokens` passthrough.
+    let cli = |args: &[&str]| {
+        let out = zero().args(args).arg("--dir").arg(&project).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    cli(&["users", "add", "kim", "--role", "editor"]);
+    let token = cli(&["tokens", "create", "kim"])["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let app = project.join(".zero/app");
-    let server = Server::start(&app);
+    let mut server = Server::start(&app);
+    let (s, denied) = server.send("POST", "/api/locations", Some(r#"{"name":"Shed"}"#));
+    assert_eq!((s, denied["code"].as_str()), (401, Some("unauthenticated")));
+    server.token = Some(token);
 
     let (s, loc) = server.send("POST", "/api/locations", Some(r#"{"name":"Fridge","kind":"fridge"}"#));
     assert_eq!(s, 201, "{loc}");
@@ -239,8 +339,8 @@ fn copy(from: &Path, to: &Path) {
     }
 }
 
-/// Every action in tests/differential/cases.ts runs under Node and as compiled
-/// PHP; the results must be identical. This is what "supported" means.
+/// Every action, access rule, and validator in tests/differential/cases.ts runs under
+/// Node and as compiled PHP; the results must be identical. This is what "supported" means.
 #[test]
 fn compiled_php_matches_node_on_every_differential_case() {
     let dir = root().join("tests/differential");
@@ -257,6 +357,22 @@ fn compiled_php_matches_node_on_every_differential_case() {
         String::from_utf8_lossy(&node.stderr)
     );
     let expected: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    // The fake ctxs/values Node used, read from the same config (see run-node.mjs).
+    let fixtures = Command::new("node")
+        .args(["--input-type=module", "-e"])
+        .arg(format!(
+            "import {{ register }} from 'node:module'; register({:?}); const m = await import({:?}); process.stdout.write(JSON.stringify({{ ctxs: m.ACCESS_CTXS, values: m.VALIDATE_VALUES, vctx: m.VALIDATE_CTX }}));",
+            format!("file://{}", dir.join("resolve-zero.mjs").display()),
+            format!("file://{}", dir.join("cases.ts").display()),
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        fixtures.status.success(),
+        "{}",
+        String::from_utf8_lossy(&fixtures.stderr)
+    );
+    let fixtures: serde_json::Value = serde_json::from_slice(&fixtures.stdout).unwrap();
 
     let tmp = std::env::temp_dir().join(format!("zero-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -268,19 +384,35 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "build failed:\n{}",
         String::from_utf8_lossy(&built.stderr)
     );
+    let app = tmp.join(".zero/app");
 
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {
-        let out = Command::new("php")
-            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
-            .args(["action", name])
-            .output()
-            .unwrap();
+        let parts: Vec<&str> = name.split(':').collect();
+        let out = match parts.as_slice() {
+            ["access", _, _, i] => {
+                let ctx = &fixtures["ctxs"][i.parse::<usize>().unwrap()];
+                php_case(&app, name, serde_json::json!({ "ctx": ctx }))
+            }
+            ["validate", c, col, i] => {
+                let value = &fixtures["values"][format!("{c}.{col}")][i.parse::<usize>().unwrap()];
+                php_case(
+                    &app,
+                    name,
+                    serde_json::json!({ "value": value, "ctx": fixtures["vctx"] }),
+                )
+            }
+            _ => Command::new("php")
+                .arg(app.join("zero/bin/zero.php"))
+                .args(["action", name])
+                .output()
+                .unwrap(),
+        };
         let got: serde_json::Value = serde_json::from_slice(&out.stdout)
             .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&out.stdout) }));
         let got = match got.get("error") {
-            Some(e) => serde_json::json!({ "error": e["detail"] }),
-            None => got,
+            Some(e) if e.is_object() => serde_json::json!({ "error": e["detail"] }),
+            _ => got,
         };
         if &got != want {
             mismatches.push(format!("{name}\n  node: {want}\n  php:  {got}"));
@@ -292,4 +424,95 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "compiled PHP disagrees with Node:\n{}",
         mismatches.join("\n")
     );
+}
+
+fn php_case(app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {
+    Command::new("php")
+        .arg(root().join("tests/differential/run-php.php"))
+        .arg(app)
+        .arg(case)
+        .arg(args.to_string())
+        .output()
+        .unwrap()
+}
+
+/// §9.1 golden: `zero build examples/blog` emits a schema.php equal, as data, to the frozen
+/// fixture the runtime and the WP stores code against; `--target wp` emits the §4.9 plugin.
+#[test]
+fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
+    let example = root().join("examples/blog");
+    assert!(
+        example.join("zero.config.ts").is_file(),
+        "examples/blog/zero.config.ts is missing (owner T writes it, design §1.9)"
+    );
+    let tmp = std::env::temp_dir().join(format!("zero-blog-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let project = tmp.join("blog");
+    copy(&example, &project);
+    for generated in [".zero", "zero"] {
+        let _ = std::fs::remove_dir_all(project.join(generated));
+    }
+    let as_json = |php_file: &Path| -> serde_json::Value {
+        let out = Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(php_file)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+
+    let out = zero()
+        .args(["build", "--target", "standalone"])
+        .arg(&project)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        as_json(&project.join(".zero/app/zero/app/schema.php")),
+        as_json(&root().join("tests/fixtures/blog/schema.php")),
+        "schema.php drifted from tests/fixtures/blog/schema.php"
+    );
+    // §3.5.1: post-backed columns that only postmeta can filter get a one-line hint.
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains(
+            "hint: \"posts.authorId\" is filtered through postmeta on WordPress; set editor: false on \"posts\" if this list grows large"
+        ),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let plugin = project.join(".zero/wp/zero-blog");
+    for rel in [
+        "zero-blog.php",
+        "zero/runtime/bootstrap.php",
+        "zero/runtime/Db.php",
+        "zero/app/functions.php",
+        "zero/app/migrations/0001_init.sql",
+        "vendor",
+    ] {
+        assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
+    }
+    assert!(project.join(".zero/wp/zero-blog.zip").is_file());
+    let mut wp_schema = as_json(&plugin.join("zero/app/schema.php"));
+    assert_eq!(wp_schema["target"], "wp");
+    wp_schema["target"] = "standalone".into();
+    assert_eq!(wp_schema, as_json(&root().join("tests/fixtures/blog/schema.php")));
+    // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
+    let mysql = std::fs::read_to_string(plugin.join("zero/app/migrations/0001_init.sql")).unwrap();
+    assert!(mysql.contains("CREATE TABLE `{prefix}zero_comments`"), "{mysql}");
+    assert!(
+        !mysql.contains("zero_posts`") && !mysql.contains("FOREIGN KEY"),
+        "{mysql}"
+    );
+    // The typed client: generated types and the descriptor, next to the migrations.
+    let types = std::fs::read_to_string(project.join("zero/client/types.ts")).unwrap();
+    assert!(
+        types.contains("tags: (\"news\" | \"guide\" | \"release\")[];"),
+        "{types}"
+    );
+    assert!(project.join("zero/client/schema.ts").is_file());
+    let _ = std::fs::remove_dir_all(&tmp);
 }

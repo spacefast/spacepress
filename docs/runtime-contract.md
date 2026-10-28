@@ -35,7 +35,8 @@ require __DIR__ . '/../zero/runtime/bootstrap.php';
 \Zero\App::boot(dirname(__DIR__))->handleHttp();
 ```
 
-`zero/runtime/bootstrap.php` sets `ini_set('precision', '-1')`,
+`zero/runtime/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()`
+function), sets `ini_set('precision', '-1')`,
 `ini_set('serialize_precision', '-1')`, registers an autoloader for
 `Zero\*` from its own directory, and loads nothing else.
 
@@ -107,6 +108,9 @@ Create, per row:
 1. Reject unknown keys (`invalid_input`, pointer `/<key>`).
 2. Apply defaults for absent keys: `value`, `now` (current UTC timestamp, or
    today's date for `date`), `fn`.
+   2b. A required column (notNull, no default, not autoIncrement) that is
+   absent and not listed in the collection's `beforeCreateFills` →
+   `invalid_input` pointer `/<col>`. Hooks never see a missing required field.
 3. `beforeCreate`.
 4. Validate + coerce every column (below). Missing required (notNull, no
    default, not autoIncrement) → `invalid_input` pointer `/<col>`.
@@ -259,7 +263,10 @@ to stdout. Same transaction and pipeline rules as HTTP.
 Files `zero/app/migrations/NNNN_<name>.sql`, applied in filename order.
 Statements are separated by a line `--> statement-breakpoint`. Applied files
 are recorded in `__zero_migrations(id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`.
-Each file runs in its own transaction.
+Each file runs in its own transaction with `PRAGMA foreign_keys = OFF`
+around it (table rebuilds must not fire cascades), followed by
+`PRAGMA foreign_key_check`; any violation rolls the file back and names the
+table.
 
 ## Errors
 

@@ -1,0 +1,52 @@
+# Disposable WordPress for Zero's WP-target tests. Not for production use.
+# The DB credentials below are throwaway values for this local container only.
+name: zero-wp-test
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: zero-test-root
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: zero-test-db
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 1s
+      retries: 60
+    tmpfs:
+      - /var/lib/mysql
+  wordpress:
+    image: wordpress:php8.5-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('DISABLE_WP_CRON', false);
+    ports:
+      - "${ZERO_WP_PORT:-8790}:80"
+    volumes:
+      - wp:/var/www/html
+      - ./cache:/zero-cache:ro
+      - ${ZERO_WP_PLUGIN_DIR:-./empty-plugin}:/var/www/html/wp-content/plugins/zero-app
+  cli:
+    image: wordpress:cli-php8.5
+    profiles: ["cli"]
+    user: "33:33"
+    depends_on: [wordpress]
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp:/var/www/html
+      - ./cache:/zero-cache:ro
+      - ${ZERO_WP_PLUGIN_DIR:-./empty-plugin}:/var/www/html/wp-content/plugins/zero-app
+volumes:
+  wp:

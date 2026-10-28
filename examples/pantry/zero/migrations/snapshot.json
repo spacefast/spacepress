@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "tables": {
+    "locations": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "'pantry'",
+          "references": null
+        }
+      }
+    },
+    "items": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "slug": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "sqlDefault": null,
+          "references": null
+        },
+        "quantity": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "1",
+          "references": null
+        },
+        "unit": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "'pcs'",
+          "references": null
+        },
+        "lowStockAt": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "1",
+          "references": null
+        },
+        "expiresOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "opened": {
+          "type": "boolean",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "0",
+          "references": null
+        },
+        "locationId": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": {
+            "table": "locations",
+            "column": "id",
+            "onDelete": "set null",
+            "onUpdate": null
+          }
+        },
+        "tags": {
+          "type": "json",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "createdAt": {
+          "type": "timestamp",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "updatedAt": {
+          "type": "timestamp",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        }
+      }
+    },
+    "shopping_list": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "itemId": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "sqlDefault": null,
+          "references": {
+            "table": "items",
+            "column": "id",
+            "onDelete": "cascade",
+            "onUpdate": null
+          }
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "done": {
+          "type": "boolean",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": "0",
+          "references": null
+        },
+        "createdAt": {
+          "type": "timestamp",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        },
+        "updatedAt": {
+          "type": "timestamp",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "sqlDefault": null,
+          "references": null
+        }
+      }
+    }
+  }
+}

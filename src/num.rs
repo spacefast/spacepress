@@ -29,7 +29,11 @@ pub fn js_number_to_string(x: f64) -> String {
     } else {
         let e = n - 1;
         let e = if e >= 0 { format!("+{e}") } else { e.to_string() };
-        if k == 1 { format!("{digits}e{e}") } else { format!("{}.{}e{e}", &digits[..1], &digits[1..]) }
+        if k == 1 {
+            format!("{digits}e{e}")
+        } else {
+            format!("{}.{}e{e}", &digits[..1], &digits[1..])
+        }
     };
     format!("{sign}{body}")
 }
@@ -51,7 +55,11 @@ pub fn php_number(x: f64) -> String {
         "-0.0".into()
     } else {
         let s = format!("{x:?}");
-        if s.contains('.') || s.contains('e') { s } else { format!("{s}.0") }
+        if s.contains('.') || s.contains('e') {
+            s
+        } else {
+            format!("{s}.0")
+        }
     }
 }
 

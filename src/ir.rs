@@ -22,7 +22,6 @@ pub struct Func {
     pub params: Vec<Param>,
     pub body: FnBody,
     pub is_async: bool,
-    pub is_arrow: bool,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -49,8 +48,16 @@ pub struct Param {
 #[derive(Debug, Clone)]
 pub enum Pat {
     Id(String, Span),
-    Obj { props: Vec<(String, Pat)>, rest: Option<(String, Span)>, span: Span },
-    Arr { elems: Vec<Option<Pat>>, rest: Option<(String, Span)>, span: Span },
+    Obj {
+        props: Vec<(String, Pat)>,
+        rest: Option<(String, Span)>,
+        span: Span,
+    },
+    Arr {
+        elems: Vec<Option<Pat>>,
+        rest: Option<(String, Span)>,
+        span: Span,
+    },
     Default(P<Pat>, Rc<Expr>),
 }
 
@@ -109,26 +116,69 @@ pub struct ImportSpec {
 
 #[derive(Debug)]
 pub enum Stmt {
-    Decl { kind: DeclKind, pat: Pat, ann: Option<TyAnn>, init: Option<Expr>, span: Span },
+    Decl {
+        kind: DeclKind,
+        pat: Pat,
+        ann: Option<TyAnn>,
+        init: Option<Expr>,
+        span: Span,
+    },
     Func(Rc<Func>),
     Expr(Expr),
     Return(Option<Expr>, Span),
     If(Expr, Vec<Stmt>, Option<Vec<Stmt>>),
-    For { init: Option<P<Stmt>>, test: Option<Expr>, update: Option<Expr>, body: Vec<Stmt>, span: Span },
-    ForOf { kind: DeclKind, pat: Pat, iter: Expr, body: Vec<Stmt>, span: Span },
+    For {
+        init: Option<P<Stmt>>,
+        test: Option<Expr>,
+        update: Option<Expr>,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    ForOf {
+        kind: DeclKind,
+        pat: Pat,
+        iter: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
     While(Expr, Vec<Stmt>),
     Break(Span),
     Continue(Span),
     Throw(Expr),
-    Try { block: Vec<Stmt>, param: Option<(String, Span)>, handler: Option<Vec<Stmt>>, finalizer: Option<Vec<Stmt>> },
-    Switch { disc: Expr, cases: Vec<(Option<Expr>, Vec<Stmt>)>, span: Span },
+    Try {
+        block: Vec<Stmt>,
+        param: Option<(String, Span)>,
+        handler: Option<Vec<Stmt>>,
+        finalizer: Option<Vec<Stmt>>,
+    },
+    Switch {
+        disc: Expr,
+        cases: Vec<(Option<Expr>, Vec<Stmt>)>,
+        span: Span,
+    },
     Block(Vec<Stmt>),
-    TypeAlias { name: String, params: Vec<String>, ty: TyAnn },
-    Import { source: String, specs: Vec<ImportSpec>, type_only: bool, span: Span },
+    TypeAlias {
+        name: String,
+        params: Vec<String>,
+        ty: TyAnn,
+    },
+    Import {
+        source: String,
+        specs: Vec<ImportSpec>,
+        type_only: bool,
+        span: Span,
+    },
     /// `export { a as b }` / `export { a } from "x"` — re-exports.
-    ExportNames { names: Vec<(String, String)>, from: Option<String>, span: Span },
+    ExportNames {
+        names: Vec<(String, String)>,
+        from: Option<String>,
+        span: Span,
+    },
     /// `export * from "x"`
-    ExportAll { from: String, span: Span },
+    ExportAll {
+        from: String,
+        span: Span,
+    },
     ExportDefault(Expr),
     /// Marks the following declaration's names as exported.
     Exported(P<Stmt>),
@@ -198,7 +248,10 @@ pub enum ExprKind {
     Null,
     Undefined,
     Template(Vec<String>, Vec<Expr>),
-    Regex { pattern: String, flags: String },
+    Regex {
+        pattern: String,
+        flags: String,
+    },
     Ident(String),
     Array(Vec<ArrEl>),
     Object(Vec<Prop>),
@@ -210,12 +263,37 @@ pub enum ExprKind {
     Logical(LogOp, P<Expr>, P<Expr>),
     Cond(P<Expr>, P<Expr>, P<Expr>),
     /// `op` is `None` for plain `=`.
-    Assign { op: Option<AssignOp>, target: P<Expr>, value: P<Expr> },
-    Update { inc: bool, prefix: bool, target: P<Expr> },
-    Call { callee: P<Expr>, args: Vec<ArrEl>, optional: bool, type_args: Vec<TyAnn> },
-    New { callee: P<Expr>, args: Vec<ArrEl> },
-    Member { obj: P<Expr>, prop: String, optional: bool, prop_span: Span },
-    Index { obj: P<Expr>, index: P<Expr>, optional: bool },
+    Assign {
+        op: Option<AssignOp>,
+        target: P<Expr>,
+        value: P<Expr>,
+    },
+    Update {
+        inc: bool,
+        prefix: bool,
+        target: P<Expr>,
+    },
+    Call {
+        callee: P<Expr>,
+        args: Vec<ArrEl>,
+        optional: bool,
+        type_args: Vec<TyAnn>,
+    },
+    New {
+        callee: P<Expr>,
+        args: Vec<ArrEl>,
+    },
+    Member {
+        obj: P<Expr>,
+        prop: String,
+        optional: bool,
+        prop_span: Span,
+    },
+    Index {
+        obj: P<Expr>,
+        index: P<Expr>,
+        optional: bool,
+    },
     /// Optional-chain boundary: a nullish `?.` inside short-circuits to undefined here.
     Chain(P<Expr>),
     Await(P<Expr>),
@@ -242,9 +320,6 @@ pub enum TyAnn {
     Any,
     Unknown,
     Never,
-    StrLit(String),
-    NumLit(f64),
-    BoolLit(bool),
     Array(P<TyAnn>),
     Tuple(Vec<TyAnn>),
     Obj(Vec<(String, TyAnn, bool)>),
@@ -258,6 +333,4 @@ pub enum TyAnn {
     Query(Vec<String>, Span),
     /// `T["key"]`
     Indexed(P<TyAnn>, String),
-    /// `keyof T`
-    KeyOf(P<TyAnn>),
 }

@@ -1,24 +1,71 @@
 # Zero
 
-A framework that takes a `zero.config.ts` (Drizzle-style collections, relations,
-hooks, and actions) and compiles it with Rust into a plain PHP app. Rust runs only
-at build time. At runtime it's all PHP, with no JS engine.
+Write `zero.config.ts` (Drizzle-style collections, relations, hooks, and actions).
+`zero build` compiles it with Rust into a plain PHP app. Rust runs only at build
+time; at runtime it's all PHP, with no JS engine and no Composer.
 
-**Status: work in progress.** None of this is usable yet.
+**Status: early.** The pantry example builds and runs end to end. Expect the API
+to move.
+
+## Try it
+
+Requirements: Rust 1.96+ and PHP 8.2+ with `pdo_sqlite`.
+
+```sh
+cargo build --release
+./target/release/zero dev examples/pantry      # build, then serve on :8787
+```
+
+```sh
+curl -X POST localhost:8787/api/locations -d '{"name":"Fridge","kind":"fridge"}'
+curl -X POST localhost:8787/api/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
+curl localhost:8787/api/shopping_list            # the afterCreate hook added Eggs
+curl -X POST localhost:8787/api/actions/consume -d '{"itemId":1}'
+```
+
+`zero check` compiles without writing anything. `zero build` writes the app to
+`.zero/app` and new migrations to `zero/migrations/`. Commit the migrations, and
+deploy `.zero/app` to any PHP host.
 
 ## How it works
 
-1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local files it imports.
-2. **Lower.** The syntax tree is lowered into Zero's own IR. Anything outside the
-   supported subset fails the build with `file:line:col` and a suggested fix.
-3. **Evaluate.** The config runs in a small Rust evaluator over the IR, so
-   composition works: helper functions, spreads, and shared field sets. The result
-   is the schema as plain data.
-4. **Compile.** Hooks and actions are carried through evaluation without being
-   called, then compiled to PHP.
-5. **Emit.** The output is migrations, `schema.php`, `functions.php`, and a
-   hand-written PHP runtime (database access, REST API, hook pipeline, JS-semantics
-   helpers).
+1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
+   files it imports.
+2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
+   supported subset (classes, `this`, `==`, `var`, npm imports, ...) fails the
+   build with `file:line:col` and a suggested fix.
+3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
+   clock, a step budget. So composition works: helpers, factories, spreads, and
+   shared field sets. The result is the schema as plain data.
+4. **Compile.** Hooks and actions keep their captured scope. They're
+   type-checked against the schema and compiled to PHP: native operators where
+   the types make it safe, `Zero\Js` helpers where JavaScript and PHP differ,
+   and a build error where neither is sound.
+5. **Emit.** The output is SQLite migrations (diffed against a committed
+   snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types `db` in your
+   editor), and the PHP runtime: the database, the REST API, the hook pipeline,
+   and the JS-semantics helpers.
+
+Here's the hook above, as written and as compiled:
+
+```ts
+beforeCreate(data) {
+  data.name = data.name.trim();
+  if (data.name === "") throw new HttpError(422, "invalid_input", "name can't be empty");
+  data.slug = slugify(data.name);
+}
+```
+
+```php
+function items__beforeCreate(array &$data)
+{
+    $data['name'] = \Zero\Js::trim($data['name']);
+    if ($data['name'] === '') {
+        throw new \Zero\HttpError((int) 422, 'invalid_input', 'name can\'t be empty');
+    }
+    $data['slug'] = \ZeroApp\slugify($data['name']);
+}
+```
 
 ## Docs
 
@@ -27,16 +74,25 @@ at build time. At runtime it's all PHP, with no JS engine.
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the boundary between
   compiler output and the PHP runtime
 
-## Example
+## Tests
 
-[`examples/pantry`](examples/pantry) is a home pantry tracker: locations, items,
-and a shopping list that fills itself when stock runs low.
+```sh
+cargo test                     # rejections + pantry built, served by php -S, driven over HTTP
+tests/php/run.sh               # runtime: JS parity (checked against node) + DB/HTTP suite
+cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
+```
 
 ## Layout
 
-- `src/diag.rs`: located build errors
-- `src/ir.rs`: the IR
-- `src/lower.rs`: oxc AST → IR, enforcing the subset
-- `src/loader.rs`: module graph and import rules
-- `src/schema.rs`: the evaluated schema
-- `src/num.rs`: JavaScript number formatting
+| Path | What |
+|---|---|
+| `src/lower.rs` | oxc AST → IR, enforcing the subset |
+| `src/loader.rs` | module graph and import rules |
+| `src/eval.rs`, `src/value.rs` | the build-time evaluator |
+| `src/extract.rs` | evaluated config → schema + functions to compile |
+| `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
+| `src/migrate.rs` | snapshots and SQLite migration planning |
+| `src/schema_php.rs` | `schema.php` and `zero.gen.ts` |
+| `runtime/` | the PHP runtime, embedded into the binary |
+| `types/zero/` | TypeScript declarations for `"zero"` |
+| `examples/pantry/` | home pantry tracker |

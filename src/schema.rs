@@ -27,14 +27,6 @@ impl ColType {
             ColType::Json => "json",
         }
     }
-
-    pub fn sql(self) -> &'static str {
-        match self {
-            ColType::Integer | ColType::Boolean => "INTEGER",
-            ColType::Real => "REAL",
-            _ => "TEXT",
-        }
-    }
 }
 
 /// How a column gets a value when the writer leaves it out.
@@ -76,7 +68,7 @@ pub struct Reference {
     pub on_update: Option<RefAction>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
     pub ty: ColType,
@@ -88,6 +80,8 @@ pub struct Column {
     pub default: Option<DefaultKind>,
     pub on_update: Option<DefaultKind>,
     pub references: Option<Reference>,
+    /// `json().$type<T>()` annotation and the module it was written in.
+    pub ts_type: Option<(crate::ir::TyAnn, usize)>,
 }
 
 impl Column {
@@ -159,7 +153,7 @@ pub struct Api {
     pub delete: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Collection {
     /// Key under `schema` in the config (`shoppingList`).
     pub key: String,
@@ -169,6 +163,8 @@ pub struct Collection {
     pub relations: IndexMap<String, Relation>,
     /// Hook → compiled PHP function name.
     pub hooks: IndexMap<HookKind, String>,
+    /// Required columns the beforeCreate hook assigns (checked after the hook).
+    pub before_create_fills: Vec<String>,
     pub api: Api,
 }
 
@@ -178,7 +174,7 @@ impl Collection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Action {
     pub name: String,
     pub input: IndexMap<String, Column>,
@@ -186,7 +182,7 @@ pub struct Action {
 }
 
 /// The whole app, keyed by table name.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Schema {
     pub collections: IndexMap<String, Collection>,
     pub actions: IndexMap<String, Action>,

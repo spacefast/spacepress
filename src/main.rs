@@ -1,4 +1,383 @@
+//! `zero` — compiles `zero.config.ts` into a plain PHP app.
+//!
+//! ```text
+//! zero build [project-dir] [--out <dir>]   compile to <project>/.zero/app
+//! zero check [project-dir]                 compile without writing anything
+//! zero dev [project-dir] [--port <n>]      build, then serve with `php -S`
+//! ```
+
+mod compile;
 mod diag;
+mod eval;
+mod extract;
 mod ir;
+mod loader;
 mod lower;
-fn main() {}
+mod migrate;
+mod num;
+mod schema;
+mod schema_php;
+mod types;
+mod value;
+
+use diag::{Diag, Span};
+use extract::Slot;
+use schema::DefaultKind;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+/// The PHP runtime, embedded so the binary is self-contained.
+const RUNTIME: &[(&str, &str)] = &[
+    (
+        "zero/runtime/bootstrap.php",
+        include_str!("../runtime/Zero/bootstrap.php"),
+    ),
+    ("zero/runtime/App.php", include_str!("../runtime/Zero/App.php")),
+    ("zero/runtime/Db.php", include_str!("../runtime/Zero/Db.php")),
+    ("zero/runtime/Schema.php", include_str!("../runtime/Zero/Schema.php")),
+    ("zero/runtime/Js.php", include_str!("../runtime/Zero/Js.php")),
+    ("zero/runtime/RegExp.php", include_str!("../runtime/Zero/RegExp.php")),
+    ("zero/runtime/JsError.php", include_str!("../runtime/Zero/JsError.php")),
+    (
+        "zero/runtime/HttpError.php",
+        include_str!("../runtime/Zero/HttpError.php"),
+    ),
+    (
+        "zero/runtime/Migrator.php",
+        include_str!("../runtime/Zero/Migrator.php"),
+    ),
+    ("zero/bin/zero.php", include_str!("../runtime/bin/zero.php")),
+];
+
+const INDEX_PHP: &str = r#"<?php
+declare(strict_types=1);
+if (PHP_SAPI === 'cli-server' && is_file(__DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH)) && !str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '.php')) {
+    return false;
+}
+require __DIR__ . '/../zero/runtime/bootstrap.php';
+\Zero\App::boot(dirname(__DIR__))->handleHttp();
+"#;
+
+struct Built {
+    files: Vec<(String, String)>,
+    migration: Option<(String, String)>,
+    snapshot: serde_json::Value,
+    gen_ts: String,
+    warnings: Vec<String>,
+    summary: String,
+}
+
+/// Runs the whole pipeline in memory.
+fn build(project: &Path) -> Result<Built, Diag> {
+    let entry = project.join("zero.config.ts");
+    if !entry.is_file() {
+        return Err(Diag::new(
+            Span::NONE,
+            format!("no zero.config.ts in {}", project.display()),
+        ));
+    }
+    let program = loader::load(&entry)?;
+    let mut ev = eval::Evaluator::new(&program);
+    let config = ev.run()?;
+    let config_span = Span {
+        file: program.entry as u32,
+        start: 0,
+        end: 0,
+    };
+    let mut ext = extract::extract(&config, &mut ev, config_span)?;
+    let mut schema = ext.schema.clone();
+    let roots = std::mem::take(&mut ext.roots);
+    let (functions, slots) = {
+        let mut c = compile::Compiler::new(&schema, &mut ev, &ext, &program);
+        c.resolve_json_types()?;
+        let slots = c.compile_roots(&roots)?;
+        (std::mem::take(&mut c.output), slots)
+    };
+    for (slot, name) in slots {
+        match slot {
+            Slot::Hook { table, kind } => {
+                schema
+                    .collections
+                    .get_mut(&table)
+                    .expect("collection")
+                    .hooks
+                    .insert(kind, name);
+            }
+            Slot::Default { table, column } => {
+                schema
+                    .collections
+                    .get_mut(&table)
+                    .expect("collection")
+                    .columns
+                    .get_mut(&column)
+                    .expect("column")
+                    .default = Some(DefaultKind::Fn(name));
+            }
+            Slot::OnUpdate { table, column } => {
+                schema
+                    .collections
+                    .get_mut(&table)
+                    .expect("collection")
+                    .columns
+                    .get_mut(&column)
+                    .expect("column")
+                    .on_update = Some(DefaultKind::Fn(name));
+            }
+            Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
+            Slot::ActionDefault { action, field } => {
+                schema
+                    .actions
+                    .get_mut(&action)
+                    .expect("action")
+                    .input
+                    .get_mut(&field)
+                    .expect("field")
+                    .default = Some(DefaultKind::Fn(name));
+            }
+        }
+    }
+    // Hooks run in a fixed order per collection; sort for stable output.
+    for c in schema.collections.values_mut() {
+        c.hooks
+            .sort_by_key(|k, _| schema::HookKind::ALL.iter().position(|h| h == k));
+    }
+
+    let functions_php = format!(
+        "<?php\n\n// Generated by `zero build` from zero.config.ts. Do not edit.\n\ndeclare(strict_types=1);\n\nnamespace ZeroApp;\n\n{}",
+        functions
+    );
+    let snapshot = migrate::snapshot(&schema);
+    let prev = read_snapshot(project);
+    let statements = migrate::plan(&prev, &snapshot);
+    let warnings = migrate::destructive(&prev, &snapshot);
+    let migration = (!statements.is_empty()).then(|| {
+        let n = next_migration_number(project);
+        let name = if prev["tables"].as_object().is_none_or(|t| t.is_empty()) {
+            "init"
+        } else {
+            "update"
+        };
+        (format!("{n:04}_{name}.sql"), migrate::render(&statements))
+    });
+    let summary = format!(
+        "{} collections, {} hooks, {} actions",
+        schema.collections.len(),
+        schema.collections.values().map(|c| c.hooks.len()).sum::<usize>(),
+        schema.actions.len()
+    );
+    Ok(Built {
+        files: vec![
+            ("public/index.php".into(), INDEX_PHP.into()),
+            ("zero/app/schema.php".into(), schema_php::render(&schema)),
+            ("zero/app/functions.php".into(), functions_php),
+        ],
+        migration,
+        snapshot,
+        gen_ts: schema_php::gen_ts(ext.register_name.unwrap_or("schema")),
+        warnings,
+        summary,
+    })
+}
+
+fn migrations_dir(project: &Path) -> PathBuf {
+    project.join("zero").join("migrations")
+}
+
+fn read_snapshot(project: &Path) -> serde_json::Value {
+    std::fs::read_to_string(migrations_dir(project).join("snapshot.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({ "version": 1, "tables": {} }))
+}
+
+fn next_migration_number(project: &Path) -> u32 {
+    std::fs::read_dir(migrations_dir(project))
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok()?.file_name().to_str()?.get(..4)?.parse::<u32>().ok())
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+        + 1
+}
+
+fn write(path: &Path, content: &str) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, content)
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            std::fs::create_dir_all(&target)?;
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Writes the app. Migrations and the snapshot live in the project (committed);
+/// the app directory is a disposable build output.
+fn emit(project: &Path, out: &Path, built: &Built) -> std::io::Result<()> {
+    let migrations = migrations_dir(project);
+    if let Some((name, sql)) = &built.migration {
+        write(&migrations.join(name), sql)?;
+        write(
+            &migrations.join("snapshot.json"),
+            &(serde_json::to_string_pretty(&built.snapshot)? + "\n"),
+        )?;
+    }
+    write(&project.join("zero.gen.ts"), &built.gen_ts)?;
+    let app_runtime = out.join("zero");
+    if app_runtime.exists() {
+        std::fs::remove_dir_all(&app_runtime)?;
+    }
+    for (rel, content) in RUNTIME {
+        write(&out.join(rel), content)?;
+    }
+    for (rel, content) in &built.files {
+        write(&out.join(rel), content)?;
+    }
+    let app_migrations = out.join("zero/app/migrations");
+    std::fs::create_dir_all(&app_migrations)?;
+    if migrations.is_dir() {
+        for entry in std::fs::read_dir(&migrations)? {
+            let entry = entry?;
+            if entry.path().extension().is_some_and(|e| e == "sql") {
+                std::fs::copy(entry.path(), app_migrations.join(entry.file_name()))?;
+            }
+        }
+    }
+    let public = project.join("public");
+    if public.is_dir() {
+        copy_dir(&public, &out.join("public"))?;
+    }
+    Ok(())
+}
+
+fn php_lint(out: &Path) -> Result<(), String> {
+    for rel in ["zero/app/schema.php", "zero/app/functions.php"] {
+        let path = out.join(rel);
+        let result = std::process::Command::new("php").arg("-l").arg(&path).output();
+        match result {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                return Err(format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                ));
+            }
+            Err(_) => return Ok(()), // no PHP on this machine: skip the lint
+        }
+    }
+    Ok(())
+}
+
+struct Args {
+    command: String,
+    project: PathBuf,
+    out: Option<PathBuf>,
+    port: u16,
+}
+
+fn parse_args() -> Result<Args, String> {
+    let mut it = std::env::args().skip(1);
+    let command = it
+        .next()
+        .ok_or("usage: zero <build|check|dev> [project-dir] [--out dir] [--port n]")?;
+    let mut args = Args {
+        command,
+        project: PathBuf::from("."),
+        out: None,
+        port: 8787,
+    };
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--out" => args.out = Some(PathBuf::from(it.next().ok_or("--out needs a directory")?)),
+            "--port" => {
+                args.port = it
+                    .next()
+                    .ok_or("--port needs a number")?
+                    .parse()
+                    .map_err(|_| "--port needs a number")?
+            }
+            other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
+            other => args.project = PathBuf::from(other),
+        }
+    }
+    Ok(args)
+}
+
+fn main() -> ExitCode {
+    let args = match parse_args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let project = args.project.canonicalize().unwrap_or(args.project.clone());
+    let started = std::time::Instant::now();
+    let built = match build(&project) {
+        Ok(b) => b,
+        Err(d) => {
+            eprint!("{}", diag::render(&d, &project));
+            return ExitCode::from(1);
+        }
+    };
+    if args.command == "check" {
+        println!("ok: {} ({:.0?})", built.summary, started.elapsed());
+        return ExitCode::SUCCESS;
+    }
+    if !matches!(args.command.as_str(), "build" | "dev") {
+        eprintln!("unknown command {}; use build, check, or dev", args.command);
+        return ExitCode::from(2);
+    }
+    let out = args.out.clone().unwrap_or_else(|| project.join(".zero").join("app"));
+    if let Err(e) = emit(&project, &out, &built) {
+        eprintln!("error: couldn't write the app: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = php_lint(&out) {
+        eprintln!("error: generated PHP failed `php -l` (this is a Zero bug):\n{e}");
+        return ExitCode::from(1);
+    }
+    for w in &built.warnings {
+        eprintln!("warning: this migration {w}");
+    }
+    let shown = out.strip_prefix(&project).unwrap_or(&out).display().to_string();
+    match &built.migration {
+        Some((name, _)) => println!(
+            "built {} -> {shown} (new migration zero/migrations/{name}) in {:.0?}",
+            built.summary,
+            started.elapsed()
+        ),
+        None => println!("built {} -> {shown} in {:.0?}", built.summary, started.elapsed()),
+    }
+    if args.command == "dev" {
+        let addr = format!("127.0.0.1:{}", args.port);
+        println!("serving http://{addr}  (Ctrl-C to stop)");
+        let status = std::process::Command::new("php")
+            .args(["-S", &addr, "-t"])
+            .arg(out.join("public"))
+            .arg(out.join("public/index.php"))
+            .status();
+        return match status {
+            Ok(s) if s.success() => ExitCode::SUCCESS,
+            Ok(_) => ExitCode::from(1),
+            Err(e) => {
+                eprintln!("error: couldn't start php: {e}");
+                ExitCode::from(1)
+            }
+        };
+    }
+    ExitCode::SUCCESS
+}

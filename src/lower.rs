@@ -6,8 +6,7 @@ use crate::diag::{Diag, Result, Span};
 use crate::ir::*;
 use oxc_ast::ast as a;
 use oxc_syntax::operator::{
-    AssignmentOperator as AO, BinaryOperator as BO, LogicalOperator as LO, UnaryOperator as UO,
-    UpdateOperator,
+    AssignmentOperator as AO, BinaryOperator as BO, LogicalOperator as LO, UnaryOperator as UO, UpdateOperator,
 };
 use std::rc::Rc;
 
@@ -22,11 +21,15 @@ fn js(s: impl AsRef<str>, _span: Span) -> Result<String> {
 
 impl Lowerer {
     fn sp(&self, s: oxc_span::Span) -> Span {
-        Span { file: self.file, start: s.start, end: s.end }
+        Span {
+            file: self.file,
+            start: s.start,
+            end: s.end,
+        }
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("{what} isn't supported in Zero code"));
+        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}"));
         if !help.is_empty() {
             d = d.help(help);
         }
@@ -54,7 +57,11 @@ impl Lowerer {
                                 a::ModuleExportName::IdentifierReference(n) => n.name.to_string(),
                                 a::ModuleExportName::StringLiteral(l) => js(l.value, self.sp(l.span))?,
                             };
-                            let imported = if imported == "default" { ImportName::Default } else { ImportName::Named(imported) };
+                            let imported = if imported == "default" {
+                                ImportName::Default
+                            } else {
+                                ImportName::Named(imported)
+                            };
                             specs.push(ImportSpec {
                                 imported,
                                 local: s.local.name.to_string(),
@@ -94,7 +101,11 @@ impl Lowerer {
                     }
                     names.push((self.export_name(&s.local)?, self.export_name(&s.exported)?));
                 }
-                out.push(Stmt::ExportNames { names, from: None, span: self.sp(d.span) });
+                out.push(Stmt::ExportNames {
+                    names,
+                    from: None,
+                    span: self.sp(d.span),
+                });
             }
             a::Statement::ExportFromDeclaration(d) => {
                 if d.export_kind == a::ImportOrExportKind::Type {
@@ -115,9 +126,16 @@ impl Lowerer {
             }
             a::Statement::ExportAllDeclaration(d) => {
                 if d.exported.is_some() {
-                    return self.unsupported(d.span, "`export * as name`", "import the module and re-export the names you need");
+                    return self.unsupported(
+                        d.span,
+                        "`export * as name`",
+                        "import the module and re-export the names you need",
+                    );
                 }
-                out.push(Stmt::ExportAll { from: js(d.source.value, self.sp(d.source.span))?, span: self.sp(d.span) });
+                out.push(Stmt::ExportAll {
+                    from: js(d.source.value, self.sp(d.source.span))?,
+                    span: self.sp(d.span),
+                });
             }
             a::Statement::ExportDeclaration(d) => {
                 let mut inner = Vec::new();
@@ -141,7 +159,7 @@ impl Lowerer {
             a::Statement::TSExportAssignment(d) => {
                 return self.unsupported(d.span, "`export =`", "use `export default`");
             }
-            other => out.push(self.stmt(other)?),
+            other => self.inner_stmt(other, out)?,
         }
         Ok(())
     }
@@ -164,7 +182,9 @@ impl Lowerer {
                 out.push(Stmt::Func(self.function(f)?));
                 Ok(())
             }
-            a::Declaration::ClassDeclaration(c) => self.unsupported(c.span, "classes", "use plain objects and functions"),
+            a::Declaration::ClassDeclaration(c) => {
+                self.unsupported(c.span, "classes", "use plain objects and functions")
+            }
             a::Declaration::TSTypeAliasDeclaration(t) => {
                 out.push(Stmt::TypeAlias {
                     name: t.id.name.to_string(),
@@ -175,7 +195,11 @@ impl Lowerer {
             }
             a::Declaration::TSInterfaceDeclaration(i) => {
                 if !i.extends.is_empty() {
-                    return self.unsupported(i.span, "`interface ... extends`", "use a type alias with `&`, or list the fields");
+                    return self.unsupported(
+                        i.span,
+                        "`interface ... extends`",
+                        "use a type alias with `&`, or list the fields",
+                    );
                 }
                 out.push(Stmt::TypeAlias {
                     name: i.id.name.to_string(),
@@ -184,14 +208,24 @@ impl Lowerer {
                 });
                 Ok(())
             }
-            a::Declaration::TSEnumDeclaration(e) => {
-                self.unsupported(e.span, "`enum`", "use a union of string literals: `type Unit = \"pcs\" | \"g\"`")
-            }
+            a::Declaration::TSEnumDeclaration(e) => self.unsupported(
+                e.span,
+                "`enum`",
+                "use a union of string literals: `type Unit = \"pcs\" | \"g\"`",
+            ),
             a::Declaration::TSExternalModuleDeclaration(m) => {
-                if m.declare { Ok(()) } else { self.unsupported(m.span, "module declarations", "") }
+                if m.declare {
+                    Ok(())
+                } else {
+                    self.unsupported(m.span, "module declarations", "")
+                }
             }
             a::Declaration::TSNamespaceDeclaration(m) => {
-                if m.declare { Ok(()) } else { self.unsupported(m.span, "namespaces", "use modules") }
+                if m.declare {
+                    Ok(())
+                } else {
+                    self.unsupported(m.span, "namespaces", "use modules")
+                }
             }
             a::Declaration::TSGlobalDeclaration(_) => Ok(()),
             a::Declaration::TSImportEqualsDeclaration(i) => self.unsupported(i.span, "`import x =`", "use `import`"),
@@ -214,7 +248,11 @@ impl Lowerer {
             out.push(Stmt::Decl {
                 kind,
                 pat: self.pattern(&d.id)?,
-                ann: d.type_annotation.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?,
+                ann: d
+                    .type_annotation
+                    .as_ref()
+                    .map(|t| self.ty(&t.type_annotation))
+                    .transpose()?,
                 init: d.init.as_ref().map(|e| self.expr(e)).transpose()?,
                 span: self.sp(d.span),
             });
@@ -223,7 +261,8 @@ impl Lowerer {
     }
 
     fn type_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Vec<String> {
-        t.map(|t| t.params.iter().map(|p| p.name.name.to_string()).collect()).unwrap_or_default()
+        t.map(|t| t.params.iter().map(|p| p.name.name.to_string()).collect())
+            .unwrap_or_default()
     }
 
     fn block(&self, stmts: &[a::Statement<'_>]) -> Result<Vec<Stmt>> {
@@ -248,6 +287,9 @@ impl Lowerer {
             }
             a::Statement::EmptyStatement(_) => Ok(()),
             other => {
+                if let Some(d) = other.as_declaration() {
+                    return self.declaration(d, out);
+                }
                 out.push(self.stmt(other)?);
                 Ok(())
             }
@@ -284,7 +326,11 @@ impl Lowerer {
                         let mut decls = Vec::new();
                         self.var_decl(v, &mut decls)?;
                         if decls.len() != 1 {
-                            return self.unsupported(v.span, "several declarations in a `for` header", "declare one loop variable");
+                            return self.unsupported(
+                                v.span,
+                                "several declarations in a `for` header",
+                                "declare one loop variable",
+                            );
                         }
                         Some(Box::new(decls.pop().expect("one decl")))
                     }
@@ -300,10 +346,18 @@ impl Lowerer {
             }
             a::Statement::ForOfStatement(f) => {
                 if f.r#await {
-                    return self.unsupported(f.span, "`for await`", "Zero's async calls already block; use `for ... of`");
+                    return self.unsupported(
+                        f.span,
+                        "`for await`",
+                        "Zero's async calls already block; use `for ... of`",
+                    );
                 }
                 let a::ForStatementLeft::VariableDeclaration(v) = &f.left else {
-                    return self.unsupported(f.span, "assigning to an existing variable in `for ... of`", "declare it: `for (const x of xs)`");
+                    return self.unsupported(
+                        f.span,
+                        "assigning to an existing variable in `for ... of`",
+                        "declare it: `for (const x of xs)`",
+                    );
                 };
                 let kind = match v.kind {
                     a::VariableDeclarationKind::Const => DeclKind::Const,
@@ -345,8 +399,16 @@ impl Lowerer {
                         let param = match &h.param {
                             None => None,
                             Some(p) => match &p.pattern {
-                                a::BindingPattern::BindingIdentifier(id) => Some((id.name.to_string(), self.sp(id.span))),
-                                _ => return self.unsupported(p.span, "destructuring a caught error", "catch `e` and read `e.message`"),
+                                a::BindingPattern::BindingIdentifier(id) => {
+                                    Some((id.name.to_string(), self.sp(id.span)))
+                                }
+                                _ => {
+                                    return self.unsupported(
+                                        p.span,
+                                        "destructuring a caught error",
+                                        "catch `e` and read `e.message`",
+                                    );
+                                }
                             },
                         };
                         (param, Some(self.block(&h.body.body)?))
@@ -362,9 +424,16 @@ impl Lowerer {
             a::Statement::SwitchStatement(s) => {
                 let mut cases = Vec::new();
                 for c in &s.cases {
-                    cases.push((c.test.as_ref().map(|e| self.expr(e)).transpose()?, self.block(&c.consequent)?));
+                    cases.push((
+                        c.test.as_ref().map(|e| self.expr(e)).transpose()?,
+                        self.block(&c.consequent)?,
+                    ));
                 }
-                Stmt::Switch { disc: self.expr(&s.discriminant)?, cases, span: self.sp(s.span) }
+                Stmt::Switch {
+                    disc: self.expr(&s.discriminant)?,
+                    cases,
+                    span: self.sp(s.span),
+                }
             }
             a::Statement::LabeledStatement(l) => return self.unsupported(l.span, "labels", ""),
             a::Statement::WithStatement(w) => return self.unsupported(w.span, "`with`", ""),
@@ -393,8 +462,11 @@ impl Lowerer {
             params: self.params(&f.params)?,
             body: FnBody::Block(self.block(&body.statements)?),
             is_async: f.r#async,
-            is_arrow: false,
-            ret: f.return_type.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?,
+            ret: f
+                .return_type
+                .as_ref()
+                .map(|t| self.ty(&t.type_annotation))
+                .transpose()?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
             module: self.module,
@@ -411,8 +483,11 @@ impl Lowerer {
             params: self.params(&f.params)?,
             body,
             is_async: f.r#async,
-            is_arrow: true,
-            ret: f.return_type.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?,
+            ret: f
+                .return_type
+                .as_ref()
+                .map(|t| self.ty(&t.type_annotation))
+                .transpose()?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
             module: self.module,
@@ -427,7 +502,11 @@ impl Lowerer {
             }
             out.push(Param {
                 pat: self.pattern(&item.pattern)?,
-                ann: item.type_annotation.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?,
+                ann: item
+                    .type_annotation
+                    .as_ref()
+                    .map(|t| self.ty(&t.type_annotation))
+                    .transpose()?,
                 default: item.initializer.as_ref().map(|e| self.expr(e)).transpose()?,
                 optional: item.optional,
                 rest: false,
@@ -437,7 +516,11 @@ impl Lowerer {
         if let Some(r) = &p.rest {
             out.push(Param {
                 pat: self.pattern(&r.rest.argument)?,
-                ann: r.type_annotation.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?,
+                ann: r
+                    .type_annotation
+                    .as_ref()
+                    .map(|t| self.ty(&t.type_annotation))
+                    .transpose()?,
                 default: None,
                 optional: false,
                 rest: true,
@@ -466,7 +549,11 @@ impl Lowerer {
                         _ => return self.unsupported(r.span, "nested rest patterns", ""),
                     },
                 };
-                Pat::Obj { props, rest, span: self.sp(o.span) }
+                Pat::Obj {
+                    props,
+                    rest,
+                    span: self.sp(o.span),
+                }
             }
             a::BindingPattern::ArrayPattern(arr) => {
                 let mut elems = Vec::new();
@@ -480,7 +567,11 @@ impl Lowerer {
                         _ => return self.unsupported(r.span, "nested rest patterns", ""),
                     },
                 };
-                Pat::Arr { elems, rest, span: self.sp(arr.span) }
+                Pat::Arr {
+                    elems,
+                    rest,
+                    span: self.sp(arr.span),
+                }
             }
             a::BindingPattern::AssignmentPattern(ap) => {
                 Pat::Default(Box::new(self.pattern(&ap.left)?), Rc::new(self.expr(&ap.right)?))
@@ -517,7 +608,10 @@ impl Lowerer {
             E::BigIntLiteral(b) => return self.unsupported(b.span, "BigInt", "use numbers"),
             E::RegExpLiteral(r) => self.mk(
                 span,
-                ExprKind::Regex { pattern: r.regex.pattern.text.to_string(), flags: r.regex.flags.to_string() },
+                ExprKind::Regex {
+                    pattern: r.regex.pattern.text.to_string(),
+                    flags: r.regex.flags.to_string(),
+                },
             ),
             E::TemplateLiteral(t) => {
                 let mut quasis = Vec::new();
@@ -560,7 +654,11 @@ impl Lowerer {
                         a::ObjectPropertyKind::SpreadProperty(s) => props.push(Prop::Spread(self.expr(&s.argument)?)),
                         a::ObjectPropertyKind::ObjectProperty(p) => {
                             if p.kind != a::PropertyKind::Init {
-                                return self.unsupported(p.span, "getters and setters", "use a plain property or a function");
+                                return self.unsupported(
+                                    p.span,
+                                    "getters and setters",
+                                    "use a plain property or a function",
+                                );
                             }
                             let key = if p.computed {
                                 PropKey::Computed(self.expr(p.key.to_expression())?)
@@ -575,7 +673,10 @@ impl Lowerer {
                                     return self.unsupported(p.span, "this method", "");
                                 };
                                 let func = self.function(f)?;
-                                Expr { span: func.span, kind: ExprKind::Func(func) }
+                                Expr {
+                                    span: func.span,
+                                    kind: ExprKind::Func(func),
+                                }
                             } else {
                                 self.expr(&p.value)?
                             };
@@ -596,7 +697,11 @@ impl Lowerer {
                     UO::Typeof => UnOp::TypeOf,
                     UO::Void => return self.unsupported(u.span, "`void`", "use `undefined`"),
                     UO::Delete => {
-                        return self.unsupported(u.span, "`delete`", "build a new object without the key: `const { key, ...rest } = obj`");
+                        return self.unsupported(
+                            u.span,
+                            "`delete`",
+                            "build a new object without the key: `const { key, ...rest } = obj`",
+                        );
                     }
                     UO::BitwiseNot => return self.unsupported(u.span, "bitwise operators", ""),
                 };
@@ -636,10 +741,15 @@ impl Lowerer {
                         return Ok(self.mk(span, ExprKind::IsNullish(Box::new(self.expr(target)?), negated)));
                     }
                     BO::In => return self.unsupported(b.span, "`in`", "use `Object.hasOwn(obj, key)`"),
-                    BO::Instanceof => return self.unsupported(b.span, "`instanceof`", "use `typeof` or `Array.isArray`"),
+                    BO::Instanceof => {
+                        return self.unsupported(b.span, "`instanceof`", "use `typeof` or `Array.isArray`");
+                    }
                     _ => return self.unsupported(b.span, "bitwise operators", ""),
                 };
-                self.mk(span, ExprKind::Binary(op, Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)))
+                self.mk(
+                    span,
+                    ExprKind::Binary(op, Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
+                )
             }
             E::LogicalExpression(l) => {
                 let op = match l.operator {
@@ -647,7 +757,10 @@ impl Lowerer {
                     LO::Or => LogOp::Or,
                     LO::Coalesce => LogOp::Nullish,
                 };
-                self.mk(span, ExprKind::Logical(op, Box::new(self.expr(&l.left)?), Box::new(self.expr(&l.right)?)))
+                self.mk(
+                    span,
+                    ExprKind::Logical(op, Box::new(self.expr(&l.left)?), Box::new(self.expr(&l.right)?)),
+                )
             }
             E::ConditionalExpression(c) => self.mk(
                 span,
@@ -674,10 +787,21 @@ impl Lowerer {
                 let target = match asg.left.as_simple_assignment_target() {
                     Some(t) => self.simple_target(t)?,
                     None => {
-                        return self.unsupported(asg.span, "destructuring assignment", "declare new variables: `const [a, b] = ...`");
+                        return self.unsupported(
+                            asg.span,
+                            "destructuring assignment",
+                            "declare new variables: `const [a, b] = ...`",
+                        );
                     }
                 };
-                self.mk(span, ExprKind::Assign { op, target: Box::new(target), value: Box::new(self.expr(&asg.right)?) })
+                self.mk(
+                    span,
+                    ExprKind::Assign {
+                        op,
+                        target: Box::new(target),
+                        value: Box::new(self.expr(&asg.right)?),
+                    },
+                )
             }
             E::UpdateExpression(u) => self.mk(
                 span,
@@ -690,7 +814,10 @@ impl Lowerer {
             E::CallExpression(c) => self.call(c)?,
             E::NewExpression(n) => self.mk(
                 span,
-                ExprKind::New { callee: Box::new(self.expr(&n.callee)?), args: self.args(&n.arguments)? },
+                ExprKind::New {
+                    callee: Box::new(self.expr(&n.callee)?),
+                    args: self.args(&n.arguments)?,
+                },
             ),
             E::ChainExpression(c) => {
                 let inner = match &c.expression {
@@ -804,7 +931,9 @@ impl Lowerer {
                 for el in &tup.element_types {
                     match el.as_ts_type() {
                         Some(t) => items.push(self.ty(t)?),
-                        None => return self.unsupported(tup.span, "optional or rest tuple elements", "use an array type"),
+                        None => {
+                            return self.unsupported(tup.span, "optional or rest tuple elements", "use an array type");
+                        }
                     }
                 }
                 TyAnn::Tuple(items)
@@ -826,20 +955,24 @@ impl Lowerer {
             }
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
-                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
-                a::TSLiteral::NumericLiteral(n) => TyAnn::NumLit(n.value),
-                a::TSLiteral::BooleanLiteral(b) => TyAnn::BoolLit(b.value),
-                a::TSLiteral::UnaryExpression(u) => match &u.argument {
-                    a::Expression::NumericLiteral(n) if u.operator == UO::UnaryNegation => TyAnn::NumLit(-n.value),
-                    _ => return self.unsupported(l.span, "this literal type", ""),
-                },
+                // Literal types narrow nothing in PHP; they compile as their base type.
+                a::TSLiteral::StringLiteral(_) | a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
+                a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
+                a::TSLiteral::BooleanLiteral(_) => TyAnn::Bool,
+                a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
+                    TyAnn::Num
+                }
                 _ => return self.unsupported(l.span, "this literal type", ""),
             },
             T::TSTypeLiteral(lit) => self.members(&lit.members)?,
             T::TSFunctionType(f) => {
                 let mut params = Vec::new();
                 for p in &f.params.items {
-                    let ann = p.type_annotation.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?;
+                    let ann = p
+                        .type_annotation
+                        .as_ref()
+                        .map(|t| self.ty(&t.type_annotation))
+                        .transpose()?;
                     params.push((ann.unwrap_or(TyAnn::Any), p.optional));
                 }
                 TyAnn::Fn(params, Box::new(self.ty(&f.return_type.type_annotation)?))
@@ -873,14 +1006,16 @@ impl Lowerer {
                 let key = match &i.index_type {
                     T::TSLiteralType(l) => match &l.literal {
                         a::TSLiteral::StringLiteral(s) => js(s.value, self.sp(s.span))?,
-                        _ => return self.unsupported(i.span, "this indexed access type", "index with a string literal"),
+                        _ => {
+                            return self.unsupported(i.span, "this indexed access type", "index with a string literal");
+                        }
                     },
                     _ => return self.unsupported(i.span, "this indexed access type", "index with a string literal"),
                 };
                 TyAnn::Indexed(Box::new(self.ty(&i.object_type)?), key)
             }
             T::TSTypeOperatorType(o) => match o.operator {
-                a::TSTypeOperatorOperator::Keyof => TyAnn::KeyOf(Box::new(self.ty(&o.type_annotation)?)),
+                a::TSTypeOperatorOperator::Keyof => TyAnn::Str,
                 a::TSTypeOperatorOperator::Readonly => self.ty(&o.type_annotation)?,
                 a::TSTypeOperatorOperator::Unique => return self.unsupported(o.span, "`unique symbol`", ""),
             },
@@ -912,7 +1047,11 @@ impl Lowerer {
                 }
                 a::TSSignature::TSIndexSignature(i) => {
                     if !fields.is_empty() || members.len() > 1 {
-                        return self.unsupported(i.span, "index signatures mixed with named fields", "use `Record<string, T>`");
+                        return self.unsupported(
+                            i.span,
+                            "index signatures mixed with named fields",
+                            "use `Record<string, T>`",
+                        );
                     }
                     return Ok(TyAnn::Map(Box::new(self.ty(&i.type_annotation.type_annotation)?)));
                 }
@@ -922,14 +1061,22 @@ impl Lowerer {
                     };
                     let mut params = Vec::new();
                     for p in &ms.params.items {
-                        let ann = p.type_annotation.as_ref().map(|t| self.ty(&t.type_annotation)).transpose()?;
+                        let ann = p
+                            .type_annotation
+                            .as_ref()
+                            .map(|t| self.ty(&t.type_annotation))
+                            .transpose()?;
                         params.push((ann.unwrap_or(TyAnn::Any), p.optional));
                     }
                     let ret = match &ms.return_type {
                         Some(t) => self.ty(&t.type_annotation)?,
                         None => TyAnn::Any,
                     };
-                    fields.push((js(key, self.sp(ms.span))?, TyAnn::Fn(params, Box::new(ret)), ms.optional));
+                    fields.push((
+                        js(key, self.sp(ms.span))?,
+                        TyAnn::Fn(params, Box::new(ret)),
+                        ms.optional,
+                    ));
                 }
                 other => return self.unsupported(other.span(), "call and construct signatures", ""),
             }

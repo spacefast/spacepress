@@ -10,10 +10,10 @@ const named = <T extends object>(extra: T) => ({ id: id(), name: text().notNull(
 
 export const locations = collection("locations", named({
   kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
-}));
+}), { editor: false });
 
 export const items = collection("items", named({
-  slug: text().unique().notNull(),
+  slug: text().unique().notNull().max(191),
   quantity: integer().notNull().default(1),
   unit: text({ enum: UNITS }).notNull().default("pcs"),
   lowStockAt: integer().notNull().default(LOW_STOCK),
@@ -22,7 +22,7 @@ export const items = collection("items", named({
   locationId: integer().references(() => locations.id, { onDelete: "set null" }),
   tags: json().$type<string[]>().notNull().$default(() => []),
   ...timestamps,
-}));
+}), { editor: false });
 
 export const shoppingList = collection("shopping_list", {
   id: id(),
@@ -30,7 +30,7 @@ export const shoppingList = collection("shopping_list", {
   name: text().notNull(),
   done: boolean().notNull().default(false),
   ...timestamps,
-});
+}, { editor: false });
 
 export const schema = { locations, items, shoppingList };
 

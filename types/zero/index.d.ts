@@ -15,8 +15,9 @@
  *   6. Relational query results
  *   7. Registry (how `db` learns your schema)
  *   8. Database API
- *   9. Hooks, actions, config
- *  10. Errors
+ *   9. Identity and access
+ *  10. Hooks, actions, globals, config
+ *  11. Errors
  */
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,9 @@ type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 type Awaitable<T> = T | Promise<T>;
 
+/** Where the compiled app runs: the standalone PHP+SQLite app or the WordPress plugin. */
+export type Target = "standalone" | "wp";
+
 /** Phantom keys: carry type information without showing up in autocomplete. */
 declare const columnBrand: unique symbol;
 declare const collectionBrand: unique symbol;
@@ -35,6 +39,7 @@ declare const relationsBrand: unique symbol;
 declare const relationBrand: unique symbol;
 declare const actionBrand: unique symbol;
 declare const configBrand: unique symbol;
+declare const globalBrand: unique symbol;
 
 // ---------------------------------------------------------------------------
 // 2. Columns
@@ -48,7 +53,17 @@ export type ColumnKind =
   | "boolean"
   | "date"
   | "timestamp"
-  | "json";
+  | "json"
+  | "email"
+  | "url"
+  | "slug"
+  | "richText"
+  | "media"
+  | "mediaList"
+  | "select"
+  | "group"
+  | "repeater"
+  | "blocks";
 
 export type ReferentialAction = "cascade" | "restrict" | "set null" | "no action";
 
@@ -62,11 +77,32 @@ type GeneratedValue<TKind extends ColumnKind, TData> =
   | TData
   | (TKind extends "timestamp" | "date" ? Date : never);
 
+// Which modifiers each kind allows (design §1.2). Enforced here through `this` parameters, and by
+// the compiler regardless ("`.max()` isn't valid on a boolean column").
+/** `.min/.max`: numeric bounds, string length in code points, or item count. */
+type BoundedKind = "integer" | "real" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "repeater" | "blocks";
+/** `.pattern`: strings only. */
+type PatternKind = "text" | "email" | "url" | "slug";
+/** `.unique()`. */
+type UniqueKind = "id" | "integer" | "real" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
+/** `.references()`. */
+type ReferenceKind = "id" | "integer" | "real";
+/** `.default()` and friends: every kind but media. */
+type DefaultKind = Exclude<ColumnKind, "media">;
+
+/** What `.validate` sees besides the value. */
+export interface ValidateCtx {
+  /** The whole row being written (insert: data after defaults; update: existing merged with patch). Sub-field validators see the enclosing row. */
+  data: Record<string, unknown>;
+  user: User | null;
+  target: Target;
+}
+
 /**
- * A column definition inside `collection(...)` or `action({ input })`.
+ * A column definition inside `collection(...)`, `global(...)`, a structured field, or `action({ input })`.
  * Builders are immutable: each modifier returns a new builder.
  *
- * - `TData`       — the TS value type (enum union, `$type<T>()`, ...)
+ * - `TData`       — the TS value type (enum union, `$type<T>()`, sub-field shapes, ...)
  * - `TNotNull`    — `.notNull()` / `.primaryKey()` / `id()`
  * - `THasDefault` — any default (`.default`, `.defaultNow`, `$default`, `$onUpdate`, `id()`)
  */
@@ -83,25 +119,42 @@ export interface ColumnBuilder<
     hasDefault: THasDefault;
   };
 
+  /** On a sub-field: required in every item. */
   notNull(): ColumnBuilder<TKind, TData, true, THasDefault>;
-  /** SQL `DEFAULT value`. */
-  default(value: TData): ColumnBuilder<TKind, TData, TNotNull, true>;
+  /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
+  default(
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault>,
+    value: TData,
+  ): ColumnBuilder<TKind, TData, TNotNull, true>;
   /** Current time (timestamp) or today (date) as the SQL default. */
   defaultNow(
     this: ColumnBuilder<"timestamp" | "date", TData, TNotNull, THasDefault>,
   ): ColumnBuilder<TKind, TData, TNotNull, true>;
   /** Computed in PHP on insert. */
-  $default(fn: () => GeneratedValue<TKind, TData>): ColumnBuilder<TKind, TData, TNotNull, true>;
+  $default(
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault>,
+    fn: () => GeneratedValue<TKind, TData>,
+  ): ColumnBuilder<TKind, TData, TNotNull, true>;
   /** Alias of `$default`. */
-  $defaultFn(fn: () => GeneratedValue<TKind, TData>): ColumnBuilder<TKind, TData, TNotNull, true>;
+  $defaultFn(
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault>,
+    fn: () => GeneratedValue<TKind, TData>,
+  ): ColumnBuilder<TKind, TData, TNotNull, true>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
-   * Like Drizzle, it also counts as a default for inserts.
+   * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
    */
-  $onUpdate(fn: () => GeneratedValue<TKind, TData>): ColumnBuilder<TKind, TData, TNotNull, true>;
+  $onUpdate(
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault>,
+    fn: () => GeneratedValue<TKind, TData>,
+  ): ColumnBuilder<TKind, TData, TNotNull, true>;
   /** Alias of `$onUpdate`. */
-  $onUpdateFn(fn: () => GeneratedValue<TKind, TData>): ColumnBuilder<TKind, TData, TNotNull, true>;
-  unique(): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
+  $onUpdateFn(
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault>,
+    fn: () => GeneratedValue<TKind, TData>,
+  ): ColumnBuilder<TKind, TData, TNotNull, true>;
+  /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
+  unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault>): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
   /** Primary key: implies NOT NULL; an integer primary key is auto-assigned. */
   primaryKey(): ColumnBuilder<
     TKind,
@@ -111,11 +164,27 @@ export interface ColumnBuilder<
   >;
   /** Foreign key. The target column's type must match this column's type. */
   references(
+    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault>,
     ref: () => Column<ColumnKind, NonNullable<TData>>,
     options?: ReferenceOptions,
   ): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
   /** Narrows the TS type only (no runtime effect), e.g. `json().$type<string[]>()`. */
   $type<T>(): ColumnBuilder<TKind, T, TNotNull, THasDefault>;
+
+  /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
+  min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
+  /** Numbers: inclusive upper bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
+  max(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
+  /** Strings only. A RegExp literal; compiled to PCRE at build time. */
+  pattern(this: ColumnBuilder<PatternKind, TData, TNotNull, THasDefault>, re: RegExp): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
+  /**
+   * Custom validation, compiled to PHP, run after type coercion on every write (REST, db, CLI, wp-admin).
+   * Return `true`/nothing to accept, or a string to reject with that message (422 invalid_input, pointer /<col>).
+   * Throwing `HttpError` also works.
+   */
+  validate(
+    fn: (value: NonNullable<TData>, ctx: ValidateCtx) => true | string | void,
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault>;
 }
 
 export type AnyColumnBuilder = ColumnBuilder<ColumnKind, unknown, boolean, boolean>;
@@ -151,10 +220,12 @@ export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, st
 export declare function id(): ColumnBuilder<"id", number, true, true>;
 export declare function integer(): ColumnBuilder<"integer", number, false, false>;
 export declare function real(): ColumnBuilder<"real", number, false, false>;
-export declare function text(): ColumnBuilder<"text", string, false, false>;
+/** Single line by default; `multiline: true` is a textarea in editors. */
+export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, false, false>;
 /** `text({ enum: ["a", "b"] })` types the column as `"a" | "b"`. */
 export declare function text<const TEnum extends readonly [string, ...string[]]>(config: {
   enum: TEnum;
+  multiline?: boolean;
 }): ColumnBuilder<"text", TEnum[number], false, false>;
 /** Stored as INTEGER 0/1. */
 export declare function boolean(): ColumnBuilder<"boolean", boolean, false, false>;
@@ -164,6 +235,56 @@ export declare function date(): ColumnBuilder<"date", string, false, false>;
 export declare function timestamp(): ColumnBuilder<"timestamp", string, false, false>;
 /** TEXT holding JSON; `unknown` until narrowed with `.$type<T>()`. */
 export declare function json(): ColumnBuilder<"json", unknown, false, false>;
+
+/** An email address (validated). TEXT. */
+export declare function email(): ColumnBuilder<"email", string, false, false>;
+/** An absolute `http(s)://` URL (validated). TEXT. */
+export declare function url(): ColumnBuilder<"url", string, false, false>;
+/**
+ * URL-safe identifier: `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 200 characters, unique. With `source`
+ * (a text column of the same collection), an omitted slug is derived from it ("-2", "-3" ... until
+ * unique). At most one per collection; not allowed in sub-fields or globals.
+ */
+export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, false, false>;
+/** With `source`, an omitted slug is derived, so it is optional on insert even when `.notNull()`. */
+export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, false, true>;
+/** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
+export declare function richText(): ColumnBuilder<"richText", string, false, false>;
+/** A media id (the built-in `media` collection). `with: { <col>: true }` populates it in place. */
+export declare function media(config?: { accept?: "image" | "any"; multiple?: false }): ColumnBuilder<"media", number, false, false>;
+/** A list of media ids. */
+export declare function media(config: { accept?: "image" | "any"; multiple: true }): ColumnBuilder<"mediaList", number[], false, false>;
+/** One of `options`: exactly `text({ enum: options })`. */
+export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
+  options: TOptions;
+  multiple?: false;
+}): ColumnBuilder<"text", TOptions[number], false, false>;
+/** Any number of distinct `options`, stored as a JSON array. Filter with `{ has: option }`. */
+export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
+  options: TOptions;
+  multiple: true;
+}): ColumnBuilder<"select", TOptions[number][], false, false>;
+
+/**
+ * Sub-fields of `group`/`repeater`/`blocks` layouts and globals. Builders are the column builders;
+ * the compiler rejects id(), slug(), blocks(), .primaryKey(), .unique(), .references() and
+ * .$onUpdate() inside them, and nesting deeper than 3.
+ */
+export type FieldsConfig = Record<string, AnyColumnBuilder>;
+
+/** One object with fixed sub-fields (absent optional sub-fields read as null). */
+export declare function group<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"group", SelectShape<F>, false, false>;
+/** A list of objects with the same sub-fields. `.min/.max` count items. */
+export declare function repeater<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"repeater", SelectShape<F>[], false, false>;
+/** Flexible content: a list of items, each `{ layout, ...that layout's fields }`. */
+export declare function blocks<L extends Record<string, FieldsConfig>>(config: {
+  layouts: L;
+}): ColumnBuilder<"blocks", BlockValue<L>[], false, false>;
+
+/** One `blocks()` item: discriminated by `layout`. */
+export type BlockValue<L extends Record<string, FieldsConfig>> = {
+  [K in keyof L & string]: Simplify<{ layout: K } & SelectShape<L[K]>>;
+}[keyof L & string];
 
 /** Select type of one column: nullable unless NOT NULL. */
 type SelectValue<C> = C extends { readonly [columnBrand]: { data: infer D; notNull: infer N } }
@@ -181,9 +302,29 @@ type RequiredInsertKeys<TCols> = {
     : never;
 }[keyof TCols];
 
+/**
+ * Write form of a structured value (group/repeater/blocks): sub-fields that read as nullable may be
+ * omitted (they are stored as null, or their default). NOT NULL sub-fields with a default stay
+ * required here; the runtime would accept them absent.
+ */
+type WriteStructured<D> = D extends readonly (infer I)[]
+  ? WriteStructured<I>[]
+  : D extends object
+    ? Simplify<
+        { [K in keyof D as null extends D[K] ? never : K]: WriteStructured<D[K]> } & {
+          [K in keyof D as null extends D[K] ? K : never]?: WriteStructured<D[K]>;
+        }
+      >
+    : D;
+
+/** Insert/patch type of one column. */
+type InsertValue<C> = C extends { readonly [columnBrand]: { kind: "group" | "repeater" | "blocks" } }
+  ? WriteStructured<SelectValue<C>>
+  : SelectValue<C>;
+
 type InsertShape<TCols> = Simplify<
-  { [K in RequiredInsertKeys<TCols>]: SelectValue<TCols[K]> } & {
-    [K in Exclude<keyof TCols, RequiredInsertKeys<TCols>>]?: SelectValue<TCols[K]>;
+  { [K in RequiredInsertKeys<TCols>]: InsertValue<TCols[K]> } & {
+    [K in Exclude<keyof TCols, RequiredInsertKeys<TCols>>]?: InsertValue<TCols[K]>;
   }
 >;
 
@@ -195,8 +336,51 @@ type SelectShape<TCols> = Simplify<{ [K in keyof TCols]: SelectValue<TCols[K]> }
 
 export type ColumnsConfig = Record<string, AnyColumnBuilder>;
 
-export interface CollectionOptions {
-  /** Which REST endpoints `/api/<name>` exposes. All default to `true`. */
+/** Lifecycle of a row in a drafts collection. */
+export type Status = "draft" | "published" | "scheduled";
+
+/**
+ * System columns added to every drafts collection (`drafts` defaults to `editor !== false`).
+ * Plain columns to hooks, `db`, filters and `orderBy`. API-created rows default to `published`.
+ */
+export type DraftColumns = {
+  status: ColumnBuilder<"text", Status, true, true>;
+  publishedAt: ColumnBuilder<"timestamp", string, false, false>;
+};
+
+type ColumnKindOf<C> = C extends { readonly [columnBrand]: { kind: infer K } } ? K : never;
+type ColumnNotNull<C> = C extends { readonly [columnBrand]: { notNull: infer N } } ? N : never;
+/** Column names of `TCols` whose builder is `kind` (and NOT NULL when `notNull`). */
+type ColumnsOfKind<TCols, TKind extends ColumnKind, TNotNull extends boolean = boolean> = {
+  [K in keyof TCols]: [ColumnKindOf<TCols[K]>] extends [TKind]
+    ? [ColumnNotNull<TCols[K]>] extends [TNotNull]
+      ? K
+      : never
+    : never;
+}[keyof TCols] &
+  string;
+
+/** Options shared by both `collection()` signatures; `T` is the collection being defined. */
+export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
+  /** Shown in wp-admin menus and the typed client docs. Default: name with underscores → spaces, title-cased. */
+  label?: string;
+  /**
+   * WordPress: `true` = posts + SCF fields (wp-admin editing, revisions, scheduling); `false` = a custom table.
+   * Standalone: no storage effect; it drives the `drafts`/`revisions` defaults so one config behaves the same everywhere.
+   * Default `true`.
+   */
+  editor?: boolean;
+  /** Adds `status` + `publishedAt`. Default `editor !== false`; `false` needs `editor: false`. */
+  drafts?: boolean;
+  /** Keep a revision per update. Default `editor !== false`. */
+  revisions?: boolean;
+  /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required when `editor !== false`. */
+  title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
+  /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */
+  content?: ColumnsOfKind<ColumnsOf<T>, "richText">;
+  /** Who may read and write through the REST API / typed client. Hooks, actions' `db` calls and the CLI are trusted. */
+  access?: AccessConfig<T>;
+  /** Which REST endpoints exist. All default to `true`. */
   api?: {
     list?: boolean;
     get?: boolean;
@@ -238,11 +422,26 @@ export type AnyCollection = CollectionMeta<string, ColumnsConfig>;
 /**
  * Defines a table. `name` is the SQL table and REST path segment; the key
  * under `schema` is what `db.query.<key>`, `hooks` and `relations` use.
+ *
+ * `editor: false` without drafts: the columns are exactly `columns`.
  */
 export declare function collection<
   const TName extends string,
   TCols extends ColumnsConfig,
->(name: TName, columns: TCols, options?: CollectionOptions): Collection<TName, TCols>;
+>(
+  name: TName,
+  columns: TCols,
+  options: NoInfer<CollectionOptions<Collection<TName, TCols>>> & { editor: false; drafts?: false },
+): Collection<TName, TCols>;
+/** Editor collections (the default) and `drafts: true`: `status` and `publishedAt` are added. */
+export declare function collection<
+  const TName extends string,
+  TCols extends ColumnsConfig,
+>(
+  name: TName,
+  columns: TCols,
+  options?: NoInfer<CollectionOptions<Collection<TName, TCols & DraftColumns>>> & { drafts?: true },
+): Collection<TName, TCols & DraftColumns>;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;
 
@@ -363,8 +562,35 @@ export interface FieldOperators<T> {
 /** A field condition: a bare (non-object) value or an operator object. */
 export type FieldFilter<T> = FieldOperators<T> | (T extends object ? never : T);
 
+/** List columns (`mediaList`, `select({ multiple })`): membership, emptiness, null. No `in`/`like`/ordering. */
+export interface ListOperators<TItem> {
+  /** Rows whose list contains this item. */
+  has?: TItem;
+  /** Only the empty list. */
+  eq?: [];
+  isNull?: true;
+  isNotNull?: true;
+}
+
+/** JSON-valued columns (`json`, `group`, `repeater`, `blocks`): whole-value equality and null only. */
+export interface JsonOperators<T> {
+  eq?: T;
+  ne?: T;
+  isNull?: true;
+  isNotNull?: true;
+}
+
+/** The filter one column accepts, by kind (design §3.5). */
+type ColumnFilter<C> = C extends { readonly [columnBrand]: { kind: infer K; data: infer D } }
+  ? K extends "mediaList" | "select"
+    ? ListOperators<D extends readonly (infer I)[] ? I : never>
+    : K extends "json" | "group" | "repeater" | "blocks"
+      ? JsonOperators<NonNullable<D>>
+      : FieldFilter<NonNullable<D>>
+  : never;
+
 type ColumnFilters<TCols> = {
-  [K in keyof TCols]?: FieldFilter<NonNullable<SelectValue<TCols[K]>>>;
+  [K in keyof TCols]?: ColumnFilter<TCols[K]>;
 };
 
 /** Column-only filter (used by `update().where` / `delete().where`). */
@@ -389,8 +615,13 @@ export type RelationsFilter<
   NOT?: RelationsFilter<TSchema, TRels, K>;
 };
 
+/** Columns that can be ordered: everything but list and JSON-valued columns. */
+type OrderableKeys<TCols> = {
+  [K in keyof TCols]: ColumnKindOf<TCols[K]> extends "mediaList" | "select" | "json" | "group" | "repeater" | "blocks" ? never : K;
+}[keyof TCols];
+
 export type OrderBy<T extends AnyCollection> = {
-  [K in keyof ColumnsOf<T>]?: "asc" | "desc";
+  [K in OrderableKeys<ColumnsOf<T>>]?: "asc" | "desc";
 };
 
 /** `columns: { name: true }` picks; all-`false` omits. */
@@ -505,6 +736,8 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * ```
  *
  * Without relations, register the schema instead: `schema: typeof schema`.
+ * Projects with globals also register the config (types `db.globals`):
+ * `import type config from "./zero.config"` and `config: typeof config`.
  */
 export interface Register {}
 
@@ -529,6 +762,18 @@ export type QueryApi = [RegisteredSchema] extends [never]
         K
       >;
     };
+
+type RegisteredGlobals = Register extends { config: { readonly [configBrand]: { globals: infer G } } } ? G : never;
+
+/** `db.globals.<key>`: trusted reads and writes of one global. Never-written globals read as their defaults. */
+export interface GlobalApi<G extends AnyGlobal> {
+  get(): Promise<G["$inferSelect"]>;
+  update(patch: G["$inferUpdate"]): Promise<G["$inferSelect"]>;
+}
+
+export type GlobalsApi = [RegisteredGlobals] extends [never]
+  ? { readonly [key: string]: GlobalApi<AnyGlobal> }
+  : { readonly [K in keyof RegisteredGlobals]: GlobalApi<RegisteredGlobals[K] & AnyGlobal> };
 
 // ---------------------------------------------------------------------------
 // 8. Database API (hooks and actions only)
@@ -561,8 +806,10 @@ export interface DeleteQuery<T extends AnyCollection> extends WriteQuery<T> {
 }
 
 export interface Database {
-  /** Relational queries, keyed by `schema` key. */
+  /** Relational queries, keyed by `schema` key. Trusted: every status visible, no access rules. */
   readonly query: QueryApi;
+  /** Globals, keyed by the `globals` key in `defineConfig`. */
+  readonly globals: GlobalsApi;
   insert<T extends AnyCollection>(collection: T): InsertBuilder<T>;
   update<T extends AnyCollection>(collection: T): UpdateBuilder<T>;
   delete<T extends AnyCollection>(collection: T): DeleteQuery<T>;
@@ -572,19 +819,85 @@ export interface Database {
 export declare const db: Database;
 
 // ---------------------------------------------------------------------------
-// 9. Hooks, actions, config
+// 9. Identity and access
 // ---------------------------------------------------------------------------
 
-/** Throwing from any hook aborts the request and rolls back its writes. */
+/** The role ladder, lowest first. A role rule admits that role and every role above it. */
+export type Role = "subscriber" | "author" | "editor" | "admin";
+
+/** Who is calling: a WordPress user on the wp target, a token's user standalone. */
+export interface User {
+  id: number;
+  name: string;
+  role: Role;
+}
+
+/** The trailing argument of every hook and action handler. */
+export interface HookCtx {
+  user: User | null;
+  target: Target;
+}
+
+export interface AccessCtx<TData = Record<string, unknown>> {
+  user: User | null;
+  target: Target;
+  op: "read" | "create" | "update" | "delete";
+  /** create: the incoming row (after defaults, before beforeCreate). update: the patch. Absent otherwise. */
+  data?: TData;
+}
+
+/**
+ * A filter an access function may return: column conditions of the collection, plus relation
+ * conditions (`{ author: { userId: ctx.user?.id } }`). Relation names aren't known where the
+ * collection is defined, so the compiler checks those.
+ */
+export type AccessFilter<T extends AnyCollection> = TableFilter<T> & { [relation: string]: unknown };
+
+/** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
+export type AccessShorthand = boolean | "anyone" | "authenticated" | Role;
+
+/**
+ * Who may perform an operation. Functions are compiled to PHP; they may read `ctx` and constants,
+ * not `db`. Returning a filter restricts the operation to matching rows (other rows 404).
+ */
+export type AccessRule<T extends AnyCollection = AnyCollection> =
+  | AccessShorthand
+  | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean | AccessFilter<T>);
+
+/** Create rules decide on the incoming row: a boolean, never a filter. */
+export type CreateAccessRule<T extends AnyCollection = AnyCollection> =
+  | AccessShorthand
+  | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean);
+
+/** Defaults: `read: "anyone"`, writes `"editor"`. Readers below editor only see published rows unless `read` is a function. */
+export interface AccessConfig<T extends AnyCollection = AnyCollection> {
+  read?: AccessRule<T>;
+  create?: CreateAccessRule<T>;
+  update?: AccessRule<T>;
+  delete?: AccessRule<T>;
+}
+
+/** Actions and globals have no rows to filter: a shorthand or a boolean function. */
+export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx: AccessCtx<TData>) => boolean);
+
+// ---------------------------------------------------------------------------
+// 10. Hooks, actions, globals, config
+// ---------------------------------------------------------------------------
+
+/**
+ * Throwing from any hook aborts the request and rolls back its writes. Hooks are trusted: `db` calls
+ * inside them skip access rules and see every status. On WordPress editor saves only the `after*`
+ * hooks run.
+ */
 export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `data` or return a replacement. */
-  beforeCreate?: (data: Insert<T>) => Awaitable<Insert<T> | void>;
-  afterCreate?: (row: Row<T>) => Awaitable<void>;
+  beforeCreate?: (data: Insert<T>, ctx: HookCtx) => Awaitable<Insert<T> | void>;
+  afterCreate?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** Mutate `patch` or return a replacement. */
-  beforeUpdate?: (patch: Patch<T>, existing: Row<T>) => Awaitable<Patch<T> | void>;
-  afterUpdate?: (row: Row<T>, previous: Row<T>) => Awaitable<void>;
-  beforeDelete?: (row: Row<T>) => Awaitable<void>;
-  afterDelete?: (row: Row<T>) => Awaitable<void>;
+  beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: HookCtx) => Awaitable<Patch<T> | void>;
+  afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {
@@ -612,15 +925,52 @@ export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = 
 
 export type AnyAction = Action<ColumnsConfig, unknown>;
 
-/** `POST /api/actions/<name>`; the handler's return value is the response `data`. */
+/** `POST <prefix>/actions/<name>`; the handler's return value is the response `data`. Default access `"editor"`. */
 export declare function action<TInput extends ColumnsConfig, TResult>(definition: {
   input: TInput;
-  handler: (input: InferActionInput<TInput>) => Awaitable<TResult>;
+  access?: GateRule<InferActionInput<TInput>>;
+  handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
 }): Action<TInput, TResult>;
 
-export interface ConfigInput<TSchema extends Schema, TRelations extends Relations<TSchema, any>> {
+/** A singleton record (site settings, footer links): `GET/PATCH <prefix>/globals/<name>`, `db.globals.<key>`. */
+export interface Global<TName extends string = string, TFields extends FieldsConfig = FieldsConfig> {
+  readonly [globalBrand]: { name: TName; fields: TFields };
+  readonly $name: TName;
+  /** What reads return: unset fields read as their defaults (or null). */
+  readonly $inferSelect: SelectShape<TFields>;
+  /** What updates accept: any subset of fields. */
+  readonly $inferUpdate: Partial<SelectShape<TFields>>;
+}
+
+export type AnyGlobal = Global<string, FieldsConfig>;
+
+/**
+ * Defines a global. Fields use the column builders with the sub-field restrictions, and no
+ * `.unique()`/`id()`/`slug()`/`blocks()`; NOT NULL fields need a default. Default access:
+ * `read: "anyone"`, `update: "editor"`.
+ */
+export declare function global<const TName extends string, TFields extends FieldsConfig>(
+  name: TName,
+  fields: TFields,
+  options?: {
+    label?: string;
+    access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
+  },
+): Global<TName, TFields>;
+
+export interface ConfigInput<
+  TSchema extends Schema,
+  TRelations extends Relations<TSchema, any>,
+  TGlobals extends Record<string, AnyGlobal> = {},
+> {
+  /** Project name: plugin slug (`zero-<name>`), wp-admin menu, client docs. Default: the project directory name. */
+  name?: string;
+  /** Build target when `--target` isn't passed. Default `"standalone"`. */
+  target?: Target;
   schema: TSchema;
   relations?: TRelations;
+  /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
+  globals?: TGlobals;
   /** `NoInfer`: the schema comes from `schema` only, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
@@ -629,17 +979,19 @@ export interface ConfigInput<TSchema extends Schema, TRelations extends Relation
 export interface ZeroConfig<
   TSchema extends Schema = Schema,
   TRelations extends Relations<TSchema, any> = Relations<TSchema, any>,
+  TGlobals extends Record<string, AnyGlobal> = Record<string, AnyGlobal>,
 > {
-  readonly [configBrand]: { schema: TSchema; relations: TRelations };
+  readonly [configBrand]: { schema: TSchema; relations: TRelations; globals: TGlobals };
 }
 
 export declare function defineConfig<
   TSchema extends Schema,
   TRelations extends Relations<TSchema, any> = Relations<TSchema, {}>,
->(config: ConfigInput<TSchema, TRelations>): ZeroConfig<TSchema, TRelations>;
+  TGlobals extends Record<string, AnyGlobal> = {},
+>(config: ConfigInput<TSchema, TRelations, TGlobals>): ZeroConfig<TSchema, TRelations, TGlobals>;
 
 // ---------------------------------------------------------------------------
-// 10. Errors
+// 11. Errors
 // ---------------------------------------------------------------------------
 
 /** Throw from a hook or action to pick the HTTP response. */

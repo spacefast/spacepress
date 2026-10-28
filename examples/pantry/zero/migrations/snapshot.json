@@ -1,7 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "tables": {
     "locations": {
+      "editor": false,
+      "drafts": false,
       "columns": {
         "id": {
           "type": "integer",
@@ -9,7 +11,9 @@
           "primaryKey": true,
           "autoIncrement": true,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "name": {
@@ -18,7 +22,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "kind": {
@@ -27,12 +33,20 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "'pantry'",
+          "max": null,
+          "enum": [
+            "fridge",
+            "freezer",
+            "pantry"
+          ],
+          "default": "pantry",
           "references": null
         }
       }
     },
     "items": {
+      "editor": false,
+      "drafts": false,
       "columns": {
         "id": {
           "type": "integer",
@@ -40,7 +54,9 @@
           "primaryKey": true,
           "autoIncrement": true,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "name": {
@@ -49,7 +65,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "slug": {
@@ -58,7 +76,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": true,
-          "sqlDefault": null,
+          "max": 191.0,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "quantity": {
@@ -67,7 +87,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "1",
+          "max": null,
+          "enum": null,
+          "default": 1,
           "references": null
         },
         "unit": {
@@ -76,7 +98,15 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "'pcs'",
+          "max": null,
+          "enum": [
+            "pcs",
+            "g",
+            "kg",
+            "ml",
+            "l"
+          ],
+          "default": "pcs",
           "references": null
         },
         "lowStockAt": {
@@ -85,7 +115,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "1",
+          "max": null,
+          "enum": null,
+          "default": 1,
           "references": null
         },
         "expiresOn": {
@@ -94,7 +126,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "opened": {
@@ -103,7 +137,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "0",
+          "max": null,
+          "enum": null,
+          "default": false,
           "references": null
         },
         "locationId": {
@@ -112,12 +148,15 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": {
             "table": "locations",
             "column": "id",
             "onDelete": "set null",
-            "onUpdate": null
+            "onUpdate": null,
+            "unsigned": true
           }
         },
         "tags": {
@@ -126,7 +165,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "createdAt": {
@@ -135,7 +176,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "updatedAt": {
@@ -144,12 +187,16 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         }
       }
     },
     "shopping_list": {
+      "editor": false,
+      "drafts": false,
       "columns": {
         "id": {
           "type": "integer",
@@ -157,7 +204,9 @@
           "primaryKey": true,
           "autoIncrement": true,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "itemId": {
@@ -166,12 +215,15 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": true,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": {
             "table": "items",
             "column": "id",
             "onDelete": "cascade",
-            "onUpdate": null
+            "onUpdate": null,
+            "unsigned": true
           }
         },
         "name": {
@@ -180,7 +232,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "done": {
@@ -189,7 +243,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": "0",
+          "max": null,
+          "enum": null,
+          "default": false,
           "references": null
         },
         "createdAt": {
@@ -198,7 +254,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         },
         "updatedAt": {
@@ -207,7 +265,9 @@
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
-          "sqlDefault": null,
+          "max": null,
+          "enum": null,
+          "default": null,
           "references": null
         }
       }

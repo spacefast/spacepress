@@ -1,5 +1,10 @@
-// Fixture schema for the type tests (self-contained; mirrors the pantry example).
-import { boolean, collection, date, defineRelations, id, integer, json, text, timestamp } from "zero";
+// Fixture schema for the type tests (self-contained). `locations`/`items`/`shoppingList` mirror the
+// pantry example (custom tables: `editor: false`); `authors`/`posts`/`comments`/`settings` mirror the
+// blog example (design §1.9) and carry the v1 additions.
+import {
+  blocks, boolean, collection, date, defineRelations, email, global, group, id, integer, json, media,
+  repeater, richText, select, slug, text, timestamp, url,
+} from "zero";
 
 export const UNITS = ["pcs", "g", "kg"] as const;
 
@@ -12,7 +17,7 @@ export const locations = collection("locations", {
   id: id(),
   name: text().notNull(),
   kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
-});
+}, { editor: false });
 
 export const items = collection("items", {
   id: id(),
@@ -25,16 +30,70 @@ export const items = collection("items", {
   tags: json().$type<string[]>().notNull().$default(() => []),
   meta: json(),
   ...timestamps,
-});
+}, { editor: false });
 
 export const shoppingList = collection("shopping_list", {
   id: id(),
   itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
   name: text().notNull(),
   done: boolean().notNull().default(false),
+}, { editor: false });
+
+export const authors = collection("authors", {
+  id: id(),
+  name: text().notNull().max(80),
+  email: email().notNull().unique().max(191),
+  bio: text({ multiline: true }).max(500),
+  avatar: media({ accept: "image" }),
+  userId: integer(),
+}, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
+
+export const posts = collection("posts", {
+  id: id(),
+  title: text().notNull().min(1).max(120).pattern(/\S/),
+  slug: slug({ source: "title" }),
+  body: richText(),
+  cover: media({ accept: "image" }),
+  photos: media({ multiple: true }).max(20),
+  tags: select({ options: ["news", "guide", "release"], multiple: true }).notNull().default([]),
+  kind: select({ options: ["article", "note"] }).notNull().default("article"),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
+  seo: group({ fields: {
+    metaTitle: text().max(70),
+    noindex: boolean().notNull().default(false),
+  } }),
+  gallery: repeater({ fields: { image: media({ accept: "image" }).notNull(), caption: text().max(120) } }).max(12),
+  sections: blocks({ layouts: {
+    hero: { heading: text().notNull().max(80), image: media({ accept: "image" }) },
+    quote: { text: text({ multiline: true }).notNull(), cite: text().max(80) },
+  } }),
+  ...timestamps,
+}, {
+  title: "title",
+  content: "body",
+  access: {
+    read: (ctx) => ctx.user && ctx.user.role !== "subscriber" ? true : { status: "published" },
+    create: "author",
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { author: { userId: ctx.user?.id ?? -1 } },
+    delete: "editor",
+  },
 });
 
-export const schema = { locations, items, shoppingList };
+export const comments = collection("comments", {
+  id: id(),
+  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
+  body: text({ multiline: true }).notNull().validate((v, ctx) => v.includes("http://") && ctx.user === null ? "No links" : true),
+  approved: boolean().notNull().default(false),
+}, { editor: false, access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
+
+export const settings = global("settings", {
+  siteTitle: text().notNull().default("My blog").max(80),
+  postsPerPage: integer().notNull().default(10).min(1).max(50),
+  website: url(),
+  social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
+}, { label: "Site settings", access: { update: "admin" } });
+
+export const schema = { locations, items, shoppingList, authors, posts, comments };
 
 export const relations = defineRelations(schema, (r) => ({
   items: { location: r.one.locations({ from: r.items.locationId, to: r.locations.id }) },
@@ -42,4 +101,7 @@ export const relations = defineRelations(schema, (r) => ({
   shoppingList: {
     item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id, optional: false }),
   },
+  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
+  authors: { posts: r.many.posts() },
+  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
 }));

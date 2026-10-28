@@ -1,6 +1,8 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
-import { action, db, defineConfig, HttpError, integer, text } from "zero";
-import { items, locations, schema, relations, shoppingList, UNITS } from "./schema";
+import {
+  action, blocks, boolean, collection, db, defineConfig, global, HttpError, id, integer, media, repeater, richText, select, text, url,
+} from "zero";
+import { authors, comments, items, locations, posts, schema, relations, settings, shoppingList, UNITS } from "./schema";
 
 async function filters() {
   // Unknown column in a where filter
@@ -129,3 +131,113 @@ defineConfig({
     }),
   },
 });
+
+// --- v1 additions (design §1) ---
+
+// Per-kind modifiers (§1.2)
+// @ts-expect-error `.max()` isn't valid on a boolean column
+boolean().max(1);
+// @ts-expect-error `.pattern()` is for plain strings; richText isn't one
+richText().pattern(/x/);
+// @ts-expect-error media columns have no default
+media().default(1);
+// @ts-expect-error `.validate` gets the non-null value: a string here, not a number
+text().validate((v) => (v > 3 ? true : "short"));
+
+// Access (§1.6)
+collection("pages", { id: id(), title: text().notNull() }, {
+  // @ts-expect-error "moderator" is not a role
+  access: { read: "moderator" },
+});
+collection("notes", { id: id(), body: text().notNull() }, {
+  editor: false,
+  // @ts-expect-error create rules return a boolean, not a filter
+  access: { create: (ctx) => ({ body: ctx.user?.name ?? "" }) },
+});
+collection("notes", { id: id(), body: text().notNull() }, {
+  editor: false,
+  // @ts-expect-error a returned filter is checked against the columns: body is text
+  access: { update: () => ({ body: 1 }) },
+});
+// @ts-expect-error drafts can't be turned off for editor collections
+collection("notes", { id: id(), body: text().notNull() }, { drafts: false });
+collection("notes", { id: id(), body: text() }, {
+  // @ts-expect-error the title column must be a NOT NULL text column
+  title: "body",
+});
+
+async function v1Queries() {
+  // @ts-expect-error `has` is for list columns; title is a scalar
+  await db.query.posts.findMany({ where: { title: { has: "x" } } });
+  // @ts-expect-error list columns take `has`, not `in`
+  await db.query.posts.findMany({ where: { tags: { in: ["news"] } } });
+  // @ts-expect-error "blog" isn't a tag option
+  await db.query.posts.findMany({ where: { tags: { has: "blog" } } });
+  // @ts-expect-error JSON-valued columns can't be ordered
+  await db.query.posts.findMany({ orderBy: { seo: "asc" } });
+  // @ts-expect-error editor: false collections have no drafts columns
+  await db.query.comments.findMany({ where: { status: "published" } });
+  // @ts-expect-error repeater items need their NOT NULL sub-field `image`
+  await db.update(posts).set({ gallery: [{ caption: "no image" }] });
+  // @ts-expect-error blocks items are discriminated by `layout`: a hero has no `text`
+  await db.update(posts).set({ sections: [{ layout: "hero", text: "quote text" }] });
+  // @ts-expect-error unknown layout
+  await db.update(posts).set({ sections: [{ layout: "video", heading: "x" }] });
+  // @ts-expect-error global fields are typed: postsPerPage is a number
+  await db.globals.settings.update({ postsPerPage: "10" });
+  // @ts-expect-error there is no `footer` global
+  await db.globals.footer.get();
+}
+
+// Hook ctx (§1.7)
+defineConfig({
+  schema,
+  hooks: {
+    posts: {
+      afterCreate(row, ctx) {
+        // @ts-expect-error ctx.user may be null (anonymous writers, trusted callers)
+        void ctx.user.id;
+        // @ts-expect-error the target is "standalone" | "wp"
+        if (ctx.target === "wordpress") void row;
+      },
+      // @ts-expect-error the trailing argument is HookCtx, not a user
+      beforeDelete(row, user: { role: string; email: string }) {
+        void row, user;
+      },
+    },
+  },
+});
+
+defineConfig({
+  schema,
+  actions: {
+    publish: action({
+      input: { id: integer().notNull() },
+      // @ts-expect-error action access is a gate: no filters
+      access: () => ({ id: 1 }),
+      handler: ({ id }, ctx) => ctx.user?.role === "admin" && id,
+    }),
+  },
+});
+
+defineConfig({
+  schema,
+  // @ts-expect-error target is "standalone" | "wp"
+  target: "wordpress",
+  // @ts-expect-error globals are made with global()
+  globals: { settings: { siteTitle: "x" } },
+});
+
+// Globals (§1.5)
+// @ts-expect-error global field defaults are typed: postsPerPage is an integer
+global("site", { postsPerPage: integer().notNull().default("ten") });
+// @ts-expect-error repeater sub-fields keep their kinds: href is a url (string)
+global("links", { items: repeater({ fields: { href: url().notNull() } }).default([{ href: 1 }]) });
+
+// Structured fields (§1.1)
+// @ts-expect-error blocks layout items are typed: `heading` is text
+blocks({ layouts: { hero: { heading: text().notNull() } } }).default([{ layout: "hero", heading: 1 }]);
+// @ts-expect-error select(multiple) defaults are lists of options
+select({ options: ["a", "b"], multiple: true }).default(["c"]);
+
+void v1Queries; void authors; void comments; void settings;

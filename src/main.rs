@@ -264,6 +264,7 @@ fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
         let target = to.join(entry.file_name());

@@ -1,6 +1,9 @@
 // Positive checks: inferred types are exactly what the spec says.
-import { action, db, defineConfig, integer, text, type InferInsertModel, type InferSelectModel } from "zero";
-import { items, locations, relations, schema, shoppingList } from "./schema";
+import {
+  action, db, defineConfig, integer, text,
+  type AccessCtx, type BlockValue, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
+} from "zero";
+import { authors, comments, items, locations, posts, relations, schema, settings, shoppingList } from "./schema";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 declare function expectType<T extends true>(): void;
@@ -25,6 +28,39 @@ expectType<Equal<Item, (typeof items)["$inferSelect"]>>();
 // Insert types: only NOT NULL columns without a default are required
 expectType<Equal<RequiredKeys<ItemInsert>, "name">>();
 expectType<Equal<keyof ItemInsert, keyof Item>>();
+
+// v1 builders (design §1.1)
+type Post = InferSelectModel<typeof posts>;
+type Author = InferSelectModel<typeof authors>;
+type Comment = InferSelectModel<typeof comments>;
+expectType<Equal<Author["email"], string>>();
+expectType<Equal<Author["bio"], string | null>>();
+expectType<Equal<Author["avatar"], number | null>>();
+expectType<Equal<Post["slug"], string | null>>();
+expectType<Equal<Post["body"], string | null>>();
+expectType<Equal<Post["photos"], number[] | null>>();
+expectType<Equal<Post["tags"], ("news" | "guide" | "release")[]>>();
+expectType<Equal<Post["kind"], "article" | "note">>();
+expectType<Equal<Post["seo"], { metaTitle: string | null; noindex: boolean } | null>>();
+expectType<Equal<Post["gallery"], { image: number; caption: string | null }[] | null>>();
+expectType<
+  Equal<Post["sections"], ({ layout: "hero"; heading: string; image: number | null } | { layout: "quote"; text: string; cite: string | null })[] | null>
+>();
+type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
+expectType<Equal<Hero, { layout: "hero"; heading: string | null }>>();
+
+// Drafts collections (editor default) gain status/publishedAt; editor: false collections don't.
+expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();
+expectType<Equal<Post["publishedAt"], string | null>>();
+expectType<Equal<Author["status"], "draft" | "published" | "scheduled">>();
+expectType<Equal<keyof Comment, "id" | "postId" | "body" | "approved">>();
+expectType<Equal<"status" extends keyof Item ? true : false, false>>();
+// title is required; slug({ source }) derives, so it's optional; status defaults to published.
+expectType<Equal<RequiredKeys<InferInsertModel<typeof posts>>, "title">>();
+
+// Globals read every field (defaults applied), update any subset.
+expectType<Equal<(typeof settings)["$inferSelect"], { siteTitle: string; postsPerPage: number; website: string | null; social: { label: string; href: string }[] | null }>>();
+expectType<Equal<(typeof settings)["$inferUpdate"]["postsPerPage"], number | undefined>>();
 
 async function queries() {
   const withLocation = await db.query.items.findMany({ with: { location: true } });
@@ -54,12 +90,53 @@ async function queries() {
   const updated = await db.update(items).set({ quantity: 2 }).where({ id: { in: [1, 2] } }).returning();
   expectType<Equal<typeof updated, Item[]>>();
   await db.delete(shoppingList).where({ done: true, itemId: { isNull: true } });
+
+  // `has` on list columns; JSON-valued columns compare whole values; trusted reads see every status.
+  const news = await db.query.posts.findMany({
+    where: { tags: { has: "news" }, photos: { isNull: true }, seo: { isNotNull: true }, status: { in: ["draft", "scheduled"] } },
+    orderBy: { publishedAt: "desc" },
+    with: { author: true },
+  });
+  expectType<Equal<(typeof news)[number]["author"], Author | null>>();
+  await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
+
+  // db.globals is typed from the registered config.
+  const s = await db.globals.settings.get();
+  expectType<Equal<typeof s.postsPerPage, number>>();
+  await db.globals.settings.update({ postsPerPage: 20 });
 }
 
+// Access rule functions see a typed ctx; read/update may return filters (with relation keys).
+type PostAccess = NonNullable<NonNullable<Parameters<typeof import("zero").collection>[2]>["access"]>;
+declare const accessCtx: AccessCtx<Partial<InferInsertModel<typeof posts>>>;
+expectType<Equal<typeof accessCtx.user, User | null>>();
+expectType<Equal<typeof accessCtx.op, "read" | "create" | "update" | "delete">>();
+expectType<Equal<NonNullable<typeof accessCtx.data>["status"], "draft" | "published" | "scheduled" | undefined>>();
+void (0 as unknown as PostAccess);
+declare const vctx: ValidateCtx;
+expectType<Equal<typeof vctx.target, "standalone" | "wp">>();
+
 export default defineConfig({
+  name: "fixture",
+  target: "wp",
   schema,
   relations,
+  globals: { settings },
   hooks: {
+    posts: {
+      // Hooks get a trailing ctx: who's writing, and where.
+      async beforeCreate(data, ctx) {
+        expectType<Equal<typeof ctx, HookCtx>>();
+        if (data.authorId == null && ctx.user) {
+          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+          if (author) data.authorId = author.id;
+        }
+      },
+      afterUpdate(row, previous, ctx) {
+        expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
+        if (previous.status !== "published" && row.status === "published") void ctx.target;
+      },
+    },
     items: {
       beforeCreate(data) {
         expectType<Equal<typeof data, ItemInsert>>();
@@ -82,6 +159,15 @@ export default defineConfig({
         return input.itemId;
       },
     }),
+    whoami: action({
+      input: {},
+      access: (ctx) => ctx.user !== null,
+      handler(_input, ctx) {
+        expectType<Equal<typeof ctx, HookCtx>>();
+        return ctx.user?.name ?? "anonymous";
+      },
+    }),
+    publish: action({ input: { id: integer().notNull() }, access: "editor", handler: ({ id }) => id }),
   },
 });
 void queries;

@@ -1,7 +1,9 @@
 import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "zero";
+function deny(): never { throw new Error("denied"); }
+function allowed(flag: boolean): boolean { if (flag) return true; deny(); }
 function visible(value: unknown): boolean { return value !== "private"; }
-function visibleField(ctx: FieldContext): boolean { if (ctx.data.label === "error") throw new Error("field blocked"); return visible(ctx.data.label); }
+function visibleField(ctx: FieldContext): boolean { if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); }
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
 const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
 const posts = collection("posts", {
@@ -21,5 +23,5 @@ export default defineConfig({
   globals: { settings: global("settings", { title: text().default("Hello") }, { agents: false }) },
   jobs: { sendWelcome: job({ input: { email: email().notNull(), payload: json().$type<{ message: string }>().notNull(), data: group({ fields: { label: text().default("welcome"), payload: json().$type<{ suffix: string }>() } }) }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { if (visible(input.email)) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
-  actions: { inbound: action({ input: {}, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: () => true }) },
+  actions: { inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) }) },
 });

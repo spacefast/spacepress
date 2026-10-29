@@ -178,6 +178,8 @@ struct FnCtx {
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
+    /// Expressions proven not to complete by their compiled type.
+    diverging: HashSet<Span>,
     /// The closure whose captured environment resolves free names.
     env: Rc<Scope>,
     module: usize,
@@ -390,6 +392,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_async: f.is_async,
             ret: None,
             returns: Vec::new(),
+            diverging: HashSet::new(),
             env: closure.env.clone(),
             module: f.module,
             by_ref: HashSet::new(),
@@ -593,7 +596,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
-        if block_completions(stmts).contains(&Completion::Normal) {
+        if block_completions(stmts, &self.fx().diverging).contains(&Completion::Normal) {
             self.note_return(&Ty::Null, span)?;
         }
         Ok(())
@@ -1595,7 +1598,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn expr(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
-        Ok(match &e.kind {
+        let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::Str),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::Bool),
@@ -1849,7 +1852,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let t = v.ty.non_null();
                 Out { ty: t, ..v }
             }
-        })
+        };
+        if out.ty == Ty::Never {
+            self.fx().diverging.insert(span);
+        }
+        Ok(out)
     }
 
     fn need_num(&self, v: &Out, span: Span, what: &str) -> Result<()> {
@@ -2153,6 +2160,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_async: f.is_async,
             ret: None,
             returns: Vec::new(),
+            diverging: HashSet::new(),
             env: self.fx().env.clone(),
             module,
             by_ref: HashSet::new(),
@@ -3981,25 +3989,34 @@ fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> H
     first
 }
 
-fn block_completions(stmts: &[Stmt]) -> HashSet<Completion> {
+fn block_completions(stmts: &[Stmt], diverging: &HashSet<Span>) -> HashSet<Completion> {
     stmts.iter().fold(HashSet::from([Completion::Normal]), |flow, stmt| {
-        followed_by(flow, stmt_completions(stmt))
+        followed_by(flow, stmt_completions(stmt, diverging))
     })
 }
 
-fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
+fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completion> {
     use Completion::*;
     match stmt {
+        Stmt::Expr(expr)
+        | Stmt::Decl { init: Some(expr), .. }
+        | Stmt::If(expr, ..)
+        | Stmt::While(expr, _)
+        | Stmt::Switch { disc: expr, .. }
+            if diverging.contains(&expr.span) =>
+        {
+            HashSet::from([Throw])
+        }
         Stmt::Return(..) => HashSet::from([Return]),
         Stmt::Throw(_) => HashSet::from([Throw]),
         Stmt::Break(_) => HashSet::from([Break]),
         Stmt::Continue(_) => HashSet::from([Continue]),
-        Stmt::Block(body) => block_completions(body),
+        Stmt::Block(body) => block_completions(body, diverging),
         Stmt::If(test, yes, no) => {
-            let yes = block_completions(yes);
+            let yes = block_completions(yes, diverging);
             let no = no
                 .as_deref()
-                .map(block_completions)
+                .map(|body| block_completions(body, diverging))
                 .unwrap_or_else(|| HashSet::from([Normal]));
             match test.kind {
                 ExprKind::Bool(true) => yes,
@@ -4013,13 +4030,13 @@ fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
             finalizer,
             ..
         } => {
-            let mut flow = block_completions(block);
+            let mut flow = block_completions(block, diverging);
             if let Some(handler) = handler {
                 flow.remove(&Throw);
-                flow.extend(block_completions(handler));
+                flow.extend(block_completions(handler, diverging));
             }
             if let Some(finalizer) = finalizer {
-                let mut final_flow = block_completions(finalizer);
+                let mut final_flow = block_completions(finalizer, diverging);
                 if final_flow.remove(&Normal) {
                     final_flow.extend(flow);
                 }
@@ -4031,7 +4048,7 @@ fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
             let mut suffix = HashSet::from([Normal]);
             let mut flow = HashSet::new();
             for (_, body) in cases.iter().rev() {
-                suffix = followed_by(block_completions(body), suffix);
+                suffix = followed_by(block_completions(body, diverging), suffix);
                 flow.extend(&suffix);
             }
             let breaks = flow.remove(&Break);
@@ -4044,7 +4061,7 @@ fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
         | Stmt::For {
             test: Some(test), body, ..
         } => {
-            let mut flow = block_completions(body);
+            let mut flow = block_completions(body, diverging);
             let breaks = flow.remove(&Break);
             flow.remove(&Continue);
             flow.remove(&Normal);
@@ -4054,7 +4071,7 @@ fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
             flow
         }
         Stmt::For { test: None, body, .. } => {
-            let mut flow = block_completions(body);
+            let mut flow = block_completions(body, diverging);
             if flow.remove(&Break) {
                 flow.insert(Normal);
             } else {
@@ -4064,7 +4081,7 @@ fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
             flow
         }
         Stmt::ForOf { body, .. } => {
-            let mut flow = block_completions(body);
+            let mut flow = block_completions(body, diverging);
             flow.remove(&Break);
             flow.remove(&Continue);
             flow.insert(Normal);

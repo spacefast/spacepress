@@ -619,7 +619,15 @@
     },
     "actions": {
         "inbound": {
-            "input": [],
+            "input": {
+                "allow": {
+                    "type": "boolean",
+                    "notNull": true,
+                    "default": {
+                        "value": true
+                    }
+                }
+            },
             "handler": "action__inbound",
             "access": {
                 "role": "editor"

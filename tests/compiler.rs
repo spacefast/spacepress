@@ -717,7 +717,16 @@ fn phase2_schema_and_closures_match_the_contract() {
         try {
             $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
         } catch (\Zero\JsError $error) {
-            $fieldThrows = $error->getMessage() === 'field blocked';
+            $fieldThrows = $error->getMessage() === 'denied';
+        }
+        $action = $schema->action('inbound');
+        $fn = '\\ZeroApp\\' . $action['handler'];
+        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []));
+        $actionThrows = false;
+        try {
+            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]));
+        } catch (\Zero\JsError $error) {
+            $actionThrows = $error->getMessage() === 'denied';
         }
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
@@ -730,7 +739,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $fieldThrows, $update, $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $update, $bucketGuest, $db->findMany('audit')]);
     "#,
         ])
         .arg(&app)
@@ -740,7 +749,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, true, true, true, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

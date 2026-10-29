@@ -36,9 +36,9 @@ export const events = collection("events", {
 }, { access: { read: "anyone", create: "editor" } });
 
 const appSchema = merge("collection", [schema, { signups, events }, ...lanes.map((l) => l.schema)]);
-// The blog's relations, plus events → posts.
+// The blog's relations, plus events → posts and posts → signups (an editor-only relation target).
 const appRelations = defineRelations(appSchema, (r) => merge("relations for", [{
-  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
+  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments(), signups: r.many.signups({ from: r.posts.id, to: r.signups.postId }) },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
   events: { post: r.one.posts({ from: r.events.postId, to: r.posts.id }) },

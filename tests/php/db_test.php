@@ -577,4 +577,51 @@ $isProblem('deleted row is gone', http('GET', "/api/items/{$widget['id']}"), 404
 
 stopServer();
 
+// ================================================================ relation filters respect the target's read access
+
+// A relation filter is an oracle over the target's columns, so it may only see target rows a direct
+// read would return: an unreadable target is denied like `with`, a draft target matches nothing.
+// That holds for the row selector of a viewer's update/delete as much as for a read.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
+    $one = static fn (string $c, string $from) => ['kind' => 'one', 'collection' => $c, 'from' => $from, 'to' => 'id'];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+        'accounts' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin']],
+            'columns' => ['id' => $id, 'apiKey' => ['type' => 'text', 'notNull' => true]]],
+        'articles' => ['primaryKey' => 'id', 'drafts' => true,
+            'columns' => ['id' => $id, 'secret' => ['type' => 'text'], 'ownerId' => ['type' => 'integer'], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
+            'relations' => ['owner' => $one('accounts', 'ownerId')]],
+        'comments' => ['primaryKey' => 'id', 'access' => ['update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']],
+            'columns' => ['id' => $id, 'articleId' => ['type' => 'integer'], 'ownerId' => ['type' => 'integer']],
+            'relations' => ['article' => $one('articles', 'articleId'), 'owner' => $one('accounts', 'ownerId')]],
+    ]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "accounts" ("id" integer PRIMARY KEY, "apiKey" text NOT NULL); CREATE TABLE "articles" ("id" integer PRIMARY KEY, "secret" text, "ownerId" integer, "status" text NOT NULL, "publishedAt" text); CREATE TABLE "comments" ("id" integer PRIMARY KEY, "articleId" integer, "ownerId" integer)');
+    $pdo->exec("INSERT INTO accounts VALUES (1, 'sk_live_7x'); INSERT INTO articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z'); INSERT INTO comments VALUES (1, 1, 1), (2, 2, NULL)");
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $anon = new \Zero\Viewer(null, 'standalone');
+    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'standalone');
+    $ids = static fn (string $c, array $where, ?\Zero\Viewer $v) => array_column($db->findMany($c, ['where' => $where, 'orderBy' => ['id' => 'asc']], $v), 'id');
+    $key = ['owner' => ['apiKey' => ['like' => 'sk_live_7%']]];
+
+    problem('an unreadable relation target is denied like `with` (anonymous → 401)', fn () => $ids('comments', $key, $anon), 401, 'unauthenticated');
+    problem('… and like `with` for a signed-in viewer below the rule (403)', fn () => $ids('comments', $key, $editor), 403, 'forbidden');
+    problem('nested: the denial reaches through a readable relation', fn () => $ids('comments', ['article' => $key], $anon), 401, 'unauthenticated');
+    eq('a reader of the target filters through it', $ids('comments', $key, $admin), [1]);
+    eq('a draft target matches nothing for a viewer who can\'t see drafts', [
+        $ids('comments', ['article' => ['secret' => ['like' => 'price=4%']]], $anon),
+        $ids('comments', ['article' => true], $anon),
+        $ids('comments', ['article' => false], $anon),
+    ], [[], [2], [1]]);
+    eq('editors see drafts through relation filters; trusted reads see everything', [
+        $ids('comments', ['article' => ['secret' => ['like' => 'price=4%']]], $editor),
+        $ids('comments', $key + ['article' => ['secret' => 'price=42']], null),
+    ], [[1], [1]]);
+    problem('a viewer\'s update selector is denied the unreadable target', fn () => $db->update('comments', ['ownerId' => 1], $key, true, $anon), 401, 'unauthenticated');
+    eq('… and a viewer\'s delete selector matches no draft target', $db->delete('comments', ['article' => ['secret' => ['like' => 'price=4%']]], true, $anon), []);
+})();
+
 finish('db_test');

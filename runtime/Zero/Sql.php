@@ -27,8 +27,12 @@ final class Sql
     private array $used = [];
     /** @var array<string, Source> */
     private array $sources = [];
+    /** @var array<string, list<array>> */
+    private array $relationGuards = [];
+    private bool $trusted = false;
 
-    private function __construct(private readonly Schema $schema, private readonly Store $store)
+    /** @param ?\Closure(string): list<array> $guardsFor the viewer's read guards per relation target (null = trusted) */
+    private function __construct(private readonly Schema $schema, private readonly Store $store, private readonly ?\Closure $guardsFor = null)
     {
         $this->d = $store->dialect();
     }
@@ -38,14 +42,16 @@ final class Sql
      * `columns` and `with`). $partition = [column, encoded values] restricts to column IN values with
      * limit/offset applied per distinct value (window function). $guards are extra filters ANDed in
      * (access + draft rules); their pointers are not user-facing. $ptr prefixes error pointers.
+     * $guardsFor(collection) returns the viewer's read guards for a relation filter's target (or
+     * throws the read denial); null means a trusted read.
      *
      * @param ?array{string, list<int|float|string|null>} $partition
      * @param list<array> $guards
      * @return array{sql: string, params: list<int|float|string|null>}
      */
-    public static function select(Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = []): array
+    public static function select(Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = [], ?\Closure $guardsFor = null): array
     {
-        return (new self($schema, $store))->compile($collection, $opts, $partition, $ptr, $guards);
+        return (new self($schema, $store, $guardsFor))->compile($collection, $opts, $partition, $ptr, $guards);
     }
 
     private function compile(string $collection, array $opts, ?array $partition, string $ptr, array $guards): array
@@ -61,7 +67,7 @@ final class Sql
             $conds[] = $this->filter($collection, $opts['where'], $alias, $ptr . '/where');
         }
         foreach ($guards as $g) {
-            $conds[] = '(' . $this->filter($collection, $g, $alias, '') . ')';
+            $conds[] = $this->guard($collection, $g, $alias);
         }
         if ($partition !== null) {
             [$col, $values] = $partition;
@@ -452,6 +458,11 @@ final class Sql
             $conds[] = $this->sub($src->baseWhere, $inner, '');
         }
         $conds[] = $this->cmpRef($target, $rel['to'], $inner) . ' = ' . $this->cmpRef($collection, $rel['from'], $alias);
+        if (!$this->trusted && $this->guardsFor !== null) {
+            foreach ($this->relationGuards[$target] ??= ($this->guardsFor)($target) as $g) {
+                $conds[] = $this->guard($target, $g, $inner);
+            }
+        }
         if (is_array($value)) {
             $conds[] = $this->filter($target, $value, $inner, $ptr);
         } elseif ($value !== true && $value !== false) {
@@ -461,6 +472,20 @@ final class Sql
         $sql = 'EXISTS (SELECT 1 FROM ' . $src->table . ' ' . $inner . $this->joins($target, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
 
         return $value === false ? "NOT $sql" : $sql;
+    }
+
+    /**
+     * An access/draft guard. Guards are the app's own rules, so relation filters inside them are
+     * trusted; only the viewer's filters are confined to rows the viewer can read.
+     */
+    private function guard(string $collection, array $g, string $alias): string
+    {
+        [$was, $this->trusted] = [$this->trusted, true];
+        try {
+            return '(' . $this->filter($collection, $g, $alias, '') . ')';
+        } finally {
+            $this->trusted = $was;
+        }
     }
 
     // ================================================================ values

@@ -35,8 +35,9 @@ match the pinned Strauss 0.31.1 release. The default downloads it into ignored
 `scripts/.tools`. Commit the lock, prefixed tree and `.manifest.json` together.
 The manifest records the lock hash and generation toolchain. The drift suite
 checks that relationship and executes the real bundled parser and merger while
-foreign YAML and WordPress HTML class names are already occupied. The A4 CI lane
-will also regenerate the tree on PHP 8.2 and check for changes.
+foreign YAML and WordPress HTML class names are already occupied. The vendor CI
+job regenerates the tree on PHP 8.2 with pinned Composer 2.10.3 and checks for
+tracked changes and new untracked bundle files.
 
 The Markdown consumer and line merger work without WordPress. The toolkit's
 Markdown producer calls WordPress `parse_blocks`; the sync lane must supply its

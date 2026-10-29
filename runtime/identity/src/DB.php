@@ -47,10 +47,19 @@ final class DB
         }
         return (int) $this->wp->insert_id;
     }
+    /**
+     * Run $fn in a transaction. Identity shares WordPress's `$wpdb` connection, so when another
+     * owner already has a transaction open on it (the Zero runtime reports one through the
+     * `zero_identity_outer_transaction` filter) identity joins it with a savepoint instead of
+     * issuing START TRANSACTION, which would silently commit the owner's work.
+     */
     public function transaction(callable $fn): mixed
     {
         $level = $this->depth++;
-        $savepoint = "zero_identity_" . $level;
+        if ($level === 0 && apply_filters("zero_identity_outer_transaction", false)) {
+            $level = 1;
+        }
+        $savepoint = "zero_identity_" . $this->depth;
         $this->run(
             $level === 0 ? "START TRANSACTION" : "SAVEPOINT " . $savepoint,
         );

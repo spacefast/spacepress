@@ -44,7 +44,14 @@ final class Providers
             $config["discovery"] ?? null,
         );
     }
-    public function start(string $name, ?array $linkSession = null, array $extra = []): string
+    /** Where the hosted screen may continue after sign-in: a pending authorization, nothing else. */
+    public static function continuation(mixed $target): string
+    {
+        return is_string($target) && (str_starts_with($target, "/identity/authorize?") || $target === "/identity/authorize?resume=1") && strlen($target) <= 4096
+            ? $target
+            : "";
+    }
+    public function start(string $name, ?array $linkSession = null, array $extra = [], string $returnTo = ""): string
     {
         if ($linkSession) {
             $this->sessions->recent($linkSession);
@@ -55,7 +62,7 @@ final class Providers
             "oidc",
             (int) ($linkSession["wp_user_id"] ?? 0),
             (string) ($linkSession["id"] ?? ""),
-            ["provider" => $name, "store" => $request["store"]],
+            ["provider" => $name, "store" => $request["store"], "return_to" => self::continuation($returnTo)],
             $binding,
             300,
         );
@@ -68,7 +75,8 @@ final class Providers
         ]);
         return $request["url"];
     }
-    public function callback(string $name): int
+    /** @return array{uid: int, return_to: string} */
+    public function callback(string $name): array
     {
         [$id, $binding] = array_pad(
             explode(".", (string) ($_COOKIE["zi_oidc"] ?? ""), 2),
@@ -116,13 +124,16 @@ final class Providers
             is_string($info->email ?? null)
                 ? Accounts::email($info->email)
                 : null;
-        return $this->accounts->provider(
-            $claims->iss,
-            $claims->sub,
-            $email,
-            is_string($info->name ?? null) ? $info->name : "",
-            $linkUid ?: null,
-            $linkUid ? $challenge["session_id"] : null,
-        );
+        return [
+            "uid" => $this->accounts->provider(
+                $claims->iss,
+                $claims->sub,
+                $email,
+                is_string($info->name ?? null) ? $info->name : "",
+                $linkUid ?: null,
+                $linkUid ? $challenge["session_id"] : null,
+            ),
+            "return_to" => self::continuation($payload["return_to"] ?? ""),
+        ];
     }
 }

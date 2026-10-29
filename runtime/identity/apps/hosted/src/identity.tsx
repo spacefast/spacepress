@@ -186,7 +186,10 @@ export function SignIn({
           <a
             className="provider-button"
             key={provider}
-            href={`${issuer}/provider/start?provider=${encodeURIComponent(provider)}`}
+            href={`${issuer}/provider/start?${new URLSearchParams({
+              provider,
+              ...continuation(),
+            })}`}
           >
             <span>{providerLabel(provider).charAt(0)}</span> Continue with{" "}
             {providerLabel(provider)}
@@ -305,3 +308,12 @@ export function SignIn({
   );
 }
 export { AccountProfile } from "./profile.js";
+
+/** The pending application authorization to resume after an external provider, if any. */
+function continuation(): Record<string, string> {
+  const params = new URLSearchParams(window.location.search);
+  const target = params.has("reauth")
+    ? "/identity/authorize?resume=1"
+    : params.get("return_to");
+  return target?.startsWith("/identity/authorize?") ? { return_to: target } : {};
+}

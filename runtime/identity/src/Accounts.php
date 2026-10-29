@@ -374,6 +374,9 @@ final class Accounts
             }
             $this->ensure($guest);
             $this->claim($guest, $email, "email_code");
+            // Whoever held the guest's credentials before must not keep the verified account:
+            // every guest session (and so every token family) ends; sign-in issues fresh ones.
+            Plugin::$sessions->revoke($guest);
             $user = new \WP_User($guest);
             $user->set_role("subscriber");
             clean_user_cache($guest);

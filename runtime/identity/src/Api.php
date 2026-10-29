@@ -30,9 +30,11 @@ final class Api
         try {
             $method = $request->get_method();
             $op = $request["operation"];
+            // Administration never accepts application origins, only the site's own.
             self::checkOrigin(
                 (string) $request->get_header("origin"),
                 $method !== "GET",
+                str_starts_with((string) $op, "admin/"),
             );
             $data = $this->handle($op, $method, $request);
             $response = new \WP_REST_Response(["data" => $data], 200);
@@ -63,7 +65,7 @@ final class Api
         $response->header("Cache-Control", "no-store");
         return $response;
     }
-    public static function checkOrigin(string $origin, bool $required): void
+    public static function checkOrigin(string $origin, bool $required, bool $siteOnly = false): void
     {
         $home = wp_parse_url(home_url());
         $expected =
@@ -74,7 +76,7 @@ final class Api
         if (
             ($required || $origin !== "") &&
             $origin !== $expected &&
-            !OAuth::allowedOrigin(Plugin::$db, $origin)
+            ($siteOnly || !OAuth::allowedOrigin(Plugin::$db, $origin))
         ) {
             throw new Failure(
                 "invalid_origin",

@@ -14,17 +14,23 @@ const app = { id: "app_identity_flow", redirect: "http://127.0.0.1:18181/callbac
 const here = dirname(fileURLToPath(import.meta.url));
 const b64 = (b: Buffer) => b.toString("base64url");
 
+const compose = ["compose", "-p", process.env.IDENTITY_PROJECT!, "-f", join(here, "compose.yml"), "exec", "-T"];
 function wp(...args: string[]): string {
-  return execFileSync("docker", ["compose", "-p", process.env.IDENTITY_PROJECT!, "-f", join(here, "compose.yml"), "exec", "-T", "cli", "wp", ...args], { encoding: "utf8" }).trim();
+  return execFileSync("docker", [...compose, "cli", "wp", ...args], { encoding: "utf8" }).trim();
+}
+function php(script: string, input: string): string {
+  return execFileSync("docker", [...compose, "wordpress", "php", `/opt/identity-tests/${script}`], { input, encoding: "utf8" }).trim();
 }
 
 /** Poll Mailpit for the newest code sent to `to` (no sleeps: each poll is a real request). */
+const read = new Set<string>();
 async function codeFor(to: string): Promise<string> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const list = await (await fetch(`${mail}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}`)).json();
-    const id = list.messages?.[0]?.ID;
+    const id: string | undefined = list.messages?.find((m: { ID: string }) => !read.has(m.ID))?.ID;
     if (id) {
+      read.add(id);
       const message = await (await fetch(`${mail}/api/v1/message/${id}`)).json();
       const code = /Your code is (\d{6})/.exec(message.Text)?.[1];
       if (code) return code;
@@ -39,7 +45,7 @@ async function identity(op: string, body: unknown, cookie = ""): Promise<{ statu
     headers: { "content-type": "application/json", origin: site, cookie },
     body: JSON.stringify(body),
   });
-  const set = res.headers.getSetCookie().find((c) => c.startsWith("zi_session="));
+  const set = res.headers.getSetCookie().find((c) => c.startsWith("zi_session=") || c.startsWith("zi_factor="));
   return { status: res.status, json: await res.json(), cookie: set ? set.split(";")[0] : cookie };
 }
 
@@ -125,4 +131,21 @@ test("discovery advertises refresh tokens and S256 only", async () => {
   assert.deepEqual(discovery.grant_types_supported, ["authorization_code", "refresh_token"]);
   assert.deepEqual(discovery.code_challenge_methods_supported, ["S256"]);
   assert.equal(discovery.issuer, `${site}/identity`);
+});
+
+test("MFA: a primary factor yields only a browser-bound challenge; completing it signs in", async () => {
+  const email = `mfa-${Date.now().toString(36)}@example.test`;
+  await signIn(email);
+  const recovery = php("enable-mfa.php", email);
+  const start = await identity("sign-in/email", { email });
+  const primary = await identity("sign-in/verify", { challenge_id: start.json.data.challenge_id, code: await codeFor(email) });
+  assert.equal(primary.json.data.kind, "mfa_required");
+  assert.match(primary.cookie, /^zi_factor=/, "the challenge is bound to this browser by a cookie");
+  const elsewhere = await identity("sign-in/mfa", { challenge_id: primary.json.data.challenge_id, code: recovery });
+  assert.deepEqual([elsewhere.status, elsewhere.json.error.code], [400, "invalid_challenge"], "another browser cannot complete it");
+  const second = await identity("sign-in/email", { email });
+  const again = await identity("sign-in/verify", { challenge_id: second.json.data.challenge_id, code: await codeFor(email) });
+  const done = await identity("sign-in/mfa", { challenge_id: again.json.data.challenge_id, code: recovery }, again.cookie);
+  assert.deepEqual(done.json, { data: { kind: "signed_in" } });
+  assert.match(done.cookie, /^zi_session=/, "the session cookie arrives only after the second factor");
 });

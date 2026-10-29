@@ -10,7 +10,8 @@ use Zero\Identity\Security;
 
 /**
  * Authorization codes (RFC 6749 §4.1 + PKCE S256, RFC 7636): 32 random bytes, stored as their
- * sha256, single use, 60 seconds. A replayed code revokes every token minted from it.
+ * sha256, single use, 60 seconds. A replayed code (with its own bindings) revokes every token
+ * minted from it.
  */
 final class AuthCode
 {
@@ -39,10 +40,19 @@ final class AuthCode
             "SELECT * FROM {$this->db->prefix}codes WHERE id=%s FOR UPDATE",
             self::digest($code),
         );
-        if (!$row) {
+        // Nothing changes unless the request carries the code's own bindings: another client or
+        // a guessed verifier can neither burn a live code nor revoke the family it produced.
+        if (
+            !$row ||
+            !hash_equals($row["client_id"], $clientId) ||
+            !hash_equals($row["redirect_uri"], $redirectUri) ||
+            !preg_match('/^[A-Za-z0-9._~-]{43,128}$/D', $verifier) ||
+            !hash_equals($row["code_challenge"], self::challenge($verifier))
+        ) {
             return "invalid_grant";
         }
         if ((int) $row["revoked"]) {
+            // The legitimate holder redeemed it before: the code leaked, so its tokens end too.
             if ($row["family"] !== null) {
                 $this->db->run(
                     "UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE family=%s",
@@ -55,13 +65,7 @@ final class AuthCode
             "UPDATE {$this->db->prefix}codes SET revoked=1 WHERE id=%s",
             $row["id"],
         );
-        if (
-            (int) $row["expires_at"] <= time() ||
-            !hash_equals($row["client_id"], $clientId) ||
-            !hash_equals($row["redirect_uri"], $redirectUri) ||
-            !preg_match('/^[A-Za-z0-9._~-]{43,128}$/D', $verifier) ||
-            !hash_equals($row["code_challenge"], self::challenge($verifier))
-        ) {
+        if ((int) $row["expires_at"] <= time()) {
             return "invalid_grant";
         }
         return $row;

@@ -8,3 +8,11 @@ $body=['name'=>'Application mutation test','redirect_uri'=>'http://127.0.0.1:181
 $changed=mutate([...$body,'name'=>'Conflicting mutation']);if(($changed['error']['code']??'')!=='idempotency_conflict'){throw new RuntimeException('Reused creation key changed payload');}
 foreach([['redirect_uri'=>'https://app.example/*','origin'=>'https://app.example'],['redirect_uri'=>'https://app.example/callback#fragment','origin'=>'https://app.example'],['redirect_uri'=>'https://app.example/callback','origin'=>'https://other.example']] as $invalid){$result=mutate([...$body,...$invalid,'idempotency_key'=>Security::token()]);if(($result['error']['code']??'')!=='invalid_redirect'){throw new RuntimeException('Unsafe callback registered');}}
 echo "PASS application creation retry returns same ID; changed payload, wildcard, fragment and origin mismatch rejected\n";
+// Registered application origins may call account routes, never administration.
+Plugin::$db->insert('applications', ['id' => 'app_admin_origin_' . bin2hex(random_bytes(3)), 'name' => 'Origin app', 'redirects' => json_encode(['http://127.0.0.1:18187/cb']), 'origins' => json_encode(['http://127.0.0.1:18187'])]);
+$r = new WP_REST_Request('POST');
+$r->set_url_params(['operation' => 'admin/applications']);
+$r->set_header('Origin', 'http://127.0.0.1:18187');
+$r->set_header('X-WP-Nonce', $nonce);
+$r->set_body_params([...$body, 'idempotency_key' => Security::token()]);
+check((Plugin::$api->dispatch($r)->get_data()['error']['code'] ?? '') === 'invalid_origin', 'administrator writes refuse a registered application origin');

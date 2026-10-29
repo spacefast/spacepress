@@ -373,23 +373,27 @@ final class Plugin
                     self::$security,
                     self::$accounts,
                     self::$sessions,
-                ))->start($name);
+                ))->start($name, null, [], (string) ($_GET["return_to"] ?? ""));
                 wp_redirect($url);
                 exit();
             }
             if ($route === "/provider/callback") {
-                $uid = (new Providers(
+                $signedIn = (new Providers(
                     self::$security,
                     self::$accounts,
                     self::$sessions,
                 ))->callback(sanitize_key($_GET["provider"] ?? ""));
-                $result = self::$api->providerLogin($uid);
-                wp_safe_redirect(
-                    home_url("/identity") .
-                        ($result["kind"] === "mfa_required"
-                            ? "?factor=" . rawurlencode($result["challenge_id"])
-                            : ""),
-                );
+                $result = self::$api->providerLogin($signedIn["uid"]);
+                // A pending application authorization continues after the provider (and MFA).
+                $params = array_filter([
+                    "factor" => $result["kind"] === "mfa_required" ? $result["challenge_id"] : null,
+                    "return_to" => $signedIn["return_to"] ?: null,
+                ]);
+                if ($result["kind"] === "signed_in" && $signedIn["return_to"] !== "") {
+                    wp_safe_redirect(home_url($signedIn["return_to"]));
+                    exit();
+                }
+                wp_safe_redirect(home_url("/identity") . ($params ? "?" . http_build_query($params) : ""));
                 exit();
             }
             if ($route === "/authorize") {
@@ -433,7 +437,7 @@ final class Plugin
                 if ($handoff !== null && $_SERVER["REQUEST_METHOD"] === "GET") {
                     // A guest arrives from its app: sign this browser in as that guest, then let
                     // the hosted screen attach an email before consenting.
-                    $created = self::$sessions->create($oauth->redeemHandoff($handoff));
+                    $created = $oauth->redeemHandoff($handoff);
                     Sessions::cookie($created["secret"], $created["session"]["expires_at"]);
                     wp_safe_redirect(
                         home_url(

@@ -44,6 +44,20 @@ check(Plugin::$accounts->verifiedSignIn($other, $member) !== $member, 'a non-gue
 $handoffGuest = wp_insert_user(['user_login' => 'zg3_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
 $guestTokens = Plugin::$accounts->issueForUser($handoffGuest, 'app_guests_' . $tag);
 $handoff = $oauth->handoff($guestTokens['access_token']);
-check($oauth->redeemHandoff($handoff) === $handoffGuest, 'a guest access token hands its browser an identity session');
+check((int) $oauth->redeemHandoff($handoff)['session']['wp_user_id'] === $handoffGuest, 'a guest access token hands its browser an identity session');
 rejects(fn () => $oauth->redeemHandoff($handoff), 'invalid_challenge', 'a handoff is single use');
+$pending = $oauth->handoff($guestTokens['access_token']);
+$oauth->revoke($guestTokens['refresh_token'], 'app_guests_' . $tag);
+rejects(fn () => $oauth->redeemHandoff($pending), 'invalid_challenge', 'revoking the guest family first voids an outstanding handoff');
+$guestTokens = Plugin::$accounts->issueForUser($handoffGuest, 'app_guests_' . $tag);
+$pending = $oauth->handoff($guestTokens['access_token']);
+Plugin::$sessions->revoke($handoffGuest);
+rejects(fn () => $oauth->redeemHandoff($pending), 'invalid_challenge', 'revoking the guest sessions first voids an outstanding handoff');
+
+// Fixation: an attacker keeps a guest's tokens and lures another browser into upgrading it.
+$fixed = wp_insert_user(['user_login' => 'zg4_' . $tag, 'user_pass' => Security::token(), 'role' => 'zero_guest']);
+$attacker = Plugin::$accounts->issueForUser($fixed, 'app_guests_' . $tag);
+check(Plugin::$accounts->verifiedSignIn('victim-' . $tag . '@example.test', $fixed) === $fixed, 'the victim browser upgrades the guest it was handed');
+rejects(fn () => $oauth->userinfo($attacker['access_token']), 'invalid_token', 'the upgrade ends every earlier guest access token');
+rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => 'app_guests_' . $tag, 'refresh_token' => $attacker['refresh_token']]), 'invalid_grant', 'and every earlier guest refresh token');
 rejects(fn () => $oauth->handoff(Plugin::$accounts->issueForUser($guest, 'app_guests_' . $tag)['access_token']), 'not_guest', 'only guests can hand off');

@@ -62,7 +62,7 @@ GET `organizations` lists the caller's memberships. POST `organizations` accepts
 
 ## Administration
 
-Routes below `admin/` require a native WordPress administrator, `manage_options`, a REST nonce in `X-WP-Nonce`, and exact Origin on writes. Identity sessions do not grant WordPress administration.
+Routes below `admin/` require a native WordPress administrator, `manage_options`, a REST nonce in `X-WP-Nonce`, and the site's exact Origin on writes (registered application origins are refused here). Identity sessions do not grant WordPress administration.
 
 Read routes: `people`, `organizations`, `applications`, `sessions`, `authentication`, `security-events`, `webhooks`. Account/session/event listings currently return up to 200 records; this is an initial administration limit, not unbounded paging.
 
@@ -89,7 +89,9 @@ A token response is `{ access_token, token_type: "Bearer", expires_in: 300, refr
 
 **Bearer on the REST API.** `Authorization: Bearer <access token>` authenticates any WordPress REST request (a `determine_current_user` filter after core's cookie and application-password resolvers). It applies the UserInfo checks: signature, issuer, expiry, unrevoked `jti` and session, active account, enabled application. A token that fails answers `401 invalid_token`; a suspended or deleted account answers `403 suspended`.
 
-**Guest handoff.** A guest's app holds Bearer tokens but no identity cookie. `POST /identity/handoff` with the guest's Bearer token returns `{ handoff }` (single use, 60 s). Sending the browser to `/identity/authorize?…&handoff=<handoff>` signs it in as that guest and opens the hosted screen to add an email; consent then returns to the app as usual.
+**Guest handoff.** A guest's app holds Bearer tokens but no identity cookie. `POST /identity/handoff` with the guest's Bearer token returns `{ handoff }` (single use, 60 s). Sending the browser to `/identity/authorize?…&handoff=<handoff>` signs it in as that guest and opens the hosted screen to add an email; consent then returns to the app as usual. A handoff is bound to the guest's session and token family: revoking either first voids it. Upgrading a guest revokes all of its earlier sessions and token families, so nobody who held the guest's credentials keeps the verified account; the browser that verified gets fresh ones through consent.
+
+**Shared connection.** Identity runs on WordPress's `$wpdb` connection. A host that already owns a transaction on it (the Zero runtime) answers `true` from the `zero_identity_outer_transaction` filter; identity then joins with savepoints instead of committing the host's work.
 
 PHP API for the Zero runtime: `Accounts::issueForUser(int $wpUserId, string $clientId)` mints a session and token pair without a browser (only after `zero_runtime_loaded`), and `Accounts::status(int $wpUserId)` returns `active`, `suspended`, `deletion_requested`, `deleted` or `none`.
 

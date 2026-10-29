@@ -12,6 +12,8 @@ import * as auth from "./lanes/auth.ts";
 import * as abilities from "./lanes/abilities.ts";
 import * as media from "./lanes/media.ts";
 import * as locales from "./lanes/locales.ts";
+import { merge, mergeHooks } from "./compose.ts";
+const lanes = [fields, sync, jobs, auth, abilities, media, locales];
 
 // An `editor: false` table with a real SQL UNIQUE index (the blog has none).
 export const signups = collection("signups", {
@@ -33,27 +35,27 @@ export const events = collection("events", {
   postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
 }, { access: { read: "anyone", create: "editor" } });
 
-const appSchema = {
-  ...schema, signups, events,
-  ...fields.schema, ...sync.schema, ...jobs.schema, ...auth.schema, ...abilities.schema, ...media.schema, ...locales.schema,
-};
+const appSchema = merge("collection", [schema, { signups, events }, ...lanes.map((l) => l.schema)]);
 // The blog's relations, plus events → posts.
-const appRelations = defineRelations(appSchema, (r) => ({
+const appRelations = defineRelations(appSchema, (r) => merge("relations for", [{
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
   events: { post: r.one.posts({ from: r.events.postId, to: r.posts.id }) },
-}));
+}, ...lanes.map((l) => l.relations(r))]));
+
+// Lane-owned config options (jobs, webhooks, files, media, locales...): one owner per option.
+const laneConfig = merge("config option", lanes.map((l) => l.config));
 
 export default defineConfig({
-  ...fields.config, ...sync.config, ...jobs.config, ...auth.config, ...abilities.config, ...media.config, ...locales.config,
+  ...laneConfig,
   name: "blog",
   schema: appSchema,
   relations: appRelations,
-  globals: { settings, ...fields.globals, ...sync.globals, ...jobs.globals, ...auth.globals, ...abilities.globals, ...media.globals, ...locales.globals },
-  actions: { ...blog.actions, ...fields.actions, ...sync.actions, ...jobs.actions, ...auth.actions, ...abilities.actions, ...media.actions, ...locales.actions },
-  hooks: {
-    ...fields.hooks, ...sync.hooks, ...jobs.hooks, ...auth.hooks, ...abilities.hooks, ...media.hooks, ...locales.hooks,
+  globals: merge("global", [{ settings }, ...lanes.map((l) => l.globals)]),
+  actions: merge("action", [blog.actions, ...lanes.map((l) => l.actions)]),
+  hooks: mergeHooks([
+    {
     posts: {
       async beforeCreate(data, ctx) {
         if (data.authorId == null && ctx.user) {
@@ -84,5 +86,7 @@ export default defineConfig({
         }
       },
     },
-  },
+    },
+    ...lanes.map((l) => l.hooks),
+  ]),
 });

@@ -57,6 +57,17 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                 .iter()
                 .any(|e| e["outcome"] == "review")
         );
+        if from == "payload" {
+            assert!(
+                report["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|e| e["pointer"] == "/collections/0/fields/4"
+                        && e["outcome"] == "review"
+                        && e["reason"].as_str().unwrap().contains("empty strings"))
+            );
+        }
         for target in ["wp", "standalone"] {
             let build = zero()
                 .args(["build", "--target", target, "--out"])
@@ -91,6 +102,26 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                 }
             );
             assert_eq!(notes["access"]["create"]["allow"], false);
+            if from == "sanity" && target == "standalone" {
+                let runtime = Command::new("php")
+                    .args([
+                        "-r",
+                        r#"
+                    require $argv[1] . '/zero/runtime/bootstrap.php';
+                    $app = \Zero\App::boot($argv[1]);
+                    try { $app->db->insert('notes', ['title' => '']); }
+                    catch (\Zero\HttpError $e) { echo json_encode([$e->status, $e->pointer]); }
+                "#,
+                    ])
+                    .arg(dir.path().join(target))
+                    .output()
+                    .unwrap();
+                assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&runtime.stdout).unwrap(),
+                    json!([422, "/title"])
+                );
+            }
             if from == "payload" {
                 assert_eq!(notes["columns"]["title"]["rules"]["max"], 120.0);
                 assert_eq!(notes["columns"]["priority"]["default"]["value"], 2);
@@ -102,11 +133,18 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                             r#"
                         require $argv[1] . '/zero/runtime/bootstrap.php';
                         $app = \Zero\App::boot($argv[1]);
-                        $row = $app->db->insert('notes', ['title' => 'Imported'], true)[0];
-                        try { $app->db->insert('notes', ['title' => 'Invalid', 'priority' => 6]); }
+                        $row = $app->db->insert('notes', ['title' => 'Imported', 'body' => 'Body', 'tags' => ['one']], true)[0];
+                        try { $app->db->insert('notes', ['title' => 'Invalid', 'body' => 'Body', 'tags' => ['one'], 'priority' => 6]); }
                         catch (\Zero\HttpError $e) { $error = $e->getMessage(); }
+                        $required = [];
+                        foreach (['title' => '', 'body' => '', 'tags' => []] as $field => $empty) {
+                            $values = ['title' => 'Title', 'body' => 'Body', 'tags' => ['one']];
+                            $values[$field] = $empty;
+                            try { $app->db->insert('notes', $values); }
+                            catch (\Zero\HttpError $e) { $required[$field] = [$e->status, $e->pointer]; }
+                        }
                         $response = $app->handle('GET', '/notes', [], '');
-                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0]]);
+                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required]);
                     "#,
                         ])
                         .arg(dir.path().join(target))
@@ -119,6 +157,9 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                     assert_eq!(result["row"]["done"], false);
                     assert!(result["error"].as_str().unwrap().contains('5'));
                     assert_eq!(result["status"], 200);
+                    for field in ["title", "body", "tags"] {
+                        assert_eq!(result["required"][field], json!([422, format!("/{field}")]));
+                    }
                 }
             }
         }
@@ -166,6 +207,11 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
             "payload",
             "export default {collections:[{slug:'notes',fields:[{name:'title',type:'text'},{name:'title',type:'text'}]}]};",
             "/collections/0/fields/1",
+        ),
+        (
+            "sanity",
+            "export default {schema:{types:[{name:'notes',type:'document',fields:[{name:'link',type:'url'}]}]}};",
+            "/schema/types/0/fields/0/type",
         ),
         (
             "sanity",

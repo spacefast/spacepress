@@ -16,7 +16,7 @@ final class Rest
 {
     public const NAMESPACE = 'zero/v1';
 
-    /** @var array<int, string> response object id → body to serve */
+    /** @var array<int, string|\Closure> response object id → body to serve after the operation commits */
     private static array $bodies = [];
 
     public static function register(callable $app): void
@@ -47,7 +47,7 @@ final class Rest
             $request->get_method(),
             '/' . ltrim((string) $request['path'], '/'),
             $query,
-            $request->get_body(),
+            (string) $request->get_body(),
             $headers,
             $request->get_file_params(),
             $form,
@@ -64,8 +64,9 @@ final class Rest
         if ($served || !is_object($result) || !isset(self::$bodies[spl_object_id($result)])) {
             return $served;
         }
-        echo self::$bodies[spl_object_id($result)];
+        $body = self::$bodies[spl_object_id($result)];
         unset(self::$bodies[spl_object_id($result)]);
+        \Zero\Response::emit($body);
 
         return true;
     }

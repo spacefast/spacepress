@@ -32,6 +32,18 @@ final class Extensions
         self::$hooks['write'][] = $fn;
     }
 
+    /** Consume virtual input before column validation; retain $provided unchanged. Normalizers must not persist effects. */
+    public static function normalizeWrite(callable $fn): void
+    {
+        self::$hooks['input'][] = $fn;
+    }
+
+    /** @param callable(string, array, string, array, ?Viewer, callable(): Response): Response $fn after authorization, inside the transaction */
+    public static function aroundOperation(callable $fn): void
+    {
+        self::$hooks['execute'][] = $fn;
+    }
+
     /** @param callable(string $op, string $collection, array $row, ?array $previous): void $fn after the app hook, inside the transaction */
     public static function onWritten(callable $fn): void
     {
@@ -46,7 +58,7 @@ final class Extensions
 
     /**
      * Own a first path segment. The handler receives the full decoded segment list.
-     * @param callable(string, array, array, string, Viewer, array, array): array{int, mixed} $handler
+     * @param callable(string, array, array, string, Viewer, array, array): (array{int, mixed}|Response) $handler
      */
     public static function route(string $prefix, callable $handler): void
     {
@@ -111,6 +123,23 @@ final class Extensions
         foreach (self::$hooks['written'] ?? [] as $fn) {
             $fn($op, $collection, $row, $previous);
         }
+    }
+
+    public static function input(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
+    {
+        foreach (self::$hooks['input'] ?? [] as $fn) {
+            $fn($op, $collection, $data, $existing, $viewer, $provided);
+        }
+    }
+
+    public static function execute(string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $run): Response
+    {
+        foreach (array_reverse(self::$hooks['execute'] ?? []) as $fn) {
+            $next = $run;
+            $run = static fn (): Response => $fn($scope, $spec, $rawBody, $headers, $viewer, $next);
+        }
+
+        return $run();
     }
 
     public static function routeHandler(string $prefix): ?callable

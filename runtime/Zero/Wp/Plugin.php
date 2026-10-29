@@ -62,8 +62,11 @@ final class Plugin
      *
      * @param list<string> $args
      */
-    public function cli(array $args): void
+    public function cli(array $args, array $assocArgs = []): void
     {
+        foreach ($assocArgs as $name => $value) {
+            $args[] = '--' . $name . ($value === true ? '' : '=' . ($value === false ? 'false' : (string) $value));
+        }
         if (($args[0] ?? '') === 'migrate') {
             [$code, $out] = [0, \Zero\Js::jsonStringify(['data' => ['applied' => $this->migrator()->migrate()]])];
         } else {

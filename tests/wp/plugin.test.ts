@@ -72,4 +72,30 @@ test("runtime registrations extend system tables and every generated SCF field",
     "excerpt:text:sibling", "metaTitle:text:sibling", "image:media:sibling",
     "heading:text:sibling", "siteTitle:text:sibling", "href:url:sibling",
   ]]);
+
+  const flags: unknown = JSON.parse(wp("zero", "seam-flags", "work", "--once", "--state=pending", "--exec=" + `
+    WP_CLI::add_hook('after_wp_load', static function (): void {
+      \\Zero\\Extensions::cli('seam-flags', static fn (array $args, array $flags): array => [$args, $flags]);
+    });
+  `));
+  assert.deepEqual(flags, { data: [["work"], { once: true, state: "pending" }] });
+
+  const stream: unknown = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->app();
+    \\Zero\\Extensions::route('download-proof', static function (): \\Zero\\Response {
+      \\Zero\\Extensions::afterCommit(static fn () => update_option('zero_stream_committed', 'committed', false));
+      return \\Zero\\Response::raw(static function (): void {
+        echo "file\\0bytes:" . get_option('zero_stream_committed', 'uncommitted');
+      }, 200, ['Content-Type' => 'application/octet-stream', 'Content-Disposition' => 'attachment; filename="proof.bin"']);
+    });
+    $request = new WP_REST_Request('GET', '/zero/v1/download-proof');
+    $request['path'] = 'download-proof';
+    $response = \\Zero\\Wp\\Rest::dispatch($app, $request);
+    ob_start();
+    $served = \\Zero\\Wp\\Rest::serve(false, $response);
+    $body = ob_get_clean();
+    echo wp_json_encode([$response->get_status(), $response->get_headers()['Content-Type'], $response->get_headers()['Content-Disposition'], $served, $body]);
+    delete_option('zero_stream_committed');
+  `));
+  assert.deepEqual(stream, [200, "application/octet-stream", 'attachment; filename="proof.bin"', true, "file\0bytes:committed"]);
 });

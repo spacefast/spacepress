@@ -506,8 +506,8 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 };
 
 $r = http('OPTIONS', '/api/items');
-eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null],
-    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization']);
+eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null, $r['headers']['access-control-expose-headers'] ?? null],
+    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization, idempotency-key', 'Idempotent-Replayed']);
 
 $r = http('GET', '/api/_schema');
 check('GET /api/_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'

@@ -294,19 +294,22 @@ final class Db
 
     // ================================================================ writes
 
-    /** @return ?list<array> */
-    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null): ?array
+    /**
+     * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
+     * @return ?list<array>
+     */
+    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
         $rows = $values !== [] && array_is_list($values) ? $values : [$values];
 
-        return $this->nested(function () use ($collection, $rows, $returning, $viewer) {
+        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
             $out = [];
             foreach ($rows as $data) {
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
-                $out[] = $this->createOne($collection, $spec, $data, $viewer);
+                $out[] = $this->createOne($collection, $spec, $data, $viewer, $around);
             }
 
             return $returning ? Extensions::read($out, $collection, $viewer) : null;
@@ -353,10 +356,11 @@ final class Db
         return is_array($r) ? [$r] : [];
     }
 
-    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer): array
+    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
         $provided = $data;
+        Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
         foreach ($columns as $name => $col) {
@@ -379,6 +383,14 @@ final class Db
         if ($viewer !== null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
         }
+        $write = fn (): array => $this->persistCreate($collection, $spec, $data);
+
+        return $around === null ? $write() : $around($write);
+    }
+
+    private function persistCreate(string $collection, array $spec, array $data): array
+    {
+        $columns = $spec['columns'];
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeCreate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
@@ -432,6 +444,7 @@ final class Db
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
         $provided = $patch;
+        Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
@@ -765,12 +778,17 @@ final class Db
     public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
+
+        return Extensions::read([$this->revisionRow($collection, $pk, $revisionId)], $collection, $viewer)[0]
+            ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
+    }
+
+    private function revisionRow(string $collection, int|string $pk, int $revisionId): array
+    {
         $rev = $this->store->revision($collection, $pk, $revisionId)
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
 
-        $row = Schema::decodeRow($this->schema->collection($collection)['columns'], $rev['row']);
-
-        return Extensions::read([$row], $collection, $viewer)[0] ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
+        return Schema::decodeRow($this->schema->collection($collection)['columns'], $rev['row']);
     }
 
     /**
@@ -780,7 +798,8 @@ final class Db
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
         $spec = $this->schema->collection($collection);
-        $row = $this->revision($collection, $pk, $revisionId, $viewer);
+        $this->requireRevisable($collection, $pk, $viewer);
+        $row = $this->revisionRow($collection, $pk, $revisionId);
         $patch = [];
         foreach ($spec['columns'] as $name => $col) {
             if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])) {

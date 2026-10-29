@@ -1491,10 +1491,12 @@ final class Extensions {
     public static function onRead(callable $fn): void;
     /** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer, array $provided): void $fn   create: after defaults, before required/access checks and beforeCreate; update: after onUpdate, before beforeUpdate; delete: before beforeDelete */
     public static function onWrite(callable $fn): void;
+    public static function normalizeWrite(callable $fn): void;  // same input signature, before unknown-column rejection; no persistent effects
+    public static function aroundOperation(callable $fn): void; // (scope, spec, rawBody, headers, ?viewer, next): Response; wraps authorized actions and creates
     /** @param callable(string $op, string $collection, array $row, ?array $previous): void $fn   after the after* hook, still inside the transaction */
     public static function onWritten(callable $fn): void;
     public static function afterCommit(callable $fn): void;        // delegates to the active Db's Store; outermost commit, discarded on rollback, immediate outside a transaction
-    public static function route(string $prefix, callable $handler): void;   // App::route tries registered prefixes before collections: $handler(string $method, array $segments, array $query, string $body, Viewer $v, array $files, array $form): array{int, mixed}
+    public static function route(string $prefix, callable $handler): void;   // App::route tries registered prefixes before collections: $handler(string $method, array $segments, array $query, string $body, Viewer $v, array $files, array $form): array{int, mixed}|Response
     public static function beforeAction(callable $fn): void;       // $fn(array $actionSpec, string $name, string $rawBody, array $headers, ?Viewer): void (may throw; null = trusted CLI)
     public static function cli(string $command, callable $fn): void;   // zero/bin/zero.php + `wp zero`
     public static function schemaDescribe(callable $fn): void;     // $fn(array $describe): array
@@ -1510,10 +1512,14 @@ public static function fieldFilter(callable $fn): void;   // $fn(array $field, a
 
 Db/App/stores and the WP editor bridge call these. The phase-1 media route
 moves to `Zero\Media\Module` behind `Extensions::route('media', …)`;
-`Features` registers it once from bootstrap. `App::invoke(name, rawBody,
-headers, ?viewer)` is the shared HTTP/CLI action path: authorize, call
-`beforeAction` with the exact bytes and normalized headers, validate input,
-invoke the compiled handler. JSON syntax parsing retains its phase-1 precedence
+`Features` registers it once from bootstrap. `App::dispatch(method, path, query, rawBody, Viewer, headers, files, form)`
+is the operation entry point shared by HTTP and Abilities. It joins/opens a
+transaction, binds the explicit actor and restores the caller actor. Its result
+is `Response`; errors throw. `App::invoke(method, path, query, body, Viewer)`
+returns JSON operation data without an HTTP envelope or repeat authentication.
+The private action path is shared by HTTP/CLI: authorize, call `beforeAction`
+with exact bytes and normalized headers, validate input, then wrap/execute the
+compiled handler. JSON syntax parsing retains its phase-1 precedence
 before action lookup/authorization. It joins the caller's request/command transaction.
 `Schema::load` remains v2-only in A1, with a disabled v3 reader flag for A2;
 `Schema::version()` and `runtime()` expose the version and nullable runtime
@@ -1535,9 +1541,13 @@ series string without changing v2 output.
   feature query options before `Sql::select`; the sixth `onWrite` argument is
   the original supplied row/patch, before defaults/onUpdate. Create extensions
   run before required checks so they can fill system values such as uid.
+  `normalizeWrite` can consume virtual `password`/`translationOf` before column
+  validation while preserving original input. HTTP list/item queries forward
+  feature options to `beforeRead`; unconsumed unknown options remain invalid.
   These are extension points only; A1 adds no field-access or locale policy.
 - `onRead` also transforms revision reads and returning write responses.
-  Hooks and stored revisions still receive full rows. Relation attachment privately keeps
+  Restore uses the authorized full stored revision, never the display
+  transform, then transforms only its response. Hooks and stored revisions still receive full rows. Relation attachment privately keeps
   the original decoded linkage columns, so stripping a foreign key cannot
   break `with`; stripped media columns are not repopulated. Transforms retain
   primary keys. WP editor writes remain trusted: after-save/delete notify
@@ -1558,11 +1568,22 @@ series string without changing v2 output.
   only when needed. The transaction guard runs before either SQL or callbacks.
   A3 moves shared-table lifecycle ownership to the runtime plugin.
 - Route prefixes match one complete first segment, receive the full decoded
-  segment list and own the path before collection dispatch. Built-in schema,
-  auth, action and global routes keep precedence. CLI extension handlers get
+  segment list and own the path before built-ins/collection dispatch. The auth
+  module can replace `/auth/token`; absent an owner, built-in behavior remains.
+  CLI extension handlers get
   `(argsWithoutCommand, flags)`, run in `App::cli`'s transaction and share its
   receipts on standalone and `wp zero`. Duplicate route/command registrations
   fail rather than overwrite an owner.
+- `aroundOperation(scope, spec, rawBody, headers, viewer, next)` wraps actions
+  and collection creates after authorization (including replay), within the
+  transaction. It can return cached data/status/headers without running `next`,
+  or persist the result after `next`; failures roll back both effects. For
+  creates, normalization/required/access checks precede the wrapper, while
+  application hooks and persistence remain in the continuation. Returning
+  field transforms apply after create replay. No receipt policy is in A1.
+- `Response::raw(bytesOrEmitter, status, headers)` enables extension downloads.
+  Both transports emit only after commit; the emitter performs file I/O, not
+  database mutations. Normal JSON operations use `Response::json`.
 - `Scf::fieldFilter` runs after each field is fully built, including nested
   group/repeater/layout fields. Its `spec` is the collection/global at the top
   level, or `['fields' => siblingDefinitions]` for a nested field. This supplies
@@ -1609,7 +1630,7 @@ only parses args and dispatches).
 | **B** field access | `p2/b1-field-access` | `runtime/Zero/FieldAccess.php`, `runtime/Zero/Wp/Scf/ConditionalLogic.php`, `tests/php/db_test.php` §field-access, `tests/wp/editor.test.ts`, `tests/differential/cases.ts` §fields | `src/client.rs` (one `col?:` branch) |
 | **C** sync | `p2/c1-sync-runtime` → `p2/c2-sync-cli` | `runtime/Zero/Sync/**`, `src/sync/**`, `src/commands/sync.rs`, `tests/php/sync_test.php`, `tests/sync.rs`, `tests/wp/sync.test.ts`, `tests/fixtures/{canon,sync}/`, `Cargo.toml` deps | `runtime/Zero/Wp/WpPostStore.php` (one line, C1); uses `vendor-prefixed/` toolkit from A3, adds no dependency |
 | **D** jobs | `p2/d1-jobs-outbox` → `p2/d2-webhooks` | `runtime/Zero/Jobs/**`, `runtime/Zero/Env.php`, `runtime/Zero/Http.php`, `runtime/Zero/Wp/Jobs/**`, `src/commands/jobs.rs`, `tests/php/{jobs,webhooks}_test.php`, `tests/wp/jobs.test.ts`, `runtime/bin/zero.php` §jobs | `src/compile.rs` (enqueue/once/env; **the only lane that edits compile.rs**) |
-| **E** auth | `p2/e1-identity-plugin` → `p2/e2-auth-runtime` | `runtime/identity/**` (incl. `composer.json`, `vendor-prefixed/`), `tests/identity/**`, `runtime/Zero/Auth/**`, `runtime/Zero/Identity.php`, `runtime/Zero/Wp/{WpAuth,WpUserStore,IdentityBridge}.php`, `tests/php/auth_test.php`, `tests/wp/auth.test.ts` | `runtime/client/index.ts` §auth, `src/client.rs` (User/member/hidden), `scripts/vendor.sh` (adds the `identity` root), `docs/dependencies.md` (three lines) |
+| **E** auth | `p2/e1-identity-plugin` → `p2/e2-auth-runtime` | `runtime/identity/**` (incl. `composer.json`, `vendor-prefixed/`), `tests/identity/**`, `runtime/Zero/Auth/**`, `runtime/Zero/Identity.php`, `runtime/Zero/Wp/{WpAuth,WpUserStore,IdentityBridge}.php`, `tests/php/auth_test.php`, `tests/wp/auth.test.ts` | `runtime/Zero/Wp/CompositeStore.php` (E2 owns the user-store selection branch), `runtime/client/index.ts` §auth, `src/client.rs` (User/member/hidden), `scripts/vendor.sh` (adds the `identity` root), `docs/dependencies.md` (three lines) |
 | **F** abilities | `p2/f1-abilities` | `runtime/Zero/Wp/Abilities/**` (incl. the named MCP server registration), `tests/wp/abilities.test.ts`, `tests/wp/fixtures/abilities.json` | none |
 | **G** media/files | `p2/g1-image-sizes` → `p2/g2-private-files` | `runtime/Zero/Media/**`, `runtime/Zero/Signer.php`, `runtime/Zero/Store/SqliteMedia.php`, `runtime/Zero/Wp/{WpMedia,WpFiles}.php`, `runtime/Zero/Wp/Media/ImageCdn.php`, `tests/php/{images,files}_test.php`, `tests/wp/media.test.ts` | `runtime/client/index.ts` §media/files |
 | **H** localization | `p2/h1-locales` | `runtime/Zero/Locale/**`, `runtime/Zero/Sql.php`, `runtime/Zero/Wp/Polylang.php`, `src/wpml_config.rs`, `tests/wp/locales.test.ts`, `tests/php/sql_test.php` §locale, `tests/fixtures/blog.wpml-config.xml`, `types/zero/tests/locales.ts` | `runtime/Zero/Wp/WpPostStore.php` (language set/get + `Source` locale expr, after C1), `src/types.rs`, `src/migrate.rs`, `src/client.rs` (locale option), `src/commands/build.rs` (emit `wpml-config.xml`), `tests/wp/harness.sh` (Polylang activation line) |

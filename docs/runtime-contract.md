@@ -106,7 +106,8 @@ source mutates it.
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Create, per row:
-1. Reject unknown keys (`invalid_input`, pointer `/<key>`).
+1. Let registered input normalizers consume virtual inputs, then reject unknown keys
+   (`invalid_input`, pointer `/<key>`). The original supplied input remains available to write hooks.
 2. Apply defaults for absent keys: `value`, `now` (current UTC timestamp, or
    today's date for `date`), `fn`.
    2b. A required column (notNull, no default, not autoIncrement) that is
@@ -120,7 +121,7 @@ Create, per row:
 6. Re-read the row by primary key → `afterCreate($row)`.
 
 Update, per matching row (rows are selected first, then updated by PK):
-1. Reject unknown keys; reject changing the primary key.
+1. Normalize virtual input, then reject unknown keys and changing the primary key.
 2. For columns with `onUpdate` that are absent from the patch, set them.
 3. `beforeUpdate($patch, $existing)`.
 4. Validate + coerce patched columns.
@@ -212,8 +213,13 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and decode. Lookup receives nonempty collection pages, not system-media rows.
 - `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
   projection; also applies to revision reads and returning write responses.
+  Revision restore authorizes first, then uses the full stored snapshot; display
+  transforms never supply persistence input.
   Keep primary keys intact. Relation attachment preserves original linkage
   privately; removing a media column prevents its population.
+- `normalizeWrite(op, collection, &data, ?existing, ?viewer, provided)` consumes
+  virtual inputs before column rejection on create/update. Keep it free of
+  persisted effects; unconsumed unknown keys remain errors.
 - `onWrite(op, collection, &data, ?existing, ?viewer, provided)` runs after
   defaults/onUpdate and before app before-hooks (create: also before required
   and access checks). `provided` is the original row/patch. Delete runs before
@@ -224,13 +230,28 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   immediately. Nested transactions join without savepoints. A callback that
   throws propagates after commit, without rollback cleanup or callback replay.
 - `route(prefix, handler)` receives `(method, fullDecodedSegments, query,
-  rawBody, viewer, files, form)` and returns `[status, data]`. One complete
-  first segment is matched before collections, after canonical built-ins.
+  rawBody, viewer, files, form)` and returns `[status, data]` or `Response`. One
+  complete first segment is matched before built-ins and collections. Thus the
+  auth feature can replace `/auth/token`; without a registered owner the phase-1
+  login remains. A module that owns a prefix owns all its dispatch and method checks.
 - `beforeAction(spec, name, rawBody, headers, ?viewer)` sees exact input bytes
   and lowercase header names after action authorization, before input validation.
   JSON syntax parsing retains its phase-1 precedence before action lookup.
-  `App::invoke` is the shared HTTP/CLI invocation path within their transaction;
-  a null viewer means trusted CLI.
+  HTTP and CLI actions share this path; a null viewer means trusted CLI.
+- `aroundOperation(scope, spec, rawBody, headers, ?viewer, next): Response` wraps
+  `action:<name>` and HTTP `create:<collection>` in the current transaction.
+  Action authorization, raw-body guards and input validation, or create input
+  normalization/required/access checks, run before wrappers, including on replay.
+  Calling `next()` executes the handler/write pipeline. A wrapper may instead
+  return its stored result and add metadata with `Response::withHeaders`.
+  Wrapper failures roll back both writes and receipt effects. Create wrappers
+  see the full persisted row; read transforms apply after execution or replay.
+  `Db::insert` exposes its optional per-row `around(callable(): array): array`
+  continuation to the request adapter. Trusted nested writes do not inherit
+  the request header or create another receipt.
+- HTTP list and item reads forward feature query options to `beforeRead`. The
+  feature consumes/normalizes its options; unknown remaining options fail normal
+  query validation.
 - `cli(command, handler)` receives `(argsWithoutCommand, flags)` inside the
   canonical CLI transaction and receipts, on both standalone and `wp zero`.
 - `schemaDescribe(fn)` transforms the public schema description.
@@ -253,6 +274,25 @@ Schema loading remains v2-only. `Schema::version()` returns the loaded version;
 flag stays disabled until the compiler emits v3 in A2. Lazy scheduled promotion
 remains at the start of requests/commands, so due records are visible in that
 same request.
+
+`App::dispatch(method, path, query, rawBody, Viewer, headers = [], files = [],
+form = []): Response` is the shared operation entry point for HTTP and Abilities.
+It opens or joins a transaction, promotes due rows, binds the explicit viewer
+as hook actor, and restores the previous actor even on failure. It does not
+resolve credentials or convert exceptions to HTTP problems. `App::invoke(method,
+path, query, body, Viewer)` is its data-only convenience for JSON operations;
+`body` is a decoded value or exact raw JSON string. Headers and raw file responses
+use `dispatch`. HTTP resolves credentials once, then uses the same dispatcher.
+
+`Response::json(data, status = 200, headers = [])` keeps the normal `{data}`
+envelope. `Response::raw(string|Closure, status = 200, headers = [])` returns
+bytes or a deferred emitter for downloads. Raw handlers set their content type
+and download/security/cache headers explicitly. Both HTTP transports emit only
+after the operation transaction commits. `App::handle` returns a string or
+closure body; `handleHttp` and the WordPress REST adapter call `Response::emit`.
+Stream emitters perform I/O only, with authorization/file readiness already
+checked in the transaction. Streaming errors cannot roll back a committed
+operation or replace an already-started response.
 
 ## class App (HTTP)
 

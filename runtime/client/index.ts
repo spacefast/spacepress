@@ -5,7 +5,7 @@
 // bundlers run it as-is. Wire format: design §4.8 / §7.
 
 import { SCHEMA } from "./schema.ts";
-import type { Actions, Collections, Globals, Media, RevisionSummary, Status, User } from "./types.ts";
+import type { Actions, Collections, Globals, Media, PrivateFile, RevisionSummary, Status, User } from "./types.ts";
 
 export type * from "./types.ts";
 export { SCHEMA };
@@ -41,11 +41,14 @@ type WithValue<K extends CollectionKey, P, V> = P extends keyof Rels<K>
     ? Media[] | (null extends Row<K>[P & keyof Row<K>] ? null : never)
     : P extends CollectionDescriptors[K]["media"][number]
       ? Media | null
-      : never;
+      : P extends CollectionDescriptors[K]["files"][number]
+        ? PrivateFile | number | (null extends Row<K>[P & keyof Row<K>] ? null : never)
+        : never;
 
 /**
  * A row of collection `K` loaded with `with: W`: `one` relations become the related row (or null when
  * optional), `many` relations a list, and requested media columns are replaced in place by media rows.
+ * Requested file columns become the file row when the bucket's read rule admits the viewer, else stay the id.
  */
 export type RowWith<K extends CollectionKey, W> = [Requested<W>] extends [never]
   ? Row<K>
@@ -106,6 +109,16 @@ export interface MediaClient {
   delete(id: number): Promise<Media>;
 }
 
+export interface FileBucketClient {
+  /** `multipart/form-data` field `file`; the bucket's `accept`, `maxBytes` and `create` rule apply. */
+  upload(file: Blob, opts?: { filename?: string }): Promise<PrivateFile>;
+  /** The row with a fresh `url`: a signed download link valid for 5 minutes. */
+  get(id: number): Promise<PrivateFile>;
+  delete(id: number): Promise<PrivateFile>;
+}
+
+export type FilesClient = { readonly [B in Descriptor["buckets"][number]]: FileBucketClient };
+
 export type ActionsClient = {
   [A in keyof Actions]: {} extends Actions[A]["input"]
     ? (input?: Actions[A]["input"]) => Promise<Actions[A]["output"]>
@@ -128,6 +141,7 @@ export interface AuthClient {
 
 export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   readonly media: MediaClient;
+  readonly files: FilesClient;
   readonly actions: ActionsClient;
   readonly globals: GlobalsClient;
   readonly auth: AuthClient;
@@ -340,6 +354,20 @@ export function createClient(options: ClientOptions = {}): Client {
       update: (id: number, patch: unknown) => request("PATCH", `/media/${seg(id)}`, { json: patch }),
       delete: (id: number) => request("DELETE", `/media/${seg(id)}`),
     },
+    files: Object.fromEntries(
+      SCHEMA.buckets.map((bucket: string) => [
+        bucket,
+        {
+          upload(file: Blob, opts: { filename?: string } = {}) {
+            const form = new FormData();
+            form.append("file", file, opts.filename ?? ("name" in file && typeof file.name === "string" ? file.name : "upload"));
+            return request("POST", `/files/${seg(bucket)}`, { form });
+          },
+          get: (id: number) => request("GET", `/files/${seg(bucket)}/${seg(id)}`),
+          delete: (id: number) => request("DELETE", `/files/${seg(bucket)}/${seg(id)}`),
+        },
+      ]),
+    ),
     actions: Object.fromEntries(
       SCHEMA.actions.map((name: string) => [name, (input?: unknown) => request("POST", `/actions/${seg(name)}`, { json: input ?? {} })]),
     ),

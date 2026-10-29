@@ -3,7 +3,7 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
-import { api, harness, http, ok, wp } from "./env.ts";
+import { api, harness, http, ok, problem, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
 function splitPng(): Uint8Array {
@@ -252,4 +252,113 @@ test("a size the original now fits drops its old rendition (metadata and file)",
 test("without Jetpack the Image CDN adapter is inert", async () => {
   const schema = await ok("GET", "/_schema");
   assert.equal(schema.runtime.wp.imageCdn, false);
+});
+
+// ================================================================ private files (G2)
+
+/** A minimal valid PDF (finfo sniffs application/pdf). */
+const pdf = (text: string) => new TextEncoder().encode(`%PDF-1.4\n1 0 obj<<>>endobj\n% ${text}\ntrailer<<>>\n%%EOF\n`);
+
+async function uploadDeck(bytes: Uint8Array, as: "author" | "editor" | "subscriber" = "author", name = "Q3 plan.pdf") {
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: "application/pdf" }), name);
+  return http("POST", `${api}/files/decks`, { as, form });
+}
+
+/**
+ * The harness publishes WordPress on a host port the container can't reach, so the probe is routed
+ * to the web server's in-network name with `zero_private_probe_url`, the filter hosts use for the
+ * same reason. Re-probing then exercises the real Apache `.htaccess` decision.
+ */
+
+
+function probe(): string {
+  muPlugin("zero-test-probe-route", "<?php\nadd_filter('zero_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n");
+  return wp("eval", "echo \\Zero\\Wp\\WpFiles::probe() ? 'protected' : 'exposed';");
+}
+
+test("private files: signed download with security headers; forged/expired → 403; owner rule; Apache denies the direct URL", async () => {
+  assert.equal(probe(), "protected");
+  assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, true);
+
+  await problem("POST", "/files/decks", { form: (() => { const f = new FormData(); f.append("file", new Blob([pdf("x")]), "a.pdf"); return f; })() },
+    { status: 401, code: "unauthenticated", pointer: undefined });
+  const r = await uploadDeck(pdf("slide one"));
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  const deck = r.json.data;
+  assert.deepEqual([deck.bucket, deck.mime, deck.filename, deck.ownerId, "path" in deck], ["decks", "application/pdf", "Q3 plan.pdf", harness.users.author.id, false]);
+  assert.ok(deck.url.startsWith(`${api}/files/decks/${deck.id}/download?`), deck.url);
+
+  // The signed URL streams the bytes, no credentials needed.
+  const res = await fetch(deck.url);
+  assert.equal(res.status, 200);
+  assert.deepEqual(new Uint8Array(await res.arrayBuffer()), pdf("slide one"));
+  assert.deepEqual(
+    ["content-type", "x-content-type-options", "content-security-policy", "cache-control"].map((h) => res.headers.get(h)),
+    ["application/pdf", "nosniff", "sandbox", "private, no-store"],
+  );
+  assert.equal(res.headers.get("content-disposition"), `attachment; filename="Q3 plan.pdf"; filename*=UTF-8''Q3%20plan.pdf`);
+
+  // Forged and expired signatures.
+  const signed = new URL(deck.url);
+  const forged = new URL(signed);
+  forged.searchParams.set("sig", "0".repeat(64));
+  assert.equal((await fetch(forged)).status, 403);
+  const stretched = new URL(signed);
+  stretched.searchParams.set("exp", String(Number(signed.searchParams.get("exp")) + 60));
+  assert.equal((await fetch(stretched)).status, 403, "a later exp invalidates the signature");
+  const expired = wp("eval", `
+    $exp = time() - 1;
+    echo rest_url('zero/v1/files/decks/${deck.id}/download') . '?' . http_build_query(['exp' => $exp, 'sig' => hash_hmac('sha256', "decks/${deck.id}/$exp", get_option('zero_runtime_secret'))]);
+  `);
+  const expiredRes = await fetch(expired.replace(/^https?:\/\/[^/]+/, harness.url));
+  assert.equal(expiredRes.status, 403, "a correctly signed but expired link is refused");
+
+  // Owner rule: only the uploader reads or deletes.
+  await problem("GET", `/files/decks/${deck.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: undefined });
+  await problem("GET", `/files/decks/${deck.id}`, {}, { status: 401, code: "unauthenticated", pointer: undefined });
+  await problem("DELETE", `/files/decks/${deck.id}`, { as: "admin" }, { status: 403, code: "forbidden", pointer: undefined });
+  const mine = await ok("GET", `/files/decks/${deck.id}`, { as: "author" });
+  assert.equal((await fetch(mine.url)).status, 200, "the owner gets a fresh working url");
+
+  // The bytes sit under uploads/zero-private/<app>/, which Apache refuses to serve directly.
+  const stored = wp("eval", `echo wp_json_encode(array_map('basename', glob(\\Zero\\Wp\\WpFiles::root() . '/blog/decks/*')));`);
+  const [uuid] = JSON.parse(stored);
+  assert.ok(uuid, stored);
+  const direct = await fetch(`${harness.url}/wp-content/uploads/zero-private/blog/decks/${uuid}`);
+  assert.equal(direct.status, 403, "Apache denies /wp-content/uploads/zero-private/");
+  assert.equal((await fetch(`${harness.url}/wp-content/uploads/zero-private/.htaccess`)).status, 403);
+});
+
+test("file({ bucket }) columns on a post-backed collection: checked on write, populated for the owner only, nulled on delete", async () => {
+  probe();
+  const deck = (await uploadDeck(pdf("talk"))).json.data;
+  await problem("POST", "/talks", { as: "author", body: { title: "Bad", deck: 999999 } }, { status: 422, code: "invalid_input", pointer: "/deck" });
+  const talk = await ok("POST", "/talks", { as: "author", body: { title: "Q3", deck: deck.id } });
+  assert.equal(talk.deck, deck.id);
+  const own = await ok("GET", `/talks/${talk.id}?with=deck`, { as: "author" });
+  assert.equal(own.deck.id, deck.id);
+  assert.equal((await fetch(own.deck.url)).status, 200);
+  assert.equal((await ok("GET", `/talks/${talk.id}?with=deck`, { as: "editor" })).deck, deck.id, "a reader the owner rule refuses keeps the id");
+  await ok("DELETE", `/files/decks/${deck.id}`, { as: "author" });
+  assert.equal((await ok("GET", `/talks/${talk.id}`)).deck, null);
+  assert.equal((await fetch(deck.url)).status, 404);
+});
+
+test("without .htaccess the probe fails and uploads answer 503 until protection is back", async () => {
+  assert.equal(probe(), "protected");
+  wp("eval", "unlink(\\Zero\\Wp\\WpFiles::root() . '/.htaccess');");
+  wp("option", "delete", "zero_runtime_private_ok");
+  try {
+    assert.equal(probe(), "exposed");
+    const r = await uploadDeck(pdf("leak"));
+    assert.equal(r.status, 503, JSON.stringify(r.json));
+    assert.equal(r.json.code, "files_unavailable");
+    assert.match(r.json.detail, /deny \/wp-content\/uploads\/zero-private\/ in your web server config/);
+    assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, false);
+  } finally {
+    wp("eval", "\\Zero\\Wp\\WpFiles::protect();");
+  }
+  assert.equal(probe(), "protected");
+  assert.equal((await uploadDeck(pdf("ok"))).status, 201);
 });

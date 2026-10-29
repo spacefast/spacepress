@@ -145,6 +145,7 @@ final class Scf
             $type === 'select' => ['type' => 'select', 'choices' => $choices($def['enum'] ?? []), 'allow_null' => 1, 'multiple' => 1, 'return_format' => 'value', 'ui' => 1],
             $type === 'integer' && isset($def['references']) => self::reference($schema, $def['references']),
             $type === 'integer' => ['type' => 'number', 'step' => 1, 'min' => $rules['min'] ?? '', 'max' => $rules['max'] ?? ''],
+            $type === 'file' => ['type' => 'number', 'step' => 1, 'min' => 1, 'instructions' => 'A private file id (bucket ' . ($def['bucket'] ?? '') . ').'],
             $type === 'real' => ['type' => 'number', 'step' => 'any', 'min' => $rules['min'] ?? '', 'max' => $rules['max'] ?? ''],
             $type === 'boolean' => ['type' => 'true_false', 'ui' => 1, 'default_value' => ($def['default']['value'] ?? false) ? 1 : 0],
             $type === 'date' => ['type' => 'date_picker', 'display_format' => 'Y-m-d', 'return_format' => 'Y-m-d', 'first_day' => 1],
@@ -366,7 +367,7 @@ final class Scf
         }
 
         return match ($type) {
-            'integer', 'media' => is_numeric($v) && (float) $v == (int) $v ? (int) $v : $v,
+            'integer', 'media', 'file' => is_numeric($v) && (float) $v == (int) $v ? (int) $v : $v,
             'real' => is_numeric($v) ? (float) $v : $v,
             'boolean' => match (true) {
                 is_bool($v) => $v,

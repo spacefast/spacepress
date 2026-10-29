@@ -21,7 +21,8 @@ export const SCHEMA = {
       "media": [
         "avatar"
       ],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     },
     "posts": {
       "path": "posts",
@@ -43,7 +44,8 @@ export const SCHEMA = {
       "media": [
         "cover"
       ],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     },
     "comments": {
       "path": "comments",
@@ -58,7 +60,8 @@ export const SCHEMA = {
         }
       },
       "media": [],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     }
   },
   "globals": [
@@ -67,7 +70,8 @@ export const SCHEMA = {
   "actions": [
     "approveComment",
     "publishedCount"
-  ]
+  ],
+  "buckets": []
 } as const;
 
 export type SchemaDescriptor = typeof SCHEMA;

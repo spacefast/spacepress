@@ -6,6 +6,7 @@ namespace Zero\Wp\Abilities;
 
 use Zero\Abilities\Module;
 use Zero\Access;
+use Zero\HttpError;
 use Zero\Schema;
 use Zero\Wp\Runtime;
 
@@ -23,7 +24,7 @@ final class Register
     private static ?array $operations = null;
     /** @var array<string, true> */
     private static array $names = [];
-    private static bool $sanitizing = false;
+    private static ?string $sanitizing = null;
 
     public static function categories(): void
     {
@@ -73,23 +74,30 @@ final class Register
 
     /**
      * wp_ability_validate_input: Zero's pipeline is the one validator of its abilities, so a bad
-     * input gets REST's 422 problem and pointer instead of core's generic 400. Core's own check
-     * stays in force only while the REST run endpoint sanitizes its `input` argument: core then
-     * coerces valid input (query-string GET input becomes typed) and leaves invalid input as sent,
-     * for Zero to reject, instead of casting it into something REST would refuse.
+     * input gets REST's 422 problem and pointer instead of core's generic 400. While the REST run
+     * endpoint sanitizes its `input` argument, core sanitizes only what validates: query-string
+     * input (GET/DELETE) is then typed by core's own check, as a query string must be, and JSON
+     * input (POST) is declared invalid so core passes it through byte-for-byte to Zero.
      */
     public static function validate(mixed $valid, mixed $input, string $name): mixed
     {
         self::operations();
+        if (!isset(self::$names[$name])) {
+            return $valid;
+        }
 
-        return isset(self::$names[$name]) && !self::$sanitizing ? true : $valid;
+        return match (self::$sanitizing) {
+            null => true,
+            'GET', 'DELETE' => $valid,
+            default => new \WP_Error('zero_raw_input', 'Zero validates JSON input itself'),
+        };
     }
 
     /** rest_pre_dispatch … rest_request_before_callbacks brackets core's argument sanitizing. */
     public static function sanitizing(bool $on): \Closure
     {
-        return static function (mixed $passthrough) use ($on): mixed {
-            self::$sanitizing = $on;
+        return static function (mixed $passthrough, mixed $server = null, mixed $request = null) use ($on): mixed {
+            self::$sanitizing = $on && $request instanceof \WP_REST_Request ? $request->get_method() : null;
 
             return $passthrough;
         };
@@ -211,7 +219,7 @@ final class Register
                 'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay.",
                 'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']),
                 'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'),
-                'call' => static fn (array $in): array => ['PATCH', $item()($in), [], $in['patch'] ?? []],
+                'call' => static fn (array $in): array => ['PATCH', $item()($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ];
         }
         if ($api['delete'] ?? true) {
@@ -239,8 +247,9 @@ final class Register
         }
         // Content sync (§5.3) rides its `/sync` routes: these exist exactly when the sync feature does.
         if (Module::syncEnabled() && ($spec['sync'] ?? null) !== null) {
-            $sync = static fn (string $op, string $label, string $description, array $input, array $annotations, \Closure $call): array => $base + [
-                'name' => "$app/$k-sync-$op", 'op' => "sync-$op", 'label' => $label, 'description' => $description,
+            // Apply is a create or an update depending on `expect`; only the sync route can tell, so it decides.
+            $sync = static fn (string $op, string $label, string $description, array $input, array $annotations, \Closure $call, bool $defer = false): array => $base + [
+                'name' => "$app/$k-sync-$op", 'op' => "sync-$op", 'label' => $label, 'description' => $description, 'defer' => $defer,
                 'input' => $input, 'output' => [], 'annotations' => $annotations,
                 'rule' => $op === 'trash' ? [$rules['delete'], 'delete', "delete $name rows"] : [$rules['update'], 'update', "update $name rows"], 'call' => $call,
             ];
@@ -250,7 +259,7 @@ final class Register
                 static fn (array $in): array => ['GET', "/sync/$name", array_map('strval', array_intersect_key($in, ['after' => 1, 'first' => 1])), null]);
             $ops[] = $sync('apply', "Apply a $name sync record", "Create or update one $name record of the $appLabel app when it still matches `expect`.",
                 JsonSchema::input(['record' => ['type' => 'object'], 'expect' => ['type' => 'string']], ['record', 'expect']), [],
-                static fn (array $in): array => ['POST', "/sync/$name", [], $in]);
+                static fn (array $in): array => ['POST', "/sync/$name", [], $in], true);
             $ops[] = $sync('trash', "Trash a $name sync record", "Trash one $name record of the $appLabel app by uid when it still matches `expect`.",
                 JsonSchema::input(['uid' => ['type' => 'string'], 'expect' => ['type' => 'string']], ['uid', 'expect']), ['destructive' => true],
                 static fn (array $in): array => ['POST', "/sync/$name/trash", [], $in]);
@@ -268,8 +277,11 @@ final class Register
             'name' => "$app/" . self::kebab($name), 'op' => 'run', 'agents' => (bool) ($action['agents'] ?? true),
             'label' => "Run $name", 'description' => "Run the $name action of the $appLabel app.",
             'input' => JsonSchema::input($props, $required), 'output' => [],
-            'annotations' => ($action['idempotent'] ?? false) ? ['idempotent' => true] : [],
+            // `writes` (the compiler's "handler deletes" flag) marks the action destructive once emitted.
+            'annotations' => array_filter(['idempotent' => (bool) ($action['idempotent'] ?? false), 'destructive' => (bool) ($action['writes'] ?? false)]),
             'rule' => [$action['access'] ?? Access::DEFAULT_WRITE, 'create', "run $name"],
+            // A signature replaces the access check (§6.1); the action path verifies it, so nothing is judged early.
+            'defer' => ($action['signature'] ?? null) !== null,
             'call' => static fn (array $in): array => ['POST', '/actions/' . rawurlencode($name), [], $in],
             'zero' => ['action' => $name],
         ];

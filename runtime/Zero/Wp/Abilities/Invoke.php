@@ -118,7 +118,11 @@ final class Invoke
         foreach ($input as $k => $v) {
             $k = (string) $k;
             if ($k === 'orderBy' && is_array($v) && !array_is_list($v)) {
-                $q[$k] = implode(',', array_map(static fn ($col, $dir): string => ($dir === 'desc' ? '-' : '') . $col, array_keys($v), $v));
+                $q[$k] = implode(',', array_map(static fn ($col, $dir): string => match ($dir) {
+                    'asc' => (string) $col,
+                    'desc' => '-' . $col,
+                    default => throw HttpError::invalidQuery('Sort direction must be "asc" or "desc"', '/orderBy' . HttpError::seg($col)),
+                }, array_keys($v), $v));
             } else {
                 $q[$k] = is_string($v) ? $v : (\Zero\Js::jsonStringify($v) ?? '');
             }

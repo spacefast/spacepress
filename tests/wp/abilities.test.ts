@@ -36,8 +36,17 @@ before(() => {
   postId = row.id;
 });
 
+// The golden pins this lane's slice of the shared WP test app (the blog's entities plus
+// lanes/abilities.ts), so other lanes' fragments add abilities without invalidating it.
+const pinned = {
+  collection: ["authors", "posts", "comments", "signups", "events", "media"],
+  action: ["approveComment", "publishedCount", "agentNote"],
+  global: ["settings"],
+};
+const isPinned = (a: any) => Object.entries(pinned).some(([kind, names]) => names.includes(a.meta.zero[kind]));
+
 test("wp zero abilities lists every operation of the app with schemas from schema.php (golden)", () => {
-  const listed = zero("abilities");
+  const listed = zero("abilities").filter(isPinned);
   const fixture = join(here, "fixtures/abilities.json");
   const text = JSON.stringify(listed, null, 2) + "\n";
   if (process.env.ZERO_UPDATE_FIXTURES === "1") writeFileSync(fixture, text);
@@ -49,7 +58,8 @@ test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and
   assert.equal(r.status, 200, JSON.stringify(r.json));
   const byName = Object.fromEntries(r.json.map((a: any) => [a.name, a]));
   const golden = JSON.parse(readFileSync(join(here, "fixtures/abilities.json"), "utf8"));
-  assert.deepEqual(Object.keys(byName).sort(), golden.filter((a: any) => a.meta.show_in_rest).map((a: any) => a.name).sort());
+  assert.deepEqual(Object.keys(byName).filter((n) => golden.some((a: any) => a.name === n)).sort(),
+    golden.filter((a: any) => a.meta.show_in_rest).map((a: any) => a.name).sort());
 
   const list = byName["blog/posts-list"];
   assert.equal(list.category, "blog");
@@ -95,24 +105,33 @@ test("executing an ability answers each user exactly as REST does", async () => 
   assert.equal((await ok("GET", "/globals/settings")).tagline, `agents ${run}`);
 });
 
-test("an ability create runs the pipeline and is visible in /zero/v1; bad input is REST's 422 problem", async () => {
+test("an ability create runs the pipeline and is visible in /zero/v1", async () => {
   const r = await runAbility("blog/posts-create", { title: `Audit agent ${run}` }, "author");
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.slug, `audit-agent-${run}`);
   const viaRest = await ok("GET", `/posts/${r.json.id}?with=comments`, { as: "editor" });
   assert.deepEqual(viaRest.comments.map((c: any) => c.body), ["by Author"]);
-  // Zero validates, so the agent sees the same code and pointer REST returns, unknown keys included.
-  for (const input of [{ title: "x".repeat(121) }, { title: "ok", nope: 1 }, { title: 5 }]) {
+});
+
+test("invalid ability input is REST's 422 problem, untouched by core's coercion", async () => {
+  // Zero validates, so the agent sees REST's code and pointer: unknown keys, wrong types and
+  // numeric/boolean strings that core would otherwise coerce before Zero saw them.
+  for (const input of [{ title: "x".repeat(121) }, { title: "ok", nope: 1 }, { title: 5 }, { title: "ok", authorId: "5" }, { title: "ok", seo: { noindex: "true" } }]) {
     const viaAbility = await runAbility("blog/posts-create", input, "author");
     const viaRest = await http("POST", `${api}/posts`, { as: "author", body: input });
-    assert.equal(viaRest.status, 422);
-    assert.deepEqual([viaAbility.status, viaAbility.json.code, viaAbility.json.data?.pointer], [422, "zero_invalid_input", viaRest.json.pointer]);
+    assert.equal(viaRest.status, 422, JSON.stringify(input));
+    assert.deepEqual([viaAbility.status, viaAbility.json.code, viaAbility.json.data?.pointer], [422, "zero_invalid_input", viaRest.json.pointer], JSON.stringify(input));
   }
+  // Envelope keys only abilities have are checked too.
+  const noPatch = await runAbility("blog/posts-update", { id: postId, patch: '{"title":"x"}' }, "editor");
+  assert.deepEqual([noPatch.status, noPatch.json.data?.pointer], [422, "/patch"]);
+  const badOrder = await runAbility("blog/posts-list", { orderBy: { title: "sideways" } }, "editor", "GET");
+  assert.deepEqual([badOrder.status, badOrder.json.data?.pointer], [400, "/orderBy/title"]);
 });
 
 test("agents: false hides an ability from core REST and MCP while wp zero run still executes it", async () => {
-  const listed = zero("abilities");
-  assert.deepEqual(listed.filter((a: any) => !a.meta.show_in_rest).map((a: any) => a.name), ["blog/agent-note"]);
+  const note = zero("abilities").find((a: any) => a.name === "blog/agent-note");
+  assert.deepEqual([note.meta.show_in_rest, note.meta.mcp.public], [false, false]);
   assert.equal((await http("GET", `${abilities}/abilities/blog/agent-note`, { as: "admin" })).status, 404);
   assert.equal((await runAbility("blog/agent-note", { note: "x" }, "admin")).status, 404);
 
@@ -136,8 +155,9 @@ test("an MCP client lists the app's tools and calls one over plain JSON-RPC on H
   const rows = await editor.call("tools/call", { name: "blog-posts-list", arguments: { where: { id: postId } } });
   assert.equal(rows.isError, false, JSON.stringify(rows));
   assert.deepEqual(rows.structuredContent.rows.map((r: any) => r.id), [postId]);
+});
 
-  // A write forbidden to the subscriber over REST is forbidden over MCP too.
+test("an MCP write forbidden to a subscriber over REST is forbidden as a tool call", async () => {
   const subscriber = await McpClient.connect("subscriber");
   const denied = await subscriber.call("tools/call", { name: "blog-posts-delete", arguments: { id: postId } });
   assert.equal(denied.isError, true, JSON.stringify(denied));

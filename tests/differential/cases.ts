@@ -115,7 +115,13 @@ export default defineConfig({
       const predicates = [() => true]; predicates.push(() => false);
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      const readers = [{ count: 1 }, { count: 2 }].map(item => { item.count++; return () => item.count; });
+      let missing: { count: number } | undefined = undefined;
+      const mutate = (item: { count: number } = { count: 0 }) => { item.count++; return item.count; };
+      const defaultCount = mutate(missing);
+      const supplied = { count: 4 };
+      const suppliedCount = mutate(supplied);
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

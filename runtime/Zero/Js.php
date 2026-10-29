@@ -757,6 +757,7 @@ final class Js
             if (self::truthy($f($item, $i))) {
                 return $item;
             }
+            unset($item);
         }
 
         return null;
@@ -768,6 +769,7 @@ final class Js
             if (self::truthy($f($item, $i))) {
                 return $i;
             }
+            unset($item);
         }
 
         return -1;
@@ -802,6 +804,7 @@ final class Js
             if (!self::truthy($f($item, $i))) {
                 return false;
             }
+            unset($item);
         }
 
         return true;
@@ -814,6 +817,7 @@ final class Js
             if (self::truthy($f($item, $i))) {
                 $out[] = $item;
             }
+            unset($item);
         }
 
         return $out;
@@ -824,6 +828,7 @@ final class Js
         $out = [];
         foreach ($a as $i => $item) {
             $out[] = $f($item, $i);
+            unset($item);
         }
 
         return $out;

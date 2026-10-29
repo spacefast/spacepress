@@ -2380,7 +2380,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             Ty::union([present, value.ty])
         };
-        Ok((initialized, format!("{}{php} ??= {};\n", pad(indent), value.php)))
+        let initialization = if self.effects.by_ref(&parameter.pat) {
+            format!(
+                "{}if ({php} === null) {{\n{}unset({php});\n{}{php} = {};\n{}}}\n",
+                pad(indent),
+                pad(indent + 1),
+                pad(indent + 1),
+                value.php,
+                pad(indent),
+            )
+        } else {
+            format!("{}{php} ??= {};\n", pad(indent), value.php)
+        };
+        Ok((initialized, initialization))
     }
 
     fn declare_parameter(&mut self, parameter: &Param, ty: &Ty, body: &mut String, indent: usize) -> Result<String> {

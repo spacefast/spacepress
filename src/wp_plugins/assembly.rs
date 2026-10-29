@@ -221,8 +221,7 @@ mod tests {
             .unwrap();
             conn.write_all(&bytes).unwrap();
         });
-        let config =
-            crate::wp_plugins::parse(serde_json::json!({"plugins":[{"slug":"example","version":"1.0"}]})).unwrap();
+        let config = crate::wp_plugins::parse(serde_json::json!({"example":"1.0"})).unwrap();
         let plan = crate::wp_plugins::resolve(&config, &[]).unwrap();
         let lock = temp.path().join("plugins.lock.json");
         let cache = temp.path().join("cache");

@@ -68,7 +68,7 @@ new \Zero\Wp\Plugin(__DIR__);
 "#;
 
 struct Built {
-    wordpress: Option<wp_plugins::Config>,
+    plugins: Option<wp_plugins::Config>,
     client_files: Vec<(String, Vec<u8>)>,
     schema: schema::Schema,
     functions_php: String,
@@ -187,7 +187,7 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         schema.locales.as_ref(),
     );
     Ok(Built {
-        wordpress: ext.wordpress,
+        plugins: ext.plugins,
         client_files,
         schema,
         functions_php,
@@ -435,7 +435,7 @@ fn emit_wp(project: &Path, wp_root: &Path, built: &Built) -> std::io::Result<Pat
 
 /// Opt-in bridge until A3 owns canonical wp-content assembly. No dependency logic lives here.
 fn emit_wp_with_dependencies(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
-    let config = built.wordpress.as_ref().expect("WordPress dependencies");
+    let config = built.plugins.as_ref().expect("WordPress dependencies");
     let plan = wp_plugins::resolve(config, &wp_plugins::platform(built.schema.locales.is_some()))?;
     let parent = root
         .parent()
@@ -747,9 +747,9 @@ fn main() -> ExitCode {
             let root = args.out.clone().unwrap_or_else(|| {
                 project
                     .join(".zero")
-                    .join(if built.wordpress.is_some() { "wp-content" } else { "wp" })
+                    .join(if built.plugins.is_some() { "wp-content" } else { "wp" })
             });
-            let emitted = if built.wordpress.is_some() {
+            let emitted = if built.plugins.is_some() {
                 emit_wp_with_dependencies(&project, &root, &built)
             } else {
                 emit_wp(&project, &root, &built)

@@ -6,6 +6,18 @@ Everything below is exported from the `"zero"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
 `findMany`/`findFirst` with object filters.
 
+## WordPress plugins
+
+Use a top-level package map in `defineConfig`:
+
+```ts
+plugins: { "classic-editor": "1.6.7" }
+```
+
+Values are exact WordPress.org versions or resource objects with `version`,
+`pluginData`, optional `requires`, and a checksum (required for direct URLs).
+See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
+
 ## Full example (the pantry tracker)
 
 ```ts

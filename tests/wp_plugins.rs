@@ -127,9 +127,17 @@ impl Project {
         Self { _temp: temp, root, out }
     }
     fn config(&self, plugins: &[Value]) {
+        let plugins: serde_json::Map<String, Value> = plugins
+            .iter()
+            .map(|p| {
+                let mut entry = p.as_object().unwrap().clone();
+                let slug = entry.remove("slug").unwrap().as_str().unwrap().to_string();
+                (slug, Value::Object(entry))
+            })
+            .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', target: 'wp', schema: {{}}, wordpress: {{ plugins: {} }} }});\n",
-            serde_json::to_string(plugins).unwrap()
+            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', target: 'wp', schema: {{}}, plugins: {} }});\n",
+            serde_json::to_string(&plugins).unwrap()
         );
         std::fs::write(self.root.join("zero.config.ts"), body).unwrap();
     }
@@ -419,8 +427,13 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     b["requires"] = json!(["alpha"]);
     p.config(&[a, b]);
     p.rejects("check", "dependency cycle");
-    p.config(&[org("alpha"), org("alpha")]);
-    p.rejects("check", "duplicate plugin declaration");
+    std::fs::write(
+        p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; export default defineConfig({schema:{},plugins:[]});",
+    )
+    .unwrap();
+    p.rejects("check", "plugins must be a package map");
+
     p.config(&[org("zero-runtime")]);
     p.rejects("check", "reserved plugin slug");
     p.config(&[org("../escape")]);
@@ -440,7 +453,7 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     let mut a = org("alpha");
     a["step"] = json!("runPHP");
     p.config(&[a]);
-    p.rejects("check", "only declarative pinned ZIP plugins");
+    p.rejects("check", "Blueprint steps and activation are unsupported");
     p.config(&[org("secure-custom-fields")]);
     p.rejects("check", "platform plugin secure-custom-fields requires >= 6.9.7");
     p.config(&[org("alpha")]);

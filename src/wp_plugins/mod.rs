@@ -51,12 +51,52 @@ pub struct Plan {
     pub plugins: Vec<Plugin>,
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Declaration {
+    Version(String),
+    Detailed(Details),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Details {
+    version: String,
+    #[serde(default)]
+    plugin_data: Option<Resource>,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    requires: Vec<String>,
+}
+
+/// Public package map -> existing assembler-facing plugin plan input.
 pub fn parse(value: serde_json::Value) -> Result<Config> {
-    serde_json::from_value(value).map_err(|e| {
-        invalid(format!(
-            "wordpress: {e}; only declarative pinned ZIP plugins are supported (no Blueprint steps or activation)"
-        ))
-    })
+    let declarations: BTreeMap<String, Declaration> = serde_json::from_value(value).map_err(|e| {
+        invalid(format!("plugins must be a package map, e.g. {{ \"classic-editor\": \"1.6.7\" }}; entries are exact version strings or {{version, pluginData?, sha256?, requires?}} objects; Blueprint steps and activation are unsupported: {e}"))
+    })?;
+    let plugins = declarations
+        .into_iter()
+        .map(|(slug, declaration)| {
+            let details = match declaration {
+                Declaration::Version(version) => Details {
+                    version,
+                    plugin_data: None,
+                    sha256: None,
+                    requires: Vec::new(),
+                },
+                Declaration::Detailed(details) => details,
+            };
+            Plugin {
+                slug,
+                version: details.version,
+                plugin_data: details.plugin_data,
+                sha256: details.sha256,
+                requires: details.requires,
+            }
+        })
+        .collect();
+    Ok(Config { plugins })
 }
 
 fn slug(s: &str) -> bool {
@@ -204,7 +244,7 @@ pub fn resolve(config: &Config, required: &[Plugin]) -> Result<Plan> {
         }
         let p = plugins.get(name).ok_or_else(|| {
             invalid(format!(
-                "undeclared plugin dependency `{name}`; declare its exact version and sha256 in wordpress.plugins"
+                "undeclared plugin dependency `{name}`; declare its exact version and sha256 in plugins"
             ))
         })?;
         let mut deps = p.requires.clone();

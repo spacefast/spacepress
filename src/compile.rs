@@ -4021,6 +4021,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         }
         (Ty::Obj(have), Ty::Map(v)) => have.values().all(|(t, _)| assignable(t, v)),
         (Ty::Map(x), Ty::Map(y)) => assignable(x, y),
+        (Ty::Promise(x), Ty::Promise(y)) => assignable(x, y),
         (Ty::Fn(pa, ra), Ty::Fn(pb, rb)) => {
             pa.len() <= pb.len() && pa.iter().zip(pb).all(|(x, y)| assignable(y, x)) && assignable(ra, rb)
         }

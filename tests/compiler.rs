@@ -673,6 +673,11 @@ fn phase2_schema_and_closures_match_the_contract() {
         tmp.join("zero.config.ts"),
     )
     .unwrap();
+    std::fs::copy(
+        root().join("tests/fixtures/phase2-surface/client.ts"),
+        tmp.join("client.ts"),
+    )
+    .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
     for target in ["standalone", "wp"] {
@@ -700,6 +705,26 @@ fn phase2_schema_and_closures_match_the_contract() {
         }
         assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
     }
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "generated client contract failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
     let app = tmp.join(".zero/app");
     let out = Command::new("php")
         .args([
@@ -728,6 +753,8 @@ fn phase2_schema_and_closures_match_the_contract() {
         } catch (\Zero\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
+        $fn = '\\ZeroApp\\' . $schema->action('widened')['handler'];
+        $widened = $fn([]);
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
         $update = $fn(['data' => [], 'user' => null, 'target' => 'standalone', 'op' => 'update']);
@@ -739,7 +766,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $update, $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $widened, $update, $bucketGuest, $db->findMany('audit')]);
     "#,
         ])
         .arg(&app)
@@ -749,7 +776,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, true, true, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "maybe": null}, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

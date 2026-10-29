@@ -4,6 +4,7 @@ function deny(): never { throw new Error("denied"); }
 function allowed(flag: boolean): boolean { switch (flag) { case true: return true; case false: deny(); } }
 function visible(value: unknown): boolean { const decision: "hide" | "show" = value === "private" ? "hide" : "show"; switch (decision) { case "hide": return false; case "show": return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); case "create": return false; case "update": return true; } }
+function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
 const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
 const posts = collection("posts", {
@@ -23,5 +24,8 @@ export default defineConfig({
   globals: { settings: global("settings", { title: text().default("Hello") }, { agents: false }) },
   jobs: { sendWelcome: job({ input: { email: email().notNull(), payload: json().$type<{ message: string }>().notNull(), data: group({ fields: { label: text().default("welcome"), payload: json().$type<{ suffix: string }>() } }) }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { if (visible(input.email)) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
-  actions: { inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) }) },
+  actions: {
+    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) }),
+    widened: action({ input: {}, handler: () => { const values = ["a"]; values.unshift("b"); let choice = values.length > 0 ? "a" : "b"; choice = "c"; const finite: ("a" | "b")[] = ["a"]; finite.push("b"); const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, maybe: maybeFirst() }; } } }),
+  },
 });

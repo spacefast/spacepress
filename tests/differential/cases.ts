@@ -87,7 +87,14 @@ export default defineConfig({
       const total = ITEMS.reduce((sum, i) => sum + i.qty, 0);
       const sorted = [10, 9, 1, 2].sort();
       const byQty = [...ITEMS].sort((a, b) => b.qty - a.qty).map((i) => i.name);
-      return { names, inStock, total, sorted, byQty, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      const words = ["a"];
+      words.push("b");
+      words.unshift("c");
+      const nested = { words: names.map(() => "a") };
+      nested.words.push("b");
+      let choice = total > 0 ? "a" : "b";
+      choice = "c";
+      return { names, inStock, total, sorted, byQty, words, nested, choice, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

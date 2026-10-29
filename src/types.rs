@@ -11,6 +11,8 @@ pub enum Ty {
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
     StrLit(String),
+    /// An inferred literal that widens when stored in a mutable position.
+    FreshStrLit(String),
     Bool,
     /// `null` and `undefined` (both PHP null).
     Null,
@@ -155,14 +157,14 @@ impl Ty {
     }
 
     pub fn is_str(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Str | Ty::StrLit(_)))
+        self.all(|t| matches!(t, Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_)))
     }
 
     pub fn describe(&self) -> String {
         match self {
             Ty::Num => "number".into(),
             Ty::Str => "string".into(),
-            Ty::StrLit(s) => format!("{s:?}"),
+            Ty::StrLit(s) | Ty::FreshStrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),
             Ty::Null => "null".into(),
             Ty::Unknown => "unknown".into(),

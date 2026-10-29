@@ -938,7 +938,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         d.clone()
                     }
                     (Some(d), None) => d.clone().nullable(),
-                    (None, Some(v)) if *kind == DeclKind::Const && matches!(v.ty, Ty::StrLit(_)) => v.ty.clone(),
+                    (None, Some(v))
+                        if *kind == DeclKind::Const
+                            && v.ty.all(|t| matches!(t, Ty::StrLit(_) | Ty::FreshStrLit(_))) =>
+                    {
+                        v.ty.clone()
+                    }
                     (None, Some(v)) => widen_literal_array(&v.ty),
                     (None, None) => {
                         return err_help(
@@ -1609,7 +1614,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let span = e.span;
         let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
-            ExprKind::Str(s) => Out::atom(php_str(s), Ty::StrLit(s.clone())),
+            ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::Bool),
             ExprKind::Null | ExprKind::Undefined => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => Out::atom(
@@ -3921,7 +3926,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
         J::Null => Ty::Null,
         J::Bool(_) => Ty::Bool,
         J::Number(_) => Ty::Num,
-        J::String(s) => Ty::StrLit(s.clone()),
+        J::String(s) => Ty::FreshStrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
         J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
     }
@@ -3929,13 +3934,16 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
 
 fn widen_literal_array(t: &Ty) -> Ty {
     match t {
-        Ty::StrLit(_) => Ty::Str,
-        Ty::Tuple(ts) => Ty::Array(Box::new(Ty::union(ts.clone()))),
+        Ty::FreshStrLit(_) => Ty::Str,
+        Ty::Tuple(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_literal_array)))),
+        Ty::Array(t) => Ty::Array(Box::new(widen_literal_array(t))),
+        Ty::Union(ts) => Ty::union(ts.iter().map(widen_literal_array)),
         Ty::Obj(f) => Ty::Obj(
             f.iter()
                 .map(|(k, (t, o))| (k.clone(), (widen_literal_array(t), *o)))
                 .collect(),
         ),
+        Ty::Map(t) => Ty::Map(Box::new(widen_literal_array(t))),
         other => other.clone(),
     }
 }
@@ -3946,7 +3954,8 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
-        (Ty::StrLit(_), Ty::Str) => true,
+        (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
+        (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
         (Ty::Date, Ty::Num) => true,
@@ -4012,7 +4021,9 @@ fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)]) -> bool {
             has_case(&|kind| matches!(kind, ExprKind::Bool(true)))
                 && has_case(&|kind| matches!(kind, ExprKind::Bool(false)))
         }
-        Ty::StrLit(value) => has_case(&|kind| matches!(kind, ExprKind::Str(case) if case == value)),
+        Ty::StrLit(value) | Ty::FreshStrLit(value) => {
+            has_case(&|kind| matches!(kind, ExprKind::Str(case) if case == value))
+        }
         Ty::Null => has_case(&|kind| matches!(kind, ExprKind::Null | ExprKind::Undefined)),
         Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, cases)),
         Ty::Never => true,

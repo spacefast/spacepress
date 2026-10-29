@@ -641,6 +641,16 @@
                 "header": "stripe-signature",
                 "scheme": "hmac-sha256"
             }
+        },
+        "widened": {
+            "input": [],
+            "handler": "action__widened",
+            "access": {
+                "role": "editor"
+            },
+            "agents": true,
+            "idempotent": false,
+            "signature": null
         }
     }
 }

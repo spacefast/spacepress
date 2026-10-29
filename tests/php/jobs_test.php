@@ -135,8 +135,10 @@ check('a throwing handler fails the attempt and backs off 1 minute', $attempt['s
 eq('a failed job is not due before its backoff', Runner::next() === $failing['id'], false);
 $during = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 9], ['key' => 'doomed']));
 check('dedupe holds only while pending/running: a failed job frees its key', $during !== $failing, [$during, $failing]);
-$pdo->exec("DELETE FROM \"__zero_jobs\" WHERE \"id\" = '{$during['id']}'");
 putenv('ZERO_NOW=2026-01-01T00:01:00.000Z');
+eq('while a newer job holds the key, the retry waits instead of running', [Runner::run($failing['id']),
+    $pdo->query("SELECT \"state\" || ' ' || \"runAt\" FROM \"__zero_jobs\" WHERE \"id\" = '{$failing['id']}'")->fetchColumn()], [null, 'failed 2026-01-01T00:02:00.000Z']);
+$pdo->exec("DELETE FROM \"__zero_jobs\" WHERE \"id\" = '{$during['id']}'");
 // While the retry runs it holds its key again: an enqueue from inside the handler returns the same job.
 $retryHolds = null;
 \Zero\Extensions::onWritten(static function (string $op, string $c, array $row) use (&$retryHolds, $failing): void {
@@ -169,6 +171,9 @@ eq('a commit-callback failure keeps the committed job done, its effect written o
 // ---- CLI: list, retry, cancel ------------------------------------------------------------------------------------
 [, $out] = $cli('jobs', 'list', '--state', 'dead');
 eq('`jobs list --state dead`', array_column($out['data'], 'id'), [$failing['id']]);
+$holder = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 1], ['key' => 'doomed']));
+eq('`jobs retry` is refused while another pending job holds the key', $cli('jobs', 'retry', $failing['id'])[1]['error']['code'] ?? null, 'key_in_use');
+$pdo->exec("DELETE FROM \"__zero_jobs\" WHERE \"id\" = '{$holder['id']}'");
 [, $out] = $cli('jobs', 'retry', $failing['id']);
 eq('`jobs retry` re-queues a dead job from attempt 0', [$out['data'] ?? null, $jobs('pending') !== []], [['id' => $failing['id'], 'state' => 'pending'], true]);
 [, $out] = $cli('jobs', 'cancel', $delayed['id']);

@@ -37,9 +37,6 @@ final class Jobs
         }
 
         return $db->transaction(static function () use ($name, $input, $delay, $key): array {
-            if ($key !== null && ($held = self::holder($name, $key, false)) !== null) {
-                return ['id' => $held];
-            }
             $id = self::uuid();
             $now = Js::now();
             $row = [$id, $name, Js::jsonStringify((object) $input), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
@@ -47,7 +44,7 @@ final class Jobs
             // waits for it, then is ignored and returns this job; a rollback removes the row and its claim.
             Storage::run(Storage::insertIgnore() . ' INTO {jobs} ("id", "job", "input", "key", "runAt", "createdAt", "dedupe", "state", "attempts") VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', 0)', [...$row, $key]);
             if (Storage::changes() === 0) {
-                return ['id' => self::holder($name, (string) $key, true) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished")];
+                return ['id' => self::holder($name, (string) $key) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished")];
             }
             // The queue hears about the job only after commit (Action Scheduler is told then).
             Storage::run('INSERT INTO {outbox} ("id", "job", "input", "key", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, ?)', $row);
@@ -58,12 +55,12 @@ final class Jobs
     }
 
     /**
-     * The queued (pending/running) job holding (job, key). The locked form runs only after an ignored
-     * insert, when the row exists: a shared record lock that reads the latest commit and takes no gap lock.
+     * The queued (pending/running) job holding (job, key). Called only after an ignored insert, when
+     * the row exists: a shared record lock that reads the latest commit (not a stale snapshot).
      */
-    private static function holder(string $name, string $key, bool $locked): ?string
+    private static function holder(string $name, string $key): ?string
     {
-        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . ($locked ? Storage::forShare() : ''), [$name, $key])[0] ?? null;
+        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . Storage::forShare(), [$name, $key])[0] ?? null;
 
         return $row === null ? null : (string) $row['id'];
     }

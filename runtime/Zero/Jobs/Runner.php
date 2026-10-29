@@ -30,9 +30,16 @@ final class Runner
             if ($row === null || !in_array($row['state'], ['pending', 'failed'], true)) {
                 return null;
             }
-            Storage::run('UPDATE {jobs} SET "state" = \'running\', "lockedAt" = ? WHERE "id" = ?', [Js::iso(Js::now()), $id]);
-            // A retry reclaims its key while it runs, unless a newer job with that key took it meanwhile.
-            Storage::run(Storage::updateIgnore() . ' {jobs} SET "dedupe" = "key" WHERE "id" = ? AND "key" IS NOT NULL', [$id]);
+            // Running reclaims the key (a failed job released it). If a newer job holds it, the unique
+            // index ignores the update and this attempt waits a minute: two jobs never run one key.
+            Storage::run(Storage::updateIgnore() . ' {jobs} SET "state" = \'running\', "lockedAt" = ?, "dedupe" = "key" WHERE "id" = ?', [Js::iso(Js::now()), $id]);
+            if (Storage::changes() === 0) {
+                $later = Js::iso(Js::now() + 60_000);
+                Storage::run('UPDATE {jobs} SET "runAt" = ? WHERE "id" = ?', [$later, $id]);
+                Outbox::queue()->schedule($id, $later);
+
+                return null;
+            }
 
             return $row;
         });

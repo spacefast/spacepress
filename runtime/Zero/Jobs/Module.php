@@ -107,16 +107,16 @@ final class Module
 
     private static function retry(string $id): array
     {
-        $row = Storage::run('SELECT "id", "job", "key", "state" FROM {jobs} WHERE "id" = ?' . Storage::forUpdate(), [$id])[0]
+        $row = Storage::run('SELECT "key", "state" FROM {jobs} WHERE "id" = ?' . Storage::forUpdate(), [$id])[0]
             ?? throw HttpError::notFound("No job $id");
         if (!in_array($row['state'], ['failed', 'dead'], true)) {
             throw new HttpError(409, 'not_retryable', "Job $id is {$row['state']}; only failed or dead jobs can be retried");
         }
         $now = Js::iso(Js::now());
-        // A finished job's key may have been reused meanwhile; the retried job then stops deduping.
-        $taken = $row['key'] !== null && Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ? AND "id" <> ?', [$row['job'], $row['key'], $id]) !== [];
-        Storage::run('UPDATE {jobs} SET "state" = \'pending\', "attempts" = 0, "runAt" = ?, "doneAt" = NULL, "lockedAt" = NULL, "dedupe" = ? WHERE "id" = ?',
-            [$now, $taken ? null : $row['key'], $id]);
+        Storage::run(Storage::updateIgnore() . ' {jobs} SET "state" = \'pending\', "attempts" = 0, "runAt" = ?, "doneAt" = NULL, "lockedAt" = NULL, "dedupe" = "key" WHERE "id" = ?', [$now, $id]);
+        if (Storage::changes() === 0) {
+            throw new HttpError(409, 'key_in_use', "Another pending job holds key '{$row['key']}'; retry $id after it finishes");
+        }
         Outbox::queue()->schedule($id, $now);
 
         return ['id' => $id, 'state' => 'pending'];

@@ -86,17 +86,12 @@ final class Receipts
     {
         return db()->transaction(static function () use ($scope, $key, $userId, $hash, $run, &$replayed): array {
             $where = 'WHERE "scope" = ? AND "key" = ? AND "userId" = ?';
-            $find = static fn () => Storage::run("SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forUpdate(), [$scope, $key, $userId])[0] ?? null;
-            $existing = $find();
-            if ($existing === null) {
-                Storage::run(Storage::insertIgnore() . ' INTO {receipts} ("scope", "key", "userId", "inputHash", "state", "createdAt") VALUES (?, ?, ?, ?, \'started\', ?)',
-                    [$scope, $key, $userId, $hash, Js::iso(Js::now())]);
-                $mine = $find();
-                // Another transaction committed this key between our read and insert.
-                if ($mine !== null && ($mine['state'] !== 'started' || $mine['inputHash'] !== $hash)) {
-                    $existing = $mine;
-                }
-            }
+            // Claim first: the primary key decides a race (the loser waits, then is ignored), and no
+            // locking read ever runs on an absent key, so two first uses can't deadlock on gap locks.
+            Storage::run(Storage::insertIgnore() . ' INTO {receipts} ("scope", "key", "userId", "inputHash", "state", "createdAt") VALUES (?, ?, ?, ?, \'started\', ?)',
+                [$scope, $key, $userId, $hash, Js::iso(Js::now())]);
+            $existing = Storage::changes() === 1 ? null
+                : Storage::run("SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forShare(), [$scope, $key, $userId])[0] ?? null;
             if ($existing !== null) {
                 if (!hash_equals((string) $existing['inputHash'], $hash)) {
                     throw new HttpError(409, 'idempotency_mismatch', 'This idempotency key was used with a different request');

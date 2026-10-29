@@ -69,41 +69,79 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   assert.deepEqual(zero("jobs", "list", "--state=dead").map((j: { id: string }) => j.id).filter((j: string) => j === id), [id]);
 });
 
+/**
+ * `wp eval` in its own process, inside one Zero transaction. With `hold`, it prints "ready" after
+ * `body` and keeps the transaction open until the test writes to its stdin. Every wait has a deadline.
+ */
+function evalProcess(body: string, hold: boolean) {
+  const child = spawn(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["wp", "eval", `
+    $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
+    echo json_encode($db->transaction(static function () {
+      $out = (static function () { ${body} })();
+      if (${hold}) { fwrite(STDOUT, "ready\\n"); fflush(STDOUT); fgets(STDIN); }
+      return $out;
+    })), "\\n";`], { stdio: ["pipe", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (err += c));
+  const exited = new Promise<number>((resolve) => child.on("close", (code) => resolve(code ?? 1)));
+  const lines = () => out.split("\n").filter(Boolean);
+  const until = async (what: string, ok: () => boolean) => {
+    const deadline = Date.now() + 30_000;
+    let done = false;
+    exited.then(() => (done = true));
+    while (!ok()) {
+      if (done && !ok()) throw new Error(`process exited before ${what}: ${err.slice(-500)}`);
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setImmediate(r));
+    }
+  };
+  return {
+    ready: () => until("ready", () => lines()[0] === "ready"),
+    release: () => child.stdin.end("go\n"),
+    result: async () => {
+      const code = await exited;
+      assert.equal(code, 0, err.slice(-1000));
+      return JSON.parse(lines().at(-1)!);
+    },
+    kill: () => child.kill(),
+    until,
+  };
+}
+
+/** A holds its transaction after `body`; B runs `body` too; A is released only once B's statement is blocked on A. */
+async function contend(body: string, blockedSql: string) {
+  const a = evalProcess(body, true);
+  let b: ReturnType<typeof evalProcess> | undefined;
+  try {
+    await a.ready();
+    // B starts only after A holds its claim, so B's first claim must wait on A's row lock.
+    b = evalProcess(body, false);
+    const blocked = () => Number(sql(`SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE '${blockedSql}%'`)[0].n) > 0;
+    await b.until("B to block on A's lock", blocked);
+    a.release();
+    return [await a.result(), await b.result()];
+  } finally {
+    a.kill();
+    b?.kill();
+  }
+}
+
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   const key = `race-${run}`;
-  // A enqueues and keeps its transaction open until the test writes to its stdin. B starts only after
-  // A's row exists, so B's lookup misses it and B's insert must wait on A's key lock. The test releases
-  // A only once MariaDB shows B's insert blocked: the contested ordering, by barrier rather than timing.
-  const enqueue = (hold: boolean) => {
-    const child = spawn(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["wp", "eval", `
-      $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
-      echo $db->transaction(static function () {
-        $id = \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];
-        if (${hold ? "true" : "false"}) { fwrite(STDOUT, "enqueued\\n"); fflush(STDOUT); fgets(STDIN); }
-        return $id;
-      }), "\\n";`], { stdio: ["pipe", "pipe", "inherit"] });
-    const lines: string[] = [];
-    const waiters: (() => void)[] = [];
-    child.stdout.on("data", (c) => { lines.push(...String(c).split("\n").filter(Boolean)); waiters.splice(0).forEach((w) => w()); });
-    const line = (n: number) => new Promise<string>((resolve) => {
-      const check = () => (lines.length > n ? resolve(lines[n]) : waiters.push(check));
-      check();
-    });
-    const exited = new Promise<void>((resolve, reject) => child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`wp eval exited ${code}`)))));
-    return { child, line, exited };
-  };
-  // B blocked on A's key = B's insert is still executing (same DB user, so PROCESSLIST shows it).
-  const waiting = () => Number(sql("SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE 'INSERT IGNORE INTO `wp_zero__jobs`%'")[0].n);
-  const a = enqueue(true);
-  assert.equal(await a.line(0), "enqueued");
-  const b = enqueue(false);
-  while (waiting() === 0) await new Promise((r) => setImmediate(r)); // poll InnoDB until B blocks on A's key
-  a.child.stdin!.end("go\n");
-  await Promise.all([a.exited, b.exited]);
-  const ids = [await a.line(1), await b.line(0)];
+  const ids = await contend(`return \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];`, "INSERT IGNORE INTO `wp_zero__jobs`");
   assert.equal(ids[0], ids[1], "the waiting caller got the winner's job id");
   assert.deepEqual(sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
   wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
+});
+
+test("concurrent first uses of one once() key on MariaDB: one runs, the other gets a definite answer", async () => {
+  const key = `once-race-${run}`;
+  const [a, b] = await contend(`try { return \\Zero\\Jobs\\Receipts::once('fn', '${key}', fn () => 'ran'); } catch (\\Zero\\HttpError $e) { return $e->errorCode; }`, "INSERT IGNORE INTO `wp_zero__receipts`");
+  // A ran and committed while B waited; B then sees A's finished receipt and replays it.
+  assert.deepEqual([a, b], ["ran", "ran"]);
+  assert.deepEqual(sql(`SELECT state FROM wp_zero__receipts WHERE \`key\` = '${key}'`), [{ state: "done" }]);
 });
 
 test("once() and Idempotency-Key replay instead of running again", async () => {

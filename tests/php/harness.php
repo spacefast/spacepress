@@ -32,7 +32,8 @@ function problem(string $label, callable $fn, int $status, string $code, ?string
         $fn();
     } catch (\Throwable $e) {
         $p = App::problem($e);
-        check($label, $p['status'] === $status && $p['code'] === $code && ($p['pointer'] ?? null) === $pointer, $p);
+        check($label, $p['status'] === $status && $p['code'] === $code && ($p['pointer'] ?? null) === $pointer,
+            ['problem' => $p, 'exception' => $e::class . ': ' . $e->getMessage()]);
 
         return $e;
     }

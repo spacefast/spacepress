@@ -10,6 +10,16 @@ foreach (['autoload.php', 'composer/autoload_real.php', 'composer/autoload_stati
 }
 $autoload = $root . '/vendor-prefixed/composer/autoload_real.php';
 file_put_contents($autoload, str_replace('__composer_autoload_files', '__zero_runtime_vendor_autoload_files', file_get_contents($autoload)));
+// The bundle root is a build helper, not an installed dependency. Composer's
+// inferred branch and commit must not make its metadata depend on the checkout.
+$installed = $root . '/vendor-prefixed/composer/installed.php';
+[$rootMetadata, $dependencies] = explode("  'versions' =>", file_get_contents($installed), 2);
+$rootMetadata = preg_replace(
+    ["/'pretty_version' => '[^']*'/", "/'version' => '[^']*'/", "/'reference' => (?:NULL|'[^']*')/"],
+    ["'pretty_version' => '1.0.0+no-version-set'", "'version' => '1.0.0.0'", "'reference' => NULL"],
+    $rootMetadata,
+);
+file_put_contents($installed, $rootMetadata . "  'versions' =>" . $dependencies);
 $licenses = [];
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/vendor-prefixed', FilesystemIterator::SKIP_DOTS));
 foreach ($iterator as $file) {

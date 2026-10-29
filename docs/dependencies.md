@@ -38,6 +38,8 @@ checks that relationship and executes the real bundled parser and merger while
 foreign YAML and WordPress HTML class names are already occupied. The vendor CI
 job regenerates the tree on PHP 8.2 with pinned Composer 2.10.3 and checks for
 tracked changes and new untracked bundle files.
+Generation normalizes the build helper's inferred Composer branch and commit so
+the bundle stays identical across checkouts.
 
 The Markdown consumer and line merger work without WordPress. The toolkit's
 Markdown producer calls WordPress `parse_blocks`; the sync lane must supply its

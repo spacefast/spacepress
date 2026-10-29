@@ -396,7 +396,7 @@ fn field(
     }
     let required = boolean(o, "required", at)?.unwrap_or(false)
         || validation
-            .map(|v| boolean(v, "required", at))
+            .map(|v| boolean(v, "required", &pointer(at, "validation")))
             .transpose()?
             .flatten()
             .unwrap_or(false);

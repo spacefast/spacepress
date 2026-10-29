@@ -317,23 +317,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => vec![row, ctx],
                 }
             }
-            Slot::JobHandler { job } => {
-                let mut props = match ctx {
-                    Ty::Obj(p) => p,
-                    _ => unreachable!(),
-                };
-                props.insert("attempt".into(), (Ty::Num, false));
-                props.insert("jobId".into(), (Ty::Str, false));
-                vec![types::action_input(&self.schema.jobs[job].input), Ty::Obj(props)]
-            }
-            Slot::FieldAccess { .. } => {
-                let mut props = match types::access_ctx(Ty::Map(Box::new(Ty::Unknown))) {
-                    Ty::Obj(p) => p,
-                    _ => unreachable!(),
-                };
-                props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
-                vec![Ty::Obj(props)]
-            }
+            Slot::JobHandler { job } => vec![types::action_input(&self.schema.jobs[job].input), types::job_ctx()],
+            Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
             Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input), ctx],
             Slot::Access { owner, op } => {
                 let data = match owner {
@@ -701,6 +686,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
             TyAnn::Ref(name, args, span) => {
                 if let Some(t) = generics.get(name) {
                     return Ok(t.clone());
+                }
+                if args.is_empty() {
+                    for stmt in &self.ev_program().modules[module].body {
+                        if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::ZERO_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                {
+                                    match imported.as_str() {
+                                        "FieldAccessCtx" => return Ok(types::field_access_ctx()),
+                                        "JobCtx" => return Ok(types::job_ctx()),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 match (name.as_str(), args.as_slice()) {
                     ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),

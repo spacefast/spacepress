@@ -423,14 +423,14 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig> {
-  readonly [collectionBrand]: { name: TName; columns: TCols };
+export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false> {
+  readonly [collectionBrand]: { name: TName; columns: TCols; auth: TAuth };
   /** Table name and REST path segment. */
   readonly $name: TName;
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: InsertShape<Omit<TCols, "translations">> & ("locale" extends keyof TCols ? { translationOf?: number } : {}) & ("role" extends keyof TCols ? { password?: string } : {});
+  readonly $inferInsert: InsertShape<Omit<TCols, "translations">> & ("locale" extends keyof TCols ? { translationOf?: number } : {}) & (TAuth extends true ? { password?: string } : {});
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -448,9 +448,10 @@ type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
 export type Collection<
   TName extends string = string,
   TCols extends ColumnsConfig = ColumnsConfig,
-> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols>;
+  TAuth extends boolean = false,
+> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols, TAuth>;
 
-export type AnyCollection = CollectionMeta<string, ColumnsConfig>;
+export type AnyCollection = CollectionMeta<string, ColumnsConfig, boolean>;
 
 /**
  * Defines a table. `name` is the SQL table and REST path segment; the key
@@ -477,19 +478,19 @@ export declare function collection<
   const TName extends string, TCols extends ColumnsConfig,
   TUid extends boolean = false, TSync extends string | undefined = undefined,
 >(name: TName, columns: TCols,
-  options: NoInfer<CollectionOptions<Collection<TName, TCols & AuthColumns>>> & { auth: true; editor?: false; drafts?: false; revisions?: false } & IdentityOptions<TUid, TSync>,
-): Collection<TName, TCols & AuthColumns & IdentityColumns<TUid, TSync>>;
+  options: NoInfer<CollectionOptions<Collection<TName, TCols & AuthColumns & IdentityColumns<TUid, TSync>, true>>> & { auth: true; editor?: false; drafts?: false; revisions?: false } & IdentityOptions<TUid, TSync>,
+): Collection<TName, TCols & AuthColumns & IdentityColumns<TUid, TSync>, true>;
 export declare function collection<
   const TName extends string, TCols extends ColumnsConfig,
   TUid extends boolean = false, TSync extends string | undefined = undefined,
 >(name: TName, columns: TCols,
-  options: NoInfer<CollectionOptions<Collection<TName, TCols>>> & { editor: false; drafts?: false; auth?: false } & IdentityOptions<TUid, TSync>,
+  options: NoInfer<CollectionOptions<Collection<TName, TCols & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>>> & { editor: false; drafts?: false; auth?: false } & IdentityOptions<TUid, TSync>,
 ): Collection<TName, TCols & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>;
 export declare function collection<
   const TName extends string, TCols extends ColumnsConfig,
   TUid extends boolean = false, TSync extends string | undefined = undefined,
 >(name: TName, columns: TCols,
-  options?: NoInfer<CollectionOptions<Collection<TName, TCols & DraftColumns>>> & { drafts?: true; auth?: false } & IdentityOptions<TUid, TSync>,
+  options?: NoInfer<CollectionOptions<Collection<TName, TCols & DraftColumns & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>>> & { drafts?: true; auth?: false } & IdentityOptions<TUid, TSync>,
 ): Collection<TName, TCols & DraftColumns & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;

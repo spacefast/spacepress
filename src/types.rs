@@ -382,6 +382,21 @@ pub fn hook_ctx() -> Ty {
     obj(&[("user", user().nullable()), ("target", Ty::Str)])
 }
 
+pub fn job_ctx() -> Ty {
+    let Ty::Obj(mut props) = hook_ctx() else { unreachable!() };
+    props.insert("attempt".into(), (Ty::Num, false));
+    props.insert("jobId".into(), (Ty::Str, false));
+    Ty::Obj(props)
+}
+
+pub fn field_access_ctx() -> Ty {
+    let Ty::Obj(mut props) = access_ctx(Ty::Map(Box::new(Ty::Unknown))) else {
+        unreachable!()
+    };
+    props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
+    Ty::Obj(props)
+}
+
 /// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
 pub fn access_ctx(data: Ty) -> Ty {
     let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", Ty::Str), ("op", Ty::Str)]) else {

@@ -12,7 +12,7 @@ use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 const STEP_BUDGET: u64 = 5_000_000;
@@ -46,6 +46,33 @@ fn err<T>(span: Span, msg: impl Into<String>) -> R<T> {
 
 fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R<T> {
     Err(Ctl::Err(Diag::new(span, msg).help(help)))
+}
+
+/// Runtime tokens may be carried through config composition, but never consumed as build-time data.
+fn require_static_data(value: &Value, span: Span) -> R<()> {
+    fn visit(value: &Value, span: Span, seen: &mut HashSet<usize>) -> R<()> {
+        match value {
+            Value::Env(_) => err_help(
+                span,
+                "env() is only allowed in webhooks/signature",
+                "pass the token directly as a webhook URL/secret or signature secret; it cannot be evaluated at build time",
+            ),
+            Value::Array(a) if seen.insert(Rc::as_ptr(a) as usize) => {
+                for value in a.borrow().iter() {
+                    visit(value, span, seen)?;
+                }
+                Ok(())
+            }
+            Value::Object(o) if seen.insert(Rc::as_ptr(o) as usize) => {
+                for value in o.borrow().values() {
+                    visit(value, span, seen)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+    visit(value, span, &mut HashSet::new())
 }
 
 /// Names exported by `"zero"`.
@@ -466,7 +493,7 @@ impl<'p> Evaluator<'p> {
                 return Ok(Flow::Return(v));
             }
             Stmt::If(test, then, otherwise) => {
-                if self.eval(test, scope)?.truthy() {
+                if self.eval_static_data(test, scope)?.truthy() {
                     return self.exec_block(then, scope);
                 } else if let Some(o) = otherwise {
                     return self.exec_block(o, scope);
@@ -487,7 +514,7 @@ impl<'p> Evaluator<'p> {
                 loop {
                     self.tick(*span)?;
                     if let Some(t) = test
-                        && !self.eval(t, &loop_scope)?.truthy()
+                        && !self.eval_static_data(t, &loop_scope)?.truthy()
                     {
                         break;
                     }
@@ -526,7 +553,7 @@ impl<'p> Evaluator<'p> {
             }
             Stmt::While(test, body) => loop {
                 self.tick(test.span)?;
-                if !self.eval(test, scope)?.truthy() {
+                if !self.eval_static_data(test, scope)?.truthy() {
                     break;
                 }
                 match self.exec_block(body, scope)? {
@@ -566,12 +593,12 @@ impl<'p> Evaluator<'p> {
                 return result;
             }
             Stmt::Switch { disc, cases, .. } => {
-                let d = self.eval(disc, scope)?;
+                let d = self.eval_static_data(disc, scope)?;
                 let switch_scope = Scope::new(Some(scope.clone()), scope.module);
                 let mut start = None;
                 for (i, (test, _)) in cases.iter().enumerate() {
                     if let Some(t) = test
-                        && self.eval(t, &switch_scope)?.strict_eq(&d)
+                        && self.eval_static_data(t, &switch_scope)?.strict_eq(&d)
                     {
                         start = Some(i);
                         break;
@@ -649,7 +676,7 @@ impl<'p> Evaluator<'p> {
             ExprKind::Template(quasis, exprs) => {
                 let mut out = quasis[0].clone();
                 for (i, x) in exprs.iter().enumerate() {
-                    let v = self.eval(x, scope)?;
+                    let v = self.eval_static_data(x, scope)?;
                     match v.to_js_string() {
                         Some(s) => out.push_str(&s),
                         None => return err(x.span, format!("can't put {} into a string", v.describe())),
@@ -680,7 +707,7 @@ impl<'p> Evaluator<'p> {
                         Prop::KV(key, value) => {
                             let k = match key {
                                 PropKey::Static(s) => s.clone(),
-                                PropKey::Computed(x) => match self.eval(x, scope)? {
+                                PropKey::Computed(x) => match self.eval_static_data(x, scope)? {
                                     Value::Str(s) => s.to_string(),
                                     Value::Num(n) => js_number_to_string(n),
                                     other => return err(x.span, format!("can't use {} as a key", other.describe())),
@@ -717,7 +744,7 @@ impl<'p> Evaluator<'p> {
                 env: scope.clone(),
             })),
             ExprKind::Unary(op, x) => {
-                let v = self.eval(x, scope)?;
+                let v = self.eval_static_data(x, scope)?;
                 match op {
                     UnOp::Not => Value::Bool(!v.truthy()),
                     UnOp::Neg => Value::Num(-to_number(&v)),
@@ -731,11 +758,11 @@ impl<'p> Evaluator<'p> {
                 binary(*op, &a, &b, e.span)?
             }
             ExprKind::IsNullish(x, negated) => {
-                let v = self.eval(x, scope)?;
+                let v = self.eval_static_data(x, scope)?;
                 Value::Bool(matches!(v, Value::Null | Value::Undef) != *negated)
             }
             ExprKind::Logical(op, l, r) => {
-                let a = self.eval(l, scope)?;
+                let a = self.eval_static_data(l, scope)?;
                 match op {
                     LogOp::And if a.truthy() => self.eval(r, scope)?,
                     LogOp::Or if !a.truthy() => self.eval(r, scope)?,
@@ -744,7 +771,7 @@ impl<'p> Evaluator<'p> {
                 }
             }
             ExprKind::Cond(t, a, b) => {
-                if self.eval(t, scope)?.truthy() {
+                if self.eval_static_data(t, scope)?.truthy() {
                     self.eval(a, scope)?
                 } else {
                     self.eval(b, scope)?
@@ -759,7 +786,7 @@ impl<'p> Evaluator<'p> {
                         binary(*b, &cur, &rhs, e.span)?
                     }
                     Some(AssignOp::Log(l)) => {
-                        let cur = self.eval(target, scope)?;
+                        let cur = self.eval_static_data(target, scope)?;
                         let keep = match l {
                             LogOp::And => !cur.truthy(),
                             LogOp::Or => cur.truthy(),
@@ -775,7 +802,7 @@ impl<'p> Evaluator<'p> {
                 new
             }
             ExprKind::Update { inc, prefix, target } => {
-                let old = to_number(&self.eval(target, scope)?);
+                let old = to_number(&self.eval_static_data(target, scope)?);
                 let new = if *inc { old + 1.0 } else { old - 1.0 };
                 self.assign(target, Value::Num(new), scope)?;
                 Value::Num(if *prefix { new } else { old })
@@ -831,6 +858,9 @@ impl<'p> Evaluator<'p> {
                 let argv = self.eval_args(args, scope)?;
                 match f {
                     Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
+                        for value in &argv {
+                            require_static_data(value, e.span)?;
+                        }
                         error_object(g, &argv)
                     }
                     Value::Builtin(Builtin::HttpError) => {
@@ -888,6 +918,12 @@ impl<'p> Evaluator<'p> {
         })
     }
 
+    fn eval_static_data(&mut self, expr: &Expr, scope: &Rc<Scope>) -> R<Value> {
+        let value = self.eval(expr, scope)?;
+        require_static_data(&value, expr.span)?;
+        Ok(value)
+    }
+
     fn eval_args(&mut self, args: &[ArrEl], scope: &Rc<Scope>) -> R<Vec<Value>> {
         let mut out = Vec::new();
         for a in args {
@@ -936,6 +972,7 @@ impl<'p> Evaluator<'p> {
     }
 
     fn get_index(&self, v: &Value, i: &Value, span: Span) -> R<Value> {
+        require_static_data(i, span)?;
         match (v, i) {
             (Value::Array(a), Value::Num(n)) => Ok(if *n >= 0.0 && n.fract() == 0.0 {
                 a.borrow().get(*n as usize).cloned().unwrap_or(Value::Undef)
@@ -1426,6 +1463,11 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray") | ("Object", "hasOwn")) {
+            for value in &args {
+                require_static_data(value, span)?;
+            }
+        }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let num = |i: usize| to_number(&args.get(i).cloned().unwrap_or(Value::Undef));
         Ok(match (g, m) {
@@ -1469,6 +1511,9 @@ impl<'p> Evaluator<'p> {
                             return err(span, "Object.fromEntries needs [key, value] pairs");
                         };
                         let pair = pair.borrow();
+                        if let Some(key) = pair.first() {
+                            require_static_data(key, span)?;
+                        }
                         let k = pair.first().and_then(Value::to_js_string).unwrap_or_default();
                         map.insert(k, pair.get(1).cloned().unwrap_or(Value::Undef));
                     }
@@ -1492,6 +1537,9 @@ impl<'p> Evaluator<'p> {
                 let items: Vec<Value> = match arg(0) {
                     Value::Array(a) => a.borrow().clone(),
                     Value::Object(o) => {
+                        if let Some(length) = o.borrow().get("length") {
+                            require_static_data(length, span)?;
+                        }
                         let len = o.borrow().get("length").map(to_number).unwrap_or(0.0);
                         vec![Value::Undef; len.max(0.0) as usize]
                     }
@@ -1532,6 +1580,11 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_method(&mut self, recv: &Value, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        if matches!(recv, Value::Str(_) | Value::Num(_)) {
+            for value in &args {
+                require_static_data(value, span)?;
+            }
+        }
         match recv {
             Value::Column(c) => column_method(c, m, &args, span),
             Value::Str(s) => string_method(s, m, &args, span),
@@ -1545,6 +1598,14 @@ impl<'p> Evaluator<'p> {
     }
 
     fn array_method(&mut self, a: &Arr, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        if matches!(m, "join" | "includes" | "indexOf") {
+            require_static_data(&Value::Array(a.clone()), span)?;
+        }
+        if matches!(m, "join" | "includes" | "indexOf" | "slice") {
+            for value in &args {
+                require_static_data(value, span)?;
+            }
+        }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         let items = a.borrow().clone();
         let f = arg(0);
@@ -1553,6 +1614,9 @@ impl<'p> Evaluator<'p> {
                 let mut out = Vec::new();
                 for (i, x) in items.iter().enumerate() {
                     let r = self.call(&f, vec![x.clone(), Value::Num(i as f64)], span)?;
+                    if matches!(m, "filter" | "find" | "findIndex" | "some" | "every") {
+                        require_static_data(&r, span)?;
+                    }
                     match m {
                         "map" => out.push(r),
                         "flatMap" => match r {
@@ -1746,6 +1810,9 @@ fn set_key(o: &Value, key: &str, value: Value, span: Span) -> R<()> {
 }
 
 fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
+    for value in args {
+        require_static_data(value, span)?;
+    }
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     Ok(match g {
         "String" => Value::str(&arg(0).to_js_string().unwrap_or_else(|| "[object]".into())),
@@ -2195,6 +2262,8 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
 }
 
 fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
+    require_static_data(a, span)?;
+    require_static_data(b, span)?;
     let prim = |v: &Value| -> R<Value> {
         match v {
             Value::Array(_) | Value::Object(_) | Value::Regex(..) => {

@@ -1,6 +1,6 @@
 import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
-const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
+const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 const posts = collection("posts", {
   id: id(), title: text().notNull().localized(), content: richText().localized(), slug: slug({ source: "title" }),
   authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),
@@ -8,8 +8,8 @@ const posts = collection("posts", {
   items: repeater({ fields: { enabled: boolean(), label: text().showIf({ enabled: true }) } }),
   sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } } }),
   tags: select({ options: ["news", "guide"], multiple: true }).localized(), meta: json().localized(),
-}, { sync: "content/./posts/*.md", agents: true });
-const members = collection("members", { id: id(), email: email().notNull().unique().max(191), name: text() }, { auth: true, access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
+}, { sync: "content/./posts/*.md", agents: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
+const members = collection("members", { id: id(), email: email().notNull().unique().max(191), name: text() }, { auth: true, uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
 export const schema = { audit, authors, posts, members };
 export default defineConfig({
   name: "phase2", schema,
@@ -26,10 +26,17 @@ import { expectType, type Equal } from "./inference";
 
 const localizedBlocks = collection("localized_blocks", {
   id: id(), sections: blocks({ layouts: { hero: { heading: text().localized() }, quote: { body: text() } } }),
-}, { editor: false });
+}, { editor: false, uid: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
 type LocalizedBlockRow = typeof localizedBlocks.$inferSelect;
 expectType<Equal<LocalizedBlockRow["locale"], Locale>>();
 expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translations"]>>();
+
+const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
+const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });
+const roleInsert: typeof roles.$inferInsert = { role: "item", password: null };
+// @ts-expect-error ordinary role columns do not enable a virtual password input
+const unsupportedPassword: typeof roleNames.$inferInsert = { role: "item", password: "secret" };
+void [roleInsert, unsupportedPassword];
 
 async function surface() {
   await jobs.sendWelcome.enqueue({ email: "a@example.com" }, { delay: 30, key: "welcome" });

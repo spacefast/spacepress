@@ -192,6 +192,14 @@ $hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden 
 check('a normalized answer carries only what the viewer reads', !array_key_exists('meta', $answer['record']['fields']), $answer['record']);
 eq('and the digest a pull by that viewer returns', $answer['digest'], pull('notes')['zr_eeeeeeeeeeeeeeeeeeee']['digest']);
 
+// `{}` and `[]` are different JSON; a store that can't keep the difference answers `normalized`,
+// so the digest a client holds is always one a pull reproduces.
+$shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []]], 'body' => null];
+[, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
+eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
+$repush = req('POST', '/sync/notes', ['record' => pull('notes')['zr_ffffffffffffffffffff']['record'], 'expect' => $shaped['digest']]);
+eq('and pushing the pulled record is a no-op', $repush[1]['status'] ?? $repush, 'unchanged');
+
 // ================================================================ references and validation
 
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];

@@ -167,14 +167,33 @@ test("sync on WordPress", async (t) => {
       clean_post_cache($id);
       $title = $db->findFirst('guides', ['where' => ['id' => $id]])['title'];
 
+      // A stale expect answered while another connection's commit is newer than the snapshot: no outdated current.
+      $mismatch = $db->transaction(function () use ($app, $db, $other, $id, $record, $viewer) {
+        $db->findFirst('guides', ['where' => ['id' => $id]]);
+        $other->query("UPDATE {$GLOBALS['wpdb']->posts} SET post_title = 'Again' WHERE ID = $id");
+        $response = $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => 'sha256:' . str_repeat('0', 64)]), $viewer);
+        return [$response->status, array_key_exists('current', json_decode($response->body, true))];
+      });
+      // A trashed post restored by a push whose snapshot is outdated stays in the trash.
+      $db->transaction(fn () => \\Zero\\Sync\\Trash::trash('guides', $db->schema()->collection('guides'), $db->editorRow('guides', $id)));
+      $restore = $db->transaction(function () use ($app, $db, $other, $id, $record, $viewer) {
+        $db->findFirst('guides', ['where' => ['id' => $id]]);
+        $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, 'zero_summary', 'later')");
+        return $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => 'absent']), $viewer)->status;
+      });
+      clean_post_cache($id);
+      $statusAfter = get_post_status($id);
+      wp_untrash_post($id);
+
       delete_post_meta($id, '_zero_uid');
       $stale = $db->findMany('guides', ['where' => ['id' => $id]]);
       $assigned = 'zr_' . str_repeat('e', 20);
       $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_zero_uid', '$assigned')");
       $kept = $db->transaction(fn () => \\Zero\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
-      echo wp_json_encode([...$status, $title, $kept, get_post_meta($id, '_zero_uid')]);
+      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $kept, get_post_meta($id, '_zero_uid')]);
     `));
-    assert.deepEqual(result, [409, false, "Theirs", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]], "stale, no outdated current, their title kept, their uid kept");
+    assert.deepEqual(result, [409, false, "Theirs", 409, false, 409, "trash", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]],
+      "stale without an outdated current (also for a mismatched expect), their title kept, the stale restore left in the trash, their uid kept");
   });
 
   await t.test("conversion and merge run on the server", async () => {

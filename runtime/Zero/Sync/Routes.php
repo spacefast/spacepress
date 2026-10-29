@@ -44,7 +44,7 @@ final class Routes
                 return [200, self::page($collection, $spec, $query, $viewer)];
             }
 
-            return self::apply($collection, $spec, self::input($body), $viewer);
+            return self::apply($collection, $spec, self::input($body), $body, $viewer);
         }
         App::allow($method, ['POST']);
 
@@ -98,7 +98,7 @@ final class Routes
 
     // ================================================================ write
 
-    private static function apply(string $collection, array $spec, array $in, Viewer $viewer): array|Response
+    private static function apply(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
     {
         $record = $in['record'] ?? null;
         if (!is_array($record) || ($record !== [] && array_is_list($record))) {
@@ -109,35 +109,47 @@ final class Routes
             throw HttpError::invalidInput('record.uid must match zr_ + 20 hex characters', '/uid');
         }
         $expect = self::expect($in);
-        $fields = is_array($record['fields'] ?? null) ? $record['fields'] : [];
+        // Digest the record as sent, objects kept: PHP arrays can't tell `{}` from `[]`, so a value the
+        // runtime stores differently comes back as `normalized` instead of a digest the client can't reach.
+        $raw = json_decode($body, false)->record;
+        $sent = Wire::record($uid, $raw->fields ?? [], $raw->body ?? null);
+        $pk = $spec['primaryKey'];
         $current = self::current($collection, $uid, $viewer);
-        // Restoring from the trash is a push of a record the site no longer lists as live; a refusal
-        // below rolls the restore back with the request.
-        $restored = $current === null && $expect === 'absent' && Trash::restore($collection, $spec, $uid);
-        if ($restored) {
+        // Every stale answer comes before the first write: a returned 409 still commits the request.
+        $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
+        if ($trashed !== null) {
+            if (!Lock::fresh($collection, $trashed)) {
+                return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+            }
+            Trash::restore($trashed);
             $current = self::current($collection, $uid, $viewer);
         }
-        // Authorize before answering anything about the row, so stale and unchanged disclose nothing.
-        $current === null
-            ? Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $fields, "create $collection rows")
-            : self::authorizeRow($collection, $spec, 'update', $viewer, $current['row'][$spec['primaryKey']], $fields);
-        if (!$restored && $expect !== self::digestOf($current)) {
-            return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
-        }
-        if ($current !== null && !Lock::fresh($collection, $current['row'][$spec['primaryKey']])) {
-            // Committed after this request's snapshot, which can't be read past: the client reads it again.
-            return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
-        }
-        $sent = Wire::record($uid, $record['fields'] ?? [], $record['body'] ?? null);
-        if (!$restored && $current !== null && Canon::digest($sent) === $current['digest']) {
-            return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
-        }
         $data = Wire::decode($collection, $record, $current === null);
-        $pk = $spec['primaryKey'];
-        // The pipeline authorizes the write itself again, with the decoded values.
+        // Authorize with the values the pipeline will see, before answering anything about the row.
+        if ($current === null) {
+            if ($expect !== 'absent') {
+                Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
+
+                return self::stale($spec, $viewer, null, "$collection $uid is not on the site");
+            }
+        } else {
+            self::authorizeRow($collection, $spec, 'update', $viewer, $current['row'][$pk], $data);
+            if ($trashed === null) {
+                if (!Lock::fresh($collection, $current['row'][$pk])) {
+                    return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+                }
+                if ($expect !== self::digestOf($current)) {
+                    return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+                }
+                if (Canon::digest($sent) === $current['digest']) {
+                    return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
+                }
+            }
+        }
+        // The pipeline authorizes the write itself again.
         $current === null
             ? db()->insert($collection, ['uid' => $uid] + $data, false, $viewer)
-            : db()->update($collection, $data, [$pk => $current['row'][$pk]], false, $viewer);
+            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer)[0] ?? throw HttpError::notFound("No such $collection row"));
         // The answer is what a pull by this viewer returns: same read transforms, same digest.
         $stored = self::current($collection, $uid, $viewer) ?? throw new \RuntimeException("$collection $uid vanished after write");
         if (!isset($stored['record'])) {
@@ -169,11 +181,11 @@ final class Routes
         $pk = $spec['primaryKey'];
         $id = $current['row'][$pk];
         self::authorizeRow($collection, $spec, 'delete', $viewer, $id, null);
-        if ($expect !== self::digestOf($current)) {
-            return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
-        }
         if (!Lock::fresh($collection, $id)) {
             return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+        }
+        if ($expect !== self::digestOf($current)) {
+            return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
         }
         if (!Trash::trash($collection, $spec, db()->editorRow($collection, $id))) {
             db()->delete($collection, [$pk => $id], false, $viewer);

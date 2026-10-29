@@ -61,11 +61,11 @@ final class Trash
         return true;
     }
 
-    /** Bring a trashed post with this uid back to the status it had, so the push updates it in place. */
-    public static function restore(string $collection, array $spec, string $uid): bool
+    /** The trashed post holding this uid, locked until commit; null when none or no trash. */
+    public static function trashed(array $spec, string $uid): ?int
     {
         if (!self::postBacked($spec)) {
-            return false;
+            return null;
         }
         $connection = Plugin::instance()->connection();
         $wpdb = $connection->wpdb();
@@ -74,20 +74,23 @@ final class Trash
             . " WHERE p.post_type = ? AND p.post_status = 'trash' LIMIT 1 FOR UPDATE",
             [self::UID_META, $uid, $spec['wp']['postType']],
         )[0]['ID'] ?? null;
-        if ($id === null) {
-            return false;
-        }
+
+        return $id === null ? null : (int) $id;
+    }
+
+    /** Bring a trashed post back to the status it had, so the push updates it in place. */
+    public static function restore(int $id): void
+    {
+        $connection = Plugin::instance()->connection();
         $previous = static fn ($status, $postId, $before) => $before;
         add_filter('wp_untrash_post_status', $previous, 10, 3);
         try {
-            $connection->touchPost((int) $id);
-            if (!$connection->core(static fn () => wp_untrash_post((int) $id))) {
+            $connection->touchPost($id);
+            if (!$connection->core(static fn () => wp_untrash_post($id))) {
                 throw new \RuntimeException("Could not restore post $id from the trash");
             }
         } finally {
             remove_filter('wp_untrash_post_status', $previous, 10);
         }
-
-        return true;
     }
 }

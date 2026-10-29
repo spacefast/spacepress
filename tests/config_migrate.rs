@@ -82,9 +82,9 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
             );
             let plugin = if target == "wp" {
                 if from == "zero" {
-                    "zero-notes/"
+                    "plugins/zero-app-notes/"
                 } else {
-                    "zero-imported/"
+                    "plugins/zero-app-imported/"
                 }
             } else {
                 ""

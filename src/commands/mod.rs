@@ -3,6 +3,8 @@ mod dev;
 mod doctor;
 mod users;
 
+pub(crate) use build::validate_config;
+
 pub(crate) fn run(args: &crate::Args) -> std::process::ExitCode {
     match args.command.as_str() {
         "doctor" => doctor::run(args),

@@ -249,10 +249,10 @@ fn collection(v: &Value, source: Source, at: &str, report: &mut Vec<Entry>) -> R
         let labels = object(labels, &pointer(at, "labels"))?;
         keys(labels, &["singular", "plural"], &pointer(at, "labels"))?;
         for key in ["singular", "plural"] {
-            if let Some(v) = labels.get(key) {
-                if !v.is_string() {
-                    return Err(fail(at, "labels must be strings"));
-                }
+            if let Some(v) = labels.get(key)
+                && !v.is_string()
+            {
+                return Err(fail(at, "labels must be strings"));
             }
         }
         if let Some(label) = labels.get("plural") {

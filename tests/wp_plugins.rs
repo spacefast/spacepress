@@ -434,6 +434,33 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     .unwrap();
     p.rejects("check", "plugins must be a package map");
 
+    for declarations in [
+        "const plugins = {alpha:'1.0',alpha:'2.0'};",
+        "const first = {alpha:'1.0',alpha:'2.0'}; const plugins = {...first};",
+        "const plugins = {...{alpha:'1.0'},...{alpha:'2.0'}};",
+        "const plugins = {alpha:{version:'1.0',version:'2.0'}};",
+        "const plugins = {alpha:'1.0'}; plugins.alpha = '2.0';",
+        "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
+    ] {
+        std::fs::write(p.root.join("zero.config.ts"), format!(
+            "import {{defineConfig}} from 'zero'; {declarations} export default defineConfig({{schema:{{}},plugins}});"
+        )).unwrap();
+        p.rejects("check", "duplicate plugin declaration/property");
+    }
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; export default defineConfig({schema:{},plugins:{alpha:'1.0'},plugins:{alpha:'2.0'}});"
+    ).unwrap();
+    p.rejects("check", "duplicate plugins declaration");
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; const plugins = {}; plugins.alpha = plugins; export default defineConfig({schema:{},plugins});"
+    ).unwrap();
+    p.rejects("check", "acyclic declarative data");
+    // Overwrites in other build-time data retain ordinary JavaScript semantics.
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; const other = {value:'old',value:'new'}; export default defineConfig({schema:{},plugins:{alpha:'1.0'}});"
+    ).unwrap();
+    assert!(p.run("check", &[]).status.success());
+
     p.config(&[org("zero-runtime")]);
     p.rejects("check", "reserved plugin slug");
     p.config(&[org("../escape")]);

@@ -188,6 +188,8 @@ pub struct Evaluator<'p> {
     depth: usize,
     /// Span of each property in an object literal: (allocation, key).
     pub key_spans: HashMap<(usize, String), Span>,
+    // Retain collided objects so allocation identities cannot be reused.
+    duplicate_keys: HashMap<usize, (Value, Vec<(String, Span)>)>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -209,6 +211,7 @@ impl<'p> Evaluator<'p> {
             steps: 0,
             depth: 0,
             key_spans: HashMap::new(),
+            duplicate_keys: HashMap::new(),
         }
     }
 
@@ -244,6 +247,38 @@ impl<'p> Evaluator<'p> {
 
     pub fn key_span(&self, obj: &Value, key: &str) -> Option<Span> {
         self.key_spans.get(&(ptr_of(obj)?, key.to_string())).copied()
+    }
+
+    /// Config consumers can forbid overwrites without changing JS object semantics.
+    pub fn duplicate_key(&self, obj: &Value, key: Option<&str>) -> Option<(String, Span)> {
+        self.duplicate_keys
+            .get(&ptr_of(obj)?)?
+            .1
+            .iter()
+            .find(|(name, _)| key.is_none_or(|key| name == key))
+            .cloned()
+    }
+
+    fn record_duplicates(&mut self, obj: &Value, duplicates: Vec<(String, Span)>) {
+        if !duplicates.is_empty() {
+            self.duplicate_keys
+                .entry(ptr_of(obj).expect("object"))
+                .or_insert_with(|| (obj.clone(), Vec::new()))
+                .1
+                .extend(duplicates);
+        }
+    }
+
+    fn set_key(&mut self, obj: &Value, key: &str, value: Value, span: Span) -> R<()> {
+        match obj {
+            Value::Object(map) => {
+                if map.borrow_mut().insert(key.to_string(), value).is_some() {
+                    self.record_duplicates(obj, vec![(key.to_string(), span)]);
+                }
+                Ok(())
+            }
+            other => err(span, format!("can't set `{key}` on {}", other.describe())),
+        }
     }
 
     fn tick(&mut self, span: Span) -> R<()> {
@@ -702,6 +737,7 @@ impl<'p> Evaluator<'p> {
             ExprKind::Object(props) => {
                 let mut map = IndexMap::new();
                 let mut spans = Vec::new();
+                let mut duplicates = Vec::new();
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
@@ -714,15 +750,22 @@ impl<'p> Evaluator<'p> {
                                 },
                             };
                             let v = self.eval(value, scope)?;
-                            map.shift_remove(&k);
+                            if map.shift_remove(&k).is_some() {
+                                duplicates.push((k.clone(), value.span));
+                            }
                             spans.push((k.clone(), value.span));
                             map.insert(k, v);
                         }
                         Prop::Spread(x) => match self.eval(x, scope)? {
                             src @ Value::Object(_) => {
                                 let Value::Object(o) = &src else { unreachable!() };
+                                if let Some((_, inherited)) = self.duplicate_keys.get(&ptr_of(&src).expect("object")) {
+                                    duplicates.extend(inherited.iter().cloned());
+                                }
                                 for (k, v) in o.borrow().iter() {
-                                    map.shift_remove(k);
+                                    if map.shift_remove(k).is_some() {
+                                        duplicates.push((k.clone(), x.span));
+                                    }
                                     map.insert(k.clone(), v.clone());
                                     spans.push((k.clone(), self.key_span(&src, k).unwrap_or(x.span)));
                                 }
@@ -733,6 +776,7 @@ impl<'p> Evaluator<'p> {
                     }
                 }
                 let v = Value::object(map);
+                self.record_duplicates(&v, duplicates);
                 let p = ptr_of(&v).expect("object");
                 for (k, s) in spans {
                     self.key_spans.insert((p, k), s);
@@ -943,7 +987,7 @@ impl<'p> Evaluator<'p> {
             ExprKind::Ident(name) => self.assign_ident(name, value, scope, target.span),
             ExprKind::Member { obj, prop, .. } => {
                 let o = self.eval(obj, scope)?;
-                set_key(&o, prop, value, target.span)
+                self.set_key(&o, prop, value, target.span)
             }
             ExprKind::Index { obj, index, .. } => {
                 let o = self.eval(obj, scope)?;
@@ -963,7 +1007,7 @@ impl<'p> Evaluator<'p> {
                         }
                         Ok(())
                     }
-                    (_, Value::Str(k)) => set_key(&o, k, value, target.span),
+                    (_, Value::Str(k)) => self.set_key(&o, k, value, target.span),
                     _ => err(target.span, format!("can't assign into {}", o.describe())),
                 }
             }
@@ -1506,6 +1550,7 @@ impl<'p> Evaluator<'p> {
             ("Object", "fromEntries") => match arg(0) {
                 Value::Array(a) => {
                     let mut map = IndexMap::new();
+                    let mut duplicates = Vec::new();
                     for e in a.borrow().iter() {
                         let Value::Array(pair) = e else {
                             return err(span, "Object.fromEntries needs [key, value] pairs");
@@ -1515,9 +1560,16 @@ impl<'p> Evaluator<'p> {
                             require_static_data(key, span)?;
                         }
                         let k = pair.first().and_then(Value::to_js_string).unwrap_or_default();
-                        map.insert(k, pair.get(1).cloned().unwrap_or(Value::Undef));
+                        if map
+                            .insert(k.clone(), pair.get(1).cloned().unwrap_or(Value::Undef))
+                            .is_some()
+                        {
+                            duplicates.push((k, span));
+                        }
                     }
-                    Value::object(map)
+                    let value = Value::object(map);
+                    self.record_duplicates(&value, duplicates);
+                    value
                 }
                 other => {
                     return err(
@@ -1797,16 +1849,6 @@ fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
             ann: None,
         },
     );
-}
-
-fn set_key(o: &Value, key: &str, value: Value, span: Span) -> R<()> {
-    match o {
-        Value::Object(map) => {
-            map.borrow_mut().insert(key.to_string(), value);
-            Ok(())
-        }
-        other => err(span, format!("can't set `{key}` on {}", other.describe())),
-    }
 }
 
 fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {

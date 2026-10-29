@@ -31,10 +31,11 @@ a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
 | --- | --- |
 | EmDash | `string`, `text`, `url`, `number`, `integer`, `boolean`, `datetime`, `json` |
 | Payload | `text`, `textarea`, `email`, `number`, `checkbox`, `date`, `json`, string-valued `select` (including `hasMany`) |
-| Sanity | `string`, `text`, `url`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
+| Sanity | `string`, `text`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
 | Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`) |
 
-Required fields, scalar defaults, supported bounds, uniqueness and collection
+Required fields (including nonempty required Payload text/multi-selects and Sanity strings),
+scalar defaults, supported bounds, uniqueness and collection
 labels are carried where declared. Payload's automatic `createdAt`/`updatedAt`
 are generated unless `timestamps: false`. Field editor labels/descriptions are
 reported for manual admin mapping. Payload's plural collection label is carried;
@@ -47,6 +48,11 @@ custom table (`editor: false`). The report calls out this storage choice and the
 need to review publishing behavior. Import does not adopt existing WordPress
 post types. Original Zero's native `posts`, `pages` and `media` declarations are
 refused because creating new stores would change their ownership.
+
+Sanity URI fields are refused: Zero's URL validator cannot preserve Sanity's
+scheme/credential and empty-value policy. Optional Payload email fields carry a
+specific review entry because Zero rejects empty strings that Payload accepts;
+null/absence remain nullable. Port or normalize that behavior before deployment.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload

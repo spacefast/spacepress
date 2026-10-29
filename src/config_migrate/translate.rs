@@ -303,6 +303,12 @@ fn field(
 ) -> Result<(String, bool), Failure> {
     let o = object(v, at)?;
     let kind = string(o, kind_key, at)?;
+    if matches!(source, Source::Sanity) && kind == "url" {
+        return Err(fail(
+            &pointer(at, kind_key),
+            "Sanity URI scheme, credential and empty-value validation cannot be preserved by Zero url(); port the URI rule explicitly",
+        ));
+    }
     let supported = match source {
         Source::Zero => matches!(kind, "text" | "number" | "boolean" | "datetime" | "enum"),
         Source::Emdash => matches!(
@@ -313,7 +319,7 @@ fn field(
             kind,
             "text" | "textarea" | "email" | "number" | "checkbox" | "date" | "json" | "select"
         ),
-        Source::Sanity => matches!(kind, "string" | "text" | "url" | "number" | "boolean" | "datetime"),
+        Source::Sanity => matches!(kind, "string" | "text" | "number" | "boolean" | "datetime"),
     };
     if !supported {
         return Err(fail(
@@ -391,6 +397,13 @@ fn field(
             .unwrap_or(false);
     if required {
         builder.push_str(".notNull()");
+        if (matches!(source, Source::Payload)
+            && (matches!(kind, "text" | "textarea")
+                || (kind == "select" && boolean(o, "hasMany", at)?.unwrap_or(false))))
+            || (matches!(source, Source::Sanity) && matches!(kind, "string" | "text"))
+        {
+            builder.push_str(".min(1)");
+        }
     }
     if boolean(o, "unique", at)?.unwrap_or(false) {
         builder.push_str(".unique()");
@@ -411,6 +424,9 @@ fn field(
     };
     if let Some(value) = o.get(default_key) {
         builder.push_str(&format!(".default({value})"));
+    }
+    if matches!(source, Source::Payload) && kind == "email" && !required {
+        report.push(entry(at, "review", "Zero email validation rejects optional empty strings that Payload accepts; use null/absence or port the empty-value behavior before deployment."));
     }
     // Field labels/description affect editor UI, not stored values; report them.
     for key in ["label", "title", "description"] {

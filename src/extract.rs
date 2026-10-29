@@ -178,8 +178,12 @@ pub fn extract(
     };
     out.schema.target = target_override.unwrap_or(config_target);
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
+    if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
+        return Err(Diag::new(span, "duplicate plugins declaration"));
+    }
     if let Some(value) = cfg_map.get("plugins") {
         let span = span_of(ev, config, "plugins", config_span);
+        plugin_declarations(value, ev, span, &mut std::collections::HashSet::new())?;
         let json =
             to_json(value).ok_or_else(|| Diag::new(span, "plugins must contain declarative plugin data only"))?;
         let plugins = crate::wp_plugins::parse(json).map_err(|e| Diag::new(span, e.to_string()))?;
@@ -499,6 +503,42 @@ pub fn extract(
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
+}
+
+/// Package pins cannot inherit JavaScript's last-property-wins behavior.
+fn plugin_declarations(
+    value: &Value,
+    ev: &Evaluator<'_>,
+    span: Span,
+    active: &mut std::collections::HashSet<usize>,
+) -> Result<()> {
+    let Some(identity) = crate::eval::ptr_of(value) else {
+        return Ok(());
+    };
+    if !active.insert(identity) {
+        return Err(Diag::new(span, "plugins must be acyclic declarative data"));
+    }
+    if let Some((key, span)) = ev.duplicate_key(value, None) {
+        return Err(Diag::new(
+            span,
+            format!("duplicate plugin declaration/property `{key}`"),
+        ));
+    }
+    match value {
+        Value::Object(map) => {
+            for value in map.borrow().values() {
+                plugin_declarations(value, ev, span, active)?;
+            }
+        }
+        Value::Array(items) => {
+            for value in items.borrow().iter() {
+                plugin_declarations(value, ev, span, active)?;
+            }
+        }
+        _ => {}
+    }
+    active.remove(&identity);
+    Ok(())
 }
 
 fn valid_ident(s: &str) -> bool {

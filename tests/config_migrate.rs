@@ -292,6 +292,20 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
     );
     assert!(!out.exists());
     let json_input = dir.path().join("duplicate.json");
+    // A nested validation error points into the validation object, not at the field.
+    std::fs::write(
+        &json_input,
+        r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string","validation":{"required":"yes"}}]}]}}"#,
+    )
+    .unwrap();
+    let nested = migrate("sanity", &json_input, &out);
+    assert_eq!(nested.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&nested.stdout).unwrap();
+    assert_eq!(
+        report["errors"][0]["pointer"],
+        "/schema/types/0/fields/0/validation/required"
+    );
+    assert!(!out.exists());
     std::fs::write(&json_input, r#"{"collections":[],"collections":[]}"#).unwrap();
     let duplicate = migrate("payload", &json_input, &out);
     assert_eq!(duplicate.status.code(), Some(1));

@@ -9,6 +9,8 @@ use indexmap::IndexMap;
 pub enum Ty {
     Num,
     Str,
+    /// A finite string discriminant, retained for switch exhaustiveness.
+    StrLit(String),
     Bool,
     /// `null` and `undefined` (both PHP null).
     Null,
@@ -153,13 +155,14 @@ impl Ty {
     }
 
     pub fn is_str(&self) -> bool {
-        *self == Ty::Str
+        self.all(|t| matches!(t, Ty::Str | Ty::StrLit(_)))
     }
 
     pub fn describe(&self) -> String {
         match self {
             Ty::Num => "number".into(),
             Ty::Str => "string".into(),
+            Ty::StrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),
             Ty::Null => "null".into(),
             Ty::Unknown => "unknown".into(),
@@ -393,6 +396,13 @@ pub fn field_access_ctx() -> Ty {
         unreachable!()
     };
     props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
+    props.insert(
+        "op".into(),
+        (
+            Ty::union(["read", "create", "update"].map(|op| Ty::StrLit(op.into()))),
+            false,
+        ),
+    );
     Ty::Obj(props)
 }
 

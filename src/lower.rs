@@ -955,8 +955,8 @@ impl Lowerer {
             }
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
-                // Literal types narrow nothing in PHP; they compile as their base type.
-                a::TSLiteral::StringLiteral(_) | a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
+                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
+                a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
                 a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
                 a::TSLiteral::BooleanLiteral(_) => TyAnn::Bool,
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {

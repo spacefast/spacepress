@@ -142,7 +142,7 @@ impl Out {
     }
 
     fn checked_str(self, arg: &Out, span: Span) -> Result<Out> {
-        if arg.ty == Ty::Str {
+        if arg.ty.is_str() {
             Ok(self)
         } else {
             err(span, format!("this needs a string, not {}", arg.ty.describe()))
@@ -180,6 +180,8 @@ struct FnCtx {
     returns: Vec<Ty>,
     /// Expressions proven not to complete by their compiled type.
     diverging: HashSet<Span>,
+    /// Switch statements whose cases cover the compiled discriminant type.
+    exhaustive_switches: HashSet<Span>,
     /// The closure whose captured environment resolves free names.
     env: Rc<Scope>,
     module: usize,
@@ -393,6 +395,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
+            exhaustive_switches: HashSet::new(),
             env: closure.env.clone(),
             module: f.module,
             by_ref: HashSet::new(),
@@ -596,7 +599,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
-        if block_completions(stmts, &self.fx().diverging).contains(&Completion::Normal) {
+        let fx = self.fx();
+        if block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal) {
             self.note_return(&Ty::Null, span)?;
         }
         Ok(())
@@ -692,6 +696,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
             TyAnn::Str => Ty::Str,
+            TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
             TyAnn::Bool => Ty::Bool,
             TyAnn::Null | TyAnn::Undefined | TyAnn::Void => Ty::Null,
             TyAnn::Unknown => Ty::Unknown,
@@ -933,6 +938,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         d.clone()
                     }
                     (Some(d), None) => d.clone().nullable(),
+                    (None, Some(v)) if *kind == DeclKind::Const && matches!(v.ty, Ty::StrLit(_)) => v.ty.clone(),
                     (None, Some(v)) => widen_literal_array(&v.ty),
                     (None, None) => {
                         return err_help(
@@ -1048,7 +1054,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Array(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    Ty::Str => (Ty::Str, format!("mb_str_split({})", it.php)),
+                    t if t.is_str() => (Ty::Str, format!("mb_str_split({})", it.php)),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 if it.ty.is_nullable() {
@@ -1124,7 +1130,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Switch { disc, cases, span } => {
                 let d = self.expr(disc)?;
                 let d = self.finish_value(d, disc.span)?;
-                if !(d.ty.is_num() || d.ty.non_null() == Ty::Str || d.ty.non_null() == Ty::Bool) {
+                if !(d.ty.is_num() || d.ty.non_null().is_str() || d.ty.non_null() == Ty::Bool) {
                     return err(
                         *span,
                         format!(
@@ -1132,6 +1138,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             d.ty.describe()
                         ),
                     );
+                }
+                if switch_is_exhaustive(&d.ty, cases) {
+                    self.fx().exhaustive_switches.insert(*span);
                 }
                 // PHP `switch` compares loosely; compile to strict comparisons.
                 let tmp = self.tmp_var();
@@ -1570,7 +1579,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             {
                 format!("{} !== null", v.wrapped())
             }
-            t if t.non_null() == Ty::Str => format!("({} ?? '') !== ''", v.wrapped()),
+            t if t.non_null().is_str() => format!("({} ?? '') !== ''", v.wrapped()),
             _ => format!("\\Zero\\Js::truthy({})", v.php),
         }
     }
@@ -1600,7 +1609,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let span = e.span;
         let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
-            ExprKind::Str(s) => Out::atom(php_str(s), Ty::Str),
+            ExprKind::Str(s) => Out::atom(php_str(s), Ty::StrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::Bool),
             ExprKind::Null | ExprKind::Undefined => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => Out::atom(
@@ -1876,7 +1885,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// The value as a PHP string expression, safe to join with `.`.
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
         Ok(match &v.ty {
-            Ty::Str => v.wrapped(),
+            t if t.is_str() => v.wrapped(),
             Ty::Num | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
@@ -1888,7 +1897,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
                     Out::new(format!("{} + {}", a.wrapped(), b.wrapped()), Ty::Num)
-                } else if a.ty == Ty::Str || b.ty == Ty::Str {
+                } else if a.ty.is_str() || b.ty.is_str() {
                     let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
                     Out::new(format!("{x} . {y}"), Ty::Str)
                 } else {
@@ -1924,7 +1933,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 if a.ty.is_num() && b.ty.is_num() {
                     Out::new(format!("{} {sym} {}", a.wrapped(), b.wrapped()), Ty::Bool)
-                } else if a.ty == Ty::Str && b.ty == Ty::Str {
+                } else if a.ty.is_str() && b.ty.is_str() {
                     // JS compares strings by UTF-16 code units; for UTF-8 that matches byte order
                     // except across surrogate pairs, which strcmp handles consistently enough.
                     Out::new(format!("strcmp({}, {}) {sym} 0", a.php, b.php), Ty::Bool)
@@ -2161,6 +2170,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ret: None,
             returns: Vec::new(),
             diverging: HashSet::new(),
+            exhaustive_switches: HashSet::new(),
             env: self.fx().env.clone(),
             module,
             by_ref: HashSet::new(),
@@ -2324,7 +2334,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let i = self.expr(index)?;
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), *t),
-                    Ty::Map(t) if i.ty == Ty::Str => (format!("{}[{}]", o.php, i.php), *t),
+                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), *t),
                     other => {
                         return err(
                             target.span,
@@ -2420,7 +2430,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         Ok(match (&base, prop) {
-            (Ty::Str, "length") => {
+            (t, "length") if t.is_str() => {
                 let php = guarded(self, &|x| format!("\\Zero\\Js::length({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
@@ -2505,11 +2515,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
-            (Ty::Map(t), Ty::Str) => Out::atom(
+            (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
                 format!("({}[{}] ?? null)", o.php, i.php),
                 wrap((**t).clone().nullable()),
             ),
-            (Ty::Obj(fields), Ty::Str) => {
+            (Ty::Obj(fields), i) if i.is_str() => {
                 if let ExprKind::Str(k) = &index.kind {
                     return self.member(obj, k, optional, index.span, span);
                 }
@@ -2520,7 +2530,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "use a `Record<string, T>` or a `switch`",
                 );
             }
-            (Ty::Str, it) if it.is_num() => Out::atom(
+            (s, it) if s.is_str() && it.is_num() => Out::atom(
                 format!("\\Zero\\Js::strAt({}, {})", o.php, i.php),
                 wrap(Ty::Str.nullable()),
             ),
@@ -2622,7 +2632,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && let Resolved::Value(Value::Builtin(Builtin::Once), _) = self.resolve(n, callee.span)?
         {
             let key = self.arg(args, 0, span, "once")?;
-            if self.expr(key)?.ty != Ty::Str {
+            if !self.expr(key)?.ty.is_str() {
                 return err_help(key.span, "once key must be a string", "use a stable string key");
             }
         }
@@ -2904,7 +2914,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let base = recv.ty.non_null();
         let r = match &base {
-            Ty::Str => self.string_method(&recv, m, args, span, m_span)?,
+            t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
             Ty::Array(_) | Ty::Tuple(_) => self.array_method(&recv, m, args, span, m_span)?,
             Ty::Num => match m {
                 "toFixed" => {
@@ -2936,7 +2946,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "test" => {
                     let argv = self.plain_args(args)?;
                     let s = argv.first().ok_or_else(|| Diag::new(span, "test() needs a string"))?;
-                    if s.ty != Ty::Str {
+                    if !s.ty.is_str() {
                         return err(span, format!("test() needs a string, not {}", s.ty.describe()));
                     }
                     Out::atom(format!("{}->test({})", recv.wrapped(), s.php), Ty::Bool)
@@ -2976,7 +2986,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ExprKind::Func(_) => self.callback(rep_e, &[Ty::Str, Ty::Str, Ty::Str, Ty::Str, Ty::Str])?,
                 _ => self.expr(rep_e)?,
             };
-            if !(pat.ty == Ty::Str || pat.ty == Ty::Regex) {
+            if !(pat.ty.is_str() || pat.ty == Ty::Regex) {
                 return err(
                     span,
                     format!("{m}() needs a string or regex pattern, not {}", pat.ty.describe()),
@@ -2991,7 +3001,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {
-                Some(x) if x.ty == Ty::Str => Ok(x.php.clone()),
+                Some(x) if x.ty.is_str() => Ok(x.php.clone()),
                 Some(x) => err(span, format!("{m}() needs a string, not {}", x.ty.describe())),
                 None => {
                     let _ = c;
@@ -3211,7 +3221,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
                     "join" => {
                         if let Some(sep) = argv.first()
-                            && sep.ty != Ty::Str
+                            && !sep.ty.is_str()
                         {
                             return err(span, "join() needs a string separator");
                         }
@@ -3674,7 +3684,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 "like" | "ilike" | "notLike" | "notIlike" => {
                     let x = self.expr(v)?;
-                    if x.ty != Ty::Str {
+                    if !x.ty.is_str() {
                         return err(v.span, format!("`{op}` takes a string pattern"));
                     }
                     x.php
@@ -3898,7 +3908,7 @@ fn pad(n: usize) -> String {
 fn php_hint(t: &Ty) -> &'static str {
     match t {
         Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) => "array ",
-        Ty::Str => "string ",
+        t if t.is_str() => "string ",
         Ty::Bool => "bool ",
         Ty::Num => "int|float ",
         _ => "",
@@ -3911,7 +3921,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
         J::Null => Ty::Null,
         J::Bool(_) => Ty::Bool,
         J::Number(_) => Ty::Num,
-        J::String(_) => Ty::Str,
+        J::String(s) => Ty::StrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
         J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
     }
@@ -3919,6 +3929,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
 
 fn widen_literal_array(t: &Ty) -> Ty {
     match t {
+        Ty::StrLit(_) => Ty::Str,
         Ty::Tuple(ts) => Ty::Array(Box::new(Ty::union(ts.clone()))),
         Ty::Obj(f) => Ty::Obj(
             f.iter()
@@ -3935,6 +3946,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
+        (Ty::StrLit(_), Ty::Str) => true,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
         (Ty::Date, Ty::Num) => true,
@@ -3989,13 +4001,40 @@ fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> H
     first
 }
 
-fn block_completions(stmts: &[Stmt], diverging: &HashSet<Span>) -> HashSet<Completion> {
+fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)]) -> bool {
+    let has_case = |matches: &dyn Fn(&ExprKind) -> bool| {
+        cases
+            .iter()
+            .any(|(test, _)| test.as_ref().is_some_and(|test| matches(&test.kind)))
+    };
+    match ty {
+        Ty::Bool => {
+            has_case(&|kind| matches!(kind, ExprKind::Bool(true)))
+                && has_case(&|kind| matches!(kind, ExprKind::Bool(false)))
+        }
+        Ty::StrLit(value) => has_case(&|kind| matches!(kind, ExprKind::Str(case) if case == value)),
+        Ty::Null => has_case(&|kind| matches!(kind, ExprKind::Null | ExprKind::Undefined)),
+        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, cases)),
+        Ty::Never => true,
+        _ => false,
+    }
+}
+
+fn block_completions(
+    stmts: &[Stmt],
+    diverging: &HashSet<Span>,
+    exhaustive_switches: &HashSet<Span>,
+) -> HashSet<Completion> {
     stmts.iter().fold(HashSet::from([Completion::Normal]), |flow, stmt| {
-        followed_by(flow, stmt_completions(stmt, diverging))
+        followed_by(flow, stmt_completions(stmt, diverging, exhaustive_switches))
     })
 }
 
-fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completion> {
+fn stmt_completions(
+    stmt: &Stmt,
+    diverging: &HashSet<Span>,
+    exhaustive_switches: &HashSet<Span>,
+) -> HashSet<Completion> {
     use Completion::*;
     match stmt {
         Stmt::Expr(expr)
@@ -4011,12 +4050,12 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
         Stmt::Throw(_) => HashSet::from([Throw]),
         Stmt::Break(_) => HashSet::from([Break]),
         Stmt::Continue(_) => HashSet::from([Continue]),
-        Stmt::Block(body) => block_completions(body, diverging),
+        Stmt::Block(body) => block_completions(body, diverging, exhaustive_switches),
         Stmt::If(test, yes, no) => {
-            let yes = block_completions(yes, diverging);
+            let yes = block_completions(yes, diverging, exhaustive_switches);
             let no = no
                 .as_deref()
-                .map(|body| block_completions(body, diverging))
+                .map(|body| block_completions(body, diverging, exhaustive_switches))
                 .unwrap_or_else(|| HashSet::from([Normal]));
             match test.kind {
                 ExprKind::Bool(true) => yes,
@@ -4030,13 +4069,13 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
             finalizer,
             ..
         } => {
-            let mut flow = block_completions(block, diverging);
+            let mut flow = block_completions(block, diverging, exhaustive_switches);
             if let Some(handler) = handler {
                 flow.remove(&Throw);
-                flow.extend(block_completions(handler, diverging));
+                flow.extend(block_completions(handler, diverging, exhaustive_switches));
             }
             if let Some(finalizer) = finalizer {
-                let mut final_flow = block_completions(finalizer, diverging);
+                let mut final_flow = block_completions(finalizer, diverging, exhaustive_switches);
                 if final_flow.remove(&Normal) {
                     final_flow.extend(flow);
                 }
@@ -4044,15 +4083,15 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
             }
             flow
         }
-        Stmt::Switch { cases, .. } => {
+        Stmt::Switch { cases, span, .. } => {
             let mut suffix = HashSet::from([Normal]);
             let mut flow = HashSet::new();
             for (_, body) in cases.iter().rev() {
-                suffix = followed_by(block_completions(body, diverging), suffix);
+                suffix = followed_by(block_completions(body, diverging, exhaustive_switches), suffix);
                 flow.extend(&suffix);
             }
             let breaks = flow.remove(&Break);
-            if !cases.iter().any(|(test, _)| test.is_none()) || breaks {
+            if !(cases.iter().any(|(test, _)| test.is_none()) || exhaustive_switches.contains(span)) || breaks {
                 flow.insert(Normal);
             }
             flow
@@ -4061,7 +4100,7 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
         | Stmt::For {
             test: Some(test), body, ..
         } => {
-            let mut flow = block_completions(body, diverging);
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
             let breaks = flow.remove(&Break);
             flow.remove(&Continue);
             flow.remove(&Normal);
@@ -4071,7 +4110,7 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
             flow
         }
         Stmt::For { test: None, body, .. } => {
-            let mut flow = block_completions(body, diverging);
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
             if flow.remove(&Break) {
                 flow.insert(Normal);
             } else {
@@ -4081,7 +4120,7 @@ fn stmt_completions(stmt: &Stmt, diverging: &HashSet<Span>) -> HashSet<Completio
             flow
         }
         Stmt::ForOf { body, .. } => {
-            let mut flow = block_completions(body, diverging);
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
             flow.remove(&Break);
             flow.remove(&Continue);
             flow.insert(Normal);

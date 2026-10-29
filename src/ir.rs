@@ -313,6 +313,7 @@ pub enum AssignOp {
 pub enum TyAnn {
     Num,
     Str,
+    StrLit(String),
     Bool,
     Null,
     Undefined,

@@ -31,6 +31,16 @@ final class WpPostStore implements Store
     ) {
     }
 
+    public function afterCommit(callable $fn): void
+    {
+        $this->db->afterCommit($fn);
+    }
+
+    public function applySystemStatements(array $statements): void
+    {
+        $this->db->applySystemStatements($statements);
+    }
+
     public function transaction(callable $fn): mixed
     {
         return $this->db->transaction($fn);
@@ -92,7 +102,10 @@ final class WpPostStore implements Store
 
     public function select(string $collection, array $q): array
     {
-        return $this->finish($collection, $this->db->run($q['sql'], $q['params']));
+        $rows = $this->db->run($q['sql'], $q['params']);
+        \Zero\Extensions::lookup($collection, array_column($rows, $this->schema->collection($collection)['primaryKey']));
+
+        return $this->finish($collection, $rows);
     }
 
     /**
@@ -126,8 +139,7 @@ final class WpPostStore implements Store
         }
         unset($row);
         if ($nested !== []) {
-            $ids = array_values(array_unique(array_map(static fn ($r) => (int) $r[$pk], $rows)));
-            update_meta_cache('post', $ids);
+            update_meta_cache('post', array_column($rows, $pk));
             Scf::$io++;
             try {
                 foreach ($rows as &$row) {

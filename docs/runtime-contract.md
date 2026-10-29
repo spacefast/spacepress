@@ -38,7 +38,8 @@ require __DIR__ . '/../zero/runtime/bootstrap.php';
 `zero/runtime/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()`
 function), sets `ini_set('precision', '-1')`,
 `ini_set('serialize_precision', '-1')`, registers an autoloader for
-`Zero\*` from its own directory, and loads nothing else.
+`Zero\*` from its own directory, and registers the ordered feature modules
+through `Features::register()` (once per process).
 
 ## schema.php
 
@@ -199,6 +200,59 @@ Filter grammar:
   like `/where/qty`.
 
 All values are bound parameters. Identifiers come only from schema.php.
+
+## Runtime extension points (schema v2)
+
+`Features` owns the ordered module list; bootstrap registers it once. A module
+registers callbacks through `Extensions`, plus idempotent dialect-specific DDL
+through `SystemTables` when needed. Registration itself performs no app I/O.
+
+- `beforeRead(collection, &opts, ?viewer, pointer)` runs before query validation
+  and SQL; `onLookup(collection, pks)` runs in concrete stores before hydration
+  and decode. Lookup receives nonempty collection pages, not system-media rows.
+- `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
+  projection; also applies to revision reads and returning write responses.
+  Keep primary keys intact. Relation attachment preserves original linkage
+  privately; removing a media column prevents its population.
+- `onWrite(op, collection, &data, ?existing, ?viewer, provided)` runs after
+  defaults/onUpdate and before app before-hooks (create: also before required
+  and access checks). `provided` is the original row/patch. Delete runs before
+  `beforeDelete`. `onWritten(op, collection, row, ?previous)` runs after app
+  after-hooks in the same transaction, including WP editor notifications.
+- `afterCommit(fn)` delegates to the active Db's Store. The outermost commit
+  drains its queue; rollback discards it. Outside a transaction it runs
+  immediately. Nested transactions join without savepoints. A callback that
+  throws propagates after commit, without rollback cleanup or callback replay.
+- `route(prefix, handler)` receives `(method, fullDecodedSegments, query,
+  rawBody, viewer, files, form)` and returns `[status, data]`. One complete
+  first segment is matched before collections, after canonical built-ins.
+- `beforeAction(spec, name, rawBody, headers, ?viewer)` sees exact input bytes
+  and lowercase header names after action authorization, before input validation.
+  JSON syntax parsing retains its phase-1 precedence before action lookup.
+  `App::invoke` is the shared HTTP/CLI invocation path within their transaction;
+  a null viewer means trusted CLI.
+- `cli(command, handler)` receives `(argsWithoutCommand, flags)` inside the
+  canonical CLI transaction and receipts, on both standalone and `wp zero`.
+- `schemaDescribe(fn)` transforms the public schema description.
+
+`SystemTables::register(name, sqliteStatements, mysqlStatements)` assigns one
+owner per table. Each list contains idempotent SQL strings or guarded
+`callable(Store): void` upgrades (SQLite has no `ADD COLUMN IF NOT EXISTS`).
+`apply(Store)` rejects request transactions before running SQL or guards and
+chooses the dialect; WP replaces `{prefix}` in SQL. Store construction (SQLite) and the existing
+WP migrator apply registrations outside request transactions. `Store` exposes
+`afterCommit(callable)` and `applySystemStatements(list<string>)` for these
+seams. Existing phase-1 tables and generated migrations are unchanged.
+
+`Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
+fields, with `(field, definition, column, spec)`. Top-level `spec` is the
+collection/global; nested `spec.fields` contains sibling definitions.
+
+Schema loading remains v2-only. `Schema::version()` returns the loaded version;
+`Schema::runtime()` returns its optional runtime series string. The v3 reader
+flag stays disabled until the compiler emits v3 in A2. Lazy scheduled promotion
+remains at the start of requests/commands, so due records are visible in that
+same request.
 
 ## class App (HTTP)
 

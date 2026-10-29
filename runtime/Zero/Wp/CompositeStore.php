@@ -43,6 +43,16 @@ final class CompositeStore implements Store
         return $this->isPostBacked($collection) ? $this->posts : $this->tables;
     }
 
+    public function afterCommit(callable $fn): void
+    {
+        $this->db->afterCommit($fn);
+    }
+
+    public function applySystemStatements(array $statements): void
+    {
+        $this->tables->applySystemStatements($statements);
+    }
+
     public function transaction(callable $fn): mixed
     {
         return $this->db->transaction($fn);

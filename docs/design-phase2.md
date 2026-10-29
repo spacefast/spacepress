@@ -533,7 +533,7 @@ with rule = `['allow'|'role'|'fn']` as phase 1 (field fns are named
 `runtime/Zero/FieldAccess.php` registers on the pipeline extension points
 (§9.1): 
 
-- **read** (`Db::onRead`, after decode, before `with`): for each column with a
+- **read** (`Extensions::onRead`, after decode, before `with`): for each column with a
   read rule, evaluate once per request for shorthand rules, once per row for
   fn rules (`ctx.data` = the full decoded row). Hidden columns are **removed**
   from the row (not nulled; the typed client types them as optional
@@ -541,7 +541,7 @@ with rule = `['allow'|'role'|'fn']` as phase 1 (field fns are named
   `orderBy` or `columns` that names a hidden column → 403 `forbidden`, pointer
   `/where/<col>` (checked in `Db::fetch` before `Sql::select`; the viewer can't
   learn values through filters). Trusted reads (hooks, CLI) see everything.
-- **create/update** (`Db::onWrite`, before `beforeCreate`/`beforeUpdate`, after
+- **create/update** (`Extensions::onWrite`, before `beforeCreate`/`beforeUpdate`, after
   defaults): a key present in `data`/`patch` whose rule is false → 403
   `forbidden`, pointer `/<col>`, detail "you can't set <col>". Defaults and
   hook-written values are not checked (hooks are trusted).
@@ -792,7 +792,7 @@ without `uid: true` when the referencing collection has `sync` (hint: "add
 ### 5.6 Owner files
 
 C1 (PHP): `runtime/Zero/Sync/{Routes,Wire,Canon,Uid,Markdown,Html,Merge}.php`;
-uid minting hooks into `Db::onWrite`; `WpPostStore` gets `_zero_uid` in
+uid minting hooks into `Extensions::onWrite`; `WpPostStore` gets `_zero_uid` in
 `buildSource` (the only C1 edit in a shared file; `WpPostStore.php` is
 otherwise untouched by C1). The toolkit packages are already in
 `runtime/Zero/vendor-prefixed/` (A3). C2 (Rust): `src/sync/{mod,canon,
@@ -958,7 +958,7 @@ D1: `runtime/Zero/Jobs/**`, `runtime/Zero/Env.php`, `runtime/Zero/Wp/Jobs/Action
 `runtime/bin/zero.php` (`jobs` subcommand block, additive). D2:
 `runtime/Zero/Jobs/Webhooks.php`, `runtime/Zero/Http.php` (outbound HTTP
 abstraction, standalone + WP), the `signature` check in `App::runAction`
-through the `App::beforeAction` seam.
+through the `Extensions::beforeAction` seam.
 
 #### Tests
 
@@ -1365,7 +1365,7 @@ collection's `localized` flag.
 `locale` is a real column; `translationGroup` (hidden, text, uuid) links the
 group (the compiler emits both in migrations with an index on
 `(translationGroup, locale)` UNIQUE). `translations` is assembled by
-`Db::onRead` from one extra query per page (`WHERE translationGroup IN (...)`).
+`Extensions::onRead` from one extra query per page (`WHERE translationGroup IN (...)`).
 Locale filtering/fallback is one `Sql` rule for the store (`Sql::select`
 gets `$locale`): `WHERE locale = ?` or, with fallback,
 `WHERE locale = ? OR (locale = <default> AND translationGroup NOT IN (SELECT translationGroup FROM t WHERE locale = ?))`.
@@ -1485,32 +1485,88 @@ phase-1 suites green).**
 ```php
 // runtime/Zero/Extensions.php
 final class Extensions {
-    /** @param callable(array $rows, string $collection, ?Viewer): array $fn   after decode, before `with` */
+    /** @param callable(string $collection, array &$opts, ?Viewer, string $pointer): void $fn   before option validation and SQL */
+    public static function beforeRead(callable $fn): void;
+    /** @param callable(array $rows, string $collection, ?Viewer): array $fn   after decode, before `with`; retain primary keys */
     public static function onRead(callable $fn): void;
-    /** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer): void $fn   create/update: after defaults, before the before* hook; delete: before beforeDelete */
+    /** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer, array $provided): void $fn   create: after defaults, before required/access checks and beforeCreate; update: after onUpdate, before beforeUpdate; delete: before beforeDelete */
     public static function onWrite(callable $fn): void;
     /** @param callable(string $op, string $collection, array $row, ?array $previous): void $fn   after the after* hook, still inside the transaction */
     public static function onWritten(callable $fn): void;
-    public static function afterCommit(callable $fn): void;        // run by Db::transaction's outermost commit; cleared on rollback
+    public static function afterCommit(callable $fn): void;        // delegates to the active Db's Store; outermost commit, discarded on rollback, immediate outside a transaction
     public static function route(string $prefix, callable $handler): void;   // App::route tries registered prefixes before collections: $handler(string $method, array $segments, array $query, string $body, Viewer $v, array $files, array $form): array{int, mixed}
-    public static function beforeAction(callable $fn): void;       // $fn(array $actionSpec, string $name, string $rawBody, array $headers, Viewer): void (may throw)
+    public static function beforeAction(callable $fn): void;       // $fn(array $actionSpec, string $name, string $rawBody, array $headers, ?Viewer): void (may throw; null = trusted CLI)
     public static function cli(string $command, callable $fn): void;   // zero/bin/zero.php + `wp zero`
     public static function schemaDescribe(callable $fn): void;     // $fn(array $describe): array
-    /** @param callable(string $collection, list<int|string> $pks): void $fn   before a page of rows is decoded; stores prime per-page caches here (meta, terms, Polylang language/group) */
+    /** @param callable(string $collection, list<int|string> $pks): void $fn   before a page of collection rows is hydrated/decoded; extensions prime per-page caches here (meta, terms, Polylang language/group) */
     public static function onLookup(callable $fn): void;
 }
 // runtime/Zero/SystemTables.php
-final class SystemTables { public static function register(string $table, array $sqlite, array $mysql): void; /* lists of statements, idempotent (CREATE IF NOT EXISTS / guarded ALTER) */ public static function apply(Store $store): void; }
+final class SystemTables { public static function register(string $table, array $sqlite, array $mysql): void; /* lists of SQL strings or callable(Store): void guarded upgrades; idempotent */ public static function apply(Store $store): void; }
 // runtime/Zero/Wp/Scf.php
 public static function fieldFilter(callable $fn): void;   // $fn(array $field, array $def, string $col, array $spec): array — applied to every generated field incl. sub-fields
 // runtime/Zero/Features.php — the registration order (one static list; each feature file is `Zero\<Feature>\Module::register()`), loaded by bootstrap.php
 ```
 
-Db/App/SqliteStore/Plugin are refactored to call these; the phase-1 media
-route and `promoteDue` are moved behind `Extensions::route('media', …)` /
-`afterCommit` as the first consumers (proves the seam). `App::invoke()` is
-extracted from `route()`. `Schema::load` reads `runtime`/`version` (v3 only
-after A2; A1 keeps v2 and adds the v3 reader behind a flag that A2 flips).
+Db/App/stores and the WP editor bridge call these. The phase-1 media route
+moves to `Zero\Media\Module` behind `Extensions::route('media', …)`;
+`Features` registers it once from bootstrap. `App::invoke(name, rawBody,
+headers, ?viewer)` is the shared HTTP/CLI action path: authorize, call
+`beforeAction` with the exact bytes and normalized headers, validate input,
+invoke the compiled handler. JSON syntax parsing retains its phase-1 precedence
+before action lookup/authorization. It joins the caller's request/command transaction.
+`Schema::load` remains v2-only in A1, with a disabled v3 reader flag for A2;
+`Schema::version()` and `runtime()` expose the version and nullable runtime
+series string without changing v2 output.
+
+**A1 architecture corrections (from the phase-1 runtime):**
+
+- `promoteDue` stays at the **start** of HTTP/CLI transactions (phase 1 §6.3).
+  Moving it to `afterCommit` would make the first due read stale and change
+  rollback semantics. Store-owned media cleanup already uses commit callbacks;
+  `Extensions::afterCommit` delegates to that same store/connection queue,
+  rather than adding a second global queue. Nested transactions join the outer
+  transaction; an exception that escapes it discards callbacks. A caught inner
+  exception does not create a savepoint or cancel the outer transaction.
+  Callback exceptions propagate after COMMIT; they cannot trigger rollback
+  cleanup for committed effects. Remaining callbacks are not retried.
+- The original hooks could not implement §4.3's filter checks or distinguish
+  submitted fields from defaults. `beforeRead` can reject selectors or consume
+  feature query options before `Sql::select`; the sixth `onWrite` argument is
+  the original supplied row/patch, before defaults/onUpdate. Create extensions
+  run before required checks so they can fill system values such as uid.
+  These are extension points only; A1 adds no field-access or locale policy.
+- `onRead` also transforms revision reads and returning write responses.
+  Hooks and stored revisions still receive full rows. Relation attachment privately keeps
+  the original decoded linkage columns, so stripping a foreign key cannot
+  break `with`; stripped media columns are not repopulated. Transforms retain
+  primary keys. WP editor writes remain trusted: after-save/delete notify
+  `onWritten` after application hooks; editor create/update do not replay the
+  API's before-write pipeline over already-saved core data.
+- `onLookup` fires once per nonempty **collection** page, inside each concrete
+  store, before WP SCF hydration and before schema decode. System-media queries
+  are not app collections. Existing WP nested-meta priming remains store-owned;
+  new feature caches use `onLookup` without relying on plugin construction.
+- `Store` gains `afterCommit(callable)` and
+  `applySystemStatements(list<string>)`. `SystemTables` selects the dialect;
+  WP replaces `{prefix}` on its shared connection. Registration rejects a
+  duplicate table owner. SQLite applies registered DDL on store construction;
+  WP applies it in the existing activation/update/CLI migrator. MySQL DDL must
+  stay outside request transactions because it commits implicitly. SQLite has
+  no `ADD COLUMN IF NOT EXISTS`, so each dialect's registered list also accepts
+  `callable(Store): void` upgrade steps: inspect the real schema, then alter
+  only when needed. The transaction guard runs before either SQL or callbacks.
+  A3 moves shared-table lifecycle ownership to the runtime plugin.
+- Route prefixes match one complete first segment, receive the full decoded
+  segment list and own the path before collection dispatch. Built-in schema,
+  auth, action and global routes keep precedence. CLI extension handlers get
+  `(argsWithoutCommand, flags)`, run in `App::cli`'s transaction and share its
+  receipts on standalone and `wp zero`. Duplicate route/command registrations
+  fail rather than overwrite an owner.
+- `Scf::fieldFilter` runs after each field is fully built, including nested
+  group/repeater/layout fields. Its `spec` is the collection/global at the top
+  level, or `['fields' => siblingDefinitions]` for a nested field. This supplies
+  the sibling context §4.3's conditional logic needs without implementing it.
 
 **A2 — config surface + schema.php v3 + d.ts + golden.** Everything in §3.1
 is parsed (`eval.rs` column methods `.access/.showIf/.localized`, `file()`,

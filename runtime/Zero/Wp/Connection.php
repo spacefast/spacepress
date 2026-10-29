@@ -82,6 +82,17 @@ final class Connection
         }
     }
 
+    /** @param list<string> $statements idempotent DDL outside request transactions */
+    public function applySystemStatements(array $statements): void
+    {
+        if ($this->inTransaction()) {
+            throw new \LogicException('System DDL cannot run inside a transaction');
+        }
+        foreach ($statements as $statement) {
+            $this->run(str_replace('{prefix}', $this->prefix(), $statement));
+        }
+    }
+
     public function insertId(): int
     {
         return (int) $this->mysqli()->insert_id;

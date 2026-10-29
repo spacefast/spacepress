@@ -171,6 +171,8 @@ final class MediaView implements Store
         return $this->source;
     }
 
+    public function afterCommit(callable $fn): void { throw new \LogicException('read-only view'); }
+    public function applySystemStatements(array $statements): void { throw new \LogicException('read-only view'); }
     public function transaction(callable $fn): mixed { return $fn(); }
     public function select(string $collection, array $q): array { throw new \LogicException('read-only view'); }
     public function insert(string $collection, array $values): int|string { throw new \LogicException('read-only view'); }

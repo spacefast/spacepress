@@ -92,12 +92,14 @@ final class App
     }
 
     /** Validate input against an action's schema, check its access, run its handler. */
-    public function runAction(string $name, mixed $input, ?Viewer $viewer = null): mixed
+    public function invoke(string $name, string $rawBody, array $headers = [], ?Viewer $viewer = null): mixed
     {
+        $input = self::parseBody($rawBody);
         $action = $this->schema->action($name);
         if ($viewer !== null) {
             Access::require($action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name");
         }
+        Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
         $fn = '\\ZeroApp\\' . $action['handler'];
@@ -149,7 +151,7 @@ final class App
                 $user = $this->auth->resolve(array_change_key_case($headers, CASE_LOWER));
                 $this->db->setActor($user);
                 try {
-                    return $this->route($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $files, $form);
+                    return $this->route($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $headers, $files, $form);
                 } finally {
                     $this->db->setActor(null);
                 }
@@ -170,7 +172,7 @@ final class App
     }
 
     /** @return array{int, mixed} */
-    private function route(string $method, string $path, array $query, string $body, Viewer $viewer, array $files, array $form): array
+    private function route(string $method, string $path, array $query, string $body, Viewer $viewer, array $headers, array $files, array $form): array
     {
         $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($s) => $s !== '')));
         $n = count($segments);
@@ -197,17 +199,20 @@ final class App
             case $name === 'actions' && $n === 2:
                 self::allow($method, ['POST']);
 
-                return [200, $this->runAction($segments[1], self::parseBody($body), $viewer)];
+                return [200, $this->invoke($segments[1], $body, $headers, $viewer)];
             case $name === 'globals' && $n === 2:
                 self::allow($method, ['GET', 'PATCH']);
 
                 return $method === 'GET'
                     ? [200, $this->db->globalGet($segments[1], $viewer)]
                     : [200, $this->db->globalUpdate($segments[1], self::object(self::parseBody($body)), $viewer)];
-            case $name === 'media':
-                return $this->mediaRoute($method, $segments, $query, $viewer, $files, $form);
-            case $n < 1 || $n > 5:
-                throw $notFound();
+        }
+
+        if (($handler = Extensions::routeHandler($name)) !== null) {
+            return $handler($method, $segments, $query, $body, $viewer, $files, $form);
+        }
+        if ($n < 1 || $n > 5) {
+            throw $notFound();
         }
 
         if (!$this->schema->hasCollection($name)) {
@@ -273,51 +278,7 @@ final class App
         return [200, $this->db->restoreRevision($name, $pk, $rid, $viewer)];
     }
 
-    /** @return array{int, mixed} */
-    private function mediaRoute(string $method, array $segments, array $query, Viewer $viewer, array $files, array $form): array
-    {
-        $n = count($segments);
-        if ($n === 1) {
-            self::allow($method, ['GET', 'POST']);
-            if ($method === 'GET') {
-                $opts = self::listOptions($query);
-                if (isset($opts['with'])) {
-                    throw HttpError::invalidQuery('media has no relations', '/with');
-                }
-
-                return [200, $this->db->mediaList($opts)];
-            }
-            $file = $files['file'] ?? null;
-            if (!is_array($file) || is_array($file['error'] ?? null)) {
-                throw HttpError::invalidInput('Send the file as multipart/form-data field "file"', '/file');
-            }
-            $err = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
-            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
-                throw new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts');
-            }
-            if ($err !== UPLOAD_ERR_OK) {
-                throw HttpError::invalidInput('The upload failed (error ' . $err . ')', '/file');
-            }
-            $alt = $form['alt'] ?? null;
-            if ($alt !== null && !is_string($alt)) {
-                throw HttpError::invalidInput('alt must be a string', '/alt');
-            }
-
-            return [201, $this->db->mediaUpload((string) $file['tmp_name'], (string) ($file['name'] ?? 'file'), $alt, $viewer)];
-        }
-        if ($n !== 2) {
-            throw HttpError::notFound('No such media route');
-        }
-        self::allow($method, ['GET', 'DELETE']);
-        $id = preg_match('/^\d{1,18}$/D', $segments[1]) ? (int) $segments[1] : -1;
-        $missing = static fn () => HttpError::notFound("No media with id {$segments[1]}");
-
-        return $method === 'GET'
-            ? [200, $this->db->mediaGet($id) ?? throw $missing()]
-            : [200, $this->db->mediaDelete($id, $viewer) ?? throw $missing()];
-    }
-
-    private static function allow(string $method, array $allowed): void
+    public static function allow(string $method, array $allowed): void
     {
         if (!in_array($method, $allowed, true)) {
             throw new HttpError(405, 'method_not_allowed', "$method is not allowed here");
@@ -344,7 +305,7 @@ final class App
         return (int) $id;
     }
 
-    private static function listOptions(array $query): array
+    public static function listOptions(array $query): array
     {
         $opts = ['limit' => min(self::queryInt($query, 'limit') ?? self::LIST_LIMIT, self::MAX_LIST_LIMIT)];
         if (isset($query['where'])) {
@@ -547,6 +508,9 @@ final class App
             if ($cmd === 'publish-due') {
                 return ['promoted' => (object) $promoted];
             }
+            if (($handler = Extensions::cliHandler($cmd)) !== null) {
+                return $handler(array_slice($pos, 1), $flags);
+            }
             $sub = $pos[1] ?? null;
             if ($cmd === 'user' || $cmd === 'users') {
                 $id = $this->identity();
@@ -574,7 +538,7 @@ final class App
             }
 
             return match ($cmd) {
-                'action' => $this->runAction($sub, $json(2, false)),
+                'action' => $this->invoke($sub, $pos[2] ?? ''),
                 'find' => $this->db->findMany($sub, self::object($json(2, false) ?? [])),
                 'insert' => $this->db->insert($sub, self::rows($json(2)), true),
                 'update' => $this->db->update($sub, self::object($json(3)), self::object($json(2)), true),

@@ -172,6 +172,8 @@ eq('patch merges; untouched fields keep their defaults', req('PATCH', '/globals/
 eq('trusted db sees the same values', $db->globalGet('settings')['postsPerPage'], 20);
 isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
 
+\Zero\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
+
 // ================================================================ media (§4.6)
 
 $png = tempnam(sys_get_temp_dir(), 'zimg');
@@ -208,5 +210,159 @@ $db->delete('authors', ['id' => $aliceProfile['id']]);
 eq('onDelete set null', array_unique(array_column($db->findMany('posts', ['where' => ['id' => ['in' => [$pub['id'], $mine['id']]]]]), 'authorId')), [null]);
 $db->delete('posts', ['id' => $pub['id']]);
 eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['id']]]), []);
+
+// ================================================================ extension seams
+
+\Zero\SystemTables::register('seam', [
+    'CREATE TABLE IF NOT EXISTS "__zero_seam" ("id" integer PRIMARY KEY, "event" text NOT NULL)',
+    static function (\Zero\Store $store): void {
+        if (!$store instanceof \Zero\Store\SqliteStore) {
+            throw new \LogicException('SQLite upgrade needs the SQLite store');
+        }
+        if (!in_array('extra', array_column($store->run('PRAGMA table_info("__zero_seam")')->fetchAll(), 'name'), true)) {
+            $store->applySystemStatements(['ALTER TABLE "__zero_seam" ADD COLUMN "extra" text']);
+        }
+    },
+], ['CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` bigint PRIMARY KEY, `event` text NOT NULL) ENGINE=InnoDB']);
+$systemStore = new \Zero\Store\SqliteStore(\Zero\Store\SqliteStore::connect(':memory:'), $app->schema);
+$systemStore->run('INSERT INTO "__zero_seam" ("id", "event") VALUES (1, ?)', ['automatic']);
+eq('registered tables are installed during standalone store construction', $systemStore->run('SELECT event FROM "__zero_seam"')->fetchColumn(), 'automatic');
+\Zero\SystemTables::apply($db->store());
+$db->store()->run('INSERT INTO "__zero_seam" ("id", "event", "extra") VALUES (1, ?, ?)', ['kept', 'upgraded']);
+\Zero\SystemTables::apply($db->store());
+eq('idempotent system DDL and guarded ALTER preserve data', $db->store()->run('SELECT event, extra FROM "__zero_seam"')->fetch(), ['event' => 'kept', 'extra' => 'upgraded']);
+problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \Zero\SystemTables::apply($db->store())), 500, 'internal');
+
+\Zero\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\Zero\Viewer $viewer, array $provided): void {
+    if ($c === 'posts' && ($data['title'] ?? '') === 'Extension') {
+        eq('write extension distinguishes supplied input from defaults', $provided, ['title' => 'Extension']);
+        // Defaults precede the extension, and the application hook derives authorId afterwards.
+        $data['title'] = $data['status'] . ' ' . $viewer->user['name'];
+        $data['excerpt'] = 'extension';
+    }
+    if ($c === 'posts' && $op === 'update' && ($data['excerpt'] ?? '') === 'revise') {
+        $data['excerpt'] = $existing['excerpt'] . ' revised';
+    }
+    if ($c === 'posts' && $op === 'delete' && $data['excerpt'] === 'extension revised') {
+        throw new \Zero\JsError('extension refused delete');
+    }
+});
+\Zero\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
+    if ($c !== 'posts' || !str_starts_with($row['excerpt'] ?? '', 'extension')) {
+        return;
+    }
+    $db->insert('comments', ['postId' => $row['id'], 'name' => $op, 'body' => $previous['excerpt'] ?? 'created']);
+    if ($row['excerpt'] === 'extension fail') {
+        throw new \Zero\JsError('extension rolled back');
+    }
+    \Zero\Extensions::afterCommit(static function () use ($db, $op, $row): void {
+        $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$op . ':' . $row['excerpt']]);
+    });
+});
+$seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
+[$status, $seam] = req('POST', '/posts', ['title' => 'Extension'], 'alice');
+eq('write extension sees defaults and viewer before the application hook', [$status, $seam['title'], $seam['excerpt'], $seam['authorId']], [201, 'published alice', 'extension', $seamAuthor['id']]);
+$seam = req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'revise'], 'ed')[1];
+eq('update extension receives the previous row', $seam['excerpt'], 'extension revised');
+eq('written extension can nest writes and schedule durable effects', [
+    array_column($db->findMany('comments', ['where' => ['postId' => $seam['id']], 'orderBy' => ['id' => 'asc']]), 'body'),
+    $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id')->fetchAll(\PDO::FETCH_COLUMN),
+], [['created', 'extension'], ['kept', 'create:extension', 'update:extension revised']]);
+isProblem('written extension failure rolls back row and nested effects', req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'extension fail'], 'ed'), 422, 'rejected');
+eq('failed write preserves row and nested data', [
+    $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
+    count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
+    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam"')->fetchColumn(),
+], ['extension revised', 2, 3]);
+isProblem('delete extension runs before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
+
+// The lookup seam primes a page cache which a read transform consumes, including nested relations.
+$cache = [];
+\Zero\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
+    $cache[$c] = array_fill_keys($pks, 'looked up');
+});
+\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
+    if ($viewer === null) {
+        return $rows;
+    }
+    foreach ($rows as &$row) {
+        if ($c === 'posts' && $row['excerpt'] === 'extension revised') {
+            $row['excerpt'] = $cache[$c][$row['id']] . (isset($row['comments']) ? ' after with' : ' before with');
+            unset($row['authorId'], $row['cover']);
+        } elseif ($c === 'comments' && in_array($row['name'], ['create', 'update'], true)) {
+            $row['body'] = $cache[$c][$row['id']] . ($row['approved'] === true ? ' decoded' : ' raw');
+            unset($row['postId']);
+        }
+    }
+    unset($row);
+
+    return $rows;
+});
+$read = req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['with' => 'comments,author,cover'])[1];
+eq('lookup precedes decoded read transforms, before with, at every relation level', [$read['excerpt'], array_column($read['comments'], 'body')], ['looked up before with', ['looked up decoded', 'looked up decoded']]);
+
+eq('read stripping keeps relation linkage private and does not resurrect populated media', [
+    array_key_exists('authorId', $read), array_key_exists('cover', $read),
+    $read['author']['id'], array_key_exists('postId', $read['comments'][0]),
+], [false, false, $seamAuthor['id'], false]);
+$revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
+eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
+eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
+\Zero\Extensions::beforeRead(static function (string $c, array &$opts, ?\Zero\Viewer $viewer): void {
+    if ($c !== 'posts') {
+        return;
+    }
+    if ($viewer !== null && isset($opts['orderBy']['excerpt'])) {
+        throw new \Zero\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
+    }
+    if (isset($opts['seamId'])) {
+        $opts['where'] = ['id' => $opts['seamId']];
+        unset($opts['seamId']);
+    }
+});
+eq('query extensions normalize options before validation and SQL', array_column($db->findMany('posts', ['seamId' => $seam['id']]), 'id'), [$seam['id']]);
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'standalone')), 403, 'forbidden', '/orderBy/excerpt');
+
+\Zero\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
+eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
+\Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
+    App::allow($method, ['POST']);
+
+    return [202, [$segments, $query, $body, $viewer->user['name'] ?? null, $files, $form]];
+});
+eq('route extension owns a prefix before collections and receives all request parts',
+    req('POST', '/posts/a%20b/c/d/e/f', ['raw' => true], 'ed', ['q' => 'value'], ['file' => ['name' => 'x']], ['alt' => 'y']),
+    [202, [['posts', 'a b', 'c', 'd', 'e', 'f'], ['q' => 'value'], '{"raw":true}', 'ed', ['file' => ['name' => 'x']], ['alt' => 'y']]]);
+isProblem('extension errors use the normal problem envelope', req('GET', '/posts'), 405, 'method_not_allowed');
+isProblem('prefix dispatch matches complete segments', req('GET', '/postsExtra'), 404, 'not_found');
+
+\Zero\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\Zero\Viewer $viewer): void {
+    if ($name === 'approveComment' && ($headers['x-proof'] ?? '') !== hash('sha256', $raw)) {
+        throw new \Zero\HttpError(403, 'forbidden', 'Bad raw-body proof');
+    }
+    if ($name === 'publishedCount' && $viewer === null && trim($raw) === '{"reject":true}') {
+        throw new \Zero\JsError('CLI action extension');
+    }
+});
+$seamComment = $db->findFirst('comments', ['where' => ['postId' => $seam['id']]]);
+$raw = '{ "id": ' . $seamComment['id'] . ' }';
+[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['Authorization' => 'Bearer ' . $tokens['ed'], 'X-Proof' => hash('sha256', $raw)]);
+eq('action invocation extension gets exact raw body and normalized headers', [$s, json_decode($out, true)['data']['id']], [200, $seamComment['id']]);
+[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('action extension may reject before handler execution', [$s, json_decode($out, true)['code']], [403, 'forbidden']);
+[$code, $out] = $app->cli(['action', 'publishedCount', '{"reject":true}']);
+eq('trusted CLI actions share the invocation extension', [$code, json_decode($out, true)['error']['code']], [1, 'rejected']);
+\Zero\Extensions::cli('seam', static function (array $args, array $flags) use ($db): array {
+    $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$args[0]]);
+    if (isset($flags['fail'])) {
+        throw new \Zero\JsError('CLI extension rollback');
+    }
+
+    return ['args' => $args, 'flags' => $flags];
+});
+[$code, $out] = $app->cli(['seam', 'saved', '--mode=local']);
+eq('CLI extension runs through the canonical envelope', [$code, json_decode($out, true)['data']], [0, ['args' => ['saved'], 'flags' => ['mode' => 'local']]]);
+$app->cli(['seam', 'discarded', '--fail']);
+eq('CLI extension effects join the command transaction', $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn(), 'saved');
 
 finish('blog_test');

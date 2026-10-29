@@ -108,6 +108,8 @@ final class CompileOnlyStore implements Store
         return $this->sources[$collection];
     }
 
+    public function afterCommit(callable $fn): void { throw new \LogicException('compile only'); }
+    public function applySystemStatements(array $statements): void { throw new \LogicException('compile only'); }
     public function transaction(callable $fn): mixed { throw new LogicException('compile only'); }
     public function select(string $collection, array $q): array { throw new LogicException('compile only'); }
     public function insert(string $collection, array $values): int|string { throw new LogicException('compile only'); }

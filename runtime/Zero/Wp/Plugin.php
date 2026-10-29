@@ -128,7 +128,7 @@ final class Plugin
 
     private function migrator(): Migrator
     {
-        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations');
+        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations', $this->schema);
     }
 
     private function schemaOption(): string

@@ -40,6 +40,27 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
   // A core-side status change needs no sync: the next read sees it.
   wp("post", "update", String(id), "--post_status=draft");
   assert.equal((await ok("GET", `/posts/${id}`, { as: "editor" })).status, "draft");
+  const extensionRows = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    \\Zero\\Extensions::onWritten(static function (string $op, string $c, array $row) use ($db): void {
+      if ($c === 'posts' && str_starts_with($row['title'], 'Editor extension')) {
+        $db->insert('comments', ['postId' => ${id}, 'name' => $op, 'body' => $row['title']]);
+      }
+    });
+    $id = wp_insert_post(['post_type' => 'zero_posts', 'post_status' => 'publish', 'post_title' => 'Editor extension']);
+    wp_update_post(['ID' => $id, 'post_title' => 'Editor extension updated']);
+    wp_delete_post($id, true);
+    echo wp_json_encode($db->findMany('comments', [
+      'where' => ['postId' => ${id}, 'name' => ['in' => ['create', 'update', 'delete']]],
+      'columns' => ['name' => true, 'body' => true], 'orderBy' => ['id' => 'asc']
+    ]));
+  `));
+  assert.deepEqual(extensionRows, [
+    { name: "create", body: "Editor extension" },
+    { name: "update", body: "Editor extension updated" },
+    { name: "delete", body: "Editor extension updated" },
+  ]);
 });
 
 test("Zero's rules block an editor save with Zero's message", async () => {

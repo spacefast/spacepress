@@ -52,6 +52,17 @@ final class SqliteStore implements Store
                 $pdo->exec($ddl);
             }
         }
+        \Zero\SystemTables::apply($this);
+    }
+
+    public function applySystemStatements(array $statements): void
+    {
+        if ($this->inTransaction) {
+            throw new \LogicException('System DDL cannot run inside a transaction');
+        }
+        foreach ($statements as $statement) {
+            $this->pdo->exec($statement);
+        }
     }
 
     /** Open (and configure) a SQLite connection. */
@@ -96,14 +107,6 @@ final class SqliteStore implements Store
         try {
             $result = $fn();
             $this->pdo->exec('COMMIT');
-            $this->inTransaction = false;
-            $after = $this->afterCommit;
-            $this->afterCommit = $this->onRollback = [];
-            foreach ($after as $cb) {
-                $cb();
-            }
-
-            return $result;
         } catch (\Throwable $e) {
             try {
                 $this->pdo->exec('ROLLBACK');
@@ -118,6 +121,14 @@ final class SqliteStore implements Store
             }
             throw $e;
         }
+        $this->inTransaction = false;
+        $after = $this->afterCommit;
+        $this->afterCommit = $this->onRollback = [];
+        foreach ($after as $cb) {
+            $cb();
+        }
+
+        return $result;
     }
 
     /** Run $cb once the outermost transaction commits (immediately when none is open). */
@@ -138,7 +149,12 @@ final class SqliteStore implements Store
 
     public function select(string $collection, array $q): array
     {
-        return $this->run($q['sql'], $q['params'])->fetchAll();
+        $rows = $this->run($q['sql'], $q['params'])->fetchAll();
+        if ($this->schema->hasCollection($collection)) {
+            \Zero\Extensions::lookup($collection, array_column($rows, $this->schema->collection($collection)['primaryKey']));
+        }
+
+        return $rows;
     }
 
     public function insert(string $collection, array $values): int|string

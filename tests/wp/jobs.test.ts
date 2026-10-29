@@ -3,6 +3,9 @@
 // plus Idempotency-Key replay instead of re-running.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { api, auth, ok, problem, run, sql, wp, zero } from "./env.ts";
 
 const jobRow = (id: string) => sql(`SELECT state, attempts, runAt, lastError FROM wp_zero__jobs WHERE id = '${id}'`)[0];
@@ -62,7 +65,31 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   assert.deepEqual({ state: dead.state, attempts: dead.attempts }, { state: "dead", attempts: "2" });
   assert.match(dead.lastError, /stamp failed on attempt 2/);
   assert.deepEqual(actions(id), ["complete", "complete"], "a dead job schedules nothing more");
+  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_jobNotes WHERE id = ${note.id}`), [{ stamped: "NULL" }], "each failed attempt's write rolled back");
   assert.deepEqual(zero("jobs", "list", "--state=dead").map((j: { id: string }) => j.id).filter((j: string) => j === id), [id]);
+});
+
+test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
+  const key = `race-${run}`;
+  // Each process holds its transaction open after enqueueing to widen the overlap; the assertion holds
+  // for every interleaving (both callers must end up with the one job), so it never depends on timing.
+  const enqueue = () => new Promise<string>((resolve, reject) => {
+    const child = spawn(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["wp", "eval", `
+      $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
+      $id = $db->transaction(static function () {
+        $r = \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}']);
+        usleep(1500000);
+        return $r['id'];
+      });
+      echo $id;`], { stdio: ["ignore", "pipe", "inherit"] });
+    let out = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.on("close", (code) => (code === 0 ? resolve(out.trim()) : reject(new Error(`wp eval exited ${code}`))));
+  });
+  const ids = await Promise.all([enqueue(), enqueue()]);
+  assert.equal(ids[0], ids[1], "both callers got the same job id");
+  assert.deepEqual(sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
 });
 
 test("once() and Idempotency-Key replay instead of running again", async () => {

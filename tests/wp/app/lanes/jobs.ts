@@ -42,7 +42,11 @@ export const config = {
       input: { noteId: integer().notNull(), fail: boolean().notNull().default(false) },
       retries: 2,
       handler: async (input, ctx) => {
-        if (input.fail) throw new Error(`stamp failed on attempt ${ctx.attempt}`);
+        if (input.fail) {
+          // Write first: the failure must roll this back on WordPress's connection.
+          await db.update(jobNotes).set({ stamped: `partial ${ctx.attempt}` }).where({ id: input.noteId });
+          throw new Error(`stamp failed on attempt ${ctx.attempt}`);
+        }
         await db.update(jobNotes).set({ stamped: `${ctx.jobId}:${ctx.attempt}` }).where({ id: input.noteId });
       },
     }),

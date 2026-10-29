@@ -20,13 +20,28 @@ final class Receipts
 {
     public const MAX_KEY = 64;
 
-    /** `once(key, fn)`: scope 'fn', keyed per calling user. */
+    /** Fingerprint of the operation input that once() calls are made for (§6.1: same key + different input → 409). */
+    private static string $fingerprint = '';
+
+    /** Run $fn with once() bound to this input: the action/create body, or the job's input. */
+    public static function withFingerprint(string $hash, callable $fn): mixed
+    {
+        $previous = self::$fingerprint;
+        self::$fingerprint = $hash;
+        try {
+            return $fn();
+        } finally {
+            self::$fingerprint = $previous;
+        }
+    }
+
+    /** `once(key, fn)`: scope 'fn', keyed per calling user, bound to the current operation's input. */
     public static function once(string $scope, mixed $key, callable $fn): mixed
     {
         if (!is_string($key)) {
             throw new \Zero\JsError('once key must be a string', 'TypeError');
         }
-        $stored = self::remember($scope, self::key($key, ''), (int) (db()->actor()['id'] ?? 0), hash('sha256', ''),
+        $stored = self::remember($scope, self::key($key, ''), (int) (db()->actor()['id'] ?? 0), self::$fingerprint ?: hash('sha256', ''),
             static fn (): array => ['data' => $fn()]);
 
         return $stored['data'] ?? null;
@@ -36,6 +51,7 @@ final class Receipts
     public static function around(string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $next): Response
     {
         $key = $headers['idempotency-key'] ?? null;
+        $next = static fn (): Response => self::withFingerprint(hash('sha256', $rawBody), $next);
         if ($key === null || (str_starts_with($scope, 'action:') && !($spec['idempotent'] ?? false))) {
             return $next();
         }
@@ -84,12 +100,13 @@ final class Receipts
                     throw new HttpError(409, 'outcome_unknown', 'A request with this idempotency key started but has no recorded outcome');
                 }
                 $replayed = true;
-                $result = Js::jsonParse((string) $existing['result']);
+                $result = unserialize((string) $existing['result'], ['allowed_classes' => [\stdClass::class]]);
 
                 return is_array($result) ? $result : [];
             }
             $result = $run();
-            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [Js::jsonStringify($result) ?? '{}', $scope, $key, $userId]);
+            // serialize() keeps empty objects and lists apart, so a replay is byte-identical.
+            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($result), $scope, $key, $userId]);
 
             return $result;
         });

@@ -40,18 +40,29 @@ final class Runner
         $attempt = (int) $locked['attempts'] + 1;
         $previous = $db->actor();
         $db->setActor(null);
+        $committed = false;
         try {
-            $db->transaction(static function () use ($locked, $attempt, $id, $db): void {
-                $spec = Jobs::spec((string) $locked['job']);
+            $spec = Jobs::spec((string) $locked['job']);
+            $input = Js::jsonParse((string) $locked['input']);
+            Receipts::withFingerprint(hash('sha256', (string) $locked['input']), static fn () => $db->transaction(static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
+                // First commit callback: anything after it (other features' callbacks) runs on committed state.
+                \Zero\Extensions::afterCommit(static function () use (&$committed): void {
+                    $committed = true;
+                });
                 $fn = '\\ZeroApp\\' . $spec['handler'];
-                $input = Js::jsonParse((string) $locked['input']);
                 $fn(is_array($input) ? $input : [], ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id]);
-                $now = Js::iso(Js::now());
-                Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, $now, $id]);
-            });
+                Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
+            }));
 
             return ['id' => $id, 'state' => 'done', 'attempts' => $attempt];
         } catch (\Throwable $e) {
+            if ($committed) {
+                // The handler's writes and `done` are committed; retrying would repeat them.
+                error_log('[zero] job ' . $id . ': a commit callback failed: ' . $e->getMessage());
+
+                return ['id' => $id, 'state' => 'done', 'attempts' => $attempt];
+            }
+
             return self::fail($locked, $attempt, $e);
         } finally {
             $db->setActor($previous);
@@ -70,7 +81,7 @@ final class Runner
             Storage::run(
                 $dead
                     ? 'UPDATE {jobs} SET "state" = \'dead\', "attempts" = ?, "lastError" = ?, "dedupe" = NULL, "lockedAt" = NULL, "doneAt" = ? WHERE "id" = ?'
-                    : 'UPDATE {jobs} SET "state" = \'failed\', "attempts" = ?, "lastError" = ?, "runAt" = ?, "lockedAt" = NULL WHERE "id" = ?',
+                    : 'UPDATE {jobs} SET "state" = \'failed\', "attempts" = ?, "lastError" = ?, "runAt" = ?, "dedupe" = NULL, "lockedAt" = NULL WHERE "id" = ?',
                 [$attempt, $error, $dead ? Js::iso(Js::now()) : $runAt, $id],
             );
             if (!$dead) {

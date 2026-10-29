@@ -67,10 +67,11 @@ final class Storage
         $tail = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
         \Zero\SystemTables::register('__zero_outbox', [
             'CREATE TABLE IF NOT EXISTS "__zero_outbox" ("id" text PRIMARY KEY NOT NULL, "job" text NOT NULL, "input" text NOT NULL, "key" text, "runAt" text NOT NULL, "createdAt" text NOT NULL)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS "__zero_outbox_key" ON "__zero_outbox" ("job", "key")',
         ], [
-            "CREATE TABLE IF NOT EXISTS `{prefix}zero__outbox` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `runAt` CHAR(24) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) $tail",
+            "CREATE TABLE IF NOT EXISTS `{prefix}zero__outbox` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `runAt` CHAR(24) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `job_key` (`job`, `key`)) $tail",
         ]);
-        // `dedupe` is the key while the job can still run (pending/running/failed) and NULL after;
+        // `dedupe` is the key while the job is pending or running (§6.1) and NULL otherwise;
         // UNIQUE(job, dedupe) is the one dedupe mechanism on both dialects (NULLs never collide).
         \Zero\SystemTables::register('__zero_jobs', [
             'CREATE TABLE IF NOT EXISTS "__zero_jobs" ("id" text PRIMARY KEY NOT NULL, "job" text NOT NULL, "input" text NOT NULL, "key" text, "dedupe" text, "state" text NOT NULL, "attempts" integer NOT NULL DEFAULT 0, "runAt" text NOT NULL, "lockedAt" text, "lastError" text, "createdAt" text NOT NULL, "doneAt" text)',

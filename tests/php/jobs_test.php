@@ -39,6 +39,9 @@ file_put_contents("$root/zero/app/functions.php", <<<'PHP'
     function job__notify(array $input, $ctx)
     {
         if (($input['note'] ?? null) === 'fail') {
+            // Writes and enqueues first, so the failure must roll them back.
+            \Zero\db()->insert('comments', ['postId' => $input['postId'], 'name' => 'partial', 'body' => $ctx['jobId']]);
+            \Zero\Jobs\Jobs::enqueue('notify', ['postId' => $input['postId'], 'note' => 'from-failed']);
             throw new \Zero\JsError('notify failed on attempt ' . $ctx['attempt']);
         }
         \Zero\db()->insert('comments', ['postId' => $input['postId'], 'name' => 'job', 'body' => $ctx['jobId'] . ':' . $ctx['attempt'] . ':' . ($ctx['user'] === null ? 'nobody' : 'someone')]);
@@ -54,7 +57,9 @@ file_put_contents("$root/zero/app/functions.php", <<<'PHP'
 
     function action__remember(array $input, $ctx)
     {
-        return \Zero\Jobs\Receipts::once('fn', 'remember-' . $input['note'], fn () => ['note' => $input['note'], 'at' => count(\Zero\db()->findMany('comments'))]);
+        $key = 'remember-' . ($input['note'] === 'a2' ? 'a' : $input['note']);
+
+        return \Zero\Jobs\Receipts::once('fn', $key, fn () => ['note' => $input['note'], 'at' => count(\Zero\db()->findMany('comments')), 'empty' => new \stdClass(), 'list' => []]);
     }
 
     function action__plain(array $input, $ctx)
@@ -127,14 +132,17 @@ $row = $pdo->query("SELECT * FROM \"__zero_jobs\" WHERE \"id\" = '{$failing['id'
 check('a throwing handler fails the attempt and backs off 1 minute', $attempt['state'] === 'failed' && $row['attempts'] === 1
     && $row['runAt'] === '2026-01-01T00:01:00.000Z' && str_contains($row['lastError'], 'notify failed on attempt 1'), $row);
 eq('a failed job is not due before its backoff', Runner::next() === $failing['id'], false);
-eq('a failed job still holds its dedupe key', $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 9], ['key' => 'doomed'])), $failing);
+$during = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 9], ['key' => 'doomed']));
+check('dedupe holds only while pending/running: a failed job frees its key', $during !== $failing, [$during, $failing]);
+$pdo->exec("DELETE FROM \"__zero_jobs\" WHERE \"id\" = '{$during['id']}'");
 putenv('ZERO_NOW=2026-01-01T00:01:00.000Z');
 eq('second attempt fails, backoff 5 minutes', [Runner::run($failing['id'])['state'], $pdo->query("SELECT \"runAt\" FROM \"__zero_jobs\" WHERE \"id\" = '{$failing['id']}'")->fetchColumn()], ['failed', '2026-01-01T00:06:00.000Z']);
 putenv('ZERO_NOW=2026-01-01T00:06:00.000Z');
 $last = Runner::run($failing['id']);
 eq('the third failure (retries: 3) is dead', [$last['state'], $last['attempts']], ['dead', 3]);
 eq('a dead job is never run again', Runner::run($failing['id']), null);
-eq('the failed handler wrote nothing', count($db->findMany('comments', ['where' => ['body' => ['like' => $failing['id'] . '%']]])), 0);
+eq('each failed attempt rolled back its write and its enqueue', [count($db->findMany('comments', ['where' => ['name' => 'partial']])),
+    (int) $pdo->query("SELECT COUNT(*) FROM \"__zero_jobs\" WHERE \"input\" LIKE '%from-failed%'")->fetchColumn(), $outbox()], [0, 0, 0]);
 
 // ---- CLI: list, retry, cancel ------------------------------------------------------------------------------------
 [, $out] = $cli('jobs', 'list', '--state', 'dead');
@@ -155,6 +163,8 @@ eq('the stuck job is pending again', $pdo->query("SELECT \"state\" FROM \"__zero
 $db->insert('comments', ['postId' => $created['data']['id'], 'name' => 'x', 'body' => 'y']);
 [$s2, $r2] = $request('POST', '/actions/remember', ['note' => 'a']);
 check('once(): the second call returns the stored result', $s1 === 200 && $r1 === $r2, [$r1, $r2]);
+eq('a replay keeps {} and [] apart', $app->handle('POST', '/actions/remember', [], '{"note":"a"}')[2], '{"data":{"note":"a","at":' . $r1['data']['at'] . ',"empty":{},"list":[]}}');
+eq('once(): same key, different input → 409 idempotency_mismatch', $request('POST', '/actions/remember', ['note' => 'a2'])[1]['code'] ?? null, 'idempotency_mismatch');
 [, $other] = $request('POST', '/actions/remember', ['note' => 'a'], $editor);
 check('once() is per calling user', $other['data']['at'] !== $r1['data']['at'], [$other, $r1]);
 

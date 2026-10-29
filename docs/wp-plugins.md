@@ -96,7 +96,7 @@ Removing a declaration does not uninstall its existing output directory.
 
 Extraction rejects traversal/absolute paths, backslashes, control characters,
 symlinks/special files, duplicate or case-colliding paths, file/directory conflicts,
-and invalid ZIPs. Limits: 64 MiB downloaded, 256 MiB expanded, 20,000 ZIP entries,
+and inconsistent local/central ZIP headers. Limits: 64 MiB downloaded, 256 MiB expanded, 20,000 ZIP entries,
 60 seconds per acquisition, five redirects. Output trees containing symlinks or
 special files are refused. Builds targeting the same project/output are serialized
 by exclusive lock files; after a killed build, remove the named stale build lock
@@ -164,7 +164,9 @@ uses `tempfile`, config/lock serialization uses `serde`, and URL validation uses
 `url` (these direct dependencies are MIT OR Apache-2.0). Downloaded plugins retain
 their own licenses; deployment/distribution must honor those licenses.
 
-Module-owned tests live in `tests/wp_plugins.rs` and the version comparator's
-unit test. They run the actual Rust CLI against local HTTP/ZIP fixtures and
-inspect emitted artifacts, including a plugin that throws if PHP is executed.
-The existing compiler/runtime suites retain ownership of standalone behavior.
+Module-owned tests live in `tests/wp_plugins.rs` and module unit tests. They run
+the actual Rust CLI against local HTTP/ZIP fixtures and inspect emitted artifacts,
+including a plugin that throws if PHP is executed.
+A local HTTP acquisition test also exercises first-use WordPress.org checksum
+locking, offline reuse, and corrupt-cache rejection. The existing compiler/runtime
+suites retain ownership of standalone behavior.

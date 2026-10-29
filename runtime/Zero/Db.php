@@ -158,7 +158,8 @@ final class Db
         if ($partition !== null && $partition[1] === []) {
             return [];
         }
-        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards);
+        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
+            $viewer === null ? null : fn (string $target): array => $this->readGuards($target, $viewer));
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),

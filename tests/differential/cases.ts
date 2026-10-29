@@ -22,7 +22,7 @@ const RANK = ["subscriber", "author", "editor", "admin"];
 
 export const docs = collection("docs", {
   id: id(),
-  title: text().notNull().validate((v) => v.includes("http://") ? "No links" : v.trim().length === 0 ? "blank" : true),
+  title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
   score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.target}` : undefined)),
   ownerId: integer(),
 }, {
@@ -137,7 +137,9 @@ export default defineConfig({
     recursion: run(() => [fact(5), fact(1)]),
     nullish: run(() => {
       const maybe: string | null = ITEMS[1].tags.length > 0 ? "x" : null;
-      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?"];
+      const message = (flag: boolean): false | string => flag && "present";
+      let template = `a`; template = `b`;
+      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?", message(false), message(true), template];
     }),
     templates: run(() => ITEMS.map(label)),
     templateTernary: run(() => ITEMS.map((i) => `${i.qty > 0 ? i.name : "none"}!` + (i.qty > 5 ? " lots" : ""))),

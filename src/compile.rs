@@ -1634,6 +1634,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Regex,
             ),
             ExprKind::Template(quasis, exprs) => {
+                if exprs.is_empty() {
+                    return Ok(Out::atom(php_str(&quasis[0]), Ty::FreshStrLit(quasis[0].clone())));
+                }
                 let mut parts = Vec::new();
                 if !quasis[0].is_empty() {
                     parts.push(php_str(&quasis[0]));
@@ -1792,16 +1795,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("{} ?? {}", a.wrapped(), b.wrapped()),
                         Ty::union([a.ty.non_null(), b.ty]),
                     ),
-                    LogOp::And | LogOp::Or if a.ty.is_bool() && b.ty.is_bool() => Out::new(
-                        format!(
-                            "{} {} {}",
-                            a.wrapped(),
-                            if *op == LogOp::And { "&&" } else { "||" },
-                            b.wrapped()
-                        ),
-                        Ty::Bool,
-                    ),
                     LogOp::Or | LogOp::And => {
+                        let retain_truthy = *op == LogOp::Or;
+                        let left = truthiness_part(&a.ty, retain_truthy);
+                        let ty = if truthiness_part(&a.ty, !retain_truthy) == Ty::Never {
+                            left
+                        } else {
+                            Ty::union([left, b.ty.clone()])
+                        };
+                        if a.ty.is_bool() && b.ty.is_bool() {
+                            return Ok(Out::new(
+                                format!(
+                                    "{} {} {}",
+                                    a.wrapped(),
+                                    if *op == LogOp::And { "&&" } else { "||" },
+                                    b.wrapped()
+                                ),
+                                ty,
+                            ));
+                        }
                         // `x || y` / `x && y` return an operand, not a boolean.
                         let tmp = self.tmp_var();
                         let test = self.truthy(&Out::new(format!("{tmp} = {}", a.php), a.ty.clone()));
@@ -1809,11 +1821,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             (tmp.clone(), b.wrapped())
                         } else {
                             (b.wrapped(), tmp.clone())
-                        };
-                        let ty = if *op == LogOp::Or {
-                            Ty::union([a.ty.non_null(), b.ty])
-                        } else {
-                            Ty::union([a.ty, b.ty])
                         };
                         Out::new(format!("{} ? {yes} : {no}", paren(&test)), ty)
                     }
@@ -3954,6 +3961,41 @@ fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
         Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
         Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
         _ => widen_fresh_literals(t),
+    }
+}
+
+fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
+    match t {
+        Ty::Union(ts) => Ty::union(ts.iter().map(|t| truthiness_part(t, truthy))),
+        Ty::Bool => Ty::BoolLit(truthy),
+        Ty::BoolLit(value) | Ty::FreshBoolLit(value) if *value == truthy => t.clone(),
+        Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
+        Ty::Null if truthy => Ty::Never,
+        Ty::Null => Ty::Null,
+        Ty::Str if !truthy => Ty::StrLit(String::new()),
+        Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
+        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Never => t.clone(),
+        Ty::Array(_)
+        | Ty::Tuple(_)
+        | Ty::ArrayLiteral(_)
+        | Ty::Obj(_)
+        | Ty::Map(_)
+        | Ty::Fn(..)
+        | Ty::Promise(_)
+        | Ty::Date
+        | Ty::Regex
+        | Ty::Error
+        | Ty::Collection(_)
+        | Ty::Db
+        | Ty::DbQuery
+        | Ty::QueryColl(_)
+        | Ty::Builder(_) => {
+            if truthy {
+                t.clone()
+            } else {
+                Ty::Never
+            }
+        }
     }
 }
 

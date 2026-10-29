@@ -779,7 +779,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

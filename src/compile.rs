@@ -165,6 +165,11 @@ struct Local {
     mutable: bool,
 }
 
+enum PlaceStep<'a> {
+    Field(&'a str),
+    Index,
+}
+
 /// What an identifier in compiled code refers to, resolved through the closure's captured scope.
 enum Resolved {
     Local(Local),
@@ -636,6 +641,64 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return;
             }
         }
+    }
+
+    fn widen_numeric_place(&mut self, target: &Expr) -> Result<()> {
+        fn path<'a>(expr: &'a Expr, steps: &mut Vec<PlaceStep<'a>>) -> Option<&'a str> {
+            match &expr.kind {
+                ExprKind::Ident(name) => Some(name),
+                ExprKind::Member { obj, prop, .. } => {
+                    let root = path(obj, steps)?;
+                    steps.push(PlaceStep::Field(prop));
+                    Some(root)
+                }
+                ExprKind::Index { obj, index, .. } => {
+                    let root = path(obj, steps)?;
+                    steps.push(match &index.kind {
+                        ExprKind::Str(key) => PlaceStep::Field(key),
+                        _ => PlaceStep::Index,
+                    });
+                    Some(root)
+                }
+                ExprKind::NonNull(inner) | ExprKind::As(inner, _) => path(inner, steps),
+                _ => None,
+            }
+        }
+        let mut steps = Vec::new();
+        let Some(root) = path(target, &mut steps) else {
+            return Ok(());
+        };
+        let Resolved::Local(local) = self.resolve(root, target.span)? else {
+            return Ok(());
+        };
+        let mut context = Some(self.fx());
+        while let Some(fx) = context {
+            if let Some(start) = fx
+                .scopes
+                .iter()
+                .position(|scope| scope.get(root).is_some_and(|entry| entry.php == local.php))
+            {
+                let mut views = vec![(root.to_string(), steps.as_slice())];
+                let mut name = root.to_string();
+                for (i, step) in steps.iter().enumerate() {
+                    let PlaceStep::Field(field) = step else { break };
+                    name.push('.');
+                    name.push_str(field);
+                    views.push((name.clone(), &steps[i + 1..]));
+                }
+                // Keep declarations and branch-local narrowed views in agreement.
+                for scope in &mut fx.scopes[start..] {
+                    for (name, remaining) in &views {
+                        if let Some(entry) = scope.get_mut(name) {
+                            entry.ty = widen_numeric_path(&entry.ty, remaining);
+                        }
+                    }
+                }
+                break;
+            }
+            context = fx.outer.as_deref_mut();
+        }
+        Ok(())
     }
 
     fn resolve(&mut self, name: &str, span: Span) -> Result<Resolved> {
@@ -1852,6 +1915,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Update { inc, prefix, target } => {
                 let t = self.place(target)?;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
+                self.widen_numeric_place(target)?;
                 let o = if *inc { "++" } else { "--" };
                 Out::new(
                     if *prefix {
@@ -2289,7 +2353,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Some(AssignOp::Bin(b)) => {
                 let r = self.binary(b, t.clone(), v, span)?;
-                if !assignable(&r.ty, &t.ty) {
+                if r.ty.is_num() && t.ty.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))) {
+                    self.widen_numeric_place(target)?;
+                } else if !assignable(&r.ty, &t.ty) {
                     return err(
                         span,
                         format!(
@@ -2949,7 +3015,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
             Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => self.array_method(&recv, m, args, span, m_span)?,
-            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => match m {
+            t if t.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv
@@ -3961,6 +4027,23 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
         J::String(s) => Ty::FreshStrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
         J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
+    }
+}
+
+fn widen_numeric_path(t: &Ty, path: &[PlaceStep<'_>]) -> Ty {
+    match (t, path.split_first()) {
+        (Ty::Union(items), _) => Ty::union(items.iter().map(|t| widen_numeric_path(t, path))),
+        (Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date, None) => Ty::Num,
+        (Ty::Obj(fields), Some((PlaceStep::Field(field), rest))) => {
+            let mut fields = fields.clone();
+            if let Some((ty, _)) = fields.get_mut(*field) {
+                *ty = widen_numeric_path(ty, rest);
+            }
+            Ty::Obj(fields)
+        }
+        (Ty::Array(ty), Some((PlaceStep::Index, rest))) => Ty::Array(Box::new(widen_numeric_path(ty, rest))),
+        (Ty::Map(ty), Some((_, rest))) => Ty::Map(Box::new(widen_numeric_path(ty, rest))),
+        _ => t.clone(),
     }
 }
 

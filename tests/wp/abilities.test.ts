@@ -116,6 +116,20 @@ test("list input typed by core over GET reaches Zero typed inside AND/OR/NOT", a
   assert.equal(media.status, 200, JSON.stringify(media.json));
 });
 
+test("a GET filter deeper than core types is refused; as a JSON string it matches REST at any depth", async () => {
+  for (const op of ["isNull", "isNotNull"]) {
+    const where = { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] };
+    // Bracketed, `false` would arrive as the truthy string "false" and invert the filter.
+    const refused = await runAbility("blog/posts-list", { where }, "editor", "GET");
+    assert.deepEqual([refused.status, refused.json.code, refused.json.data?.pointer], [400, "zero_invalid_query", "/where"]);
+    const viaAbility = await runAbility("blog/posts-list", { where: JSON.stringify(where) }, "editor", "GET");
+    const viaRest = await ok("GET", `/posts?where=${encodeURIComponent(JSON.stringify(where))}`, { as: "editor" });
+    assert.equal(viaAbility.status, 200, JSON.stringify(viaAbility.json));
+    assert.deepEqual(viaAbility.json.rows.map((r: any) => r.id), viaRest.map((r: any) => r.id));
+    assert.deepEqual(viaRest.map((r: any) => r.id), op === "isNull" ? [] : [postId]);
+  }
+});
+
 test("an ability create runs the pipeline and is visible in /zero/v1", async () => {
   const r = await runAbility("blog/posts-create", { title: `Audit agent ${run}` }, "author");
   assert.equal(r.status, 200, JSON.stringify(r.json));

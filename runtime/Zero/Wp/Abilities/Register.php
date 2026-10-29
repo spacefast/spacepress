@@ -26,6 +26,7 @@ final class Register
     /** @var array<string, true> */
     private static array $names = [];
     private static ?string $sanitizing = null;
+    private static ?string $method = null;
 
     public static function categories(): void
     {
@@ -99,9 +100,26 @@ final class Register
     {
         return static function (mixed $passthrough, mixed $server = null, mixed $request = null) use ($on): mixed {
             self::$sanitizing = $on && $request instanceof \WP_REST_Request ? $request->get_method() : null;
+            if ($on) {
+                self::$method = self::$sanitizing;
+            }
 
             return $passthrough;
         };
+    }
+
+    /** rest_post_dispatch: the request that carried the input is over. */
+    public static function dispatched(mixed $response): mixed
+    {
+        self::$method = null;
+
+        return $response;
+    }
+
+    /** Whether the executing ability's input arrived as a query string (core's GET/DELETE run). */
+    public static function queryString(): bool
+    {
+        return in_array(self::$method, ['GET', 'DELETE'], true);
     }
 
     /** Public view of one descriptor: what core receives, minus callbacks. */

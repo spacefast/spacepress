@@ -18,6 +18,8 @@ final class JsonSchema
     private const ANY = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'];
     private const STRINGS = ['text', 'richText', 'email', 'url', 'slug', 'timestamp', 'date'];
     private const NUMBERS = ['integer', 'real', 'media', 'file'];
+    /** A filter region whose values core leaves untyped in a query string. */
+    public const UNTYPED = ['type' => 'object'];
 
     /** A value of one column. $output widens media references, which `with` may populate. */
     public static function column(array $col, bool $output = false): array
@@ -129,13 +131,19 @@ final class JsonSchema
     }
 
     /**
-     * `where`: per column a value or an operator object (§1.3 grammar), plus AND/OR/NOT, which
-     * repeat the column filters one level down so core types GET query-string values there too.
-     * Deeper groups stay generic objects: typed JSON (POST, MCP) is exact at any depth.
+     * `where`: per column a value or an operator object (§1.3 grammar), AND/OR/NOT one level down,
+     * so core types GET query-string values there. Relation filters and deeper groups are untyped
+     * (`{type: object}`): exact as JSON (POST, MCP, or `where` as a JSON string like REST's
+     * `?where=`), refused over a GET query string (Invoke::untyped), where core leaves strings.
      */
-    public static function where(array $spec, int $depth = 1): array
+    public static function where(array $spec): array
     {
-        return self::filterObject($spec['columns'], $depth);
+        $w = self::filterObject($spec['columns'], 1);
+        foreach (array_keys($spec['relations'] ?? []) as $name) {
+            $w['properties'][(string) $name] = self::UNTYPED;
+        }
+
+        return $w;
     }
 
     /** The media library's filterable columns (§4.6). */
@@ -155,12 +163,12 @@ final class JsonSchema
                 $props[(string) $name] = $f;
             }
         }
-        $nested = $depth > 0 ? self::filterObject($columns, $depth - 1) : ['type' => 'object'];
+        $nested = $depth > 0 ? self::filterObject($columns, $depth - 1) : self::UNTYPED;
         $props['AND'] = ['type' => 'array', 'items' => $nested];
         $props['OR'] = ['type' => 'array', 'items' => $nested];
         $props['NOT'] = $nested;
 
-        return ['type' => 'object', 'properties' => $props];
+        return ['type' => $depth > 0 ? ['object', 'string'] : 'object', 'properties' => $props];
     }
 
     /** `orderBy`: `{ column: "asc" | "desc" }`, in priority order. */
@@ -270,6 +278,12 @@ final class JsonSchema
         return $variants === [] ? ['type' => 'object'] : ['type' => 'object', 'oneOf' => $variants];
     }
 
+    /** Column-level NOT/OR/AND (`{ id: { NOT: { in: [1] } } }`): untyped regions. */
+    private static function logic(): array
+    {
+        return ['NOT' => self::UNTYPED, 'OR' => ['type' => 'array', 'items' => self::UNTYPED], 'AND' => ['type' => 'array', 'items' => self::UNTYPED]];
+    }
+
     /** Value-or-operators for one column; null for kinds that only compare whole values. */
     private static function filter(array $col): ?array
     {
@@ -283,7 +297,7 @@ final class JsonSchema
                 'ne' => ['type' => ['array', 'null'], 'items' => $item],
                 'isNull' => ['type' => 'boolean'],
                 'isNotNull' => ['type' => 'boolean'],
-            ]];
+            ] + self::logic()];
         }
         $scalar = match (true) {
             in_array($type, self::STRINGS, true) => 'string',
@@ -296,7 +310,7 @@ final class JsonSchema
             return null;
         }
         $value = ['type' => [$scalar, 'null']];
-        $ops = ['eq' => $value, 'ne' => $value, 'isNull' => ['type' => 'boolean'], 'isNotNull' => ['type' => 'boolean']];
+        $ops = ['eq' => $value, 'ne' => $value, 'isNull' => ['type' => 'boolean'], 'isNotNull' => ['type' => 'boolean']] + self::logic();
         if ($scalar !== 'boolean') {
             foreach (['gt', 'gte', 'lt', 'lte'] as $op) {
                 $ops[$op] = ['type' => $scalar];

@@ -60,6 +60,10 @@ final class Invoke
             if (isset($op['run'])) {
                 return ($op['run'])($input);
             }
+            if (Register::queryString() && isset($op['input']['properties']['where'], $input['where'])
+                && self::untyped($input['where'], $op['input']['properties']['where'])) {
+                throw HttpError::invalidQuery('This filter nests deeper than a GET query string can type; send `where` as a JSON string', '/where');
+            }
             [$method, $path, $query, $body] = ($op['call'])($input);
             $data = $plugin->app()->invoke($method, $path, $query, $body, self::viewer());
 
@@ -67,6 +71,25 @@ final class Invoke
         } catch (\Throwable $e) {
             return self::error($e);
         }
+    }
+
+    /** True when a non-empty value sits in a schema region core can't type (JsonSchema::UNTYPED). */
+    public static function untyped(mixed $value, array $schema): bool
+    {
+        if ($schema === JsonSchema::UNTYPED) {
+            return is_array($value) && $value !== [];
+        }
+        if (!is_array($value)) {
+            return false;
+        }
+        foreach ($value as $k => $v) {
+            $child = array_is_list($value) ? ($schema['items'] ?? null) : ($schema['properties'][$k] ?? null);
+            if (is_array($child) && self::untyped($v, $child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** An omitted input is `{}`; anything but an object is not an operation input. */

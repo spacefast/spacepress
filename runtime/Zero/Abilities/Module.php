@@ -47,6 +47,7 @@ final class Module
         add_filter('wp_ability_validate_input', [Register::class, 'validate'], 10, 3);
         add_filter('rest_pre_dispatch', Register::sanitizing(true), 0, 3);
         add_filter('rest_request_before_callbacks', Register::sanitizing(false), 0);
+        add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0);
         Extensions::cli('abilities', static fn (): array => array_map(Register::describe(...), Register::operations()));
         Extensions::cli('run', self::run(...));
     }

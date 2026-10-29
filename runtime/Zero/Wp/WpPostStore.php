@@ -74,6 +74,7 @@ final class WpPostStore implements Store
             $type = $def['type'];
             $system = $def['system'] ?? false;
             $refs[$col] = match (true) {
+                $system && in_array($col, ['locale', 'translations'], true) => Polylang::ref($col, $this->db->prefix(), $this->schema->locales()['all'] ?? []),
                 $col === $spec['primaryKey'] => new ColumnRef('{a}.ID', '', '', 'scalar'),
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
@@ -95,6 +96,10 @@ final class WpPostStore implements Store
                 in_array($type, ['group', 'repeater', 'blocks'], true) => new ColumnRef('NULL', $m($col), "NULLIF(NULLIF({j}.meta_value, ''), '0')", 'json'),
                 default => new ColumnRef($v, $m($col), $v, 'scalar'),
             };
+        }
+
+        if ($spec['localized'] ?? false) {
+            $refs['translationGroup'] = Polylang::ref('translationGroup', $this->db->prefix(), []); // the group lives in Polylang
         }
 
         return new Source(
@@ -222,6 +227,9 @@ final class WpPostStore implements Store
         $id = (int) $id;
         $this->db->touchPost($id);
         $this->writeMeta($spec, $id, $values);
+        if (isset($values['locale']) && ($spec['localized'] ?? false)) {
+            $this->db->core(static fn () => Polylang::assign($collection, $id, (string) $values['locale']));
+        }
         clean_post_cache($id);
 
         return $id;

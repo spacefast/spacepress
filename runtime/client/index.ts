@@ -5,7 +5,7 @@
 // bundlers run it as-is. Wire format: design §4.8 / §7.
 
 import { SCHEMA } from "./schema.ts";
-import type { Actions, Collections, Globals, Media, PrivateFile, RevisionSummary, Status, User } from "./types.ts";
+import type { Actions, Collections, Globals, Locale, Media, PrivateFile, RevisionSummary, Status, User } from "./types.ts";
 
 export type * from "./types.ts";
 export { SCHEMA };
@@ -68,6 +68,10 @@ type StatusQuery<K extends CollectionKey> = CollectionDescriptors[K]["drafts"] e
   ? { /** Shorthand for `where: { status }` (ANDed with `where`). */ status?: Status }
   : {};
 
+type LocaleQuery<K extends CollectionKey> = CollectionDescriptors[K]["localized"] extends true
+  ? { /** Rows in this locale, falling back to the default locale per translation group; `"*"` = every row. Default: the default locale. */ locale?: Locale | "*" }
+  : {};
+
 export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
   where?: Collections[K]["filter"];
   /** `{ createdAt: "desc", title: "asc" }` or the wire form `"-createdAt,title"`. */
@@ -75,11 +79,12 @@ export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
   limit?: number;
   offset?: number;
   with?: W;
-} & StatusQuery<K>;
+} & StatusQuery<K> & LocaleQuery<K>;
 
 export interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = {}>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
-  get<const W extends Collections[K]["with"] = {}>(id: IdOf<K>, q?: { with?: ExactWith<K, W> }): Promise<RowWith<K, W>>;
+  /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
+  get<const W extends Collections[K]["with"] = {}>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;
@@ -257,6 +262,7 @@ function listParams(q: Json | undefined): URLSearchParams {
   if (!q) return p;
   if (q.where !== undefined) p.set("where", JSON.stringify(q.where));
   if (typeof q.status === "string") p.set("status", q.status);
+  if (typeof q.locale === "string") p.set("locale", q.locale);
   if (q.orderBy !== undefined) {
     const order = orderParam(q.orderBy);
     if (order) p.set("orderBy", order);
@@ -328,7 +334,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const one = (id: string | number) => `${path}/${seg(id)}`;
     return {
       list: (q?: Json) => request("GET", path, { query: listParams(q) }),
-      get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q?.with ? { with: q.with } : undefined) }),
+      get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
       update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
       delete: (id: string | number) => request("DELETE", one(id)),

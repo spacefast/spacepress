@@ -31,6 +31,7 @@ mod types;
 mod unlanded;
 mod value;
 mod wp_plugins;
+mod wpml_config;
 
 use schema::Target;
 use std::path::PathBuf;

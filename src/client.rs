@@ -239,7 +239,8 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s.push_str(
         "export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }\n",
     );
-    s.push_str("export type Status = \"draft\" | \"published\" | \"scheduled\";\n\n");
+    s.push_str("export type Status = \"draft\" | \"published\" | \"scheduled\";\n");
+    let _ = writeln!(s, "export type Locale = {};\n", locale_ts(schema));
 
     for c in schema.collections.values() {
         collection_types(&mut s, c, &names, schema);
@@ -306,6 +307,21 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s
 }
 
+/// The configured locales as a TS union (`never` without `locales`).
+fn locale_ts(schema: &Schema) -> String {
+    let all: Vec<String> = schema
+        .locales
+        .as_ref()
+        .and_then(|l| l["all"].as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).map(lit).collect())
+        .unwrap_or_default();
+    if all.is_empty() {
+        "never".into()
+    } else {
+        all.join(" | ")
+    }
+}
+
 fn upper_first(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
@@ -323,20 +339,25 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let row: Vec<String> = c
         .columns
         .values()
-        .map(|col| {
-            format!(
+        .filter(|col| !col.hidden)
+        .map(|col| match col.name.as_str() {
+            // §7.3: locale → id of every row in the translation group.
+            "translations" if c.localized && col.system => {
+                format!("translations: Partial<Record<{}, number>>", locale_ts(schema))
+            }
+            _ => format!(
                 "{}{}: {}",
                 key(&col.name),
                 if may_hide(col) { "?" } else { "" },
                 col_ts(col, false)
-            )
+            ),
         })
         .collect();
     let _ = writeln!(s, "export interface {n} {{ {} }}", row.join("; "));
-    let insert: Vec<String> = c
+    let mut insert: Vec<String> = c
         .columns
         .values()
-        .filter(|col| !col.auto_increment)
+        .filter(|col| !col.auto_increment && !col.hidden && !col.derived)
         .map(|col| {
             // Slugs derive from their source when omitted.
             let opt = col.optional_on_insert() || col.ty == ColType::Slug && col.source.is_some();
@@ -348,8 +369,19 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
             )
         })
         .collect();
+    if c.localized {
+        insert.push("translationOf?: number".into());
+    }
     let _ = writeln!(s, "export interface {n}Insert {{ {} }}", insert.join("; "));
-    let _ = writeln!(s, "export type {n}Patch = Partial<{n}Insert>;");
+    if c.localized {
+        // `locale` is fixed per row; `translationOf` only applies on create.
+        let _ = writeln!(
+            s,
+            "export type {n}Patch = Partial<Omit<{n}Insert, \"locale\" | \"translationOf\">>;"
+        );
+    } else {
+        let _ = writeln!(s, "export type {n}Patch = Partial<{n}Insert>;");
+    }
 
     // With: relations (true or nested options) and media columns (true).
     let mut with = Vec::new();
@@ -372,6 +404,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let mut filter: Vec<String> = c
         .columns
         .values()
+        .filter(|col| !col.hidden && !col.derived)
         .map(|col| format!("{}?: {}", key(&col.name), filter_ts(col)))
         .collect();
     for r in c.relations.values() {
@@ -385,7 +418,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let order: Vec<String> = c
         .columns
         .values()
-        .filter(|col| !col.ty.is_json_kind() && !col.ty.is_list_kind())
+        .filter(|col| !col.ty.is_json_kind() && !col.ty.is_list_kind() && !col.hidden)
         .map(|col| lit(&col.name))
         .collect();
     let _ = writeln!(
@@ -472,6 +505,7 @@ pub fn schema_ts(schema: &Schema) -> String {
             "primaryKey": c.primary_key().map(|p| p.name.clone()).unwrap_or_else(|| "id".into()),
             "drafts": c.drafts,
             "revisions": c.revisions,
+            "localized": c.localized,
             "relations": rels,
             "media": media,
             "mediaList": media_multiple,

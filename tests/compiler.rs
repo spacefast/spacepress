@@ -1156,6 +1156,13 @@ fn phase2_schema_and_closures_match_the_contract() {
         }
         assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
     }
+    // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
+    let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
+    assert_eq!(
+        std::fs::read_to_string(&wpml).expect("localized post types ship wpml-config.xml"),
+        std::fs::read_to_string(root().join("tests/fixtures/phase2.wpml-config.xml")).unwrap(),
+        "wpml-config.xml drifted"
+    );
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args([
             "--strict",

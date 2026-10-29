@@ -362,6 +362,9 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
             }
         } else {
             write(&directory.join("zero/app/schema.php"), &schema_php)?;
+            if let Some(wpml) = crate::wpml_config::render(&built.schema) {
+                write(&directory.join("wpml-config.xml"), wpml)?;
+            }
             write(&directory.join("zero/app/functions.php"), &built.functions_php)?;
             copy_sql(
                 &migrations_dir(project).join("wp"),

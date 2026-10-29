@@ -335,7 +335,15 @@ pub fn json_ty(c: &Column) -> Ty {
 }
 
 pub fn row_of(c: &Collection) -> Ty {
-    columns_row(&c.columns, &json_ty)
+    let mut row = columns_row(&c.columns, &json_ty);
+    if c.localized
+        && let Ty::Obj(fields) = &mut row
+        && let Some(t) = fields.get_mut("translations")
+    {
+        // §7.3: derived locale → id of every row in the translation group.
+        t.0 = Ty::Map(Box::new(Ty::Num));
+    }
+    row
 }
 
 pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -353,7 +361,16 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     let c = &schema.collections[table];
-    columns_insert(&c.columns, &json_ty)
+    let mut t = columns_insert(&c.columns, &json_ty);
+    if c.localized
+        && let Ty::Obj(fields) = &mut t
+    {
+        // §7.3: system columns aren't written; `translationOf` joins another row's group on create.
+        fields.shift_remove("translations");
+        fields.shift_remove("translationGroup");
+        fields.insert("translationOf".into(), (Ty::Num.nullable(), true));
+    }
+    t
 }
 
 pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {

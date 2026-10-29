@@ -32,7 +32,7 @@ a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
 | EmDash | `string`, `text`, `number`, `integer`, `boolean`, `datetime`, `json` |
 | Payload | `text`, `textarea`, `email`, `number`, `checkbox`, `date`, `json`, string-valued `select` (including `hasMany`) |
 | Sanity | `string`, `text`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
-| Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`) |
+| Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`), `media` (including `multiple`), single `reference` |
 
 Required fields (including nonempty required Payload text/multi-selects and EmDash/Sanity strings),
 scalar defaults, supported bounds, uniqueness and collection
@@ -63,6 +63,16 @@ custom table (`editor: false`). The report calls out this storage choice and the
 need to review publishing behavior. Import does not adopt existing WordPress
 post types. Original Zero's native `posts`, `pages` and `media` declarations are
 refused because creating new stores would change their ownership.
+
+An original Zero `reference` field `project` becomes an integer column
+`projectId` that references the target's `id`, plus a `project` relation for
+`with`. Original Zero kept a deleted target's id in place; Zero does not keep
+dangling references. An optional reference is cleared when its target is
+deleted (`set null`), and a required reference prevents the delete
+(`restrict`). A `reference` with `multiple: true` is refused: Zero has no
+multi-reference column, so model it as a join collection and move the data
+yourself. Media fields keep their cardinality, and a required multiple media
+field still needs at least one item.
 
 EmDash URL fields are refused because their relative, `mailto:` and `tel:` URL
 policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are also
@@ -123,8 +133,9 @@ The supported subset rejects unknown keys rather than ignoring them. In
 particular, these require a separate port:
 
 - Access/validation/hook callbacks, except the explicit Sanity required rule.
-- Rich text (Portable Text, Lexical and original Zero block bindings), assets,
-  references, nested/custom schemas, globals, localization and custom plugins.
+- Rich text (Portable Text, Lexical and original Zero block bindings), CMS
+  assets and references other than original Zero's single references and media
+  fields, nested/custom schemas, globals, localization and custom plugins.
 - EmDash documents, menus, taxonomies, settings, routes and other seed features.
 - Original Zero `schema` tables, queries, mutations, actions, endpoints, pages,
   auth, connectors, sync bindings and favicon declarations.

@@ -742,3 +742,122 @@ fn json_defaults_with_list_shaped_objects_are_refused_at_the_default() {
     assert_eq!(report["errors"][0]["pointer"], "/collections/0/fields/1/defaultValue");
     assert!(!dir.path().join("app").exists());
 }
+
+/// A migrated original-Zero app with a required `project` and an optional self `helper` reference,
+/// plus one project, a helper task and a task pointing at both.
+fn reference_app() -> (tempfile::TempDir, PathBuf) {
+    migrated_app(
+        "zero",
+        "capsule.ts",
+        r#"import { capsule } from "@spacefast/zero/server";
+export default capsule({ collections: {
+  tasks: { fields: { title: { kind: "text", required: true }, project: { kind: "reference", to: "projects", required: true }, helper: { kind: "reference", to: "tasks" } } },
+  projects: { fields: { title: { kind: "text", required: true } } },
+} });"#,
+    )
+}
+const REFERENCE_SEED: &str = "$p = $app->db->insert('projects', ['title' => 'P'], true)[0];
+    $helper = $app->db->insert('tasks', ['title' => 'Helper', 'projectId' => $p['id']], true)[0];
+    $task = $app->db->insert('tasks', ['title' => 'T', 'projectId' => $p['id'], 'helperId' => $helper['id']], true)[0];";
+
+#[test]
+fn original_zero_references_type_check_as_written() {
+    // Self and circular references need an annotated callback (types/zero: `(): AnyColumn => ...`)
+    // or strict TypeScript loses the collection types (TS7022/TS7024).
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("capsule.ts");
+    std::fs::write(
+        &input,
+        r#"import { capsule } from "@spacefast/zero/server";
+export default capsule({ collections: {
+  tasks: { fields: { title: { kind: "text", required: true }, project: { kind: "reference", to: "projects", required: true }, helper: { kind: "reference", to: "tasks" } } },
+  projects: { fields: { title: { kind: "text", required: true }, lead: { kind: "reference", to: "tasks" } } },
+} });"#,
+    )
+    .unwrap();
+    let config = dir.path().join("app/zero.config.ts");
+    assert!(migrate("zero", &input, &config).status.success());
+    let types = Path::new(env!("CARGO_MANIFEST_DIR")).join("types/zero/index.d.ts");
+    std::fs::write(
+        dir.path().join("app/tsconfig.json"),
+        json!({"compilerOptions": {"target": "ES2022", "lib": ["ES2022"], "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true, "types": [], "paths": {"zero": [types]}}, "include": ["zero.config.ts"]}).to_string(),
+    )
+    .unwrap();
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .arg("-p")
+        .arg(dir.path().join("app"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated configs");
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn original_zero_references_resolve_with_relations() {
+    let (_dir, app) = reference_app();
+    let read = run_php(
+        &app,
+        &format!(
+            "{REFERENCE_SEED} $r = $app->db->findFirst('tasks', ['where' => ['id' => $task['id']], 'with' => ['project' => true, 'helper' => true]]); echo json_encode([$r['project']['title'], $r['helper']['title']]);"
+        ),
+        &Value::Null,
+    );
+    assert_eq!(read, json!(["P", "Helper"]));
+}
+
+#[test]
+fn original_zero_required_references_block_deleting_their_target() {
+    let (_dir, app) = reference_app();
+    let error = run_php(
+        &app,
+        &format!(
+            "{REFERENCE_SEED} try {{ $app->db->delete('projects', ['id' => $p['id']]); echo 'null'; }} catch (\\Zero\\HttpError $e) {{ echo json_encode([$e->status, $e->errorCode]); }}"
+        ),
+        &Value::Null,
+    );
+    assert_eq!(error, json!([409, "reference_violation"]));
+}
+
+#[test]
+fn original_zero_optional_references_clear_when_their_target_goes() {
+    let (_dir, app) = reference_app();
+    let cleared = run_php(
+        &app,
+        &format!(
+            "{REFERENCE_SEED} $app->db->delete('tasks', ['id' => $helper['id']]); echo json_encode($app->db->findFirst('tasks', ['where' => ['id' => $task['id']]])['helperId']);"
+        ),
+        &Value::Null,
+    );
+    assert_eq!(cleared, Value::Null);
+}
+
+#[test]
+fn original_zero_media_fields_keep_their_cardinality() {
+    let (_dir, app) = migrated_app(
+        "zero",
+        "capsule.ts",
+        r#"import { capsule } from "@spacefast/zero/server";
+export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, cover: { kind: "media" }, gallery: { kind: "media", multiple: true, required: true } } } } });"#,
+    );
+    let columns = &schema(&app.join("zero/app/schema.php"))["collections"]["notes"]["columns"];
+    assert_eq!(columns["cover"], json!({"type": "media", "accept": "any"}));
+    assert_eq!(
+        columns["gallery"],
+        json!({"type": "mediaList", "accept": "any", "notNull": true, "rules": {"min": 1}})
+    );
+}
+
+#[test]
+fn original_zero_multiple_references_are_refused_at_the_field() {
+    let error = refused(
+        "zero",
+        "capsule.ts",
+        r#"import { capsule } from "@spacefast/zero/server";
+export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, related: { kind: "reference", to: "notes", multiple: true } } } } });"#,
+    );
+    assert_eq!(error["pointer"], "/collections/notes/fields/related/multiple");
+}

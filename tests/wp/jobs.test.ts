@@ -3,7 +3,7 @@
 // plus Idempotency-Key replay instead of re-running.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { api, auth, ok, problem, run, sql, wp, zero } from "./env.ts";
@@ -85,14 +85,13 @@ function evalProcess(body: string, hold: boolean) {
   let err = "";
   child.stdout.on("data", (c) => (out += c));
   child.stderr.on("data", (c) => (err += c));
-  const exited = new Promise<number>((resolve) => child.on("close", (code) => resolve(code ?? 1)));
+  let code: number | null = null;
+  const exited = new Promise<number>((resolve) => child.on("close", (c) => resolve((code = c ?? 1))));
   const lines = () => out.split("\n").filter(Boolean);
   const until = async (what: string, ok: () => boolean) => {
     const deadline = Date.now() + 30_000;
-    let done = false;
-    exited.then(() => (done = true));
     while (!ok()) {
-      if (done && !ok()) throw new Error(`process exited before ${what}: ${err.slice(-500)}`);
+      if (code !== null && !ok()) throw new Error(`process exited before ${what}: ${err.slice(-500)}`);
       if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
       await new Promise((r) => setImmediate(r));
     }
@@ -101,13 +100,19 @@ function evalProcess(body: string, hold: boolean) {
     ready: () => until("ready", () => lines()[0] === "ready"),
     release: () => child.stdin.end("go\n"),
     result: async () => {
-      const code = await exited;
+      await until("exit", () => code !== null);
       assert.equal(code, 0, err.slice(-1000));
       return JSON.parse(lines().at(-1)!);
     },
     kill: () => child.kill(),
     until,
   };
+}
+
+/** One MariaDB count with a hard timeout, so a stuck database fails the test instead of hanging it. */
+function boundedCount(query: string): number {
+  const out = execFileSync(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["sql", query], { encoding: "utf8", timeout: 10_000 });
+  return Number(out.trim().split("\n")[1]);
 }
 
 /** A holds its transaction after `body`; B runs `body` too; A is released only once B's statement is blocked on A. */
@@ -118,7 +123,7 @@ async function contend(body: string, blockedSql: string) {
     await a.ready();
     // B starts only after A holds its claim, so B's first claim must wait on A's row lock.
     b = evalProcess(body, false);
-    const blocked = () => Number(sql(`SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE '${blockedSql}%'`)[0].n) > 0;
+    const blocked = () => boundedCount(`SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE INFO LIKE '${blockedSql}%'`) > 0;
     await b.until("B to block on A's lock", blocked);
     a.release();
     return [await a.result(), await b.result()];
@@ -134,6 +139,18 @@ test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   assert.equal(ids[0], ids[1], "the waiting caller got the winner's job id");
   assert.deepEqual(sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
   wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
+});
+
+test("job keys compare byte for byte on MariaDB", () => {
+  const ids = JSON.parse(wp("eval", `echo json_encode(\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => [
+    \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run}'])['id'],
+    \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => 'pad-${run} '])['id'],
+    \\Zero\\Jobs\\Receipts::once('fn', 'pad-${run}', fn () => 'plain'),
+    \\Zero\\Jobs\\Receipts::once('fn', 'pad-${run} ', fn () => 'padded'),
+  ]));`));
+  assert.notEqual(ids[0], ids[1], "a trailing space is a different job key");
+  assert.deepEqual(ids.slice(2), ["plain", "padded"], "and a different once() key");
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" LIKE ?', ['pad-${run}%']));`);
 });
 
 test("concurrent first uses of one once() key on MariaDB: one runs, the other gets a definite answer", async () => {

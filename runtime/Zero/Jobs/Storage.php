@@ -82,6 +82,8 @@ final class Storage
     public static function register(): void
     {
         $text = 'COLLATE utf8mb4_bin';
+        // Keys compare byte for byte, like SQLite: a PAD SPACE collation would make "k" and "k " collide.
+        $bytes = 'VARBINARY(764)';
         $tail = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
         \Zero\SystemTables::register('__zero_outbox', [
             'CREATE TABLE IF NOT EXISTS "__zero_outbox" ("id" text PRIMARY KEY NOT NULL, "job" text NOT NULL, "input" text NOT NULL, "key" text, "runAt" text NOT NULL, "createdAt" text NOT NULL)',
@@ -95,12 +97,12 @@ final class Storage
             'CREATE UNIQUE INDEX IF NOT EXISTS "__zero_jobs_dedupe" ON "__zero_jobs" ("job", "dedupe")',
             'CREATE INDEX IF NOT EXISTS "__zero_jobs_due" ON "__zero_jobs" ("state", "runAt")',
         ], [
-            "CREATE TABLE IF NOT EXISTS `{prefix}zero__jobs` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `dedupe` VARCHAR(191) $text NULL, `state` VARCHAR(16) NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `runAt` CHAR(24) NOT NULL, `lockedAt` CHAR(24) NULL, `lastError` TEXT NULL, `createdAt` CHAR(24) NOT NULL, `doneAt` CHAR(24) NULL, PRIMARY KEY (`id`), UNIQUE KEY `dedupe` (`job`, `dedupe`), KEY `due` (`state`, `runAt`)) $tail",
+            "CREATE TABLE IF NOT EXISTS `{prefix}zero__jobs` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` $bytes NULL, `dedupe` $bytes NULL, `state` VARCHAR(16) NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `runAt` CHAR(24) NOT NULL, `lockedAt` CHAR(24) NULL, `lastError` TEXT NULL, `createdAt` CHAR(24) NOT NULL, `doneAt` CHAR(24) NULL, PRIMARY KEY (`id`), UNIQUE KEY `dedupe` (`job`, `dedupe`), KEY `due` (`state`, `runAt`)) $tail",
         ]);
         \Zero\SystemTables::register('__zero_receipts', [
             'CREATE TABLE IF NOT EXISTS "__zero_receipts" ("scope" text NOT NULL, "key" text NOT NULL, "userId" integer NOT NULL, "inputHash" text NOT NULL, "state" text NOT NULL, "result" text, "createdAt" text NOT NULL, PRIMARY KEY ("scope", "key", "userId"))',
         ], [
-            "CREATE TABLE IF NOT EXISTS `{prefix}zero__receipts` (`scope` VARCHAR(191) $text NOT NULL, `key` VARCHAR(191) $text NOT NULL, `userId` BIGINT NOT NULL, `inputHash` CHAR(64) NOT NULL, `state` VARCHAR(16) NOT NULL, `result` LONGTEXT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`scope`, `key`, `userId`), KEY `created` (`createdAt`)) $tail",
+            "CREATE TABLE IF NOT EXISTS `{prefix}zero__receipts` (`scope` VARBINARY(764) NOT NULL, `key` VARBINARY(256) NOT NULL, `userId` BIGINT NOT NULL, `inputHash` CHAR(64) NOT NULL, `state` VARCHAR(16) NOT NULL, `result` LONGTEXT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`scope`, `key`, `userId`), KEY `created` (`createdAt`)) $tail",
         ]);
     }
 }

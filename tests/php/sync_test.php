@@ -183,6 +183,15 @@ eq('a hook that reshapes the write reports normalized with the stored record',
     [$s, $normalized['status'], $normalized['record']['fields']['title']], [201, 'normalized', 'Spaced']);
 eq('normalized digest is the stored record', $normalized['digest'], Canon::digest($normalized['record']));
 
+// A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
+// that viewer pulls, never the trusted row.
+\Zero\Extensions::onRead(static fn (array $rows, string $c, ?\Zero\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
+    ? array_map(static fn (array $r) => array_diff_key($r, ['meta' => true]), $rows) : $rows);
+$hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden ', 'slug' => 'hidden', 'meta' => ['secret' => 1]], 'body' => null];
+[, $answer] = req('POST', '/sync/notes', ['record' => $hidden, 'expect' => 'absent']);
+check('a normalized answer carries only what the viewer reads', !array_key_exists('meta', $answer['record']['fields']), $answer['record']);
+eq('and the digest a pull by that viewer returns', $answer['digest'], pull('notes')['zr_eeeeeeeeeeeeeeeeeeee']['digest']);
+
 // ================================================================ references and validation
 
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];
@@ -211,10 +220,12 @@ $own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slu
 eq('the create rule authorizes a new uid', [$s, $mine['status']], [201, 'applied']);
 eq('a filtered update rule authorizes rows it matches', req('POST', '/sync/notes', ['record' => ['body' => "Edited.\n"] + $own, 'expect' => $mine['digest']], as: 'au')[1]['status'], 'applied');
 $theirs = pull('notes')['zr_cccccccccccccccccccc'];
-isProblem('and refuses rows it does not', req('POST', '/sync/notes', ['record' => ['body' => 'Mine now'] + $theirs['record'], 'expect' => $theirs['digest']], as: 'au'), 403, 'forbidden');
-$leak = req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => 'absent'], as: 'au');
-isProblem('a stale write by a caller who cannot pull', $leak, 409, 'sync_stale');
-check('discloses no current record', !array_key_exists('current', $leak[1]), $leak[1]);
+isProblem('and masks rows it does not, as item routes do', req('POST', '/sync/notes', ['record' => ['body' => 'Mine now'] + $theirs['record'], 'expect' => $theirs['digest']], as: 'au'), 404, 'not_found');
+isProblem('authorization comes before staleness, so a probe learns nothing', req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => 'absent'], as: 'au'), 404, 'not_found');
+isProblem('nor does an anonymous no-op push', req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => $theirs['digest']], as: null), 401, 'unauthenticated');
+$leak = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'au');
+isProblem('a stale write on a row the caller may update', $leak, 409, 'sync_stale');
+check('carries no current record for a caller who cannot pull', !array_key_exists('current', $leak[1]), $leak[1]);
 isProblem('trash needs the delete rule', req('POST', '/sync/notes/trash', ['uid' => $own['uid'], 'expect' => $mine['digest']], as: 'au'), 403, 'forbidden');
 
 // ================================================================ paging and trash

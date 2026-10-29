@@ -33,6 +33,10 @@ export const hooks = {
     async beforeDelete(row) {
       if (row.summary === "keep") throw new HttpError(409, "kept", "this guide is kept");
     },
+    // Fails after the post is already in the trash, so the request must roll the trash back.
+    async afterDelete(row) {
+      if (row.summary === "regret") throw new HttpError(409, "regretted", "this guide came back");
+    },
   },
 };
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */

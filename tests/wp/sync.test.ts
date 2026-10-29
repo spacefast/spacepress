@@ -127,6 +127,15 @@ test("sync on WordPress", async (t) => {
     assert.equal(post.post_status, "draft");
   });
 
+  await t.test("a failure after the post is trashed rolls the trash back", async () => {
+    const regret = { uid: uidOf(6), fields: { ...record.fields, title: `Regret ${run}`, slug: `regret-${run}`, summary: "regret" }, body: null };
+    const { digest: regretDigest } = (await push(regret, "absent")).json.data;
+    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: regretDigest } }, { status: 409, code: "regretted", pointer: undefined });
+    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_zero_uid' AND u.meta_value = '${regret.uid}'`);
+    assert.equal(post.post_status, "draft");
+    assert.deepEqual((await pull("guides")).get(regret.uid), { record: regret, digest: regretDigest, trashed: false }, "the cached read is the restored post too");
+  });
+
   await t.test("a trashed post keeps its uid: nobody else can take it", async () => {
     const parked = { uid: uidOf(5), fields: { ...record.fields, title: `Parked ${run}`, slug: `parked-${run}` }, body: null };
     const { digest: parkedDigest } = (await push(parked, "absent")).json.data;
@@ -152,7 +161,8 @@ test("sync on WordPress", async (t) => {
       $status = $db->transaction(function () use ($app, $db, $other, $id, $record, $seen, $viewer) {
         $db->findFirst('guides', ['where' => ['id' => $id]]);
         $other->query("UPDATE {$GLOBALS['wpdb']->posts} SET post_title = 'Theirs' WHERE ID = $id");
-        return $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => $seen['digest']]), $viewer)->status;
+        $response = $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => $seen['digest']]), $viewer);
+        return [$response->status, array_key_exists('current', json_decode($response->body, true))];
       });
       clean_post_cache($id);
       $title = $db->findFirst('guides', ['where' => ['id' => $id]])['title'];
@@ -162,14 +172,20 @@ test("sync on WordPress", async (t) => {
       $assigned = 'zr_' . str_repeat('e', 20);
       $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_zero_uid', '$assigned')");
       $kept = $db->transaction(fn () => \\Zero\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
-      echo wp_json_encode([$status, $title, $kept, get_post_meta($id, '_zero_uid')]);
+      echo wp_json_encode([...$status, $title, $kept, get_post_meta($id, '_zero_uid')]);
     `));
-    assert.deepEqual(result, [409, "Theirs", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]]);
+    assert.deepEqual(result, [409, false, "Theirs", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]], "stale, no outdated current, their title kept, their uid kept");
   });
 
   await t.test("conversion and merge run on the server", async () => {
     const md = (await ok("POST", "/sync/guides/convert", { as: "editor", body: { direction: "toMarkdown", text: "<!-- wp:paragraph -->\n<p>Hi <b>there</b></p>\n<!-- /wp:paragraph -->" } })).text;
     assert.equal(md, "Hi **there**\n");
+    // WordPress's block registry decides what is static: core/archives renders on the server even with saved fallback HTML.
+    const group = "<!-- wp:group -->\n<div class=\"wp-block-group\"><!-- wp:paragraph -->\n<p>In</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:group -->";
+    assert.equal((await ok("POST", "/sync/guides/convert", { as: "editor", body: { direction: "toHtml", text: group } })).text, "<div class=\"wp-block-group\">\n<p>In</p>\n</div>");
+    const dynamic = await problem("POST", "/sync/guides/convert", { as: "editor", body: { direction: "toHtml", text: "<!-- wp:archives -->\n<ul class=\"wp-block-archives\"><li>Fallback</li></ul>\n<!-- /wp:archives -->" } },
+      { status: 422, code: "not_representable", pointer: undefined });
+    assert.match(dynamic.detail, /core\/archives/);
     assert.deepEqual(await ok("POST", "/sync/guides/merge", { as: "editor", body: { base: "a\n\nb\n", ours: "A\n\nb\n", theirs: "a\n\nB\n" } }), { merged: "A\n\nB\n", conflicts: [] });
   });
 

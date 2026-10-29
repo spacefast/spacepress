@@ -109,26 +109,37 @@ final class Routes
             throw HttpError::invalidInput('record.uid must match zr_ + 20 hex characters', '/uid');
         }
         $expect = self::expect($in);
+        $fields = is_array($record['fields'] ?? null) ? $record['fields'] : [];
         $current = self::current($collection, $uid, $viewer);
-        // Restoring from the trash is a push of a record the site no longer lists as live.
+        // Restoring from the trash is a push of a record the site no longer lists as live; a refusal
+        // below rolls the restore back with the request.
         $restored = $current === null && $expect === 'absent' && Trash::restore($collection, $spec, $uid);
         if ($restored) {
             $current = self::current($collection, $uid, $viewer);
-        } elseif ($expect !== self::digestOf($current) || ($current !== null && !Lock::fresh($collection, $current['row'][$spec['primaryKey']]))) {
+        }
+        // Authorize before answering anything about the row, so stale and unchanged disclose nothing.
+        $current === null
+            ? Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $fields, "create $collection rows")
+            : self::authorizeRow($collection, $spec, 'update', $viewer, $current['row'][$spec['primaryKey']], $fields);
+        if (!$restored && $expect !== self::digestOf($current)) {
             return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+        }
+        if ($current !== null && !Lock::fresh($collection, $current['row'][$spec['primaryKey']])) {
+            // Committed after this request's snapshot, which can't be read past: the client reads it again.
+            return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
         }
         $sent = Wire::record($uid, $record['fields'] ?? [], $record['body'] ?? null);
         if (!$restored && $current !== null && Canon::digest($sent) === $current['digest']) {
             return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
         }
-        $data = Wire::decode($collection, $record);
+        $data = Wire::decode($collection, $record, $current === null);
         $pk = $spec['primaryKey'];
-        // The pipeline authorizes: the create rule for a new uid, the update rule (filters included) otherwise.
+        // The pipeline authorizes the write itself again, with the decoded values.
         $current === null
             ? db()->insert($collection, ['uid' => $uid] + $data, false, $viewer)
-            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer)[0]
-                ?? throw Access::deny($viewer->user, "update this $collection row"));
-        $stored = self::current($collection, $uid, null) ?? throw new \RuntimeException("$collection $uid vanished after write");
+            : db()->update($collection, $data, [$pk => $current['row'][$pk]], false, $viewer);
+        // The answer is what a pull by this viewer returns: same read transforms, same digest.
+        $stored = self::current($collection, $uid, $viewer) ?? throw new \RuntimeException("$collection $uid vanished after write");
         if (!isset($stored['record'])) {
             throw new HttpError(422, 'not_representable', $stored['message'] ?? 'The stored record cannot be written back');
         }
@@ -148,8 +159,7 @@ final class Routes
             throw HttpError::invalidInput('uid must match zr_ + 20 hex characters', '/uid');
         }
         $expect = self::expect($in);
-        $rule = Access::evaluate(Access::collectionRules($spec)['delete'], $viewer, 'delete');
-        if ($rule === false) {
+        if (Access::evaluate(Access::collectionRules($spec)['delete'], $viewer, 'delete') === false) {
             throw Access::deny($viewer->user, "trash $collection rows");
         }
         $current = self::current($collection, $uid, $viewer);
@@ -158,11 +168,12 @@ final class Routes
         }
         $pk = $spec['primaryKey'];
         $id = $current['row'][$pk];
-        if (is_array($rule) && Module::find($collection, ['where' => ['AND' => [[$pk => $id], $rule]], 'limit' => 1]) === []) {
-            throw Access::deny($viewer->user, "trash this $collection row");
-        }
-        if ($expect !== self::digestOf($current) || !Lock::fresh($collection, $id)) {
+        self::authorizeRow($collection, $spec, 'delete', $viewer, $id, null);
+        if ($expect !== self::digestOf($current)) {
             return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+        }
+        if (!Lock::fresh($collection, $id)) {
+            return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
         }
         if (!Trash::trash($collection, $spec, db()->editorRow($collection, $id))) {
             db()->delete($collection, [$pk => $id], false, $viewer);
@@ -238,6 +249,22 @@ final class Routes
         }
     }
 
+    /**
+     * The viewer may $op this existing row: its rule allows every row, or is a filter the row matches.
+     * A row outside the filter is masked as 404, as phase-1 item routes do.
+     */
+    private static function authorizeRow(string $collection, array $spec, string $op, Viewer $viewer, int|string $id, ?array $data): void
+    {
+        $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data);
+        if ($rule === false) {
+            throw Access::deny($viewer->user, "$op $collection rows");
+        }
+        $pk = $spec['primaryKey'];
+        if (is_array($rule) && Module::find($collection, ['where' => ['AND' => [[$pk => $id], $rule]], 'limit' => 1]) === []) {
+            throw HttpError::notFound("No such $collection row");
+        }
+    }
+
     private static function digestOf(?array $current): string
     {
         return $current === null ? 'absent' : ($current['digest'] ?? 'refused');
@@ -253,11 +280,14 @@ final class Routes
         return $expect;
     }
 
-    /** 409 sync_stale; `current` (the record now stored, or null when absent) only for callers who may sync-read. */
-    private static function stale(array $spec, Viewer $viewer, ?array $current, string $detail): Response
+    /**
+     * 409 sync_stale with `current` (the record stored now, or null when absent) for callers who may
+     * pull. $current false = changed after this request's snapshot: unknown here, so it is left out.
+     */
+    private static function stale(array $spec, Viewer $viewer, array|false|null $current, string $detail): Response
     {
         $problem = App::problem(new HttpError(409, 'sync_stale', $detail));
-        if (self::maySyncRead($spec, $viewer)) {
+        if ($current !== false && self::maySyncRead($spec, $viewer)) {
             $problem['current'] = $current === null ? null : array_diff_key($current, ['row' => true, 'uid' => true]);
         }
 

@@ -85,17 +85,20 @@ final class Wire
         return $out;
     }
 
-    /** PHP decodes `{}` as an empty array; `fields` is always an object on the wire and in digests. */
+    /**
+     * A record in its one spelling. PHP decodes `{}` as an empty array; `fields` is always an object.
+     * An empty body is null: WordPress can't store a null post_content, and a file has no other empty.
+     */
     public static function record(string $uid, mixed $fields, mixed $body): array
     {
-        return ['uid' => $uid, 'fields' => $fields === [] ? new \stdClass() : $fields, 'body' => $body];
+        return ['uid' => $uid, 'fields' => $fields === [] ? new \stdClass() : $fields, 'body' => $body === '' ? null : $body];
     }
 
     /**
      * A record as a write: the column values it sets (references resolved to ids, body converted to the
      * stored form). Only the keys present in `fields` are set.
      */
-    public static function decode(string $collection, array $record): array
+    public static function decode(string $collection, array $record, bool $create = false): array
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
@@ -110,7 +113,12 @@ final class Wire
                 throw HttpError::invalidInput("Unknown or generated field '$name'", '/fields' . HttpError::seg($name));
             }
             if (self::isTranslations($spec, $name)) {
-                continue; // derived: translation links are made with translationOf, never by sync
+                // Derived, so never written. A new row joins the group of the first peer that already
+                // exists (lane H's translationOf); a peer pushed later links itself the same way.
+                if ($create && ($peer = self::firstPeer($collection, $spec, $value, $record['uid'] ?? null)) !== null) {
+                    $data['translationOf'] = $peer;
+                }
+                continue;
             }
             $ref = $spec['columns'][$name]['references'] ?? null;
             $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value);
@@ -127,6 +135,21 @@ final class Wire
         return $data;
     }
 
+    private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self): int|string|null
+    {
+        if (!is_array($translations)) {
+            throw HttpError::invalidInput('translations must map locales to uids', '/fields/translations');
+        }
+        foreach ($translations as $uid) {
+            if ($uid !== $self && Uid::valid($uid)
+                && ($peer = Module::find($collection, ['where' => ['uid' => $uid], 'limit' => 1])[0] ?? null) !== null) {
+                return $peer[$spec['primaryKey']];
+            }
+        }
+
+        return null;
+    }
+
     private static function markdown(array $spec): bool
     {
         $content = $spec['content'] ?? null;
@@ -137,11 +160,12 @@ final class Wire
     private static function bodyOut(array $spec, array $row): ?string
     {
         $content = $spec['content'] ?? null;
-        if ($content === null || !array_key_exists($content, $row) || $row[$content] === null) {
+        if ($content === null || !array_key_exists($content, $row) || $row[$content] === null || $row[$content] === '') {
             return null;
         }
+        $body = self::markdown($spec) ? Markdown::fromBlocks((string) $row[$content]) : (string) $row[$content];
 
-        return self::markdown($spec) ? Markdown::fromBlocks((string) $row[$content]) : (string) $row[$content];
+        return $body === '' ? null : $body;
     }
 
     private static function bodyIn(array $spec, string $body): string

@@ -698,6 +698,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             TyAnn::Str => Ty::Str,
             TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
             TyAnn::Bool => Ty::Bool,
+            TyAnn::BoolLit(value) => Ty::BoolLit(*value),
             TyAnn::Null | TyAnn::Undefined | TyAnn::Void => Ty::Null,
             TyAnn::Unknown => Ty::Unknown,
             TyAnn::Never => Ty::Never,
@@ -1130,7 +1131,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Switch { disc, cases, span } => {
                 let d = self.expr(disc)?;
                 let d = self.finish_value(d, disc.span)?;
-                if !(d.ty.is_num() || d.ty.non_null().is_str() || d.ty.non_null() == Ty::Bool) {
+                if !(d.ty.is_num() || d.ty.non_null().is_str() || d.ty.non_null().is_bool()) {
                     return err(
                         *span,
                         format!(
@@ -1161,7 +1162,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.fx().switch_depth -= 1;
                     out.push_str(&inner?);
                 }
-                if switch_is_exhaustive(&d.ty, cases, &case_types) {
+                if switch_is_exhaustive(&d.ty, &case_types) {
                     self.fx().exhaustive_switches.insert(*span);
                 }
                 let _ = writeln!(out, "{p}}}");
@@ -1234,7 +1235,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {
                 let v = self.expr(e)?;
                 let v = self.finish_value(v, e.span)?;
-                if v.ty == Ty::Bool || v.ty == Ty::Never {
+                if v.ty.is_bool() || v.ty == Ty::Never {
                     return Ok(v);
                 }
                 err_help(
@@ -1577,7 +1578,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn truthy(&self, v: &Out) -> String {
         match &v.ty {
-            Ty::Bool => v.php.clone(),
+            t if t.is_bool() => v.php.clone(),
             // Objects, arrays, and functions are always truthy; only null is falsy.
             t if t.non_null().all(|x| {
                 matches!(
@@ -1626,7 +1627,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
-            ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::Bool),
+            ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
             ExprKind::Null | ExprKind::Undefined => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => Out::atom(
                 format!("\\Zero\\Js::re({}, {})", php_str(pattern), php_str(flags)),
@@ -1791,7 +1792,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("{} ?? {}", a.wrapped(), b.wrapped()),
                         Ty::union([a.ty.non_null(), b.ty]),
                     ),
-                    LogOp::And | LogOp::Or if a.ty == Ty::Bool && b.ty == Ty::Bool => Out::new(
+                    LogOp::And | LogOp::Or if a.ty.is_bool() && b.ty.is_bool() => Out::new(
                         format!(
                             "{} {} {}",
                             a.wrapped(),
@@ -3930,7 +3931,7 @@ fn php_hint(t: &Ty) -> &'static str {
     match t {
         Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
-        Ty::Bool => "bool ",
+        t if t.is_bool() => "bool ",
         Ty::Num => "int|float ",
         _ => "",
     }
@@ -3940,7 +3941,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
     use serde_json::Value as J;
     match v {
         J::Null => Ty::Null,
-        J::Bool(_) => Ty::Bool,
+        J::Bool(value) => Ty::FreshBoolLit(*value),
         J::Number(_) => Ty::Num,
         J::String(s) => Ty::FreshStrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
@@ -3949,16 +3950,17 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
 }
 
 fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
-    if !mutable && t.all(|t| matches!(t, Ty::StrLit(_) | Ty::FreshStrLit(_))) {
-        t.clone()
-    } else {
-        widen_literal_array(t)
+    match t {
+        Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
+        Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
+        _ => widen_literal_array(t),
     }
 }
 
 fn widen_literal_array(t: &Ty) -> Ty {
     match t {
         Ty::FreshStrLit(_) => Ty::Str,
+        Ty::FreshBoolLit(_) => Ty::Bool,
         Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_literal_array)))),
         Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(widen_literal_array).collect()),
         Ty::Array(t) => Ty::Array(Box::new(widen_literal_array(t))),
@@ -3980,6 +3982,8 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
     }
     match (a, b) {
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
+        (Ty::BoolLit(_) | Ty::FreshBoolLit(_), Ty::Bool) => true,
+        (Ty::BoolLit(x), Ty::FreshBoolLit(y)) | (Ty::FreshBoolLit(x), Ty::BoolLit(y)) => x == y,
         (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
@@ -4037,22 +4041,18 @@ fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> H
     first
 }
 
-fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)], case_types: &[Ty]) -> bool {
-    let has_case = |matches: &dyn Fn(&ExprKind) -> bool| {
-        cases
-            .iter()
-            .any(|(test, _)| test.as_ref().is_some_and(|test| matches(&test.kind)))
-    };
+fn switch_is_exhaustive(ty: &Ty, case_types: &[Ty]) -> bool {
     match ty {
         Ty::Bool => {
-            has_case(&|kind| matches!(kind, ExprKind::Bool(true)))
-                && has_case(&|kind| matches!(kind, ExprKind::Bool(false)))
+            case_types.iter().any(|ty| ty.bool_literal() == Some(true))
+                && case_types.iter().any(|ty| ty.bool_literal() == Some(false))
         }
+        Ty::BoolLit(value) | Ty::FreshBoolLit(value) => case_types.iter().any(|ty| ty.bool_literal() == Some(*value)),
         Ty::StrLit(value) | Ty::FreshStrLit(value) => case_types
             .iter()
             .any(|ty| matches!(ty, Ty::StrLit(case) | Ty::FreshStrLit(case) if case == value)),
-        Ty::Null => has_case(&|kind| matches!(kind, ExprKind::Null | ExprKind::Undefined)),
-        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, cases, case_types)),
+        Ty::Null => case_types.contains(&Ty::Null),
+        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, case_types)),
         Ty::Never => true,
         _ => false,
     }

@@ -315,6 +315,7 @@ pub enum TyAnn {
     Str,
     StrLit(String),
     Bool,
+    BoolLit(bool),
     Null,
     Undefined,
     Void,

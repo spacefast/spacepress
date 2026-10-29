@@ -14,6 +14,8 @@ pub enum Ty {
     /// An inferred literal that widens when stored in a mutable position.
     FreshStrLit(String),
     Bool,
+    BoolLit(bool),
+    FreshBoolLit(bool),
     /// `null` and `undefined` (both PHP null).
     Null,
     /// Values whose shape isn't known (untyped `json()` columns, `JSON.parse`).
@@ -119,6 +121,15 @@ impl Ty {
                 }
             }
         }
+        if out.iter().any(|t| t.bool_literal().is_some())
+            && (out.contains(&Ty::Bool)
+                || out.iter().any(|t| t.bool_literal() == Some(true))
+                    && out.iter().any(|t| t.bool_literal() == Some(false)))
+        {
+            let first = out.iter().position(Ty::is_bool).expect("boolean member");
+            out.retain(|t| !t.is_bool());
+            out.insert(first, Ty::Bool);
+        }
         match out.len() {
             0 => Ty::Never,
             1 => out.pop().expect("one"),
@@ -162,12 +173,24 @@ impl Ty {
         self.all(|t| matches!(t, Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_)))
     }
 
+    pub fn is_bool(&self) -> bool {
+        self.all(|t| matches!(t, Ty::Bool | Ty::BoolLit(_) | Ty::FreshBoolLit(_)))
+    }
+
+    pub fn bool_literal(&self) -> Option<bool> {
+        match self {
+            Ty::BoolLit(value) | Ty::FreshBoolLit(value) => Some(*value),
+            _ => None,
+        }
+    }
+
     pub fn describe(&self) -> String {
         match self {
             Ty::Num => "number".into(),
             Ty::Str => "string".into(),
             Ty::StrLit(s) | Ty::FreshStrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),
+            Ty::BoolLit(value) | Ty::FreshBoolLit(value) => value.to_string(),
             Ty::Null => "null".into(),
             Ty::Unknown => "unknown".into(),
             Ty::Never => "never".into(),
@@ -387,7 +410,11 @@ pub fn user() -> Ty {
 
 /// `ctx` for hooks and actions (§1.7).
 pub fn hook_ctx() -> Ty {
-    obj(&[("user", user().nullable()), ("target", Ty::Str)])
+    obj(&[("user", user().nullable()), ("target", target())])
+}
+
+fn target() -> Ty {
+    Ty::union(["standalone", "wp"].map(|value| Ty::StrLit(value.into())))
 }
 
 pub fn job_ctx() -> Ty {
@@ -414,7 +441,7 @@ pub fn field_access_ctx() -> Ty {
 
 /// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
 pub fn access_ctx(data: Ty) -> Ty {
-    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", Ty::Str), ("op", Ty::Str)]) else {
+    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", target()), ("op", Ty::Str)]) else {
         unreachable!()
     };
     f.insert("data".into(), (data.nullable(), true));
@@ -426,7 +453,7 @@ pub fn validate_ctx() -> Ty {
     obj(&[
         ("data", Ty::Map(Box::new(Ty::Unknown))),
         ("user", user().nullable()),
-        ("target", Ty::Str),
+        ("target", target()),
     ])
 }
 

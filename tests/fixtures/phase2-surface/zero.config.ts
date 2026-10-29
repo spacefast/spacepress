@@ -3,8 +3,11 @@ import type { FieldAccessCtx as FieldContext, JobCtx } from "zero";
 function deny(): never { throw new Error("denied"); }
 const HIDE = "hide";
 const SHOW = "show";
-function constDefault(): boolean { const { value = "show" } = { value: undefined }; switch (value) { case SHOW: return true; } }
-function allowed(flag: boolean): boolean { switch (flag) { case true: return constDefault(); case false: deny(); } }
+const YES = true;
+const NIL = null;
+function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return true; } } }
+function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
+function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": return true; } }
 function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
@@ -16,7 +19,7 @@ const posts = collection("posts", {
   authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),
   seo: group({ fields: { kind: text({ enum: ["a", "b"] }), enabled: boolean(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) } }).showIf({ status: "published" }),
   items: repeater({ fields: { enabled: boolean(), label: text().showIf({ enabled: true }) } }),
-  sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return true; } } }).showIf({ kind: { ne: "hidden" } }) } } }),
+  sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleTarget(ctx); } } }).showIf({ kind: { ne: "hidden" } }) } } }),
   tags: select({ options: ["news", "guide"], multiple: true }).localized(), meta: json().localized(),
 }, { sync: "content/./posts/*.md", agents: true });
 const members = collection("members", { id: id(), email: email().notNull().unique().max(191), name: text() }, { auth: true, access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
@@ -29,7 +32,7 @@ export default defineConfig({
   jobs: { sendWelcome: job({ input: { email: email().notNull(), payload: json().$type<{ message: string }>().notNull(), data: group({ fields: { label: text().default("welcome"), payload: json().$type<{ suffix: string }>() } }) }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { if (visible(input.email)) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
   actions: {
-    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) }),
+    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) && !allowed(null) }),
     widened: action({ input: {}, handler: () => {
       const values = ["a"]; values.unshift("b");
       let choice = values.length > 0 ? "a" : "b"; choice = "c";

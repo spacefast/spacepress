@@ -965,7 +965,7 @@ impl Lowerer {
                 }
                 a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
                 a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
-                a::TSLiteral::BooleanLiteral(_) => TyAnn::Bool,
+                a::TSLiteral::BooleanLiteral(value) => TyAnn::BoolLit(value.value),
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
                     TyAnn::Num
                 }

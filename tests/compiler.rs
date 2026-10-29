@@ -758,6 +758,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
         $update = $fn(['data' => [], 'user' => null, 'target' => 'standalone', 'op' => 'update']);
+        $wpUpdate = $fn(['data' => [], 'user' => null, 'target' => 'wp', 'op' => 'update']);
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
         $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);
@@ -766,7 +767,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $widened, $update, $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
         ])
         .arg(&app)
@@ -776,7 +777,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "defaultMaybe": null, "maybe": null}, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

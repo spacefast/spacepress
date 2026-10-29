@@ -12,10 +12,8 @@ export default defineConfig({
   name: "site",
   target: "wp",
   schema: {},
-  wordpress: {
-    plugins: [
-      { slug: "classic-editor", version: "1.6.7" },
-    ],
+  plugins: {
+    "classic-editor": "1.6.7",
   },
 });
 ```
@@ -44,34 +42,54 @@ zero differences are accepted (the Polylang 3.9 archive declares 3.9.0).
 
 ## Resources and explicit dependencies
 
-The ergonomic WordPress.org declaration expands to this Blueprint v1 resource:
+The package key is the sole installation identity. An exact version string uses
+WordPress.org. A detailed entry can supply the Blueprint v1 resource explicitly:
 
 ```ts
 {
-  slug: "classic-editor",
-  version: "1.6.7",
-  pluginData: {
-    resource: "wordpress.org/plugins",
-    slug: "classic-editor.1.6.7.zip",
+  plugins: {
+    "classic-editor": {
+      version: "1.6.7",
+      pluginData: {
+        resource: "wordpress.org/plugins",
+        slug: "classic-editor.1.6.7.zip",
+      },
+    },
   },
 }
 ```
 
 An explicit archive reference must agree with the declaration's slug and version.
-Floating versions, ranges, tags such as `latest`, and different package identities
-are rejected. Exact versions begin with a digit and may contain ASCII letters,
+Plugins use top-level key/value entries and require exact versions. Floating
+versions, ranges, tags such as `latest`, and different package identities are
+rejected. Exact versions begin with a digit and may contain ASCII letters,
 digits, dots, underscores, plus signs, and hyphens.
 
 For a URL ZIP, supply `pluginData: { resource: "url", url: "https://…" }` and a
 64-character lowercase hexadecimal `sha256`. URLs require HTTPS, except HTTP
-loopback fixture servers; credentials and fragments are rejected. The `slug` is
+loopback fixture servers; credentials and fragments are rejected. The package key is
 the destination directory identity; `version` must match the plugin header.
+For example, this URL declaration installs the same pinned public package:
+
+```ts
+plugins: {
+  "classic-editor": {
+    version: "1.6.7",
+    pluginData: {
+      resource: "url",
+      url: "https://downloads.wordpress.org/plugin/classic-editor.1.6.7.zip",
+    },
+    sha256: "4b2b45b19c61f627ff8730222692a691023dea3435b35b8db95a2418b45ece65",
+  },
+}
+```
+
 The archive must contain one root directory or root-level plugin files, with one
 root PHP `Plugin Name` header. Vendor wrappers with additional nested directories
 must be repackaged. Original plugin license/readme files are preserved.
 
 `requires: ["other-plugin"]` declares build dependencies by slug. Each dependency
-must have its own exact declaration or be supplied by the platform. A plugin's
+must have its own exact package entry or be supplied by the platform. A plugin's
 `Requires Plugins` header must be covered by this list. Zero neither guesses
 versions nor fetches undeclared transitive packages. Duplicate declarations,
 missing dependencies, cycles, and reserved `zero-*` identities fail. Metadata is
@@ -80,7 +98,7 @@ as a deployment activation order, though the build never activates plugins.
 
 ## Output and failure behavior
 
-With `wordpress` present, builds currently use `.zero/wp-content` (`--out` selects
+With `plugins` present, builds currently use `.zero/wp-content` (`--out` selects
 the content root), containing `plugins/<dependency>` alongside the generated app
 plugin. Acquired ZIPs live in `.zero/cache/plugins/<sha256>.zip`; locked archives
 can be reused offline. A corrupt cache entry fails rather than trusting or
@@ -132,7 +150,7 @@ unrelated plugins and serialize the project lock/output while publishing.
 
 Until A3 lands, `emit_wp_with_dependencies` is an opt-in bridge around the existing
 single-plugin emitter. It stages and publishes dependency trees plus the legacy
-`plugins/zero-<name>` and ZIP. Builds without `wordpress` keep their existing
+`plugins/zero-<name>` and ZIP. Builds without `plugins` keep their existing
 `.zero/wp` layout. The bridge emits no second output manifest and does not claim
 to implement the planned three-plugin split. A3 replaces this call site and the
 interim `platform()` pin provider, retaining dependency resolution/acquisition.

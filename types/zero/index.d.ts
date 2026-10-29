@@ -1050,7 +1050,7 @@ export interface ConfigInput<
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. Ignored by standalone output. */
-  wordpress?: { plugins: readonly WordPressPlugin[] };
+  plugins?: Readonly<Record<string, WordPressPlugin>>;
 }
 
 export interface ZeroConfig<
@@ -1128,22 +1128,20 @@ export type WordPressPluginResource =
   | { resource: "url"; url: string };
 
 /** Additional deployable plugin; never activated or executed during the Rust build. */
-export type WordPressPlugin = {
-  /** Destination identity. Generated zero-* identities are reserved. */
-  slug: string;
-  /** Exact plugin header version, including WordPress suffixes, e.g. "5.4" or "5.4-RC1". */
+export type WordPressPlugin = string | ({
+  /** Exact plugin header version, including WordPress suffixes. */
   version: string;
-  /** Explicit dependency identities; each must be declared or supplied by the platform. */
+  /** Dependency identities, each declared here or supplied by the platform. */
   requires?: readonly string[];
 } & (
   | {
-      /** Defaults to the exact WordPress.org ZIP for slug/version. */
+      /** Defaults to the exact WordPress.org ZIP for the map key and version. */
       pluginData?: { resource: "wordpress.org/plugins"; slug: string };
-      /** Optional authored pin; otherwise recorded in zero/wp-plugins.lock.json. */
+      /** Otherwise recorded in zero/wp-plugins.lock.json on first acquisition. */
       sha256?: string;
     }
   | {
       pluginData: { resource: "url"; url: string };
       sha256: string;
     }
-);
+));

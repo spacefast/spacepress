@@ -3,3 +3,4 @@
 
 **/vendor/
 /scripts/.tools/
+runtime/identity/apps/node_modules/

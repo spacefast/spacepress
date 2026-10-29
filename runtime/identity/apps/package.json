@@ -1,0 +1,30 @@
+{
+  "name": "zero-identity-apps",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "13.3.0",
+    "@wordpress/components": "40.1.0",
+    "@wordpress/dataviews": "19.0.0",
+    "@wordpress/theme": "2.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.4"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

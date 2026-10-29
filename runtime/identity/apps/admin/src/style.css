@@ -1,0 +1,311 @@
+#wpcontent {
+  padding-left: 0 !important;
+}
+#wpfooter {
+  display: none;
+}
+#identity-admin {
+  font-family: Inter, system-ui, sans-serif;
+  color: #202520;
+}
+.zi-admin {
+  min-height: calc(100vh - 32px);
+  display: grid;
+  grid-template-columns: 225px 1fr;
+  background: #fff;
+}
+.zi-admin aside {
+  background: #f7f8f5;
+  border-right: 1px solid #e3e7df;
+  padding: 32px 20px;
+  position: relative;
+}
+.zi-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 30px;
+  text-decoration: none;
+  color: #283d2c;
+  padding: 0 12px;
+}
+.zi-logo span {
+  font-size: 19px;
+  font-weight: 600;
+}
+.zi-logo small {
+  display: block;
+  font-size: 11px;
+  color: #81917e;
+  letter-spacing: 0.4px;
+  margin-top: 4px;
+}
+.zi-nav-label {
+  font-size: 9px;
+  font-weight: 650;
+  color: #8c9688;
+  letter-spacing: 1.5px;
+  display: block;
+  margin: 44px 12px 14px;
+}
+.zi-admin nav {
+  display: grid;
+  gap: 5px;
+}
+.zi-admin nav a {
+  padding: 11px 14px;
+  text-decoration: none;
+  color: #667261;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.zi-admin nav a[aria-current] {
+  background: #e7ede0;
+  color: #31482d;
+  font-weight: 600;
+}
+.zi-admin nav a:hover {
+  background: #ecefe8;
+}
+.zi-public-link {
+  display: block;
+  margin: 40px 12px;
+  font-size: 12px;
+  color: #71816b;
+  text-decoration: none;
+}
+.zi-version {
+  font-size: 10px;
+  color: #98a193;
+  margin: 70px 12px 0;
+}
+.zi-admin main {
+  min-width: 0;
+  padding: 40px 42px;
+}
+.zi-admin header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 35px;
+  gap: 20px;
+}
+.zi-breadcrumb {
+  font-size: 11px;
+  color: #8e9989;
+  margin-bottom: 28px;
+}
+.zi-admin h1 {
+  font-size: 29px;
+  font-weight: 550;
+  letter-spacing: -0.8px;
+  color: #252e22;
+  margin: 0 0 12px;
+}
+.zi-admin header p {
+  font-size: 13px;
+  color: #83907c;
+  margin: 0;
+}
+.zi-admin button {
+  cursor: pointer;
+}
+.zi-admin button.zi-primary {
+  background: #32623c;
+  color: white;
+  border: 1px solid #32623c;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.zi-table {
+  border: 1px solid #e5e9e1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.zi-table .dataviews-wrapper {
+  min-height: 360px;
+}
+.zi-cell {
+  display: block;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.zi-table-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 0;
+  color: #8c9885;
+  font-size: 11px;
+}
+.zi-table-foot button {
+  border: 0;
+  background: none;
+  color: #577a47;
+  font-size: 11px;
+}
+.zi-form {
+  padding: 26px;
+  border: 1px solid #e0e6db;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  max-width: 580px;
+}
+.zi-form > .zi-primary {
+  margin-top: 24px;
+}
+.zi-error,
+.zi-notice {
+  padding: 15px;
+  border-radius: 7px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+.zi-error {
+  background: #fff0ec;
+  color: #9a3628;
+}
+.zi-notice {
+  background: #edf5e8;
+  color: #3c6530;
+}
+@media (max-width: 1000px) {
+  .zi-admin {
+    grid-template-columns: 165px 1fr;
+  }
+  .zi-admin main {
+    padding: 25px 18px;
+  }
+  .zi-admin aside {
+    padding: 25px 10px;
+  }
+  .zi-admin header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .zi-logo span {
+    font-size: 15px;
+  }
+}
+.zi-admin-screen #adminmenumain,
+.zi-admin-screen #wpbody-content > .notice,
+.zi-admin-screen #wpbody-content > .update-nag,
+.zi-admin-screen #wpbody-content > div.updated,
+.zi-admin-screen #wpbody-content > div.error {
+  display: none;
+}
+.zi-admin-screen #wpcontent {
+  margin-left: 0;
+}
+.zi-admin-screen #wpbody-content {
+  padding-bottom: 0;
+}
+.zi-admin-screen .zi-table {
+  overflow: auto;
+}
+.zi-admin-screen .zi-cell {
+  max-width: 360px;
+}
+
+.zi-admin-screen .zi-table th button {
+  border: 0;
+  background: transparent;
+}
+.account-layout aside h2 {
+  overflow-wrap: anywhere;
+}
+.zi-form input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0 16px;
+  padding: 10px;
+  border: 1px solid #aebaa6;
+  border-radius: 5px;
+}
+.zi-form code {
+  overflow-wrap: anywhere;
+}
+.zi-form button {
+  margin: 8px 8px 8px 0;
+}
+.zi-admin-screen .zi-table th:last-child,
+.zi-admin-screen .zi-table td:last-child {
+  width: 60px;
+}
+.zi-admin-screen .zi-table .dataviews-view-table {
+  min-width: 620px;
+}
+@media (max-width: 600px) {
+  .zi-admin {
+    display: block;
+  }
+  .zi-admin aside {
+    padding: 16px;
+  }
+  .zi-admin aside nav {
+    display: flex;
+    overflow: auto;
+    gap: 4px;
+  }
+  .zi-admin nav a {
+    white-space: nowrap;
+  }
+  .zi-nav-label,
+  .zi-version,
+  .zi-public-link {
+    display: none;
+  }
+  .zi-logo {
+    margin-bottom: 18px;
+  }
+  .zi-admin main {
+    padding: 24px 16px;
+  }
+  .zi-table .dataviews-wrapper {
+    min-height: 260px;
+  }
+}
+.zi-mobile-records {
+  display: none;
+}
+@media (max-width: 600px) {
+  .zi-table {
+    display: none;
+  }
+  .zi-mobile-records {
+    display: grid;
+    gap: 16px;
+  }
+  .zi-mobile-records > input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #aebaa6;
+    border-radius: 6px;
+  }
+  .zi-mobile-records article {
+    border: 1px solid #e5e9e1;
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .zi-mobile-records small {
+    color: #71816b;
+    text-transform: capitalize;
+  }
+  .zi-mobile-records p {
+    margin: 4px 0 12px;
+    overflow-wrap: anywhere;
+  }
+  .zi-mobile-records button {
+    background: #f0f4ec;
+    border: 1px solid #c8d4c0;
+    padding: 9px;
+    border-radius: 5px;
+  }
+}
+
+.zi-wordpress-link{display:block;margin:-20px 12px 24px;color:#71816b;text-decoration:none;font-size:12px}@media(max-width:600px){.zi-wordpress-link{display:none}}

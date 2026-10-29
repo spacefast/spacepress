@@ -1,0 +1,44 @@
+{
+  "name": "spacefast/zero-identity",
+  "description": "Bundled passkey, JWT and TOTP libraries for the Zero Identity plugin",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.2",
+    "ext-openssl": "*",
+    "ext-sodium": "*",
+    "firebase/php-jwt": "^7.1",
+    "spomky-labs/otphp": "^11.5",
+    "web-auth/webauthn-lib": "^5.3"
+  },
+  "config": {
+    "platform": {
+      "php": "8.2.30"
+    },
+    "sort-packages": true
+  },
+  "extra": {
+    "strauss": {
+      "namespace_prefix": "Zero\\Identity\\Vendor\\",
+      "classmap_prefix": "Zero_Identity_Vendor_",
+      "constant_prefix": "ZERO_IDENTITY_VENDOR_",
+      "target_directory": "vendor-prefixed",
+      "delete_vendor_packages": true,
+      "exclude_from_prefix": {
+        "namespaces": [
+          "Zero\\"
+        ]
+      },
+      "exclude_constants": {
+        "constants": [
+          "ABSPATH",
+          "WP_CONTENT_DIR",
+          "WP_PLUGIN_DIR",
+          "WP_CLI",
+          "WP_UNINSTALL_PLUGIN",
+          "ARRAY_A"
+        ]
+      }
+    }
+  }
+}

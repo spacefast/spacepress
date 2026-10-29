@@ -1,0 +1,69 @@
+# Disposable WordPress + MariaDB + Mailpit for the zero-identity acceptance suite (design §3, §9.5).
+# Credentials are intentionally tracked: they apply only to this throwaway local stack, which holds
+# no customer data and is deleted after every run.
+name: ${IDENTITY_PROJECT:-zero-identity-test}
+services:
+  database:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: identity
+      MARIADB_USER: identity
+      MARIADB_PASSWORD: disposable-identity-test
+      MARIADB_ROOT_PASSWORD: disposable-root-test
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 1s
+      retries: 60
+    tmpfs:
+      - /var/lib/mysql
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "${IDENTITY_MAIL_PORT:-8815}:8025"
+  # Local stand-ins for an external OpenID provider and a webhook endpoint (PHP's built-in server).
+  oidc:
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    command: ["php", "-S", "0.0.0.0:8080", "/opt/identity-tests/fixtures/oidc-provider.php"]
+    volumes:
+      - ./:/opt/identity-tests:ro
+  webhook:
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    command: ["php", "-S", "0.0.0.0:8080", "/opt/identity-tests/fixtures/webhook-receiver.php"]
+    volumes:
+      - ./:/opt/identity-tests:ro
+  wordpress:
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    depends_on:
+      database:
+        condition: service_healthy
+    environment: &wordpress-env
+      APACHE_RUN_USER: "#${IDENTITY_UID:-1000}"
+      APACHE_RUN_GROUP: "#${IDENTITY_GID:-1000}"
+      WORDPRESS_DB_HOST: database
+      WORDPRESS_DB_NAME: identity
+      WORDPRESS_DB_USER: identity
+      WORDPRESS_DB_PASSWORD: disposable-identity-test
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('DISABLE_WP_CRON', true);
+        define('ZERO_IDENTITY_DEV_HTTP', true);
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
+      interval: 1s
+      retries: 120
+    ports:
+      - "${IDENTITY_PORT:-8814}:80"
+    volumes: &wordpress-volumes
+      - wordpress:/var/www/html
+      - ${IDENTITY_PLUGIN_DIR:?run tests/identity/run.sh}:/var/www/html/wp-content/plugins/zero-identity:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./:/opt/identity-tests:ro
+  cli:
+    image: ${IDENTITY_CLI_IMAGE:-wordpress:cli-php8.2}
+    user: "${IDENTITY_UID:-1000}:${IDENTITY_GID:-1000}"
+    depends_on: [wordpress]
+    command: ["sleep", "infinity"]
+    environment: *wordpress-env
+    volumes: *wordpress-volumes
+volumes:
+  wordpress:

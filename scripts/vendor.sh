@@ -25,8 +25,6 @@ for root in "${roots[@]}"; do
     composer install --no-dev --classmap-authoritative --prefer-dist --no-interaction
     rm -rf vendor-prefixed
     php -d memory_limit=1G "$strauss" --no-interaction
-    if [[ $root == identity ]]; then php vendor-metadata.php
-    else php "$repo/scripts/vendor-metadata.php" "$directory"
-    fi
+    php "$repo/scripts/vendor-metadata.php" "$directory" "$([[ $root == identity ]] && echo identity || echo runtime)"
   )
 done

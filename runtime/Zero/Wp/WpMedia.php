@@ -21,14 +21,18 @@ use Zero\Store;
  * is removed again if it rolls back). `GET /media?where=` compiles through Sql against a Source that
  * maps the media row fields onto wp_posts/wp_postmeta.
  *
- * Named sizes (phase 2 §7.2) are core image sizes `zero_<name>`, made by core's own pipeline; the
- * `image_resize_dimensions` filter moves a cover crop to the attachment's `_zero_focal` point.
+ * Named sizes (phase 2 §7.2) are registered as core image sizes `zero_<name>` (so themes and
+ * wp_get_attachment_image_src know them) but rendered by Zero through wp_get_image_editor: core's own
+ * sub-size pass skips them, and wp_generate_attachment_metadata adds them with the focal crop from
+ * `_zero_focal`. Their files are named `<original>-zero_<name>-<hash>.<ext>` (hash over the rendered
+ * rectangle), so a new focal point writes new files inside the transaction and the old ones go only
+ * after commit, and no other size with the same dimensions ever shares or changes a Zero file.
  */
 final class WpMedia implements Media
 {
     public const FOCAL = '_zero_focal';
-    /** The focal point of the attachment whose sub-sizes core is generating right now. */
-    private static ?array $generating = null;
+    /** @var list<string> sizes that failed to render during the last metadata pass */
+    private static array $failed = [];
 
     private const TABLE = '__zero_media';
     private const COLUMNS = [
@@ -58,7 +62,7 @@ final class WpMedia implements Media
         $this->view = new MediaView($dialect, $source);
     }
 
-    /** Register the sizes and the focal crop on every request, so wp-admin uploads get them too. */
+    /** Register the sizes on every request, so wp-admin and core REST uploads get them too. */
     public static function boot(): void
     {
         add_action('init', static function (): void {
@@ -74,29 +78,24 @@ final class WpMedia implements Media
                 add_image_size('zero_' . $name, (int) $size['width'], (int) ($size['height'] ?? 0), ($size['fit'] ?? 'inside') === 'cover');
             }
         });
-        add_filter('intermediate_image_sizes_advanced', static function (array $sizes, array $meta, int $id): array {
-            $file = (string) get_attached_file($id);
-            self::$generating = self::focalOf($id);
-            if (ImageCdn::active() || !Images::resizable($file, (string) get_post_mime_type($id))) {
-                foreach (array_keys(self::sizes()) as $name) {
-                    unset($sizes['zero_' . $name]);
-                }
+        // Core's sub-size pass never renders Zero sizes; Zero does, below, with the focal point.
+        add_filter('intermediate_image_sizes_advanced', static function (array $sizes): array {
+            foreach (array_keys(self::sizes()) as $name) {
+                unset($sizes['zero_' . $name]);
             }
 
             return $sizes;
-        }, 10, 3);
-        add_filter('wp_generate_attachment_metadata', static function (array $meta): array {
-            self::$generating = null;
-
-            return $meta;
-        }, 1);
-        add_filter('image_resize_dimensions', static function ($out, $origW, $origH, $w, $h, $crop) {
-            if ($out !== null || self::$generating === null || $crop !== true || !self::isCoverSize((int) $w, (int) $h)) {
-                return $out;
+        });
+        add_filter('wp_generate_attachment_metadata', static function (array $meta, int $id): array {
+            self::$failed = [];
+            if (isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
+                foreach (self::render($id, $meta, self::focalOf($id), false) as $name => $size) {
+                    $meta['sizes']['zero_' . $name] = $size;
+                }
             }
 
-            return Images::dimensions((int) $origW, (int) $origH, (int) $w, (int) $h, true, self::$generating) ?? $out;
-        }, 10, 6);
+            return $meta;
+        }, 10, 2);
     }
 
     /** @return array<string, array{width: int, height: ?int, fit: string}> */
@@ -105,15 +104,44 @@ final class WpMedia implements Media
         return Runtime::plugin()?->schema->media()['sizes'] ?? [];
     }
 
-    private static function isCoverSize(int $w, int $h): bool
+    /**
+     * Render configured sizes for an attachment with wp_get_image_editor (every size, or only cover
+     * sizes). Sizes the original already fits are absent: the original serves them.
+     *
+     * @return array<string, array{file: string, width: int, height: int, mime-type: string, filesize: int}>
+     */
+    private static function render(int $id, array $meta, ?array $focal, bool $coverOnly): array
     {
-        foreach (self::sizes() as $size) {
-            if (($size['fit'] ?? 'inside') === 'cover' && (int) $size['width'] === $w && (int) $size['height'] === $h) {
-                return true;
+        $file = (string) get_attached_file($id);
+        $mime = (string) get_post_mime_type($id);
+        if (!is_file($file) || !Images::resizable($file, $mime)) {
+            return [];
+        }
+        $out = [];
+        foreach (self::sizes() as $name => $size) {
+            $cover = ($size['fit'] ?? 'inside') === 'cover';
+            if ($coverOnly && !$cover) {
+                continue;
             }
+            $dims = Images::dimensions((int) $meta['width'], (int) $meta['height'], (int) $size['width'], isset($size['height']) ? (int) $size['height'] : null, $cover, $focal);
+            if ($dims === null) {
+                continue;
+            }
+            [, , $x, $y, $w, $h, $sw, $sh] = $dims;
+            $editor = wp_get_image_editor($file);
+            $info = pathinfo($file);
+            $dest = $info['dirname'] . '/' . $info['filename'] . '-zero_' . $name . '-' . substr(md5(implode(',', $dims)), 0, 8) . '.' . $info['extension'];
+            $saved = is_wp_error($editor) ? $editor : $editor->crop($x, $y, $sw, $sh, $w, $h);
+            $saved = is_wp_error($saved) ? $saved : $editor->save($dest);
+            if (is_wp_error($saved)) {
+                self::$failed[] = $name;
+                continue;
+            }
+            $out[$name] = ['file' => wp_basename($saved['path']), 'width' => (int) $saved['width'], 'height' => (int) $saved['height'],
+                'mime-type' => (string) $saved['mime-type'], 'filesize' => (int) ($saved['filesize'] ?? filesize($saved['path']))];
         }
 
-        return false;
+        return $out;
     }
 
     private static function focalOf(int $id): ?array
@@ -122,6 +150,16 @@ final class WpMedia implements Media
         $focal = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
 
         return is_array($focal) && isset($focal['x'], $focal['y']) ? ['x' => $focal['x'], 'y' => $focal['y']] : null;
+    }
+
+    /** API writes refuse a partial set of sizes (the transaction rolls back and can be retried). */
+    private static function requireRendered(): void
+    {
+        if (self::$failed !== []) {
+            $failed = self::$failed;
+            self::$failed = [];
+            throw new \RuntimeException('Could not render image sizes: ' . implode(', ', $failed));
+        }
     }
 
     public function upload(string $tmpPath, string $filename, ?array $user, ?string $alt = null): array
@@ -152,12 +190,13 @@ final class WpMedia implements Media
         $id = (int) $id;
         $this->db->touchPost($id);
         $meta = wp_generate_attachment_metadata($id, $path);
-        wp_update_attachment_metadata($id, $meta);
         $this->db->onRollback(static function () use ($meta, $path) {
             foreach (($meta['sizes'] ?? []) as $size) {
                 @unlink(dirname($path) . '/' . $size['file']);
             }
         });
+        self::requireRendered();
+        wp_update_attachment_metadata($id, $meta);
         if ($alt !== null && $alt !== '') {
             update_post_meta($id, '_wp_attachment_image_alt', wp_slash($alt));
         }
@@ -199,14 +238,28 @@ final class WpMedia implements Media
         }
         if (array_key_exists('focal', $patch) && $patch['focal'] !== self::focalOf($id)) {
             $patch['focal'] === null ? delete_post_meta($id, self::FOCAL) : update_post_meta($id, self::FOCAL, wp_slash((string) \Zero\Js::jsonStringify($patch['focal'])));
-            // Regenerate once the focal point is committed: a rollback keeps the previous files in place.
-            $this->db->afterCommit(static function () use ($id) {
+            $meta = wp_get_attachment_metadata($id);
+            if (is_array($meta) && isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
                 require_once ABSPATH . 'wp-admin/includes/image.php';
-                $file = (string) get_attached_file($id);
-                if (is_file($file) && wp_attachment_is_image($id)) {
-                    wp_update_attachment_metadata($id, wp_generate_attachment_metadata($id, $file));
+                // Rows from before sizes were configured get every size; others re-render cover crops.
+                $all = array_filter(array_keys(self::sizes()), static fn ($n) => !isset($meta['sizes']['zero_' . $n]));
+                self::$failed = [];
+                $fresh = self::render($id, $meta, $patch['focal'], $all === []);
+                $dir = dirname((string) get_attached_file($id));
+                foreach ($fresh as $name => $size) {
+                    $new = $dir . '/' . $size['file'];
+                    $old = isset($meta['sizes']['zero_' . $name]) ? $dir . '/' . $meta['sizes']['zero_' . $name]['file'] : null;
+                    if ($new !== $old) {
+                        $this->db->onRollback(static fn () => @unlink($new));
+                        if ($old !== null) {
+                            $this->db->afterCommit(static fn () => @unlink($old));
+                        }
+                    }
+                    $meta['sizes']['zero_' . $name] = $size;
                 }
-            });
+                self::requireRendered();
+                wp_update_attachment_metadata($id, $meta);
+            }
         }
 
         return $this->get($id);

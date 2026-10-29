@@ -111,13 +111,8 @@ final class SqliteMedia implements Media
 
     public function list(array $opts): array
     {
-        foreach (['where', 'orderBy'] as $k) {
-            foreach (self::INTERNAL as $internal) {
-                if (isset($opts[$k][$internal])) {
-                    throw HttpError::invalidQuery("Unknown column '$internal'", "/$k/$internal");
-                }
-            }
-        }
+        self::rejectInternal($opts['where'] ?? null, '/where');
+        self::rejectInternal($opts['orderBy'] ?? null, '/orderBy');
 
         return array_map(fn (array $raw) => $this->row(Schema::decodeRow(self::COLUMNS, $raw)), $this->select($opts));
     }
@@ -133,9 +128,10 @@ final class SqliteMedia implements Media
             $this->store->run('UPDATE "__zero_media" SET "alt" = ? WHERE "id" = ?', [$patch['alt'], $id]);
         }
         if (array_key_exists('focal', $patch) && $patch['focal'] !== $r['focal']) {
+            // Rows uploaded before sizes were configured get every size now; others regenerate cover crops.
             $sizes = $r['sizes'] ?? [];
-            if ($sizes !== []) {
-                $sizes = array_merge($sizes, $this->renderSizes($r['path'], $r['mime'], (int) $r['width'], (int) $r['height'], $patch['focal'], true));
+            if ($r['width'] !== null && Images::resizable($this->publicDir . '/uploads/' . $r['path'], $r['mime'])) {
+                $sizes = array_merge($sizes, $this->renderSizes($r['path'], $r['mime'], (int) $r['width'], (int) $r['height'], $patch['focal'], $sizes !== []));
             }
             $this->store->run('UPDATE "__zero_media" SET "focal" = ?, "sizes" = ? WHERE "id" = ?',
                 [$patch['focal'] === null ? null : Js::jsonStringify($patch['focal']), Js::jsonStringify((object) $sizes), $id]);
@@ -163,6 +159,22 @@ final class SqliteMedia implements Media
                 @unlink($file);
             }
         });
+    }
+
+    /** `path`, `sizes` and `focal` are storage, not queryable fields: reject them at any filter depth. */
+    private static function rejectInternal(mixed $node, string $ptr): void
+    {
+        if (!is_array($node)) {
+            return;
+        }
+        foreach ($node as $key => $value) {
+            if (in_array($key, self::INTERNAL, true)) {
+                throw HttpError::invalidQuery("Unknown column '$key'", $ptr . HttpError::seg($key));
+            }
+            if (in_array($key, ['AND', 'OR', 'NOT'], true) || is_int($key)) {
+                self::rejectInternal($value, $ptr . HttpError::seg($key));
+            }
+        }
     }
 
     private function select(array $opts): array

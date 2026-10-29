@@ -20,6 +20,8 @@ eq('cover wider than the original clamps each axis, as core does', Images::dimen
 eq('inside scales to the width, height derived', Images::dimensions(400, 200, 100, null, false), [0, 0, 0, 0, 100, 50, 400, 200]);
 eq('inside within both bounds', Images::dimensions(400, 200, 300, 50, false), [0, 0, 0, 0, 100, 50, 400, 200]);
 eq('inside never upscales', Images::dimensions(40, 20, 100, null, false), null);
+eq('inside snaps a 1px rounding shortfall, as wp_constrain_dimensions does', Images::dimensions(120, 142, 63, 76, false), [0, 0, 0, 0, 63, 76, 120, 142]);
+eq('a size within 1px of the original makes no file', Images::dimensions(400, 200, 399, null, false), null);
 
 $problem = static function (string $label, mixed $v, string $pointer): void {
     problem($label, static fn () => Images::focal($v), 422, 'invalid_input', $pointer);
@@ -49,13 +51,30 @@ Images::render("$dir/src.png", 'image/png', Images::dimensions(400, 200, 100, 10
 eq('GD renders the focal crop: left focal is red', $colour("$dir/left.png"), [100, 100, 255, 0]);
 eq('GD renders the focal crop: right focal is blue', $colour("$dir/right.png"), [100, 100, 0, 255]);
 
-// One frame is a still image; two frames are an animation (no sizes).
-$frame = "\x21\xF9\x04\x00\x0A\x00\x00\x00\x2C\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00";
-file_put_contents("$dir/still.gif", "GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xFF\xFF\xFF\x00" . $frame . "\x3B");
-file_put_contents("$dir/anim.gif", "GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xFF\xFF\xFF\x00" . $frame . $frame . "\x3B");
-eq('still GIF resizes, animated GIF and SVG do not', [
-    Images::resizable("$dir/still.gif", 'image/gif'), Images::resizable("$dir/anim.gif", 'image/gif'), Images::resizable("$dir/src.png", 'image/svg+xml'),
-], [true, false, false]);
+// Real GIFs from GD: a still image; two frames (white palette entry last, no control extension on
+// the second frame) is an animation; SVG never resizes.
+$gif = static function (int $frames, bool $control) use ($dir): string {
+    $img = imagecreate(2, 2);
+    imagecolorallocate($img, 0, 0, 0);
+    imagecolorallocate($img, 255, 255, 255);
+    ob_start();
+    imagegif($img);
+    $one = (string) ob_get_clean();
+    // Header + logical screen + global table, then the image block(s), then the trailer.
+    $table = 3 << ((ord($one[10]) & 7) + 1);
+    $head = substr($one, 0, 13 + $table);
+    $body = substr($one, 13 + $table, -1);
+    $gce = "\x21\xF9\x04\x00\x0A\x00\x00\x00";
+    $file = "$dir/" . $frames . ($control ? 'c' : '') . '.gif';
+    file_put_contents($file, $head . ($control ? $gce : '') . $body . str_repeat($body, $frames - 1) . "\x3B");
+
+    return $file;
+};
+check('the GIF fixtures decode', imagecreatefromgif($gif(2, false)) !== false && imagecreatefromgif($gif(2, true)) !== false);
+eq('still GIF resizes; animated GIFs (with or without control blocks) and SVG do not', [
+    Images::resizable($gif(1, false), 'image/gif'), Images::resizable($gif(2, false), 'image/gif'), Images::resizable($gif(2, true), 'image/gif'),
+    Images::resizable("$dir/src.png", 'image/svg+xml'),
+], [true, false, false, false]);
 
 // The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
 require dirname(__DIR__, 2) . '/runtime/Zero/Wp/Media/ImageCdn.php';

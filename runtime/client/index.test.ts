@@ -220,6 +220,11 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/api/media", "5", { mime: { like: "image/%" } }]);
   await zero.media.delete(9);
   assert.deepEqual([last().method, last().path], ["DELETE", "/api/media/9"]);
+});
+
+test("media.update is a JSON PATCH of alt/focal", async () => {
+  reply = ok({ id: 9 });
+  const zero = mod.createClient({ url });
   await zero.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
   assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
     ["PATCH", "/api/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);

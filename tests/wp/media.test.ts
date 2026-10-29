@@ -44,37 +44,78 @@ function sizeOnDisk(id: number, size: string): { file: string; w: number; h: num
   `));
 }
 
-test("an upload returns the configured sizes, made by core, honouring the focal point", async () => {
+/** Upload the split PNG through Zero; returns the media row. */
+async function uploadSplit() {
   const r = await upload(splitPng(), "split.png", "image/png");
   assert.equal(r.status, 201, JSON.stringify(r.json));
-  const img = r.json.data;
+  return r.json.data;
+}
+
+test("an upload returns the configured sizes; the files exist with the right dimensions", async () => {
+  const img = await uploadSplit();
   assert.equal(img.focal, null);
   assert.deepEqual(
     { card: [img.sizes.card.width, img.sizes.card.height], wide: [img.sizes.wide.width, img.sizes.wide.height] },
     { card: [120, 120], wide: [200, 100] },
   );
-  for (const size of ["card", "wide"]) {
+  for (const [size, w, h] of [["card", 120, 120], ["wide", 200, 100]] as const) {
     assert.ok(img.sizes[size].url.startsWith(`${harness.url}/wp-content/uploads/`), img.sizes[size].url);
-    const res = await fetch(img.sizes[size].url);
-    assert.equal(res.status, 200, `${size} file is served`);
+    assert.equal((await fetch(img.sizes[size].url)).status, 200, `${size} file is served`);
+    const disk = sizeOnDisk(img.id, `zero_${size}`);
+    assert.deepEqual([disk.w, disk.h, disk.file], [w, h, img.sizes[size].url.split("/").pop()]);
   }
+});
+
+test("PATCH /media focal regenerates cover crops along the focal point; a theme size of the same shape is untouched", async () => {
+  // A theme's own 120x120 crop must never pick up Zero's focal point or share Zero's file.
+  wp("option", "update", "thumbnail_size_w", "120");
+  wp("option", "update", "thumbnail_size_h", "120");
+  wp("option", "update", "thumbnail_crop", "1");
+  const img = await uploadSplit();
   const centred = sizeOnDisk(img.id, "zero_card");
+  const theme = sizeOnDisk(img.id, "thumbnail");
   const wide = sizeOnDisk(img.id, "zero_wide");
-  assert.deepEqual([centred.w, centred.h, centred.file], [120, 120, img.sizes.card.url.split("/").pop()]);
+  assert.notEqual(theme.file, centred.file);
 
   await problem("PATCH", `/media/${img.id}`, { as: "author", body: { focal: { x: 0, y: 0.5 } } }, { status: 403, code: "forbidden", pointer: undefined });
   await problem("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: -1, y: 0 } } }, { status: 422, code: "invalid_input", pointer: "/focal/x" });
   const left = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0.5 }, alt: "Red side" } });
-  assert.deepEqual([left.focal, left.alt, left.sizes.card], [{ x: 0, y: 0.5 }, "Red side", img.sizes.card]);
+  assert.deepEqual([left.focal, left.alt, [left.sizes.card.width, left.sizes.card.height]], [{ x: 0, y: 0.5 }, "Red side", [120, 120]]);
   const leftCard = sizeOnDisk(img.id, "zero_card");
-  assert.notEqual(leftCard.sha, centred.sha, "changing focal regenerates the cover crop");
+  assert.notEqual(leftCard.sha, centred.sha, "changing focal regenerates the cover crop (different bytes)");
   assert.deepEqual(leftCard.rgb, [255, 0], "the left focal crop is red");
-  assert.deepEqual([sizeOnDisk(img.id, "zero_wide").w, sizeOnDisk(img.id, "zero_wide").h], [wide.w, wide.h], "inside sizes keep their shape");
+  assert.equal(left.sizes.card.url.split("/").pop(), leftCard.file);
+  assert.equal((await fetch(img.sizes.card.url)).status, 404, "the previous crop is removed after commit");
+  assert.deepEqual(sizeOnDisk(img.id, "thumbnail"), theme, "the theme's same-shape crop is untouched");
+  assert.deepEqual(sizeOnDisk(img.id, "zero_wide"), wide, "inside sizes are not regenerated");
 
   const right = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 1, y: 0.5 } } });
-  assert.deepEqual(right.focal, { x: 1, y: 0.5 });
   assert.deepEqual(sizeOnDisk(img.id, "zero_card").rgb, [0, 255], "the right focal crop is blue");
   assert.equal(wp("post", "meta", "get", String(img.id), "_zero_focal"), '{"x":1,"y":0.5}');
+  assert.equal(right.sizes.card.url, (await ok("GET", `/media/${img.id}`)).sizes.card.url);
+});
+
+test("a crop that fails to render rolls the focal change back, and the same PATCH succeeds on retry", async () => {
+  const img = await uploadSplit();
+  const before = sizeOnDisk(img.id, "zero_card");
+  // A must-use plugin that makes every image save fail while its flag option is set.
+  wp("eval", `
+    wp_mkdir_p(WPMU_PLUGIN_DIR);
+    file_put_contents(WPMU_PLUGIN_DIR . '/zero-test-editor-fails.php', "<?php\nadd_filter('wp_image_editors', fn (\\$e) => get_option('zero_test_editor_fails') ? [] : \\$e);\n");
+  `);
+  wp("option", "update", "zero_test_editor_fails", "1");
+  try {
+    const failed = await http("PATCH", `${api}/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
+    assert.equal(failed.status, 500, JSON.stringify(failed.json));
+    assert.equal((await ok("GET", `/media/${img.id}`)).focal, null, "the focal point did not commit");
+    assert.deepEqual(sizeOnDisk(img.id, "zero_card"), before, "the previous crop is still in place");
+  } finally {
+    wp("option", "delete", "zero_test_editor_fails");
+    wp("eval", "unlink(WPMU_PLUGIN_DIR . '/zero-test-editor-fails.php');");
+  }
+  const retried = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
+  assert.deepEqual(retried.focal, { x: 0, y: 0 });
+  assert.deepEqual(sizeOnDisk(img.id, "zero_card").rgb, [255, 0]);
 });
 
 test("core uploads outside Zero get the zero_* sizes; non-images get none", async () => {
@@ -89,6 +130,7 @@ test("core uploads outside Zero get the zero_* sizes; non-images get none", asyn
   `);
   const row = await ok("GET", `/media/${imported}`);
   assert.deepEqual([row.sizes.card.width, row.sizes.card.height, row.sizes.wide.width], [120, 120, 200]);
+  assert.equal((await fetch(row.sizes.card.url)).status, 200);
 
   const doc = await upload(new TextEncoder().encode("plain text"), "notes.txt", "text/plain");
   assert.equal(doc.status, 201, JSON.stringify(doc.json));

@@ -112,7 +112,7 @@ test("list input typed by core over GET reaches Zero typed inside AND/OR/NOT", a
   const viaAbility = await runAbility("blog/posts-list", { where }, "editor", "GET");
   assert.equal(viaAbility.status, 200, JSON.stringify(viaAbility.json));
   assert.deepEqual(viaAbility.json.rows.map((r: any) => r.id), [postId]);
-  const media = await runAbility("blog/media-list", { where: { id: { gt: 0 } }, limit: 1 }, "editor", "GET");
+  const media = await runAbility("blog/media-list", { where: { id: { gt: 0 } }, orderBy: "-id", limit: 1 }, "editor", "GET");
   assert.equal(media.status, 200, JSON.stringify(media.json));
 });
 

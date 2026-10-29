@@ -356,7 +356,7 @@ final class Register
         return [
             $base + [
                 'name' => "$app/media-list", 'op' => 'list', 'label' => 'List media', 'description' => "List the media library of the $appLabel app.",
-                'input' => JsonSchema::input(['where' => JsonSchema::mediaWhere(), 'orderBy' => ['type' => 'object'],
+                'input' => JsonSchema::input(['where' => JsonSchema::mediaWhere(), 'orderBy' => JsonSchema::orderBy(['id', 'filename', 'mime', 'alt', 'createdAt']),
                     'limit' => ['type' => 'integer', 'minimum' => 0], 'offset' => ['type' => 'integer', 'minimum' => 0]]),
                 'output' => ['type' => 'object', 'properties' => ['rows' => ['type' => 'array', 'items' => $row]], 'required' => ['rows']],
                 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [Access::MEDIA['read'], 'read', 'read media'],

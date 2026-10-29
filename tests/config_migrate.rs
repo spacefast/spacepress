@@ -159,8 +159,12 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                         $app->db->insert('notes', ['title' => str_repeat('😀', 60), 'body' => 'Body', 'tags' => ['one']]);
                         try { $app->db->insert('notes', ['title' => str_repeat('😀', 61), 'body' => 'Body', 'tags' => ['one']]); }
                         catch (\Zero\HttpError $e) { $bound = [$e->status, $e->pointer]; }
+                        // Payload's defaultMaxTextLength bounds a textarea that declares no maxLength.
+                        $app->db->insert('notes', ['title' => 'Long', 'body' => str_repeat('a', 40000), 'tags' => ['one']]);
+                        try { $app->db->insert('notes', ['title' => 'Longer', 'body' => str_repeat('a', 40001), 'tags' => ['one']]); }
+                        catch (\Zero\HttpError $e) { $implicit = [$e->status, $e->pointer]; }
                         $response = $app->handle('GET', '/notes', [], '');
-                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required, 'bound' => $bound ?? null]);
+                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required, 'bound' => $bound ?? null, 'implicit' => $implicit ?? null]);
                     "#,
                         ])
                         .arg(dir.path().join(target))
@@ -179,6 +183,7 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                         assert_eq!(result["required"][field], json!([422, format!("/{field}")]));
                     }
                     assert_eq!(result["bound"], json!([422, "/title"]));
+                    assert_eq!(result["implicit"], json!([422, "/body"]));
                 }
             }
         }

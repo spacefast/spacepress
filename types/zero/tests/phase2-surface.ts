@@ -24,6 +24,13 @@ export default defineConfig({
 import { jobs, once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "zero";
 import { expectType, type Equal } from "./inference";
 
+const localizedBlocks = collection("localized_blocks", {
+  id: id(), sections: blocks({ layouts: { hero: { heading: text().localized() }, quote: { body: text() } } }),
+}, { editor: false });
+type LocalizedBlockRow = typeof localizedBlocks.$inferSelect;
+expectType<Equal<LocalizedBlockRow["locale"], Locale>>();
+expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translations"]>>();
+
 async function surface() {
   await jobs.sendWelcome.enqueue({ email: "a@example.com" }, { delay: 30, key: "welcome" });
   // @ts-expect-error registered job input is checked

@@ -117,7 +117,7 @@ declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.target, "standalone" | "wp">>();
 
 export default defineConfig({
-  jobs: { sendWelcome: job({ input: { email: email().notNull() }, handler: async (input, ctx) => { void [input.email, ctx.attempt, ctx.jobId]; } }) },
+  jobs: { sendWelcome: job({ input: { email: email().notNull(), name: text().notNull().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
   target: "wp",

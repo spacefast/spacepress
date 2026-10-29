@@ -295,7 +295,7 @@ final class Schema
         $type = $col['type'];
         $bad = static fn (): HttpError => HttpError::invalidInput("$name must be " . self::expected($type), $pointer);
         $out = match ($type) {
-            'integer', 'media' => match (true) {
+            'integer', 'media', 'file' => match (true) {
                 is_int($v) => $v,
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
                 default => throw $bad(),
@@ -462,6 +462,7 @@ final class Schema
             'timestamp' => 'an ISO-8601 timestamp or epoch milliseconds',
             'date' => 'a date (YYYY-MM-DD)',
             'media' => 'a media id',
+            'file' => 'a file id',
             'mediaList' => 'a list of media ids',
             'select' => 'a list of options',
             'group' => 'an object',
@@ -508,7 +509,7 @@ final class Schema
         }
 
         return match ($col['type']) {
-            'integer', 'media' => (int) $v,
+            'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
             'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,

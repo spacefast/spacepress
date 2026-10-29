@@ -63,6 +63,50 @@ fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R
     Err(Diag::new(span, msg).help(help))
 }
 
+fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
+    match v {
+        Value::Array(a) => {
+            if !seen.insert(Rc::as_ptr(a) as usize) {
+                return err_help(
+                    span,
+                    "captured data cannot contain cycles",
+                    "capture plain data without circular references",
+                );
+            }
+            for value in a.borrow().iter() {
+                validate_captured_data(value, span, seen)?;
+            }
+            seen.remove(&(Rc::as_ptr(a) as usize));
+            Ok(())
+        }
+        Value::Object(o) => {
+            if !seen.insert(Rc::as_ptr(o) as usize) {
+                return err_help(
+                    span,
+                    "captured data cannot contain cycles",
+                    "capture plain data without circular references",
+                );
+            }
+            for value in o.borrow().values() {
+                validate_captured_data(value, span, seen)?;
+            }
+            seen.remove(&(Rc::as_ptr(o) as usize));
+            Ok(())
+        }
+        Value::Env(_) | Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) => err_help(
+            span,
+            "not implemented until lane D",
+            "runtime enqueue/once/env calls become available in lane D",
+        ),
+        Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
+        _ => err_help(
+            span,
+            format!("captured data contains {}, which can't be used in PHP", v.describe()),
+            "capture plain data instead",
+        ),
+    }
+}
+
 /// A compiled expression: PHP source, its type, and whether it's a plain variable/property path.
 #[derive(Clone, Debug)]
 struct Out {
@@ -159,8 +203,8 @@ pub struct Compiler<'a, 'p> {
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
     type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
-    /// Compiled module-level helper functions: closure ptr → PHP name.
-    helpers: HashMap<usize, String>,
+    /// Compiled module-level helpers, separated by whether database access is forbidden.
+    helpers: HashMap<(usize, bool), String>,
     helper_types: HashMap<usize, Ty>,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
@@ -241,7 +285,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let name = self.unique_name(&root.name);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot))?;
+            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
+            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
             {
@@ -251,11 +296,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 self.action_results.insert(action.clone(), ret);
             }
-            self.helpers.entry(key).or_insert_with(|| name.clone());
+            self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
         while let Some((closure, name, params)) = self.pending.pop() {
-            self.compile_function(&closure, &name, params, None)?;
+            self.compile_function(&closure, &name, params, None, false)?;
         }
         Ok(out)
     }
@@ -316,8 +361,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         name: &str,
         params: Option<Vec<Ty>>,
         slot: Option<&Slot>,
+        no_db: bool,
     ) -> Result<()> {
         let f = closure.func.clone();
+        if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
+            return err_help(
+                f.span,
+                "field rules must be synchronous",
+                "return a boolean without async/await",
+            );
+        }
         let mut fx = FnCtx {
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
@@ -331,7 +384,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
-            no_db: matches!(slot, Some(Slot::Access { .. } | Slot::FieldAccess { .. })),
+            no_db,
             access: match slot {
                 Some(Slot::FieldAccess { .. }) => Some((None, "field".into())),
                 Some(Slot::Access { owner, op }) => Some((
@@ -1897,11 +1950,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &v {
             Value::Closure(c) => {
                 let key = closure_key(c);
-                let name = match self.helpers.get(&key) {
+                let helper_key = (key, self.fx().no_db);
+                let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
-                        self.helpers.insert(key, name.clone());
+                        self.helpers.insert(helper_key, name.clone());
                         self.compile_helper_now(c, &name)?;
                         name
                     }
@@ -1953,6 +2007,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Regex,
             )),
             data => {
+                validate_captured_data(data, span, &mut HashSet::new())?;
                 let Some(json) = to_json(data) else {
                     return err(
                         span,
@@ -1970,9 +2025,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
+        let no_db = self.fx().no_db;
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
-        let r = self.compile_function(c, name, None, None);
+        let r = self.compile_function(c, name, None, None, no_db);
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);
         self.output.push_str(&helper_src);

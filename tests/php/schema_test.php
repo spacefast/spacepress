@@ -78,6 +78,10 @@ eq('slug accepted', Schema::encode($posts['slug'], 'a-1-b', 'slug', '/slug'), 'a
 problem('slug with a double hyphen rejected', fn () => Schema::encode($posts['slug'], 'a--b', 'slug', '/slug'), 422, 'invalid_input', '/slug');
 problem('slug over 200 characters rejected', fn () => Schema::encode($posts['slug'], str_repeat('a', 201), 'slug', '/slug'), 422, 'invalid_input', '/slug');
 eq('media stores an int id', [Schema::encode($posts['cover'], 7.0, 'cover', '/cover'), Schema::decode($posts['cover'], 7)], [7, 7]);
+$deck = $phase2->collection('posts')['columns']['deck'];
+eq('file stores an int id and decodes string storage', [Schema::encode($deck, 7, 'deck', '/deck'), Schema::encode($deck, 7.0, 'deck', '/deck'), Schema::decode($deck, '7')], [7, 7, 7]);
+$e = problem('file rejects string input at the field pointer', fn () => Schema::encode($deck, '7', 'deck', '/deck'), 422, 'invalid_input', '/deck');
+eq('file input describes the expected value', $e?->getMessage(), 'deck must be a file id');
 
 // ---------------------------------------------------------------- lists
 

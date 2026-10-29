@@ -527,6 +527,8 @@ fn rejects_phase2_static_contracts() {
         ("reject-field-access-title", "title is always readable"),
         ("reject-field-access-filter", "field rules here return a boolean"),
         ("reject-field-access-query", "access rules can't query"),
+        ("reject-field-access-async", "field rules must be synchronous"),
+        ("reject-field-access-helper", "access rules can't query"),
         ("reject-field-access-self", "self is only allowed on auth collection"),
         ("reject-showif-sibling", "showIf names non-sibling"),
         ("reject-showif-operator", "invalid showIf operator"),
@@ -552,6 +554,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-lane-d-enqueue", "not implemented until lane D"),
         ("reject-lane-d-once", "not implemented until lane D"),
         ("reject-lane-d-env", "not implemented until lane D"),
+        ("reject-lane-d-env-captured", "not implemented until lane D"),
         ("reject-auth-duplicate", "at most one auth: true collection"),
         (
             "reject-auth-email",

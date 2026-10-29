@@ -458,9 +458,9 @@ export type AnyCollection = CollectionMeta<string, ColumnsConfig>;
  *
  * `editor: false` without drafts: the columns are exactly `columns`.
  */
-type HasLocalized<TCols> = true extends {
+type HasLocalized<TCols> = true extends (TCols extends unknown ? {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: infer L } } ? L : false;
-}[keyof TCols] ? true : false;
+}[keyof TCols] : never) ? true : false;
 
 type LocaleColumns = {
   locale: ColumnBuilder<"text", Locale, true, true>;
@@ -1099,7 +1099,7 @@ export interface JobHandle<TInput> {
 type RegisteredJobs = Register extends { config: { readonly [configBrand]: { jobs: infer J extends Record<string, AnyJob> } } } ? J : never;
 export type JobsApi = [RegisteredJobs] extends [never]
   ? Record<string, JobHandle<Record<string, unknown>>>
-  : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InferActionInput<I>> : never };
+  : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 export interface EnvValue { readonly [envBrand]: true }

@@ -39,7 +39,7 @@ $columns = [
     'publishedAt' => ['type' => 'timestamp', 'system' => true],
 ];
 $schema = new Schema([
-    'version' => 2,
+    'version' => 3, 'runtime' => '0.2',
     'collections' => [
         'notes' => [
             'primaryKey' => 'id', 'columns' => $columns, 'title' => 'title', 'content' => 'body', 'slug' => 'slug',

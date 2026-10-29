@@ -21,6 +21,8 @@ pub enum Slot {
     Validate { at: ColPath },
     ActionHandler { action: String },
     Access { owner: Owner, op: String },
+    FieldAccess { at: ColPath, op: String },
+    JobHandler { job: String },
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +44,20 @@ pub struct Extracted {
     pub hints: Vec<String>,
 }
 
-const CONFIG_KEYS: &[&str] = &["name", "target", "schema", "relations", "globals", "hooks", "actions"];
+const CONFIG_KEYS: &[&str] = &[
+    "name",
+    "target",
+    "schema",
+    "relations",
+    "globals",
+    "hooks",
+    "actions",
+    "jobs",
+    "webhooks",
+    "files",
+    "media",
+    "locales",
+];
 const COLLECTION_OPTIONS: &[&str] = &[
     "label",
     "editor",
@@ -52,6 +67,10 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "content",
     "access",
     "api",
+    "sync",
+    "uid",
+    "auth",
+    "agents",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &["media", "globals", "actions", "me", "_schema", "auth"];
@@ -155,6 +174,7 @@ pub fn extract(
         }
     };
     out.schema.target = target_override.unwrap_or(config_target);
+    phase2_config(&cfg_map, ev, config_span, &mut out)?;
 
     // Collections
     let schema_val = match cfg_map.get("schema") {
@@ -223,6 +243,11 @@ pub fn extract(
                 hooks: IndexMap::new(),
                 before_create_fills: Vec::new(),
                 access: IndexMap::new(),
+                uid: false,
+                sync: None,
+                auth: false,
+                agents: true,
+                localized: false,
                 api: Api {
                     list: true,
                     get: true,
@@ -264,6 +289,11 @@ pub fn extract(
         coll.slug = opts.slug;
         coll.access = opts.access;
         coll.api = opts.api;
+        coll.uid = opts.uid;
+        coll.sync = opts.sync;
+        coll.auth = opts.auth;
+        coll.agents = opts.agents;
+        coll.localized = coll.columns.values().any(has_localized);
         if coll.drafts {
             let mut status = Column::new("status", ColType::Text);
             status.not_null = true;
@@ -276,6 +306,7 @@ pub fn extract(
             coll.columns.insert("publishedAt".into(), published_at);
         }
     }
+    phase2_collections(ev, &mut out)?;
     postmeta_hints(&mut out);
 
     // Relations
@@ -383,7 +414,10 @@ pub fn extract(
             let Value::Object(cfg) = &a.config else { unreachable!() };
             let cfg = cfg.borrow().clone();
             for k in cfg.keys() {
-                if !matches!(k.as_str(), "input" | "handler" | "access") {
+                if !matches!(
+                    k.as_str(),
+                    "input" | "handler" | "access" | "agents" | "idempotent" | "signature"
+                ) {
                     return Err(Diag::new(
                         ev.key_span(&a.config, k).unwrap_or(a.span),
                         format!("action() has no option `{k}`"),
@@ -412,6 +446,18 @@ pub fn extract(
             let Some(Value::Closure(handler)) = cfg.get("handler") else {
                 return Err(Diag::new(a.span, format!("action `{name}` needs a `handler` function")));
             };
+            let agents = bool_option(&cfg, "agents", true, a.span)?;
+            let idempotent = bool_option(&cfg, "idempotent", false, a.span)?;
+            let signature = match cfg.get("signature") {
+                None | Some(Value::Undef) => None,
+                Some(v) => {
+                    if cfg.contains_key("access") {
+                        return Err(Diag::new(a.span, "signature cannot be combined with access")
+                            .help("remove access; signature authenticates the caller"));
+                    }
+                    Some(signature_config(v, a.span)?)
+                }
+            };
             let access = match cfg.get("access") {
                 None | Some(Value::Undef) => Access::editor(),
                 Some(v) => {
@@ -431,10 +477,15 @@ pub fn extract(
                     input,
                     handler: String::new(),
                     access,
+                    agents,
+                    idempotent,
+                    signature,
                 },
             );
         }
     }
+    phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
+    validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
 }
 
@@ -473,6 +524,10 @@ struct CollOpts {
     slug: Option<String>,
     access: IndexMap<String, Access>,
     api: Api,
+    uid: bool,
+    sync: Option<Json>,
+    auth: bool,
+    agents: bool,
 }
 
 fn collection_options(
@@ -532,7 +587,16 @@ fn collection_options(
             ));
         }
     };
-    let editor = flag("editor")?.unwrap_or(true);
+    let auth = flag("auth")?.unwrap_or(false);
+    if auth {
+        for key in ["editor", "drafts", "revisions"] {
+            if flag(key)? == Some(true) {
+                return Err(Diag::new(span(key), format!("auth: true requires {key}: false"))
+                    .help(format!("remove {key} or set it to false")));
+            }
+        }
+    }
+    let editor = flag("editor")?.unwrap_or(!auth);
     let drafts = match flag("drafts")? {
         Some(false) if editor => {
             return Err(Diag::new(span("drafts"), "`drafts: false` needs `editor: false`")
@@ -568,6 +632,22 @@ fn collection_options(
         )
         .help("use `id: id()`, or set `editor: false`"));
     }
+
+    let sync = match o.get("sync") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(s)) => Some(sync_config(s, span("sync"))?),
+        _ => {
+            return Err(
+                Diag::new(span("sync"), "sync must be a project-relative *.md or *.json pattern")
+                    .help("use content/posts/*.md"),
+            );
+        }
+    };
+    let uid = flag("uid")?.unwrap_or(sync.is_some());
+    if sync.is_some() && !uid {
+        return Err(Diag::new(span("uid"), "uid: false cannot be combined with sync").help("remove uid: false"));
+    }
+    let agents = flag("agents")?.unwrap_or(true);
 
     // title
     let explicit_title = name_opt("title")?;
@@ -746,6 +826,10 @@ fn collection_options(
         slug,
         access,
         api,
+        uid,
+        sync,
+        auth,
+        agents,
     })
 }
 
@@ -771,6 +855,34 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
         Value::Bool(b) => Access::Allow(*b),
         Value::Str(s) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
             Access::Role(s.to_string())
+        }
+        Value::Str(s) if &**s == "self" => {
+            let auth = match owner {
+                Owner::Collection(t) => out
+                    .collections
+                    .iter()
+                    .find(|c| &c.table == t)
+                    .and_then(|c| c.options.as_ref())
+                    .is_some_and(|v| match v {
+                        Value::Object(o) => matches!(o.borrow().get("auth"), Some(Value::Bool(true))),
+                        _ => false,
+                    }),
+                _ => false,
+            };
+            if !auth || op == "create" {
+                return Err(
+                    Diag::new(span, "self is only allowed on auth collection read/update/delete rules")
+                        .help("use a role or a boolean create rule"),
+                );
+            }
+            Access::Self_
+        }
+        Value::Str(s) if &**s == "owner" => {
+            if !matches!(owner, Owner::FileBucket(_)) {
+                return Err(Diag::new(span, "owner is only allowed in files access")
+                    .help("use self on auth collections or a role"));
+            }
+            Access::Owner
         }
         Value::Closure(f) => {
             out.roots.push(Root {
@@ -829,6 +941,7 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
         fields.insert(name.clone(), col);
     }
     let mut label = title_case(key);
+    let mut agents = true;
     let mut access: IndexMap<String, Access> = [
         ("read".to_string(), Access::anyone()),
         ("update".to_string(), Access::editor()),
@@ -841,6 +954,8 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             let sp = ev.key_span(opts, k).unwrap_or(g.span);
             match (k.as_str(), v) {
                 ("label", Value::Str(s)) => label = s.to_string(),
+                ("agents", Value::Bool(b)) => agents = *b,
+                ("agents", Value::Undef) => {}
                 ("access", Value::Object(am)) => {
                     for (op, rule) in am.borrow().iter() {
                         let osp = ev.key_span(v, op).unwrap_or(sp);
@@ -868,6 +983,7 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             label,
             fields,
             access,
+            agents,
         },
     );
     Ok(())
@@ -924,6 +1040,84 @@ fn column(
         owner: owner.clone(),
         path: path.clone(),
     };
+    if b.localized {
+        if !matches!(
+            b.ty,
+            ColType::Text
+                | ColType::RichText
+                | ColType::Json
+                | ColType::Select
+                | ColType::Group
+                | ColType::Repeater
+                | ColType::Blocks
+        ) || b.primary_key
+        {
+            return Err(Diag::new(
+                b.span_of("localized"),
+                "translate text, not values; put it in a localized group if it must vary",
+            )
+            .help("remove .localized() from this column"));
+        }
+        if b.unique {
+            return Err(
+                Diag::new(b.span_of("unique"), "unique is not allowed on a localized column")
+                    .help("add a second column or use slug()"),
+            );
+        }
+        if out.schema.locales.is_none() {
+            return Err(Diag::new(b.span_of("localized"), ".localized() requires locales")
+                .help("configure locales: { default: \"en\", all: [\"en\"] }"));
+        }
+        if !matches!(owner, Owner::Collection(_)) {
+            return Err(Diag::new(b.span_of("localized"), ".localized() needs a collection")
+                .help("move the translated field into a collection"));
+        }
+    }
+    if b.primary_key && (b.access.is_some() || b.show_if.is_some()) {
+        return Err(Diag::new(
+            b.span_of(if b.access.is_some() { "access" } else { "showIf" }),
+            "access/showIf is not allowed on id() or system columns",
+        )
+        .help("remove the modifier"));
+    }
+    let mut access = IndexMap::new();
+    if let Some(v) = &b.access {
+        let rules = object(v, b.span_of("access"), "field access")?;
+        for (op, rule) in rules {
+            if !["read", "create", "update"].contains(&op.as_str()) {
+                return Err(
+                    Diag::new(b.span_of("access"), format!("field access has no operation {op}"))
+                        .help("use read, create, update"),
+                );
+            }
+            let parsed = access_rule(
+                &rule,
+                b.span_of("access"),
+                owner,
+                &op,
+                format!("{}__{op}", fn_name(owner, "field", &path)),
+                out,
+            )?;
+            if matches!(parsed, Access::Fn(_)) {
+                out.roots.last_mut().unwrap().slot = Slot::FieldAccess {
+                    at: at.clone(),
+                    op: op.clone(),
+                };
+            }
+            access.insert(op, parsed);
+        }
+    }
+    let show_if = b
+        .show_if
+        .as_ref()
+        .map(|v| plain_json(v, b.span_of("showIf"), "showIf"))
+        .transpose()?;
+    if let Some(bucket) = &b.bucket
+        && !out.schema.files.contains_key(bucket)
+    {
+        return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
+            .help("declare it in config.files with files()"));
+    }
     let outer = place != Place::Top;
     // Builders and modifiers that only make sense on a top-level collection column.
     let forbidden: Option<(&str, Span)> = if !outer {
@@ -1129,6 +1323,12 @@ fn column(
         fields,
         layouts,
         system: false,
+        localized: b.localized,
+        access,
+        show_if,
+        bucket: b.bucket.clone(),
+        derived: false,
+        hidden: false,
         ts_type: b.ts_type.clone(),
     })
 }
@@ -1139,6 +1339,8 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
         Owner::Collection(t) => t.clone(),
         Owner::Global(g) => format!("global__{g}"),
         Owner::Action(a) => format!("action__{a}"),
+        Owner::Job(j) => format!("job__{j}"),
+        Owner::FileBucket(f) => format!("files__{f}"),
     };
     format!("{base}__{what}__{}", path.join("__"))
 }
@@ -1146,6 +1348,7 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
 /// Validates a constant default against its column and returns it as JSON.
 fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     let span = b.span_of("default");
+    plain_json(v, span, "default")?;
     let bad = |what: &str| -> Result<Json> {
         Err(Diag::new(
             span,
@@ -1187,6 +1390,8 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
         (ColType::Timestamp, _) => return bad("a timestamp column (use an ISO string or .defaultNow())"),
         (ColType::Json, _) => {}
         (ColType::Media, _) => return bad("a media column"),
+        (ColType::File, Value::Num(n)) if n.fract() == 0.0 && n.is_finite() => {}
+        (ColType::File, _) => return bad("a file id column"),
         (ColType::MediaList, Value::Array(a)) => {
             if !a
                 .borrow()
@@ -1536,4 +1741,648 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
         }),
         _ => false,
     }
+}
+
+// Phase-2 config is normalized once here. Feature modules consume this metadata;
+// they do not reinterpret builders or apply policy during schema loading.
+fn object(v: &Value, span: Span, what: &str) -> Result<IndexMap<String, Value>> {
+    match v {
+        Value::Object(o) => Ok(o.borrow().clone()),
+        _ => {
+            Err(Diag::new(span, format!("{what} must be an object")).help("use an object with the documented options"))
+        }
+    }
+}
+
+fn bool_option(o: &IndexMap<String, Value>, key: &str, default: bool, span: Span) -> Result<bool> {
+    match o.get(key) {
+        None | Some(Value::Undef) => Ok(default),
+        Some(Value::Bool(b)) => Ok(*b),
+        _ => Err(Diag::new(span, format!("{key} must be true or false")).help("use a boolean")),
+    }
+}
+
+fn plain_json(v: &Value, span: Span, what: &str) -> Result<Json> {
+    fn validate(v: &Value, span: Span, what: &str) -> Result<()> {
+        match v {
+            Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
+            Value::Array(a) => a.borrow().iter().try_for_each(|v| validate(v, span, what)),
+            Value::Object(o) => o.borrow().values().try_for_each(|v| validate(v, span, what)),
+            Value::Env(_) => Err(Diag::new(span, "env() is only allowed in webhooks/signature")
+                .help("move the environment value to a webhook URL/secret or action signature")),
+            _ => {
+                Err(Diag::new(span, format!("{what} must be static data")).help("remove functions and runtime values"))
+            }
+        }
+    }
+    validate(v, span, what)?;
+    to_json(v).ok_or_else(|| {
+        Diag::new(span, format!("{what} must be static data")).help("remove functions and runtime values")
+    })
+}
+
+fn keys(o: &IndexMap<String, Value>, allowed: &[&str], span: Span, what: &str) -> Result<()> {
+    for k in o.keys() {
+        if !allowed.contains(&k.as_str()) {
+            return Err(
+                Diag::new(span, format!("{what} has no option `{k}`")).help(format!("use {}", allowed.join(", ")))
+            );
+        }
+    }
+    Ok(())
+}
+
+fn string(v: Option<&Value>, span: Span, what: &str) -> Result<String> {
+    match v {
+        Some(Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        _ => Err(Diag::new(span, format!("{what} must be a nonempty string")).help("supply a string value")),
+    }
+}
+
+fn positive_int(v: Option<&Value>, span: Span, what: &str) -> Result<u64> {
+    match v {
+        Some(Value::Num(n)) if n.is_finite() && *n > 0.0 && n.fract() == 0.0 && *n <= 9_007_199_254_740_991.0 => {
+            Ok(*n as u64)
+        }
+        _ => Err(Diag::new(span, format!("{what} must be a positive integer"))
+            .help("supply a whole number greater than zero")),
+    }
+}
+
+fn env_value(v: Option<&Value>, span: Span) -> Result<Json> {
+    match v {
+        Some(Value::Env(n)) => Ok(serde_json::json!({"env": n.as_ref()})),
+        _ => Err(Diag::new(span, "secret must be env(\"NAME\")").help("keep secrets in the runtime environment")),
+    }
+}
+
+fn signature_config(v: &Value, span: Span) -> Result<Json> {
+    let o = object(v, span, "signature")?;
+    keys(&o, &["secret", "header", "scheme"], span, "signature")?;
+    let secret = env_value(o.get("secret"), span)?;
+    let header = string(o.get("header"), span, "signature.header")?;
+    if !regex::Regex::new(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+        .unwrap()
+        .is_match(&header)
+    {
+        return Err(Diag::new(span, "signature.header must be an HTTP header name")
+            .help("use stripe-signature or zero-signature"));
+    }
+    let scheme = string(o.get("scheme"), span, "signature.scheme")?;
+    if scheme != "zero" && scheme != "hmac-sha256" {
+        return Err(
+            Diag::new(span, "signature.scheme must be zero or hmac-sha256").help("choose a supported HMAC scheme")
+        );
+    }
+    Ok(serde_json::json!({"secret": secret, "header": header, "scheme": scheme}))
+}
+
+fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
+    if let Some(v) = cfg.get("locales").filter(|v| !matches!(v, Value::Undef)) {
+        let o = object(v, span, "locales")?;
+        keys(&o, &["default", "all", "fallback"], span, "locales")?;
+        let default = string(o.get("default"), span, "locales.default")?;
+        let Some(Value::Array(all)) = o.get("all") else {
+            return Err(Diag::new(span, "locales.all must be an array").help("list the supported locales"));
+        };
+        let mut locales = Vec::new();
+        let valid = regex::Regex::new(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$").unwrap();
+        for l in all.borrow().iter() {
+            let l = string(Some(l), span, "locale")?;
+            if !valid.is_match(&l) || locales.contains(&l) {
+                return Err(Diag::new(span, format!("invalid or duplicate locale {l:?}"))
+                    .help("use distinct locale tags such as en, de, or pt-BR"));
+            }
+            locales.push(l);
+        }
+        if !locales.contains(&default) {
+            return Err(
+                Diag::new(span, "locales.default must appear in all").help("add the default locale to locales.all")
+            );
+        }
+        out.schema.locales = Some(
+            serde_json::json!({"default": default, "all": locales, "fallback": bool_option(&o, "fallback", true, span)?}),
+        );
+    }
+    if let Some(v) = cfg.get("media").filter(|v| !matches!(v, Value::Undef)) {
+        let o = object(v, span, "media")?;
+        keys(&o, &["sizes"], span, "media")?;
+        let mut sizes = serde_json::Map::new();
+        if let Some(v) = o.get("sizes").filter(|v| !matches!(v, Value::Undef)) {
+            let definitions = object(v, span, "media.sizes")?;
+            if definitions.len() > 12 {
+                return Err(Diag::new(span, "media supports at most 12 sizes").help("remove unused sizes"));
+            }
+            let valid_name = regex::Regex::new(r"^[a-z][a-z0-9_]*$").unwrap();
+            for (name, v) in definitions {
+                if !valid_name.is_match(&name) {
+                    return Err(Diag::new(span, format!("invalid media size name {name:?}"))
+                        .help("use lowercase letters, digits, and underscores, starting with a letter"));
+                }
+                let s = object(&v, span, "media size")?;
+                keys(&s, &["width", "height", "fit"], span, "media size")?;
+                let width = positive_int(s.get("width"), span, "size.width")?;
+                let fit = match s.get("fit") {
+                    None | Some(Value::Undef) => "inside".into(),
+                    v => string(v, span, "size.fit")?,
+                };
+                if fit != "inside" && fit != "cover" {
+                    return Err(Diag::new(span, "fit must be cover or inside").help("choose a supported fit"));
+                }
+                let height = match s.get("height") {
+                    None | Some(Value::Undef) if fit == "inside" => None,
+                    None | Some(Value::Undef) => {
+                        return Err(Diag::new(span, "fit: cover requires height").help("set height or use fit: inside"));
+                    }
+                    v => Some(positive_int(v, span, "size.height")?),
+                };
+                sizes.insert(name, serde_json::json!({"width": width, "height": height, "fit": fit}));
+            }
+        }
+        out.schema.media = serde_json::json!({"sizes": sizes});
+    }
+    if let Some(v) = cfg.get("files").filter(|v| !matches!(v, Value::Undef)) {
+        let valid_mime = regex::Regex::new(r"^[A-Za-z0-9!#$&^_.+-]+/(\*|[A-Za-z0-9!#$&^_.+-]+)$").unwrap();
+        for (name, value) in object(v, span, "files")? {
+            let Value::FileBucket(bucket) = value else {
+                return Err(Diag::new(span, "files entries must use files()")
+                    .help("write files(\"decks\", { accept: [\"application/pdf\"], maxBytes: 20000000 })"));
+            };
+            let sp = bucket.span;
+            if name != bucket.name || !valid_ident(&name) || name == "media" {
+                return Err(Diag::new(sp, "file bucket name must match its key and cannot be media")
+                    .help("use a distinct bucket name, such as decks"));
+            }
+            let o = object(&bucket.options, sp, "files options")?;
+            keys(&o, &["accept", "maxBytes", "access"], sp, "files")?;
+            let Some(Value::Array(accept)) = o.get("accept") else {
+                return Err(Diag::new(sp, "files.accept must be a MIME type array").help("use [\"application/pdf\"]"));
+            };
+            let mut mime = Vec::new();
+            for v in accept.borrow().iter() {
+                let s = string(Some(v), sp, "accept entry")?;
+                if !valid_mime.is_match(&s) {
+                    return Err(Diag::new(sp, "accept entries must be type/subtype or type/*")
+                        .help("use application/pdf or image/*"));
+                }
+                mime.push(s);
+            }
+            if mime.is_empty() {
+                return Err(Diag::new(sp, "files.accept needs at least one MIME type").help("list accepted types"));
+            }
+            let max_bytes = positive_int(o.get("maxBytes"), sp, "files.maxBytes")?;
+            let mut access = IndexMap::from([
+                ("read".into(), Access::Owner),
+                ("create".into(), Access::Role("authenticated".into())),
+                ("delete".into(), Access::Owner),
+            ]);
+            if let Some(v) = o.get("access").filter(|v| !matches!(v, Value::Undef)) {
+                for (op, rule) in object(v, sp, "files.access")? {
+                    if !["read", "create", "delete"].contains(&op.as_str()) {
+                        return Err(Diag::new(sp, "files access supports read/create/delete")
+                            .help("remove the unsupported operation"));
+                    }
+                    access.insert(
+                        op.clone(),
+                        access_rule(
+                            &rule,
+                            ev.key_span(v, &op).unwrap_or(sp),
+                            &Owner::FileBucket(name.clone()),
+                            &op,
+                            format!("files__{name}__access__{op}"),
+                            out,
+                        )?,
+                    );
+                }
+            }
+            out.schema.files.insert(
+                name,
+                FileBucket {
+                    accept: mime,
+                    max_bytes,
+                    access,
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+fn sync_config(pattern: &str, span: Span) -> Result<Json> {
+    let (dir, format) = if let Some(d) = pattern.strip_suffix("/*.md") {
+        (d, "md")
+    } else if let Some(d) = pattern.strip_suffix("/*.json") {
+        (d, "json")
+    } else {
+        return Err(Diag::new(span, "sync must end in /*.md or /*.json").help("use content/posts/*.md"));
+    };
+    if dir.is_empty()
+        || dir.starts_with('/')
+        || dir.contains(['\\', ':', '*'])
+        || dir.split('/').any(|p| p == ".." || p.is_empty())
+    {
+        return Err(Diag::new(span, "sync directory must stay inside the project")
+            .help("use a project-relative directory without .. or wildcards"));
+    }
+    let normalized = dir.split('/').filter(|p| *p != ".").collect::<Vec<_>>().join("/");
+    Ok(serde_json::json!({"dir": if normalized.is_empty() { "." } else { &normalized }, "format": format}))
+}
+
+fn has_localized(c: &Column) -> bool {
+    c.localized
+        || c.fields.as_ref().is_some_and(|fs| fs.values().any(has_localized))
+        || c.layouts
+            .as_ref()
+            .is_some_and(|ls| ls.values().any(|fs| fs.values().any(has_localized)))
+}
+
+fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, span: Span) -> Result<()> {
+    let invalid = |message: String| {
+        Diag::new(span, message)
+            .help("compare a scalar sibling with eq/ne/in/isNull/isNotNull; combine filters with top-level OR")
+    };
+    let Some(map) = filter.as_object() else {
+        return Err(invalid("showIf must be a sibling filter object".into()));
+    };
+    for (name, test) in map {
+        if name == "OR" {
+            let Some(items) = test.as_array().filter(|v| !v.is_empty()) else {
+                return Err(invalid("showIf OR must be a nonempty filter array".into()));
+            };
+            for f in items {
+                check_show_if(f, siblings, span)?;
+            }
+            continue;
+        }
+        let Some(col) = siblings.get(name) else {
+            return Err(invalid(format!("showIf names non-sibling {name:?}")));
+        };
+        if col.ty.is_json_kind() || col.ty.is_list_kind() {
+            return Err(invalid("compare a scalar sibling".into()));
+        }
+        if let Some(ops) = test.as_object() {
+            if ops.is_empty() {
+                return Err(invalid("showIf operator object cannot be empty".into()));
+            }
+            for (op, value) in ops {
+                let valid = match op.as_str() {
+                    "eq" | "ne" => value.is_null() || value.is_string() || value.is_boolean() || value.is_number(),
+                    "in" => value.as_array().is_some_and(|a| {
+                        a.iter()
+                            .all(|v| v.is_null() || v.is_string() || v.is_boolean() || v.is_number())
+                    }),
+                    "isNull" | "isNotNull" => value == &Json::Bool(true),
+                    _ => false,
+                };
+                if !valid {
+                    return Err(invalid(format!("invalid showIf operator or operand {op:?}")));
+                }
+            }
+        } else if test.is_array() {
+            return Err(invalid("showIf needs a scalar or operator object".into()));
+        }
+    }
+    Ok(())
+}
+
+fn field_conditions(fields: &IndexMap<String, Column>, builders: &IndexMap<String, Rc<ColBuilder>>) -> Result<()> {
+    for name in builders.keys() {
+        let col = &fields[name];
+        if let Some(f) = &col.show_if {
+            check_show_if(f, fields, builders[name].span_of("showIf"))?;
+        }
+        if let Some(fs) = &col.fields {
+            field_conditions(fs, builders[name].fields.as_ref().unwrap())?;
+        }
+        if let Some(ls) = &col.layouts {
+            for (layout, fs) in ls {
+                field_conditions(fs, &builders[name].layouts.as_ref().unwrap()[layout])?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn system_column(name: &str, ty: ColType) -> Column {
+    let mut c = Column::new(name, ty);
+    c.system = true;
+    c
+}
+
+fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
+    let mut auth_owner = None;
+    let mut dirs = std::collections::HashSet::new();
+    for b in &out.collections {
+        let c = out.schema.collections.get_mut(&b.table).unwrap();
+        for name in ["locale", "translations", "translationOf", "translationGroup"] {
+            if let Some(col) = b.columns.get(name) {
+                return Err(
+                    Diag::new(col.span, format!("{name} is reserved for localization")).help("rename the column")
+                );
+            }
+        }
+        if let Some(t) = &c.title
+            && (!c.columns[t].access.is_empty() || c.columns[t].show_if.is_some())
+        {
+            return Err(Diag::new(
+                b.columns[t].span_of(if c.columns[t].show_if.is_some() {
+                    "showIf"
+                } else {
+                    "access"
+                }),
+                "title is always readable",
+            )
+            .help("remove access/showIf from the title designation"));
+        }
+        if let Some(sync) = &c.sync {
+            if c.auth {
+                return Err(Diag::new(b.span, "auth collections cannot sync").help("remove sync"));
+            }
+            if sync["format"] == "md" && c.content.is_none() {
+                return Err(Diag::new(b.span, "Markdown sync needs a content designation")
+                    .help("add content: richText() or use *.json"));
+            }
+            let project = ev.program().modules[ev.program().entry].path.parent().unwrap();
+            let mut resolved = project.to_path_buf();
+            for component in sync["dir"].as_str().unwrap().split('/') {
+                resolved.push(component);
+                if std::fs::symlink_metadata(&resolved).is_ok() {
+                    resolved = resolved.canonicalize().map_err(|_| {
+                        Diag::new(b.span, "sync directory cannot be resolved")
+                            .help("repair the directory or its symlink")
+                    })?;
+                    if !resolved.starts_with(project) || !resolved.is_dir() {
+                        return Err(Diag::new(b.span, "sync directory must stay inside the project")
+                            .help("point sync at a directory inside this project"));
+                    }
+                }
+            }
+            if !dirs.insert(resolved) {
+                return Err(Diag::new(b.span, "two collections sync into the same directory")
+                    .help("use one directory per collection"));
+            }
+        }
+        if c.auth {
+            if auth_owner.replace(c.table.clone()).is_some() {
+                return Err(Diag::new(b.span, "at most one auth: true collection is allowed")
+                    .help("keep one members collection"));
+            }
+            if !c
+                .columns
+                .get("email")
+                .is_some_and(|c| c.ty == ColType::Email && c.not_null && c.unique)
+            {
+                return Err(Diag::new(b.span, "auth: true needs email: email().notNull().unique()")
+                    .help("add the required unique email column with .max(191)"));
+            }
+            if c.slug.is_some() || c.localized {
+                return Err(
+                    Diag::new(b.span, "auth collections cannot have slug() or localized fields")
+                        .help("keep translated content in a separate collection"),
+                );
+            }
+            for name in ["password", "role", "passwordHash", "suspendedAt", "guest"] {
+                if b.columns.contains_key(name) {
+                    return Err(
+                        Diag::new(b.columns[name].span, format!("{name} is reserved on auth collections"))
+                            .help("remove this column; auth owns it"),
+                    );
+                }
+            }
+            let mut role = system_column("role", ColType::Text);
+            role.enum_values = Some(ROLES.iter().map(|r| (*r).into()).collect());
+            role.default = Some(DefaultKind::Value(Json::String("subscriber".into())));
+            role.access.insert("update".into(), Access::Role("admin".into()));
+            c.columns.insert("role".into(), role);
+            for (name, ty) in [
+                ("passwordHash", ColType::Text),
+                ("suspendedAt", ColType::Timestamp),
+                ("guest", ColType::Boolean),
+            ] {
+                let mut col = system_column(name, ty);
+                col.hidden = true;
+                c.columns.insert(name.into(), col);
+            }
+        }
+        if c.uid {
+            if b.columns.contains_key("uid") {
+                return Err(
+                    Diag::new(b.columns["uid"].span, "uid is a system column").help("remove the authored uid column")
+                );
+            }
+            let mut uid = system_column("uid", ColType::Text);
+            uid.unique = true;
+            uid.rules.pattern = Some(("^zr_[0-9a-f]{20}$".into(), "".into()));
+            c.columns.insert("uid".into(), uid);
+        }
+        if c.localized {
+            let locales = out.schema.locales.as_ref().unwrap();
+            let mut locale = system_column("locale", ColType::Text);
+            locale.not_null = true;
+            locale.enum_values = Some(
+                locales["all"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap().into())
+                    .collect(),
+            );
+            locale.default = Some(DefaultKind::Value(locales["default"].clone()));
+            c.columns.insert("locale".into(), locale);
+            let mut translations = system_column("translations", ColType::Json);
+            translations.derived = true;
+            c.columns.insert("translations".into(), translations);
+            if !c.editor || out.schema.target == Target::Standalone {
+                let mut group = system_column("translationGroup", ColType::Text);
+                group.hidden = true;
+                c.columns.insert("translationGroup".into(), group);
+            }
+        }
+    }
+    for b in &out.collections {
+        field_conditions(&out.schema.collections[&b.table].columns, &b.columns)?;
+    }
+    for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
+        for col in c.columns.values() {
+            if let Some(r) = &col.references
+                && !out.schema.collections[&r.collection].uid
+            {
+                return Err(Diag::new(
+                    out.collections.iter().find(|b| b.table == c.table).unwrap().columns[&col.name]
+                        .span_of("references"),
+                    format!("sync references need uid: true on {}", r.collection),
+                )
+                .help(format!("add uid: true to {} so references sync by uid", r.collection)));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
+    let Some(v) = cfg.get("jobs").filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(());
+    };
+    for (name, value) in object(v, span, "jobs")? {
+        let Value::Job(j) = value else {
+            return Err(Diag::new(span, "jobs entries must use job()").help("write job({ input, handler })"));
+        };
+        if !valid_ident(&name) {
+            return Err(Diag::new(j.span, "invalid job name").help("use an identifier"));
+        }
+        let o = object(&j.config, j.span, "job")?;
+        keys(&o, &["input", "handler", "retries", "agents"], j.span, "job")?;
+        let retries = match o.get("retries") {
+            None | Some(Value::Undef) => 3,
+            Some(Value::Num(n)) if *n >= 0.0 && *n <= 20.0 && n.fract() == 0.0 => *n as u32,
+            _ => {
+                return Err(Diag::new(j.span, "job retries must be a whole number from 0 to 20").help("use retries: 3"));
+            }
+        };
+        let agents = bool_option(&o, "agents", false, j.span)?;
+        let Some(Value::Closure(handler)) = o.get("handler") else {
+            return Err(
+                Diag::new(j.span, "job needs a handler function").help("add handler: async (input, ctx) => { ... }")
+            );
+        };
+        let input_val = o
+            .get("input")
+            .ok_or_else(|| Diag::new(j.span, "job needs input").help("use input: {} when there are no inputs"))?;
+        let mut input = IndexMap::new();
+        for (field, value) in object(input_val, j.span, "job input")? {
+            let Value::Column(b) = value else {
+                return Err(Diag::new(j.span, "job input needs columns").help("use text(), integer(), group(), ..."));
+            };
+            input.insert(
+                field.clone(),
+                column(&field, &b, &Owner::Job(name.clone()), &[], Place::Input, ev, out)?,
+            );
+        }
+        out.roots.push(Root {
+            closure: handler.clone(),
+            slot: Slot::JobHandler { job: name.clone() },
+            name: format!("job__{name}"),
+        });
+        out.schema.jobs.insert(
+            name,
+            Job {
+                input,
+                handler: String::new(),
+                retries,
+                agents,
+            },
+        );
+    }
+    Ok(())
+}
+
+fn kebab(name: &str) -> String {
+    let mut s = String::new();
+    let chars: Vec<char> = name.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        if *c == '_' || *c == '-' {
+            if !s.ends_with('-') {
+                s.push('-');
+            }
+        } else {
+            if c.is_uppercase()
+                && i > 0
+                && !s.ends_with('-')
+                && (chars[i - 1].is_lowercase()
+                    || chars[i - 1].is_ascii_digit()
+                    || chars.get(i + 1).is_some_and(|c| c.is_lowercase()))
+            {
+                s.push('-');
+            }
+            s.extend(c.to_lowercase());
+        }
+    }
+    s
+}
+
+fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
+    if let Some(v) = cfg.get("globals") {
+        for (name, value) in object(v, span, "globals")? {
+            if let Value::Global(g) = value {
+                field_conditions(&out.schema.globals[&name].fields, &g.fields)?;
+            }
+        }
+    }
+    if let Some(v) = cfg.get("webhooks").filter(|v| !matches!(v, Value::Undef)) {
+        let Value::Array(items) = v else {
+            return Err(Diag::new(span, "webhooks must be an array").help("use [{ url, secret, events }]"));
+        };
+        for v in items.borrow().iter() {
+            let o = object(v, span, "webhook")?;
+            keys(&o, &["url", "secret", "events"], span, "webhook")?;
+            let secret = env_value(o.get("secret"), span)?;
+            let url = match o.get("url") {
+                Some(Value::Env(n)) => serde_json::json!({"env": n.as_ref()}),
+                Some(Value::Str(s)) if s.starts_with("https://") || s.starts_with("http://") => {
+                    Json::String(s.to_string())
+                }
+                _ => {
+                    return Err(
+                        Diag::new(span, "webhook.url must be an HTTP(S) URL or env()").help("use env(\"HOOK_URL\")")
+                    );
+                }
+            };
+            let Some(Value::Array(events)) = o.get("events") else {
+                return Err(Diag::new(span, "webhook.events must be an array").help("use [\"posts.created\"]"));
+            };
+            let mut normalized = Vec::new();
+            for event in events.borrow().iter() {
+                let event = string(Some(event), span, "webhook event")?;
+                if event != "*" {
+                    let valid = event.rsplit_once('.').is_some_and(|(c, op)| {
+                        out.schema.collections.contains_key(c) && ["created", "updated", "deleted"].contains(&op)
+                    });
+                    if !valid {
+                        return Err(Diag::new(
+                            ev.key_span(v, "events").unwrap_or(span),
+                            format!("webhook event names an unknown collection or event: {event}"),
+                        )
+                        .help("use <collection>.created/updated/deleted or *"));
+                    }
+                }
+                normalized.push(event);
+            }
+            out.schema
+                .webhooks
+                .push(serde_json::json!({"url": url, "secret": secret, "events": normalized}));
+        }
+    }
+    let mut abilities = std::collections::HashSet::new();
+    let mut add = |name: String| -> Result<()> {
+        if !abilities.insert(name.clone()) {
+            return Err(Diag::new(span, format!("ability kebab collision: {name}"))
+                .help("rename the colliding collection, action, global, or job"));
+        }
+        Ok(())
+    };
+    for c in out.schema.collections.values() {
+        for op in ["list", "get", "create", "update", "delete", "revisions"] {
+            add(format!("{}-{op}", kebab(&c.table)))?;
+        }
+        if c.sync.is_some() {
+            for op in ["read", "apply", "trash"] {
+                add(format!("{}-sync-{op}", kebab(&c.table)))?;
+            }
+        }
+    }
+    for a in out.schema.actions.keys() {
+        add(kebab(a))?;
+    }
+    for g in out.schema.globals.keys() {
+        for op in ["get", "update"] {
+            add(format!("global-{}-{op}", kebab(g)))?;
+        }
+    }
+    for j in out.schema.jobs.keys() {
+        add(format!("job-{}", kebab(j)))?;
+    }
+    for op in ["list", "get", "delete"] {
+        add(format!("media-{op}"))?;
+    }
+    Ok(())
 }

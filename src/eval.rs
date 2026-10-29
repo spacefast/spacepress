@@ -74,6 +74,12 @@ pub const ZERO_EXPORTS: &[&str] = &[
     "action",
     "db",
     "HttpError",
+    "file",
+    "files",
+    "job",
+    "env",
+    "once",
+    "jobs",
 ];
 /// Type-only exports of `"zero"`: importable, erased.
 const ZERO_TYPES: &[&str] = &[
@@ -93,6 +99,28 @@ const ZERO_TYPES: &[&str] = &[
     "BlockValue",
     "Global",
     "AnyGlobal",
+    "FieldRule",
+    "FieldAccessCtx",
+    "SiblingFilter",
+    "AccessShorthand",
+    "Target",
+    "Job",
+    "AnyJob",
+    "JobCtx",
+    "JobsApi",
+    "JobHandle",
+    "EnqueueOptions",
+    "EnvValue",
+    "Webhook",
+    "WebhookEvent",
+    "FileBucket",
+    "AnyFileBucket",
+    "FileRule",
+    "Locale",
+    "LocalizedColumns",
+    "ColumnsConfig",
+    "ConfigInput",
+    "InferActionInput",
 ];
 
 pub const GLOBALS: &[&str] = &[
@@ -1153,12 +1181,46 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
-            Builtin::Action => {
+            Builtin::Env => match arg(0) {
+                Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
+                    Ok(Value::Env(n))
+                }
+                _ => err_help(
+                    span,
+                    "env() needs an environment variable name",
+                    "use env(\"HOOK_SECRET\")",
+                ),
+            },
+            Builtin::Files => {
+                let Value::Str(name) = arg(0) else {
+                    return err(span, "files() needs a bucket name");
+                };
+                let options = arg(1);
+                if !matches!(options, Value::Object(_)) {
+                    return err(span, "files() needs an options object");
+                }
+                Ok(Value::FileBucket(Rc::new(FileBucketVal {
+                    name: name.to_string(),
+                    options,
+                    span,
+                })))
+            }
+            Builtin::Once | Builtin::Jobs => err_help(
+                span,
+                "not implemented until lane D",
+                "use these runtime calls after lane D lands",
+            ),
+            Builtin::Action | Builtin::Job => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
                     return err(span, "action() needs `{ input, handler }`");
                 }
-                Ok(Value::Action(Rc::new(ActionVal { config: cfg, span })))
+                let value = Rc::new(ActionVal { config: cfg, span });
+                Ok(if *b == Builtin::Job {
+                    Value::Job(value)
+                } else {
+                    Value::Action(value)
+                })
             }
             Builtin::RelFn(kind, target) => {
                 let config = match arg(0) {
@@ -1225,6 +1287,7 @@ impl<'p> Evaluator<'p> {
             "slug" => ColType::Slug,
             "richText" => ColType::RichText,
             "media" => ColType::Media,
+            "file" => ColType::File,
             "select" => ColType::Text,
             "group" => ColType::Group,
             "repeater" => ColType::Repeater,
@@ -1236,6 +1299,7 @@ impl<'p> Evaluator<'p> {
         let allowed: &[&str] = match builder {
             "text" => &["enum", "multiline"],
             "slug" => &["source"],
+            "file" => &["bucket"],
             "media" => &["accept", "multiple"],
             "select" => &["options", "multiple"],
             "group" | "repeater" => &["fields"],
@@ -1244,6 +1308,7 @@ impl<'p> Evaluator<'p> {
         };
         let required: Option<&str> = match builder {
             "select" => Some("options"),
+            "file" => Some("bucket"),
             "group" | "repeater" => Some("fields"),
             "blocks" => Some("layouts"),
             _ => None,
@@ -1305,6 +1370,10 @@ impl<'p> Evaluator<'p> {
                 "enum" | "options" => c.enum_values = Some(strings(v, k, ksp)?),
                 "multiline" => c.multiline = flag(v)?,
                 "multiple" => multiple = flag(v)?,
+                "bucket" => match v {
+                    Value::Str(s) if !s.is_empty() => c.bucket = Some(s.to_string()),
+                    _ => return err(ksp, "`bucket` must be a bucket name"),
+                },
                 "source" => match v {
                     Value::Str(s) => c.source = Some(s.to_string()),
                     other => return err(ksp, format!("`source` must be a column name, not {}", other.describe())),
@@ -1597,6 +1666,12 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
         "slug" => Builtin::Field("slug"),
         "richText" => Builtin::Field("richText"),
         "media" => Builtin::Field("media"),
+        "file" => Builtin::Field("file"),
+        "files" => Builtin::Files,
+        "job" => Builtin::Job,
+        "jobs" => Builtin::Jobs,
+        "once" => Builtin::Once,
+        "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),
         "repeater" => Builtin::Field("repeater"),
@@ -1708,6 +1783,9 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         c.mods.push((name, span));
     }
     match m {
+        "access" => c.access = Some(arg(0)),
+        "showIf" => c.show_if = Some(arg(0)),
+        "localized" => c.localized = true,
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
         "min" | "max" => {
@@ -1845,6 +1923,9 @@ const MODIFIERS: &[&str] = &[
     "max",
     "pattern",
     "validate",
+    "access",
+    "showIf",
+    "localized",
 ];
 
 /// "a text column", "an email column".
@@ -1863,7 +1944,10 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
     let ok = match m {
-        "min" | "max" => !matches!(ty, T::Boolean | T::Date | T::Timestamp | T::Json | T::Media | T::Group),
+        "min" | "max" => !matches!(
+            ty,
+            T::Boolean | T::Date | T::Timestamp | T::Json | T::Media | T::File | T::Group
+        ),
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
@@ -1907,6 +1991,10 @@ impl ColBuilder {
             on_update: None,
             references: None,
             ts_type: None,
+            access: None,
+            show_if: None,
+            localized: false,
+            bucket: None,
             span,
             mods: Vec::new(),
         }

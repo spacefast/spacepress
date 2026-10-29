@@ -31,14 +31,33 @@ $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed 
 // ---------------------------------------------------------------- load
 
 $tmp = tempnam(sys_get_temp_dir(), 'zs');
-file_put_contents($tmp, "<?php return ['collections' => []];");
-try {
-    Schema::load($tmp);
-    check('v1 schema.php is refused', false);
-} catch (RuntimeException $e) {
-    eq('v1 schema.php is refused', $e->getMessage(), 'schema.php version 2 required');
+foreach ([
+    ['version' => 2, 'runtime' => '0.2'],
+    ['version' => 3, 'runtime' => '0.1'],
+    ['version' => 3],
+] as $raw) {
+    file_put_contents($tmp, '<?php return ' . var_export($raw, true) . ';');
+    try {
+        Schema::load($tmp);
+        check('incompatible schema is refused', false);
+    } catch (RuntimeException $e) {
+        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required'
+            : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.2';
+        eq('incompatible schema is refused', $e->getMessage(), $expected);
+    }
 }
 unlink($tmp);
+eq('v3 reader reports its contract', [$schema->version(), $schema->runtime()], [3, '0.2']);
+
+$phase2Raw = json_decode(file_get_contents(__DIR__ . '/../fixtures/phase2.schema.json'), true, 512, JSON_THROW_ON_ERROR);
+$phase2 = new Schema($phase2Raw);
+foreach (['site', 'locales', 'media', 'files', 'auth', 'jobs', 'webhooks'] as $key) {
+    eq("v3 $key passes through", $phase2->$key(), $phase2Raw[$key]);
+}
+eq('v3 nested column metadata passes through', $phase2->collection('posts'), $phase2Raw['collections']['posts']);
+eq('v3 describes field rules without function names', $phase2->describe()['collections']['authors']['columns']['email']['access'], ['read' => 'editor', 'create' => 'anyone', 'update' => 'rule']);
+eq('v3 describes safe file metadata', $phase2->describe()['files']['decks'], ['accept' => ['application/pdf', 'image/*'], 'maxBytes' => 20000000]);
+eq('v3 self summary', $phase2->describe()['collections']['members']['access']['read'], 'self');
 
 $described = json_encode($schema->describe());
 check('describe hides function names, hooks and wp identifiers',

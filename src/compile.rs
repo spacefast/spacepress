@@ -272,6 +272,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => vec![row, ctx],
                 }
             }
+            Slot::JobHandler { job } => {
+                let mut props = match ctx {
+                    Ty::Obj(p) => p,
+                    _ => unreachable!(),
+                };
+                props.insert("attempt".into(), (Ty::Num, false));
+                props.insert("jobId".into(), (Ty::Str, false));
+                vec![types::action_input(&self.schema.jobs[job].input), Ty::Obj(props)]
+            }
+            Slot::FieldAccess { .. } => {
+                let mut props = match types::access_ctx(Ty::Map(Box::new(Ty::Unknown))) {
+                    Ty::Obj(p) => p,
+                    _ => unreachable!(),
+                };
+                props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
+                vec![Ty::Obj(props)]
+            }
             Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input), ctx],
             Slot::Access { owner, op } => {
                 let data = match owner {
@@ -314,8 +331,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
-            no_db: matches!(slot, Some(Slot::Access { .. })),
+            no_db: matches!(slot, Some(Slot::Access { .. } | Slot::FieldAccess { .. })),
             access: match slot {
+                Some(Slot::FieldAccess { .. }) => Some((None, "field".into())),
                 Some(Slot::Access { owner, op }) => Some((
                     match owner {
                         Owner::Collection(t) => Some(t.clone()),
@@ -1913,12 +1931,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
+            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) | Value::Env(_) => err_help(
+                span,
+                "not implemented until lane D",
+                "runtime enqueue/once/env calls become available in lane D",
+            ),
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
             | Value::Relation(_)
             | Value::Action(_)
+            | Value::Job(_)
+            | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
@@ -2477,6 +2502,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
+        }
+        if let ExprKind::Ident(n) = &callee.kind
+            && let Resolved::Value(Value::Builtin(Builtin::Once), _) = self.resolve(n, callee.span)?
+        {
+            let key = self.arg(args, 0, span, "once")?;
+            if self.expr(key)?.ty != Ty::Str {
+                return err_help(key.span, "once key must be a string", "use a stable string key");
+            }
         }
         match &callee.kind {
             ExprKind::Member {

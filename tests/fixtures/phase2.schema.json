@@ -1,0 +1,631 @@
+{
+    "version": 3,
+    "runtime": "0.2",
+    "name": "phase2",
+    "target": "standalone",
+    "site": {
+        "uidPrefix": "zr_"
+    },
+    "locales": {
+        "default": "en",
+        "all": [
+            "en",
+            "de"
+        ],
+        "fallback": true
+    },
+    "media": {
+        "sizes": {
+            "thumb": {
+                "width": 300,
+                "height": 300,
+                "fit": "cover"
+            },
+            "wide": {
+                "width": 1600,
+                "height": null,
+                "fit": "inside"
+            }
+        }
+    },
+    "auth": {
+        "collection": "members",
+        "guests": true,
+        "accessTtl": 300,
+        "refreshTtl": 2592000
+    },
+    "files": {
+        "decks": {
+            "accept": [
+                "application/pdf",
+                "image/*"
+            ],
+            "maxBytes": 20000000,
+            "access": {
+                "read": {
+                    "owner": true
+                },
+                "create": {
+                    "fn": "files__decks__access__create"
+                },
+                "delete": {
+                    "owner": true
+                }
+            }
+        }
+    },
+    "jobs": {
+        "sendWelcome": {
+            "input": {
+                "email": {
+                    "type": "email",
+                    "notNull": true
+                },
+                "data": {
+                    "type": "group",
+                    "fields": {
+                        "label": {
+                            "type": "text",
+                            "default": {
+                                "value": "welcome"
+                            }
+                        }
+                    }
+                }
+            },
+            "handler": "job__sendWelcome",
+            "retries": 5,
+            "agents": true
+        }
+    },
+    "webhooks": [
+        {
+            "url": {
+                "env": "HOOK_URL"
+            },
+            "secret": {
+                "env": "HOOK_SECRET"
+            },
+            "events": [
+                "posts.created",
+                "posts.updated",
+                "posts.deleted",
+                "*"
+            ]
+        },
+        {
+            "url": "https://example.com/hook",
+            "secret": {
+                "env": "OTHER_SECRET"
+            },
+            "events": [
+                "members.created"
+            ]
+        }
+    ],
+    "collections": {
+        "audit": {
+            "key": "audit",
+            "label": "Audit",
+            "editor": false,
+            "drafts": false,
+            "revisions": false,
+            "uid": false,
+            "sync": null,
+            "auth": false,
+            "agents": false,
+            "localized": false,
+            "title": null,
+            "content": null,
+            "slug": null,
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "note": {
+                    "type": "text",
+                    "notNull": true
+                }
+            },
+            "relations": [],
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "create": {
+                    "role": "editor"
+                },
+                "update": {
+                    "role": "editor"
+                },
+                "delete": {
+                    "role": "editor"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": null,
+            "table": "zero_audit"
+        },
+        "authors": {
+            "key": "authors",
+            "label": "Authors",
+            "editor": true,
+            "drafts": true,
+            "revisions": true,
+            "uid": true,
+            "sync": null,
+            "auth": false,
+            "agents": true,
+            "localized": false,
+            "title": "name",
+            "content": null,
+            "slug": null,
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "name": {
+                    "type": "text",
+                    "notNull": true
+                },
+                "email": {
+                    "type": "email",
+                    "access": {
+                        "read": {
+                            "role": "editor"
+                        },
+                        "create": {
+                            "allow": true
+                        },
+                        "update": {
+                            "fn": "authors__field__email__update"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "text",
+                    "notNull": true,
+                    "enum": [
+                        "draft",
+                        "published",
+                        "scheduled"
+                    ],
+                    "default": {
+                        "value": "published"
+                    },
+                    "system": true
+                },
+                "publishedAt": {
+                    "type": "timestamp",
+                    "system": true
+                },
+                "uid": {
+                    "type": "text",
+                    "unique": true,
+                    "rules": {
+                        "pattern": {
+                            "source": "^zr_[0-9a-f]{20}$",
+                            "flags": ""
+                        }
+                    },
+                    "system": true
+                }
+            },
+            "relations": [],
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "create": {
+                    "role": "editor"
+                },
+                "update": {
+                    "role": "editor"
+                },
+                "delete": {
+                    "role": "editor"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": {
+                "postType": "zero_authors",
+                "groupKey": "group_zero_authors",
+                "metaPrefix": "zero_",
+                "fieldKeyPrefix": "field_zero_authors_"
+            },
+            "table": null
+        },
+        "posts": {
+            "key": "posts",
+            "label": "Posts",
+            "editor": true,
+            "drafts": true,
+            "revisions": true,
+            "uid": true,
+            "sync": {
+                "dir": "content/posts",
+                "format": "md"
+            },
+            "auth": false,
+            "agents": true,
+            "localized": true,
+            "title": "title",
+            "content": "content",
+            "slug": "slug",
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "title": {
+                    "type": "text",
+                    "notNull": true,
+                    "localized": true
+                },
+                "content": {
+                    "type": "richText",
+                    "localized": true
+                },
+                "slug": {
+                    "type": "slug",
+                    "unique": true,
+                    "source": "title"
+                },
+                "authorId": {
+                    "type": "integer",
+                    "references": {
+                        "collection": "authors",
+                        "column": "id"
+                    }
+                },
+                "deck": {
+                    "type": "file",
+                    "bucket": "decks"
+                },
+                "seo": {
+                    "type": "group",
+                    "fields": {
+                        "kind": {
+                            "type": "text",
+                            "enum": [
+                                "a",
+                                "b"
+                            ]
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "label": {
+                            "type": "text",
+                            "access": {
+                                "read": {
+                                    "fn": "posts__field__seo__label__read"
+                                }
+                            },
+                            "showIf": {
+                                "OR": [
+                                    {
+                                        "kind": {
+                                            "in": [
+                                                "a",
+                                                "b"
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "enabled": {
+                                            "eq": true
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "showIf": {
+                        "status": "published"
+                    }
+                },
+                "items": {
+                    "type": "repeater",
+                    "fields": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "label": {
+                            "type": "text",
+                            "showIf": {
+                                "enabled": true
+                            }
+                        }
+                    }
+                },
+                "sections": {
+                    "type": "blocks",
+                    "layouts": {
+                        "hero": {
+                            "kind": {
+                                "type": "text"
+                            },
+                            "label": {
+                                "type": "text",
+                                "access": {
+                                    "update": {
+                                        "fn": "posts__field__sections__hero__label__update"
+                                    }
+                                },
+                                "showIf": {
+                                    "kind": {
+                                        "ne": "hidden"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": {
+                    "type": "select",
+                    "multiple": true,
+                    "enum": [
+                        "news",
+                        "guide"
+                    ],
+                    "localized": true
+                },
+                "meta": {
+                    "type": "json",
+                    "localized": true
+                },
+                "status": {
+                    "type": "text",
+                    "notNull": true,
+                    "enum": [
+                        "draft",
+                        "published",
+                        "scheduled"
+                    ],
+                    "default": {
+                        "value": "published"
+                    },
+                    "system": true
+                },
+                "publishedAt": {
+                    "type": "timestamp",
+                    "system": true
+                },
+                "uid": {
+                    "type": "text",
+                    "unique": true,
+                    "rules": {
+                        "pattern": {
+                            "source": "^zr_[0-9a-f]{20}$",
+                            "flags": ""
+                        }
+                    },
+                    "system": true
+                },
+                "locale": {
+                    "type": "text",
+                    "notNull": true,
+                    "enum": [
+                        "en",
+                        "de"
+                    ],
+                    "default": {
+                        "value": "en"
+                    },
+                    "system": true
+                },
+                "translations": {
+                    "type": "json",
+                    "derived": true,
+                    "system": true
+                },
+                "translationGroup": {
+                    "type": "text",
+                    "hidden": true,
+                    "system": true
+                }
+            },
+            "relations": [],
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "create": {
+                    "role": "editor"
+                },
+                "update": {
+                    "role": "editor"
+                },
+                "delete": {
+                    "role": "editor"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": {
+                "postType": "zero_posts",
+                "groupKey": "group_zero_posts",
+                "metaPrefix": "zero_",
+                "fieldKeyPrefix": "field_zero_posts_"
+            },
+            "table": null
+        },
+        "members": {
+            "key": "members",
+            "label": "Members",
+            "editor": false,
+            "drafts": false,
+            "revisions": false,
+            "uid": false,
+            "sync": null,
+            "auth": true,
+            "agents": true,
+            "localized": false,
+            "title": null,
+            "content": null,
+            "slug": null,
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "email": {
+                    "type": "email",
+                    "notNull": true,
+                    "unique": true,
+                    "rules": {
+                        "max": 191
+                    }
+                },
+                "name": {
+                    "type": "text"
+                },
+                "role": {
+                    "type": "text",
+                    "enum": [
+                        "guest",
+                        "subscriber",
+                        "author",
+                        "editor",
+                        "admin"
+                    ],
+                    "default": {
+                        "value": "subscriber"
+                    },
+                    "access": {
+                        "update": {
+                            "role": "admin"
+                        }
+                    },
+                    "system": true
+                },
+                "passwordHash": {
+                    "type": "text",
+                    "hidden": true,
+                    "system": true
+                },
+                "suspendedAt": {
+                    "type": "timestamp",
+                    "hidden": true,
+                    "system": true
+                },
+                "guest": {
+                    "type": "boolean",
+                    "hidden": true,
+                    "system": true
+                }
+            },
+            "relations": [],
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "self": true
+                },
+                "create": {
+                    "role": "anyone"
+                },
+                "update": {
+                    "self": true
+                },
+                "delete": {
+                    "role": "admin"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": null,
+            "table": "zero_members"
+        }
+    },
+    "globals": {
+        "settings": {
+            "label": "Settings",
+            "agents": false,
+            "fields": {
+                "title": {
+                    "type": "text",
+                    "default": {
+                        "value": "Hello"
+                    }
+                }
+            },
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "update": {
+                    "role": "editor"
+                }
+            },
+            "wp": {
+                "postId": "zero_global_settings",
+                "menuSlug": "zero-global-settings",
+                "groupKey": "group_zero_global_settings",
+                "fieldKeyPrefix": "field_zero_global_settings_",
+                "optionPrefix": "zero_global_settings_"
+            }
+        }
+    },
+    "actions": {
+        "inbound": {
+            "input": [],
+            "handler": "action__inbound",
+            "access": {
+                "role": "editor"
+            },
+            "agents": false,
+            "idempotent": true,
+            "signature": {
+                "secret": {
+                    "env": "STRIPE_WEBHOOK_SECRET"
+                },
+                "header": "stripe-signature",
+                "scheme": "hmac-sha256"
+            }
+        }
+    }
+}

@@ -219,7 +219,7 @@ impl Ty {
 /// The value type a column holds, before nullability.
 pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     match c.ty {
-        ColType::Integer | ColType::Real | ColType::Media => Ty::Num,
+        ColType::Integer | ColType::Real | ColType::Media | ColType::File => Ty::Num,
         ColType::Text
         | ColType::Timestamp
         | ColType::Date

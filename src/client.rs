@@ -70,7 +70,7 @@ fn key(k: &str) -> String {
 fn value_ts(c: &Column, insert: bool) -> String {
     let enum_union = |e: &Vec<String>| e.iter().map(|v| lit(v)).collect::<Vec<_>>().join(" | ");
     match c.ty {
-        ColType::Integer | ColType::Real | ColType::Media => "number".into(),
+        ColType::Integer | ColType::Real | ColType::Media | ColType::File => "number".into(),
         ColType::Boolean => "boolean".into(),
         ColType::Text => match &c.enum_values {
             Some(e) => enum_union(e),

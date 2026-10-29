@@ -516,3 +516,198 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     assert!(project.join("zero/client/schema.ts").is_file());
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// Every static phase-2 rejection is target-independent (phase-2 §§4–7).
+#[test]
+fn rejects_phase2_static_contracts() {
+    let cases = [
+        ("reject-showif-dynamic", "showIf must be static data"),
+        ("reject-sync-symlink", "sync directory must stay inside the project"),
+        ("reject-field-access-id", "access/showIf is not allowed on id()"),
+        ("reject-field-access-title", "title is always readable"),
+        ("reject-field-access-filter", "field rules here return a boolean"),
+        ("reject-field-access-query", "access rules can't query"),
+        ("reject-field-access-self", "self is only allowed on auth collection"),
+        ("reject-showif-sibling", "showIf names non-sibling"),
+        ("reject-showif-operator", "invalid showIf operator"),
+        ("reject-showif-structured", "compare a scalar sibling"),
+        ("reject-showif-nested-sibling", "showIf names non-sibling"),
+        ("reject-showif-title", "title is always readable"),
+        ("reject-sync-auth", "auth collections cannot sync"),
+        ("reject-sync-directory", "two collections sync into the same directory"),
+        ("reject-sync-outside", "sync directory must stay inside the project"),
+        ("reject-sync-content", "Markdown sync needs a content designation"),
+        ("reject-sync-uid", "uid: false cannot be combined with sync"),
+        ("reject-sync-reference", "sync references need uid: true on a"),
+        (
+            "reject-job-reference",
+            "`.references()` isn't allowed on an action input",
+        ),
+        ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
+        ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
+        ("reject-once-key", "once key must be a string"),
+        ("reject-env-placement", "env() is only allowed in webhooks/signature"),
+        ("reject-signature-access", "signature cannot be combined with access"),
+        ("reject-webhook-collection", "webhook event names an unknown collection"),
+        ("reject-lane-d-enqueue", "not implemented until lane D"),
+        ("reject-lane-d-once", "not implemented until lane D"),
+        ("reject-lane-d-env", "not implemented until lane D"),
+        ("reject-auth-duplicate", "at most one auth: true collection"),
+        (
+            "reject-auth-email",
+            "auth: true needs email: email().notNull().unique()",
+        ),
+        ("reject-auth-editor", "auth: true requires editor: false"),
+        ("reject-auth-drafts", "auth: true requires drafts: false"),
+        ("reject-auth-revisions", "auth: true requires revisions: false"),
+        (
+            "reject-auth-slug",
+            "auth collections cannot have slug() or localized fields",
+        ),
+        ("reject-auth-self", "self is only allowed on auth collection"),
+        ("reject-auth-create-self", "self is only allowed on auth collection"),
+        (
+            "reject-auth-reserved-password",
+            "password is reserved on auth collections",
+        ),
+        ("reject-auth-reserved-role", "role is reserved on auth collections"),
+        (
+            "reject-auth-reserved-passwordHash",
+            "passwordHash is reserved on auth collections",
+        ),
+        ("reject-agents-kebab", "ability kebab collision: notes-list"),
+        ("reject-agents-media", "media has no option `agents`"),
+        ("reject-files-cover", "fit: cover requires height"),
+        ("reject-files-size-name", "invalid media size name"),
+        ("reject-files-size-count", "media supports at most 12 sizes"),
+        ("reject-files-bucket", "unknown file bucket"),
+        ("reject-files-owner", "owner is only allowed in files access"),
+        ("reject-files-accept", "accept entries must be type/subtype or type/*"),
+        (
+            "reject-files-media",
+            "file bucket name must match its key and cannot be media",
+        ),
+        ("reject-localized-kind", "translate text, not values"),
+        ("reject-localized-missing", ".localized() requires locales"),
+        ("reject-localized-default", "locales.default must appear in all"),
+        ("reject-localized-tag", "invalid or duplicate locale"),
+        ("reject-localized-unique", "unique is not allowed on a localized column"),
+        (
+            "reject-localized-auth",
+            "auth collections cannot have slug() or localized fields",
+        ),
+        (
+            "reject-localized-reserved-locale",
+            "locale is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translations",
+            "translations is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translationOf",
+            "translationOf is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translationGroup",
+            "translationGroup is reserved for localization",
+        ),
+    ];
+    for (fixture, message) in cases {
+        for target in ["standalone", "wp"] {
+            let out = zero()
+                .args(["check", "--target", target])
+                .arg(root().join("tests/fixtures").join(fixture))
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{fixture} ({target}): {stderr}");
+            assert!(
+                stderr.contains(message),
+                "{fixture} ({target}): expected {message:?}, got {stderr}"
+            );
+            assert!(
+                stderr.contains("--> zero.config.ts:"),
+                "{fixture} has no source location: {stderr}"
+            );
+            assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
+        }
+    }
+}
+
+/// The v3 config normalizes to one shape, and the new slots run through the existing PHP path.
+#[test]
+fn phase2_schema_and_closures_match_the_contract() {
+    let tmp = std::env::temp_dir().join(format!("zero-phase2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::copy(
+        root().join("tests/fixtures/phase2-surface/zero.config.ts"),
+        tmp.join("zero.config.ts"),
+    )
+    .unwrap();
+    let golden: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
+    for target in ["standalone", "wp"] {
+        let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let schema_file = if target == "wp" {
+            tmp.join(".zero/wp/zero-phase2/zero/app/schema.php")
+        } else {
+            tmp.join(".zero/app/zero/app/schema.php")
+        };
+        let out = Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(schema_file)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let mut expected = golden.clone();
+        expected["target"] = target.into();
+        if target == "wp" {
+            expected["collections"]["posts"]["columns"]
+                .as_object_mut()
+                .unwrap()
+                .remove("translationGroup");
+        }
+        assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
+    }
+    let app = tmp.join(".zero/app");
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+        require $argv[1] . '/zero/runtime/bootstrap.php';
+        \Zero\App::boot($argv[1]);
+        $db = \Zero\Db::instance();
+        $schema = $db->schema();
+        $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
+        $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
+        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
+        $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
+        $update = $fn(['data' => [], 'user' => null, 'target' => 'standalone', 'op' => 'update']);
+        $bucket = $schema->files()['decks'];
+        $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
+        $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);
+        $job = $schema->jobs()['sendWelcome'];
+        $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com']);
+        $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
+        $fn = '\\ZeroApp\\' . $job['handler'];
+        $db->transaction(static fn () => $fn($input, $ctx));
+        echo json_encode([$private, $public, $update, $bucketGuest, $db->findMany('audit')]);
+    "#,
+        ])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        result,
+        serde_json::json!([false, true, true, false, [{"id": 1, "note": "a@example.com:job-test:2"}]])
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}

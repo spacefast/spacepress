@@ -16,20 +16,30 @@ use function Zero\db;
  */
 final class Wire
 {
-    /** @return list<string> the columns a record's `fields` carries, in schema order */
+    /**
+     * The columns a record's `fields` carries, in schema order. A localized collection's derived
+     * `translations` (locale → id, §7.3) travels too, as locale → uid; it is read-only on push.
+     *
+     * @return list<string>
+     */
     public static function fieldNames(array $spec): array
     {
         $names = [];
         foreach ($spec['columns'] as $name => $col) {
             $name = (string) $name;
             if ($name === $spec['primaryKey'] || $name === ($spec['content'] ?? null) || $name === 'uid'
-                || isset($col['onUpdate']) || ($col['derived'] ?? false) || ($col['hidden'] ?? false)) {
+                || isset($col['onUpdate']) || ($col['hidden'] ?? false) || (($col['derived'] ?? false) && !self::isTranslations($spec, $name))) {
                 continue;
             }
             $names[] = $name;
         }
 
         return $names;
+    }
+
+    private static function isTranslations(array $spec, string $name): bool
+    {
+        return $name === 'translations' && ($spec['localized'] ?? false) && ($spec['columns'][$name]['system'] ?? false);
     }
 
     /**
@@ -43,7 +53,7 @@ final class Wire
     {
         $spec = db()->schema()->collection($collection);
         $names = self::fieldNames($spec);
-        $uids = self::targetUids($spec, $rows);
+        $uids = self::targetUids($collection, $spec, $rows);
         $out = [];
         foreach ($rows as $row) {
             $fields = [];
@@ -53,7 +63,11 @@ final class Wire
                 }
                 $ref = $spec['columns'][$name]['references'] ?? null;
                 $value = $row[$name];
-                $fields[$name] = $ref === null || $value === null ? $value : ($uids[$name][self::key($value)] ?? null);
+                $fields[$name] = match (true) {
+                    self::isTranslations($spec, $name) && is_array($value) => array_map(static fn ($id) => $uids[$name][self::key($id)] ?? null, $value),
+                    $ref === null || $value === null => $value,
+                    default => $uids[$name][self::key($value)] ?? null,
+                };
             }
             try {
                 $body = self::bodyOut($spec, $row);
@@ -95,6 +109,9 @@ final class Wire
             if (!isset($allowed[$name])) {
                 throw HttpError::invalidInput("Unknown or generated field '$name'", '/fields' . HttpError::seg($name));
             }
+            if (self::isTranslations($spec, $name)) {
+                continue; // derived: translation links are made with translationOf, never by sync
+            }
             $ref = $spec['columns'][$name]['references'] ?? null;
             $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value);
         }
@@ -133,19 +150,28 @@ final class Wire
     }
 
     /** uid of each referenced row, per reference column; rows without one get one now. */
-    private static function targetUids(array $spec, array $rows): array
+    private static function targetUids(string $collection, array $spec, array $rows): array
     {
         $out = [];
         foreach ($spec['columns'] as $name => $col) {
+            $name = (string) $name;
             $ref = $col['references'] ?? null;
-            if ($ref === null) {
+            if (self::isTranslations($spec, $name)) {
+                $ref = ['collection' => $collection, 'column' => $spec['primaryKey']];
+                $values = [];
+                foreach ($rows as $row) {
+                    array_push($values, ...array_values(is_array($row[$name] ?? null) ? $row[$name] : []));
+                }
+                $values = array_values(array_unique($values, SORT_REGULAR));
+            } elseif ($ref === null) {
                 continue;
+            } else {
+                $values = array_values(array_unique(array_filter(array_column($rows, $name), static fn ($v) => $v !== null), SORT_REGULAR));
             }
-            $values = array_values(array_unique(array_filter(array_column($rows, $name), static fn ($v) => $v !== null), SORT_REGULAR));
             if ($values === []) {
                 continue;
             }
-            $targets = db()->findMany($ref['collection'], ['where' => [$ref['column'] => ['in' => $values]]]);
+            $targets = Module::find($ref['collection'], ['where' => [$ref['column'] => ['in' => $values]]]);
             foreach (Module::ensureUids($ref['collection'], $targets) as $target) {
                 $out[$name][self::key($target[$ref['column']])] = $target['uid'];
             }
@@ -160,7 +186,7 @@ final class Wire
         if (!Uid::valid($uid)) {
             throw HttpError::invalidInput("$name must be the uid of a {$ref['collection']} row", $pointer);
         }
-        $target = db()->findFirst($ref['collection'], ['where' => ['uid' => $uid]])
+        $target = Module::find($ref['collection'], ['where' => ['uid' => $uid], 'limit' => 1])[0]
             ?? throw new HttpError(422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer);
 
         return $target[$ref['column']];

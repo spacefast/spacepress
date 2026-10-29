@@ -17,7 +17,7 @@ final class Trash
 {
     private const UID_META = '_zero_uid';
 
-    private static function postBacked(array $spec): bool
+    public static function postBacked(array $spec): bool
     {
         return db()->target() === 'wp' && ($spec['editor'] ?? true) && ($spec['wp'] ?? null) !== null;
     }
@@ -38,17 +38,25 @@ final class Trash
         return array_column($rows, 'uid', 'ID');
     }
 
-    /** Move a post to the trash; false when the collection has no trash. */
-    public static function trash(string $collection, array $spec, int|string $pk): bool
+    /**
+     * Move a post to the trash with the pipeline's delete lifecycle around it (delete extensions,
+     * beforeDelete, FK actions, afterDelete), in the request transaction; false when the collection has
+     * no trash. $row is the full stored row and the caller has authorized the delete.
+     */
+    public static function trash(string $collection, array $spec, array $row): bool
     {
         if (!self::postBacked($spec)) {
             return false;
         }
+        $pk = (int) $row[$spec['primaryKey']];
         $connection = Plugin::instance()->connection();
-        $connection->touchPost((int) $pk);
-        if (!$connection->core(static fn () => wp_trash_post((int) $pk))) {
+        $user = db()->actor();
+        db()->beforeEditorDelete($collection, $row, $user);
+        $connection->touchPost($pk);
+        if (!$connection->core(static fn () => wp_trash_post($pk))) {
             throw new \RuntimeException("Could not move post $pk to the trash");
         }
+        db()->afterEditorDelete($collection, $row, $user);
 
         return true;
     }

@@ -4,7 +4,7 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, id, integer, richText, select, slug, text } from "zero";
+import { collection, id, integer, richText, select, slug, text, HttpError } from "zero";
 
 export const writers = collection("writers", {
   id: id(),
@@ -27,6 +27,13 @@ export const relations = (r: unknown) => ({});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {};
+export const hooks = {
+  guides: {
+    // A delete veto: sync trash must run the delete lifecycle and roll back with it.
+    async beforeDelete(row) {
+      if (row.summary === "keep") throw new HttpError(409, "kept", "this guide is kept");
+    },
+  },
+};
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
 export const config = {};

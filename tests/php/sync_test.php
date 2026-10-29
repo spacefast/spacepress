@@ -30,7 +30,7 @@ $schema = [
         ],
         'notes' => [
             'primaryKey' => 'id', 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
-            'drafts' => true, 'revisions' => true, 'access' => $editor + ['update' => ['fn' => 'notes__update']], 'api' => $api, 'relations' => [],
+            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['role' => 'author'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
             'hooks' => ['beforeCreate' => 'notes__beforeCreate'],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -52,8 +52,14 @@ $functions = <<<'PHP'
     <?php
     declare(strict_types=1);
     namespace ZeroApp;
-    // Editors may update everything; authors only rows they wrote (a filter, which sync refuses).
-    function notes__update($ctx) { return ($ctx['user']['role'] ?? null) === 'author' ? ['authorId' => 0] : true; }
+    // Editors may update every note; authors only notes credited to a person with their name (a filter).
+    function notes__update($ctx) {
+        return match ($ctx['user']['role'] ?? null) {
+            'editor', 'admin' => true,
+            'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx['user']['name']]]), 'id')]],
+            default => false,
+        };
+    }
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
     PHP;
@@ -193,8 +199,23 @@ eq('a referenced row without a uid gets one on pull', $legacyUid, $db->findFirst
 // ================================================================ access
 
 isProblem('anonymous cannot pull', req('GET', '/sync/notes', as: null), 401, 'unauthenticated');
-isProblem('a filtered update rule is not enough to sync', req('GET', '/sync/notes', as: 'au'), 403, 'forbidden');
+isProblem('a filtered update rule is not enough to pull', req('GET', '/sync/notes', as: 'au'), 403, 'forbidden');
+isProblem('nor to convert', req('POST', '/sync/notes/convert', ['direction' => 'toBlocks', 'text' => 'x'], as: 'au'), 403, 'forbidden');
 isProblem('collections without sync have no sync route', req('GET', '/sync/people'), 404, 'not_found');
+
+// Writes are authorized row by row through the pipeline: an author may create and may update rows
+// their filter matches, but a stale write discloses nothing to a caller who can't pull.
+$au = $db->insert('people', ['name' => 'au'], true)[0];
+$own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slug' => 'mine', 'meta' => null, 'authorId' => $au['uid'], 'status' => 'draft', 'publishedAt' => null], 'body' => null];
+[$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'au');
+eq('the create rule authorizes a new uid', [$s, $mine['status']], [201, 'applied']);
+eq('a filtered update rule authorizes rows it matches', req('POST', '/sync/notes', ['record' => ['body' => "Edited.\n"] + $own, 'expect' => $mine['digest']], as: 'au')[1]['status'], 'applied');
+$theirs = pull('notes')['zr_cccccccccccccccccccc'];
+isProblem('and refuses rows it does not', req('POST', '/sync/notes', ['record' => ['body' => 'Mine now'] + $theirs['record'], 'expect' => $theirs['digest']], as: 'au'), 403, 'forbidden');
+$leak = req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => 'absent'], as: 'au');
+isProblem('a stale write by a caller who cannot pull', $leak, 409, 'sync_stale');
+check('discloses no current record', !array_key_exists('current', $leak[1]), $leak[1]);
+isProblem('trash needs the delete rule', req('POST', '/sync/notes/trash', ['uid' => $own['uid'], 'expect' => $mine['digest']], as: 'au'), 403, 'forbidden');
 
 // ================================================================ paging and trash
 

@@ -57,7 +57,12 @@ final class Module
     {
         $pk = db()->schema()->collection($collection)['primaryKey'];
         foreach ($rows as &$row) {
-            if (($row['uid'] ?? null) === null) {
+            if (($row['uid'] ?? null) !== null) {
+                continue;
+            }
+            // Another request may have assigned one since $rows was read: the committed uid wins.
+            $row['uid'] = Lock::uid($collection, $row[$pk]);
+            if ($row['uid'] === null) {
                 $row['uid'] = Uid::mint();
                 db()->store()->update($collection, $row[$pk], ['uid' => $row['uid']]);
             }
@@ -65,6 +70,19 @@ final class Module
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Trusted rows for sync: every status and, for localized collections, every locale (lane H's
+     * `locale: "*"`), since each translation is its own record and file.
+     */
+    public static function find(string $collection, array $opts): array
+    {
+        if (db()->schema()->collection($collection)['localized'] ?? false) {
+            $opts['locale'] = '*';
+        }
+
+        return db()->findMany($collection, $opts);
     }
 
     /** This site's identity, minted once: base files are keyed by it (§5.4). */

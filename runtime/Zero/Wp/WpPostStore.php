@@ -391,9 +391,14 @@ final class WpPostStore implements Store
             $hit = match (true) {
                 $col === ($spec['slug'] ?? null) => $this->db->run("SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_name = ? AND $live LIMIT 1 FOR UPDATE", [(string) $v, $spec['wp']['postType'], $self]),
                 $col === ($spec['title'] ?? null) => $this->db->run("SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_title = ? AND $live LIMIT 1 FOR UPDATE", [(string) $v, $spec['wp']['postType'], $self]),
+                // A trashed post keeps its uid and can be restored, so it still owns it.
+                $col === 'uid' && ($def['system'] ?? false) => $this->db->run(
+                    "SELECT m.post_id FROM `{$wpdb->postmeta}` m JOIN `{$wpdb->posts}` p ON p.ID = m.post_id WHERE m.meta_key = ? AND m.meta_value = ? AND p.post_type = ? AND p.post_status NOT IN ('auto-draft', 'inherit') AND p.ID <> ? LIMIT 1 FOR UPDATE",
+                    [self::UID_META, (string) $v, $spec['wp']['postType'], $self],
+                ),
                 default => $this->db->run(
                     "SELECT m.post_id FROM `{$wpdb->postmeta}` m JOIN `{$wpdb->posts}` p ON p.ID = m.post_id WHERE m.meta_key = ? AND m.meta_value = ? AND $live LIMIT 1 FOR UPDATE",
-                    [$col === 'uid' && ($def['system'] ?? false) ? self::UID_META : $spec['wp']['metaPrefix'] . $col, Scf::metaScalar($def, $v), $spec['wp']['postType'], $self],
+                    [$spec['wp']['metaPrefix'] . $col, Scf::metaScalar($def, $v), $spec['wp']['postType'], $self],
                 ),
             };
             if ($hit !== []) {

@@ -119,6 +119,54 @@ test("sync on WordPress", async (t) => {
     assert.deepEqual((await pull("guides")).get(guideUid).record, record);
   });
 
+  await t.test("trash runs the delete lifecycle: a beforeDelete veto keeps the post", async () => {
+    const kept = { uid: uidOf(4), fields: { ...record.fields, title: `Kept ${run}`, slug: `kept-${run}`, summary: "keep" }, body: null };
+    const { digest: keptDigest } = (await push(kept, "absent")).json.data;
+    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } }, { status: 409, code: "kept", pointer: undefined });
+    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_zero_uid' AND u.meta_value = '${kept.uid}'`);
+    assert.equal(post.post_status, "draft");
+  });
+
+  await t.test("a trashed post keeps its uid: nobody else can take it", async () => {
+    const parked = { uid: uidOf(5), fields: { ...record.fields, title: `Parked ${run}`, slug: `parked-${run}` }, body: null };
+    const { digest: parkedDigest } = (await push(parked, "absent")).json.data;
+    await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: parked.uid, expect: parkedDigest } });
+    await problem("POST", "/guides", { as: "editor", body: { title: `Thief ${run}`, uid: parked.uid } }, { status: 409, code: "unique_violation", pointer: "/uid" });
+  });
+
+  await t.test("concurrent writers: a change committed after this request's snapshot is stale, and a uid is never replaced", () => {
+    // Two connections, interleaved deterministically: the request reads (its REPEATABLE READ snapshot),
+    // then another connection commits, then the request writes.
+    const result = JSON.parse(wp("eval", `
+      $app = \\Zero\\Wp\\Plugin::instance()->app();
+      $db = $app->db;
+      $other = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
+      $id = $db->insert('guides', ['title' => 'Race ${run}', 'slug' => 'race-${run}'], true)[0]['id'];
+      $uid = $db->findFirst('guides', ['where' => ['id' => $id]])['uid'];
+      $item = fn () => \\Zero\\Sync\\Wire::encode('guides', [$db->findFirst('guides', ['where' => ['id' => $id]])])[0];
+      $seen = $item();
+      $record = $seen['record'];
+      $record['fields']['summary'] = 'ours';
+      wp_set_current_user(get_user_by('login', 'editor')->ID);
+      $viewer = new \\Zero\\Viewer(\\Zero\\Wp\\WpAuth::current(), 'wp');
+      $status = $db->transaction(function () use ($app, $db, $other, $id, $record, $seen, $viewer) {
+        $db->findFirst('guides', ['where' => ['id' => $id]]);
+        $other->query("UPDATE {$GLOBALS['wpdb']->posts} SET post_title = 'Theirs' WHERE ID = $id");
+        return $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => $seen['digest']]), $viewer)->status;
+      });
+      clean_post_cache($id);
+      $title = $db->findFirst('guides', ['where' => ['id' => $id]])['title'];
+
+      delete_post_meta($id, '_zero_uid');
+      $stale = $db->findMany('guides', ['where' => ['id' => $id]]);
+      $assigned = 'zr_' . str_repeat('e', 20);
+      $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_zero_uid', '$assigned')");
+      $kept = $db->transaction(fn () => \\Zero\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
+      echo wp_json_encode([$status, $title, $kept, get_post_meta($id, '_zero_uid')]);
+    `));
+    assert.deepEqual(result, [409, "Theirs", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]]);
+  });
+
   await t.test("conversion and merge run on the server", async () => {
     const md = (await ok("POST", "/sync/guides/convert", { as: "editor", body: { direction: "toMarkdown", text: "<!-- wp:paragraph -->\n<p>Hi <b>there</b></p>\n<!-- /wp:paragraph -->" } })).text;
     assert.equal(md, "Hi **there**\n");

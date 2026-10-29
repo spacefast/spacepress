@@ -581,6 +581,7 @@ stopServer();
 
 // A relation filter is an oracle over the target's columns, so it may only see target rows a direct
 // read would return: an unreadable target is denied like `with`, a draft target matches nothing.
+// That holds for the row selector of a viewer's update/delete as much as for a read.
 (static function (): void {
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
@@ -591,7 +592,7 @@ stopServer();
         'articles' => ['primaryKey' => 'id', 'drafts' => true,
             'columns' => ['id' => $id, 'secret' => ['type' => 'text'], 'ownerId' => ['type' => 'integer'], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
             'relations' => ['owner' => $one('accounts', 'ownerId')]],
-        'comments' => ['primaryKey' => 'id',
+        'comments' => ['primaryKey' => 'id', 'access' => ['update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']],
             'columns' => ['id' => $id, 'articleId' => ['type' => 'integer'], 'ownerId' => ['type' => 'integer']],
             'relations' => ['article' => $one('articles', 'articleId'), 'owner' => $one('accounts', 'ownerId')]],
     ]]);
@@ -619,6 +620,8 @@ stopServer();
         $ids('comments', ['article' => ['secret' => ['like' => 'price=4%']]], $editor),
         $ids('comments', $key + ['article' => ['secret' => 'price=42']], null),
     ], [[1], [1]]);
+    problem('a viewer\'s update selector is denied the unreadable target', fn () => $db->update('comments', ['ownerId' => 1], $key, true, $anon), 401, 'unauthenticated');
+    eq('… and a viewer\'s delete selector matches no draft target', $db->delete('comments', ['article' => ['secret' => ['like' => 'price=4%']]], true, $anon), []);
 })();
 
 finish('db_test');

@@ -139,8 +139,11 @@ final class Db
         return $rows;
     }
 
-    /** Select full storage rows without presentation transforms; write guards remain SQL filters. */
-    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = []): array
+    /**
+     * Select full storage rows without presentation transforms; write guards remain SQL filters.
+     * $filterViewer confines a write selector's relation filters to rows that viewer may read.
+     */
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
     {
         if (!$this->schema->hasCollection($collection)) {
             throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
@@ -158,8 +161,9 @@ final class Db
         if ($partition !== null && $partition[1] === []) {
             return [];
         }
+        $filterViewer ??= $viewer;
         $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-            $viewer === null ? null : fn (string $target): array => $this->readGuards($target, $viewer));
+            $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),
@@ -339,7 +343,7 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
-            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards) as $existing) {
+            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer) as $existing) {
                 $out[] = $this->updateOne($collection, $spec, $existing, $set, $viewer);
             }
 
@@ -353,7 +357,7 @@ final class Db
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
-            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards);
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             foreach ($rows as $row) {
                 $this->deleteOne($collection, $row, $viewer);
             }

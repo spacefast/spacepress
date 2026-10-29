@@ -23,6 +23,7 @@ mod schema;
 mod schema_php;
 mod types;
 mod value;
+mod wp_plugins;
 
 use diag::{Diag, Span};
 use extract::Slot;
@@ -67,6 +68,7 @@ new \Zero\Wp\Plugin(__DIR__);
 "#;
 
 struct Built {
+    wordpress: Option<wp_plugins::Config>,
     client_files: Vec<(String, Vec<u8>)>,
     schema: schema::Schema,
     functions_php: String,
@@ -185,6 +187,7 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         schema.locales.as_ref(),
     );
     Ok(Built {
+        wordpress: ext.wordpress,
         client_files,
         schema,
         functions_php,
@@ -430,6 +433,96 @@ fn emit_wp(project: &Path, wp_root: &Path, built: &Built) -> std::io::Result<Pat
     Ok(dir)
 }
 
+/// Opt-in bridge until A3 owns canonical wp-content assembly. No dependency logic lives here.
+fn emit_wp_with_dependencies(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
+    let config = built.wordpress.as_ref().expect("WordPress dependencies");
+    let plan = wp_plugins::resolve(config, &wp_plugins::platform(built.schema.locales.is_some()))?;
+    let parent = root
+        .parent()
+        .ok_or_else(|| std::io::Error::other("output needs a parent directory"))?;
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
+    std::fs::create_dir_all(parent)?;
+    let parent = parent.canonicalize()?;
+    let root = parent.join(
+        root.file_name()
+            .ok_or_else(|| std::io::Error::other("output needs a directory name"))?,
+    );
+    if project.starts_with(&root) || project.join("zero").starts_with(&root) {
+        return Err(std::io::Error::other(
+            "wp-content output cannot contain the project or its dependency lock",
+        ));
+    }
+    struct Guard(PathBuf, std::fs::File);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = self.1.sync_all();
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    fn guard(path: PathBuf) -> std::io::Result<Guard> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| std::io::Error::other(format!("cannot acquire build lock {}: {e}", path.display())))?;
+        Ok(Guard(path, file))
+    }
+    let lock = project.join("zero/wp-plugins.lock.json");
+    std::fs::create_dir_all(lock.parent().unwrap())?;
+    // Serialize the project lockfile and publication to a shared output root.
+    let _project_guard = guard(project.join("zero/.wp-plugins.build.lock"))?;
+    let _output_guard = guard(parent.join(format!(
+        ".{}.zero-build.lock",
+        root.file_name().unwrap().to_string_lossy()
+    )))?;
+    let prepared = wp_plugins::Prepared::acquire(&plan, &lock, &project.join(".zero/cache/plugins"))?;
+    let temp = tempfile::tempdir_in(&parent)?;
+    let stage = temp.path().join("wp-content");
+    if std::fs::symlink_metadata(&root).is_ok() {
+        if !std::fs::symlink_metadata(&root)?.is_dir() {
+            return Err(std::io::Error::other("output root must be a real directory"));
+        }
+        wp_plugins::copy_output(&root, &stage)?;
+    } else {
+        std::fs::create_dir(&stage)?;
+    }
+    prepared.install_into(&stage.join("plugins"))?;
+    let generated = emit_wp(project, &stage.join("plugins"), built)?;
+    php_lint(&[
+        generated.join("zero/app/schema.php"),
+        generated.join("zero/app/functions.php"),
+        generated.join(format!("zero-{}.php", built.schema.name)),
+    ])
+    .map_err(std::io::Error::other)?;
+    let lock_bytes = prepared.lock_bytes()?;
+    std::fs::create_dir_all(lock.parent().unwrap())?;
+    let mut lock_file = tempfile::NamedTempFile::new_in(lock.parent().unwrap())?;
+    std::io::Write::write_all(&mut lock_file, &lock_bytes)?;
+    let backup = temp.path().join("previous");
+    let existed = root.exists();
+    if existed {
+        std::fs::rename(&root, &backup)?;
+    }
+    if let Err(e) = std::fs::rename(&stage, &root) {
+        if existed {
+            std::fs::rename(&backup, &root)?;
+        }
+        return Err(e);
+    }
+    if let Err(e) = lock_file.persist(&lock) {
+        std::fs::remove_dir_all(&root)?;
+        if existed {
+            std::fs::rename(&backup, &root)?;
+        }
+        return Err(e.error);
+    }
+    Ok(root.join("plugins").join(format!("zero-{}", built.schema.name)))
+}
+
 fn is_plugin_main(rel: &str, text: &str) -> bool {
     !rel.contains('/') && rel.ends_with(".php") && text.contains("Plugin Name:")
 }
@@ -651,8 +744,17 @@ fn main() -> ExitCode {
             (out, lint)
         }
         Target::Wp => {
-            let root = args.out.clone().unwrap_or_else(|| project.join(".zero").join("wp"));
-            let dir = match emit_wp(&project, &root, &built) {
+            let root = args.out.clone().unwrap_or_else(|| {
+                project
+                    .join(".zero")
+                    .join(if built.wordpress.is_some() { "wp-content" } else { "wp" })
+            });
+            let emitted = if built.wordpress.is_some() {
+                emit_wp_with_dependencies(&project, &root, &built)
+            } else {
+                emit_wp(&project, &root, &built)
+            };
+            let dir = match emitted {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!("error: couldn't write the plugin: {e}");

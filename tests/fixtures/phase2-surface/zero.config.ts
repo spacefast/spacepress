@@ -26,6 +26,10 @@ function acceptNumericMember(value: { count: 0 | 1, keep: 0 }) { return { maybe:
 function acceptDestructured({ count, keep }: { count: 0 | 1, keep: 0 }) { return { maybe: acceptNumeric(count), keep }; }
 function passedNumeric() { let value: 0 | 1 = 1; const bump = () => { value++; }; bump(); let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); return { scalar: acceptNumeric(value), member: acceptNumeric(record.count), object: acceptNumericMember(record), destructured: acceptDestructured(record) }; }
 function callbackNumeric() { let value: 0 | 1 = 0; const writers = [() => { value++; }]; const flattened = writers.flatMap(write => [write]); const selected = flattened.reduce((acc, write) => write, () => {}); selected(); selected(); return value; }
+function defaultNumeric(value: 0 | 1, write: (() => void) | null = () => { value++; }) { if (write !== null) write(); return value; }
+function localDefaultNumeric(value: 0 | 1) { const run = (write: (() => void) | null = () => { value++; }) => { if (write !== null) write(); }; run(); return value; }
+function guardedNumeric(record: { count: number } | null): number { if (record !== null) { record.count = 1; record.count += 1; record.count++; return record.count; } return 0; }
+function logicalNumeric(value: 0 | 1) { value++; const nullish = (value ??= 1); const or = (value ||= 1); const and = (value &&= 1); const wrapper: { inner: { count: number } | null } = { inner: { count: 0 } }; if (wrapper.inner !== null) wrapper.inner.count = 4; return { nullish, or, and, guarded: guardedNumeric({ count: 0 }), absent: guardedNumeric(null), nested: wrapper.inner?.count }; }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }
 function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return true; case -1: return false; } }
 function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]() && !0; } } }
@@ -73,7 +77,7 @@ export default defineConfig({
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
       const numeric = updateNumeric(1);
-      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1), passed: passedNumeric(), callback: callbackNumeric() };
+      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1), passed: passedNumeric(), callback: callbackNumeric(), defaulted: defaultNumeric(1), localDefaulted: localDefaultNumeric(1), logical: logicalNumeric(1) };
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();

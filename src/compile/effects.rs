@@ -221,7 +221,8 @@ impl Graph {
         for p in &f.params {
             self.defaults(&p.pat, &mut names, env, f.span);
             if let Some(e) = &p.default {
-                self.expr(e, &mut names, env, f.span);
+                let default = self.expr(e, &mut names, env, f.span);
+                self.bind_value(&p.pat, default, owner);
             }
         }
         match &f.body {

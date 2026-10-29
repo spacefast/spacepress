@@ -122,6 +122,13 @@ struct Out {
     helper: Option<String>,
 }
 
+/// Writes keep their authored constraint even when flow changes the type read
+/// from the same location. Dereferences and read-modify-write results use read.
+struct AssignmentPlace {
+    read: Out,
+    constraint: Ty,
+}
+
 impl Out {
     fn new(php: impl Into<String>, ty: Ty) -> Out {
         Out {
@@ -1904,7 +1911,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
             ExprKind::Update { inc, prefix, target } => {
-                let t = self.place(target)?;
+                let t = self.place(target)?.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
                 let o = if *inc { "++" } else { "--" };
                 Out::new(
@@ -2220,6 +2227,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let amp = if self.effects.by_ref(&p.pat) { "&" } else { "" };
                     params.push(format!("{amp}{php}{default}"));
+                    if let Some(default) = &p.default {
+                        let value = self.expr(default)?;
+                        let _ = writeln!(body, "{}{php} ??= {};", pad(2), value.php);
+                    }
                 }
                 pat => {
                     let tmp = format!("$__arg{i}");
@@ -2336,40 +2347,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn assign(&mut self, op: Option<AssignOp>, target: &Expr, value: &Expr, span: Span) -> Result<Out> {
-        let t = self.place(target)?;
+        let AssignmentPlace { read: t, constraint } = self.place(target)?;
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
-        if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &t.ty) {
+        if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
             return err(
                 span,
                 format!(
                     "can't assign {} to something of type {}",
                     v.ty.describe(),
-                    t.ty.describe()
+                    constraint.describe()
                 ),
             );
         }
         match op {
-            None => {
-                if let ExprKind::Ident(n) = &target.kind {
-                    // Assignment narrows: `x = 5` makes x a number until reassigned.
-                    let declared = t.ty.clone();
-                    let _ = declared;
-                    let _ = n;
-                }
-                Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty))
-            }
+            None => Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty)),
             Some(AssignOp::Bin(b)) => {
                 let r = self.binary(b, t.clone(), v, span)?;
-                if !(assignable(&r.ty, &t.ty)
-                    || r.ty.is_num() && t.ty.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
+                if !(assignable(&r.ty, &constraint)
+                    || r.ty.is_num() && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
                 {
                     return err(
                         span,
                         format!(
                             "can't assign {} to something of type {}",
                             r.ty.describe(),
-                            t.ty.describe()
+                            constraint.describe()
                         ),
                     );
                 }
@@ -2395,19 +2398,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     /// An assignable PHP place.
-    fn place(&mut self, target: &Expr) -> Result<Out> {
-        match &target.kind {
+    fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.place_inner(target, true)
+    }
+
+    fn place_inner(&mut self, target: &Expr, assign_binding: bool) -> Result<AssignmentPlace> {
+        let mut place = match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
-                    if !l.mutable {
+                    if assign_binding && !l.mutable {
                         return err(target.span, format!("can't assign to `{n}`: it's a constant"));
                     }
-                    Ok(Out {
-                        php: l.php.clone(),
-                        ty: l.constraint,
-                        place: Some(l.php),
-                        atomic: true,
-                        helper: None,
+                    let ty = if self.fx().loop_bindings.contains(&l.binding) {
+                        self.effects.read_view_type(l.binding, &l.view, &l.ty)
+                    } else {
+                        l.ty
+                    };
+                    Ok(AssignmentPlace {
+                        constraint: l.constraint,
+                        read: Out {
+                            php: l.php.clone(),
+                            ty,
+                            place: Some(l.php),
+                            atomic: true,
+                            helper: None,
+                        },
                     })
                 }
                 Resolved::Value(..) => err_help(
@@ -2420,28 +2435,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                let o = self.place(obj)?;
-                let Some((ft, _)) = o.ty.non_null().field(prop) else {
+                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
                 };
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
                 let php = format!("{}[{}]", o.php, php_str(prop));
-                Ok(Out {
-                    php: php.clone(),
-                    ty: ft,
-                    place: Some(php),
-                    atomic: true,
-                    helper: None,
+                let constraint = constraint
+                    .non_null()
+                    .field(prop)
+                    .map(|(t, _)| t)
+                    .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
+                Ok(AssignmentPlace {
+                    constraint,
+                    read: Out {
+                        php: php.clone(),
+                        ty: if optional { ft.nullable() } else { ft },
+                        place: Some(php),
+                        atomic: true,
+                        helper: None,
+                    },
                 })
             }
             ExprKind::Index { obj, index, .. } => {
-                let o = self.place(obj)?;
+                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
+                if o.ty.is_nullable() {
+                    return err(target.span, "can't index this: it might be null");
+                }
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), *t),
-                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), *t),
+                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
                             target.span,
@@ -2449,17 +2475,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                 };
-                Ok(Out {
-                    php: php.clone(),
-                    ty,
-                    place: Some(php),
-                    atomic: true,
-                    helper: None,
+                let constraint = match constraint.non_null() {
+                    Ty::Array(t) | Ty::Map(t) => *t,
+                    other => return err(target.span, format!("can't assign into {}", other.describe())),
+                };
+                Ok(AssignmentPlace {
+                    constraint,
+                    read: Out {
+                        php: php.clone(),
+                        ty,
+                        place: Some(php),
+                        atomic: true,
+                        helper: None,
+                    },
                 })
             }
-            ExprKind::NonNull(x) | ExprKind::As(x, _) => self.place(x),
+            ExprKind::NonNull(x) => {
+                let mut p = self.place_inner(x, assign_binding)?;
+                p.read.ty = p.read.ty.non_null();
+                Ok(p)
+            }
+            ExprKind::As(x, _) => self.place_inner(x, assign_binding),
             _ => err(target.span, "can't assign to this"),
+        }?;
+        if matches!(target.kind, ExprKind::Member { .. })
+            && let Some(ty) = self.path_of(target).and_then(|path| self.narrowed_path(&path))
+        {
+            place.read.ty = ty;
         }
+        Ok(place)
     }
 
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {
@@ -2843,7 +2887,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
                 )
             });
-            if container && v.place.is_none() {
+            let container_param = want.as_ref().is_some_and(|t| {
+                t.non_null().all(|t| {
+                    matches!(
+                        t,
+                        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+                    )
+                })
+            });
+            if (container || container_param) && v.place.is_none() {
                 needs_unpack = true;
             }
             unpacked.push(match (&v.place, container) {

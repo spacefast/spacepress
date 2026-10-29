@@ -177,6 +177,13 @@ struct Local {
     view: Vec<effects::Step>,
 }
 
+/// Binding reads may be widened by runtime effects independently of what the
+/// authored declaration permits assigning.
+struct BindingTypes {
+    read: Ty,
+    constraint: Ty,
+}
+
 /// What an identifier in compiled code refers to, resolved through the closure's captured scope.
 enum Resolved {
     Local(Local),
@@ -447,16 +454,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let given = params.as_ref().and_then(|ps| ps.get(i)).cloned();
             let t = match (declared, given) {
                 (Some(d), Some(g)) => {
-                    if !assignable(&g, &d) {
-                        return err(
-                            p.span,
-                            format!(
-                                "this parameter is declared as {}, but it receives {}",
-                                d.describe(),
-                                g.describe()
-                            ),
-                        );
-                    }
+                    check_parameter_argument(&g, &parameter_input_type(p, d.clone()), p.span)?;
                     d
                 }
                 (Some(d), None) => d,
@@ -583,21 +581,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Pat::Id(n, _) => {
                     let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
                     let amp = if self.fx().by_ref.contains(n) { "&" } else { "" };
-                    let default = if p.optional || p.default.is_some() {
-                        " = null"
-                    } else {
-                        ""
-                    };
+                    let default = parameter_default_suffix(p);
                     let hint = php_hint(&t);
                     params_php.push(format!("{hint}{amp}{php}{default}"));
                 }
                 pat => {
                     self.check_destructured_parameter(pat)?;
                     let tmp = format!("$__arg{i}");
-                    params_php.push(format!("{}{tmp}", php_hint(&t)));
-                    let mut lines = String::new();
-                    self.bind_pattern(pat, &tmp, &t, true, &mut lines, 1)?;
-                    prologue.push_str(&lines);
+                    params_php.push(format!("{}{tmp}{}", php_hint(&t), parameter_default_suffix(p)));
+                    let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
+                    prologue.push_str(&initialization);
+                    self.bind_pattern_types(
+                        pat,
+                        &tmp,
+                        BindingTypes {
+                            read,
+                            constraint: t.clone(),
+                        },
+                        true,
+                        &mut prologue,
+                        1,
+                    )?;
                 }
             }
         }
@@ -1412,23 +1416,57 @@ impl<'a, 'p> Compiler<'a, 'p> {
         out: &mut String,
         indent: usize,
     ) -> Result<()> {
+        self.bind_pattern_types(
+            pat,
+            src,
+            BindingTypes {
+                read: ty.clone(),
+                constraint: ty.clone(),
+            },
+            mutable,
+            out,
+            indent,
+        )
+    }
+
+    fn declare_binding(&mut self, name: &str, types: BindingTypes, mutable: bool, binding: Span) -> String {
+        let php = self.declare_local(name, types.constraint, mutable, binding);
+        let read = self.effects.parameter_type(binding, &types.read);
+        self.fx()
+            .scopes
+            .last_mut()
+            .expect("scope")
+            .get_mut(name)
+            .expect("binding")
+            .ty = read;
+        php
+    }
+
+    fn bind_pattern_types(
+        &mut self,
+        pat: &Pat,
+        src: &str,
+        types: BindingTypes,
+        mutable: bool,
+        out: &mut String,
+        indent: usize,
+    ) -> Result<()> {
         let p = pad(indent);
+        let BindingTypes { read: ty, constraint } = types;
         match pat {
             Pat::Id(n, _) => {
-                let php = self.declare_local(n, ty.clone(), mutable, pat.span());
+                let php = self.declare_binding(n, BindingTypes { read: ty, constraint }, mutable, pat.span());
                 let _ = writeln!(out, "{p}{php} = {src};");
             }
             Pat::Default(inner, default) => {
                 let d = self.expr(default)?;
-                let present = ty.non_null();
-                let t = if assignable(&d.ty, &present) {
-                    present
-                } else {
-                    Ty::union([present, inferred_binding_type(&d.ty, mutable)])
+                let types = BindingTypes {
+                    read: default_binding_type(&ty, &d.ty, mutable),
+                    constraint: default_binding_type(&constraint, &d.ty, mutable),
                 };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src} ?? {};", d.php);
-                self.bind_pattern(inner, &tmp, &t, mutable, out, indent)?;
+                self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
                 let t = ty.non_null();
@@ -1450,25 +1488,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         format!("{src}[{}]", php_str(key))
                     };
-                    let ft = if optional || matches!(t, Ty::Map(_)) {
+                    let read = if optional || matches!(t, Ty::Map(_)) {
                         ft.nullable()
                     } else {
                         ft
                     };
-                    self.bind_pattern(p2, &access, &ft, mutable, out, indent)?;
+                    let original = constraint.non_null();
+                    let (ct, optional) = original.field(key).expect("authored field");
+                    let constraint = if optional || matches!(original, Ty::Map(_)) {
+                        ct.nullable()
+                    } else {
+                        ct
+                    };
+                    self.bind_pattern_types(p2, &access, BindingTypes { read, constraint }, mutable, out, indent)?;
                 }
                 if let Some((name, span)) = rest {
                     let keys: Vec<String> = props.iter().map(|(k, _)| php_str(k)).collect();
-                    let rest_ty = match &t {
+                    let omit = |ty: &Ty| match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
-                            f.iter()
-                                .filter(|(k, _)| !props.iter().any(|(pk, _)| pk == *k))
-                                .map(|(k, v)| (k.clone(), v.clone()))
+                            f.into_iter()
+                                .filter(|(k, _)| !props.iter().any(|(pk, _)| pk == k))
                                 .collect(),
                         ),
-                        other => other.clone(),
+                        other => other,
                     };
-                    let php = self.declare_local(name, rest_ty, mutable, *span);
+                    let types = BindingTypes {
+                        read: omit(&ty),
+                        constraint: omit(&constraint),
+                    };
+                    let php = self.declare_binding(name, types, mutable, *span);
                     let _ = writeln!(out, "{p}{php} = \\Zero\\Js::omit({src}, [{}]);", keys.join(", "));
                 }
             }
@@ -1476,28 +1524,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ty.is_nullable() {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
-                let (el_of, rest_ty): (Box<dyn Fn(usize) -> Ty>, Ty) = match ty.non_null() {
-                    Ty::Array(t) => {
-                        let rest = (*t).clone();
-                        (Box::new(move |_| (*t).clone().nullable()), rest)
-                    }
-                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
-                        let rest = Ty::union(ts.iter().skip(elems.len()).cloned());
-                        (
-                            Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null).nullable()),
-                            rest,
-                        )
-                    }
-                    other => return err(*span, format!("can't destructure {} as an array", other.describe())),
+                let element = |ty: &Ty, i: usize| match ty.non_null() {
+                    Ty::Array(t) => Some((*t).nullable()),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Null).nullable()),
+                    _ => None,
                 };
+                if element(&ty, 0).is_none() {
+                    return err(*span, format!("can't destructure {} as an array", ty.describe()));
+                }
                 for (i, e) in elems.iter().enumerate() {
                     if let Some(e) = e {
                         let access = format!("({src}[{i}] ?? null)");
-                        self.bind_pattern(e, &access, &el_of(i), mutable, out, indent)?;
+                        let types = BindingTypes {
+                            read: element(&ty, i).expect("array read"),
+                            constraint: element(&constraint, i).expect("authored array"),
+                        };
+                        self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
                     }
                 }
                 if let Some((name, span)) = rest {
-                    let php = self.declare_local(name, Ty::Array(Box::new(rest_ty)), mutable, *span);
+                    let tail = |ty: &Ty| match ty.non_null() {
+                        Ty::Array(t) => Ty::Array(t),
+                        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(elems.len()))))
+                        }
+                        _ => unreachable!("array binding"),
+                    };
+                    let types = BindingTypes {
+                        read: tail(&ty),
+                        constraint: tail(&constraint),
+                    };
+                    let php = self.declare_binding(name, types, mutable, *span);
                     let _ = writeln!(out, "{p}{php} = array_slice({src}, {});", elems.len());
                 }
             }
@@ -2298,7 +2355,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn closure_expr(&mut self, f: &Rc<Func>) -> Result<Out> {
-        self.closure_with_types(f, &[])
+        self.closure_with_types(f, None)
+    }
+
+    fn initialize_parameter(&mut self, parameter: &Param, php: &str, ty: &Ty, indent: usize) -> Result<(Ty, String)> {
+        let read = self.effects.parameter_type(parameter.pat.span(), ty);
+        let Some(default) = &parameter.default else {
+            return Ok((read, String::new()));
+        };
+        let value = self.expr(default)?;
+        if !assignable(&value.ty, ty) {
+            return err(
+                default.span,
+                format!(
+                    "this default is {}, but the parameter expects {}",
+                    value.ty.describe(),
+                    ty.describe()
+                ),
+            );
+        }
+        let present = read.non_null();
+        let initialized = if assignable(&value.ty, &present) {
+            present
+        } else {
+            Ty::union([present, value.ty])
+        };
+        Ok((initialized, format!("{}{php} ??= {};\n", pad(indent), value.php)))
     }
 
     fn declare_parameter(&mut self, parameter: &Param, ty: &Ty, body: &mut String, indent: usize) -> Result<String> {
@@ -2306,33 +2388,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             unreachable!("identifier parameter")
         };
         let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
-        if let Some(default) = &parameter.default {
-            let value = self.expr(default)?;
-            if !assignable(&value.ty, ty) {
-                return err(
-                    default.span,
-                    format!(
-                        "this default is {}, but the parameter expects {}",
-                        value.ty.describe(),
-                        ty.describe()
-                    ),
-                );
-            }
-            let _ = writeln!(body, "{}{php} ??= {};", pad(indent), value.php);
-            let local = self
-                .fx()
-                .scopes
-                .last_mut()
-                .expect("scope")
-                .get_mut(name)
-                .expect("parameter");
-            let present = local.ty.non_null();
-            local.ty = if assignable(&value.ty, &present) {
-                present
-            } else {
-                Ty::union([present, value.ty])
-            };
-        }
+        let (read, initialization) = self.initialize_parameter(parameter, &php, ty, indent)?;
+        body.push_str(&initialization);
+        self.fx()
+            .scopes
+            .last_mut()
+            .expect("scope")
+            .get_mut(name)
+            .expect("parameter")
+            .ty = read;
         Ok(php)
     }
 
@@ -2343,19 +2407,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
             match &p.pat {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
-                    let default = if p.optional || p.default.is_some() {
-                        " = null"
-                    } else {
-                        ""
-                    };
+                    let default = parameter_default_suffix(p);
                     let amp = if self.effects.by_ref(&p.pat) { "&" } else { "" };
                     params.push(format!("{amp}{php}{default}"));
                 }
                 pat => {
                     self.check_destructured_parameter(pat)?;
                     let tmp = format!("$__arg{i}");
-                    params.push(tmp.clone());
-                    self.bind_pattern(pat, &tmp, &param_tys[i], true, &mut body, 2)?;
+                    params.push(format!("{tmp}{}", parameter_default_suffix(p)));
+                    let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;
+                    body.push_str(&initialization);
+                    self.bind_pattern_types(
+                        pat,
+                        &tmp,
+                        BindingTypes {
+                            read,
+                            constraint: param_tys[i].clone(),
+                        },
+                        true,
+                        &mut body,
+                        2,
+                    )?;
                 }
             }
         }
@@ -2377,22 +2449,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Compiles a callback argument with its parameters typed from context.
     fn callback(&mut self, e: &Expr, params: &[Ty]) -> Result<Out> {
         if let ExprKind::Func(f) = &e.kind {
-            return self.closure_with_types(f, params);
+            return self.closure_with_types(f, Some(params));
         }
         let v = self.expr(e)?;
-        if !matches!(v.ty, Ty::Fn(..)) {
+        let Ty::Fn(declared, _) = &v.ty else {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
-        }
+        };
+        check_callback_parameters(params, declared, e.span)?;
         Ok(v)
     }
 
-    fn closure_with_types(&mut self, f: &Rc<Func>, params: &[Ty]) -> Result<Out> {
+    fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {
         let module = f.module;
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
+            let given = params.and_then(|ps| ps.get(i));
             let t = match &p.ann {
-                Some(a) => self.resolve_ann(a, module, &HashMap::new())?,
-                None => match params.get(i) {
+                Some(a) => {
+                    let declared = self.resolve_ann(a, module, &HashMap::new())?;
+                    if let Some(given) = given {
+                        check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
+                    } else if params.is_some() && !p.optional && p.default.is_none() {
+                        return err(p.span, "this callback parameter is never given a value");
+                    }
+                    declared
+                }
+                None => match given {
                     Some(t) => widen_fresh_literals(t),
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
@@ -3327,18 +3409,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
         if matches!(m, "replace" | "replaceAll") {
-            let pat = self.expr(self.arg(args, 0, span, "a pattern")?)?;
+            let pat_e = self.arg(args, 0, span, "a pattern")?;
+            let pat = self.expr(pat_e)?;
             let rep_e = self.arg(args, 1, span, "a replacement")?;
-            let rep = match &rep_e.kind {
-                ExprKind::Func(_) => self.callback(rep_e, &[Ty::Str, Ty::Str, Ty::Str, Ty::Str, Ty::Str])?,
-                _ => self.expr(rep_e)?,
-            };
             if !(pat.ty.is_str() || pat.ty == Ty::Regex) {
                 return err(
                     span,
                     format!("{m}() needs a string or regex pattern, not {}", pat.ty.describe()),
                 );
             }
+            let pattern = match &pat_e.kind {
+                ExprKind::Regex { pattern, .. } => Some(pattern.clone()),
+                ExprKind::Ident(name) => match self.resolve(name, pat_e.span)? {
+                    Resolved::Value(Value::Regex(pattern, _), _) => Some(pattern.to_string()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let parameters = |count| replacement_parameters(&pat.ty, pattern.as_deref(), count);
+            let rep = if let ExprKind::Func(f) = &rep_e.kind {
+                self.callback(rep_e, &parameters(f.params.len()))?
+            } else {
+                let rep = self.expr(rep_e)?;
+                if let Ty::Fn(declared, _) = &rep.ty {
+                    check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
+                    Out::atom(format!("\\Closure::fromCallable({})", rep.php), rep.ty)
+                } else if !rep.ty.is_str() {
+                    return err(rep_e.span, "a replacement must be a string or a function");
+                } else {
+                    rep
+                }
+            };
             return Ok(Out::atom(
                 format!("\\Zero\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
                 Ty::Str,
@@ -4350,6 +4451,79 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
                 Ty::Never
             }
         }
+    }
+}
+
+fn default_binding_type(ty: &Ty, default: &Ty, mutable: bool) -> Ty {
+    let present = ty.non_null();
+    if assignable(default, &present) {
+        present
+    } else {
+        Ty::union([present, inferred_binding_type(default, mutable)])
+    }
+}
+
+fn replacement_parameters(ty: &Ty, pattern: Option<&str>, count: usize) -> Vec<Ty> {
+    let mut params = vec![Ty::Str];
+    if !ty.is_str() {
+        let Some(pattern) = pattern else {
+            // A runtime regex can supply any number of captures before the offset.
+            params.resize(count.max(1), Ty::Unknown);
+            return params;
+        };
+        let mut chars = pattern.chars().peekable();
+        let mut in_class = false;
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => {
+                    chars.next();
+                }
+                '[' => in_class = true,
+                ']' => in_class = false,
+                '(' if !in_class => {
+                    let mut tail = chars.clone();
+                    let captures = tail.next() != Some('?')
+                        || (tail.next() == Some('<') && !matches!(tail.next(), Some('=' | '!')));
+                    if captures {
+                        params.push(Ty::Str.nullable());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    params.extend([Ty::Num, Ty::Str]);
+    params
+}
+
+fn check_parameter_argument(given: &Ty, declared: &Ty, span: Span) -> Result<()> {
+    let given = widen_fresh_literals(given);
+    if !assignable(&given, declared) {
+        return err_help(
+            span,
+            format!(
+                "this parameter is declared as {}, but it receives {}",
+                declared.describe(),
+                given.describe()
+            ),
+            "accept the supplied argument type, or change the values supplied to the function",
+        );
+    }
+    Ok(())
+}
+
+fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Result<()> {
+    for (i, declared) in declared.iter().enumerate() {
+        check_parameter_argument(given.get(i).unwrap_or(&Ty::Null), declared, span)?;
+    }
+    Ok(())
+}
+
+fn parameter_default_suffix(parameter: &Param) -> &'static str {
+    if parameter.optional || parameter.default.is_some() {
+        " = null"
+    } else {
+        ""
     }
 }
 

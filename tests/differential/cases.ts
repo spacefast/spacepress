@@ -54,6 +54,10 @@ function label(i: Item): string {
   return `${i.name.trim()} (${i.qty})`;
 }
 
+function replacementOffset(match: string, offset: number, source: string): string {
+  return `${match}:${offset}:${source}`;
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 export default defineConfig({
@@ -74,6 +78,9 @@ export default defineConfig({
       "x".repeat(3),
       "Hello World".replace(/o/g, "0"),
       "a-b-c".replaceAll("-", "+"),
+      "aba".replaceAll("a", replacementOffset),
+      "ab".replace(/b/, (match: string, offset: number, source: string) => `${match}:${offset}:${source}`),
+      "ab".replace(/(a)?b/, (_match, capture: string | null, offset: number) => `${capture ?? "missing"}:${offset}`),
       "Oat Milk".includes("Milk"),
       "Oat Milk".indexOf("Milk"),
     ]),

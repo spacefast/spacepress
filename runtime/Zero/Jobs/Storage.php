@@ -45,6 +45,24 @@ final class Storage
         return self::mysql() ? ' FOR UPDATE' : '';
     }
 
+    /** A shared locking read on MySQL: sees the latest commit without asking for an exclusive lock. */
+    public static function forShare(): string
+    {
+        return self::mysql() ? ' LOCK IN SHARE MODE' : '';
+    }
+
+    /** Rows changed by the previous statement on this connection (0 for an ignored insert). */
+    public static function changes(): int
+    {
+        return (int) self::run(self::mysql() ? 'SELECT ROW_COUNT() AS n' : 'SELECT changes() AS n')[0]['n'];
+    }
+
+    /** `UPDATE OR IGNORE` / `UPDATE IGNORE`: a unique conflict leaves the row unchanged instead of failing. */
+    public static function updateIgnore(): string
+    {
+        return self::mysql() ? 'UPDATE IGNORE' : 'UPDATE OR IGNORE';
+    }
+
     /** `INSERT OR IGNORE` / `INSERT IGNORE`. */
     public static function insertIgnore(): string
     {
@@ -67,9 +85,8 @@ final class Storage
         $tail = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
         \Zero\SystemTables::register('__zero_outbox', [
             'CREATE TABLE IF NOT EXISTS "__zero_outbox" ("id" text PRIMARY KEY NOT NULL, "job" text NOT NULL, "input" text NOT NULL, "key" text, "runAt" text NOT NULL, "createdAt" text NOT NULL)',
-            'CREATE UNIQUE INDEX IF NOT EXISTS "__zero_outbox_key" ON "__zero_outbox" ("job", "key")',
         ], [
-            "CREATE TABLE IF NOT EXISTS `{prefix}zero__outbox` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `runAt` CHAR(24) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `job_key` (`job`, `key`)) $tail",
+            "CREATE TABLE IF NOT EXISTS `{prefix}zero__outbox` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `runAt` CHAR(24) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) $tail",
         ]);
         // `dedupe` is the key while the job is pending or running (§6.1) and NULL otherwise;
         // UNIQUE(job, dedupe) is the one dedupe mechanism on both dialects (NULLs never collide).

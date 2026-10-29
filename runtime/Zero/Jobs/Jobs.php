@@ -37,40 +37,33 @@ final class Jobs
         }
 
         return $db->transaction(static function () use ($name, $input, $delay, $key): array {
+            if ($key !== null && ($held = self::holder($name, $key, false)) !== null) {
+                return ['id' => $held];
+            }
             $id = self::uuid();
             $now = Js::now();
-            $values = [$id, $name, Js::jsonStringify((object) $input), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
-            if ($key === null) {
-                Storage::run('INSERT INTO {outbox} ("id", "job", "input", "key", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, ?)', $values);
-            } elseif (($winner = self::holder($name, $key)) !== null) {
-                return ['id' => $winner];
-            } else {
-                // UNIQUE(job, key) on the outbox makes a concurrent same-key enqueue wait for this
-                // transaction, then lose; the loser reads the winner through locking reads below.
-                Storage::run(Storage::insertIgnore() . ' INTO {outbox} ("id", "job", "input", "key", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, ?)', $values);
-                $inserted = Storage::run('SELECT "id" FROM {outbox} WHERE "id" = ?', [$id]) !== [];
-                // The winner may have been dispatched into the queue while this insert waited.
-                $queued = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . Storage::forUpdate(), [$name, $key])[0]['id'] ?? null;
-                if ($queued !== null || !$inserted) {
-                    if ($inserted) {
-                        Storage::run('DELETE FROM {outbox} WHERE "id" = ?', [$id]);
-                    }
-
-                    return ['id' => (string) ($queued ?? self::holder($name, $key) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished"))];
-                }
+            $row = [$id, $name, Js::jsonStringify((object) $input), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
+            // The job row claims UNIQUE(job, dedupe) inside this transaction. A concurrent same-key insert
+            // waits for it, then is ignored and returns this job; a rollback removes the row and its claim.
+            Storage::run(Storage::insertIgnore() . ' INTO {jobs} ("id", "job", "input", "key", "runAt", "createdAt", "dedupe", "state", "attempts") VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', 0)', [...$row, $key]);
+            if (Storage::changes() === 0) {
+                return ['id' => self::holder($name, (string) $key, true) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished")];
             }
-            Extensions::afterCommit(static fn () => Outbox::dispatch());
+            // The queue hears about the job only after commit (Action Scheduler is told then).
+            Storage::run('INSERT INTO {outbox} ("id", "job", "input", "key", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, ?)', $row);
+            Extensions::afterCommit(static fn () => Outbox::dispatch([$id]));
 
             return ['id' => $id];
         });
     }
 
-    /** The job currently holding (job, key): queued (pending/running) or still in the outbox. Locking reads see the latest commit. */
-    private static function holder(string $name, string $key): ?string
+    /**
+     * The queued (pending/running) job holding (job, key). The locked form runs only after an ignored
+     * insert, when the row exists: a shared record lock that reads the latest commit and takes no gap lock.
+     */
+    private static function holder(string $name, string $key, bool $locked): ?string
     {
-        $row = Storage::run('SELECT "id" FROM {outbox} WHERE "job" = ? AND "key" = ?' . Storage::forUpdate(), [$name, $key])[0]
-            ?? Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . Storage::forUpdate(), [$name, $key])[0]
-            ?? null;
+        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . ($locked ? Storage::forShare() : ''), [$name, $key])[0] ?? null;
 
         return $row === null ? null : (string) $row['id'];
     }

@@ -31,6 +31,8 @@ final class Runner
                 return null;
             }
             Storage::run('UPDATE {jobs} SET "state" = \'running\', "lockedAt" = ? WHERE "id" = ?', [Js::iso(Js::now()), $id]);
+            // A retry reclaims its key while it runs, unless a newer job with that key took it meanwhile.
+            Storage::run(Storage::updateIgnore() . ' {jobs} SET "dedupe" = "key" WHERE "id" = ? AND "key" IS NOT NULL', [$id]);
 
             return $row;
         });
@@ -44,15 +46,17 @@ final class Runner
         try {
             $spec = Jobs::spec((string) $locked['job']);
             $input = Js::jsonParse((string) $locked['input']);
-            Receipts::withFingerprint(hash('sha256', (string) $locked['input']), static fn () => $db->transaction(static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
-                // First commit callback: anything after it (other features' callbacks) runs on committed state.
-                \Zero\Extensions::afterCommit(static function () use (&$committed): void {
-                    $committed = true;
+            Receipts::withFingerprint(hash('sha256', (string) $locked['input']), static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
+                $db->transaction(static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
+                    // First commit callback: anything after it (other features' callbacks) runs on committed state.
+                    \Zero\Extensions::afterCommit(static function () use (&$committed): void {
+                        $committed = true;
+                    });
+                    $fn = '\\ZeroApp\\' . $spec['handler'];
+                    $fn(is_array($input) ? $input : [], ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id]);
+                    Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
                 });
-                $fn = '\\ZeroApp\\' . $spec['handler'];
-                $fn(is_array($input) ? $input : [], ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id]);
-                Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
-            }));
+            });
 
             return ['id' => $id, 'state' => 'done', 'attempts' => $attempt];
         } catch (\Throwable $e) {

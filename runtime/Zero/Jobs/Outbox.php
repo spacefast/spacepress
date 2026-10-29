@@ -7,9 +7,9 @@ namespace Zero\Jobs;
 use function Zero\db;
 
 /**
- * Moves committed outbox rows into the queue. Enqueue writes the outbox row inside the caller's
- * transaction, so a rollback leaves nothing behind; this runs after the outermost commit and again
- * from every worker pass, which drains rows a crash left between commit and dispatch.
+ * Hands committed jobs to the queue. Enqueue writes the job row and its outbox ticket inside the
+ * caller's transaction, so a rollback leaves nothing; this runs after the outermost commit and from
+ * every worker pass, which delivers tickets a crash left between commit and dispatch.
  */
 final class Outbox
 {
@@ -25,30 +25,37 @@ final class Outbox
         return self::$queue ??= new SqliteQueue();
     }
 
-    /** @return int rows moved */
-    public static function dispatch(): int
+    /**
+     * @param ?list<string> $ids the committing transaction's own rows; null sweeps every committed row
+     * @return int rows moved
+     */
+    public static function dispatch(?array $ids = null): int
     {
-        try {
-            return db()->transaction(static function (): int {
-                $rows = Storage::run('SELECT "id", "job", "input", "key", "runAt", "createdAt" FROM {outbox} ORDER BY "createdAt", "id"' . Storage::forUpdate());
-                foreach ($rows as $row) {
-                    Storage::run(Storage::insertIgnore() . ' INTO {jobs} ("id", "job", "input", "key", "dedupe", "state", "attempts", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, \'pending\', 0, ?, ?)', [
-                        $row['id'], $row['job'], $row['input'], $row['key'], $row['key'], $row['runAt'], $row['createdAt'],
-                    ]);
-                    // A concurrent enqueue with the same key won the dedupe race: that job stands.
-                    if (Storage::run('SELECT "id" FROM {jobs} WHERE "id" = ?', [$row['id']]) !== []) {
-                        self::queue()->schedule((string) $row['id'], (string) $row['runAt']);
+        // A plain read sees only committed rows, so in-flight transactions' outbox rows never block this.
+        $ids ??= array_column(Storage::run('SELECT "id" FROM {outbox} ORDER BY "createdAt", "id"'), 'id');
+        $moved = 0;
+        foreach ($ids as $id) {
+            try {
+                $moved += db()->transaction(static function () use ($id): int {
+                    // Lock the one ticket: a concurrent dispatcher of it waits, then finds it gone.
+                    $row = Storage::run('SELECT "id", "job", "input", "key", "runAt", "createdAt" FROM {outbox} WHERE "id" = ?' . Storage::forUpdate(), [$id])[0] ?? null;
+                    if ($row === null) {
+                        return 0;
                     }
-                    Storage::run('DELETE FROM {outbox} WHERE "id" = ?', [$row['id']]);
-                }
+                    Storage::run('DELETE FROM {outbox} WHERE "id" = ?', [$id]);
+                    if (Storage::run('SELECT "id" FROM {jobs} WHERE "id" = ? AND "state" = \'pending\'', [$id]) === []) {
+                        return 0; // cancelled before it was handed over
+                    }
+                    self::queue()->schedule((string) $id, (string) $row['runAt']);
 
-                return count($rows);
-            });
-        } catch (\Throwable $e) {
-            // The write already committed; its outbox rows wait for the next dispatch.
-            error_log('[zero] outbox dispatch failed: ' . $e->getMessage());
-
-            return 0;
+                    return 1;
+                });
+            } catch (\Throwable $e) {
+                // The write already committed; its outbox row waits for the next sweep.
+                error_log('[zero] outbox dispatch of ' . $id . ' failed: ' . $e->getMessage());
+            }
         }
+
+        return $moved;
     }
 }

@@ -101,10 +101,11 @@ eq('a throwing hook fails the request', $status, 500);
 eq('rollback: no job and no outbox row', [count($jobs()), $outbox()], [1, 0]);
 problem('enqueue validates input like an action', static fn () => $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 'x'])), 422, 'invalid_input', '/postId');
 
-// A crash between commit and dispatch leaves the row in the outbox; the next worker pass moves it.
+// A crash after commit leaves the committed job row and its outbox ticket; the sweep delivers it.
+$pdo->exec("INSERT INTO \"__zero_jobs\" (\"id\", \"job\", \"input\", \"state\", \"attempts\", \"runAt\", \"createdAt\") VALUES ('00000000-0000-4000-8000-000000000001', 'notify', '{\"postId\":1}', 'pending', 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')");
 $pdo->exec("INSERT INTO \"__zero_outbox\" VALUES ('00000000-0000-4000-8000-000000000001', 'notify', '{\"postId\":1}', NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')");
 eq('maintain drains a stranded outbox row', Runner::maintain()['dispatched'], 1);
-eq('the stranded job is queued', count($jobs('pending')), 2);
+eq('the ticket is consumed', $outbox(), 0);
 
 // ---- dedupe key: one pending job per (job, key) ------------------------------------------------------------------
 $first = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 1], ['key' => 'k1']));
@@ -136,13 +137,34 @@ $during = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 
 check('dedupe holds only while pending/running: a failed job frees its key', $during !== $failing, [$during, $failing]);
 $pdo->exec("DELETE FROM \"__zero_jobs\" WHERE \"id\" = '{$during['id']}'");
 putenv('ZERO_NOW=2026-01-01T00:01:00.000Z');
+// While the retry runs it holds its key again: an enqueue from inside the handler returns the same job.
+$retryHolds = null;
+\Zero\Extensions::onWritten(static function (string $op, string $c, array $row) use (&$retryHolds, $failing): void {
+    if ($c === 'comments' && $row['name'] === 'partial' && $retryHolds === null) {
+        $retryHolds = Jobs::enqueue('notify', ['postId' => 7], ['key' => 'doomed']) === $failing;
+    }
+});
 eq('second attempt fails, backoff 5 minutes', [Runner::run($failing['id'])['state'], $pdo->query("SELECT \"runAt\" FROM \"__zero_jobs\" WHERE \"id\" = '{$failing['id']}'")->fetchColumn()], ['failed', '2026-01-01T00:06:00.000Z']);
 putenv('ZERO_NOW=2026-01-01T00:06:00.000Z');
 $last = Runner::run($failing['id']);
 eq('the third failure (retries: 3) is dead', [$last['state'], $last['attempts']], ['dead', 3]);
+eq('a retry reclaims its dedupe key while it runs', $retryHolds, true);
 eq('a dead job is never run again', Runner::run($failing['id']), null);
 eq('each failed attempt rolled back its write and its enqueue', [count($db->findMany('comments', ['where' => ['name' => 'partial']])),
     (int) $pdo->query("SELECT COUNT(*) FROM \"__zero_jobs\" WHERE \"input\" LIKE '%from-failed%'")->fetchColumn(), $outbox()], [0, 0, 0]);
+
+// A commit callback that throws after the handler committed must not re-run the job.
+$committedJob = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $created['data']['id'], 'note' => 'callback']));
+$armed = true;
+\Zero\Extensions::onWritten(static function (string $op, string $c, array $row) use (&$armed): void {
+    if ($armed && $c === 'comments' && $row['name'] === 'job') {
+        $armed = false;
+        \Zero\Extensions::afterCommit(static fn () => throw new \RuntimeException('callback after commit'));
+    }
+});
+$result = Runner::run($committedJob['id']);
+eq('a commit-callback failure keeps the committed job done, its effect written once', [$result['state'], count($db->findMany('comments', ['where' => ['body' => ['like' => $committedJob['id'] . '%']]])),
+    $pdo->query("SELECT \"state\" FROM \"__zero_jobs\" WHERE \"id\" = '{$committedJob['id']}'")->fetchColumn()], ['done', 1, 'done']);
 
 // ---- CLI: list, retry, cancel ------------------------------------------------------------------------------------
 [, $out] = $cli('jobs', 'list', '--state', 'dead');

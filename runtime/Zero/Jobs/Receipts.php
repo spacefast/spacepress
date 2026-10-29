@@ -23,6 +23,11 @@ final class Receipts
     /** Fingerprint of the operation input that once() calls are made for (§6.1: same key + different input → 409). */
     private static string $fingerprint = '';
 
+    /**
+     * once() is bound to the input of the operation it runs in: an action or create body
+     * (aroundOperation) or a job's input (Runner). Other contexts (update/delete hooks, wp-admin saves,
+     * CLI) bind to the key alone, so their keys must name what they guard (e.g. include the row id).
+     */
     /** Run $fn with once() bound to this input: the action/create body, or the job's input. */
     public static function withFingerprint(string $hash, callable $fn): mixed
     {

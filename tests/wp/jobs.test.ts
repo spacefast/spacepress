@@ -71,23 +71,37 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
 
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   const key = `race-${run}`;
-  // Each process holds its transaction open after enqueueing to widen the overlap; the assertion holds
-  // for every interleaving (both callers must end up with the one job), so it never depends on timing.
-  const enqueue = () => new Promise<string>((resolve, reject) => {
+  // A enqueues and keeps its transaction open until the test writes to its stdin. B starts only after
+  // A's row exists, so B's lookup misses it and B's insert must wait on A's key lock. The test releases
+  // A only once MariaDB shows B's insert blocked: the contested ordering, by barrier rather than timing.
+  const enqueue = (hold: boolean) => {
     const child = spawn(join(dirname(fileURLToPath(import.meta.url)), "harness.sh"), ["wp", "eval", `
       $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
-      $id = $db->transaction(static function () {
-        $r = \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}']);
-        usleep(1500000);
-        return $r['id'];
-      });
-      echo $id;`], { stdio: ["ignore", "pipe", "inherit"] });
-    let out = "";
-    child.stdout.on("data", (c) => (out += c));
-    child.on("close", (code) => (code === 0 ? resolve(out.trim()) : reject(new Error(`wp eval exited ${code}`))));
-  });
-  const ids = await Promise.all([enqueue(), enqueue()]);
-  assert.equal(ids[0], ids[1], "both callers got the same job id");
+      echo $db->transaction(static function () {
+        $id = \\Zero\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];
+        if (${hold ? "true" : "false"}) { fwrite(STDOUT, "enqueued\\n"); fflush(STDOUT); fgets(STDIN); }
+        return $id;
+      }), "\\n";`], { stdio: ["pipe", "pipe", "inherit"] });
+    const lines: string[] = [];
+    const waiters: (() => void)[] = [];
+    child.stdout.on("data", (c) => { lines.push(...String(c).split("\n").filter(Boolean)); waiters.splice(0).forEach((w) => w()); });
+    const line = (n: number) => new Promise<string>((resolve) => {
+      const check = () => (lines.length > n ? resolve(lines[n]) : waiters.push(check));
+      check();
+    });
+    const exited = new Promise<void>((resolve, reject) => child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`wp eval exited ${code}`)))));
+    return { child, line, exited };
+  };
+  // B blocked on A's key = B's insert is still executing (same DB user, so PROCESSLIST shows it).
+  const waiting = () => Number(sql("SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE 'INSERT IGNORE INTO `wp_zero__jobs`%'")[0].n);
+  const a = enqueue(true);
+  assert.equal(await a.line(0), "enqueued");
+  const b = enqueue(false);
+  while (waiting() === 0) await new Promise((r) => setImmediate(r)); // poll InnoDB until B blocks on A's key
+  a.child.stdin!.end("go\n");
+  await Promise.all([a.exited, b.exited]);
+  const ids = [await a.line(1), await b.line(0)];
+  assert.equal(ids[0], ids[1], "the waiting caller got the winner's job id");
   assert.deepEqual(sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND \`key\` = '${key}'`).map((r) => r.id), [ids[0]], "and that job exists, alone");
   wp("eval", `\\Zero\\Wp\\Runtime::plugin()->app()->db->transaction(fn () => \\Zero\\Jobs\\Storage::run('UPDATE {jobs} SET "state" = \\'dead\\', "dedupe" = NULL WHERE "key" = ?', ['${key}']));`);
 });

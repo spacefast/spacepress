@@ -33,6 +33,8 @@ final class WpMedia implements Media
     public const FOCAL = '_zero_focal';
     /** @var list<string> sizes that failed to render during the last metadata pass */
     private static array $failed = [];
+    /** @var array<int, array<string, string>> attachment → Zero rendition files core's full pass is about to forget */
+    private static array $replaced = [];
 
     private const TABLE = '__zero_media';
     private const COLUMNS = [
@@ -78,30 +80,90 @@ final class WpMedia implements Media
                 add_image_size('zero_' . $name, (int) $size['width'], (int) ($size['height'] ?? 0), ($size['fit'] ?? 'inside') === 'cover');
             }
         });
-        // Core's sub-size pass never renders Zero sizes; Zero does, below, with the focal point.
-        add_filter('intermediate_image_sizes_advanced', static function (array $sizes): array {
+        // Core never renders Zero sizes (neither its full pass nor its missing-sizes pass, which would
+        // write them to a dimension-named file a theme size may share); Zero does, below.
+        $skip = static function (array $sizes): array {
             foreach (array_keys(self::sizes()) as $name) {
                 unset($sizes['zero_' . $name]);
             }
 
             return $sizes;
-        });
-        add_filter('wp_generate_attachment_metadata', static function (array $meta, int $id): array {
-            self::$failed = [];
-            if (isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
-                foreach (self::render($id, $meta, self::focalOf($id)) as $name => $size) {
-                    $meta['sizes']['zero_' . $name] = $size;
+        };
+        add_filter('intermediate_image_sizes_advanced', $skip);
+        // Core's missing-sizes pass (wp_update_image_subsizes) returns early when only Zero sizes
+        // are missing, so Zero fills its own here and saves them before core decides.
+        add_filter('wp_get_missing_image_subsizes', static function (array $missing, array $meta, int $id) use ($skip): array {
+            $zero = array_filter(array_keys(self::sizes()), static fn ($n) => isset($missing['zero_' . $n]));
+            if ($zero !== [] && isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
+                $filled = self::fill($id, $meta, static fn (string $name) => in_array($name, $zero, true));
+                if ($filled !== $meta) {
+                    wp_update_attachment_metadata($id, $filled);
+                }
+            }
+
+            return $skip($missing);
+        }, 10, 3);
+        // On a fresh pass ('create') every size is rendered and the renditions it replaces are removed
+        // after commit; on core's missing-sizes pass ('update') only absent Zero sizes are filled in.
+        // Core's full pass first saves metadata without sizes: remember the renditions it drops.
+        add_filter('wp_update_attachment_metadata', static function ($meta, int $id) {
+            $stored = get_post_meta($id, '_wp_attachment_metadata', true);
+            if (is_array($meta) && is_array($stored) && ($meta['sizes'] ?? null) === []) {
+                foreach (array_keys(self::sizes()) as $name) {
+                    if (isset($stored['sizes']['zero_' . $name]['file'])) {
+                        self::$replaced[$id][$name] = (string) $stored['sizes']['zero_' . $name]['file'];
+                    }
                 }
             }
 
             return $meta;
         }, 10, 2);
+        // Core's full pass (upload, regenerate tools): render every Zero size afresh.
+        add_filter('wp_generate_attachment_metadata', static function (array $meta, int $id, string $context = 'create'): array {
+            self::$failed = [];
+            if ($context !== 'create' || !isset($meta['width'], $meta['height']) || ImageCdn::active()) {
+                return $meta;
+            }
+
+            return self::fill($id, $meta, null);
+        }, 10, 3);
     }
 
     /** @return array<string, array{width: int, height: ?int, fit: string}> */
     private static function sizes(): array
     {
         return Runtime::plugin()?->schema->media()['sizes'] ?? [];
+    }
+
+    /**
+     * Render Zero sizes into $meta outside Zero's own API paths. New files are removed if the
+     * surrounding transaction rolls back; the renditions they replace go after commit (at once
+     * when no transaction is open).
+     *
+     * @param ?callable(string $name, bool $cover): bool $which
+     */
+    private static function fill(int $id, array $meta, ?callable $which): array
+    {
+        $previous = wp_get_attachment_metadata($id);
+        $previous = is_array($previous) ? ($previous['sizes'] ?? []) : [];
+        foreach (self::$replaced[$id] ?? [] as $name => $file) {
+            $previous['zero_' . $name] ??= ['file' => $file];
+        }
+        unset(self::$replaced[$id]);
+        $connection = Runtime::plugin()?->connection();
+        $dir = dirname((string) get_attached_file($id));
+        foreach (self::render($id, $meta, self::focalOf($id), $which) as $name => $size) {
+            $new = $dir . '/' . $size['file'];
+            $connection?->onRollback(static fn () => @unlink($new));
+            $old = $previous['zero_' . $name]['file'] ?? null;
+            if (is_string($old) && $old !== $size['file']) {
+                $old = $dir . '/' . $old;
+                $connection === null ? @unlink($old) : $connection->afterCommit(static fn () => @unlink($old));
+            }
+            $meta['sizes']['zero_' . $name] = $size;
+        }
+
+        return $meta;
     }
 
     /**

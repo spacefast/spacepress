@@ -160,6 +160,42 @@ test("core uploads outside Zero get the zero_* sizes", async () => {
   assert.equal((await fetch(row.sizes.card.url)).status, 200);
 });
 
+test("core regeneration: the missing-sizes pass fills Zero sizes without touching a same-shape theme crop; a full pass replaces renditions", async () => {
+  // A theme crop of Zero's card shape anchored top-left (different bytes from Zero's centred crop).
+  muPlugin("zero-test-theme-size", "<?php\nadd_action('init', fn () => add_image_size('theme_card', 120, 120, ['left', 'top']));\n");
+  const img = await uploadSplit();
+  const theme = sizeOnDisk(img.id, "theme_card");
+  const files = (): string[] => JSON.parse(wp("eval", `
+    $file = get_attached_file(${img.id});
+    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-zero_*')));
+  `));
+
+  // Drop Zero's card from the metadata and its file, then let core's missing-sizes pass run.
+  wp("eval", `
+    $meta = wp_get_attachment_metadata(${img.id});
+    unlink(path_join(dirname(get_attached_file(${img.id})), $meta['sizes']['zero_card']['file']));
+    unset($meta['sizes']['zero_card']);
+    wp_update_attachment_metadata(${img.id}, $meta);
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    wp_update_image_subsizes(${img.id});
+  `);
+  const filled = sizeOnDisk(img.id, "zero_card");
+  assert.deepEqual([filled.w, filled.h], [120, 120]);
+  assert.deepEqual(sizeOnDisk(img.id, "theme_card"), theme, "the theme's crop keeps its bytes");
+  assert.equal(files().length, 2, "card + wide, nothing else");
+
+  // A full core pass (what regenerate plugins call) renders fresh Zero renditions, and Zero removes
+  // the ones they replace (WP-CLI's regenerate would delete old files itself, hiding Zero's cleanup).
+  const before = files();
+  wp("eval", `
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    wp_update_attachment_metadata(${img.id}, wp_generate_attachment_metadata(${img.id}, get_attached_file(${img.id})));
+  `);
+  const after = files();
+  assert.equal(after.length, 2);
+  assert.deepEqual(after.filter((f) => before.includes(f)), [], "every replaced rendition is removed");
+});
+
 test("without Jetpack the Image CDN adapter is inert", async () => {
   const schema = await ok("GET", "/_schema");
   assert.equal(schema.runtime.wp.imageCdn, false);

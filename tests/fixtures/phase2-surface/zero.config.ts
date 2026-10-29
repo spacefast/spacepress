@@ -9,6 +9,17 @@ const YES = true;
 const NIL = null;
 function templateResult(): "show" { return `show`; }
 function updateNumeric(value: 0 | 1) { value++; if (value > 0) { value--; } value += 1; let record: { count: 0 | 1, values: (0 | 1)[], keep: 0 } = { count: 1, values: [1], keep: 0 }; if (value > 0) { record.count++; record.values[0]--; } return { value, count: record.count, item: record.values[0], keep: record.keep }; }
+function captureNumeric(value: 0 | 1) { const read = () => value; value++; return read(); }
+function invokeNumeric(value: 0 | 1) { const bump = () => { value++; }; bump(); return value; }
+function loopNumeric(value: 0 | 1) { while (true) { if (value > 1) return value; value++; } }
+function bumpNumeric(record: { count: 0 | 1, keep: 0 }) { record.count++; }
+function forwardNumeric(record: { count: 0 | 1, keep: 0 }) { bumpNumeric(record); }
+function helperNumeric() { forwardNumeric({ count: 1, keep: 0 }); const record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; const read = () => record.count; forwardNumeric(record); const bump = (value: { count: 0 | 1, keep: 0 }) => { value.count++; }; bump(record); return { count: record.count, captured: read(), keep: record.keep }; }
+function maybeCapture(value: 0 | 1) { const read = () => value; value++; switch (read()) { case 0: case 1: return true; } }
+function maybeHelper() { let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); switch (record.count) { case 0: case 1: return true; } }
+function earlyNumeric(value: 0 | 1): 0 | 1 { if (value === 0) return value; value++; return 1; }
+function byValueNumeric(value: 0 | 1): 0 | 1 { const unused = () => { value++; }; captureNumeric(value); return value; }
+function shadowNumeric(value: 0 | 1) { const read = () => value; { let value: 0 | 1 = 1; value++; } return read(); }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }
 function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return true; case -1: return false; } }
 function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]() && !0; } } }
@@ -56,10 +67,11 @@ export default defineConfig({
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
       const numeric = updateNumeric(1);
+      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1) };
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();
-      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
     } }),
   },
 });

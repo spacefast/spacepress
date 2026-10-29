@@ -660,6 +660,43 @@ fn rejects_phase2_static_contracts() {
             assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
         }
     }
+    // Mutations must not make a partial field predicate look exhaustive.
+    let tmp = std::env::temp_dir().join(format!("zero-phase2-mutations-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    for (body, diagnostic) in [
+        (
+            "let value: 0 | 1 = 1; const read = () => value; value++; switch (read()) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 0 | 1 = 1; while (true) { if (value > 1) { switch (value) { case 0: case 1: return true; } break; } value++; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let record: { count: 0 | 1 } = { count: 1 }; function bump(value: { count: 0 | 1 }) { value.count++; } bump(record); switch (record.count) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
+            "function expects",
+        ),
+        ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
+        (
+            "function accept(value: { count: 0 | 1 }) { return true; } const map: Record<string, { count: 0 | 1 }> = {}; return accept(map['missing']);",
+            "function expects",
+        ),
+    ] {
+        std::fs::write(tmp.join("zero.config.ts"), format!(
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+        )).unwrap();
+        for target in ["standalone", "wp"] {
+            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{target}: {stderr}");
+            assert!(stderr.contains(diagnostic), "{target}: {stderr}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(tmp);
 }
 
 /// The v3 config normalizes to one shape, and the new slots run through the existing PHP path.
@@ -779,7 +816,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

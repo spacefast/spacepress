@@ -1,0 +1,99 @@
+# Migrate a CMS config
+
+`zero migrate config` imports declarative schemas from EmDash, Payload, Sanity
+and the original `@spacefast/zero` capsule API (0.8.1). It writes a new
+`zero.config.ts`; it never overwrites the source or an existing destination.
+
+```sh
+zero migrate config --from payload payload.config.ts --out migrated/zero.config.ts
+zero build migrated --target wp
+```
+
+Use `--from emdash`, `payload`, `sanity` or `zero`. Input can be a JSON schema
+export or a single TypeScript module with a default export. EmDash uses its
+version `"1"` seed format; Payload uses its config's declarative object; Sanity
+uses `schema.types`; original Zero uses `capsule({ collections: ... })`.
+Runnable input examples live in `tests/fixtures/config-migrate`.
+
+The importer parses TypeScript with Rust. It recognizes named imports of
+Payload's `buildConfig`, Sanity's `defineConfig`/`defineType`/`defineField`/
+`defineArrayMember`, and original Zero's `capsule` from
+`@spacefast/zero/server`. Aliases, constants, literal objects/arrays and type
+assertions work. CMS packages are never loaded. A JSON export must retain the
+source declarations: `JSON.stringify` can erase callbacks before Zero sees them,
+so a serialized executable config does not establish compatibility. Relative modules, spreads,
+computed properties, executable statements and arbitrary helper calls require
+a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
+
+## Supported mappings
+
+| Source | Fields supported by this importer |
+| --- | --- |
+| EmDash | `string`, `text`, `url`, `number`, `integer`, `boolean`, `datetime`, `json` |
+| Payload | `text`, `textarea`, `email`, `number`, `checkbox`, `date`, `json`, string-valued `select` (including `hasMany`) |
+| Sanity | `string`, `text`, `url`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
+| Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`) |
+
+Required fields, scalar defaults, supported bounds, uniqueness and collection
+labels are carried where declared. Payload's automatic `createdAt`/`updatedAt`
+are generated unless `timestamps: false`. Field editor labels/descriptions are
+reported for manual admin mapping. Payload's plural collection label is carried;
+the loss of a distinct singular label is reported. Sanity's project/dataset
+metadata and EmDash's seed metadata are identified in the report, not deployed.
+
+A required text field named `title` enables a WordPress custom post type with
+the target's draft/revision behavior. Otherwise the imported collection uses a
+custom table (`editor: false`). The report calls out this storage choice and the
+need to review publishing behavior. Import does not adopt existing WordPress
+post types. Original Zero's native `posts`, `pages` and `media` declarations are
+refused because creating new stores would change their ownership.
+
+Unspecified REST permissions are emitted as `false` for read/create/update/
+delete, rather than inheriting Zero's public-read default. Literal Payload
+boolean access rules and original Zero's `publicRead` override the corresponding
+denials. Configure access before deployment. This is a reported change, not a
+claim that the source CMS's authentication model has been migrated.
+
+## Reports and refusal
+
+The command prints JSON to stdout with `version: 1`, `source`, `status`,
+`entries` and `errors`. Each entry contains an RFC 6901 `pointer`, an `outcome`
+(`mapped`, `metadata` or `review`) and a `reason`. `written` means the config
+compiled for both WordPress and standalone; review entries still require source
+and target behavior to be compared. It does not mean a complete app was migrated.
+
+An unsupported construct exits 1 with `status: "refused"`, a pointer and reason.
+No config is published. The report may contain mappings completed before the
+first refusal. Invalid CLI arguments exit 2. Destination collisions also refuse;
+there is no overwrite flag. The compiler validates the generated configuration
+in a temporary directory before publication. Migration does not acquire plugins,
+write SQL migrations to the destination or execute PHP.
+
+The supported subset rejects unknown keys rather than ignoring them. In
+particular, these require a separate port:
+
+- Access/validation/hook callbacks, except the explicit Sanity required rule.
+- Rich text (Portable Text, Lexical and original Zero block bindings), assets,
+  references, nested/custom schemas, globals, localization and custom plugins.
+- EmDash documents, menus, taxonomies, settings, routes and other seed features.
+- Original Zero `schema` tables, queries, mutations, actions, endpoints, pages,
+  auth, connectors, sync bindings and favicon declarations.
+
+For example, an old capsule with `queries` fails instead of producing a config
+with those handlers removed. Keep the original application intact until its
+behavior is implemented and validated in the new runtime.
+
+## Config import versus application migration
+
+This command does not move documents, uploads, string IDs, user identities,
+sessions, secrets, URLs or browser clients. It does not convert existing PHP or
+JavaScript plugins into Rust declarations. A complete old Zero migration also
+needs the runtime and data work listed in the
+[compatibility inventory](zero-compatibility.md).
+
+Tests are owned by `tests/config_migrate.rs`. They run the actual command for
+all four formats, build its output for both targets and load the emitted PHP
+schema. The Payload fixture also boots the generated PHP application against
+SQLite to verify defaults, validation and REST access. Refusal tests cover
+callbacks, unknown features, dynamic code, duplicate names, invalid generated
+defaults and unchanged destinations.

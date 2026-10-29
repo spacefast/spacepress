@@ -11,6 +11,7 @@
 
 mod client;
 mod compile;
+mod config_migrate;
 mod diag;
 mod eval;
 mod extract;
@@ -587,7 +588,7 @@ struct Args {
     rest: Vec<String>,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens> <args...> [--dir project-dir]";
+const USAGE: &str = "usage: zero <build|check|dev> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -665,6 +666,9 @@ fn passthrough(args: &Args, project: &Path) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("migrate") {
+        return config_migrate::cli();
+    }
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {

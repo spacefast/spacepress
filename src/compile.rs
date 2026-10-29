@@ -3198,11 +3198,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
             }
-            if by_ref && v.place.is_none() {
+            if by_ref {
                 needs_unpack = true;
             }
             unpacked.push(match (&v.place, by_ref) {
-                (Some(place), true) => format!("&{place}"),
+                // A guarded read (`?? null`) is not addressable in PHP. Keep
+                // present storage by reference, but don't create missing fields
+                // or array elements merely by passing them to a function.
+                (Some(place), true) => format!("...(isset({place}) ? [&{place}] : [null])"),
                 _ => v.php.clone(),
             });
             argv.push(v.php);

@@ -127,6 +127,21 @@ export default defineConfig({
       const defaultCount = mutate(missing);
       const supplied = { count: 4 };
       const suppliedCount = mutate(supplied);
+      const options: { item?: { count: number } } = { item: { count: 1 } };
+      const tuple: [{ count: number }] = [{ count: 2 }];
+      const emptyOptions: { item?: { count: number } } = {};
+      const mutateWithExtra = (item: { count: number } = { count: 0 }, extra: number[] = []) => { item.count++; extra.push(item.count); return item.count; };
+      const referenceArguments = {
+        optional: mutate(options.item!),
+        tuple: mutate(tuple[0]!),
+        optionalSource: options.item?.count,
+        tupleSource: tuple[0]?.count,
+        missing: mutate(emptyOptions.item),
+        missingKeys: Object.keys(emptyOptions),
+        unpacked: mutateWithExtra(options.item!, []),
+        unpackedMissing: mutateWithExtra(emptyOptions.item, []),
+        unpackedMissingKeys: Object.keys(emptyOptions),
+      };
       let item = { count: 1 };
       const readItem = makeCounterReader(item);
       const readBinding = () => item.count;
@@ -154,7 +169,7 @@ export default defineConfig({
         local++;
         continue;
       }
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, escaped: readItem(), binding: readBinding(), live, absent: readAbsent(), spread: spread.count, rest: rest.count, accumulatorReaders: accumulatorReaders.map(read => read()), sharedReaders: sharedReaders.map(read => read()), loopReaders: loopReaders.map(read => read()), loopSource: loopItems.map(item => item.count), localReaders: localReaders.map(read => read()), some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, referenceArguments, escaped: readItem(), binding: readBinding(), live, absent: readAbsent(), spread: spread.count, rest: rest.count, accumulatorReaders: accumulatorReaders.map(read => read()), sharedReaders: sharedReaders.map(read => read()), loopReaders: loopReaders.map(read => read()), loopSource: loopItems.map(item => item.count), localReaders: localReaders.map(read => read()), some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

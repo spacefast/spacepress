@@ -65,6 +65,12 @@ fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R
     Err(Diag::new(span, msg).help(help))
 }
 
+fn is_env_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    chars.next().is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
+        && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
 fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
     match v {
         Value::Array(a) => {
@@ -95,10 +101,10 @@ fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> R
             seen.remove(&(Rc::as_ptr(o) as usize));
             Ok(())
         }
-        Value::Env(_) | Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) => err_help(
+        Value::Env(_) => err_help(
             span,
-            "not implemented until lane D",
-            "runtime enqueue/once/env calls become available in lane D",
+            "env() values can't be stored inside captured data",
+            "read it where it's used: `env(\"NAME\")` inside the hook, action or job",
         ),
         Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
         _ => err_help(
@@ -240,6 +246,8 @@ pub struct Compiler<'a, 'p> {
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
+    /// Set for the one callback `once()` runs in place, which may be async (lane D).
+    async_callback: bool,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -262,6 +270,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ev,
             collections: &ext.collections,
             type_aliases,
+            async_callback: false,
             helpers: HashMap::new(),
             helper_types: HashMap::new(),
             effects: effects::Effects::default(),
@@ -2349,10 +2358,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
-            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) | Value::Env(_) => err_help(
+            Value::Env(name) => Ok(Out::atom(
+                format!("\\Zero\\Env::get({})", php_str(name)),
+                Ty::Str.nullable(),
+            )),
+            Value::Builtin(Builtin::Env | Builtin::Once) => err_help(
                 span,
-                "not implemented until lane D",
-                "runtime enqueue/once/env calls become available in lane D",
+                format!("`{n}` can't be used as a value"),
+                format!("call it directly: `{n}(...)`"),
+            ),
+            Value::Builtin(Builtin::Jobs) => err_help(
+                span,
+                "`jobs` can't be used as a value",
+                "call `jobs.<name>.enqueue(input)` directly",
             ),
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
             Value::Builtin(_)
@@ -2590,15 +2608,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             no_db: self.fx().no_db,
             access: None,
         };
-        if f.is_async {
+        if f.is_async && !std::mem::take(&mut self.async_callback) {
             return err_help(
                 f.span,
                 "async callbacks aren't supported",
                 "use a `for ... of` loop with `await` inside",
             );
         }
+        self.async_callback = false;
         if let Some(r) = &f.ret {
-            inner.ret = Some(self.resolve_ann(r, module, &HashMap::new())?);
+            inner.ret = Some(match self.resolve_ann(r, module, &HashMap::new())? {
+                Ty::Promise(t) if f.is_async => *t,
+                t => t,
+            });
         }
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
@@ -3111,13 +3133,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
-        if let ExprKind::Ident(n) = &callee.kind
-            && let Resolved::Value(Value::Builtin(Builtin::Once), _) = self.resolve(n, callee.span)?
-        {
-            let key = self.arg(args, 0, span, "once")?;
-            if !self.expr(key)?.ty.is_str() {
-                return err_help(key.span, "once key must be a string", "use a stable string key");
-            }
+        if let Some(out) = self.jobs_call(callee, args, span)? {
+            return Ok(out);
         }
         match &callee.kind {
             ExprKind::Member {
@@ -3147,6 +3164,153 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.call_value(f, args, span, callee.span)
             }
         }
+    }
+
+    // ---- jobs (§6.1, lane D) ------------------------------------------------------
+
+    /// `once(key, fn)`, `jobs.<name>.enqueue(input, opts?)` and `env("NAME")`; None for any other call.
+    fn jobs_call(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
+        let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
+            let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
+            Ok(match this.resolve(n, e.span)? {
+                Resolved::Value(Value::Builtin(b @ (Builtin::Once | Builtin::Jobs | Builtin::Env)), _) => Some(b),
+                _ => None,
+            })
+        };
+        match &callee.kind {
+            ExprKind::Ident(_) => match builtin(self, callee)? {
+                Some(Builtin::Once) => self.once_call(args, span).map(Some),
+                Some(Builtin::Env) => {
+                    let name = self.arg(args, 0, span, "an environment variable name")?;
+                    match &name.kind {
+                        ExprKind::Str(s) if is_env_name(s) && args.len() == 1 => Ok(Some(Out::atom(
+                            format!("\\Zero\\Env::get({})", php_str(s)),
+                            Ty::Str.nullable(),
+                        ))),
+                        _ => err_help(
+                            name.span,
+                            "env() needs an environment variable name",
+                            "use env(\"HOOK_SECRET\")",
+                        ),
+                    }
+                }
+                _ => Ok(None),
+            },
+            ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
+                ExprKind::Member {
+                    obj: root, prop: job, ..
+                } if builtin(self, root)? == Some(Builtin::Jobs) => {
+                    self.enqueue_call(job, obj.span, args, span).map(Some)
+                }
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
+    fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        if self.fx().no_db {
+            return err_help(span, "access rules can't use once()", "move it into a hook or action");
+        }
+        if args.len() != 2 {
+            return err_help(
+                span,
+                "once() takes a key and a function",
+                "write once(key, async () => ...)",
+            );
+        }
+        let key_expr = self.arg(args, 0, span, "a key")?;
+        let key = self.expr(key_expr)?;
+        let key = self.finish_value(key, key_expr.span)?;
+        if !key.ty.is_str() || key.ty.is_nullable() {
+            return err_help(key_expr.span, "once key must be a string", "use a stable string key");
+        }
+        let f = self.arg(args, 1, span, "a function")?;
+        // The callback runs to completion inside once(), so an async arrow is awaited in place.
+        self.async_callback = true;
+        let cb = self.callback(f, &[]);
+        self.async_callback = false;
+        let cb = cb?;
+        let Ty::Fn(_, ret) = cb.ty else {
+            return err(f.span, "once() needs a function as its second argument");
+        };
+        let ret = match *ret {
+            Ty::Promise(t) => *t,
+            t => t,
+        };
+        Ok(Out::atom(
+            format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
+            Ty::Promise(Box::new(ret)),
+        ))
+    }
+
+    fn enqueue_call(&mut self, job: &str, job_span: Span, args: &[ArrEl], span: Span) -> Result<Out> {
+        let Some(spec) = self.schema.jobs.get(job) else {
+            let mut d = Diag::new(job_span, format!("unknown job `{job}`"));
+            if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
+                d = d.help(format!("did you mean `{s}`?"));
+            } else {
+                d = d.help("declare it in defineConfig({ jobs: { ... } })");
+            }
+            return Err(d);
+        };
+        if self.fx().no_db {
+            return err_help(span, "access rules can't enqueue jobs", "enqueue from a hook or action");
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "enqueue() takes the job input and optional options",
+                "write jobs.x.enqueue({ ... })",
+            );
+        }
+        let want = types::columns_insert(&spec.input, &types::json_ty);
+        let input_expr = self.arg(args, 0, span, "the job input")?;
+        let input = self.expr(input_expr)?;
+        let input = self.finish_value(input, input_expr.span)?;
+        if !assignable(&input.ty, &want) {
+            if let (Ty::Obj(have), Ty::Obj(need)) = (&input.ty, &want) {
+                if let Some(k) = have.keys().find(|k| !need.contains_key(*k)) {
+                    return Err(self.no_field(&want, k, input_expr.span));
+                }
+                if let Some((k, _)) = need
+                    .iter()
+                    .find(|(k, (_, optional))| !optional && !have.contains_key(*k))
+                {
+                    return err(input_expr.span, format!("missing required field `{k}`"));
+                }
+            }
+            return err(
+                input_expr.span,
+                format!("{} doesn't fit job `{job}` ({})", input.ty.describe(), want.describe()),
+            );
+        }
+        let opts = match args.get(1) {
+            None => "null".to_string(),
+            Some(_) => {
+                let e = self.arg(args, 1, span, "options")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                let mut fields = IndexMap::new();
+                fields.insert("delay".to_string(), (Ty::Num, true));
+                fields.insert("key".to_string(), (Ty::Str, true));
+                let want = Ty::Obj(fields);
+                if !assignable(&v.ty, &want) {
+                    return err_help(
+                        e.span,
+                        format!("enqueue options are {}, not {}", want.describe(), v.ty.describe()),
+                        "use { delay: seconds, key: \"dedupe-key\" }",
+                    );
+                }
+                v.php
+            }
+        };
+        let mut result = IndexMap::new();
+        result.insert("id".to_string(), (Ty::Str, false));
+        Ok(Out::atom(
+            format!("\\Zero\\Jobs\\Jobs::enqueue({}, {}, {opts})", php_str(job), input.php),
+            Ty::Promise(Box::new(Ty::Obj(result))),
+        ))
     }
 
     fn call_value(&mut self, f: Out, args: &[ArrEl], span: Span, callee_span: Span) -> Result<Out> {

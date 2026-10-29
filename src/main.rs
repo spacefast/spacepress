@@ -7,6 +7,7 @@
 //! zero dev [dir] [--port <n>]           build, then serve with `php -S`
 //! zero dev [dir] --wp [--port <n>]      build the plugin and boot it in docker WordPress
 //! zero users|tokens <args...> [--dir d] the standalone CLI (zero/bin/zero.php user/token ...)
+//! zero jobs <list|run|retry|cancel|work> [--dir d]   the standalone job queue (§6.1)
 //! ```
 
 mod client;
@@ -49,7 +50,7 @@ struct Args {
     json: bool,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens> <args...> [--dir project-dir]";
+const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -67,7 +68,7 @@ fn parse_args() -> Result<Args, String> {
         token: None,
         json: false,
     };
-    if matches!(args.command.as_str(), "users" | "tokens" | "user" | "token") {
+    if matches!(args.command.as_str(), "users" | "tokens" | "user" | "token" | "jobs") {
         while let Some(a) = it.next() {
             if a == "--dir" {
                 args.project = PathBuf::from(it.next().ok_or("--dir needs a directory")?);

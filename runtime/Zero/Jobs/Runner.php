@@ -1,0 +1,124 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Zero\Jobs;
+
+use Zero\Js;
+
+use function Zero\db;
+
+/**
+ * Runs one queued job (§6.1): lock it, call the handler in its own transaction with no user, then
+ * record done / failed with backoff / dead. Action Scheduler never retries, so failures are
+ * re-scheduled here and AS only ever sees completed actions.
+ */
+final class Runner
+{
+    /** Seconds before attempt n+1: 1m, 5m, 15m, 1h, 3h, 6h, 12h, then 24h. */
+    public const BACKOFF = [60, 300, 900, 3600, 10800, 21600, 43200, 86400];
+    public const STUCK_MS = 600_000;
+    public const RECEIPT_TTL_MS = 7 * 86_400_000;
+    public const DEFAULT_RETRIES = 3;
+
+    /** @return array{id: string, state: string, attempts: int, error?: string}|null null when the job isn't runnable */
+    public static function run(string $id): ?array
+    {
+        $db = db();
+        $locked = $db->transaction(static function () use ($id): ?array {
+            $row = Storage::run('SELECT * FROM {jobs} WHERE "id" = ?' . Storage::forUpdate(), [$id])[0] ?? null;
+            if ($row === null || !in_array($row['state'], ['pending', 'failed'], true)) {
+                return null;
+            }
+            Storage::run('UPDATE {jobs} SET "state" = \'running\', "lockedAt" = ? WHERE "id" = ?', [Js::iso(Js::now()), $id]);
+
+            return $row;
+        });
+        if ($locked === null) {
+            return null;
+        }
+        $attempt = (int) $locked['attempts'] + 1;
+        $previous = $db->actor();
+        $db->setActor(null);
+        try {
+            $db->transaction(static function () use ($locked, $attempt, $id, $db): void {
+                $spec = Jobs::spec((string) $locked['job']);
+                $fn = '\\ZeroApp\\' . $spec['handler'];
+                $input = Js::jsonParse((string) $locked['input']);
+                $fn(is_array($input) ? $input : [], ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id]);
+                $now = Js::iso(Js::now());
+                Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, $now, $id]);
+            });
+
+            return ['id' => $id, 'state' => 'done', 'attempts' => $attempt];
+        } catch (\Throwable $e) {
+            return self::fail($locked, $attempt, $e);
+        } finally {
+            $db->setActor($previous);
+        }
+    }
+
+    /** @return array{id: string, state: string, attempts: int, error: string} */
+    private static function fail(array $row, int $attempt, \Throwable $e): array
+    {
+        $id = (string) $row['id'];
+        $error = mb_substr($e::class . ': ' . $e->getMessage(), 0, 2000);
+        $retries = self::retries((string) $row['job']);
+        $dead = $attempt >= $retries;
+        $runAt = Js::iso(Js::now() + 1000 * self::BACKOFF[min($attempt, count(self::BACKOFF)) - 1]);
+        db()->transaction(static function () use ($id, $attempt, $error, $dead, $runAt): void {
+            Storage::run(
+                $dead
+                    ? 'UPDATE {jobs} SET "state" = \'dead\', "attempts" = ?, "lastError" = ?, "dedupe" = NULL, "lockedAt" = NULL, "doneAt" = ? WHERE "id" = ?'
+                    : 'UPDATE {jobs} SET "state" = \'failed\', "attempts" = ?, "lastError" = ?, "runAt" = ?, "lockedAt" = NULL WHERE "id" = ?',
+                [$attempt, $error, $dead ? Js::iso(Js::now()) : $runAt, $id],
+            );
+            if (!$dead) {
+                Outbox::queue()->schedule($id, $runAt);
+            }
+        });
+
+        return ['id' => $id, 'state' => $dead ? 'dead' : 'failed', 'attempts' => $attempt, 'error' => $error];
+    }
+
+    private static function retries(string $job): int
+    {
+        try {
+            return max(1, (int) (Jobs::spec($job)['retries'] ?? self::DEFAULT_RETRIES));
+        } catch (\LogicException) {
+            return 1; // the job was removed from the config: one failure is final
+        }
+    }
+
+    /** The next due job id (standalone worker). */
+    public static function next(): ?string
+    {
+        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "state" IN (\'pending\', \'failed\') AND "runAt" <= ? ORDER BY "runAt", "createdAt" LIMIT 1', [Js::iso(Js::now())])[0] ?? null;
+
+        return $row === null ? null : (string) $row['id'];
+    }
+
+    /**
+     * Housekeeping, run by every worker pass and Action Scheduler's daily action: drain the outbox,
+     * re-queue jobs whose runner died mid-run, sweep receipts older than 7 days.
+     *
+     * @return array{dispatched: int, requeued: int, swept: int}
+     */
+    public static function maintain(): array
+    {
+        $dispatched = Outbox::dispatch();
+        $now = Js::now();
+
+        return db()->transaction(static function () use ($dispatched, $now): array {
+            $stuck = Storage::run('SELECT "id" FROM {jobs} WHERE "state" = \'running\' AND "lockedAt" < ?' . Storage::forUpdate(), [Js::iso($now - self::STUCK_MS)]);
+            foreach ($stuck as $row) {
+                Storage::run('UPDATE {jobs} SET "state" = \'pending\', "lockedAt" = NULL, "runAt" = ? WHERE "id" = ?', [Js::iso($now), $row['id']]);
+                Outbox::queue()->schedule((string) $row['id'], Js::iso($now));
+            }
+            $old = Storage::run('SELECT COUNT(*) AS "n" FROM {receipts} WHERE "createdAt" < ?', [Js::iso($now - self::RECEIPT_TTL_MS)]);
+            Storage::run('DELETE FROM {receipts} WHERE "createdAt" < ?', [Js::iso($now - self::RECEIPT_TTL_MS)]);
+
+            return ['dispatched' => $dispatched, 'requeued' => count($stuck), 'swept' => (int) $old[0]['n']];
+        });
+    }
+}

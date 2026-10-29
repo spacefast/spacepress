@@ -5,6 +5,7 @@ use std::{
 pub(super) fn standalone(out: &Path, port: u16) -> ExitCode {
     let addr = format!("127.0.0.1:{port}");
     println!("serving http://{addr}  (Ctrl-C to stop)");
+    let _worker = super::jobs::worker(out).map(KillOnDrop);
     let status = std::process::Command::new("php")
         .args(["-S", &addr, "-t"])
         .arg(out.join("public"))
@@ -17,6 +18,14 @@ pub(super) fn standalone(out: &Path, port: u16) -> ExitCode {
             eprintln!("error: couldn't start php: {e}");
             ExitCode::from(1)
         }
+    }
+}
+
+struct KillOnDrop(std::process::Child);
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
     }
 }
 

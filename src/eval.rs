@@ -1288,8 +1288,8 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Once | Builtin::Jobs => err_help(
                 span,
-                "not implemented until lane D",
-                "use these runtime calls after lane D lands",
+                "once() and jobs only work inside hooks, actions and jobs, which run in PHP at request time",
+                "move the call into a handler",
             ),
             Builtin::Action | Builtin::Job => {
                 let cfg = arg(0);

@@ -137,9 +137,17 @@ export default defineConfig({
     recursion: run(() => [fact(5), fact(1)]),
     nullish: run(() => {
       const maybe: string | null = ITEMS[1].tags.length > 0 ? "x" : null;
-      const message = (flag: boolean): false | string => flag && "present";
+      const message = (flag: boolean): false | string => {
+        let result: boolean | string = flag;
+        return result &&= "present";
+      };
+      const fallback = (flag: boolean): true | string => {
+        let result: boolean | string = flag;
+        return result ||= "error";
+      };
+      let negated = !false; negated = !true;
       let template = `a`; template = `b`;
-      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?", message(false), message(true), template];
+      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?", message(false), message(true), fallback(false), fallback(true), negated, template];
     }),
     templates: run(() => ITEMS.map(label)),
     templateTernary: run(() => ITEMS.map((i) => `${i.qty > 0 ? i.name : "none"}!` + (i.qty > 5 ? " lots" : ""))),

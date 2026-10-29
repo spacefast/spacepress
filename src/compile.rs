@@ -1750,7 +1750,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let v = self.expr(x)?;
                 let v = self.finish_value(v, x.span)?;
                 match op {
-                    UnOp::Not => Out::new(format!("!{}", paren(&self.truthy(&v))), Ty::Bool),
+                    UnOp::Not => {
+                        let ty = match (truthiness_part(&v.ty, true), truthiness_part(&v.ty, false)) {
+                            (Ty::Never, Ty::Never) => Ty::Never,
+                            (Ty::Never, _) => Ty::FreshBoolLit(true),
+                            (_, Ty::Never) => Ty::FreshBoolLit(false),
+                            _ => Ty::Bool,
+                        };
+                        Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
+                    }
                     UnOp::Neg => {
                         self.need_num(&v, x.span, "`-`")?;
                         Out::new(format!("-{}", v.wrapped()), Ty::Num)
@@ -1790,19 +1798,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
                 let b = b?;
                 let b = self.finish_value(b, r.span)?;
+                let ty = logical_result_type(*op, &a.ty, &b.ty);
                 match op {
-                    LogOp::Nullish => Out::new(
-                        format!("{} ?? {}", a.wrapped(), b.wrapped()),
-                        Ty::union([a.ty.non_null(), b.ty]),
-                    ),
+                    LogOp::Nullish => Out::new(format!("{} ?? {}", a.wrapped(), b.wrapped()), ty),
                     LogOp::Or | LogOp::And => {
-                        let retain_truthy = *op == LogOp::Or;
-                        let left = truthiness_part(&a.ty, retain_truthy);
-                        let ty = if truthiness_part(&a.ty, !retain_truthy) == Ty::Never {
-                            left
-                        } else {
-                            Ty::union([left, b.ty.clone()])
-                        };
                         if a.ty.is_bool() && b.ty.is_bool() {
                             return Ok(Out::new(
                                 format!(
@@ -2299,7 +2298,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Some(AssignOp::Log(LogOp::Nullish)) => Ok(Out::new(
                 format!("{} ??= {}", t.php, v.php),
-                Ty::union([t.ty.non_null(), v.ty]),
+                logical_result_type(LogOp::Nullish, &t.ty, &v.ty),
             )),
             Some(AssignOp::Log(l)) => {
                 let cond = self.truthy(&t);
@@ -2310,7 +2309,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 Ok(Out::new(
                     format!("{} = {} ? {} : {}", t.php, paren(&keep), t.php, v.wrapped()),
-                    Ty::union([t.ty, v.ty]),
+                    logical_result_type(l, &t.ty, &v.ty),
                 ))
             }
         }
@@ -3961,6 +3960,19 @@ fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
         Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
         Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
         _ => widen_fresh_literals(t),
+    }
+}
+
+fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
+    if op == LogOp::Nullish {
+        return Ty::union([left.non_null(), right.clone()]);
+    }
+    let retain_truthy = op == LogOp::Or;
+    let retained = truthiness_part(left, retain_truthy);
+    if truthiness_part(left, !retain_truthy) == Ty::Never {
+        retained
+    } else {
+        Ty::union([retained, right.clone()])
     }
 }
 

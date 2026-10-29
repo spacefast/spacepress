@@ -8,7 +8,7 @@ const SHOW = "show";
 const YES = true;
 const NIL = null;
 function templateResult(): "show" { return `show`; }
-function finiteFunction(): true { const value = `show`; const predicates = [(): true => true]; const flag = predicates[0](); switch (value) { case templateResult(): switch (flag) { case true: return true && true; } } }
+function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const flag = !false; switch (value) { case templateResult(): switch (flag) { case true: return predicates[0]() && !false; } } }
 function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return finiteFunction(); } } }
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
 function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": return true; } }

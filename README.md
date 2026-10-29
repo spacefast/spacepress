@@ -104,3 +104,5 @@ cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
 | `types/zero/` | TypeScript declarations for `"zero"` |
 | `examples/pantry/` | home pantry tracker |
 | `examples/blog/` | the CMS example (both targets) |
+
+WordPress builds can also [declare additional pinned plugins](docs/wp-plugins.md) in `zero.config.ts`; see `examples/wp-plugins`.

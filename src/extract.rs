@@ -42,6 +42,7 @@ pub struct Extracted {
     pub register_name: Option<&'static str>,
     /// Non-fatal advice printed by `zero build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    pub wordpress: Option<crate::wp_plugins::Config>,
 }
 
 const CONFIG_KEYS: &[&str] = &[
@@ -57,6 +58,7 @@ const CONFIG_KEYS: &[&str] = &[
     "files",
     "media",
     "locales",
+    "wordpress",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "label",
@@ -147,6 +149,7 @@ pub fn extract(
         collections: Vec::new(),
         register_name: None,
         hints: Vec::new(),
+        wordpress: None,
     };
 
     out.schema.name = match cfg_map.get("name") {
@@ -175,6 +178,15 @@ pub fn extract(
     };
     out.schema.target = target_override.unwrap_or(config_target);
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
+    if let Some(value) = cfg_map.get("wordpress") {
+        let span = span_of(ev, config, "wordpress", config_span);
+        let json =
+            to_json(value).ok_or_else(|| Diag::new(span, "wordpress must contain declarative plugin data only"))?;
+        let plugins = crate::wp_plugins::parse(json).map_err(|e| Diag::new(span, e.to_string()))?;
+        crate::wp_plugins::resolve(&plugins, &crate::wp_plugins::platform(out.schema.locales.is_some()))
+            .map_err(|e| Diag::new(span, format!("wordpress: {e}")))?;
+        out.wordpress = Some(plugins);
+    }
 
     // Collections
     let schema_val = match cfg_map.get("schema") {

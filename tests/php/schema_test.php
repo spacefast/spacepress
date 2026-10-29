@@ -59,6 +59,9 @@ eq('v3 nested column metadata passes through', $phase2->collection('posts'), $ph
 eq('v3 describes field rules without function names', $phase2->describe()['collections']['authors']['columns']['email']['access'], ['read' => 'editor', 'create' => 'anyone', 'update' => 'rule']);
 eq('v3 describes safe file metadata', $phase2->describe()['files']['decks'], ['accept' => ['application/pdf', 'image/*'], 'maxBytes' => 20000000]);
 eq('v3 self summary', $phase2->describe()['collections']['members']['access']['read'], 'self');
+$described = $phase2->describe();
+eq('standalone /_schema omits agents: false entries (§7.1)', [array_keys($described['collections']), array_keys($described['globals']), array_keys($described['actions'])],
+    [['authors', 'posts', 'members'], [], ['widened']]);
 
 $described = json_encode($schema->describe());
 check('describe hides function names, hooks and wp identifiers',

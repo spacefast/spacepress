@@ -1,0 +1,6818 @@
+[
+  {
+    "name": "blog/authors-list",
+    "label": "List authors",
+    "description": "List authors of the Blog app, filtered, ordered and paged like GET /authors.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "name": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "email": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "bio": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "avatar": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "userId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "status": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "AND": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "OR": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "NOT": {
+              "type": "object"
+            }
+          }
+        },
+        "orderBy": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "email": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "bio": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "avatar": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "userId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "publishedAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "posts": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "avatar": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          }
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "email": {
+                "type": "string",
+                "maxLength": 191
+              },
+              "bio": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 500
+              },
+              "avatar": {
+                "type": [
+                  "integer",
+                  "object",
+                  "null"
+                ]
+              },
+              "userId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "scheduled"
+                ]
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "authors",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-get",
+    "label": "Get one of authors",
+    "description": "Get one authors row of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "posts": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "avatar": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "avatar": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "authors",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-create",
+    "label": "Create in authors",
+    "description": "Create one authors row in the Blog app; the input is the row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "avatar": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "email"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "avatar": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "authors",
+        "op": "create"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-update",
+    "label": "Update in authors",
+    "description": "Update one authors row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 191
+            },
+            "bio": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 500
+            },
+            "avatar": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "userId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "avatar": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "authors",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-delete",
+    "label": "Delete from authors",
+    "description": "Delete one authors row of the Blog app; returns the deleted row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "avatar": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "authors",
+        "op": "delete"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-revisions",
+    "label": "Revisions of authors",
+    "description": "List the saved revisions of one authors row of the Blog app, newest first.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revisions"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "user": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "authors",
+        "op": "revisions"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-list",
+    "label": "List posts",
+    "description": "List posts of the Blog app, filtered, ordered and paged like GET /posts.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "title": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "slug": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "body": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "excerpt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "cover": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "tags": {
+              "type": [
+                "array",
+                "object",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "properties": {
+                "has": {
+                  "type": "string"
+                },
+                "eq": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ne": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "authorId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "updatedAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "status": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "AND": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "OR": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "NOT": {
+              "type": "object"
+            }
+          }
+        },
+        "orderBy": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "slug": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "body": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "excerpt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "cover": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "tags": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "authorId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "seo": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "gallery": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "sections": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "updatedAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "publishedAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "author": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "comments": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "cover": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          }
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "slug": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "maxLength": 200
+              },
+              "body": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "excerpt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 300
+              },
+              "cover": {
+                "type": [
+                  "integer",
+                  "object",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "news",
+                    "guide",
+                    "release"
+                  ]
+                },
+                "uniqueItems": true
+              },
+              "authorId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "seo": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "metaTitle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 70
+                  },
+                  "metaDescription": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 160
+                  },
+                  "noindex": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "gallery": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "image": {
+                      "type": [
+                        "integer",
+                        "object"
+                      ]
+                    },
+                    "caption": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 120
+                    }
+                  }
+                },
+                "maxItems": 12
+              },
+              "sections": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "layout": {
+                          "type": "string",
+                          "enum": [
+                            "hero"
+                          ]
+                        },
+                        "heading": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "image": {
+                          "type": [
+                            "integer",
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "layout"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "layout": {
+                          "type": "string",
+                          "enum": [
+                            "quote"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "cite": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "layout"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "scheduled"
+                ]
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "posts",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-get",
+    "label": "Get one of posts",
+    "description": "Get one posts row of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "author": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "comments": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "cover": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 200
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "cover": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "news",
+              "guide",
+              "release"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authorId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seo": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metaTitle": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 70
+            },
+            "metaDescription": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "noindex": {
+              "type": "boolean"
+            }
+          }
+        },
+        "gallery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": [
+                  "integer",
+                  "object"
+                ]
+              },
+              "caption": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120
+              }
+            }
+          },
+          "maxItems": 12
+        },
+        "sections": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "hero"
+                    ]
+                  },
+                  "heading": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "quote"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "cite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "posts",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-create",
+    "label": "Create in posts",
+    "description": "Create one posts row in the Blog app; the input is the row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 200
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "cover": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "news",
+              "guide",
+              "release"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authorId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seo": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metaTitle": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 70
+            },
+            "metaDescription": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "noindex": {
+              "type": "boolean"
+            }
+          }
+        },
+        "gallery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": "integer"
+              },
+              "caption": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "image"
+            ]
+          },
+          "maxItems": 12
+        },
+        "sections": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "hero"
+                    ]
+                  },
+                  "heading": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "image": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "layout",
+                  "heading"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "quote"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "cite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "layout",
+                  "text"
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 200
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "cover": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "news",
+              "guide",
+              "release"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authorId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seo": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metaTitle": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 70
+            },
+            "metaDescription": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "noindex": {
+              "type": "boolean"
+            }
+          }
+        },
+        "gallery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": [
+                  "integer",
+                  "object"
+                ]
+              },
+              "caption": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120
+              }
+            }
+          },
+          "maxItems": 12
+        },
+        "sections": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "hero"
+                    ]
+                  },
+                  "heading": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "quote"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "cite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "posts",
+        "op": "create"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-update",
+    "label": "Update in posts",
+    "description": "Update one posts row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "slug": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 200
+            },
+            "body": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "excerpt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 300
+            },
+            "cover": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "news",
+                  "guide",
+                  "release"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "authorId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "seo": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "metaTitle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 70
+                },
+                "metaDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 160
+                },
+                "noindex": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "gallery": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "integer"
+                  },
+                  "caption": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "image"
+                ]
+              },
+              "maxItems": 12
+            },
+            "sections": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "hero"
+                        ]
+                      },
+                      "heading": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "image": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "layout",
+                      "heading"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "quote"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "cite": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 80
+                      }
+                    },
+                    "required": [
+                      "layout",
+                      "text"
+                    ]
+                  }
+                ]
+              }
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "updatedAt": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 200
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "cover": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "news",
+              "guide",
+              "release"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authorId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seo": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metaTitle": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 70
+            },
+            "metaDescription": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "noindex": {
+              "type": "boolean"
+            }
+          }
+        },
+        "gallery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": [
+                  "integer",
+                  "object"
+                ]
+              },
+              "caption": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120
+              }
+            }
+          },
+          "maxItems": 12
+        },
+        "sections": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "hero"
+                    ]
+                  },
+                  "heading": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "quote"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "cite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "posts",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-delete",
+    "label": "Delete from posts",
+    "description": "Delete one posts row of the Blog app; returns the deleted row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 200
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "cover": {
+          "type": [
+            "integer",
+            "object",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "news",
+              "guide",
+              "release"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "authorId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seo": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metaTitle": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 70
+            },
+            "metaDescription": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "noindex": {
+              "type": "boolean"
+            }
+          }
+        },
+        "gallery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": [
+                  "integer",
+                  "object"
+                ]
+              },
+              "caption": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 120
+              }
+            }
+          },
+          "maxItems": 12
+        },
+        "sections": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "hero"
+                    ]
+                  },
+                  "heading": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "quote"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "cite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "layout"
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "posts",
+        "op": "delete"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-revisions",
+    "label": "Revisions of posts",
+    "description": "List the saved revisions of one posts row of the Blog app, newest first.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revisions"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "user": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "posts",
+        "op": "revisions"
+      }
+    }
+  },
+  {
+    "name": "blog/comments-list",
+    "label": "List comments",
+    "description": "List comments of the Blog app, filtered, ordered and paged like GET /comments.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "name": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "body": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "approved": {
+              "type": [
+                "boolean",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "AND": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "OR": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "NOT": {
+              "type": "object"
+            }
+          }
+        },
+        "orderBy": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "postId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "body": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "approved": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "createdAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "post": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "postId": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 60
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "approved": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "comments",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/comments-get",
+    "label": "Get one of comments",
+    "description": "Get one comments row of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "post": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "postId": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "comments",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/comments-create",
+    "label": "Create in comments",
+    "description": "Create one comments row in the Blog app; the input is the row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "postId": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      },
+      "required": [
+        "postId",
+        "name",
+        "body"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "postId": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "comments",
+        "op": "create"
+      }
+    }
+  },
+  {
+    "name": "blog/comments-update",
+    "label": "Update in comments",
+    "description": "Update one comments row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "postId": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "approved": {
+              "type": "boolean"
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "postId": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "comments",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/comments-delete",
+    "label": "Delete from comments",
+    "description": "Delete one comments row of the Blog app; returns the deleted row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "postId": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "comments",
+        "op": "delete"
+      }
+    }
+  },
+  {
+    "name": "blog/signups-list",
+    "label": "List signups",
+    "description": "List signups of the Blog app, filtered, ordered and paged like GET /signups.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "email": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "AND": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "OR": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "NOT": {
+              "type": "object"
+            }
+          }
+        },
+        "orderBy": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "email": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "postId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string",
+                "maxLength": 191
+              },
+              "postId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "signups",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/signups-get",
+    "label": "Get one of signups",
+    "description": "Get one signups row of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "signups",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/signups-create",
+    "label": "Create in signups",
+    "description": "Create one signups row in the Blog app; the input is the row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "email"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "signups",
+        "op": "create"
+      }
+    }
+  },
+  {
+    "name": "blog/signups-update",
+    "label": "Update in signups",
+    "description": "Update one signups row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "maxLength": 191
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "signups",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/signups-delete",
+    "label": "Delete from signups",
+    "description": "Delete one signups row of the Blog app; returns the deleted row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 191
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "signups",
+        "op": "delete"
+      }
+    }
+  },
+  {
+    "name": "blog/events-list",
+    "label": "List events",
+    "description": "List events of the Blog app, filtered, ordered and paged like GET /events.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "title": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "seats": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "price": {
+              "type": [
+                "number",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "number"
+                },
+                "gte": {
+                  "type": "number"
+                },
+                "lt": {
+                  "type": "number"
+                },
+                "lte": {
+                  "type": "number"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "open": {
+              "type": [
+                "boolean",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "day": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "startsAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "kinds": {
+              "type": [
+                "array",
+                "object",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "properties": {
+                "has": {
+                  "type": "string"
+                },
+                "eq": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ne": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "status": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "gt": {
+                  "type": "string"
+                },
+                "gte": {
+                  "type": "string"
+                },
+                "lt": {
+                  "type": "string"
+                },
+                "lte": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "like": {
+                  "type": "string"
+                },
+                "notLike": {
+                  "type": "string"
+                },
+                "ilike": {
+                  "type": "string"
+                },
+                "notIlike": {
+                  "type": "string"
+                }
+              }
+            },
+            "AND": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "OR": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "NOT": {
+              "type": "object"
+            }
+          }
+        },
+        "orderBy": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "seats": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "price": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "open": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "day": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "startsAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "kinds": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "postId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "publishedAt": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "post": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              },
+              "seats": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "price": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "open": {
+                "type": "boolean"
+              },
+              "day": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date"
+              },
+              "startsAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "talk",
+                    "workshop",
+                    "social"
+                  ]
+                },
+                "uniqueItems": true
+              },
+              "postId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "scheduled"
+                ]
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "events",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/events-get",
+    "label": "Get one of events",
+    "description": "Get one events row of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "with": {
+          "type": "object",
+          "properties": {
+            "post": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "seats": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "startsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "talk",
+              "workshop",
+              "social"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "events",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/events-create",
+    "label": "Create in events",
+    "description": "Create one events row in the Blog app; the input is the row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "seats": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startsAt": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "talk",
+              "workshop",
+              "social"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "seats": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "startsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "talk",
+              "workshop",
+              "social"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "events",
+        "op": "create"
+      }
+    }
+  },
+  {
+    "name": "blog/events-update",
+    "label": "Update in events",
+    "description": "Update one events row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "seats": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "open": {
+              "type": "boolean"
+            },
+            "day": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "startsAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "talk",
+                  "workshop",
+                  "social"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "seats": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "startsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "talk",
+              "workshop",
+              "social"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "collection": "events",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/events-delete",
+    "label": "Delete from events",
+    "description": "Delete one events row of the Blog app; returns the deleted row.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "seats": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "startsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "talk",
+              "workshop",
+              "social"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ]
+        },
+        "publishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "events",
+        "op": "delete"
+      }
+    }
+  },
+  {
+    "name": "blog/events-revisions",
+    "label": "Revisions of events",
+    "description": "List the saved revisions of one events row of the Blog app, newest first.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revisions"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "user": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "events",
+        "op": "revisions"
+      }
+    }
+  },
+  {
+    "name": "blog/approve-comment",
+    "label": "Run approveComment",
+    "description": "Run the approveComment action of the Blog app.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": [],
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "action": "approveComment",
+        "op": "run"
+      }
+    }
+  },
+  {
+    "name": "blog/published-count",
+    "label": "Run publishedCount",
+    "description": "Run the publishedCount action of the Blog app.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": []
+    },
+    "output_schema": [],
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "action": "publishedCount",
+        "op": "run"
+      }
+    }
+  },
+  {
+    "name": "blog/agent-note",
+    "label": "Run agentNote",
+    "description": "Run the agentNote action of the Blog app.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "note": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "note"
+      ]
+    },
+    "output_schema": [],
+    "meta": {
+      "public": false,
+      "show_in_rest": false,
+      "mcp": {
+        "public": false
+      },
+      "annotations": [],
+      "zero": {
+        "action": "agentNote",
+        "op": "run"
+      }
+    }
+  },
+  {
+    "name": "blog/global-settings-get",
+    "label": "Get Site settings",
+    "description": "Read the Site settings values of the Blog app.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "siteTitle": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "tagline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "postsPerPage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "social": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "href": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "global": "settings",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/global-settings-update",
+    "label": "Update Site settings",
+    "description": "Change some Site settings values of the Blog app; the input is the patch.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "siteTitle": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "tagline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "postsPerPage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "social": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "href": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "href"
+            ]
+          }
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "siteTitle": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "tagline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "postsPerPage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "social": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "href": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "zero": {
+        "global": "settings",
+        "op": "update"
+      }
+    }
+  },
+  {
+    "name": "blog/media-list",
+    "label": "List media",
+    "description": "List the media library of the Blog app.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "where": {
+          "type": "object"
+        },
+        "orderBy": {
+          "type": "object"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "url": {
+                "type": "string"
+              },
+              "mime": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "width": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "height": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "alt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "filename": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rows"
+      ]
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "media",
+        "op": "list"
+      }
+    }
+  },
+  {
+    "name": "blog/media-get",
+    "label": "Get media",
+    "description": "Get one media item of the Blog app by id.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "alt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "zero": {
+        "collection": "media",
+        "op": "get"
+      }
+    }
+  },
+  {
+    "name": "blog/media-delete",
+    "label": "Delete media",
+    "description": "Delete one media item of the Blog app and its files.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "alt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "destructive": true
+      },
+      "zero": {
+        "collection": "media",
+        "op": "delete"
+      }
+    }
+  }
+]

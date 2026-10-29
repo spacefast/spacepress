@@ -9,7 +9,7 @@ repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
 
 cargo build -q
-zero=target/debug/zero
+zero="${CARGO_TARGET_DIR:-target}/debug/zero"
 "$zero" build examples/blog --target wp --quiet >/dev/null       # the typed client the scenario uses
 "$zero" build tests/wp/app --target wp --quiet >/dev/null
 # Stage into a stable dir: the build replaces its output dir, which would orphan a bind mount.

@@ -35,6 +35,9 @@ services:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
       retries: 120
+    # Webhook tests deliver to a receiver the test starts on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${ZERO_WP_PORT:-8790}:80"
     volumes:
@@ -47,6 +50,8 @@ services:
     user: "${ZERO_WP_UID:-1000}:${ZERO_WP_GID:-1000}"
     depends_on: [wordpress]
     command: ["sleep", "infinity"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress

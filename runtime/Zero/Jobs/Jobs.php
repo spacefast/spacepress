@@ -65,10 +65,11 @@ final class Jobs
         return $row === null ? null : (string) $row['id'];
     }
 
-    /** The job's schema.php entry. */
+    /** The job's schema.php entry; the built-in `zero.webhook` comes from Webhooks. */
     public static function spec(string $name): array
     {
-        return db()->schema()->jobs()[$name] ?? throw new \LogicException("Unknown job '$name'");
+        return db()->schema()->jobs()[$name]
+            ?? ($name === Webhooks::JOB ? Webhooks::spec() : throw new \LogicException("Unknown job '$name'"));
     }
 
     public static function uuid(): string

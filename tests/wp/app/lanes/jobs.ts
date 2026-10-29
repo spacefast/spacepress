@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, HttpError, id, integer, job, jobs, once, text } from "zero";
+import { action, boolean, collection, db, env, HttpError, id, integer, job, jobs, once, text } from "zero";
 
 export const jobNotes = collection("jobNotes", {
   id: id(),
@@ -11,7 +11,11 @@ export const jobNotes = collection("jobNotes", {
   stamped: text(),
 }, { editor: false, access: { create: "editor", read: "editor", update: "editor" } });
 
-export const schema = { jobNotes };
+// Webhooks (D2) listen only here, so the job tests above never see webhook deliveries.
+export const hookNotes = collection("hookNotes", { id: id(), title: text().notNull() },
+  { editor: false, access: { create: "editor", read: "editor" } });
+
+export const schema = { jobNotes, hookNotes };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {
@@ -23,6 +27,16 @@ export const actions = {
       const rows = await db.insert(jobNotes).values({ title: `once ${input.note}` }).returning();
       return { ids: rows.map((r) => r.id) };
     }),
+  }),
+  // Inbound webhook: an HMAC over the raw body replaces the access rule.
+  jobsInbound: action({
+    input: { title: text().notNull() },
+    signature: { secret: env("ZERO_WP_INBOUND_SECRET"), header: "zero-signature", scheme: "zero" },
+    agents: false, // abilities pass no headers, so a signature can't be checked over MCP
+    handler: async (input, ctx) => {
+      await db.insert(jobNotes).values({ title: `inbound ${input.title}` });
+      return { user: ctx.user };
+    },
   }),
 };
 export const globals = {};
@@ -37,6 +51,7 @@ export const hooks = {
 };
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
 export const config = {
+  webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hookNotes.created"] }],
   jobs: {
     stamp: job({
       input: { noteId: integer().notNull(), fail: boolean().notNull().default(false) },

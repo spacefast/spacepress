@@ -4,6 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
+import { once } from "node:events";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { api, auth, harness, http, ok, problem, run, sql, wp, zero } from "./env.ts";
@@ -199,4 +203,80 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
   });
   assert.equal(res.status, 409);
   assert.equal((await res.json()).code, "idempotency_mismatch");
+});
+
+// ---- webhooks (D2): a local receiver the WordPress container reaches through host.docker.internal.
+
+test("a committed write reaches a local receiver through Action Scheduler, signed, retried after a 500", async (t) => {
+  // The receiver is its own process: WP-CLI calls below block this one's event loop.
+  const dir = mkdtempSync(join(tmpdir(), "zero-hook-"));
+  const statusFile = join(dir, "status");
+  const log = join(dir, "log");
+  writeFileSync(statusFile, "500"); // the first delivery fails, so the retry path runs through Action Scheduler too
+  const receiver = spawn(process.execPath, ["-e", `
+    const fs = require("node:fs");
+    const server = require("node:http").createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ headers: req.headers, body }) + "\\n");
+        res.writeHead(Number(fs.readFileSync(${JSON.stringify(statusFile)}, "utf8"))).end("ok");
+      });
+    });
+    server.listen(0, "0.0.0.0", () => console.log(server.address().port));
+  `], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { receiver.kill(); rmSync(dir, { recursive: true, force: true }); });
+  const line = await Promise.race([
+    once(receiver.stdout!, "data").then(([chunk]) => chunk),
+    once(receiver, "exit").then(() => { throw new Error("the webhook receiver exited before announcing its port"); }),
+    once(receiver, "error").then(([e]) => { throw e; }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("the webhook receiver did not start within 10s")), 10_000).unref()),
+  ]);
+  const port = Number(String(line).trim());
+  const deliveries = (): { headers: Record<string, string>; body: string }[] =>
+    existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
+  const secret = `whsec_${run}`;
+  const constants: [string, string][] = [["ZERO_WP_HOOK_URL", `http://host.docker.internal:${port}/hook`], ["ZERO_WP_HOOK_SECRET", secret]];
+  for (const [name, value] of constants) wp("config", "set", name, value, "--type=constant");
+  t.after(() => { for (const [name] of constants) wp("config", "delete", name, "--type=constant"); });
+
+  const note = await ok("POST", "/hookNotes", { as: "editor", body: { title: `hook ${run}` } });
+  const [job] = sql(`SELECT id, state FROM wp_zero__jobs WHERE job = 'zero.webhook' AND JSON_VALUE(input, '$.id') = ${note.id}`);
+  assert.equal(job.state, "pending");
+  assert.deepEqual(actions(job.id), ["pending"]);
+
+  runQueue();
+  const mine = () => deliveries().filter((d) => d.headers["zero-event-id"] === job.id);
+  assert.equal(mine().length, 1, "the first attempt reached the receiver");
+  assert.deepEqual([jobRow(job.id).state, jobRow(job.id).attempts], ["failed", "1"]);
+  assert.match(jobRow(job.id).lastError, /answered 500/);
+  writeFileSync(statusFile, "200");
+  runPending(job.id);
+  assert.deepEqual([jobRow(job.id).state, jobRow(job.id).attempts], ["done", "2"]);
+
+  assert.equal(mine().length, 2, "the retry delivered again with the same event id");
+  const last = mine()[1];
+  const event = JSON.parse(last.body);
+  assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hookNotes.created", collection: "hookNotes", at: undefined, data: { row: note } });
+  assert.equal(last.headers["zero-event-id"], job.id);
+  assert.equal(last.headers["zero-event"], "hookNotes.created");
+  const [, ts, v1] = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(last.headers["zero-signature"]))!;
+  assert.equal(v1, createHmac("sha256", secret).update(`${ts}.${last.body}`).digest("hex"), "the receiver can verify the signature");
+  assert.ok(Math.abs(Date.now() / 1000 - Number(ts)) < 120);
+});
+
+test("an inbound action with signature runs for a valid zero signature and rejects a forged one, with no credentials", async (t) => {
+  const inbound = `in_${run}`;
+  wp("config", "set", "ZERO_WP_INBOUND_SECRET", inbound, "--type=constant");
+  t.after(() => wp("config", "delete", "ZERO_WP_INBOUND_SECRET", "--type=constant"));
+  const body = JSON.stringify({ title: run });
+  const send = (sig: string) => fetch(`${api}/actions/jobsInbound`, { method: "POST", headers: { "content-type": "application/json", "zero-signature": sig }, body });
+  const sign = (at: number, key = inbound) => `t=${at},v1=${createHmac("sha256", key).update(`${at}.${body}`).digest("hex")}`;
+  const now = Math.floor(Date.now() / 1000);
+  const accepted = await send(sign(now));
+  assert.deepEqual([accepted.status, await accepted.json()], [200, { data: { user: null } }]);
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_jobNotes WHERE title = 'inbound ${run}'`)[0].n, "1");
+  // The stale/missing/rotated matrix lives in tests/php/webhooks_test.php; WordPress proves the transport.
+  const forged = await send(sign(now, "forged"));
+  assert.deepEqual([forged.status, (await forged.json()).code], [401, "invalid_signature"]);
 });

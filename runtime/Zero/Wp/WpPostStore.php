@@ -82,7 +82,7 @@ final class WpPostStore implements Store
                     "NULLIF({a}.post_date_gmt, '0000-00-00 00:00:00')",
                     'scalar',
                 ),
-                $type === 'integer', $type === 'media' => new ColumnRef($v, $m($col), "CAST($v AS SIGNED)", 'scalar'),
+                $type === 'integer', $type === 'media', $type === 'file' => new ColumnRef($v, $m($col), "CAST($v AS SIGNED)", 'scalar'),
                 $type === 'real' => new ColumnRef($v, $m($col), "CAST($v AS DECIMAL(30,10))", 'scalar'),
                 $type === 'timestamp' => new ColumnRef("CONCAT(REPLACE($v, ' ', 'T'), '.000Z')", $m($col), $v, 'scalar'),
                 $type === 'date' => new ColumnRef("DATE_FORMAT(STR_TO_DATE($v, '%Y%m%d'), '%Y-%m-%d')", $m($col), $v, 'scalar'),

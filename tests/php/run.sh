@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 PHP="${PHP:-php}"
 status=0
 suites=("$@")
-[ ${#suites[@]} -eq 0 ] && suites=(js db schema sql blog auth jobs webhooks images vendor)
+[ ${#suites[@]} -eq 0 ] && suites=(js db schema sql blog auth jobs webhooks images files vendor)
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;

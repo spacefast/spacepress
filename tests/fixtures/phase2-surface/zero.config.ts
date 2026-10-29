@@ -32,6 +32,7 @@ function guardedNumeric(record: { count: number } | null): number { if (record !
 function logicalNumeric(value: 0 | 1) { value++; const nullish = (value ??= 1); const or = (value ||= 1); const and = (value &&= 1); const wrapper: { inner: { count: number } | null } = { inner: { count: 0 } }; if (wrapper.inner !== null) wrapper.inner.count = 4; return { nullish, or, and, guarded: guardedNumeric({ count: 0 }), absent: guardedNumeric(null), nested: wrapper.inner?.count }; }
 function mutateNullable(value: { count: number } | null, extra: number[]) { if (value !== null) value.count++; }
 function stableCapturedRead(): "a" | "b" { let value: "a" | "b" | null = null; value = "a"; if (value === null) throw new Error("missing value"); const read = (): "a" | "b" => value; return read(); }
+function loopGuard(): "a" | "b" { let value: "a" | "b" | null = "a"; let i = 0; while (true) { if (value === null) { value = "b"; } else { if (i === 1) return value; value = null; i++; } } }
 function nullableArguments(absent: { count: number } | null) {
   let present: { count: number } | null = { count: 0 };
   const mutate = (value: { count: number } | null, extra: number[]) => { if (value !== null) value.count++; };
@@ -40,9 +41,16 @@ function nullableArguments(absent: { count: number } | null) {
   const replace = (value: { count: number } | null) => { value = { count: 9 }; };
   replace(present);
   mutateNullable(present, []);
+  const module = present?.count;
+  const extra = () => { if (present !== null) present.count++; return []; };
+  mutate(present, extra());
   mutate(absent, []);
+  let before = { count: 0 };
+  const peek = (value: { count: number }, extra: number[]) => value.count;
+  const rebind = () => { before = { count: 9 }; return []; };
+  const earlier = peek(before, rebind());
   const record: { inner: { count: number } | null, keep: { count: number } | null } = { inner: { count: 0 }, keep: { count: 3 } };
-  if (record.keep !== null) { record.inner = null; return { local, module: present?.count, absent: absent?.count, sibling: record.keep.count, stable: stableCapturedRead() }; }
+  if (record.keep !== null) { record.inner = null; return { local, module, absent: absent?.count, sibling: record.keep.count, stable: stableCapturedRead(), ordered: present?.count, looped: loopGuard(), earlier }; }
   throw new Error("missing sibling");
 }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }

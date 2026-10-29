@@ -542,6 +542,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
+    fn check_destructured_parameter(&self, pat: &Pat) -> Result<()> {
+        match pat {
+            Pat::Id(name, _) if self.effects.by_ref(pat) => {
+                return err_help(
+                    pat.span(),
+                    format!("can't mutate `{name}` through a destructured parameter"),
+                    "accept the whole object or array and mutate the nested value through that parameter",
+                );
+            }
+            Pat::Obj { props, rest, .. } => {
+                for (_, pat) in props {
+                    self.check_destructured_parameter(pat)?;
+                }
+                if let Some((name, span)) = rest {
+                    self.check_destructured_parameter(&Pat::Id(name.clone(), *span))?;
+                }
+            }
+            Pat::Arr { elems, rest, .. } => {
+                for pat in elems.iter().flatten() {
+                    self.check_destructured_parameter(pat)?;
+                }
+                if let Some((name, span)) = rest {
+                    self.check_destructured_parameter(&Pat::Id(name.clone(), *span))?;
+                }
+            }
+            Pat::Default(pat, _) => self.check_destructured_parameter(pat)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn compile_function_body(
         &mut self,
         f: &Func,
@@ -570,6 +601,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 pat => {
+                    self.check_destructured_parameter(pat)?;
                     let tmp = format!("$__arg{i}");
                     params_php.push(format!("{}{tmp}", php_hint(&t)));
                     let mut lines = String::new();
@@ -681,19 +713,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return Ok(Resolved::Local(l.clone()));
             }
         }
-        let mut depth = 0;
+        let mut functions = vec![fx.function];
         let mut outer = fx.outer.as_deref();
         let mut found = None;
         while let Some(o) = outer {
-            depth += 1;
             if let Some(l) = o.scopes.iter().rev().find_map(|s| s.get(name)) {
                 found = Some(l.clone());
                 break;
             }
+            functions.push(o.function);
             outer = o.outer.as_deref();
         }
-        if let Some(l) = found {
-            let _ = depth;
+        if let Some(mut l) = found {
+            for function in functions.into_iter().rev() {
+                l.ty = self
+                    .effects
+                    .capture_type(function, l.binding, &l.view, &l.ty, &l.constraint);
+            }
             // Record the capture on every closure level between here and the owner.
             let fx = self.fx.as_mut().expect("fn");
             let var = l.php.trim_start_matches('$').to_string();
@@ -709,16 +745,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 cur = c.outer.as_deref_mut();
             }
-            return Ok(Resolved::Local(Local {
-                ty: self.effects.capture_type(
-                    self.fx.as_ref().expect("fn").function,
-                    l.binding,
-                    &l.view,
-                    &l.ty,
-                    &l.constraint,
-                ),
-                ..l
-            }));
+            return Ok(Resolved::Local(l));
         }
         if let Some(b) = fx.env.lookup(name) {
             return Ok(Resolved::Value(b.value.clone(), b));
@@ -1071,13 +1098,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 test,
                 update,
                 body,
-                ..
+                span,
             } => {
                 self.fx().scopes.push(HashMap::new());
                 let init_php = match init {
                     Some(i) => self.stmt(i, 0)?.trim().trim_end_matches(';').to_string(),
                     None => String::new(),
                 };
+                self.invalidate_loop(*span);
                 let test_php = match test {
                     Some(t) => self.cond(t)?,
                     None => String::new(),
@@ -1092,7 +1120,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
             }
             Stmt::ForOf {
-                kind, pat, iter, body, ..
+                kind,
+                pat,
+                iter,
+                body,
+                span,
             } => {
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
@@ -1123,11 +1155,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.bind_pattern(pat, &tmp, &el, mutable, &mut out, indent + 1)?;
                     }
                 }
+                self.invalidate_loop(*span);
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
             Stmt::While(test, body) => {
+                self.invalidate_loop(test.span);
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
@@ -1219,6 +1253,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Exported(inner) => return self.stmt(inner, indent),
         }
         Ok(out)
+    }
+
+    fn invalidate_loop(&mut self, span: Span) {
+        for local in self
+            .fx
+            .as_mut()
+            .expect("fn")
+            .scopes
+            .iter_mut()
+            .flat_map(|scope| scope.values_mut())
+        {
+            local.ty = self
+                .effects
+                .invalidate_loop(span, local.binding, &local.view, &local.ty, &local.constraint);
+        }
     }
 
     fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
@@ -1543,6 +1592,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.apply_narrowing(&left, true);
                 self.collect_narrowing(r, false, out);
                 self.fx().scopes.pop();
+                let right = out.split_off(start + left.len());
+                out.truncate(start);
+                out.extend(
+                    left.into_iter()
+                        .filter(|(name, _, _)| self.refinement_survives(r, name)),
+                );
+                out.extend(right);
                 // Only the "true" side is sound for both operands: the false side keeps the declared type.
                 for entry in &mut out[start..] {
                     if let Some(declared) = self.declared_path_ty(&entry.0) {
@@ -1554,6 +1610,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    fn refinement_survives(&self, expression: &Expr, path: &str) -> bool {
+        let mut parts = path.split('.');
+        let name = parts.next().expect("path");
+        let Some(local) = self.scope_local(name) else {
+            return true;
+        };
+        let view: Vec<_> = parts.map(|part| effects::Step::Field(part.to_string())).collect();
+        !self.effects.changes_refinement(expression.span, local.binding, &view)
+    }
+
     /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local.
     fn path_ty(&mut self, e: &Expr) -> Option<(String, Ty)> {
         let path = self.path_of(e)?;
@@ -1563,12 +1629,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Some((path, t?))
     }
 
+    fn scope_local(&self, name: &str) -> Option<&Local> {
+        let mut context = self.fx.as_ref();
+        while let Some(fx) = context {
+            if let Some(local) = fx.scopes.iter().rev().find_map(|scope| scope.get(name)) {
+                return Some(local);
+            }
+            context = fx.outer.as_deref();
+        }
+        None
+    }
+
     fn path_of(&self, e: &Expr) -> Option<String> {
         match &e.kind {
-            ExprKind::Ident(n) => {
-                let fx = self.fx.as_ref()?;
-                fx.scopes.iter().any(|s| s.contains_key(n)).then(|| n.clone())
-            }
+            ExprKind::Ident(n) => self.scope_local(n).map(|_| n.clone()),
             ExprKind::Member { obj, prop, .. } => Some(format!("{}.{prop}", self.path_of(obj)?)),
             ExprKind::Chain(inner) | ExprKind::NonNull(inner) => self.path_of(inner),
             _ => None,
@@ -1582,6 +1656,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .scopes
             .iter()
             .find_map(|s| s.get(name))
+            .or_else(|| self.scope_local(name))
             .map(|l| l.ty.clone())
     }
 
@@ -1634,8 +1709,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
                 continue;
             }
-            let Some(local) = self.fx().scopes.iter().rev().find_map(|s| s.get(name)).cloned() else {
-                continue;
+            let local = match self.resolve(name, Span::NONE) {
+                Ok(Resolved::Local(local)) => local,
+                _ => continue,
             };
             self.fx()
                 .scopes
@@ -2252,6 +2328,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 pat => {
+                    self.check_destructured_parameter(pat)?;
                     let tmp = format!("$__arg{i}");
                     params.push(tmp.clone());
                     self.bind_pattern(pat, &tmp, &param_tys[i], true, &mut body, 2)?;
@@ -2910,24 +2987,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if want.is_none() {
                 return err(x.span, "too many arguments");
             }
-            let container = v.ty.non_null().all(|t| {
-                matches!(
-                    t,
-                    Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
-                )
-            });
-            let container_param = want.as_ref().is_some_and(|t| {
-                t.non_null().all(|t| {
-                    matches!(
-                        t,
-                        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
-                    )
-                })
-            });
-            if (container || container_param) && v.place.is_none() {
+            let by_ref = self.effects.argument_by_ref(span, i);
+            if by_ref && v.place.is_some() {
+                for later in &args[i + 1..] {
+                    let (ArrEl::Item(later) | ArrEl::Spread(later)) = later;
+                    if self.effects.replaces_argument(x.span, later.span) {
+                        return err_help(
+                            later.span,
+                            "a later argument replaces an object or array already passed by reference",
+                            "evaluate the arguments in separate statements before calling this function",
+                        );
+                    }
+                }
+            }
+            if by_ref && v.place.is_none() {
                 needs_unpack = true;
             }
-            unpacked.push(match (&v.place, container || container_param) {
+            unpacked.push(match (&v.place, by_ref) {
                 (Some(place), true) => format!("&{place}"),
                 _ => v.php.clone(),
             });

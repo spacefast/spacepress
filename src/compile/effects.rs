@@ -66,6 +66,10 @@ pub(super) struct Effects {
     capture_writes: HashMap<Span, HashSet<Place>>,
     events: HashMap<Span, HashSet<Place>>,
     write_events: HashMap<Span, HashSet<Place>>,
+    expression_writes: HashMap<Span, HashSet<Place>>,
+    expression_places: HashMap<Span, Place>,
+    loop_writes: HashMap<Span, HashSet<Place>>,
+    reference_arguments: HashMap<Span, HashSet<usize>>,
 }
 
 impl Effects {
@@ -118,6 +122,39 @@ impl Effects {
             || ty.clone(),
             |paths| invalidate_paths(paths, binding, view, ty, constraint),
         )
+    }
+
+    pub fn invalidate_loop(&self, event: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
+        self.loop_writes.get(&event).map_or_else(
+            || ty.clone(),
+            |paths| invalidate_paths(paths, binding, view, ty, constraint),
+        )
+    }
+
+    pub fn changes_refinement(&self, expression: Span, binding: Span, view: &[Step]) -> bool {
+        self.expression_writes.get(&expression).is_some_and(|writes| {
+            writes.iter().any(|p| {
+                p.binding == binding
+                    && (projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some())
+            })
+        })
+    }
+
+    pub fn argument_by_ref(&self, call: Span, index: usize) -> bool {
+        self.reference_arguments
+            .get(&call)
+            .is_some_and(|arguments| arguments.contains(&index))
+    }
+
+    pub fn replaces_argument(&self, argument: Span, later: Span) -> bool {
+        let Some(argument) = self.expression_places.get(&argument) else {
+            return false;
+        };
+        self.expression_writes.get(&later).is_some_and(|writes| {
+            writes
+                .iter()
+                .any(|p| p.binding == argument.binding && projected_suffix(&argument.path, &p.path).is_some())
+        })
     }
 
     pub fn capture_type(&self, function: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
@@ -265,6 +302,10 @@ struct Graph {
     incoming: HashSet<Place>,
     history: HashMap<Span, HashSet<Span>>,
     created_prior: HashMap<Span, HashSet<Span>>,
+    created_by: HashMap<Span, Span>,
+    expression_events: HashMap<Span, HashSet<Span>>,
+    expression_places: HashMap<Span, Place>,
+    loop_events: HashMap<Span, HashSet<Span>>,
     functions: HashMap<Span, Vec<Place>>,
     values: HashSet<(Place, Span)>,
     copies: HashSet<(Place, Place, Span)>,
@@ -445,10 +486,27 @@ impl Graph {
     }
 
     fn expr(&mut self, e: &Expr, names: &mut Names, env: &Rc<Scope>, owner: Span) -> Option<Place> {
+        let before = self.history.get(&owner).cloned().unwrap_or_default();
+        let result = self.expr_inner(e, names, env, owner);
+        let events = self
+            .history
+            .get(&owner)
+            .into_iter()
+            .flat_map(|events| events.difference(&before).copied())
+            .collect();
+        self.expression_events.insert(e.span, events);
+        if let Some(place) = &result {
+            self.expression_places.insert(e.span, place.clone());
+        }
+        result
+    }
+
+    fn expr_inner(&mut self, e: &Expr, names: &mut Names, env: &Rc<Scope>, owner: Span) -> Option<Place> {
         let value = Place::new(e.span);
         match &e.kind {
             ExprKind::Ident(name) => return self.ident(name, names, env),
             ExprKind::Func(f) => {
+                self.created_by.insert(f.span, owner);
                 self.created_prior
                     .entry(f.span)
                     .or_insert_with(|| self.history.get(&owner).cloned().unwrap_or_default());
@@ -775,6 +833,7 @@ impl Graph {
                 self.defaults(pat, names, env, owner);
             }
             Stmt::Func(f) => {
+                self.created_by.insert(f.span, owner);
                 self.created_prior
                     .entry(f.span)
                     .or_insert_with(|| self.history.get(&owner).cloned().unwrap_or_default());
@@ -800,14 +859,14 @@ impl Graph {
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
                 self.expr(e, names, env, owner);
                 self.block(b, names, env, owner);
-                self.loop_history(owner, first_call, &before);
+                self.loop_history(owner, first_call, &before, e.span);
             }
             Stmt::For {
                 init,
                 test,
                 update,
                 body,
-                ..
+                span,
             } => {
                 names.push(HashMap::new());
                 if let Some(init) = init {
@@ -822,10 +881,12 @@ impl Graph {
                     self.expr(e, names, env, owner);
                 }
                 self.block(body, names, env, owner);
-                self.loop_history(owner, first_call, &before);
+                self.loop_history(owner, first_call, &before, *span);
                 names.pop();
             }
-            Stmt::ForOf { pat, iter, body, .. } => {
+            Stmt::ForOf {
+                pat, iter, body, span, ..
+            } => {
                 let src = self.expr(iter, names, env, owner).map(|p| p.at(Step::Index));
                 let first_call = self.calls.len();
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
@@ -834,7 +895,7 @@ impl Graph {
                 self.bind_value(pat, src, owner);
                 self.defaults(pat, names, env, owner);
                 self.block(body, names, env, owner);
-                self.loop_history(owner, first_call, &before);
+                self.loop_history(owner, first_call, &before, *span);
                 names.pop();
             }
             Stmt::Try {
@@ -884,13 +945,14 @@ impl Graph {
         p
     }
 
-    fn loop_history(&mut self, owner: Span, first_call: usize, before: &HashSet<Span>) {
+    fn loop_history(&mut self, owner: Span, first_call: usize, before: &HashSet<Span>, key: Span) {
         let events: HashSet<_> = self
             .history
             .get(&owner)
             .into_iter()
             .flat_map(|events| events.difference(before).copied())
             .collect();
+        self.loop_events.insert(key, events.clone());
         for call in &mut self.calls[first_call..] {
             if call.owner == owner {
                 call.prior.extend(&events);
@@ -1078,27 +1140,65 @@ impl Graph {
                 break;
             }
         }
-        // Captures retain their creation-time refinements until a reachable
-        // call can observe a subsequent write. Writes before creation have
-        // already contributed to the captured read view and need no reset.
-        let mut capture_writes = self.function_writes.clone();
-        for call in &self.calls {
-            if !self.reachable.contains(&call.owner) {
-                continue;
+        let mut entry_history: HashMap<Span, HashSet<Span>> = HashMap::new();
+        loop {
+            let before = entry_history.values().map(HashSet::len).sum::<usize>();
+            for call in &self.calls {
+                if !self.reachable.contains(&call.owner) {
+                    continue;
+                }
+                let mut prior = entry_history.get(&call.owner).cloned().unwrap_or_default();
+                prior.extend(&call.prior);
+                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                    entry_history.entry(*function).or_default().extend(&prior);
+                }
             }
+            if before == entry_history.values().map(HashSet::len).sum::<usize>() {
+                break;
+            }
+        }
+        // Only writes after a capture's creation invalidate its refinements.
+        // Creation inside a helper happens after that helper's entry history.
+        let mut capture_writes = self.function_writes.clone();
+        for (function, prior) in &entry_history {
+            let mut created = self.created_prior.get(function).cloned().unwrap_or_default();
+            if let Some(owner) = self.created_by.get(function) {
+                created.extend(entry_history.get(owner).into_iter().flatten());
+            }
+            for event in prior.difference(&created) {
+                capture_writes
+                    .entry(*function)
+                    .or_default()
+                    .extend(self.write_events.get(event).into_iter().flatten().cloned());
+            }
+        }
+        let summaries = |histories: &HashMap<Span, HashSet<Span>>| {
+            histories
+                .iter()
+                .map(|(span, events)| {
+                    (
+                        *span,
+                        events
+                            .iter()
+                            .flat_map(|event| self.write_events.get(event).into_iter().flatten().cloned())
+                            .collect(),
+                    )
+                })
+                .collect()
+        };
+        let expression_writes = summaries(&self.expression_events);
+        let loop_writes = summaries(&self.loop_events);
+        let mut reference_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
+        for call in &self.calls {
             for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                for event in &call.prior {
+                for (index, param) in self.functions[function].iter().enumerate() {
                     if self
-                        .created_prior
-                        .get(function)
-                        .is_some_and(|prior| prior.contains(event))
+                        .writes
+                        .iter()
+                        .any(|p| p.binding == param.binding && !p.path.is_empty())
                     {
-                        continue;
+                        reference_arguments.entry(call.span).or_default().insert(index);
                     }
-                    capture_writes
-                        .entry(*function)
-                        .or_default()
-                        .extend(self.write_events.get(event).into_iter().flatten().cloned());
                 }
             }
         }
@@ -1110,6 +1210,10 @@ impl Graph {
             capture_writes,
             events: self.events,
             write_events: self.write_events,
+            expression_writes,
+            expression_places: self.expression_places,
+            loop_writes,
+            reference_arguments,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

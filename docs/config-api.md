@@ -262,8 +262,10 @@ Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `eval`/`Function`, assigning to module-level state from a hook, mutating an
 object after storing it in another (PHP copies on store), reassigning a
 parameter that also mutates its object or array (use a separate local
-binding for the replacement), `await` on
-anything that isn't a Zero API call or your own `async` function, an
+binding for the replacement), mutating a nested container through a
+destructured parameter (accept the whole parameter), replacing an earlier
+object/array argument passed to a mutating parameter while evaluating a
+later argument (evaluate them in separate statements), `await` on anything that isn't a Zero API call or your own `async` function, an
 `async` call without `await`.
 
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,

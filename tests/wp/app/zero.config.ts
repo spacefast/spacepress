@@ -4,6 +4,14 @@
 import { boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, real, select, text, timestamp, HttpError } from "zero";
 import { schema, settings, comments } from "../../../examples/blog/zero.config.ts";
 import blog from "../../../examples/blog/zero.config.ts";
+// One fragment per phase-2 lane, so lanes add test collections without editing this file.
+import * as fields from "./lanes/fields.ts";
+import * as sync from "./lanes/sync.ts";
+import * as jobs from "./lanes/jobs.ts";
+import * as auth from "./lanes/auth.ts";
+import * as abilities from "./lanes/abilities.ts";
+import * as media from "./lanes/media.ts";
+import * as locales from "./lanes/locales.ts";
 
 // An `editor: false` table with a real SQL UNIQUE index (the blog has none).
 export const signups = collection("signups", {
@@ -25,7 +33,10 @@ export const events = collection("events", {
   postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
 }, { access: { read: "anyone", create: "editor" } });
 
-const appSchema = { ...schema, signups, events };
+const appSchema = {
+  ...schema, signups, events,
+  ...fields.schema, ...sync.schema, ...jobs.schema, ...auth.schema, ...abilities.schema, ...media.schema, ...locales.schema,
+};
 // The blog's relations, plus events → posts.
 const appRelations = defineRelations(appSchema, (r) => ({
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
@@ -35,12 +46,14 @@ const appRelations = defineRelations(appSchema, (r) => ({
 }));
 
 export default defineConfig({
+  ...fields.config, ...sync.config, ...jobs.config, ...auth.config, ...abilities.config, ...media.config, ...locales.config,
   name: "blog",
   schema: appSchema,
   relations: appRelations,
-  globals: { settings },
-  actions: blog.actions,
+  globals: { settings, ...fields.globals, ...sync.globals, ...jobs.globals, ...auth.globals, ...abilities.globals, ...media.globals, ...locales.globals },
+  actions: { ...blog.actions, ...fields.actions, ...sync.actions, ...jobs.actions, ...auth.actions, ...abilities.actions, ...media.actions, ...locales.actions },
   hooks: {
+    ...fields.hooks, ...sync.hooks, ...jobs.hooks, ...auth.hooks, ...abilities.hooks, ...media.hooks, ...locales.hooks,
     posts: {
       async beforeCreate(data, ctx) {
         if (data.authorId == null && ctx.user) {

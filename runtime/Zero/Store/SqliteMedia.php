@@ -84,7 +84,7 @@ final class SqliteMedia implements Media
             throw new \RuntimeException('Cannot store the uploaded file');
         }
         $this->store->onRollback(static fn () => @unlink($dest));
-        $sizes = $width === null || !Images::resizable($dest, $mime) ? [] : $this->renderSizes($rel, $mime, $width, $height, null, false);
+        $sizes = $width === null || !Images::resizable($dest, $mime) ? [] : $this->renderSizes($rel, $mime, $width, $height, null);
         $name = basename(str_replace('\\', '/', $filename)) ?: 'file';
         $this->store->run(
             'INSERT INTO "__zero_media" ("filename", "mime", "size", "width", "height", "alt", "path", "createdAt", "sizes") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -128,10 +128,18 @@ final class SqliteMedia implements Media
             $this->store->run('UPDATE "__zero_media" SET "alt" = ? WHERE "id" = ?', [$patch['alt'], $id]);
         }
         if (array_key_exists('focal', $patch) && $patch['focal'] !== $r['focal']) {
-            // Rows uploaded before sizes were configured get every size now; others regenerate cover crops.
+            // Cover sizes follow the focal point; sizes configured after the upload are filled in.
             $sizes = $r['sizes'] ?? [];
             if ($r['width'] !== null && Images::resizable($this->publicDir . '/uploads/' . $r['path'], $r['mime'])) {
-                $sizes = array_merge($sizes, $this->renderSizes($r['path'], $r['mime'], (int) $r['width'], (int) $r['height'], $patch['focal'], $sizes !== []));
+                $fresh = $this->renderSizes($r['path'], $r['mime'], (int) $r['width'], (int) $r['height'], $patch['focal'],
+                    static fn (string $name, bool $cover) => $cover || !isset($sizes[$name]));
+                foreach ($fresh as $name => $size) {
+                    if (($sizes[$name]['file'] ?? null) !== null) {
+                        $old = $this->publicDir . '/uploads/' . $sizes[$name]['file'];
+                        $this->store->afterCommit(static fn () => @unlink($old));
+                    }
+                    $sizes[$name] = $size;
+                }
             }
             $this->store->run('UPDATE "__zero_media" SET "focal" = ?, "sizes" = ? WHERE "id" = ?',
                 [$patch['focal'] === null ? null : Js::jsonStringify($patch['focal']), Js::jsonStringify((object) $sizes), $id]);
@@ -183,19 +191,20 @@ final class SqliteMedia implements Media
     }
 
     /**
-     * Render every configured size (or, with $coverOnly, every `cover` size) for the original at $rel.
-     * New files appear inside the transaction under a temporary name and replace the live ones on
-     * commit, so a rollback leaves the previous bytes in place.
+     * Render configured sizes for the original at $rel ($which picks by name and fit; null = all).
+     * Every rendering is a fresh file `<uuid>-<size>-<random>.<ext>`: a rollback removes it, and
+     * callers remove the file it replaces only after commit.
      *
+     * @param ?callable(string $name, bool $cover): bool $which
      * @return array<string, array{file: ?string, width: int, height: int}>
      */
-    private function renderSizes(string $rel, string $mime, int $width, int $height, ?array $focal, bool $coverOnly): array
+    private function renderSizes(string $rel, string $mime, int $width, int $height, ?array $focal, ?callable $which = null): array
     {
         $src = $this->publicDir . '/uploads/' . $rel;
         $out = [];
         foreach (\Zero\db()->schema()->media()['sizes'] ?? [] as $name => $size) {
             $cover = ($size['fit'] ?? 'inside') === 'cover';
-            if ($coverOnly && !$cover) {
+            if ($which !== null && !$which((string) $name, $cover)) {
                 continue;
             }
             $dims = Images::dimensions($width, $height, (int) $size['width'], isset($size['height']) ? (int) $size['height'] : null, $cover, $focal);
@@ -203,12 +212,10 @@ final class SqliteMedia implements Media
                 $out[$name] = ['file' => null, 'width' => $width, 'height' => $height];
                 continue;
             }
-            $file = preg_replace('/(\.[a-z0-9]+)$/', "-$name\$1", $rel);
+            $file = preg_replace('/(\.[a-z0-9]+)$/', "-$name-" . bin2hex(random_bytes(4)) . '$1', $rel);
             $dest = $this->publicDir . '/uploads/' . $file;
-            $tmp = $dest . '.' . bin2hex(random_bytes(4)) . '.tmp';
-            Images::render($src, $mime, $dims, $tmp);
-            $this->store->onRollback(static fn () => @unlink($tmp));
-            $this->store->afterCommit(static fn () => rename($tmp, $dest));
+            Images::render($src, $mime, $dims, $dest);
+            $this->store->onRollback(static fn () => @unlink($dest));
             $out[$name] = ['file' => $file, 'width' => $dims[4], 'height' => $dims[5]];
         }
 

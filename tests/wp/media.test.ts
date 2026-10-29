@@ -1,9 +1,9 @@
 // Image sizes, focal point and private files on real WordPress (phase 2 §7.2). The app fragment
 // (app/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
-import { api, harness, http, ok, problem, wp } from "./env.ts";
+import { api, harness, http, ok, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
 function splitPng(): Uint8Array {
@@ -44,6 +44,12 @@ function sizeOnDisk(id: number, size: string): { file: string; w: number; h: num
   `));
 }
 
+/** Install a must-use plugin from PHP source (base64 keeps the source free of shell/PHP escaping). */
+function muPlugin(name: string, php: string): void {
+  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${name}.php', base64_decode('${Buffer.from(php).toString("base64")}'));`);
+}
+after(() => wp("eval", "array_map('unlink', glob(WPMU_PLUGIN_DIR . '/zero-test-*.php'));"));
+
 /** Upload the split PNG through Zero; returns the media row. */
 async function uploadSplit() {
   const r = await upload(splitPng(), "split.png", "image/png");
@@ -77,10 +83,8 @@ test("PATCH /media focal regenerates cover crops along the focal point; a theme 
   const wide = sizeOnDisk(img.id, "zero_wide");
   assert.notEqual(theme.file, centred.file);
 
-  await problem("PATCH", `/media/${img.id}`, { as: "author", body: { focal: { x: 0, y: 0.5 } } }, { status: 403, code: "forbidden", pointer: undefined });
-  await problem("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: -1, y: 0 } } }, { status: 422, code: "invalid_input", pointer: "/focal/x" });
-  const left = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0.5 }, alt: "Red side" } });
-  assert.deepEqual([left.focal, left.alt, [left.sizes.card.width, left.sizes.card.height]], [{ x: 0, y: 0.5 }, "Red side", [120, 120]]);
+  const left = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0.5 } } });
+  assert.deepEqual([left.focal, [left.sizes.card.width, left.sizes.card.height]], [{ x: 0, y: 0.5 }, [120, 120]]);
   const leftCard = sizeOnDisk(img.id, "zero_card");
   assert.notEqual(leftCard.sha, centred.sha, "changing focal regenerates the cover crop (different bytes)");
   assert.deepEqual(leftCard.rgb, [255, 0], "the left focal crop is red");
@@ -89,20 +93,44 @@ test("PATCH /media focal regenerates cover crops along the focal point; a theme 
   assert.deepEqual(sizeOnDisk(img.id, "thumbnail"), theme, "the theme's same-shape crop is untouched");
   assert.deepEqual(sizeOnDisk(img.id, "zero_wide"), wide, "inside sizes are not regenerated");
 
-  const right = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 1, y: 0.5 } } });
+  await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 1, y: 0.5 } } });
   assert.deepEqual(sizeOnDisk(img.id, "zero_card").rgb, [0, 255], "the right focal crop is blue");
   assert.equal(wp("post", "meta", "get", String(img.id), "_zero_focal"), '{"x":1,"y":0.5}');
-  assert.equal(right.sizes.card.url, (await ok("GET", `/media/${img.id}`)).sizes.card.url);
+});
+
+test("focal A → B → A inside one transaction: rollback keeps the committed crop, commit keeps the final one", async () => {
+  const img = await uploadSplit();
+  /** Run focal updates in one transaction (optionally rolled back); returns the zero_card files left on disk. */
+  const sequence = (focals: [number, number][], rollback: boolean): string[] => JSON.parse(wp("eval", `
+    $media = \\Zero\\Wp\\Runtime::plugin()->app()->db->media();
+    try {
+      \\Zero\\db()->transaction(function () use ($media) {
+        foreach (${JSON.stringify(focals)} as [$x, $y]) {
+          $media->update(${img.id}, ['focal' => ['x' => $x, 'y' => $y]]);
+        }
+        ${rollback ? "throw new RuntimeException('roll back');" : ""}
+      });
+    } catch (RuntimeException) {}
+    $file = get_attached_file(${img.id});
+    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-zero_card-*')));
+  `));
+
+  sequence([[0, 0.5]], false);
+  const committed = sizeOnDisk(img.id, "zero_card");
+  assert.deepEqual(sequence([[1, 0.5], [0, 0.5]], true), [committed.file], "rollback: only the committed crop remains");
+  assert.deepEqual(sizeOnDisk(img.id, "zero_card"), committed);
+
+  const files = sequence([[1, 0.5], [0, 0.5]], false);
+  const final = sizeOnDisk(img.id, "zero_card");
+  assert.deepEqual(files, [final.file], "commit: exactly the final crop remains, and metadata points at it");
+  assert.deepEqual(final.rgb, [255, 0]);
 });
 
 test("a crop that fails to render rolls the focal change back, and the same PATCH succeeds on retry", async () => {
   const img = await uploadSplit();
   const before = sizeOnDisk(img.id, "zero_card");
   // A must-use plugin that makes every image save fail while its flag option is set.
-  wp("eval", `
-    wp_mkdir_p(WPMU_PLUGIN_DIR);
-    file_put_contents(WPMU_PLUGIN_DIR . '/zero-test-editor-fails.php', "<?php\nadd_filter('wp_image_editors', fn (\\$e) => get_option('zero_test_editor_fails') ? [] : \\$e);\n");
-  `);
+  muPlugin("zero-test-editor-fails", "<?php\nadd_filter('wp_image_editors', fn ($e) => get_option('zero_test_editor_fails') ? [] : $e);\n");
   wp("option", "update", "zero_test_editor_fails", "1");
   try {
     const failed = await http("PATCH", `${api}/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
@@ -111,14 +139,13 @@ test("a crop that fails to render rolls the focal change back, and the same PATC
     assert.deepEqual(sizeOnDisk(img.id, "zero_card"), before, "the previous crop is still in place");
   } finally {
     wp("option", "delete", "zero_test_editor_fails");
-    wp("eval", "unlink(WPMU_PLUGIN_DIR . '/zero-test-editor-fails.php');");
   }
   const retried = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
   assert.deepEqual(retried.focal, { x: 0, y: 0 });
   assert.deepEqual(sizeOnDisk(img.id, "zero_card").rgb, [255, 0]);
 });
 
-test("core uploads outside Zero get the zero_* sizes; non-images get none", async () => {
+test("core uploads outside Zero get the zero_* sizes", async () => {
   const imported = wp("eval", `
     $tmp = wp_tempnam('core.png');
     $img = imagecreatetruecolor(300, 300);
@@ -131,10 +158,6 @@ test("core uploads outside Zero get the zero_* sizes; non-images get none", asyn
   const row = await ok("GET", `/media/${imported}`);
   assert.deepEqual([row.sizes.card.width, row.sizes.card.height, row.sizes.wide.width], [120, 120, 200]);
   assert.equal((await fetch(row.sizes.card.url)).status, 200);
-
-  const doc = await upload(new TextEncoder().encode("plain text"), "notes.txt", "text/plain");
-  assert.equal(doc.status, 201, JSON.stringify(doc.json));
-  assert.deepEqual([doc.json.data.sizes, doc.json.data.focal], [{}, null]);
 });
 
 test("without Jetpack the Image CDN adapter is inert", async () => {

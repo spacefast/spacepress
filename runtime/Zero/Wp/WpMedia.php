@@ -24,9 +24,9 @@ use Zero\Store;
  * Named sizes (phase 2 §7.2) are registered as core image sizes `zero_<name>` (so themes and
  * wp_get_attachment_image_src know them) but rendered by Zero through wp_get_image_editor: core's own
  * sub-size pass skips them, and wp_generate_attachment_metadata adds them with the focal crop from
- * `_zero_focal`. Their files are named `<original>-zero_<name>-<hash>.<ext>` (hash over the rendered
- * rectangle), so a new focal point writes new files inside the transaction and the old ones go only
- * after commit, and no other size with the same dimensions ever shares or changes a Zero file.
+ * `_zero_focal`. Every rendering gets a fresh file `<original>-zero_<name>-<random>.<ext>`: a new
+ * focal point writes new files inside the transaction, a rollback removes only those, a commit
+ * removes only the files they replaced, and no other size ever shares or changes a Zero file.
  */
 final class WpMedia implements Media
 {
@@ -89,7 +89,7 @@ final class WpMedia implements Media
         add_filter('wp_generate_attachment_metadata', static function (array $meta, int $id): array {
             self::$failed = [];
             if (isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
-                foreach (self::render($id, $meta, self::focalOf($id), false) as $name => $size) {
+                foreach (self::render($id, $meta, self::focalOf($id)) as $name => $size) {
                     $meta['sizes']['zero_' . $name] = $size;
                 }
             }
@@ -105,12 +105,13 @@ final class WpMedia implements Media
     }
 
     /**
-     * Render configured sizes for an attachment with wp_get_image_editor (every size, or only cover
-     * sizes). Sizes the original already fits are absent: the original serves them.
+     * Render configured sizes for an attachment with wp_get_image_editor ($which picks sizes by
+     * name and fit; null = all). Sizes the original already fits are absent: the original serves them.
      *
+     * @param ?callable(string $name, bool $cover): bool $which
      * @return array<string, array{file: string, width: int, height: int, mime-type: string, filesize: int}>
      */
-    private static function render(int $id, array $meta, ?array $focal, bool $coverOnly): array
+    private static function render(int $id, array $meta, ?array $focal, ?callable $which = null): array
     {
         $file = (string) get_attached_file($id);
         $mime = (string) get_post_mime_type($id);
@@ -120,7 +121,7 @@ final class WpMedia implements Media
         $out = [];
         foreach (self::sizes() as $name => $size) {
             $cover = ($size['fit'] ?? 'inside') === 'cover';
-            if ($coverOnly && !$cover) {
+            if ($which !== null && !$which((string) $name, $cover)) {
                 continue;
             }
             $dims = Images::dimensions((int) $meta['width'], (int) $meta['height'], (int) $size['width'], isset($size['height']) ? (int) $size['height'] : null, $cover, $focal);
@@ -130,7 +131,7 @@ final class WpMedia implements Media
             [, , $x, $y, $w, $h, $sw, $sh] = $dims;
             $editor = wp_get_image_editor($file);
             $info = pathinfo($file);
-            $dest = $info['dirname'] . '/' . $info['filename'] . '-zero_' . $name . '-' . substr(md5(implode(',', $dims)), 0, 8) . '.' . $info['extension'];
+            $dest = $info['dirname'] . '/' . $info['filename'] . '-zero_' . $name . '-' . bin2hex(random_bytes(4)) . '.' . $info['extension'];
             $saved = is_wp_error($editor) ? $editor : $editor->crop($x, $y, $sw, $sh, $w, $h);
             $saved = is_wp_error($saved) ? $saved : $editor->save($dest);
             if (is_wp_error($saved)) {
@@ -241,19 +242,16 @@ final class WpMedia implements Media
             $meta = wp_get_attachment_metadata($id);
             if (is_array($meta) && isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
                 require_once ABSPATH . 'wp-admin/includes/image.php';
-                // Rows from before sizes were configured get every size; others re-render cover crops.
-                $all = array_filter(array_keys(self::sizes()), static fn ($n) => !isset($meta['sizes']['zero_' . $n]));
+                // Cover sizes follow the focal point; sizes configured after the upload are filled in.
                 self::$failed = [];
-                $fresh = self::render($id, $meta, $patch['focal'], $all === []);
+                $fresh = self::render($id, $meta, $patch['focal'], static fn (string $name, bool $cover) => $cover || !isset($meta['sizes']['zero_' . $name]));
                 $dir = dirname((string) get_attached_file($id));
                 foreach ($fresh as $name => $size) {
                     $new = $dir . '/' . $size['file'];
-                    $old = isset($meta['sizes']['zero_' . $name]) ? $dir . '/' . $meta['sizes']['zero_' . $name]['file'] : null;
-                    if ($new !== $old) {
-                        $this->db->onRollback(static fn () => @unlink($new));
-                        if ($old !== null) {
-                            $this->db->afterCommit(static fn () => @unlink($old));
-                        }
+                    $this->db->onRollback(static fn () => @unlink($new));
+                    if (isset($meta['sizes']['zero_' . $name])) {
+                        $old = $dir . '/' . $meta['sizes']['zero_' . $name]['file'];
+                        $this->db->afterCommit(static fn () => @unlink($old));
                     }
                     $meta['sizes']['zero_' . $name] = $size;
                 }

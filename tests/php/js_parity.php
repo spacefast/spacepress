@@ -163,7 +163,7 @@ $cases = [
 
 // ---------------------------------------------------------------- run node once
 
-$node = getenv('NODE') ?: '/home/batuhan/.local/bin/node';
+$node = getenv('NODE') ?: 'node';
 $prelude = <<<'JS'
 const T = (v) => {
   if (typeof v === 'number') {

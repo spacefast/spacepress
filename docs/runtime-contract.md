@@ -209,7 +209,8 @@ registers callbacks through `Extensions`, plus idempotent dialect-specific DDL
 through `SystemTables` when needed. Registration itself performs no app I/O.
 
 - `beforeRead(collection, &opts, ?viewer, pointer)` runs before query validation
-  and SQL; `onLookup(collection, pks)` runs in concrete stores before hydration
+  and SQL; its normalized options also govern projection at every relation level.
+  `onLookup(collection, pks)` runs in concrete stores before hydration
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime
   their page before read transforms; callbacks may run again after write hooks.

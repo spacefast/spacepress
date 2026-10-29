@@ -109,7 +109,9 @@ final class Db
     /** @return list<array> */
     public function findMany(string $collection, array $opts = [], ?Viewer $viewer = null): array
     {
-        return $this->project($this->fetch($collection, $opts, '', $viewer), $collection, $opts, '');
+        $rows = $this->fetch($collection, $opts, '', $viewer);
+
+        return $this->project($rows, $collection, $opts, '');
     }
 
     public function findFirst(string $collection, array $opts = [], ?Viewer $viewer = null): ?array
@@ -126,7 +128,7 @@ final class Db
      * @param list<array> $guards extra filters (access) — read guards are added here when $viewer is set
      * @return list<array>
      */
-    private function fetch(string $collection, array $opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
+    private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
         $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards);
         $rows = Extensions::read($decoded, $collection, $viewer);
@@ -617,7 +619,8 @@ final class Db
             if ($self !== null) {
                 $where[$pk] = ['ne' => $self];
             }
-            if ($this->fetch($collection, ['where' => $where, 'limit' => 1], '', null) === []) {
+            $opts = ['where' => $where, 'limit' => 1];
+            if ($this->selectDecoded($collection, $opts, '', null) === []) {
                 return $candidate;
             }
         }
@@ -658,7 +661,8 @@ final class Db
             if ($ref === null || $v === null) {
                 continue;
             }
-            if ($this->fetch($ref['collection'], ['where' => [$ref['column'] => $v], 'limit' => 1], '', null) === []) {
+            $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
+            if ($this->selectDecoded($ref['collection'], $opts, '', null) === []) {
                 throw new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
             }
         }
@@ -926,7 +930,8 @@ final class Db
                         $this->update((string) $c, [$col => null], [$col => $id]);
                     } elseif ($def['type'] === 'mediaList') {
                         $pk = $spec['primaryKey'];
-                        foreach ($this->fetch((string) $c, ['where' => [$col => ['has' => $id]]], '', null) as $r) {
+                        $opts = ['where' => [$col => ['has' => $id]]];
+                        foreach ($this->selectDecoded((string) $c, $opts, '', null) as $r) {
                             $kept = array_values(array_filter($r[$col], static fn ($x) => $x !== $id));
                             $this->update((string) $c, [$col => $kept], [$pk => $r[$pk]]);
                         }

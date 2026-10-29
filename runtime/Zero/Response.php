@@ -38,7 +38,8 @@ final class Response
             $this->body ?? (Js::jsonStringify(['data' => $this->data]) ?? '{}')];
     }
 
-    private static function mergeHeaders(array ...$sets): array
+    /** Case-insensitive names; later sets win, including explicit overrides of transport defaults. */
+    public static function mergeHeaders(array ...$sets): array
     {
         $out = [];
         $names = [];

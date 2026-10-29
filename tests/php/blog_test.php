@@ -357,6 +357,10 @@ $revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
 eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
 eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
 \Zero\Extensions::beforeRead(static function (string $c, array &$opts, ?\Zero\Viewer $viewer): void {
+    if (isset($opts['idsOnly'])) {
+        $opts['columns'] = ['id' => true];
+        unset($opts['idsOnly']);
+    }
     if ($c !== 'posts') {
         return;
     }
@@ -375,7 +379,9 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
         unset($opts['locale']);
     }
 });
-eq('query extensions normalize options before validation and SQL', array_column($db->findMany('posts', ['seamId' => $seam['id']]), 'id'), [$seam['id']]);
+eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
+    'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
+]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
 problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'standalone')), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
@@ -436,7 +442,9 @@ eq('failed operation wrapper rolls back both its result and receipt', [
     return \Zero\Response::raw(static function () use ($db): void {
         echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
     }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
-        ->withHeaders(['CACHE-CONTROL' => 'private, no-store']);
+        ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
+            'access-control-allow-origin' => 'https://app.example',
+            'access-control-expose-headers' => 'Content-Disposition']);
 });
 [$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
 ob_start();
@@ -444,8 +452,9 @@ ob_start();
 $emitted = ob_get_clean();
 eq('download response streams raw bytes and headers after commit', [
     $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
+    $downloadHeaders['access-control-allow-origin'], $downloadHeaders['access-control-expose-headers'],
     count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
-], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", true]);
+], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
 
 \Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);

@@ -180,7 +180,7 @@ final class App
             });
             [$status, $out, $payload] = $response->http();
 
-            return [$status, $out + self::CORS, $payload];
+            return [$status, Response::mergeHeaders(self::CORS, $out), $payload];
         } catch (\Throwable $e) {
             return self::respond($e);
         }

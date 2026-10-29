@@ -469,12 +469,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             };
-            let t = if p.optional || p.default.is_some() {
-                t.nullable()
-            } else {
-                t
-            };
-            param_tys.push(t);
+            param_tys.push(parameter_input_type(p, t));
         }
         if let Some(r) = &f.ret {
             let t = self.resolve_ann(r, f.module, &generics)?;
@@ -586,7 +581,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let t = param_tys[i].clone();
             match &p.pat {
                 Pat::Id(n, _) => {
-                    let php = self.declare_local(n, t.clone(), true, p.pat.span());
+                    let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
                     let amp = if self.fx().by_ref.contains(n) { "&" } else { "" };
                     let default = if p.optional || p.default.is_some() {
                         " = null"
@@ -595,10 +590,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let hint = php_hint(&t);
                     params_php.push(format!("{hint}{amp}{php}{default}"));
-                    if let Some(d) = &p.default {
-                        let d = self.expr(d)?;
-                        let _ = writeln!(prologue, "    {php} ??= {};", d.php);
-                    }
                 }
                 pat => {
                     self.check_destructured_parameter(pat)?;
@@ -2310,13 +2301,48 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.closure_with_types(f, &[])
     }
 
+    fn declare_parameter(&mut self, parameter: &Param, ty: &Ty, body: &mut String, indent: usize) -> Result<String> {
+        let Pat::Id(name, _) = &parameter.pat else {
+            unreachable!("identifier parameter")
+        };
+        let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
+        if let Some(default) = &parameter.default {
+            let value = self.expr(default)?;
+            if !assignable(&value.ty, ty) {
+                return err(
+                    default.span,
+                    format!(
+                        "this default is {}, but the parameter expects {}",
+                        value.ty.describe(),
+                        ty.describe()
+                    ),
+                );
+            }
+            let _ = writeln!(body, "{}{php} ??= {};", pad(indent), value.php);
+            let local = self
+                .fx()
+                .scopes
+                .last_mut()
+                .expect("scope")
+                .get_mut(name)
+                .expect("parameter");
+            let present = local.ty.non_null();
+            local.ty = if assignable(&value.ty, &present) {
+                present
+            } else {
+                Ty::union([present, value.ty])
+            };
+        }
+        Ok(php)
+    }
+
     fn closure_body(&mut self, f: &Func, param_tys: &[Ty]) -> Result<(String, String)> {
         let mut params = Vec::new();
         let mut body = String::new();
         for (i, p) in f.params.iter().enumerate() {
             match &p.pat {
-                Pat::Id(n, _) => {
-                    let php = self.declare_local(n, param_tys[i].clone(), true, p.pat.span());
+                Pat::Id(_, _) => {
+                    let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
                     let default = if p.optional || p.default.is_some() {
                         " = null"
                     } else {
@@ -2324,10 +2350,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let amp = if self.effects.by_ref(&p.pat) { "&" } else { "" };
                     params.push(format!("{amp}{php}{default}"));
-                    if let Some(default) = &p.default {
-                        let value = self.expr(default)?;
-                        let _ = writeln!(body, "{}{php} ??= {};", pad(2), value.php);
-                    }
                 }
                 pat => {
                     self.check_destructured_parameter(pat)?;
@@ -2375,7 +2397,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
             };
-            param_tys.push(t);
+            param_tys.push(parameter_input_type(p, t));
         }
         let mut inner = FnCtx {
             function: f.span,
@@ -4328,6 +4350,14 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
                 Ty::Never
             }
         }
+    }
+}
+
+fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
+    if parameter.optional || parameter.default.is_some() {
+        ty.nullable()
+    } else {
+        ty
     }
 }
 

@@ -31,11 +31,20 @@ function localDefaultNumeric(value: 0 | 1) { const run = (write: (() => void) | 
 function guardedNumeric(record: { count: number } | null): number { if (record !== null) { record.count = 1; record.count += 1; record.count++; return record.count; } return 0; }
 function logicalNumeric(value: 0 | 1) { value++; const nullish = (value ??= 1); const or = (value ||= 1); const and = (value &&= 1); const wrapper: { inner: { count: number } | null } = { inner: { count: 0 } }; if (wrapper.inner !== null) wrapper.inner.count = 4; return { nullish, or, and, guarded: guardedNumeric({ count: 0 }), absent: guardedNumeric(null), nested: wrapper.inner?.count }; }
 function mutateNullable(value: { count: number } | null, extra: number[]) { if (value !== null) value.count++; }
+function firstTuple(pair: ["a", "b"]) { return pair[0]; }
+function defaultFlag(flag: boolean = true): boolean { return flag; }
 function uncheckedReads() {
   const empty: ("a" | "b")[] = [];
   const pair: ["a", "b"] = ["a", "b"];
   pair.pop();
   const [, ...tail] = [0, null];
+  const reversed: ["a", "b"] = ["a", "b"];
+  const capture = () => reversed[0];
+  reversed.reverse();
+  const grown: ["a", "b"] = ["a", "b"];
+  grown.push("a");
+  const read = (flag?: boolean) => { switch (flag) { case true: case false: return true; } };
+  const withDefault = (flag: boolean = true): boolean => flag;
   let value: "a" | "b" | null = "a";
   const make = () => { if (value === null) throw new Error("missing"); return () => value; };
   const first = make();
@@ -43,7 +52,7 @@ function uncheckedReads() {
   const early = first();
   value = "b";
   const second = make();
-  return { empty: empty[0], shortened: pair[1], tail, early, late: second() };
+  return { empty: empty[0], shortened: pair[1], tail, reversed: reversed[0], captured: capture(), forwarded: firstTuple(reversed), grown: grown[Number("2")], optional: read(), present: read(true), defaulted: withDefault(), moduleDefaulted: defaultFlag(), early, late: second() };
 }
 function stableCapturedRead(): "a" | "b" { let value: "a" | "b" | null = null; value = "a"; if (value === null) throw new Error("missing value"); const read = (): "a" | "b" => value; return read(); }
 function loopGuard(): "a" | "b" { let value: "a" | "b" | null = "a"; let i = 0; while (true) { if (value === null) { value = "b"; } else { if (i === 1) return value; value = null; i++; } } }

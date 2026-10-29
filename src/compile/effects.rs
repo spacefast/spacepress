@@ -61,6 +61,7 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
 pub(super) struct Effects {
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
     incoming: HashMap<Span, HashSet<Vec<Step>>>,
+    incoming_writes: HashMap<Span, HashSet<Vec<Step>>>,
     writes: HashSet<Place>,
     parameters: HashSet<Span>,
     capture_writes: HashMap<Span, HashSet<Place>>,
@@ -99,9 +100,13 @@ impl Effects {
         self.writes.iter().any(|p| p.binding == binding)
     }
 
-    /// Parameter constraints remain authored, but callers may already have
-    /// changed numeric values beyond those constraints before invoking us.
+    /// Keep authored parameter constraints separate from numeric values and
+    /// tuple positions changed by the caller before invoking us.
     pub fn parameter_type(&self, binding: Span, ty: &Ty) -> Ty {
+        let ty = self.incoming_writes.get(&binding).map_or_else(
+            || ty.clone(),
+            |paths| paths.iter().fold(ty.clone(), |ty, path| restore(&ty, &ty, path)),
+        );
         self.incoming.get(&binding).map_or_else(
             || ty.clone(),
             |paths| paths.iter().fold(ty.clone(), |ty, path| widen(&ty, path)),
@@ -233,6 +238,11 @@ fn restore(ty: &Ty, constraint: &Ty, path: &[Step]) -> Ty {
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts,
                 _ => return ty.clone(),
             };
+            if rest.is_empty() {
+                // Mutators can reorder, replace, grow or shrink a tuple. Its
+                // read view becomes an array; authored constraints stay fixed.
+                return Ty::Array(Box::new(Ty::union(ts.iter().chain(&original).cloned())));
+            }
             let values = ts.iter().zip(&original).map(|(t, c)| restore(t, c, rest)).collect();
             if matches!(ty, Ty::Tuple(_)) {
                 Ty::Tuple(values)
@@ -302,6 +312,7 @@ struct Graph {
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
+    incoming_writes: HashSet<Place>,
     history: HashMap<Span, HashSet<Span>>,
     created_prior: HashMap<Span, HashSet<Span>>,
     created_by: HashMap<Span, Span>,
@@ -975,6 +986,7 @@ impl Graph {
             let before = (
                 self.reachable.len(),
                 self.incoming.len(),
+                self.incoming_writes.len(),
                 self.values.len(),
                 self.copies.len(),
                 self.numeric.len(),
@@ -1015,20 +1027,22 @@ impl Graph {
                     }
                 }
             }
-            let mut projected = Vec::new();
-            for (binding, view) in &self.parameter_views {
-                for p in &self.incoming {
-                    if p.binding == view.binding
-                        && let Some(path) = projected_suffix(&p.path, &view.path)
-                    {
-                        projected.push(Place {
-                            binding: *binding,
-                            path: path.to_vec(),
-                        });
+            for incoming in [&mut self.incoming, &mut self.incoming_writes] {
+                let mut projected = Vec::new();
+                for (binding, view) in &self.parameter_views {
+                    for p in incoming.iter() {
+                        if p.binding == view.binding
+                            && let Some(path) = projected_suffix(&p.path, &view.path)
+                        {
+                            projected.push(Place {
+                                binding: *binding,
+                                path: path.to_vec(),
+                            });
+                        }
                     }
                 }
+                incoming.extend(projected);
             }
-            self.incoming.extend(projected);
             self.numeric = self
                 .function_numeric
                 .iter()
@@ -1072,6 +1086,27 @@ impl Graph {
                             }
                         }
                         self.incoming.extend(incoming);
+                        let prior = call
+                            .prior
+                            .iter()
+                            .filter_map(|event| self.write_events.get(event))
+                            .flatten();
+                        let inputs = self
+                            .incoming_writes
+                            .iter()
+                            .chain(prior)
+                            .chain(self.writes.iter().filter(|_| captures));
+                        let mut incoming = Vec::new();
+                        for p in inputs {
+                            if p.binding == arg.binding
+                                && let Some(path) = projected_suffix(&p.path, &arg.path)
+                            {
+                                let mut target = param.clone();
+                                target.path.extend_from_slice(path);
+                                incoming.push(self.bounded(target));
+                            }
+                        }
+                        self.incoming_writes.extend(incoming);
                     }
                     let summary = self.function_numeric.get(function).cloned().unwrap_or_default();
                     for p in summary {
@@ -1129,6 +1164,7 @@ impl Graph {
                 == (
                     self.reachable.len(),
                     self.incoming.len(),
+                    self.incoming_writes.len(),
                     self.values.len(),
                     self.copies.len(),
                     self.numeric.len(),
@@ -1238,6 +1274,7 @@ impl Graph {
         let mut effects = Effects {
             numeric: HashMap::new(),
             incoming: HashMap::new(),
+            incoming_writes: HashMap::new(),
             writes: self.writes,
             parameters: self.functions.values().flatten().map(|p| p.binding).collect(),
             capture_writes,
@@ -1253,6 +1290,9 @@ impl Graph {
         }
         for p in self.incoming {
             effects.incoming.entry(p.binding).or_default().insert(p.path);
+        }
+        for p in self.incoming_writes {
+            effects.incoming_writes.entry(p.binding).or_default().insert(p.path);
         }
         effects
     }

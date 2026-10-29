@@ -262,6 +262,10 @@ entry is missing (Zero represents `undefined` as PHP null). Check the fetched
 value or supply a default with `??` or a destructuring initializer. A non-null
 assertion (`values[0]!`) is available when your code guarantees the entry exists.
 
+Mutating a tuple broadens its positional reads to the union of its element
+types; its authored assignment constraints remain unchanged. Optional parameters
+include null in body reads, while a default initializer supplies the missing value.
+
 Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,

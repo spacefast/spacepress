@@ -956,6 +956,13 @@ impl Lowerer {
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
                 a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
+                a::TSLiteral::TemplateLiteral(t) if t.expressions.is_empty() => {
+                    let q = &t.quasis[0];
+                    let Some(cooked) = q.value.cooked else {
+                        return self.unsupported(q.span, "invalid escape sequences in templates", "");
+                    };
+                    TyAnn::StrLit(js(cooked, self.sp(q.span))?)
+                }
                 a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
                 a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
                 a::TSLiteral::BooleanLiteral(_) => TyAnn::Bool,

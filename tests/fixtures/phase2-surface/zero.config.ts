@@ -1,8 +1,11 @@
 import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "zero";
 function deny(): never { throw new Error("denied"); }
-function allowed(flag: boolean): boolean { switch (flag) { case true: return true; case false: deny(); } }
-function visible(value: unknown): boolean { const decision: "hide" | "show" = value === "private" ? "hide" : "show"; switch (decision) { case "hide": return false; case "show": return true; } }
+const HIDE = "hide";
+const SHOW = "show";
+function constDefault(): boolean { const { value = "show" } = { value: undefined }; switch (value) { case SHOW: return true; } }
+function allowed(flag: boolean): boolean { switch (flag) { case true: return constDefault(); case false: deny(); } }
+function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }

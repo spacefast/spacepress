@@ -542,7 +542,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let tmp = format!("$__arg{i}");
                     params_php.push(format!("{}{tmp}", php_hint(&t)));
                     let mut lines = String::new();
-                    self.bind_pattern(pat, &tmp, &t, false, &mut lines, 1)?;
+                    self.bind_pattern(pat, &tmp, &t, true, &mut lines, 1)?;
                     prologue.push_str(&lines);
                 }
             }
@@ -938,13 +938,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         d.clone()
                     }
                     (Some(d), None) => d.clone().nullable(),
-                    (None, Some(v))
-                        if *kind == DeclKind::Const
-                            && v.ty.all(|t| matches!(t, Ty::StrLit(_) | Ty::FreshStrLit(_))) =>
-                    {
-                        v.ty.clone()
-                    }
-                    (None, Some(v)) => widen_literal_array(&v.ty),
+                    (None, Some(v)) => inferred_binding_type(&v.ty, *kind == DeclKind::Let),
                     (None, None) => {
                         return err_help(
                             *span,
@@ -1145,10 +1139,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ),
                     );
                 }
-                if switch_is_exhaustive(&d.ty, cases) {
-                    self.fx().exhaustive_switches.insert(*span);
-                }
                 // PHP `switch` compares loosely; compile to strict comparisons.
+                let mut case_types = Vec::new();
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {};", d.php);
                 let _ = writeln!(out, "{p}switch (true) {{");
@@ -1157,6 +1149,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Some(t) => {
                             let tv = self.expr(t)?;
                             let cmp = self.strict_eq(&Out::atom(tmp.clone(), d.ty.clone()), &tv);
+                            case_types.push(tv.ty);
                             let _ = writeln!(out, "{p}    case {cmp}:");
                         }
                         None => {
@@ -1167,6 +1160,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let inner = self.block(body, indent + 2);
                     self.fx().switch_depth -= 1;
                     out.push_str(&inner?);
+                }
+                if switch_is_exhaustive(&d.ty, cases, &case_types) {
+                    self.fx().exhaustive_switches.insert(*span);
                 }
                 let _ = writeln!(out, "{p}}}");
             }
@@ -1333,7 +1329,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let t = if assignable(&d.ty, &present) {
                     present
                 } else {
-                    Ty::union([present, widen_literal_array(&d.ty)])
+                    Ty::union([present, inferred_binding_type(&d.ty, mutable)])
                 };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src} ?? {};", d.php);
@@ -2145,7 +2141,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 pat => {
                     let tmp = format!("$__arg{i}");
                     params.push(tmp.clone());
-                    self.bind_pattern(pat, &tmp, &param_tys[i], false, &mut body, 2)?;
+                    self.bind_pattern(pat, &tmp, &param_tys[i], true, &mut body, 2)?;
                 }
             }
         }
@@ -3952,6 +3948,14 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
     }
 }
 
+fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
+    if !mutable && t.all(|t| matches!(t, Ty::StrLit(_) | Ty::FreshStrLit(_))) {
+        t.clone()
+    } else {
+        widen_literal_array(t)
+    }
+}
+
 fn widen_literal_array(t: &Ty) -> Ty {
     match t {
         Ty::FreshStrLit(_) => Ty::Str,
@@ -4033,7 +4037,7 @@ fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> H
     first
 }
 
-fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)]) -> bool {
+fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)], case_types: &[Ty]) -> bool {
     let has_case = |matches: &dyn Fn(&ExprKind) -> bool| {
         cases
             .iter()
@@ -4044,11 +4048,11 @@ fn switch_is_exhaustive(ty: &Ty, cases: &[(Option<Expr>, Vec<Stmt>)]) -> bool {
             has_case(&|kind| matches!(kind, ExprKind::Bool(true)))
                 && has_case(&|kind| matches!(kind, ExprKind::Bool(false)))
         }
-        Ty::StrLit(value) | Ty::FreshStrLit(value) => {
-            has_case(&|kind| matches!(kind, ExprKind::Str(case) if case == value))
-        }
+        Ty::StrLit(value) | Ty::FreshStrLit(value) => case_types
+            .iter()
+            .any(|ty| matches!(ty, Ty::StrLit(case) | Ty::FreshStrLit(case) if case == value)),
         Ty::Null => has_case(&|kind| matches!(kind, ExprKind::Null | ExprKind::Undefined)),
-        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, cases)),
+        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, cases, case_types)),
         Ty::Never => true,
         _ => false,
     }

@@ -95,6 +95,7 @@ export default defineConfig({
       let choice = total > 0 ? "a" : "b";
       choice = "c";
       const callback = ["a"].map(value => { value = "b"; return value; });
+      const callbackDefaults = [{ value: undefined }].map(({ value = "a" }) => { value = "b"; return value; });
       let iteration = "";
       for (let value of ["a"]) { value = "b"; iteration += value; }
       const { words: defaults = ["a"] } = { words: undefined };
@@ -102,7 +103,7 @@ export default defineConfig({
       let { value = "a" } = { value: undefined }; value = "b";
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, iteration, defaults, value, reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

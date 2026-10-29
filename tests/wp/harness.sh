@@ -9,11 +9,13 @@
 #   harness.sh sql "<query>"         run SQL in MariaDB; tab-separated rows with a header line
 #   harness.sh down                  remove containers and volumes
 #
-# ZERO_WP_PORT (default 8790) picks the host port. Credentials here are throwaway values for this
-# local container only and are tracked intentionally.
+# ZERO_WP_PORT (default 8790) picks the host port and ZERO_WP_PROJECT (default zero-wp-test) the
+# compose project, so several worktrees can each run their own stack at once. Credentials here are
+# throwaway values for this local container only and are tracked intentionally.
 set -euo pipefail
 cd "$(dirname "$0")"
 export ZERO_WP_PORT="${ZERO_WP_PORT:-8790}"
+export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-test}"
 export ZERO_WP_UID="$(id -u)" ZERO_WP_GID="$(id -g)"
 STATE=.harness-state
 [[ -f $STATE ]] && source "$STATE"

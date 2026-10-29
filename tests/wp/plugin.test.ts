@@ -6,6 +6,13 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { harness, sql, wp } from "./env.ts";
 
+// The binary run.sh built; honours CARGO_TARGET_DIR so parallel worktrees can share none.
+function zeroBinary(): string {
+  const root = fileURLToPath(new URL("../..", import.meta.url));
+  const target = process.env.CARGO_TARGET_DIR ?? `${root}/target`;
+  return `${target}/debug/zero`;
+}
+
 test("activation registers the post types, field groups and options page, and creates InnoDB tables", () => {
   assert.equal(wp("plugin", "get", harness.plugin, "--field=status"), "active");
 
@@ -60,7 +67,7 @@ test("activation registers the post types, field groups and options page, and cr
     }
   `, "--skip-plugins=zero-app-blog"));
   assert.deepEqual(incompatible, [null, null, true, true]);
-  const diagnosis: unknown = JSON.parse(execFileSync(fileURLToPath(new URL("../../target/debug/zero", import.meta.url)), [
+  const diagnosis: unknown = JSON.parse(execFileSync(zeroBinary(), [
     "doctor", fileURLToPath(new URL("app", import.meta.url)), "--wp", "--site", `${harness.url}/?rest_route=/zero/v1`, "--json",
   ], { encoding: "utf8" }));
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });

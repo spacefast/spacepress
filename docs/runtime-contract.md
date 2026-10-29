@@ -230,6 +230,8 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and access checks). `provided` is the original row/patch. Delete runs before
   `beforeDelete`. `onWritten(op, collection, row, ?previous)` runs after app
   after-hooks in the same transaction, including WP editor notifications.
+  WP editor captures use `editorRow(collection, pk)` to keep full stored values
+  for previous/deleted rows, even when trusted reads have display transforms.
 - `afterCommit(fn)` delegates to the active Db's Store. The outermost commit
   drains its queue; rollback discards it. Outside a transaction it runs
   immediately. Nested transactions join without savepoints. A callback that

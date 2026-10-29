@@ -734,6 +734,14 @@ final class Db
 
     // ================================================================ editor saves (WP, §4.9)
 
+    /** Trusted editor capture: full decoded storage values, without display transforms or projection. */
+    public function editorRow(string $collection, int|string $pk): ?array
+    {
+        $opts = ['where' => [$this->schema->collection($collection)['primaryKey'] => $pk], 'limit' => 1];
+
+        return $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
+    }
+
     /**
      * After a wp-admin/core REST save: afterCreate (no $previousRow) or afterUpdate, with the row
      * re-read through the store. Counts toward MAX_HOOK_DEPTH. Runs in one transaction.

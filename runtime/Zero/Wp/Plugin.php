@@ -232,7 +232,7 @@ final class Plugin
         }
         $post = get_post($postId);
         $this->before[$postId] = $post instanceof \WP_Post && $post->post_status !== 'auto-draft'
-            ? $this->app()->db->findFirst($collection, ['where' => [$this->pk($collection) => $postId]])
+            ? $this->app()->db->editorRow($collection, $postId)
             : null;
     }
 
@@ -256,7 +256,7 @@ final class Plugin
             return;
         }
         $db = $this->app()->db;
-        $row = $db->findFirst($collection, ['where' => [$this->pk($collection) => $postId]]);
+        $row = $db->editorRow($collection, $postId);
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             $db->beforeEditorDelete($collection, $row, WpAuth::current());
@@ -317,11 +317,6 @@ final class Plugin
         }
 
         return null;
-    }
-
-    private function pk(string $collection): string
-    {
-        return $this->schema->collection($collection)['primaryKey'];
     }
 
     /** Db for code that runs outside a Zero request (WP-CLI helpers, tests). */

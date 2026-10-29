@@ -1554,7 +1554,8 @@ series string without changing v2 output.
   break `with`; stripped media columns are not repopulated. Transforms retain
   primary keys. WP editor writes remain trusted: after-save/delete notify
   `onWritten` after application hooks; editor create/update do not replay the
-  API's before-write pipeline over already-saved core data.
+  API's before-write pipeline over already-saved core data. Previous/delete
+  captures use `Db::editorRow` to keep stored values outside display transforms.
 - `onLookup` fires once per nonempty **collection** page, inside each concrete
   store, before WP SCF hydration and before schema decode. System-media queries
   are not app collections. Mutation result pages (including receipt replay)

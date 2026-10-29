@@ -661,6 +661,13 @@ fn rejects_phase2_static_contracts() {
             "reject-env-captured",
             "env() values can't be stored inside captured data",
         ),
+        // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
+        ("reject-unlanded-field-access", "not implemented until lane B"),
+        ("reject-unlanded-sync", "not implemented until lane C"),
+        ("reject-unlanded-webhooks", "not implemented until lane D"),
+        ("reject-unlanded-auth", "not implemented until lane E"),
+        ("reject-unlanded-files", "not implemented until lane G"),
+        ("reject-unlanded-localized", "not implemented until lane H"),
         ("reject-auth-duplicate", "at most one auth: true collection"),
         (
             "reject-auth-email",
@@ -1013,7 +1020,13 @@ fn phase2_schema_and_closures_match_the_contract() {
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
     for target in ["standalone", "wp"] {
-        let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
+        // The v3 golden renders every key, including features no runtime enforces yet (src/unlanded.rs).
+        let out = zero()
+            .env("ZERO_ALLOW_UNLANDED_FEATURES", "1")
+            .args(["build", "--target", target])
+            .arg(&tmp)
+            .output()
+            .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let schema_file = if target == "wp" {
             tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php")

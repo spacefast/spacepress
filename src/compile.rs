@@ -631,6 +631,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- scopes -------------------------------------------------------------
 
     fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool, binding: Span) -> String {
+        let read_ty = self.effects.parameter_type(binding, &ty);
         let fx = self.fx();
         let shadow = fx.scopes.iter().any(|s| s.contains_key(name)) || fx.declared.iter().any(|d| d == name);
         let php = if shadow && !fx.scopes.last().expect("scope").contains_key(name) {
@@ -645,7 +646,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Local {
                 php: php.clone(),
                 constraint: ty.clone(),
-                ty,
+                ty: read_ty,
                 mutable,
                 binding,
                 view: Vec::new(),
@@ -3266,9 +3267,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "flatMap" => {
                 let f = cb(self, &[])?;
-                let r = match ret_of(&f) {
+                let flatten = |t| match t {
                     Ty::Array(t) => *t,
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
                     t => t,
+                };
+                let r = match ret_of(&f) {
+                    Ty::Union(ts) => Ty::union(ts.into_iter().map(flatten)),
+                    t => flatten(t),
                 };
                 Out::atom(
                     format!("\\Zero\\Js::flatMap({}, {})", a.php, f.php),

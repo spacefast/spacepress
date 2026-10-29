@@ -36,6 +36,7 @@ impl Place {
 #[derive(Default)]
 pub(super) struct Effects {
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
+    incoming: HashMap<Span, HashSet<Vec<Step>>>,
     writes: HashSet<Place>,
     events: HashMap<Span, HashSet<Place>>,
 }
@@ -45,6 +46,7 @@ impl Effects {
         let mut graph = Graph::default();
         for root in roots {
             graph.function(&root.closure.func, &[], &root.closure.env);
+            graph.reachable.insert(root.closure.func.span);
         }
         graph.solve()
     }
@@ -63,6 +65,15 @@ impl Effects {
 
     pub fn shared(&self, binding: Span) -> bool {
         self.writes.iter().any(|p| p.binding == binding)
+    }
+
+    /// Parameter constraints remain authored, but callers may already have
+    /// changed numeric values beyond those constraints before invoking us.
+    pub fn parameter_type(&self, binding: Span, ty: &Ty) -> Ty {
+        self.incoming.get(&binding).map_or_else(
+            || ty.clone(),
+            |paths| paths.iter().fold(ty.clone(), |ty, path| widen(&ty, path)),
+        )
     }
 
     pub fn by_ref(&self, pat: &Pat) -> bool {
@@ -132,10 +143,14 @@ struct Call {
     result: Place,
     owner: Span,
     span: Span,
+    prior: HashSet<Span>,
 }
 
 #[derive(Default)]
 struct Graph {
+    reachable: HashSet<Span>,
+    incoming: HashSet<Place>,
+    history: HashMap<Span, HashSet<Span>>,
     functions: HashMap<Span, Vec<Option<Place>>>,
     values: HashSet<(Place, Span)>,
     copies: HashSet<(Place, Place)>,
@@ -145,6 +160,7 @@ struct Graph {
     max_depth: usize,
     bindings: HashMap<Span, Span>,
     function_numeric: HashMap<Span, HashSet<Place>>,
+    function_writes: HashMap<Span, HashSet<Place>>,
     events: HashMap<Span, HashSet<Place>>,
 }
 
@@ -303,14 +319,15 @@ impl Graph {
                     self.numeric.insert(p.clone());
                     self.events.entry(e.span).or_default().insert(p.clone());
                     self.function_numeric.entry(owner).or_default().insert(p.clone());
-                    self.writes.insert(p);
+                    self.function_writes.entry(owner).or_default().insert(p);
                 }
+                self.history.entry(owner).or_default().insert(e.span);
             }
             ExprKind::Assign { target, value, op } => {
                 let target = self.expr(target, names, env, owner);
                 let src = self.expr(value, names, env, owner);
                 if let Some(p) = &target {
-                    self.writes.insert(p.clone());
+                    self.function_writes.entry(owner).or_default().insert(p.clone());
                     if matches!(op, Some(AssignOp::Bin(_))) {
                         self.numeric.insert(p.clone());
                         self.events.entry(e.span).or_default().insert(p.clone());
@@ -318,6 +335,7 @@ impl Graph {
                     }
                 }
                 self.copy(src, target.clone());
+                self.history.entry(owner).or_default().insert(e.span);
                 return target;
             }
             ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
@@ -341,7 +359,7 @@ impl Graph {
                         "push" | "pop" | "shift" | "unshift" | "splice" | "sort" | "reverse" | "fill"
                     ) && let Some(p) = &recv
                     {
-                        self.writes.insert(p.at(Step::Index));
+                        self.function_writes.entry(owner).or_default().insert(p.at(Step::Index));
                     }
                     if matches!(prop.as_str(), "push" | "unshift" | "fill" | "splice")
                         && let Some(recv) = &recv
@@ -357,18 +375,77 @@ impl Graph {
                             self.copy(src.clone(), Some(recv.at(Step::Index)));
                         }
                     }
-                    if matches!(
-                        prop.as_str(),
-                        "map" | "forEach" | "filter" | "some" | "every" | "find" | "findIndex"
-                    ) && let Some(Some(callback)) = argv.first()
+                    let element = recv.as_ref().map(|p| p.at(Step::Index));
+                    let callback = match prop.as_str() {
+                        "map" | "flatMap" => Some((0, vec![element.clone(), None], value.at(Step::Index))),
+                        "forEach" | "filter" | "some" | "every" | "find" | "findLast" | "findIndex"
+                        | "findLastIndex" => Some((0, vec![element.clone(), None], value.at(Step::Result))),
+                        "reduce" => {
+                            let acc = value.clone();
+                            let initial = argv.get(1).cloned().flatten().or(element.clone());
+                            self.copy(initial.clone(), Some(acc.clone()));
+                            Some((0, vec![initial, element.clone(), None], acc))
+                        }
+                        "sort" | "toSorted" => {
+                            Some((0, vec![element.clone(), element.clone()], value.at(Step::Result)))
+                        }
+                        "replace" | "replaceAll" => Some((1, vec![None; 5], value.at(Step::Result))),
+                        "from"
+                            if matches!(&callee.kind, ExprKind::Member { obj, .. }
+                            if matches!(&obj.kind, ExprKind::Ident(n) if n == "Array")
+                                && self.ident("Array", names, env).is_none()) =>
+                        {
+                            Some((
+                                1,
+                                vec![argv.first().cloned().flatten().map(|p| p.at(Step::Index)), None],
+                                value.at(Step::Index),
+                            ))
+                        }
+                        _ => None,
+                    };
+                    if let Some((index, args, result)) = callback
+                        && let Some(Some(callback)) = argv.get(index)
                     {
+                        if prop == "reduce" {
+                            self.calls.push(Call {
+                                callee: callback.clone(),
+                                args: vec![Some(result.clone()), element.clone(), None],
+                                result: result.clone(),
+                                owner,
+                                span: e.span,
+                                prior: self
+                                    .history
+                                    .get(&owner)
+                                    .into_iter()
+                                    .flatten()
+                                    .copied()
+                                    .chain(std::iter::once(e.span))
+                                    .collect(),
+                            });
+                        }
                         self.calls.push(Call {
                             callee: callback.clone(),
-                            args: vec![recv.map(|p| p.at(Step::Index)), None],
-                            result: value.at(Step::Index),
+                            args,
+                            result: result.clone(),
                             owner,
                             span: e.span,
+                            prior: self
+                                .history
+                                .get(&owner)
+                                .into_iter()
+                                .flatten()
+                                .copied()
+                                .chain(std::iter::once(e.span))
+                                .collect(),
                         });
+                    }
+                    match prop.as_str() {
+                        "flatMap" => {
+                            self.copy(Some(value.at(Step::Index).at(Step::Index)), Some(value.at(Step::Index)))
+                        }
+                        "filter" | "sort" | "toSorted" => self.copy(element, Some(value.at(Step::Index))),
+                        "find" | "findLast" => self.copy(element, Some(value.clone())),
+                        _ => {}
                     }
                 }
                 if let Some(callee) = callee_value {
@@ -378,8 +455,10 @@ impl Graph {
                         result: value.clone(),
                         owner,
                         span: e.span,
+                        prior: self.history.get(&owner).cloned().unwrap_or_default(),
                     });
                 }
+                self.history.entry(owner).or_default().insert(e.span);
             }
             ExprKind::Array(items) => {
                 for item in items {
@@ -495,8 +574,11 @@ impl Graph {
             }
             Stmt::Block(b) => self.block(b, names, env, owner),
             Stmt::While(e, b) => {
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
                 self.expr(e, names, env, owner);
                 self.block(b, names, env, owner);
+                self.loop_history(owner, first_call, &before);
             }
             Stmt::For {
                 init,
@@ -512,19 +594,25 @@ impl Graph {
                     }
                     self.stmt(init, names, env, owner);
                 }
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
                 for e in [test, update].into_iter().flatten() {
                     self.expr(e, names, env, owner);
                 }
                 self.block(body, names, env, owner);
+                self.loop_history(owner, first_call, &before);
                 names.pop();
             }
             Stmt::ForOf { pat, iter, body, .. } => {
                 let src = self.expr(iter, names, env, owner).map(|p| p.at(Step::Index));
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
                 names.push(HashMap::new());
                 self.bind(pat, names, owner);
                 self.bind_value(pat, src);
                 self.defaults(pat, names, env, owner);
                 self.block(body, names, env, owner);
+                self.loop_history(owner, first_call, &before);
                 names.pop();
             }
             Stmt::Try {
@@ -574,6 +662,20 @@ impl Graph {
         p
     }
 
+    fn loop_history(&mut self, owner: Span, first_call: usize, before: &HashSet<Span>) {
+        let events: HashSet<_> = self
+            .history
+            .get(&owner)
+            .into_iter()
+            .flat_map(|events| events.difference(before).copied())
+            .collect();
+        for call in &mut self.calls[first_call..] {
+            if call.owner == owner {
+                call.prior.extend(&events);
+            }
+        }
+    }
+
     fn solve(mut self) -> Effects {
         self.max_depth = self
             .copies
@@ -585,14 +687,22 @@ impl Graph {
             + 1;
         loop {
             let before = (
+                self.reachable.len(),
+                self.incoming.len(),
                 self.values.len(),
                 self.copies.len(),
                 self.numeric.len(),
                 self.writes.len(),
                 self.function_numeric.values().map(HashSet::len).sum::<usize>(),
+                self.function_writes.values().map(HashSet::len).sum::<usize>(),
+                self.events.values().map(HashSet::len).sum::<usize>(),
             );
             for call in &self.calls {
+                if !self.reachable.contains(&call.owner) {
+                    continue;
+                }
                 for (_, function) in self.values.iter().filter(|(value, _)| value == &call.callee) {
+                    self.reachable.insert(*function);
                     let params = &self.functions[function];
                     for (arg, param) in call.args.iter().zip(params) {
                         if let (Some(arg), Some(param)) = (arg, param) {
@@ -613,8 +723,48 @@ impl Graph {
                     }
                 }
             }
+            self.numeric = self
+                .function_numeric
+                .iter()
+                .filter(|(owner, _)| self.reachable.contains(owner))
+                .flat_map(|(_, paths)| paths.iter().cloned())
+                .chain(self.incoming.iter().cloned())
+                .collect();
+            self.writes = self
+                .function_writes
+                .iter()
+                .filter(|(owner, _)| self.reachable.contains(owner))
+                .flat_map(|(_, paths)| paths.iter().cloned())
+                .collect();
             for call in &self.calls {
+                if !self.reachable.contains(&call.owner) {
+                    continue;
+                }
                 for (_, function) in self.values.iter().filter(|(value, _)| value == &call.callee) {
+                    for (arg, param) in call.args.iter().zip(&self.functions[function]) {
+                        let (Some(arg), Some(param)) = (arg, param) else {
+                            continue;
+                        };
+                        // Use writes that can precede this call, rather than
+                        // later writes elsewhere in the caller. Captures keep
+                        // their stable view because closures can run later.
+                        let captures = self.bindings.get(&arg.binding) != Some(&call.owner);
+                        let prior = call.prior.iter().filter_map(|event| self.events.get(event)).flatten();
+                        let inputs = self
+                            .incoming
+                            .iter()
+                            .chain(prior)
+                            .chain(self.numeric.iter().filter(|_| captures));
+                        let mut incoming = Vec::new();
+                        for p in inputs {
+                            if p.binding == arg.binding && p.path.starts_with(&arg.path) {
+                                let mut target = param.clone();
+                                target.path.extend_from_slice(&p.path[arg.path.len()..]);
+                                incoming.push(self.bounded(target));
+                            }
+                        }
+                        self.incoming.extend(incoming);
+                    }
                     let summary = self.function_numeric.get(function).cloned().unwrap_or_default();
                     for p in summary {
                         let param = self.functions[function]
@@ -656,17 +806,22 @@ impl Graph {
                                 self.bounded(target)
                             })
                             .collect();
-                        self.writes.extend(propagated);
+                        self.writes.extend(propagated.iter().cloned());
+                        self.function_writes.entry(call.owner).or_default().extend(propagated);
                     }
                 }
             }
             if before
                 == (
+                    self.reachable.len(),
+                    self.incoming.len(),
                     self.values.len(),
                     self.copies.len(),
                     self.numeric.len(),
                     self.writes.len(),
                     self.function_numeric.values().map(HashSet::len).sum::<usize>(),
+                    self.function_writes.values().map(HashSet::len).sum::<usize>(),
+                    self.events.values().map(HashSet::len).sum::<usize>(),
                 )
             {
                 break;
@@ -674,11 +829,15 @@ impl Graph {
         }
         let mut effects = Effects {
             numeric: HashMap::new(),
+            incoming: HashMap::new(),
             writes: self.writes,
             events: self.events,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);
+        }
+        for p in self.incoming {
+            effects.incoming.entry(p.binding).or_default().insert(p.path);
         }
         effects
     }

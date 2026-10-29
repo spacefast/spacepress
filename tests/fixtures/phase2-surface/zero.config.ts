@@ -17,9 +17,14 @@ function forwardNumeric(record: { count: 0 | 1, keep: 0 }) { bumpNumeric(record)
 function helperNumeric() { forwardNumeric({ count: 1, keep: 0 }); const record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; const read = () => record.count; forwardNumeric(record); const bump = (value: { count: 0 | 1, keep: 0 }) => { value.count++; }; bump(record); return { count: record.count, captured: read(), keep: record.keep }; }
 function maybeCapture(value: 0 | 1) { const read = () => value; value++; switch (read()) { case 0: case 1: return true; } }
 function maybeHelper() { let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); switch (record.count) { case 0: case 1: return true; } }
-function earlyNumeric(value: 0 | 1): 0 | 1 { if (value === 0) return value; value++; return 1; }
-function byValueNumeric(value: 0 | 1): 0 | 1 { const unused = () => { value++; }; captureNumeric(value); return value; }
+function finiteIdentity(value: 0 | 1): 0 | 1 { return value; }
+function earlyNumeric(value: 0 | 1): 0 | 1 { if (value === 0) return finiteIdentity(value); value++; return 1; }
+function byValueNumeric(value: 0 | 1): 0 | 1 { const unused = () => { value++; }; const read = (): 0 | 1 => value; captureNumeric(value); return read(); }
 function shadowNumeric(value: 0 | 1) { const read = () => value; { let value: 0 | 1 = 1; value++; } return read(); }
+function acceptNumeric(value: 0 | 1) { switch (value) { case 0: case 1: return true; } }
+function acceptNumericMember(value: { count: 0 | 1, keep: 0 }) { return { maybe: acceptNumeric(value.count), keep: value.keep }; }
+function passedNumeric() { let value: 0 | 1 = 1; const bump = () => { value++; }; bump(); let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); return { scalar: acceptNumeric(value), member: acceptNumeric(record.count), object: acceptNumericMember(record) }; }
+function callbackNumeric() { let value: 0 | 1 = 0; const writers = [() => { value++; }]; const flattened = writers.flatMap(write => [write]); const selected = flattened.reduce((acc, write) => write, () => {}); selected(); selected(); return value; }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }
 function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return true; case -1: return false; } }
 function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]() && !0; } } }
@@ -67,7 +72,7 @@ export default defineConfig({
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
       const numeric = updateNumeric(1);
-      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1) };
+      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1), passed: passedNumeric(), callback: callbackNumeric() };
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();

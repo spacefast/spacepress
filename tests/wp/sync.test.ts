@@ -1,0 +1,132 @@
+// Content sync on real WordPress (design §5.3): uid meta on posts, the /sync routes over
+// /wp-json/zero/v1 with application passwords, Markdown bodies stored as Gutenberg blocks, reference
+// uids, WordPress trash and restore, and a post created in the editor gaining a uid.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { api, core, http, ok, problem, qs, run, sql, wp, zero } from "./env.ts";
+
+const canon = (v: unknown): string => {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  const keys = Object.keys(v).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canon((v as Record<string, unknown>)[k])}`).join(",")}}`;
+};
+const digest = (record: unknown) => "sha256:" + createHash("sha256").update(canon(record)).digest("hex");
+const uidOf = (n: number) => "zr_" + createHash("sha256").update(run + ":" + n).digest("hex").slice(0, 20);
+
+async function pull(collection: string): Promise<Map<string, any>> {
+  const out = new Map<string, any>();
+  let after = 0;
+  for (;;) {
+    const page = await ok("GET", `/sync/${collection}` + qs({ after: String(after), first: "50" }), { as: "editor" });
+    for (const item of page.records) out.set(item.uid ?? item.record.uid, item);
+    if (page.next === null) return out;
+    after = page.next;
+  }
+}
+
+const push = (record: unknown, expect: string) => http("POST", `${api}/sync/guides`, { as: "editor", body: { record, expect } });
+
+test("sync on WordPress", async (t) => {
+  const writer = zero("insert", "writers", JSON.stringify({ name: `Writer ${run}` }))[0];
+  const guideUid = uidOf(1);
+  const record = {
+    uid: guideUid,
+    fields: { title: `Guide ${run}`, slug: `guide-${run}`, summary: null, level: "intro", writerId: writer.uid, status: "draft", publishedAt: null },
+    body: `# Getting started\n\nInstall **Zero** and run [the CLI](https://example.test/cli).\n\n- build\n- sync\n`,
+  };
+
+  await t.test("site id and uids", async () => {
+    const schema = await ok("GET", "/_schema");
+    assert.match(schema.site.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.equal((await ok("GET", "/_schema")).site.id, schema.site.id);
+    assert.match(writer.uid, /^zr_[0-9a-f]{20}$/);
+    const meta = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${writer.id} AND meta_key = '_zero_uid'`);
+    assert.deepEqual(meta, [{ meta_value: writer.uid }], "the uid lives in _zero_uid meta, not an SCF field");
+    await problem("PATCH", `/writers/${writer.id}`, { as: "admin", body: { uid: uidOf(99) } }, { status: 422, code: "invalid_input", pointer: "/uid" });
+  });
+
+  let created: any;
+  await t.test("push creates a draft post with blocks and a resolved reference", async () => {
+    const r = await push(record, "absent");
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    created = r.json.data;
+    assert.deepEqual([created.status, created.uid, created.digest], ["applied", guideUid, digest(record)]);
+    const [post] = sql(`SELECT p.ID, p.post_status, p.post_content, m.meta_value AS writer FROM wp_posts p
+      JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = 'zero_writerId'
+      JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_zero_uid' AND u.meta_value = '${guideUid}'`);
+    assert.equal(post.post_status, "draft");
+    assert.equal(post.writer, String(writer.id));
+    assert.match(post.post_content, /^<!-- wp:heading \{"level":1\} -->\\n<h1 class="wp-block-heading">Getting started<\/h1>/);
+  });
+
+  await t.test("pull returns every status as the pushed record", async () => {
+    const item = (await pull("guides")).get(guideUid);
+    assert.deepEqual(item, { record, digest: created.digest, trashed: false });
+    await problem("GET", "/sync/guides", { as: "author" }, { status: 403, code: "forbidden", pointer: undefined });
+  });
+
+  await t.test("an editor's change in WordPress is pulled as Markdown and makes a stale push conflict", async () => {
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_zero_uid' AND meta_value = '${guideUid}'`);
+    const blocks = `<!-- wp:heading -->\n<h2 class="wp-block-heading">Edited in WordPress</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>By an <strong>editor</strong>.</p>\n<!-- /wp:paragraph -->`;
+    const saved = await http("POST", `${core}/zero_guides/${ID}`, { as: "editor", body: { content: blocks, title: `Guide ${run} (edited)` } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.json));
+    const item = (await pull("guides")).get(guideUid);
+    assert.equal(item.record.body, "## Edited in WordPress\n\nBy an **editor**.\n");
+    assert.equal(item.record.fields.title, `Guide ${run} (edited)`);
+    const stale = await push({ ...record, fields: { ...record.fields, summary: "local" } }, created.digest);
+    assert.equal(stale.status, 409);
+    assert.equal(stale.json.code, "sync_stale");
+    assert.deepEqual(stale.json.current, { record: item.record, digest: item.digest });
+    created = item;
+  });
+
+  await t.test("blocks Markdown can't carry are refused by name, never dropped", async () => {
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_zero_uid' AND meta_value = '${guideUid}'`);
+    const table = `<!-- wp:table -->\n<figure class="wp-block-table"><table><tbody><tr><td>a</td></tr></tbody></table></figure>\n<!-- /wp:table -->`;
+    await http("POST", `${core}/zero_guides/${ID}`, { as: "editor", body: { content: table } });
+    const item = (await pull("guides")).get(guideUid);
+    assert.equal(item.refused, "not_representable");
+    assert.match(item.message, /core\/table/);
+    await problem("POST", "/sync/guides", { as: "editor", body: { record, expect: created.digest } }, { status: 409, code: "sync_stale", pointer: undefined });
+    await http("POST", `${core}/zero_guides/${ID}`, { as: "editor", body: { content: "<!-- wp:paragraph -->\n<p>Plain again.</p>\n<!-- /wp:paragraph -->" } });
+    created = (await pull("guides")).get(guideUid);
+    assert.equal(created.record.body, "Plain again.\n");
+  });
+
+  await t.test("a post created in wp-admin gains a uid", async () => {
+    const id = Number(wp("post", "create", "--post_type=zero_guides", `--post_title=Admin ${run}`, "--post_status=publish", "--user=editor", "--porcelain"));
+    const [meta] = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${id} AND meta_key = '_zero_uid'`);
+    assert.match(meta.meta_value, /^zr_[0-9a-f]{20}$/);
+    assert.equal((await pull("guides")).get(meta.meta_value).record.fields.title, `Admin ${run}`);
+  });
+
+  await t.test("trash moves the post to the WordPress trash; pushing it again restores it", async () => {
+    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: guideUid, expect: "sha256:" + "0".repeat(64) } }, { status: 409, code: "sync_stale", pointer: undefined });
+    const trashed = await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: guideUid, expect: created.digest } });
+    assert.equal(trashed.status, "applied");
+    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_zero_uid' AND u.meta_value = '${guideUid}'`);
+    assert.equal(post.post_status, "trash");
+    assert.deepEqual((await pull("guides")).get(guideUid), { uid: guideUid, record: null, digest: null, trashed: true });
+
+    const restored = await push(record, "absent");
+    assert.equal(restored.status, 200, JSON.stringify(restored.json));
+    assert.equal(restored.json.data.status, "applied");
+    const [back] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_zero_uid' AND u.meta_value = '${guideUid}'`);
+    assert.equal(back.post_status, "draft", "restored in place, as the pushed draft");
+    assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_postmeta WHERE meta_key = '_zero_uid' AND meta_value = '${guideUid}'`)[0].n, "1");
+    assert.deepEqual((await pull("guides")).get(guideUid).record, record);
+  });
+
+  await t.test("conversion and merge run on the server", async () => {
+    const md = (await ok("POST", "/sync/guides/convert", { as: "editor", body: { direction: "toMarkdown", text: "<!-- wp:paragraph -->\n<p>Hi <b>there</b></p>\n<!-- /wp:paragraph -->" } })).text;
+    assert.equal(md, "Hi **there**\n");
+    assert.deepEqual(await ok("POST", "/sync/guides/merge", { as: "editor", body: { base: "a\n\nb\n", ours: "A\n\nb\n", theirs: "a\n\nB\n" } }), { merged: "A\n\nB\n", conflicts: [] });
+  });
+
+  await t.test("unknown reference uid", async () => {
+    await problem("POST", "/sync/guides", { as: "editor", body: { record: { uid: uidOf(2), fields: { title: "Orphan", writerId: uidOf(3) }, body: null }, expect: "absent" } },
+      { status: 422, code: "sync_missing_reference", pointer: "/fields/writerId" });
+  });
+});

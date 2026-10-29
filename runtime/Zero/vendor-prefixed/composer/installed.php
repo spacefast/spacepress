@@ -14,6 +14,18 @@
   ),
   'versions' => 
   array (
+    'wp-php-toolkit/blockparser' => 
+    array (
+      'pretty_version' => 'v0.10.1',
+      'version' => '0.10.1.0',
+      'reference' => '58c22c8a61ba4bbed07cd289bfac30528ec5b052',
+      'type' => 'library',
+      'install_path' => __DIR__ . '/../wp-php-toolkit/blockparser',
+      'aliases' => 
+      array (
+      ),
+      'dev_requirement' => false,
+    ),
     'wp-php-toolkit/bytestream' => 
     array (
       'pretty_version' => 'v0.10.1',

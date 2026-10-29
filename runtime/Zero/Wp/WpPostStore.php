@@ -21,6 +21,9 @@ use Zero\Store;
  */
 final class WpPostStore implements Store
 {
+    /** The sync uid (§5.3): hidden meta, not an SCF field. */
+    public const UID_META = '_zero_uid';
+
     /** @var array<string, Source> */
     private array $sources = [];
 
@@ -76,6 +79,7 @@ final class WpPostStore implements Store
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
                 $col === ($spec['slug'] ?? null) => new ColumnRef('{a}.post_name', '', '', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
+                $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
                 $system && $col === 'publishedAt' => new ColumnRef(
                     "CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE DATE_FORMAT({a}.post_date_gmt, '%Y-%m-%dT%H:%i:%s.000Z') END",
                     '',
@@ -339,6 +343,9 @@ final class WpPostStore implements Store
 
     private function writeMeta(array $spec, int $id, array $values): void
     {
+        if (isset($values['uid']) && ($spec['columns']['uid']['system'] ?? false)) {
+            $this->db->core(static fn () => update_post_meta($id, self::UID_META, $values['uid']));
+        }
         Scf::$io++;
         try {
             foreach ($values as $col => $stored) {
@@ -386,7 +393,7 @@ final class WpPostStore implements Store
                 $col === ($spec['title'] ?? null) => $this->db->run("SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_title = ? AND $live LIMIT 1 FOR UPDATE", [(string) $v, $spec['wp']['postType'], $self]),
                 default => $this->db->run(
                     "SELECT m.post_id FROM `{$wpdb->postmeta}` m JOIN `{$wpdb->posts}` p ON p.ID = m.post_id WHERE m.meta_key = ? AND m.meta_value = ? AND $live LIMIT 1 FOR UPDATE",
-                    [$spec['wp']['metaPrefix'] . $col, Scf::metaScalar($def, $v), $spec['wp']['postType'], $self],
+                    [$col === 'uid' && ($def['system'] ?? false) ? self::UID_META : $spec['wp']['metaPrefix'] . $col, Scf::metaScalar($def, $v), $spec['wp']['postType'], $self],
                 ),
             };
             if ($hit !== []) {

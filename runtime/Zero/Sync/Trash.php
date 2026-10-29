@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Zero\Sync;
+
+use Zero\Wp\Plugin;
+
+use function Zero\db;
+
+/**
+ * WordPress trash for post-backed collections (§5.3): sync moves posts to the trash instead of deleting
+ * them, lists trashed posts as `trashed: true`, and restores one when a record with its uid is pushed
+ * again. Every other store has no trash: deletes go through the pipeline and revisions keep the row.
+ */
+final class Trash
+{
+    private const UID_META = '_zero_uid';
+
+    private static function postBacked(array $spec): bool
+    {
+        return db()->target() === 'wp' && ($spec['editor'] ?? true) && ($spec['wp'] ?? null) !== null;
+    }
+
+    /** @return array<int, string> post id → uid of trashed posts with id > $after, ascending, at most $limit */
+    public static function listed(string $collection, array $spec, int $after, int $limit): array
+    {
+        if (!self::postBacked($spec)) {
+            return [];
+        }
+        $wpdb = Plugin::instance()->connection()->wpdb();
+        $rows = Plugin::instance()->connection()->run(
+            "SELECT p.ID, m.meta_value AS uid FROM `{$wpdb->posts}` p JOIN `{$wpdb->postmeta}` m ON m.post_id = p.ID AND m.meta_key = ?"
+            . " WHERE p.post_type = ? AND p.post_status = 'trash' AND p.ID > ? ORDER BY p.ID LIMIT $limit",
+            [self::UID_META, $spec['wp']['postType'], $after],
+        );
+
+        return array_column($rows, 'uid', 'ID');
+    }
+
+    /** Move a post to the trash; false when the collection has no trash. */
+    public static function trash(string $collection, array $spec, int|string $pk): bool
+    {
+        if (!self::postBacked($spec)) {
+            return false;
+        }
+        $connection = Plugin::instance()->connection();
+        $connection->touchPost((int) $pk);
+        if (!$connection->core(static fn () => wp_trash_post((int) $pk))) {
+            throw new \RuntimeException("Could not move post $pk to the trash");
+        }
+
+        return true;
+    }
+
+    /** Bring a trashed post with this uid back to the status it had, so the push updates it in place. */
+    public static function restore(string $collection, array $spec, string $uid): bool
+    {
+        if (!self::postBacked($spec)) {
+            return false;
+        }
+        $connection = Plugin::instance()->connection();
+        $wpdb = $connection->wpdb();
+        $id = $connection->run(
+            "SELECT p.ID FROM `{$wpdb->posts}` p JOIN `{$wpdb->postmeta}` m ON m.post_id = p.ID AND m.meta_key = ? AND m.meta_value = ?"
+            . " WHERE p.post_type = ? AND p.post_status = 'trash' LIMIT 1 FOR UPDATE",
+            [self::UID_META, $uid, $spec['wp']['postType']],
+        )[0]['ID'] ?? null;
+        if ($id === null) {
+            return false;
+        }
+        $previous = static fn ($status, $postId, $before) => $before;
+        add_filter('wp_untrash_post_status', $previous, 10, 3);
+        try {
+            $connection->touchPost((int) $id);
+            if (!$connection->core(static fn () => wp_untrash_post((int) $id))) {
+                throw new \RuntimeException("Could not restore post $id from the trash");
+            }
+        } finally {
+            remove_filter('wp_untrash_post_status', $previous, 10);
+        }
+
+        return true;
+    }
+}

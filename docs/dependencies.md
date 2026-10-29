@@ -8,6 +8,7 @@ End-user builds need neither Composer nor Strauss. The binary embeds the committ
 |---|---|---|---|---|
 | runtime | `wp-php-toolkit/markdown` | 0.10.1 | WordPress-maintained Markdown to Gutenberg conversion and front matter parsing for sync | 7 shared toolkit packages |
 | runtime | `wp-php-toolkit/merge` | 0.10.1 | Server-side line differ and three-way merge, shared by both targets | 0 additional |
+| runtime | `wp-php-toolkit/blockparser` | 0.10.1 | WordPress's own block parser, so sync reads and writes block delimiters the same way on standalone as on WordPress | 0 additional |
 | identity | `web-auth/webauthn-lib` | 5.3.9 | Passkeys: CBOR/COSE/attestation parsing is not hand-rollable | 29 (Symfony serializer and friends, cose-lib, cbor-php, pki-framework) |
 | identity | `firebase/php-jwt` | 7.1.0 | RS256 signing for the issuer and inbound ID-token verification; one JWT library | 0 |
 | identity | `spomky-labs/otphp` | 11.5.0 | TOTP for MFA; small, maintained, proven by the MFA suites | 1 shared (`paragonie/constant_time_encoding`) |
@@ -60,6 +61,8 @@ cd runtime/identity/apps && pnpm install --frozen-lockfile && node build.mjs
 ```
 
 The Markdown consumer and line merger work without WordPress. The toolkit's
-Markdown producer calls WordPress `parse_blocks`; the sync lane must supply its
-standalone block-parser integration before offering round trips there. These
-dependencies alone do not enable sync.
+Markdown producer and HTML processor call a few WordPress functions
+(`parse_blocks`, `serialize_block`, `esc_*`, `__`). WordPress defines them; on
+standalone `runtime/Zero/Sync/wordpress-functions.php` defines them over the
+bundled block parser, loaded only when sync converts a body and only when
+WordPress is absent.

@@ -227,10 +227,18 @@ function names(array $rows): array
 // ================================================================ boot + migrate
 
 require $root . '/zero/runtime/bootstrap.php';
+$previousSecret = getenv('ZERO_SECRET');
+putenv('ZERO_SECRET');
 $app = App::boot($root);
 $db = \Zero\db();
 $pdo = $app->store->pdo();
 check('boot creates data/zero.sqlite', is_file("$root/data/zero.sqlite"));
+$secret = file_get_contents("$root/data/secret");
+check('boot creates a private 32-byte signing key', preg_match('/^[0-9a-f]{64}$/D', $secret) === 1 && (fileperms("$root/data/secret") & 0777) === 0600);
+eq('reloading preserves the signing key', \Zero\Secret::load($root), $secret);
+putenv('ZERO_SECRET=deployment-signing-key');
+eq('deployment signing key overrides the persistent key', \Zero\Secret::load($root), 'deployment-signing-key');
+putenv($previousSecret === false ? 'ZERO_SECRET' : 'ZERO_SECRET=' . $previousSecret);
 eq('init migration recorded', $pdo->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN), ['0001_init']);
 eq('foreign keys on after boot', (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn(), 1);
 eq('second migrate is a no-op', $app->migrate(), []);

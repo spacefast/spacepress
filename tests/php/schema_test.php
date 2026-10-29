@@ -15,6 +15,7 @@ use Zero\Schema;
 
 $fixture = __DIR__ . '/../fixtures/blog/schema.php';
 $schema = Schema::load($fixture);
+eq('PHP platform policy matches the shared golden', \Zero\Wp\Platform::requirements(), json_decode(file_get_contents(__DIR__ . '/../fixtures/platform.json'), true, 512, JSON_THROW_ON_ERROR));
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];

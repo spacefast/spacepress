@@ -12,7 +12,23 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<String>) {
     for e in entries {
         let path = e.path();
         let name = e.file_name();
-        if name.to_string_lossy().starts_with('.') {
+        let name = name.to_string_lossy();
+        let rel = path.strip_prefix(root).expect("under runtime/");
+        let vendor = rel.components().any(|part| part.as_os_str() == "vendor-prefixed");
+        if (name.starts_with('.') && name != ".manifest.json")
+            || matches!(
+                name.as_ref(),
+                "vendor"
+                    | "node_modules"
+                    | "apps"
+                    | "composer.json"
+                    | "composer.lock"
+                    | "vendor.sh"
+                    | "vendor-metadata.php"
+            )
+            || (vendor
+                && (name.eq_ignore_ascii_case("tests") || name.eq_ignore_ascii_case("docs") || name.ends_with(".md")))
+        {
             continue;
         }
         if path.is_dir() {

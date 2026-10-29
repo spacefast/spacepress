@@ -1049,6 +1049,8 @@ export interface ConfigInput<
   files?: Record<string, AnyFileBucket>;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   locales?: TLocales;
+  /** Build-only WordPress plugin dependencies. Ignored by standalone output. */
+  plugins?: Readonly<Record<string, WordPressPlugin>>;
 }
 
 export interface ZeroConfig<
@@ -1118,3 +1120,28 @@ export declare function files(name: string, options: {
 export interface LocalesConfig { default: string; all: readonly string[]; fallback?: boolean }
 export type Locale = Register extends { locales: infer L extends string } ? L : string;
 export type LocalizedColumns = { locale: Locale; translations: Partial<Record<Locale, number>> };
+
+
+/** Supported Blueprint v1 resource references; WordPress.org uses an exact ZIP slug. */
+export type WordPressPluginResource =
+  | { resource: "wordpress.org/plugins"; slug: string }
+  | { resource: "url"; url: string };
+
+/** Additional deployable plugin; never activated or executed during the Rust build. */
+export type WordPressPlugin = string | ({
+  /** Exact plugin header version, including WordPress suffixes. */
+  version: string;
+  /** Dependency identities, each declared here or supplied by the platform. */
+  requires?: readonly string[];
+} & (
+  | {
+      /** Defaults to the exact WordPress.org ZIP for the map key and version. */
+      pluginData?: { resource: "wordpress.org/plugins"; slug: string };
+      /** Otherwise recorded in zero/wp-plugins.lock.json on first acquisition. */
+      sha256?: string;
+    }
+  | {
+      pluginData: { resource: "url"; url: string };
+      sha256: string;
+    }
+));

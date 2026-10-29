@@ -1,0 +1,45 @@
+{
+    "name": "wp-php-toolkit/markdown",
+    "description": "Markdown component for WordPress.",
+    "type": "library",
+    "license": "GPL-2.0-or-later",
+    "keywords": [
+        "wordpress",
+        "php-toolkit"
+    ],
+    "homepage": "https://wordpress.github.io/php-toolkit/reference/markdown.html",
+    "authors": [
+        {
+            "name": "Adam Zielinski",
+            "email": "adam@adamziel.com"
+        },
+        {
+            "name": "WordPress Team",
+            "email": "wordpress@wordpress.org"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/WordPress/php-toolkit/issues",
+        "source": "https://github.com/WordPress/php-toolkit",
+        "docs": "https://wordpress.github.io/php-toolkit/reference/markdown.html"
+    },
+    "require": {
+        "php": ">=7.2",
+        "wp-php-toolkit/data-liberation": "^0.10.1",
+        "wp-php-toolkit/filesystem": "^0.10.1"
+    },
+    "autoload": {
+        "classmap": [
+            "./",
+            "vendor-patched"
+        ],
+        "exclude-from-classmap": [
+            "/Tests/",
+            "/bin/",
+            "/vendor-patched/symfony/yaml/Command/",
+            "/vendor-patched/webuni/front-matter/src/Haml/",
+            "/vendor-patched/webuni/front-matter/src/Pug/",
+            "/vendor-patched/webuni/front-matter/src/Twig/"
+        ]
+    }
+}

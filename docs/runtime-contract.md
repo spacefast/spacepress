@@ -5,8 +5,10 @@ request time is PHP: a hand-written runtime library (`runtime/Zero/*.php`,
 copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
-Requirements: PHP 8.2+, extensions `pdo_sqlite`, `mbstring`, `json`. No
-Composer, no third-party packages. Every file starts with
+Requirements: PHP 8.2+, extensions `pdo_sqlite`, `mbstring`, `json` and `gd`
+(`sodium` for phase-two identity features). Composer runs only at maintainer
+time; prefixed third-party libraries ship under `vendor-prefixed/` on both
+targets. See `dependencies.md` for their locks and regeneration. Every Zero file starts with
 `declare(strict_types=1);`. Namespace `Zero`.
 
 ## Build output layout
@@ -16,11 +18,14 @@ Composer, no third-party packages. Every file starts with
   public/index.php          generated front controller (also the php -S router)
   public/...                copied from <project>/public if present
   zero/runtime/*.php        this library, copied verbatim
+  zero/runtime/vendor-prefixed/**  bundled, isolated PHP dependencies
   zero/app/schema.php       generated: `return [...]` schema metadata
   zero/app/functions.php    generated: compiled hooks, actions, helpers (namespace ZeroApp)
   zero/app/migrations/NNNN_<name>.sql
   zero/bin/zero.php         CLI entry (copied from runtime/bin/zero.php)
   data/                     runtime state (SQLite file), created on demand
+  data/secret               persistent signing key, created on first standalone boot
+  private/                  private-file storage, outside the public root
 ```
 
 `public/index.php` is exactly:
@@ -40,6 +45,27 @@ function), sets `ini_set('precision', '-1')`,
 `ini_set('serialize_precision', '-1')`, registers an autoloader for
 `Zero\*` from its own directory, and registers the ordered feature modules
 through `Features::register()` (once per process).
+
+Standalone boot initializes `data/secret` to 32 random bytes encoded as 64 hex
+characters with mode `0600`, under an exclusive file lock. `Secret::load($root)`
+returns the same key on later boots; `ZERO_SECRET` overrides it without rewriting
+the persisted key. Preserve this file across deployments with the SQLite data.
+
+WordPress builds use `.zero/wp-content` instead. Its `plugins/` contains
+`zero-runtime` (this library under `zero/`), the optional `zero-identity` bundle,
+and `zero-app-<name>` (schema, functions, MySQL migrations and public assets).
+Generated plugin ZIPs sit alongside those directories. `zero-manifest.json` at
+the content root records versions, runtime series, platform requirements and
+resolved dependency checksums. The app's schema is the authoritative runtime
+series check; the runtime refuses a mismatched series or a second app.
+
+`GET /_schema` on WordPress includes `runtime.wp` with WordPress/PHP/database
+versions, `scf`, `actionScheduler`, `mcpAdapter`, `polylang`, `identity`,
+`imageCdn`, and `incompatibleTables`. `runtime.pendingMigrations` and
+`runtime.languages` report app migration and localization state. Identity is
+true only for a compatible implementation; the A3 placeholder does not enable it.
+`zero doctor --wp [--site URL --token T]` checks this data against the same
+platform policy used by runtime activation.
 
 ## schema.php
 

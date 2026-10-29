@@ -42,6 +42,7 @@ pub struct Extracted {
     pub register_name: Option<&'static str>,
     /// Non-fatal advice printed by `zero build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    pub plugins: Option<crate::wp_plugins::Config>,
 }
 
 const CONFIG_KEYS: &[&str] = &[
@@ -57,6 +58,7 @@ const CONFIG_KEYS: &[&str] = &[
     "files",
     "media",
     "locales",
+    "plugins",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "label",
@@ -147,6 +149,7 @@ pub fn extract(
         collections: Vec::new(),
         register_name: None,
         hints: Vec::new(),
+        plugins: None,
     };
 
     out.schema.name = match cfg_map.get("name") {
@@ -175,6 +178,19 @@ pub fn extract(
     };
     out.schema.target = target_override.unwrap_or(config_target);
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
+    if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
+        return Err(Diag::new(span, "duplicate plugins declaration"));
+    }
+    if let Some(value) = cfg_map.get("plugins") {
+        let span = span_of(ev, config, "plugins", config_span);
+        plugin_declarations(value, ev, span, &mut std::collections::HashSet::new())?;
+        let json =
+            to_json(value).ok_or_else(|| Diag::new(span, "plugins must contain declarative plugin data only"))?;
+        let plugins = crate::wp_plugins::parse(json).map_err(|e| Diag::new(span, e.to_string()))?;
+        crate::wp_plugins::resolve(&plugins, &crate::platform::plugins(out.schema.locales.is_some()))
+            .map_err(|e| Diag::new(span, format!("plugins: {e}")))?;
+        out.plugins = Some(plugins);
+    }
 
     // Collections
     let schema_val = match cfg_map.get("schema") {
@@ -487,6 +503,42 @@ pub fn extract(
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
+}
+
+/// Package pins cannot inherit JavaScript's last-property-wins behavior.
+fn plugin_declarations(
+    value: &Value,
+    ev: &Evaluator<'_>,
+    span: Span,
+    active: &mut std::collections::HashSet<usize>,
+) -> Result<()> {
+    let Some(identity) = crate::eval::ptr_of(value) else {
+        return Ok(());
+    };
+    if !active.insert(identity) {
+        return Err(Diag::new(span, "plugins must be acyclic declarative data"));
+    }
+    if let Some((key, span)) = ev.duplicate_key(value, None) {
+        return Err(Diag::new(
+            span,
+            format!("duplicate plugin declaration/property `{key}`"),
+        ));
+    }
+    match value {
+        Value::Object(map) => {
+            for value in map.borrow().values() {
+                plugin_declarations(value, ev, span, active)?;
+            }
+        }
+        Value::Array(items) => {
+            for value in items.borrow().iter() {
+                plugin_declarations(value, ev, span, active)?;
+            }
+        }
+        _ => {}
+    }
+    active.remove(&identity);
+    Ok(())
 }
 
 fn valid_ident(s: &str) -> bool {

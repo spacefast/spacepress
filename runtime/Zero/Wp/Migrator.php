@@ -22,7 +22,6 @@ final class Migrator
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
-        \Zero\SystemTables::apply(CompositeStore::create($this->schema, $this->db));
         $ledger = $this->table('zero__migrations');
         $this->db->run("CREATE TABLE IF NOT EXISTS `$ledger` (`id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $done = array_flip(array_column($this->db->run("SELECT `id` FROM `$ledger`"), 'id'));
@@ -49,6 +48,16 @@ final class Migrator
         return $applied;
     }
 
+    public function pending(): array
+    {
+        $table = $this->table('zero__migrations');
+        $exists = $this->db->run('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]);
+        $done = $exists === [] ? [] : array_column($this->db->run("SELECT `id` FROM `$table`"), 'id');
+        $files = array_map(static fn (string $file): string => basename($file, '.sql'), glob($this->dir . '/*.sql') ?: []);
+        sort($files, SORT_STRING);
+        return array_values(array_diff($files, $done));
+    }
+
     /**
      * Tables that must be InnoDB but aren't: core posts/postmeta and every `{prefix}zero_*` table.
      *
@@ -58,12 +67,12 @@ final class Migrator
     {
         $wpdb = $this->db->wpdb();
         $rows = $this->db->run(
-            'SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?) OR TABLE_NAME LIKE ?)',
+            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?) OR TABLE_NAME LIKE ?)',
             [$wpdb->posts, $wpdb->postmeta, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
         );
         $bad = [];
         foreach ($rows as $r) {
-            if (strcasecmp((string) $r['e'], 'InnoDB') !== 0) {
+            if (strcasecmp((string) $r['e'], 'InnoDB') !== 0 || !str_starts_with(strtolower((string) $r['c']), 'utf8mb4_')) {
                 $bad[] = (string) $r['t'];
             }
         }

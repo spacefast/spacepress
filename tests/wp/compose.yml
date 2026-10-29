@@ -16,11 +16,13 @@ services:
     tmpfs:
       - /var/lib/mysql
   wordpress:
-    image: wordpress:php8.5-apache
+    image: wordpress:7.1-php8.5-apache
     depends_on:
       db:
         condition: service_healthy
     environment:
+      APACHE_RUN_USER: "#${ZERO_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${ZERO_WP_GID:-1000}"
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: zero-test-db
@@ -28,16 +30,21 @@ services:
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
+        define('ZERO_IDENTITY_DEV_HTTP', true);
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
+      interval: 1s
+      retries: 120
     ports:
       - "${ZERO_WP_PORT:-8790}:80"
     volumes:
       - wp:/var/www/html
       - ./cache:/zero-cache:ro
-      - ${ZERO_WP_PLUGIN_DIR:-./empty-plugin}:/var/www/html/wp-content/plugins/${ZERO_WP_PLUGIN_SLUG:-zero-app}
+      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
   # WP-CLI, kept running so `harness.sh wp` is an exec, not a container start.
   cli:
     image: wordpress:cli-php8.5
-    user: "33:33"
+    user: "${ZERO_WP_UID:-1000}:${ZERO_WP_GID:-1000}"
     depends_on: [wordpress]
     command: ["sleep", "infinity"]
     environment:
@@ -48,6 +55,6 @@ services:
     volumes:
       - wp:/var/www/html
       - ./cache:/zero-cache:ro
-      - ${ZERO_WP_PLUGIN_DIR:-./empty-plugin}:/var/www/html/wp-content/plugins/${ZERO_WP_PLUGIN_SLUG:-zero-app}
+      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   wp:

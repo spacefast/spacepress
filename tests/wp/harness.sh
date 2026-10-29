@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Disposable WordPress 7.1 + MariaDB 11.4 + SCF 6.9.7 for Zero's WP target (design §9.2).
+# Disposable WordPress 7.1 + MariaDB 11.4 + pinned platform plugins for Zero's WP target (design §9.2).
 #
-#   harness.sh up [--plugin <dir>]   boot, install SCF + the plugin dir (slug = dir name), activate it,
+#   harness.sh up --wp-content <dir> boot and activate the declared split plugins,
 #                                    create admin/editor/author/subscriber with application passwords;
 #                                    prints ONE JSON line (url, versions, users, container)
 #   harness.sh up ... --env          print shell exports instead of JSON
@@ -14,42 +14,48 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export ZERO_WP_PORT="${ZERO_WP_PORT:-8790}"
+export ZERO_WP_UID="$(id -u)" ZERO_WP_GID="$(id -g)"
 STATE=.harness-state
 [[ -f $STATE ]] && source "$STATE"
-export ZERO_WP_PLUGIN_DIR="${ZERO_WP_PLUGIN_DIR:-$PWD/empty-plugin}"
-export ZERO_WP_PLUGIN_SLUG="${ZERO_WP_PLUGIN_SLUG:-zero-app}"
+export ZERO_WP_CONTENT="${ZERO_WP_CONTENT:-$PWD/empty-wp-content}"
 
 compose() { docker compose "$@"; }
 wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
 
 up() {
-  local plugin="" env=0
+  local content="${ZERO_WP_CONTENT}" env=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --plugin) plugin="$2"; shift 2 ;;
+      --wp-content) content="$2"; shift 2 ;;
       --env) env=1; shift ;;
-      *) plugin="$1"; shift ;;
+      *) echo "unknown argument $1; use --wp-content <dir>" >&2; exit 2 ;;
     esac
   done
-  plugin="${plugin:-${ZERO_WP_PLUGIN:-}}"
-  if [[ -n $plugin ]]; then
-    ZERO_WP_PLUGIN_DIR="$(cd "$plugin" && pwd)"
-    ZERO_WP_PLUGIN_SLUG="$(basename "$ZERO_WP_PLUGIN_DIR")"
-  fi
-  printf 'export ZERO_WP_PLUGIN_DIR=%q\nexport ZERO_WP_PLUGIN_SLUG=%q\n' "$ZERO_WP_PLUGIN_DIR" "$ZERO_WP_PLUGIN_SLUG" > "$STATE"
-
-  local zip=cache/secure-custom-fields.6.9.7.zip sha=5b10edab948f64b84d44d81a29fd5794a2573205e0d5e7ea9538024fc93ff52c
-  [[ -f $zip ]] || curl -sSfL -o "$zip" https://downloads.wordpress.org/plugin/secure-custom-fields.6.9.7.zip
-  echo "$sha  $zip" | sha256sum -c --quiet
+  ZERO_WP_CONTENT="$(cd "$content" && pwd)"
+  export ZERO_WP_CONTENT
+  [[ -f $ZERO_WP_CONTENT/zero-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
+  printf 'export ZERO_WP_CONTENT=%q\n' "$ZERO_WP_CONTENT" > "$STATE"
+  mkdir -p cache
+  local slug version sha zip
+  local -a pins
+  mapfile -t pins < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" ../fixtures/platform.json <<'PINS'
+import json,sys
+manifest=json.load(open(sys.argv[1])); platform=json.load(open(sys.argv[2]))
+for slug,spec in platform['plugins'].items():
+ if slug != 'polylang' or slug in manifest['requires']: print(slug,spec['version'],spec['sha256'])
+PINS
+  )
+  local pin
+  for pin in "${pins[@]}"; do
+    read -r slug version sha <<< "$pin"
+    zip="cache/$slug.$version.zip"
+    [[ -f $zip ]] || curl -sSfL -o "$zip" "https://downloads.wordpress.org/plugin/$slug.$version.zip"
+    printf '%s  %s\n' "$sha" "$zip" | sha256sum -c --quiet
+  done
 
   local url="http://127.0.0.1:${ZERO_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
-  # Poll until the image has copied WordPress into the volume.
-  for _ in $(seq 1 240); do
-    compose exec -T wordpress test -f /var/www/html/wp-includes/version.php && break
-    sleep 0.25
-  done
   if ! wp core is-installed >/dev/null 2>&1; then
     wp core install --url="$url" --title="Zero Test" --admin_user=admin --admin_password=zero-test-admin \
       --admin_email=admin@example.test --skip-email >/dev/null
@@ -58,10 +64,34 @@ up() {
       wp user create "$role" "$role@example.test" --role="$role" --display_name="${role^}" --user_pass="zero-test-$role" >/dev/null
     done
   fi
-  wp plugin is-installed secure-custom-fields >/dev/null 2>&1 || wp plugin install /zero-cache/secure-custom-fields.6.9.7.zip >/dev/null
-  wp plugin activate secure-custom-fields >/dev/null
-  if [[ $ZERO_WP_PLUGIN_SLUG != zero-app ]]; then
-    wp plugin activate "$ZERO_WP_PLUGIN_SLUG" >/dev/null
+  local installed
+  for pin in "${pins[@]}"; do
+    read -r slug version sha <<< "$pin"
+    wp plugin is-installed "$slug" >/dev/null 2>&1 || wp plugin install "/zero-cache/$slug.$version.zip" >/dev/null
+    installed=$(wp plugin get "$slug" --field=version)
+    php -r 'exit(version_compare($argv[1],$argv[2],">=") ? 0 : 1);' "$installed" "$version" || { echo "$slug $version+ required" >&2; exit 1; }
+  done
+  local app
+  app=$(python3 -c 'import json,sys; print("zero-app-"+json.load(open(sys.argv[1]))["app"])' "$ZERO_WP_CONTENT/zero-manifest.json")
+  local -a activation
+  mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" <<'ACTIVATE'
+import json,sys,os
+manifest=json.load(open(sys.argv[1]))
+for dependency in manifest['dependencies']: print(dependency['slug'])
+print('zero-runtime')
+if 'zero-identity' in manifest['plugins']: print('zero-identity')
+print('zero-app-'+manifest['app'])
+ACTIVATE
+  )
+  for slug in "${activation[@]}"; do wp plugin activate "$slug" >/dev/null; done
+
+  local identity=null
+  if wp cli has-command 'zero-identity app add' >/dev/null 2>&1; then
+    local application client_id
+    application=$(wp zero-identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$url" --id=app_zero_dev)
+    client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$application")
+    identity=$(python3 -c 'import json,sys; print(json.dumps({"clientId":sys.argv[1]}))' "$client_id")
+    [[ $env == 0 ]] || printf 'export ZERO_IDENTITY_CLIENT_ID=%q\n' "$client_id"
   fi
 
   local users="" sep="" id pass
@@ -80,8 +110,8 @@ up() {
   if [[ $env == 1 ]]; then
     printf 'export ZERO_WP_URL=%q\nexport ZERO_WP_VERSION=%q\n' "$url" "$version"
   else
-    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":"%s","users":{%s},"container":"zero-wp-%s"}\n' \
-      "$url" "$version" "$ZERO_WP_PLUGIN_SLUG" "$users" "${container:0:12}"
+    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":"%s","identity":%s,"users":{%s},"container":"zero-wp-%s"}\n' \
+      "$url" "$version" "$app" "$identity" "$users" "${container:0:12}"
   fi
 }
 

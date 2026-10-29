@@ -249,10 +249,22 @@ $db->store()->run('INSERT INTO "__zero_seam" ("id", "event", "extra") VALUES (1,
 eq('idempotent system DDL and guarded ALTER preserve data', $db->store()->run('SELECT event, extra FROM "__zero_seam"')->fetch(), ['event' => 'kept', 'extra' => 'upgraded']);
 problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \Zero\SystemTables::apply($db->store())), 500, 'internal');
 
-\Zero\Extensions::normalizeWrite(static function (string $op, string $c, array &$data): void {
+$transformMutationRows = false;
+\Zero\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
+    if ($transformMutationRows && $c === 'posts') {
+        foreach ($rows as &$row) {
+            $row['excerpt'] = 'display only';
+        }
+        unset($row);
+    }
+
+    return $rows;
+});
+\Zero\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
     if ($c === 'posts') {
         unset($data['translationOf']);
         if (array_key_exists('password', $data)) {
+            eq('input normalization receives the full stored row', $existing['excerpt'], 'extension');
             $data['excerpt'] = $data['password'];
             unset($data['password']);
         }
@@ -288,8 +300,12 @@ problem('system DDL rejects request transactions', fn () => $db->transaction(fn 
 $seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
 [$status, $seam] = req('POST', '/posts', ['title' => 'Extension', 'translationOf' => 123], 'alice');
 eq('write extension sees defaults and viewer before the application hook', [$status, $seam['title'], $seam['excerpt'], $seam['authorId']], [201, 'published alice', 'extension', $seamAuthor['id']]);
+$transformMutationRows = true;
 $seam = req('PATCH', '/posts/' . $seam['id'], ['password' => 'revise'], 'ed')[1];
-eq('update extension receives the previous row', $seam['excerpt'], 'extension revised');
+$transformMutationRows = false;
+eq('update extension receives stored data and transforms only its response', [
+    $seam['excerpt'], $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
+], ['display only', 'extension revised']);
 isProblem('normalization still rejects unconsumed create inputs', req('POST', '/posts', ['title' => 'Rejected', 'unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
 isProblem('normalization still rejects unconsumed update inputs', req('PATCH', '/posts/' . $seam['id'], ['unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
 eq('written extension can nest writes and schedule durable effects', [
@@ -302,7 +318,9 @@ eq('failed write preserves row and nested data', [
     count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
     $db->store()->run('SELECT COUNT(*) FROM "__zero_seam"')->fetchColumn(),
 ], ['extension revised', 2, 3]);
-isProblem('delete extension runs before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
+$transformMutationRows = true;
+isProblem('delete extension receives stored data before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
+$transformMutationRows = false;
 
 // The lookup seam primes a page cache which a read transform consumes, including nested relations.
 $cache = [];
@@ -314,7 +332,9 @@ $cache = [];
         return $rows;
     }
     foreach ($rows as &$row) {
-        if ($c === 'posts' && $row['excerpt'] === 'extension revised') {
+        if ($c === 'posts' && $row['title'] === 'Replay seam') {
+            $row['excerpt'] = $cache[$c][$row['id']] ?? 'missing cache';
+        } elseif ($c === 'posts' && $row['excerpt'] === 'extension revised') {
             $row['excerpt'] = $cache[$c][$row['id']] . (isset($row['comments']) ? ' after with' : ' before with');
             unset($row['authorId'], $row['cover']);
         } elseif ($c === 'comments' && in_array($row['name'], ['create', 'update'], true)) {
@@ -395,11 +415,13 @@ eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1][
 });
 $receiptHeaders = ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'create'];
 $firstReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+$cache = [];
 $replayReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
-eq('operation wrapper can replay a create without repeating its pipeline', [
+eq('create replay primes fresh lookup caches without repeating its write pipeline', [
     $firstReceipt[0], $replayReceipt[0], $replayReceipt[1]['Idempotent-Replayed'], $firstReceipt[2] === $replayReceipt[2],
+    json_decode($replayReceipt[2], true)['data']['excerpt'],
     count($db->findMany('posts', ['where' => ['title' => 'Replay seam']])),
-], [201, 201, 'true', true, 1]);
+], [201, 201, 'true', true, 'looked up', 1]);
 eq('create authorization still runs before replay middleware', $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', ['Idempotency-Key' => 'create'])[0], 401);
 $failedReceipt = $app->handle('POST', '/posts', [], '{"title":"Rolled back receipt"}', ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'fail']);
 eq('failed operation wrapper rolls back both its result and receipt', [
@@ -413,15 +435,17 @@ eq('failed operation wrapper rolls back both its result and receipt', [
 
     return \Zero\Response::raw(static function () use ($db): void {
         echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
-    }, 200, ['Content-Type' => 'application/octet-stream', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'private, no-store']);
+    }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
+        ->withHeaders(['CACHE-CONTROL' => 'private, no-store']);
 });
 [$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
 ob_start();
 \Zero\Response::emit($downloadBody);
 $emitted = ob_get_clean();
 eq('download response streams raw bytes and headers after commit', [
-    $downloadStatus, $downloadHeaders['Content-Type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['Cache-Control'], $emitted,
-], [200, 'application/octet-stream', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed"]);
+    $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
+    count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
+], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", true]);
 
 \Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);

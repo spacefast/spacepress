@@ -89,7 +89,7 @@ final class Extensions
         self::$hooks['describe'][] = $fn;
     }
 
-    /** @param callable(string $collection, list<int|string> $pks): void $fn before store hydration and schema decode */
+    /** @param callable(string $collection, list<int|string> $pks): void $fn primes page caches before store hydration or saved-result presentation */
     public static function onLookup(callable $fn): void
     {
         self::$hooks['lookup'][] = $fn;

@@ -128,7 +128,18 @@ final class Db
      */
     private function fetch(string $collection, array $opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
-        $decoded = [];
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards);
+        $rows = Extensions::read($decoded, $collection, $viewer);
+        if (isset($opts['with']) && $rows !== []) {
+            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
+        }
+
+        return $rows;
+    }
+
+    /** Select full storage rows without presentation transforms; write guards remain SQL filters. */
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = []): array
+    {
         if (!$this->schema->hasCollection($collection)) {
             throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
         }
@@ -146,17 +157,18 @@ final class Db
             return [];
         }
         $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards);
-        $rows = array_map(
+        return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),
         );
-        $decoded = $rows;
-        $rows = Extensions::read($rows, $collection, $viewer);
-        if (isset($opts['with']) && $rows !== []) {
-            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
-        }
+    }
 
-        return $rows;
+    /** Mutation results and revision snapshots may bypass selects, or follow hooks that replace caches. */
+    private function present(array $rows, string $collection, ?Viewer $viewer): array
+    {
+        Extensions::lookup($collection, array_column($rows, $this->schema->collection($collection)['primaryKey']));
+
+        return Extensions::read($rows, $collection, $viewer);
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
@@ -312,7 +324,7 @@ final class Db
                 $out[] = $this->createOne($collection, $spec, $data, $viewer, $around);
             }
 
-            return $returning ? Extensions::read($out, $collection, $viewer) : null;
+            return $returning ? $this->present($out, $collection, $viewer) : null;
         });
     }
 
@@ -323,11 +335,12 @@ final class Db
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
-            foreach ($this->fetch($collection, ['where' => $where], '', null, null, $guards) as $existing) {
+            $opts = ['where' => $where];
+            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards) as $existing) {
                 $out[] = $this->updateOne($collection, $spec, $existing, $set, $viewer);
             }
 
-            return $returning ? Extensions::read($out, $collection, $viewer) : null;
+            return $returning ? $this->present($out, $collection, $viewer) : null;
         });
     }
 
@@ -336,12 +349,13 @@ final class Db
     {
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
-            $rows = $this->fetch($collection, ['where' => $where], '', null, null, $guards);
+            $opts = ['where' => $where];
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards);
             foreach ($rows as $row) {
                 $this->deleteOne($collection, $row, $viewer);
             }
 
-            return $returning ? Extensions::read($rows, $collection, $viewer) : null;
+            return $returning ? $this->present($rows, $collection, $viewer) : null;
         });
     }
 
@@ -530,13 +544,14 @@ final class Db
                     continue;
                 }
                 $where = [$col => $row[$ref['column']]];
+                $opts = ['where' => $where, 'limit' => 1];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
                     $this->delete((string) $child, $where);
                 } elseif ($action === 'set null' || $action === 'set default') {
                     $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c['type']) : null;
                     $this->update((string) $child, [$col => $value], $where);
-                } elseif ($this->fetch((string) $child, ['where' => $where, 'limit' => 1], '', null) !== []) {
+                } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
                 }
             }
@@ -779,7 +794,7 @@ final class Db
     {
         $this->requireRevisable($collection, $pk, $viewer);
 
-        return Extensions::read([$this->revisionRow($collection, $pk, $revisionId)], $collection, $viewer)[0]
+        return $this->present([$this->revisionRow($collection, $pk, $revisionId)], $collection, $viewer)[0]
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
     }
 
@@ -818,7 +833,8 @@ final class Db
             throw HttpError::notFound("$collection keeps no revisions");
         }
         $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, null);
-        if ($this->fetch($collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1], '', null, null, $guards) === []) {
+        $opts = ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1];
+        if ($this->selectDecoded($collection, $opts, '', null, null, $guards) === []) {
             throw HttpError::notFound("No $collection row $pk");
         }
     }

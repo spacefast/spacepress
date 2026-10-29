@@ -28,14 +28,30 @@ final class Response
 
     public function withHeaders(array $headers): self
     {
-        return new self($this->status, $this->data, $headers + $this->headers, $this->body);
+        return new self($this->status, $this->data, self::mergeHeaders($this->headers, $headers), $this->body);
     }
 
     /** @return array{int, array<string, string>, string|\Closure} */
     public function http(): array
     {
-        return [$this->status, $this->headers + ['Content-Type' => $this->body === null ? 'application/json' : 'application/octet-stream'],
+        return [$this->status, self::mergeHeaders(['Content-Type' => $this->body === null ? 'application/json' : 'application/octet-stream'], $this->headers),
             $this->body ?? (Js::jsonStringify(['data' => $this->data]) ?? '{}')];
+    }
+
+    private static function mergeHeaders(array ...$sets): array
+    {
+        $out = [];
+        $names = [];
+        foreach ($sets as $headers) {
+            foreach ($headers as $name => $value) {
+                $key = strtolower($name);
+                unset($out[$names[$key] ?? $name]);
+                $names[$key] = $name;
+                $out[$name] = $value;
+            }
+        }
+
+        return $out;
     }
 
     public static function emit(string|\Closure $body): void

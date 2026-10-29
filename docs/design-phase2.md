@@ -1500,7 +1500,7 @@ final class Extensions {
     public static function beforeAction(callable $fn): void;       // $fn(array $actionSpec, string $name, string $rawBody, array $headers, ?Viewer): void (may throw; null = trusted CLI)
     public static function cli(string $command, callable $fn): void;   // zero/bin/zero.php + `wp zero`
     public static function schemaDescribe(callable $fn): void;     // $fn(array $describe): array
-    /** @param callable(string $collection, list<int|string> $pks): void $fn   before a page of collection rows is hydrated/decoded; extensions prime per-page caches here (meta, terms, Polylang language/group) */
+    /** @param callable(string $collection, list<int|string> $pks): void $fn   before store hydration/decode or saved-result presentation; prime per-page caches here (meta, terms, Polylang language/group) */
     public static function onLookup(callable $fn): void;
 }
 // runtime/Zero/SystemTables.php
@@ -1547,7 +1547,9 @@ series string without changing v2 output.
   These are extension points only; A1 adds no field-access or locale policy.
 - `onRead` also transforms revision reads and returning write responses.
   Restore uses the authorized full stored revision, never the display
-  transform, then transforms only its response. Hooks and stored revisions still receive full rows. Relation attachment privately keeps
+  transform, then transforms only its response. Internal mutation selection
+  preserves authorization filters without invoking display transforms; hooks,
+  validators and stored revisions receive full decoded storage rows. Relation attachment privately keeps
   the original decoded linkage columns, so stripping a foreign key cannot
   break `with`; stripped media columns are not repopulated. Transforms retain
   primary keys. WP editor writes remain trusted: after-save/delete notify
@@ -1555,7 +1557,9 @@ series string without changing v2 output.
   API's before-write pipeline over already-saved core data.
 - `onLookup` fires once per nonempty **collection** page, inside each concrete
   store, before WP SCF hydration and before schema decode. System-media queries
-  are not app collections. Existing WP nested-meta priming remains store-owned;
+  are not app collections. Mutation result pages (including receipt replay)
+  and revision snapshots prime lookup caches before their read transforms;
+  callbacks may repeat after write hooks. Existing WP nested-meta priming remains store-owned;
   new feature caches use `onLookup` without relying on plugin construction.
 - `Store` gains `afterCommit(callable)` and
   `applySystemStatements(list<string>)`. `SystemTables` selects the dialect;

@@ -211,10 +211,14 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
 - `beforeRead(collection, &opts, ?viewer, pointer)` runs before query validation
   and SQL; `onLookup(collection, pks)` runs in concrete stores before hydration
   and decode. Lookup receives nonempty collection pages, not system-media rows.
+  Mutation results (including receipt replay) and revision snapshots also prime
+  their page before read transforms; callbacks may run again after write hooks.
 - `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
   projection; also applies to revision reads and returning write responses.
   Revision restore authorizes first, then uses the full stored snapshot; display
-  transforms never supply persistence input.
+  transforms never supply persistence input. Internal mutation selection keeps
+  authorization filters and passes full decoded storage rows to normalization,
+  validation and write hooks, including previous-row notifications.
   Keep primary keys intact. Relation attachment preserves original linkage
   privately; removing a media column prevents its population.
 - `normalizeWrite(op, collection, &data, ?existing, ?viewer, provided)` consumes

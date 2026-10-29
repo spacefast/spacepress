@@ -58,6 +58,12 @@ function replacementOffset(match: string, offset: number, source: string): strin
   return `${match}:${offset}:${source}`;
 }
 
+function makeCounterReader(value: { count: number }) {
+  value.count++;
+  const forward = () => () => value.count;
+  return forward();
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 export default defineConfig({
@@ -121,7 +127,34 @@ export default defineConfig({
       const defaultCount = mutate(missing);
       const supplied = { count: 4 };
       const suppliedCount = mutate(supplied);
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      let item = { count: 1 };
+      const readItem = makeCounterReader(item);
+      const readBinding = () => item.count;
+      const spread = { ...item };
+      const { ...rest } = item;
+      item.count++;
+      const live = readItem();
+      item = { count: 9 };
+      let absent: { count: number } | null = null;
+      const makeNullable = (value: { count: number } | null) => { if (value !== null) value.count++; return () => value?.count ?? null; };
+      const readAbsent = makeNullable(absent);
+      absent = { count: 9 };
+      const accumulatorReaders: (() => number)[] = [];
+      [1, 2].reduce((acc, value) => { acc.count++; accumulatorReaders.push(() => acc.count); return { count: acc.count }; }, { count: 0 });
+      const sharedReaders: (() => number)[] = [];
+      [1, 2].reduce((acc, value) => { acc.count++; sharedReaders.push(() => acc.count); return acc; }, { count: 0 });
+      const loopReaders: (() => number)[] = [];
+      const localReaders: (() => number)[] = [];
+      const loopItems = [{ count: 1 }, { count: 2 }];
+      for (const item of loopItems) {
+        item.count++;
+        loopReaders.push(() => item.count);
+        let local = item.count;
+        localReaders.push(() => local);
+        local++;
+        continue;
+      }
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, escaped: readItem(), binding: readBinding(), live, absent: readAbsent(), spread: spread.count, rest: rest.count, accumulatorReaders: accumulatorReaders.map(read => read()), sharedReaders: sharedReaders.map(read => read()), loopReaders: loopReaders.map(read => read()), loopSource: loopItems.map(item => item.count), localReaders: localReaders.map(read => read()), some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

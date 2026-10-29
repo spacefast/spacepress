@@ -103,6 +103,16 @@ The runtime always passes variables (never literals), because a compiled
 function may declare a by-reference parameter (`array &$data`) when the
 source mutates it.
 
+Captured mutating object parameters have a separate local binding whose fields
+share storage with the supplied object. Replacing the caller's variable does
+not retarget the capture; field mutations remain visible. This requires a fixed
+object shape with required fields. Capturing a mutating array, open record, or
+object with optional fields is rejected with a located diagnostic; capture the
+needed scalar values instead. Mutating `for…of` bindings use the same fixed
+object representation; array/record/optional-field and destructured mutations
+must use the source index instead. Object spread/rest copy field values, and
+loop-local declarations receive a fresh binding on each execution.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Create, per row:

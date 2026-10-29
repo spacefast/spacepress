@@ -665,6 +665,18 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
+            "const make = (value: number[]) => { value.push(1); return () => value.length; }; make([]); return true;",
+            "a captured mutating parameter needs an object with required fields",
+        ),
+        (
+            "for (const values of [[1]]) values.push(2); return true;",
+            "a mutating loop binding needs an object with required fields",
+        ),
+        (
+            "for (const { items } of [{ items: [1] }]) items.push(2); return true;",
+            "through a destructured loop binding",
+        ),
+        (
             "[1].map((value: 1) => value); return true;",
             "this parameter is declared as 1, but it receives",
         ),

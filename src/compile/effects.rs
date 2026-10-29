@@ -59,6 +59,7 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
 
 #[derive(Default)]
 pub(super) struct Effects {
+    captured: HashSet<Span>,
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
     incoming: HashMap<Span, HashSet<Vec<Step>>>,
     incoming_writes: HashMap<Span, HashSet<Vec<Step>>>,
@@ -74,6 +75,10 @@ pub(super) struct Effects {
 }
 
 impl Effects {
+    pub fn captured(&self, binding: Span) -> bool {
+        self.captured.contains(&binding)
+    }
+
     pub fn analyze(roots: &[Root]) -> Self {
         let mut graph = Graph::default();
         for root in roots {
@@ -309,6 +314,7 @@ struct Call {
 
 #[derive(Default)]
 struct Graph {
+    captured: HashSet<Span>,
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
@@ -517,7 +523,17 @@ impl Graph {
     fn expr_inner(&mut self, e: &Expr, names: &mut Names, env: &Rc<Scope>, owner: Span) -> Option<Place> {
         let value = Place::new(e.span);
         match &e.kind {
-            ExprKind::Ident(name) => return self.ident(name, names, env),
+            ExprKind::Ident(name) => {
+                let place = self.ident(name, names, env)?;
+                if self
+                    .bindings
+                    .get(&place.binding)
+                    .is_some_and(|binding_owner| *binding_owner != owner)
+                {
+                    self.captured.insert(place.binding);
+                }
+                return Some(place);
+            }
             ExprKind::Func(f) => {
                 self.created_by.insert(f.span, owner);
                 self.created_prior
@@ -1272,6 +1288,7 @@ impl Graph {
             }
         }
         let mut effects = Effects {
+            captured: self.captured,
             numeric: HashMap::new(),
             incoming: HashMap::new(),
             incoming_writes: HashMap::new(),

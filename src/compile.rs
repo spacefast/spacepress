@@ -170,6 +170,8 @@ impl Out {
 #[derive(Clone)]
 struct Local {
     php: String,
+    /// Keeps shared object field cells alive independently of PHP array copies.
+    capture_anchor: Option<String>,
     ty: Ty,
     constraint: Ty,
     mutable: bool,
@@ -535,32 +537,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
-    fn check_destructured_parameter(&self, pat: &Pat) -> Result<()> {
+    fn check_destructured_mutation(&self, pat: &Pat, context: &str) -> Result<()> {
         match pat {
             Pat::Id(name, _) if self.effects.by_ref(pat) => {
                 return err_help(
                     pat.span(),
-                    format!("can't mutate `{name}` through a destructured parameter"),
-                    "accept the whole object or array and mutate the nested value through that parameter",
+                    format!("can't mutate `{name}` through a destructured {context}"),
+                    "use the whole object or array and mutate the nested value through that binding",
                 );
             }
             Pat::Obj { props, rest, .. } => {
                 for (_, pat) in props {
-                    self.check_destructured_parameter(pat)?;
+                    self.check_destructured_mutation(pat, context)?;
                 }
                 if let Some((name, span)) = rest {
-                    self.check_destructured_parameter(&Pat::Id(name.clone(), *span))?;
+                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
                 }
             }
             Pat::Arr { elems, rest, .. } => {
                 for pat in elems.iter().flatten() {
-                    self.check_destructured_parameter(pat)?;
+                    self.check_destructured_mutation(pat, context)?;
                 }
                 if let Some((name, span)) = rest {
-                    self.check_destructured_parameter(&Pat::Id(name.clone(), *span))?;
+                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
                 }
             }
-            Pat::Default(pat, _) => self.check_destructured_parameter(pat)?,
+            Pat::Default(pat, _) => self.check_destructured_mutation(pat, context)?,
             _ => {}
         }
         Ok(())
@@ -586,7 +588,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     params_php.push(format!("{hint}{amp}{php}{default}"));
                 }
                 pat => {
-                    self.check_destructured_parameter(pat)?;
+                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
                     params_php.push(format!("{}{tmp}{}", php_hint(&t), parameter_default_suffix(p)));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
@@ -681,6 +683,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             name.to_string(),
             Local {
                 php: php.clone(),
+                capture_anchor: None,
                 constraint: ty.clone(),
                 ty: read_ty,
                 mutable,
@@ -737,6 +740,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
                     caps.push((var.clone(), l.mutable || self.effects.shared(l.binding)));
+                    if let Some(anchor) = &l.capture_anchor {
+                        caps.push((anchor.trim_start_matches('$').to_string(), false));
+                    }
                 }
                 cur = c.outer.as_deref_mut();
             }
@@ -1020,6 +1026,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Pat::Id(n, _) => {
                         let php = self.declare_local(n, ty, mutable, pat.span());
                         let v = value.map(|v| v.php).unwrap_or_else(|| "null".into());
+                        self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }
                     pat => {
@@ -1096,10 +1103,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
             } => {
                 self.fx().scopes.push(HashMap::new());
-                let init_php = match init {
-                    Some(i) => self.stmt(i, 0)?.trim().trim_end_matches(';').to_string(),
-                    None => String::new(),
-                };
+                if let Some(init) = init {
+                    out.push_str(&self.stmt(init, indent)?);
+                }
                 self.invalidate_loop(*span);
                 let test_php = match test {
                     Some(t) => self.cond(t)?,
@@ -1109,7 +1115,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
-                let _ = writeln!(out, "{p}for ({init_php}; {test_php}; {update_php}) {{");
+                let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
@@ -1141,10 +1147,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mutable = *kind == DeclKind::Let;
                 match pat {
                     Pat::Id(n, _) => {
-                        let php = self.declare_local(n, el, mutable, pat.span());
-                        let _ = writeln!(out, "{p}foreach ({src} as {php}) {{");
+                        let php = self.declare_local(n, el.clone(), mutable, pat.span());
+                        if self.effects.by_ref(pat) {
+                            if !matches!(el.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional))
+                            {
+                                return err_help(
+                                    pat.span(),
+                                    "a mutating loop binding needs an object with required fields",
+                                    "change arrays, records, or optional fields through their source index instead",
+                                );
+                            }
+                            let source = match &it.place {
+                                Some(place) => place.clone(),
+                                None => {
+                                    let tmp = self.tmp_var();
+                                    let _ = writeln!(out, "{p}{tmp} = {src};");
+                                    tmp
+                                }
+                            };
+                            let tmp = self.tmp_var();
+                            let _ = writeln!(out, "{p}foreach ({source} as &{tmp}) {{");
+                            let anchor = self.object_binding(&php, &tmp, &mut out, indent + 1);
+                            self.fx().scopes.last_mut().unwrap().get_mut(n).unwrap().capture_anchor = Some(anchor);
+                        } else if self.effects.captured(pat.span()) {
+                            let tmp = self.tmp_var();
+                            let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
+                            self.fresh_binding(&php, pat.span(), &mut out, indent + 1);
+                            let _ = writeln!(out, "{}{php} = {tmp};", pad(indent + 1));
+                        } else {
+                            let _ = writeln!(out, "{p}foreach ({src} as {php}) {{");
+                        }
                     }
                     pat => {
+                        self.check_destructured_mutation(pat, "loop binding")?;
                         let tmp = self.tmp_var();
                         let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
                         self.bind_pattern(pat, &tmp, &el, mutable, &mut out, indent + 1)?;
@@ -1442,6 +1477,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         php
     }
 
+    fn fresh_binding(&self, php: &str, binding: Span, out: &mut String, indent: usize) {
+        if self.effects.captured(binding) {
+            let _ = writeln!(out, "{}unset({php});", pad(indent));
+        }
+    }
+
     fn bind_pattern_types(
         &mut self,
         pat: &Pat,
@@ -1456,6 +1497,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match pat {
             Pat::Id(n, _) => {
                 let php = self.declare_binding(n, BindingTypes { read: ty, constraint }, mutable, pat.span());
+                self.fresh_binding(&php, pat.span(), out, indent);
                 let _ = writeln!(out, "{p}{php} = {src};");
             }
             Pat::Default(inner, default) => {
@@ -1517,6 +1559,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         constraint: omit(&constraint),
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
+                    self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(out, "{p}{php} = \\Zero\\Js::omit({src}, [{}]);", keys.join(", "));
                 }
             }
@@ -1555,6 +1598,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         constraint: tail(&constraint),
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
+                    self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(out, "{p}{php} = array_slice({src}, {});", elems.len());
                 }
             }
@@ -1750,6 +1794,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     name.clone(),
                     Local {
                         php: String::new(),
+                        capture_anchor: None,
                         constraint,
                         ty: t,
                         mutable: false,
@@ -1938,7 +1983,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             } else {
                                 v.wrapped()
                             };
-                            parts.push(format!("...{src}"));
+                            parts.push(format!("...\\Zero\\Js::copyObject({src})"));
                         }
                     }
                 }
@@ -2402,14 +2447,46 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
         let (read, initialization) = self.initialize_parameter(parameter, &php, ty, indent)?;
         body.push_str(&initialization);
-        self.fx()
+        let capture_anchor = if self.effects.by_ref(&parameter.pat) && self.effects.captured(parameter.pat.span()) {
+            if !matches!(ty.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional)) {
+                return err_help(
+                    parameter.span,
+                    "a captured mutating parameter needs an object with required fields",
+                    "capture scalar values instead of a mutable array, record, or object with optional fields",
+                );
+            }
+            Some(self.object_binding(&php, &php, body, indent))
+        } else {
+            None
+        };
+        let local = self
+            .fx()
             .scopes
             .last_mut()
             .expect("scope")
             .get_mut(name)
-            .expect("parameter")
-            .ty = read;
+            .expect("parameter");
+        local.ty = read;
+        local.capture_anchor = capture_anchor;
         Ok(php)
+    }
+
+    fn object_binding(&mut self, binding: &str, source: &str, out: &mut String, indent: usize) -> String {
+        let tmp = self.tmp_var();
+        let anchor = self.tmp_var();
+        let _ = writeln!(
+            out,
+            "{}{tmp} = null;\n{}{anchor} = null;\n{}if ({source} !== null) {{\n{}{tmp} = \\Zero\\Js::objectBinding({source});\n{}{anchor} = {source};\n{}}}\n{}unset({binding});\n{}{binding} = {tmp};",
+            pad(indent),
+            pad(indent),
+            pad(indent),
+            pad(indent + 1),
+            pad(indent + 1),
+            pad(indent),
+            pad(indent),
+            pad(indent),
+        );
+        anchor
     }
 
     fn closure_body(&mut self, f: &Func, param_tys: &[Ty]) -> Result<(String, String)> {
@@ -2424,7 +2501,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     params.push(format!("{amp}{php}{default}"));
                 }
                 pat => {
-                    self.check_destructured_parameter(pat)?;
+                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
                     params.push(format!("{tmp}{}", parameter_default_suffix(p)));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;

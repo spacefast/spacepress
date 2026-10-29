@@ -97,7 +97,12 @@ export default defineConfig({
       const callback = ["a"].map(value => { value = "b"; return value; });
       let iteration = "";
       for (let value of ["a"]) { value = "b"; iteration += value; }
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, iteration, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      const { words: defaults = ["a"] } = { words: undefined };
+      defaults.unshift("b");
+      let { value = "a" } = { value: undefined }; value = "b";
+      const reduced = ["a"].reduce((acc, value) => acc + value);
+      const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, iteration, defaults, value, reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

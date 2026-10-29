@@ -1329,7 +1329,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Default(inner, default) => {
                 let d = self.expr(default)?;
-                let t = Ty::union([ty.non_null(), d.ty.clone()]);
+                let present = ty.non_null();
+                let t = if assignable(&d.ty, &present) {
+                    present
+                } else {
+                    Ty::union([present, widen_literal_array(&d.ty)])
+                };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src} ?? {};", d.php);
                 self.bind_pattern(inner, &tmp, &t, mutable, out, indent)?;
@@ -3154,7 +3159,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let acc_ty = init
                     .as_ref()
                     .map(|i| widen_literal_array(&i.ty))
-                    .unwrap_or_else(|| el.clone());
+                    .unwrap_or_else(|| widen_literal_array(&el));
                 let f = self.arg(args, 0, span, "a function")?;
                 let f = self.callback(f, &[acc_ty.clone(), el.clone(), Ty::Num])?;
                 let r = ret_of(&f);

@@ -93,7 +93,9 @@ pub(super) fn read(path: &Path, source: Source) -> Result<Value, Failure> {
                 init: Some(expr),
                 ..
             } => {
-                let value = reader.value(expr, &format!("binding:{name}"), 0)?;
+                // A declaration can be referenced at several export paths. Keep
+                // failures relative to its value until the use supplies a path.
+                let value = reader.value(expr, "", 0);
                 if reader.wrappers.contains_key(name) || reader.values.insert(name.clone(), value).is_some() {
                     return Err(fail("", format!("duplicate binding {name}")));
                 }
@@ -108,7 +110,15 @@ pub(super) fn read(path: &Path, source: Source) -> Result<Value, Failure> {
             }
         }
     }
-    result.ok_or_else(|| fail("", "expected a default export (or supply a JSON schema export)"))
+    let result = result.ok_or_else(|| fail("", "expected a default export (or supply a JSON schema export)"))?;
+    // Unused declarations must still satisfy the declarative-only boundary.
+    // They have no path in the export, so point at its root and name the binding.
+    for (name, value) in &reader.values {
+        if let Err(e) = value {
+            return Err(fail("", format!("in const {name} at {:?}: {}", e.pointer, e.reason)));
+        }
+    }
+    Ok(result)
 }
 
 // JSON exports must not silently overwrite declarations with duplicate keys.
@@ -164,7 +174,7 @@ impl<'de> Deserialize<'de> for UniqueJson {
 
 struct Reader {
     source: Source,
-    values: HashMap<String, Value>,
+    values: HashMap<String, Result<Value, Failure>>,
     wrappers: HashMap<String, String>,
 }
 
@@ -233,14 +243,23 @@ impl Reader {
                 serde_json::json!(-n)
             }
             ExprKind::As(inner, _) | ExprKind::NonNull(inner) => self.value(inner, at, depth + 1)?,
-            ExprKind::Ident(name) => self.values.get(name).cloned().ok_or_else(|| {
-                fail(
-                    at,
-                    format!(
-                        "unresolved declaration {name}; imports and dynamic expressions require a declarative export"
-                    ),
-                )
-            })?,
+            ExprKind::Ident(name) => match self.values.get(name) {
+                Some(Ok(value)) => value.clone(),
+                Some(Err(e)) => {
+                    return Err(fail(
+                        &format!("{at}{}", e.pointer),
+                        format!("in const {name}: {}", e.reason),
+                    ));
+                }
+                None => {
+                    return Err(fail(
+                        at,
+                        format!(
+                            "unresolved declaration {name}; imports and dynamic expressions require a declarative export"
+                        ),
+                    ));
+                }
+            },
             ExprKind::Array(items) => Value::Array(
                 items
                     .iter()

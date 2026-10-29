@@ -309,11 +309,17 @@ fn field(
             "Sanity URI scheme, credential and empty-value validation cannot be preserved by Zero url(); port the URI rule explicitly",
         ));
     }
+    if matches!(source, Source::Emdash) && kind == "url" {
+        return Err(fail(
+            &pointer(at, kind_key),
+            "EmDash permits relative, mailto and tel URLs that Zero url() rejects; port the URL rule explicitly",
+        ));
+    }
     let supported = match source {
         Source::Zero => matches!(kind, "text" | "number" | "boolean" | "datetime" | "enum"),
         Source::Emdash => matches!(
             kind,
-            "string" | "text" | "url" | "number" | "integer" | "boolean" | "datetime" | "json"
+            "string" | "text" | "number" | "integer" | "boolean" | "datetime" | "json"
         ),
         Source::Payload => matches!(
             kind,
@@ -353,7 +359,6 @@ fn field(
         }
         "boolean" | "checkbox" => "boolean()".into(),
         "datetime" | "date" => "timestamp()".into(),
-        "url" => "url()".into(),
         "email" => "email()".into(),
         "json" => "json()".into(),
         "enum" if matches!(source, Source::Zero) => {
@@ -400,9 +405,12 @@ fn field(
         if (matches!(source, Source::Payload)
             && (matches!(kind, "text" | "textarea")
                 || (kind == "select" && boolean(o, "hasMany", at)?.unwrap_or(false))))
-            || (matches!(source, Source::Sanity) && matches!(kind, "string" | "text"))
+            || (matches!(source, Source::Sanity | Source::Emdash) && matches!(kind, "string" | "text"))
         {
             builder.push_str(".min(1)");
+        }
+        if matches!(source, Source::Payload) && kind == "json" {
+            builder.push_str(".validate(value => !!value || \"Required\")");
         }
     }
     if boolean(o, "unique", at)?.unwrap_or(false) {
@@ -413,8 +421,25 @@ fn field(
             if !n.is_number() {
                 return Err(fail(&pointer(at, key), "expected a number"));
             }
-            let modifier = if key == "maxLength" { "max" } else { key };
-            builder.push_str(&format!(".{modifier}({n})"));
+            if key == "maxLength" && matches!(source, Source::Payload) {
+                // Payload measures JavaScript string length, whereas the text
+                // builder's max rule measures Unicode characters.
+                if kind != "textarea" || n.as_f64() != Some(0.0) {
+                    // UTF-16 bounds also imply this looser character bound;
+                    // keep it for storage sizing and unique-text validation.
+                    if n.as_f64().is_some_and(|n| n >= 0.0) {
+                        builder.push_str(&format!(".max({n})"));
+                    }
+                    let empty = if kind == "textarea" { "value === \"\" || " } else { "" };
+                    builder.push_str(&format!(
+                        ".validate(value => value === null || {empty}value.length <= {n} || {})",
+                        q(&format!("Must have at most {n} UTF-16 code units"))
+                    ));
+                }
+            } else {
+                let modifier = if key == "maxLength" { "max" } else { key };
+                builder.push_str(&format!(".{modifier}({n})"));
+            }
         }
     }
     let default_key = if matches!(source, Source::Sanity) {
@@ -424,6 +449,8 @@ fn field(
     };
     if let Some(value) = o.get(default_key) {
         builder.push_str(&format!(".default({value})"));
+    } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
+        builder.push_str(".default(false)");
     }
     if matches!(source, Source::Payload) && kind == "email" && !required {
         report.push(entry(at, "review", "Zero email validation rejects optional empty strings that Payload accepts; use null/absence or port the empty-value behavior before deployment."));

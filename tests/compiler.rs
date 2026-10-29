@@ -746,10 +746,11 @@ fn phase2_schema_and_closures_match_the_contract() {
         }
         $action = $schema->action('inbound');
         $fn = '\\ZeroApp\\' . $action['handler'];
-        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []));
+        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone'];
+        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
         $actionThrows = false;
         try {
-            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]));
+            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $actor);
         } catch (\Zero\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
@@ -757,8 +758,8 @@ fn phase2_schema_and_closures_match_the_contract() {
         $widened = $fn([]);
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(['data' => [], 'user' => null, 'target' => 'standalone', 'op' => 'update']);
-        $wpUpdate = $fn(['data' => [], 'user' => null, 'target' => 'wp', 'op' => 'update']);
+        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
+        $wpUpdate = $fn(['data' => [], 'op' => 'update', 'target' => 'wp'] + $actor);
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
         $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);

@@ -8,10 +8,10 @@ const SHOW = "show";
 const YES = true;
 const NIL = null;
 function templateResult(): "show" { return `show`; }
-function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const flag = !false; switch (value) { case templateResult(): switch (flag) { case true: return predicates[0]() && !false; } } }
+function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: return predicates[0]() && !0; } } }
 function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return finiteFunction(); } } }
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
-function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": return true; } }
+function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": if (ctx.user === null) return true; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return true; } } }
 function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
@@ -37,7 +37,7 @@ export default defineConfig({
   jobs: { sendWelcome: job({ input: { email: email().notNull(), payload: json().$type<{ message: string }>().notNull(), data: group({ fields: { label: text().default("welcome"), payload: json().$type<{ suffix: string }>() } }) }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
   actions: {
-    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) && !allowed(null) }),
+    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } }),
     widened: action({ input: {}, handler: () => {
       const values = ["a"]; values.unshift("b");
       let choice = values.length > 0 ? "a" : "b"; choice = "c";

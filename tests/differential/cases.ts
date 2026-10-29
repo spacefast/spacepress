@@ -145,9 +145,11 @@ export default defineConfig({
         let result: boolean | string = flag;
         return result ||= "error";
       };
+      const yes = (): true => !0;
+      const no = (): false => !1;
       let negated = !false; negated = !true;
       let template = `a`; template = `b`;
-      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?", message(false), message(true), fallback(false), fallback(true), negated, template];
+      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?", message(false), message(true), fallback(false), fallback(true), negated, yes(), no(), !-0, !-1, template];
     }),
     templates: run(() => ITEMS.map(label)),
     templateTernary: run(() => ITEMS.map((i) => `${i.qty > 0 ? i.name : "none"}!` + (i.qty > 5 ? " lots" : ""))),

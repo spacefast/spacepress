@@ -2,12 +2,13 @@
 //! operators when the types make it safe, `Js::` helpers where JavaScript and
 //! PHP genuinely differ, and a build error where neither is sound.
 
-use crate::schema::{ColType, Collection, Column, RelKind, Schema};
+use crate::schema::{ColType, Collection, Column, ROLES, RelKind, Schema};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
     Num,
+    FreshNumLit(f64),
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
     StrLit(String),
@@ -166,7 +167,7 @@ impl Ty {
     }
 
     pub fn is_num(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Num | Ty::Date))
+        self.all(|t| matches!(t, Ty::Num | Ty::FreshNumLit(_) | Ty::Date))
     }
 
     pub fn is_str(&self) -> bool {
@@ -186,7 +187,7 @@ impl Ty {
 
     pub fn describe(&self) -> String {
         match self {
-            Ty::Num => "number".into(),
+            Ty::Num | Ty::FreshNumLit(_) => "number".into(),
             Ty::Str => "string".into(),
             Ty::StrLit(s) | Ty::FreshStrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),
@@ -405,7 +406,11 @@ fn obj(fields: &[(&str, Ty)]) -> Ty {
 
 /// `{ id, name, role }` (§5.1).
 pub fn user() -> Ty {
-    obj(&[("id", Ty::Num), ("name", Ty::Str), ("role", Ty::Str)])
+    obj(&[
+        ("id", Ty::Num),
+        ("name", Ty::Str),
+        ("role", Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))),
+    ])
 }
 
 /// `ctx` for hooks and actions (§1.7).

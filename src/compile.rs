@@ -1625,7 +1625,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn expr(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
         let out = match &e.kind {
-            ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
+            ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
             ExprKind::Null | ExprKind::Undefined => Out::atom("null", Ty::Null),
@@ -1761,7 +1761,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     UnOp::Neg => {
                         self.need_num(&v, x.span, "`-`")?;
-                        Out::new(format!("-{}", v.wrapped()), Ty::Num)
+                        let ty = match v.ty {
+                            Ty::FreshNumLit(n) => Ty::FreshNumLit(-n),
+                            _ => Ty::Num,
+                        };
+                        Out::new(format!("-{}", v.wrapped()), ty)
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -1909,7 +1913,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
-            Ty::Num | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::Num | Ty::FreshNumLit(_) | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -2944,7 +2948,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
             Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => self.array_method(&recv, m, args, span, m_span)?,
-            Ty::Num => match m {
+            Ty::Num | Ty::FreshNumLit(_) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv
@@ -3751,8 +3755,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date | Ty::Num) => format!("\\Zero\\Js::iso({})", v.php),
-            (ColType::Date, Ty::Date | Ty::Num) => format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Date | Ty::Num | Ty::FreshNumLit(_)) => format!("\\Zero\\Js::iso({})", v.php),
+            (ColType::Date, Ty::Date | Ty::Num | Ty::FreshNumLit(_)) => {
+                format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php)
+            }
             _ => v.php.clone(),
         }
     }
@@ -3938,7 +3944,7 @@ fn php_hint(t: &Ty) -> &'static str {
         Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
-        Ty::Num => "int|float ",
+        Ty::Num | Ty::FreshNumLit(_) => "int|float ",
         _ => "",
     }
 }
@@ -3948,7 +3954,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
     match v {
         J::Null => Ty::Null,
         J::Bool(value) => Ty::FreshBoolLit(*value),
-        J::Number(_) => Ty::Num,
+        J::Number(value) => Ty::FreshNumLit(value.as_f64().expect("JSON number")),
         J::String(s) => Ty::FreshStrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
         J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
@@ -3957,7 +3963,7 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
 
 fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
     match t {
-        Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
+        Ty::FreshNumLit(_) | Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
         Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
         _ => widen_fresh_literals(t),
     }
@@ -3982,6 +3988,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::Bool => Ty::BoolLit(truthy),
         Ty::BoolLit(value) | Ty::FreshBoolLit(value) if *value == truthy => t.clone(),
         Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
+        Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
+        Ty::FreshNumLit(_) => t.clone(),
         Ty::Null if truthy => Ty::Never,
         Ty::Null => Ty::Null,
         Ty::Str if !truthy => Ty::StrLit(String::new()),
@@ -4013,6 +4021,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
 
 fn widen_fresh_literals(t: &Ty) -> Ty {
     match t {
+        Ty::FreshNumLit(_) => Ty::Num,
         Ty::FreshStrLit(_) => Ty::Str,
         Ty::FreshBoolLit(_) => Ty::Bool,
         Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_fresh_literals)))),
@@ -4055,6 +4064,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
+        (Ty::FreshNumLit(_), Ty::Num) => true,
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
         (Ty::BoolLit(_) | Ty::FreshBoolLit(_), Ty::Bool) => true,
         (Ty::BoolLit(x), Ty::FreshBoolLit(y)) | (Ty::FreshBoolLit(x), Ty::BoolLit(y)) => x == y,

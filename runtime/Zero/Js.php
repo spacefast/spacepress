@@ -1009,6 +1009,28 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
+    /** A parameter has its own binding while sharing the object's existing fields. */
+    public static function objectBinding(array &$source): array
+    {
+        $binding = [];
+        foreach ($source as $key => &$field) {
+            $binding[$key] =& $field;
+        }
+
+        return $binding;
+    }
+
+    /** Object spread/rest copy field values without retaining PHP reference cells. */
+    public static function copyObject(array $source): array
+    {
+        $copy = [];
+        foreach ($source as $key => $value) {
+            $copy[$key] = $value;
+        }
+
+        return $copy;
+    }
+
     /**
      * Property order of an object: array-index keys ascending, then the rest in
      * insertion order.
@@ -1063,6 +1085,7 @@ final class Js
 
     public static function omit(array $o, array $keys): array
     {
+        $o = self::copyObject($o);
         foreach ($keys as $k) {
             unset($o[$k]);
         }

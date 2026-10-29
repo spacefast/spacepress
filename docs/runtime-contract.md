@@ -103,6 +103,16 @@ The runtime always passes variables (never literals), because a compiled
 function may declare a by-reference parameter (`array &$data`) when the
 source mutates it.
 
+Captured mutating object parameters have a separate local binding whose fields
+share storage with the supplied object. Replacing the caller's variable does
+not retarget the capture; field mutations remain visible. This requires a fixed
+object shape with required fields. Capturing a mutating array, open record, or
+object with optional fields is rejected with a located diagnostic; capture the
+needed scalar values instead. Mutating `for…of` bindings use the same fixed
+object representation; array/record/optional-field and destructured mutations
+must use the source index instead. Object spread/rest copy field values, and
+loop-local declarations receive a fresh binding on each execution.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Create, per row:
@@ -202,7 +212,7 @@ Filter grammar:
 
 All values are bound parameters. Identifiers come only from schema.php.
 
-## Runtime extension points (schema v2)
+## Runtime extension points (schema v3)
 
 `Features` owns the ordered module list; bootstrap registers it once. A module
 registers callbacks through `Extensions`, plus idempotent dialect-specific DDL
@@ -276,9 +286,10 @@ seams. Existing phase-1 tables and generated migrations are unchanged.
 fields, with `(field, definition, column, spec)`. Top-level `spec` is the
 collection/global; nested `spec.fields` contains sibling definitions.
 
-Schema loading remains v2-only. `Schema::version()` returns the loaded version;
-`Schema::runtime()` returns its optional runtime series string. The v3 reader
-flag stays disabled until the compiler emits v3 in A2. Lazy scheduled promotion
+Schema loading requires v3 and runtime series `0.2` (phase-2 design §3.1); v2
+and missing or incompatible series are refused. `Schema::version()` and
+`Schema::runtime()` report the loaded contract. New feature metadata passes
+through unchanged; feature modules own its behavior. Lazy scheduled promotion
 remains at the start of requests/commands, so due records are visible in that
 same request.
 

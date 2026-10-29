@@ -1,12 +1,12 @@
 // Positive checks: inferred types are exactly what the spec says.
 import {
-  action, db, defineConfig, integer, text,
+  action, db, defineConfig, integer, text, job, email,
   type AccessCtx, type BlockValue, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "zero";
 import { authors, comments, items, locations, posts, relations, schema, settings, shoppingList } from "./schema";
 
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
-declare function expectType<T extends true>(): void;
+export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+export declare function expectType<T extends true>(): void;
 
 type Item = InferSelectModel<typeof items>;
 type Location = InferSelectModel<typeof locations>;
@@ -117,6 +117,8 @@ declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.target, "standalone" | "wp">>();
 
 export default defineConfig({
+  jobs: { sendWelcome: job({ input: { email: email().notNull(), name: text().notNull().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
+  locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
   target: "wp",
   schema,

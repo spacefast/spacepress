@@ -70,7 +70,7 @@ fn key(k: &str) -> String {
 fn value_ts(c: &Column, insert: bool) -> String {
     let enum_union = |e: &Vec<String>| e.iter().map(|v| lit(v)).collect::<Vec<_>>().join(" | ");
     match c.ty {
-        ColType::Integer | ColType::Real | ColType::Media => "number".into(),
+        ColType::Integer | ColType::Real | ColType::Media | ColType::File => "number".into(),
         ColType::Boolean => "boolean".into(),
         ColType::Text => match &c.enum_values {
             Some(e) => enum_union(e),
@@ -185,9 +185,12 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
         return name.clone();
     }
     match t {
-        Ty::Num | Ty::Date => "number".into(),
+        Ty::Num | Ty::FreshNumLit(_) | Ty::Date => "number".into(),
+        Ty::NumLit(value) => value.to_string(),
         Ty::Str => "string".into(),
-        Ty::Bool => "boolean".into(),
+        Ty::StrLit(s) | Ty::FreshStrLit(s) => serde_json::to_string(s).expect("string"),
+        Ty::Bool | Ty::FreshBoolLit(_) => "boolean".into(),
+        Ty::BoolLit(value) => value.to_string(),
         Ty::Null => "null".into(),
         Ty::Never => "never".into(),
         Ty::Array(el) => {
@@ -198,7 +201,9 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
                 format!("{inner}[]")
             }
         }
-        Ty::Tuple(ts) => format!("[{}]", ts.iter().map(|t| ty_ts(t, rows)).collect::<Vec<_>>().join(", ")),
+        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+            format!("[{}]", ts.iter().map(|t| ty_ts(t, rows)).collect::<Vec<_>>().join(", "))
+        }
         Ty::Obj(f) if f.is_empty() => "{}".into(),
         Ty::Obj(f) => format!(
             "{{ {} }}",

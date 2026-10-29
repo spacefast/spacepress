@@ -19,6 +19,7 @@ pub enum ColType {
     Slug,
     RichText,
     Media,
+    File,
     MediaList,
     /// `select({ multiple: true })`. A single select is `Text` with `enum`.
     Select,
@@ -42,6 +43,7 @@ impl ColType {
             ColType::Slug => "slug",
             ColType::RichText => "richText",
             ColType::Media => "media",
+            ColType::File => "file",
             ColType::MediaList => "mediaList",
             ColType::Select => "select",
             ColType::Group => "group",
@@ -154,6 +156,12 @@ pub struct Column {
     pub layouts: Option<IndexMap<String, IndexMap<String, Column>>>,
     /// Added by the compiler (drafts `status` / `publishedAt`).
     pub system: bool,
+    pub localized: bool,
+    pub access: IndexMap<String, Access>,
+    pub show_if: Option<Json>,
+    pub bucket: Option<String>,
+    pub derived: bool,
+    pub hidden: bool,
     /// `json().$type<T>()` annotation and the module it was written in.
     pub ts_type: Option<(crate::ir::TyAnn, usize)>,
 }
@@ -178,6 +186,12 @@ impl Column {
             fields: None,
             layouts: None,
             system: false,
+            localized: false,
+            access: IndexMap::new(),
+            show_if: None,
+            bucket: None,
+            derived: false,
+            hidden: false,
             ts_type: None,
         }
     }
@@ -250,12 +264,14 @@ pub struct Api {
     pub delete: bool,
 }
 
-pub const ROLES: [&str; 4] = ["subscriber", "author", "editor", "admin"];
+pub const ROLES: [&str; 5] = ["guest", "subscriber", "author", "editor", "admin"];
 
 /// One access rule (§1.6), as schema.php stores it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Access {
     Allow(bool),
+    Self_,
+    Owner,
     /// "anyone" | "authenticated" | a role.
     Role(String),
     /// Compiled function name.
@@ -296,6 +312,11 @@ pub struct Collection {
     /// op ("read" | "create" | "update" | "delete") → rule.
     pub access: IndexMap<String, Access>,
     pub api: Api,
+    pub uid: bool,
+    pub sync: Option<Json>,
+    pub auth: bool,
+    pub agents: bool,
+    pub localized: bool,
 }
 
 impl Collection {
@@ -318,12 +339,31 @@ pub struct Action {
     pub input: IndexMap<String, Column>,
     pub handler: String,
     pub access: Access,
+    pub agents: bool,
+    pub idempotent: bool,
+    pub signature: Option<Json>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Job {
+    pub input: IndexMap<String, Column>,
+    pub handler: String,
+    pub retries: u32,
+    pub agents: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileBucket {
+    pub accept: Vec<String>,
+    pub max_bytes: u64,
+    pub access: IndexMap<String, Access>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Global {
     pub name: String,
     pub label: String,
+    pub agents: bool,
     pub fields: IndexMap<String, Column>,
     /// "read" / "update" → rule.
     pub access: IndexMap<String, Access>,
@@ -366,6 +406,8 @@ pub enum Owner {
     Collection(String),
     Global(String),
     Action(String),
+    Job(String),
+    FileBucket(String),
 }
 
 /// A column (or a sub-field of one): `[col]`, `[col, sub]`, `[col, layout, sub]`, ...
@@ -383,6 +425,11 @@ pub struct Schema {
     pub collections: IndexMap<String, Collection>,
     pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
+    pub jobs: IndexMap<String, Job>,
+    pub files: IndexMap<String, FileBucket>,
+    pub webhooks: Vec<Json>,
+    pub media: Json,
+    pub locales: Option<Json>,
 }
 
 impl Default for Schema {
@@ -393,6 +440,11 @@ impl Default for Schema {
             collections: IndexMap::new(),
             globals: IndexMap::new(),
             actions: IndexMap::new(),
+            jobs: IndexMap::new(),
+            files: IndexMap::new(),
+            webhooks: Vec::new(),
+            media: serde_json::json!({"sizes": {}}),
+            locales: None,
         }
     }
 }
@@ -408,6 +460,8 @@ impl Schema {
             Owner::Collection(t) => &self.collections[t].columns,
             Owner::Global(g) => &self.globals[g].fields,
             Owner::Action(a) => &self.actions[a].input,
+            Owner::Job(j) => &self.jobs[j].input,
+            Owner::FileBucket(_) => unreachable!("buckets have no columns"),
         };
         let mut col = &top[&at.path[0]];
         let mut rest = &at.path[1..];
@@ -428,6 +482,8 @@ impl Schema {
             Owner::Collection(t) => &mut self.collections.get_mut(t).expect("collection").columns,
             Owner::Global(g) => &mut self.globals.get_mut(g).expect("global").fields,
             Owner::Action(a) => &mut self.actions.get_mut(a).expect("action").input,
+            Owner::Job(j) => &mut self.jobs.get_mut(j).expect("job").input,
+            Owner::FileBucket(_) => unreachable!("buckets have no columns"),
         };
         let mut col = top.get_mut(&at.path[0]).expect("column");
         let mut rest = &at.path[1..];

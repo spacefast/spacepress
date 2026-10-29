@@ -32,6 +32,9 @@ pub enum Value {
     ColRef(Rc<ColRefVal>),
     Relation(Rc<RelVal>),
     Action(Rc<ActionVal>),
+    Job(Rc<ActionVal>),
+    FileBucket(Rc<FileBucketVal>),
+    Env(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
 }
@@ -55,6 +58,11 @@ pub enum Builtin {
     DefineRelations,
     DefineConfig,
     Action,
+    Job,
+    Files,
+    Env,
+    Once,
+    Jobs,
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
@@ -89,6 +97,10 @@ pub struct ColBuilder {
     pub on_update: Option<DefaultVal>,
     pub references: Option<RefBuilder>,
     pub ts_type: Option<(TyAnn, usize)>,
+    pub access: Option<Value>,
+    pub show_if: Option<Value>,
+    pub localized: bool,
+    pub bucket: Option<String>,
     pub span: Span,
     /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
     pub mods: Vec<(&'static str, Span)>,
@@ -143,6 +155,13 @@ pub struct RelVal {
     pub kind: RelKind,
     pub target: Rc<str>,
     pub config: Option<Value>,
+}
+
+#[derive(Debug)]
+pub struct FileBucketVal {
+    pub name: String,
+    pub options: Value,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -243,6 +262,9 @@ impl Value {
             Value::ColRef(r) => format!("column {}.{}", r.collection.table, r.column),
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
+            Value::Job(_) => "a job".into(),
+            Value::FileBucket(_) => "a file bucket".into(),
+            Value::Env(n) => format!("env({n:?})"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{p}/{f}"),
         }

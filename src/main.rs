@@ -122,6 +122,10 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
             Slot::Default { at } => schema.column_mut(&at).default = Some(DefaultKind::Fn(name)),
             Slot::OnUpdate { at } => schema.column_mut(&at).on_update = Some(DefaultKind::Fn(name)),
             Slot::Validate { at } => schema.column_mut(&at).rules.validate = Some(name),
+            Slot::FieldAccess { at, op } => {
+                schema.column_mut(&at).access.insert(op, Access::Fn(name));
+            }
+            Slot::JobHandler { job } => schema.jobs.get_mut(&job).expect("job").handler = name,
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
             Slot::Access { owner, op } => {
                 let rule = Access::Fn(name);
@@ -138,6 +142,10 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
                         schema.globals.get_mut(&g).expect("global").access.insert(op, rule);
                     }
                     Owner::Action(a) => schema.actions.get_mut(&a).expect("action").access = rule,
+                    Owner::FileBucket(f) => {
+                        schema.files.get_mut(&f).expect("bucket").access.insert(op, rule);
+                    }
+                    Owner::Job(_) => unreachable!("jobs have no access rules"),
                 }
             }
         }
@@ -171,7 +179,11 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         ));
     }
     let client_files = client::files(&schema, &action_results, runtime_file);
-    let gen_ts = schema_php::gen_ts(ext.register_name.unwrap_or("schema"), !schema.globals.is_empty());
+    let gen_ts = schema_php::gen_ts(
+        ext.register_name.unwrap_or("schema"),
+        !schema.globals.is_empty() || !schema.jobs.is_empty(),
+        schema.locales.as_ref(),
+    );
     Ok(Built {
         client_files,
         schema,

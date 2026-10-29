@@ -32,7 +32,7 @@ $files = [
         $now = ['now' => true];
         $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
         return [
-            'version' => 2,
+            'version' => 3, 'runtime' => '0.2',
             'collections' => [
                 'locations' => [
                     'primaryKey' => 'id',

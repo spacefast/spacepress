@@ -516,3 +516,524 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     assert!(project.join("zero/client/schema.ts").is_file());
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// Every static phase-2 rejection is target-independent (phase-2 §§4–7).
+#[test]
+fn rejects_phase2_static_contracts() {
+    let cases = [
+        ("reject-showif-dynamic", "showIf must be static data"),
+        ("reject-sync-symlink", "sync directory must stay inside the project"),
+        ("reject-field-access-id", "access/showIf is not allowed on id()"),
+        ("reject-field-access-title", "title is always readable"),
+        ("reject-field-access-filter", "field rules here return a boolean"),
+        ("reject-field-access-query", "access rules can't query"),
+        ("reject-field-access-async", "field rules must be synchronous"),
+        ("reject-field-access-helper", "access rules can't query"),
+        (
+            "reject-field-access-fallthrough",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "reject-field-access-bare-return",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "reject-field-access-helper-fallthrough",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "reject-field-access-catch-fallthrough",
+            "field rules must return a boolean on every path",
+        ),
+        ("reject-field-access-self", "self is only allowed on auth collection"),
+        ("reject-showif-sibling", "showIf names non-sibling"),
+        ("reject-showif-operator", "invalid showIf operator"),
+        ("reject-showif-structured", "compare a scalar sibling"),
+        ("reject-showif-nested-sibling", "showIf names non-sibling"),
+        ("reject-showif-title", "title is always readable"),
+        ("reject-sync-auth", "auth collections cannot sync"),
+        ("reject-sync-directory", "two collections sync into the same directory"),
+        ("reject-sync-outside", "sync directory must stay inside the project"),
+        ("reject-sync-content", "Markdown sync needs a content designation"),
+        ("reject-sync-uid", "uid: false cannot be combined with sync"),
+        ("reject-sync-reference", "sync references need uid: true on a"),
+        (
+            "reject-job-reference",
+            "`.references()` isn't allowed on an action input",
+        ),
+        ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
+        ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
+        ("reject-once-key", "once key must be a string"),
+        ("reject-env-placement", "env() is only allowed in webhooks/signature"),
+        ("reject-env-coercion", "env() is only allowed in webhooks/signature"),
+        (
+            "reject-env-serialization",
+            "env() is only allowed in webhooks/signature",
+        ),
+        ("reject-env-condition", "env() is only allowed in webhooks/signature"),
+        ("reject-env-binary", "env() is only allowed in webhooks/signature"),
+        ("reject-env-predicate", "env() is only allowed in webhooks/signature"),
+        ("reject-signature-access", "signature cannot be combined with access"),
+        ("reject-webhook-collection", "webhook event names an unknown collection"),
+        ("reject-lane-d-enqueue", "not implemented until lane D"),
+        ("reject-lane-d-once", "not implemented until lane D"),
+        ("reject-lane-d-env", "not implemented until lane D"),
+        ("reject-lane-d-env-captured", "not implemented until lane D"),
+        ("reject-auth-duplicate", "at most one auth: true collection"),
+        (
+            "reject-auth-email",
+            "auth: true needs email: email().notNull().unique()",
+        ),
+        ("reject-auth-editor", "auth: true requires editor: false"),
+        ("reject-auth-drafts", "auth: true requires drafts: false"),
+        ("reject-auth-revisions", "auth: true requires revisions: false"),
+        (
+            "reject-auth-slug",
+            "auth collections cannot have slug() or localized fields",
+        ),
+        ("reject-auth-self", "self is only allowed on auth collection"),
+        ("reject-auth-create-self", "self is only allowed on auth collection"),
+        (
+            "reject-auth-reserved-password",
+            "password is reserved on auth collections",
+        ),
+        ("reject-auth-reserved-role", "role is reserved on auth collections"),
+        (
+            "reject-auth-reserved-passwordHash",
+            "passwordHash is reserved on auth collections",
+        ),
+        ("reject-agents-kebab", "ability kebab collision: notes-list"),
+        ("reject-agents-media", "media has no option `agents`"),
+        ("reject-files-cover", "fit: cover requires height"),
+        ("reject-files-size-name", "invalid media size name"),
+        ("reject-files-size-count", "media supports at most 12 sizes"),
+        ("reject-files-bucket", "unknown file bucket"),
+        ("reject-files-owner", "owner is only allowed in files access"),
+        ("reject-files-accept", "accept entries must be type/subtype or type/*"),
+        (
+            "reject-files-media",
+            "file bucket name must match its key and cannot be media",
+        ),
+        ("reject-localized-kind", "translate text, not values"),
+        ("reject-localized-missing", ".localized() requires locales"),
+        ("reject-localized-default", "locales.default must appear in all"),
+        ("reject-localized-tag", "invalid or duplicate locale"),
+        ("reject-localized-unique", "unique is not allowed on a localized column"),
+        (
+            "reject-localized-auth",
+            "auth collections cannot have slug() or localized fields",
+        ),
+        (
+            "reject-localized-reserved-locale",
+            "locale is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translations",
+            "translations is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translationOf",
+            "translationOf is reserved for localization",
+        ),
+        (
+            "reject-localized-reserved-translationGroup",
+            "translationGroup is reserved for localization",
+        ),
+    ];
+    for (fixture, message) in cases {
+        for target in ["standalone", "wp"] {
+            let out = zero()
+                .args(["check", "--target", target])
+                .arg(root().join("tests/fixtures").join(fixture))
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{fixture} ({target}): {stderr}");
+            assert!(
+                stderr.contains(message),
+                "{fixture} ({target}): expected {message:?}, got {stderr}"
+            );
+            assert!(
+                stderr.contains("--> zero.config.ts:"),
+                "{fixture} has no source location: {stderr}"
+            );
+            assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
+        }
+    }
+    // Mutations must not make a partial field predicate look exhaustive.
+    let tmp = std::env::temp_dir().join(format!("zero-phase2-mutations-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    for (body, diagnostic) in [
+        (
+            "const make = (value: number[]) => { value.push(1); return () => value.length; }; make([]); return true;",
+            "a captured mutating parameter needs an object with required fields",
+        ),
+        (
+            "for (const values of [[1]]) values.push(2); return true;",
+            "a mutating loop binding needs an object with required fields",
+        ),
+        (
+            "for (const { items } of [{ items: [1] }]) items.push(2); return true;",
+            "through a destructured loop binding",
+        ),
+        (
+            "[1].map((value: 1) => value); return true;",
+            "this parameter is declared as 1, but it receives",
+        ),
+        (
+            "const read = (value: 1) => value; [1, 2].map(read); return true;",
+            "this parameter is declared as 1, but it receives",
+        ),
+        (
+            "const read = (value: number, index: number, extra: number) => value; [1].map(read); return true;",
+            "this parameter is declared as number, but it receives null",
+        ),
+        (
+            "'a'.replace('a', (match: string, offset: 'zero') => offset); return true;",
+            "this parameter is declared as",
+        ),
+        (
+            "const read = ({ flag }: { flag: boolean } = { flag: 'bad' }) => flag; return read();",
+            "this default is",
+        ),
+        (
+            "function first(pair: ['a', 'b']) { return pair[0]; } const pair: ['a', 'b'] = ['a', 'b']; pair.shift(); switch (first(pair)) { case 'a': return true; case null: return false; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const pair: ['a', 'b'] = ['a', 'b']; pair.shift(); switch (pair[0]) { case 'a': return true; case null: return false; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const read = (flag?: boolean) => { switch (flag) { case true: case false: return true; } }; return read();",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; const make = () => { if (value === null) throw new Error('missing'); return () => value; }; const read = make(); value = null; if (ctx.user !== null) make(); switch (read()) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ('a' | 'b')[] = []; switch (values[0]) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: true[] = []; const value = (values[0] &&= true); switch (value) { case true: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ['a', 'b'] = ['a', 'b']; values.pop(); switch (values[1]) { case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ('a' | 'b')[] = []; const [value] = values; switch (value) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "function accept(value: 'a' | 'b') { switch (value) { case 'a': case 'b': return true; } } const values: ('a' | 'b')[] = []; return accept(values[0]);",
+            "function expects",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; const invoke = () => read(); value = null; switch (invoke()) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; const clear = () => { value = null; return true; }; if (value !== null && clear()) { switch (value) { case 'a': case 'b': return true; } } else { return false; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; let i = 0; while (true) { if (i === 1) { switch (value) { case 'a': case 'b': return true; } break; } value = null; i++; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const a = { inner: { count: 0 } }; const mutate = ({ inner }: { inner: { count: number } }) => { inner.count++; }; mutate(a); return true;",
+            "through a destructured parameter",
+        ),
+        (
+            "let a = { count: 0 }; const mutate = (v: { count: number }, extra: number[]) => { v.count++; }; const reset = () => { a = { count: 9 }; return []; }; mutate(a, reset()); return true;",
+            "a later argument replaces an object or array",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; value = null; switch (read()) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; value = null; switch (value) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; if (record.inner !== null) { record.inner = null; record.inner.count = 1; } return true;",
+            "object might be null",
+        ),
+        (
+            "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; function clear(value: { inner: { count: number } | null }) { value.inner = null; } if (record.inner !== null) { clear(record); record.inner.count = 1; } return true;",
+            "object might be null",
+        ),
+        (
+            "const a = { count: 0 }; const reset = (v: { count: number }) => { if (v.count < 0) v.count++; v = { count: 9 }; }; reset(a); return true;",
+            "this parameter also shares member mutations",
+        ),
+        (
+            "let value: 0 | 1 = 1; const read = () => value; value++; switch (read()) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 0 | 1 = 1; while (true) { if (value > 1) { switch (value) { case 0: case 1: return true; } break; } value++; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let record: { count: 0 | 1 } = { count: 1 }; function bump(value: { count: 0 | 1 }) { value.count++; } bump(record); switch (record.count) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 0 | 1 = 1; value++; function accept(n: 0 | 1) { switch (n) { case 0: case 1: return true; } } return accept(value);",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "let record: { count: 0 | 1 } = { count: 1 }; record.count++; function accept(n: { count: 0 | 1 }) { switch (n.count) { case 0: case 1: return true; } } return accept(record);",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "let record: { count: 0 | 1 } = { count: 1 }; record.count++; function accept({ count }: { count: 0 | 1 }) { switch (count) { case 0: case 1: return true; } } return accept(record);",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "let value: 0 | 1 = 1; value++; const out = (value ??= 1); switch (out) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 0 | 1 = 1; value++; const out = (value ||= 1); switch (out) { case 0: case 1: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "function run(value: 0 | 1, write: (() => void) | null = () => { value++; }) { if (write !== null) write(); switch (value) { case 0: case 1: return true; } } return run(1);",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "let record: { count: 0 | 1 } | null = { count: 0 }; if (record !== null) record.count = 2; return true;",
+            "can't assign",
+        ),
+        (
+            "let record: { count: number } | null = null; record.count = 1; return true;",
+            "object might be null",
+        ),
+        ("let value: true = true; value &&= false; return true;", "can't assign"),
+        ("let value: false = false; value ||= true; return true;", "can't assign"),
+        ("let value: null = null; value ??= false; return true;", "can't assign"),
+        (
+            "const values: true[] = [true]; values.fill(false); return true;",
+            "can't insert",
+        ),
+        (
+            "const values: (0 | 1)[] = [1]; values.unshift(2); return true;",
+            "can't insert",
+        ),
+        (
+            "const values: (0 | 1)[] = [1]; values.splice(0, 1, 2); return true;",
+            "can't insert",
+        ),
+        (
+            "let values: (0 | 1)[] = [1]; values[0]!++; values.push(2); return true;",
+            "can't insert",
+        ),
+        (
+            "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
+            "function expects",
+        ),
+        ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
+        (
+            "function accept(value: { count: 0 | 1 }) { return true; } const map: Record<string, { count: 0 | 1 }> = {}; return accept(map['missing']);",
+            "function expects",
+        ),
+    ] {
+        std::fs::write(tmp.join("zero.config.ts"), format!(
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+        )).unwrap();
+        for target in ["standalone", "wp"] {
+            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{target}: {stderr}");
+            assert!(stderr.contains(diagnostic), "{target}: {stderr}");
+        }
+    }
+    for invocation in [
+        "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
+        "[1, 2].flatMap(item => { value++; return [item]; })",
+        "[1, 2].findLast(item => { value++; return false; })",
+        "[1, 2].findLastIndex(item => { value++; return false; })",
+        "[2, 1].sort((a, b) => { value += 2; return a - b; })",
+        "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
+        "Array.from({ length: 2 }, () => { value++; return 1; })",
+        "const items = [1, 2]; Array.from(items, item => { value++; return item; })",
+        "'aa'.replace(/a/g, () => { value++; return 'b'; })",
+        "'aa'.replaceAll('a', () => { value++; return 'b'; })",
+    ] {
+        std::fs::write(tmp.join("zero.config.ts"), format!(
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+        )).unwrap();
+        for target in ["standalone", "wp"] {
+            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{invocation} ({target}): {stderr}");
+            assert!(
+                stderr.contains("field rules must return a boolean on every path"),
+                "{invocation} ({target}): {stderr}"
+            );
+        }
+    }
+    for extraction in [
+        "const write = writers.at(0)!; write()",
+        "writers.slice()[0]!()",
+        "writers.concat(writers)[0]!()",
+        "writers.reverse()[0]!()",
+        "writers.toReversed()[0]!()",
+        "writers.pop()!()",
+        "writers.shift()!()",
+        "writers.splice(0, 1)[0]!()",
+        "const nested = [writers]; nested.flat()[0]!()",
+        "Object.values({ write: writers[0]! })[0]!()",
+        "Object.entries({ write: writers[0]! })[0]![1]!()",
+        "const entries: [string, () => void][] = [['write', writers[0]!]]; Object.fromEntries(entries)['write']!()",
+        "Array.from(writers)[0]!()",
+        "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
+    ] {
+        std::fs::write(tmp.join("zero.config.ts"), format!(
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+        )).unwrap();
+        for target in ["standalone", "wp"] {
+            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(1), "{extraction} ({target}): {stderr}");
+            assert!(
+                stderr.contains("field rules must return a boolean on every path"),
+                "{extraction} ({target}): {stderr}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// The v3 config normalizes to one shape, and the new slots run through the existing PHP path.
+#[test]
+fn phase2_schema_and_closures_match_the_contract() {
+    let tmp = std::env::temp_dir().join(format!("zero-phase2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::copy(
+        root().join("tests/fixtures/phase2-surface/zero.config.ts"),
+        tmp.join("zero.config.ts"),
+    )
+    .unwrap();
+    std::fs::copy(
+        root().join("tests/fixtures/phase2-surface/client.ts"),
+        tmp.join("client.ts"),
+    )
+    .unwrap();
+    let golden: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
+    for target in ["standalone", "wp"] {
+        let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let schema_file = if target == "wp" {
+            tmp.join(".zero/wp/zero-phase2/zero/app/schema.php")
+        } else {
+            tmp.join(".zero/app/zero/app/schema.php")
+        };
+        let out = Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(schema_file)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let mut expected = golden.clone();
+        expected["target"] = target.into();
+        if target == "wp" {
+            expected["collections"]["posts"]["columns"]
+                .as_object_mut()
+                .unwrap()
+                .remove("translationGroup");
+        }
+        assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
+    }
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "generated client contract failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let app = tmp.join(".zero/app");
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+        require $argv[1] . '/zero/runtime/bootstrap.php';
+        \Zero\App::boot($argv[1]);
+        $db = \Zero\Db::instance();
+        $schema = $db->schema();
+        $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
+        $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
+        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone', 'op' => 'read']);
+        $fieldThrows = false;
+        try {
+            $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        } catch (\Zero\JsError $error) {
+            $fieldThrows = $error->getMessage() === 'denied';
+        }
+        $action = $schema->action('inbound');
+        $fn = '\\ZeroApp\\' . $action['handler'];
+        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone'];
+        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
+        $actionThrows = false;
+        try {
+            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $actor);
+        } catch (\Zero\JsError $error) {
+            $actionThrows = $error->getMessage() === 'denied';
+        }
+        $fn = '\\ZeroApp\\' . $schema->action('widened')['handler'];
+        $widened = $fn([]);
+        // Ordinary array mutation/reduction results belong to the differential
+        // owner; this fixture retains their generated-client type proof.
+        unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
+        $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
+        $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
+        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
+        $wpUpdate = $fn(['data' => [], 'op' => 'update', 'target' => 'wp'] + $actor);
+        $bucket = $schema->files()['decks'];
+        $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
+        $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);
+        $job = $schema->jobs()['sendWelcome'];
+        $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
+        $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
+        $fn = '\\ZeroApp\\' . $job['handler'];
+        $db->transaction(static fn () => $fn($input, $ctx));
+        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
+    "#,
+        ])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "optional": null, "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
+    assert_eq!(
+        result,
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}

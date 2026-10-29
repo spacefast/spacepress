@@ -22,7 +22,7 @@ const RANK = ["subscriber", "author", "editor", "admin"];
 
 export const docs = collection("docs", {
   id: id(),
-  title: text().notNull().validate((v) => v.includes("http://") ? "No links" : v.trim().length === 0 ? "blank" : true),
+  title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
   score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.target}` : undefined)),
   ownerId: integer(),
 }, {
@@ -54,6 +54,16 @@ function label(i: Item): string {
   return `${i.name.trim()} (${i.qty})`;
 }
 
+function replacementOffset(match: string, offset: number, source: string): string {
+  return `${match}:${offset}:${source}`;
+}
+
+function makeCounterReader(value: { count: number }) {
+  value.count++;
+  const forward = () => () => value.count;
+  return forward();
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 export default defineConfig({
@@ -74,6 +84,9 @@ export default defineConfig({
       "x".repeat(3),
       "Hello World".replace(/o/g, "0"),
       "a-b-c".replaceAll("-", "+"),
+      "aba".replaceAll("a", replacementOffset),
+      "ab".replace(/b/, (match: string, offset: number, source: string) => `${match}:${offset}:${source}`),
+      "ab".replace(/(a)?b/, (_match, capture: string | null, offset: number) => `${capture ?? "missing"}:${offset}`),
       "Oat Milk".includes("Milk"),
       "Oat Milk".indexOf("Milk"),
     ]),
@@ -87,7 +100,76 @@ export default defineConfig({
       const total = ITEMS.reduce((sum, i) => sum + i.qty, 0);
       const sorted = [10, 9, 1, 2].sort();
       const byQty = [...ITEMS].sort((a, b) => b.qty - a.qty).map((i) => i.name);
-      return { names, inStock, total, sorted, byQty, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      const words = ["a"];
+      words.push("b");
+      words.unshift("c");
+      const nested = { words: names.map(() => "a") };
+      nested.words.push("b");
+      let choice = total > 0 ? "a" : "b";
+      choice = "c";
+      const callback = ["a"].map(value => { value = "b"; return value; });
+      const callbackDefaults = [{ value: undefined }].map(({ value = "a" }) => { value = "b"; return value; });
+      let iteration = "";
+      for (let value of ["a"]) { value = "b"; iteration += value; }
+      const { words: defaults = ["a"] } = { words: undefined };
+      defaults.unshift("b");
+      let { value = "a" } = { value: undefined }; value = "b";
+      let flag = true; flag = false;
+      const flags = [true]; flags.push(false);
+      let choose = () => true; choose = () => false;
+      let label = () => "a"; label = () => "b";
+      const predicates = [() => true]; predicates.push(() => false);
+      const reduced = ["a"].reduce((acc, value) => acc + value);
+      const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
+      const readers = [{ count: 1 }, { count: 2 }].map(item => { item.count++; return () => item.count; });
+      let missing: { count: number } | undefined = undefined;
+      const mutate = (item: { count: number } = { count: 0 }) => { item.count++; return item.count; };
+      const defaultCount = mutate(missing);
+      const supplied = { count: 4 };
+      const suppliedCount = mutate(supplied);
+      const options: { item?: { count: number } } = { item: { count: 1 } };
+      const tuple: [{ count: number }] = [{ count: 2 }];
+      const emptyOptions: { item?: { count: number } } = {};
+      const mutateWithExtra = (item: { count: number } = { count: 0 }, extra: number[] = []) => { item.count++; extra.push(item.count); return item.count; };
+      const referenceArguments = {
+        optional: mutate(options.item!),
+        tuple: mutate(tuple[0]!),
+        optionalSource: options.item?.count,
+        tupleSource: tuple[0]?.count,
+        missing: mutate(emptyOptions.item),
+        missingKeys: Object.keys(emptyOptions),
+        unpacked: mutateWithExtra(options.item!, []),
+        unpackedMissing: mutateWithExtra(emptyOptions.item, []),
+        unpackedMissingKeys: Object.keys(emptyOptions),
+      };
+      let item = { count: 1 };
+      const readItem = makeCounterReader(item);
+      const readBinding = () => item.count;
+      const spread = { ...item };
+      const { ...rest } = item;
+      item.count++;
+      const live = readItem();
+      item = { count: 9 };
+      let absent: { count: number } | null = null;
+      const makeNullable = (value: { count: number } | null) => { if (value !== null) value.count++; return () => value?.count ?? null; };
+      const readAbsent = makeNullable(absent);
+      absent = { count: 9 };
+      const accumulatorReaders: (() => number)[] = [];
+      [1, 2].reduce((acc, value) => { acc.count++; accumulatorReaders.push(() => acc.count); return { count: acc.count }; }, { count: 0 });
+      const sharedReaders: (() => number)[] = [];
+      [1, 2].reduce((acc, value) => { acc.count++; sharedReaders.push(() => acc.count); return acc; }, { count: 0 });
+      const loopReaders: (() => number)[] = [];
+      const localReaders: (() => number)[] = [];
+      const loopItems = [{ count: 1 }, { count: 2 }];
+      for (const item of loopItems) {
+        item.count++;
+        loopReaders.push(() => item.count);
+        let local = item.count;
+        localReaders.push(() => local);
+        local++;
+        continue;
+      }
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, readers: readers.map(read => read()), defaultCount, missing: missing === undefined, suppliedCount, supplied: supplied.count, referenceArguments, escaped: readItem(), binding: readBinding(), live, absent: readAbsent(), spread: spread.count, rest: rest.count, accumulatorReaders: accumulatorReaders.map(read => read()), sharedReaders: sharedReaders.map(read => read()), loopReaders: loopReaders.map(read => read()), loopSource: loopItems.map(item => item.count), localReaders: localReaders.map(read => read()), some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };
@@ -115,8 +197,20 @@ export default defineConfig({
     }),
     recursion: run(() => [fact(5), fact(1)]),
     nullish: run(() => {
-      const maybe: string | null = ITEMS[1].tags.length > 0 ? "x" : null;
-      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0].tags[0] ?? "?", ITEMS[1].tags[0] ?? "?"];
+      const maybe: string | null = ITEMS[1]!.tags.length > 0 ? "x" : null;
+      const message = (flag: boolean): false | string => {
+        let result: boolean | string = flag;
+        return result &&= "present";
+      };
+      const fallback = (flag: boolean): true | string => {
+        let result: boolean | string = flag;
+        return result ||= "error";
+      };
+      const yes = (): true => !0;
+      const no = (): false => !1;
+      let negated = !false; negated = !true;
+      let template = `a`; template = `b`;
+      return [maybe ?? "none", maybe?.length ?? -1, ITEMS[0]!.tags[0] ?? "?", ITEMS[1]!.tags[0] ?? "?", message(false), message(true), fallback(false), fallback(true), negated, yes(), no(), !-0, !-1, template];
     }),
     templates: run(() => ITEMS.map(label)),
     templateTernary: run(() => ITEMS.map((i) => `${i.qty > 0 ? i.name : "none"}!` + (i.qty > 5 ? " lots" : ""))),

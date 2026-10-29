@@ -904,7 +904,9 @@ impl Lowerer {
             a::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
                 Ok(self.mk(id.span, ExprKind::Ident(id.name.to_string())))
             }
-            a::SimpleAssignmentTarget::TSNonNullExpression(n) => self.expr(&n.expression),
+            a::SimpleAssignmentTarget::TSNonNullExpression(n) => {
+                Ok(self.mk(n.span, ExprKind::NonNull(Box::new(self.expr(&n.expression)?))))
+            }
             a::SimpleAssignmentTarget::TSAsExpression(x) => self.expr(&x.expression),
             a::SimpleAssignmentTarget::TSSatisfiesExpression(x) => self.expr(&x.expression),
             a::SimpleAssignmentTarget::TSTypeAssertion(x) => self.expr(&x.expression),
@@ -955,12 +957,26 @@ impl Lowerer {
             }
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
-                // Literal types narrow nothing in PHP; they compile as their base type.
-                a::TSLiteral::StringLiteral(_) | a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
-                a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
-                a::TSLiteral::BooleanLiteral(_) => TyAnn::Bool,
+                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
+                a::TSLiteral::TemplateLiteral(t) if t.expressions.is_empty() => {
+                    let q = &t.quasis[0];
+                    let Some(cooked) = q.value.cooked else {
+                        return self.unsupported(q.span, "invalid escape sequences in templates", "");
+                    };
+                    TyAnn::StrLit(js(cooked, self.sp(q.span))?)
+                }
+                a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
+                a::TSLiteral::NumericLiteral(n) => TyAnn::NumLit(n.value),
+                a::TSLiteral::BooleanLiteral(value) => TyAnn::BoolLit(value.value),
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
-                    TyAnn::Num
+                    let a::Expression::NumericLiteral(n) = &u.argument else {
+                        unreachable!()
+                    };
+                    TyAnn::NumLit(if u.operator == UO::UnaryNegation {
+                        -n.value
+                    } else {
+                        n.value
+                    })
                 }
                 _ => return self.unsupported(l.span, "this literal type", ""),
             },

@@ -91,7 +91,7 @@ function blogApp(string $root): string
     foreach (['zero/app/migrations', 'public', 'data'] as $d) {
         @mkdir("$root/$d", 0777, true);
     }
-    copy("$fixtures/schema.php", "$root/zero/app/schema.php");
+    file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export(require "$fixtures/schema.php", true) . ';');
     copy("$fixtures/functions.php", "$root/zero/app/functions.php");
     file_put_contents("$root/zero/app/migrations/0001_init.sql", BLOG_MIGRATION);
     file_put_contents("$root/public/index.php", BLOG_INDEX_PHP);

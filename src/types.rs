@@ -2,14 +2,22 @@
 //! operators when the types make it safe, `Js::` helpers where JavaScript and
 //! PHP genuinely differ, and a build error where neither is sound.
 
-use crate::schema::{ColType, Collection, Column, RelKind, Schema};
+use crate::schema::{ColType, Collection, Column, ROLES, RelKind, Schema};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
     Num,
+    NumLit(f64),
+    FreshNumLit(f64),
     Str,
+    /// A finite string discriminant, retained for switch exhaustiveness.
+    StrLit(String),
+    /// An inferred literal that widens when stored in a mutable position.
+    FreshStrLit(String),
     Bool,
+    BoolLit(bool),
+    FreshBoolLit(bool),
     /// `null` and `undefined` (both PHP null).
     Null,
     /// Values whose shape isn't known (untyped `json()` columns, `JSON.parse`).
@@ -17,6 +25,8 @@ pub enum Ty {
     Never,
     Array(Box<Ty>),
     Tuple(Vec<Ty>),
+    /// An inferred array literal whose elements widen at binding boundaries.
+    ArrayLiteral(Vec<Ty>),
     /// Object with known fields: (type, optional).
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
@@ -113,6 +123,15 @@ impl Ty {
                 }
             }
         }
+        if out.iter().any(|t| t.bool_literal().is_some())
+            && (out.contains(&Ty::Bool)
+                || out.iter().any(|t| t.bool_literal() == Some(true))
+                    && out.iter().any(|t| t.bool_literal() == Some(false)))
+        {
+            let first = out.iter().position(Ty::is_bool).expect("boolean member");
+            out.retain(|t| !t.is_bool());
+            out.insert(first, Ty::Bool);
+        }
         match out.len() {
             0 => Ty::Never,
             1 => out.pop().expect("one"),
@@ -149,23 +168,39 @@ impl Ty {
     }
 
     pub fn is_num(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Num | Ty::Date))
+        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date))
     }
 
     pub fn is_str(&self) -> bool {
-        *self == Ty::Str
+        self.all(|t| matches!(t, Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_)))
+    }
+
+    pub fn is_bool(&self) -> bool {
+        self.all(|t| matches!(t, Ty::Bool | Ty::BoolLit(_) | Ty::FreshBoolLit(_)))
+    }
+
+    pub fn bool_literal(&self) -> Option<bool> {
+        match self {
+            Ty::BoolLit(value) | Ty::FreshBoolLit(value) => Some(*value),
+            _ => None,
+        }
     }
 
     pub fn describe(&self) -> String {
         match self {
-            Ty::Num => "number".into(),
+            Ty::Num | Ty::FreshNumLit(_) => "number".into(),
+            Ty::NumLit(value) => value.to_string(),
             Ty::Str => "string".into(),
+            Ty::StrLit(s) | Ty::FreshStrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),
+            Ty::BoolLit(value) | Ty::FreshBoolLit(value) => value.to_string(),
             Ty::Null => "null".into(),
             Ty::Unknown => "unknown".into(),
             Ty::Never => "never".into(),
             Ty::Array(t) => format!("{}[]", t.describe()),
-            Ty::Tuple(ts) => format!("[{}]", ts.iter().map(Ty::describe).collect::<Vec<_>>().join(", ")),
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+                format!("[{}]", ts.iter().map(Ty::describe).collect::<Vec<_>>().join(", "))
+            }
             Ty::Obj(fields) => {
                 let f: Vec<String> = fields
                     .iter()
@@ -219,7 +254,7 @@ impl Ty {
 /// The value type a column holds, before nullability.
 pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     match c.ty {
-        ColType::Integer | ColType::Real | ColType::Media => Ty::Num,
+        ColType::Integer | ColType::Real | ColType::Media | ColType::File => Ty::Num,
         ColType::Text
         | ColType::Timestamp
         | ColType::Date
@@ -231,14 +266,15 @@ pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty
         ColType::Json => json_ty(c),
         ColType::MediaList => Ty::Array(Box::new(Ty::Num)),
         ColType::Select => Ty::Array(Box::new(Ty::Str)),
-        ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), insert),
+        ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), json_ty, insert),
         ColType::Repeater => Ty::Array(Box::new(fields_obj(
             c.fields.as_ref().expect("repeater fields"),
+            json_ty,
             insert,
         ))),
         ColType::Blocks => Ty::Array(Box::new(Ty::union(c.layouts.as_ref().expect("layouts").iter().map(
             |(name, fields)| {
-                let Ty::Obj(mut f) = fields_obj(fields, insert) else {
+                let Ty::Obj(mut f) = fields_obj(fields, json_ty, insert) else {
                     unreachable!()
                 };
                 f.shift_insert(0, "layout".into(), (Ty::Str, false));
@@ -262,12 +298,12 @@ pub fn layout_of(t: &Ty) -> Option<&str> {
 }
 
 /// Sub-fields as an object type: every key present on read; optional ones may be omitted on write.
-fn fields_obj(fields: &IndexMap<String, Column>, insert: bool) -> Ty {
+fn fields_obj(fields: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     Ty::Obj(
         fields
             .values()
             .map(|f| {
-                let t = col_select(f, &|_| Ty::Unknown, insert);
+                let t = col_select(f, json_ty, insert);
                 (f.name.clone(), (t, insert && f.optional_on_insert()))
             })
             .collect(),
@@ -280,23 +316,21 @@ fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
 }
 
 thread_local! {
-    /// Resolved `json().$type<T>()` types, keyed by "table.column" (filled by the compiler).
-    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<String, Ty>> = Default::default();
+    /// Resolved annotations keyed by schema column identity, reset for each compilation.
+    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, Ty>> = Default::default();
 }
 
-pub fn json_ty(table: &str) -> impl Fn(&Column) -> Ty + '_ {
-    move |c: &Column| {
-        JSON_TYPES.with(|m| {
-            m.borrow()
-                .get(&format!("{table}.{}", c.name))
-                .cloned()
-                .unwrap_or(Ty::Unknown)
-        })
-    }
+pub fn json_ty(c: &Column) -> Ty {
+    JSON_TYPES.with(|m| {
+        m.borrow()
+            .get(&(c as *const Column as usize))
+            .cloned()
+            .unwrap_or(Ty::Unknown)
+    })
 }
 
 pub fn row_of(c: &Collection) -> Ty {
-    columns_row(&c.columns, &json_ty(&c.table))
+    columns_row(&c.columns, &json_ty)
 }
 
 pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -314,7 +348,7 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     let c = &schema.collections[table];
-    columns_insert(&c.columns, &json_ty(table))
+    columns_insert(&c.columns, &json_ty)
 }
 
 pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -344,12 +378,12 @@ pub fn partial(t: Ty) -> Ty {
 }
 
 /// Action input as the handler sees it, after defaults and validation.
-pub fn action_input(columns: &IndexMap<String, Column>) -> Ty {
+pub fn action_input(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     Ty::Obj(
         columns
             .values()
             .map(|c| {
-                let base = col_select(c, &|_| Ty::Unknown, false);
+                let base = col_select(c, json_ty, false);
                 let required = c.not_null || c.default.is_some();
                 let t = if c.not_null || c.default.is_some() {
                     base.non_null()
@@ -374,17 +408,47 @@ fn obj(fields: &[(&str, Ty)]) -> Ty {
 
 /// `{ id, name, role }` (§5.1).
 pub fn user() -> Ty {
-    obj(&[("id", Ty::Num), ("name", Ty::Str), ("role", Ty::Str)])
+    obj(&[
+        ("id", Ty::Num),
+        ("name", Ty::Str),
+        ("role", Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))),
+    ])
 }
 
 /// `ctx` for hooks and actions (§1.7).
 pub fn hook_ctx() -> Ty {
-    obj(&[("user", user().nullable()), ("target", Ty::Str)])
+    obj(&[("user", user().nullable()), ("target", target())])
+}
+
+fn target() -> Ty {
+    Ty::union(["standalone", "wp"].map(|value| Ty::StrLit(value.into())))
+}
+
+pub fn job_ctx() -> Ty {
+    let Ty::Obj(mut props) = hook_ctx() else { unreachable!() };
+    props.insert("attempt".into(), (Ty::Num, false));
+    props.insert("jobId".into(), (Ty::Str, false));
+    Ty::Obj(props)
+}
+
+pub fn field_access_ctx() -> Ty {
+    let Ty::Obj(mut props) = access_ctx(Ty::Map(Box::new(Ty::Unknown))) else {
+        unreachable!()
+    };
+    props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
+    props.insert(
+        "op".into(),
+        (
+            Ty::union(["read", "create", "update"].map(|op| Ty::StrLit(op.into()))),
+            false,
+        ),
+    );
+    Ty::Obj(props)
 }
 
 /// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
 pub fn access_ctx(data: Ty) -> Ty {
-    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", Ty::Str), ("op", Ty::Str)]) else {
+    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", target()), ("op", Ty::Str)]) else {
         unreachable!()
     };
     f.insert("data".into(), (data.nullable(), true));
@@ -396,7 +460,7 @@ pub fn validate_ctx() -> Ty {
     obj(&[
         ("data", Ty::Map(Box::new(Ty::Unknown))),
         ("user", user().nullable()),
-        ("target", Ty::Str),
+        ("target", target()),
     ])
 }
 

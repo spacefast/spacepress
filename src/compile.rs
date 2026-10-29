@@ -6,12 +6,14 @@
 //! unknown operands, string indexing, sort order) the output calls a `Js::`
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
+mod effects;
+
 use crate::diag::{Diag, Result, Span, suggest};
 use crate::eval::{Evaluator, GLOBALS, to_json};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
-use crate::schema::{ColType, HookKind, Owner, RelKind, Schema};
+use crate::schema::{ColType, Column, HookKind, Owner, RelKind, Schema};
 use crate::types::{self, Builder, BuilderKind, JSON_TYPES, Ty};
 use crate::value::*;
 use indexmap::IndexMap;
@@ -63,6 +65,50 @@ fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R
     Err(Diag::new(span, msg).help(help))
 }
 
+fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
+    match v {
+        Value::Array(a) => {
+            if !seen.insert(Rc::as_ptr(a) as usize) {
+                return err_help(
+                    span,
+                    "captured data cannot contain cycles",
+                    "capture plain data without circular references",
+                );
+            }
+            for value in a.borrow().iter() {
+                validate_captured_data(value, span, seen)?;
+            }
+            seen.remove(&(Rc::as_ptr(a) as usize));
+            Ok(())
+        }
+        Value::Object(o) => {
+            if !seen.insert(Rc::as_ptr(o) as usize) {
+                return err_help(
+                    span,
+                    "captured data cannot contain cycles",
+                    "capture plain data without circular references",
+                );
+            }
+            for value in o.borrow().values() {
+                validate_captured_data(value, span, seen)?;
+            }
+            seen.remove(&(Rc::as_ptr(o) as usize));
+            Ok(())
+        }
+        Value::Env(_) | Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) => err_help(
+            span,
+            "not implemented until lane D",
+            "runtime enqueue/once/env calls become available in lane D",
+        ),
+        Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
+        _ => err_help(
+            span,
+            format!("captured data contains {}, which can't be used in PHP", v.describe()),
+            "capture plain data instead",
+        ),
+    }
+}
+
 /// A compiled expression: PHP source, its type, and whether it's a plain variable/property path.
 #[derive(Clone, Debug)]
 struct Out {
@@ -74,6 +120,13 @@ struct Out {
     atomic: bool,
     /// Set when the value is a compiled helper: call it by name.
     helper: Option<String>,
+}
+
+/// Writes keep their authored constraint even when flow changes the type read
+/// from the same location. Dereferences and read-modify-write results use read.
+struct AssignmentPlace {
+    read: Out,
+    constraint: Ty,
 }
 
 impl Out {
@@ -98,7 +151,7 @@ impl Out {
     }
 
     fn checked_str(self, arg: &Out, span: Span) -> Result<Out> {
-        if arg.ty == Ty::Str {
+        if arg.ty.is_str() {
             Ok(self)
         } else {
             err(span, format!("this needs a string, not {}", arg.ty.describe()))
@@ -117,8 +170,20 @@ impl Out {
 #[derive(Clone)]
 struct Local {
     php: String,
+    /// Keeps shared object field cells alive independently of PHP array copies.
+    capture_anchor: Option<String>,
     ty: Ty,
+    constraint: Ty,
     mutable: bool,
+    binding: Span,
+    view: Vec<effects::Step>,
+}
+
+/// Binding reads may be widened by runtime effects independently of what the
+/// authored declaration permits assigning.
+struct BindingTypes {
+    read: Ty,
+    constraint: Ty,
 }
 
 /// What an identifier in compiled code refers to, resolved through the closure's captured scope.
@@ -129,11 +194,17 @@ enum Resolved {
 }
 
 struct FnCtx {
+    function: Span,
     scopes: Vec<HashMap<String, Local>>,
     is_async: bool,
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
+    /// Expressions proven not to complete by their compiled type.
+    diverging: HashSet<Span>,
+    /// Switch statements whose cases cover the compiled discriminant type.
+    exhaustive_switches: HashSet<Span>,
+    loop_bindings: HashSet<Span>,
     /// The closure whose captured environment resolves free names.
     env: Rc<Scope>,
     module: usize,
@@ -159,9 +230,10 @@ pub struct Compiler<'a, 'p> {
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
     type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
-    /// Compiled module-level helper functions: closure ptr → PHP name.
-    helpers: HashMap<usize, String>,
+    /// Compiled module-level helpers, separated by whether database access is forbidden.
+    helpers: HashMap<(usize, bool), String>,
     helper_types: HashMap<usize, Ty>,
+    effects: effects::Effects,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -192,6 +264,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             type_aliases,
             helpers: HashMap::new(),
             helper_types: HashMap::new(),
+            effects: effects::Effects::default(),
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -220,28 +293,57 @@ impl<'a, 'p> Compiler<'a, 'p> {
         name
     }
 
-    /// Resolves `json().$type<T>()` column types before any function is compiled.
+    /// Resolves all JSON annotations before any function is compiled, including nested handler inputs.
     pub fn resolve_json_types(&mut self) -> Result<()> {
-        for c in self.schema.collections.values() {
-            for col in c.columns.values() {
-                if let Some((ann, module)) = &col.ts_type {
-                    let t = self.resolve_ann(ann, *module, &HashMap::new())?;
-                    JSON_TYPES.with(|m| m.borrow_mut().insert(format!("{}.{}", c.table, col.name), t));
+        fn collect<'a>(columns: &'a IndexMap<String, Column>, out: &mut Vec<&'a Column>) {
+            for col in columns.values() {
+                if col.ts_type.is_some() {
+                    out.push(col);
+                }
+                if let Some(fields) = &col.fields {
+                    collect(fields, out);
+                }
+                if let Some(layouts) = &col.layouts {
+                    for fields in layouts.values() {
+                        collect(fields, out);
+                    }
                 }
             }
+        }
+        JSON_TYPES.with(|m| m.borrow_mut().clear());
+        let mut annotated = Vec::new();
+        for collection in self.schema.collections.values() {
+            collect(&collection.columns, &mut annotated);
+        }
+        for global in self.schema.globals.values() {
+            collect(&global.fields, &mut annotated);
+        }
+        for action in self.schema.actions.values() {
+            collect(&action.input, &mut annotated);
+        }
+        for job in self.schema.jobs.values() {
+            collect(&job.input, &mut annotated);
+        }
+        for col in annotated {
+            let (ann, module) = col.ts_type.as_ref().expect("annotated column");
+            let ty = self.resolve_ann(ann, *module, &HashMap::new())?;
+            JSON_TYPES.with(|m| m.borrow_mut().insert(col as *const Column as usize, ty));
         }
         Ok(())
     }
 
     /// Compiles every root (hooks, actions, defaults) and returns slot → PHP function name.
     pub fn compile_roots(&mut self, roots: &[Root]) -> Result<Vec<(Slot, String)>> {
+        // Solve all roots together before emitting shared helper signatures.
+        self.effects = effects::Effects::analyze(roots);
         let mut out = Vec::new();
         for root in roots {
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot))?;
+            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
+            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
             {
@@ -251,11 +353,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 self.action_results.insert(action.clone(), ret);
             }
-            self.helpers.entry(key).or_insert_with(|| name.clone());
+            self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());
             out.push((root.slot.clone(), name));
         }
         while let Some((closure, name, params)) = self.pending.pop() {
-            self.compile_function(&closure, &name, params, None)?;
+            self.compile_function(&closure, &name, params, None, false)?;
         }
         Ok(out)
     }
@@ -272,7 +374,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => vec![row, ctx],
                 }
             }
-            Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input), ctx],
+            Slot::JobHandler { job } => vec![
+                types::action_input(&self.schema.jobs[job].input, &types::json_ty),
+                types::job_ctx(),
+            ],
+            Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
+            Slot::ActionHandler { action } => vec![
+                types::action_input(&self.schema.actions[action].input, &types::json_ty),
+                ctx,
+            ],
             Slot::Access { owner, op } => {
                 let data = match owner {
                     Owner::Collection(t) if op == "create" => types::partial(types::insert(self.schema, t)),
@@ -284,10 +394,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Slot::Validate { at } => {
                 let col = self.schema.column_at(at);
-                vec![
-                    types::col_base(col, &types::json_ty(owner_table(&at.owner)), false),
-                    types::validate_ctx(),
-                ]
+                vec![types::col_base(col, &types::json_ty, false), types::validate_ctx()]
             }
             Slot::Default { .. } | Slot::OnUpdate { .. } => vec![],
         }
@@ -299,13 +406,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         name: &str,
         params: Option<Vec<Ty>>,
         slot: Option<&Slot>,
+        no_db: bool,
     ) -> Result<()> {
         let f = closure.func.clone();
+        if matches!(slot, Some(Slot::FieldAccess { .. })) && f.is_async {
+            return err_help(
+                f.span,
+                "field rules must be synchronous",
+                "return a boolean without async/await",
+            );
+        }
         let mut fx = FnCtx {
+            function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
             ret: None,
             returns: Vec::new(),
+            diverging: HashSet::new(),
+            exhaustive_switches: HashSet::new(),
+            loop_bindings: HashSet::new(),
             env: closure.env.clone(),
             module: f.module,
             by_ref: HashSet::new(),
@@ -314,8 +433,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
-            no_db: matches!(slot, Some(Slot::Access { .. })),
+            no_db,
             access: match slot {
+                Some(Slot::FieldAccess { .. }) => Some((None, "field".into())),
                 Some(Slot::Access { owner, op }) => Some((
                     match owner {
                         Owner::Collection(t) => Some(t.clone()),
@@ -336,20 +456,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let given = params.as_ref().and_then(|ps| ps.get(i)).cloned();
             let t = match (declared, given) {
                 (Some(d), Some(g)) => {
-                    if !assignable(&g, &d) {
-                        return err(
-                            p.span,
-                            format!(
-                                "this parameter is declared as {}, but it receives {}",
-                                d.describe(),
-                                g.describe()
-                            ),
-                        );
-                    }
+                    check_parameter_argument(&g, &parameter_input_type(p, d.clone()), p.span)?;
                     d
                 }
                 (Some(d), None) => d,
-                (None, Some(g)) => g,
+                (None, Some(g)) => widen_fresh_literals(&g),
                 (None, None) => {
                     return err_help(
                         p.span,
@@ -358,12 +469,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             };
-            let t = if p.optional || p.default.is_some() {
-                t.nullable()
-            } else {
-                t
-            };
-            param_tys.push(t);
+            param_tys.push(parameter_input_type(p, t));
         }
         if let Some(r) = &f.ret {
             let t = self.resolve_ann(r, f.module, &generics)?;
@@ -388,7 +494,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
             );
         }
-        fx.by_ref = mutated_params(&f);
+        fx.by_ref = f
+            .params
+            .iter()
+            .filter(|p| self.effects.by_ref(&p.pat))
+            .filter_map(|p| {
+                if let Pat::Id(name, _) = &p.pat {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
         // Recursive calls need the signature before the body is compiled.
         if let Some(ret) = &fx.ret {
             let ret = if f.is_async {
@@ -420,6 +537,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
+    fn check_destructured_mutation(&self, pat: &Pat, context: &str) -> Result<()> {
+        match pat {
+            Pat::Id(name, _) if self.effects.by_ref(pat) => {
+                return err_help(
+                    pat.span(),
+                    format!("can't mutate `{name}` through a destructured {context}"),
+                    "use the whole object or array and mutate the nested value through that binding",
+                );
+            }
+            Pat::Obj { props, rest, .. } => {
+                for (_, pat) in props {
+                    self.check_destructured_mutation(pat, context)?;
+                }
+                if let Some((name, span)) = rest {
+                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
+                }
+            }
+            Pat::Arr { elems, rest, .. } => {
+                for pat in elems.iter().flatten() {
+                    self.check_destructured_mutation(pat, context)?;
+                }
+                if let Some((name, span)) = rest {
+                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
+                }
+            }
+            Pat::Default(pat, _) => self.check_destructured_mutation(pat, context)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn compile_function_body(
         &mut self,
         f: &Func,
@@ -433,26 +581,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let t = param_tys[i].clone();
             match &p.pat {
                 Pat::Id(n, _) => {
-                    let php = self.declare_local(n, t.clone(), true);
+                    let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
                     let amp = if self.fx().by_ref.contains(n) { "&" } else { "" };
-                    let default = if p.optional || p.default.is_some() {
-                        " = null"
-                    } else {
-                        ""
-                    };
+                    let default = parameter_default_suffix(p);
                     let hint = php_hint(&t);
                     params_php.push(format!("{hint}{amp}{php}{default}"));
-                    if let Some(d) = &p.default {
-                        let d = self.expr(d)?;
-                        let _ = writeln!(prologue, "    {php} ??= {};", d.php);
-                    }
                 }
                 pat => {
+                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
-                    params_php.push(format!("{}{tmp}", php_hint(&t)));
-                    let mut lines = String::new();
-                    self.bind_pattern(pat, &tmp, &t, false, &mut lines, 1)?;
-                    prologue.push_str(&lines);
+                    params_php.push(format!("{}{tmp}{}", php_hint(&t), parameter_default_suffix(p)));
+                    let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
+                    prologue.push_str(&initialization);
+                    self.bind_pattern_types(
+                        pat,
+                        &tmp,
+                        BindingTypes {
+                            read,
+                            constraint: t.clone(),
+                        },
+                        true,
+                        &mut prologue,
+                        1,
+                    )?;
                 }
             }
         }
@@ -465,6 +616,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
+                self.note_fallthrough(stmts, f.span)?;
             }
         }
         if let Some(Slot::Hook {
@@ -481,6 +633,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn note_return(&mut self, t: &Ty, span: Span) -> Result<()> {
         let fx = self.fx();
+        if matches!(&fx.access, Some((_, op)) if op == "field") && !assignable(t, &Ty::Bool) {
+            return err_help(
+                span,
+                "field rules must return a boolean on every path",
+                "return true or false, or throw an error",
+            );
+        }
         if let Some(r) = &fx.ret {
             if !assignable(t, r) {
                 let r = r.clone();
@@ -499,9 +658,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
+    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
+        let fx = self.fx();
+        if block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal) {
+            self.note_return(&Ty::Null, span)?;
+        }
+        Ok(())
+    }
+
     // ---- scopes -------------------------------------------------------------
 
-    fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool) -> String {
+    fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool, binding: Span) -> String {
+        let read_ty = self.effects.parameter_type(binding, &ty);
         let fx = self.fx();
         let shadow = fx.scopes.iter().any(|s| s.contains_key(name)) || fx.declared.iter().any(|d| d == name);
         let php = if shadow && !fx.scopes.last().expect("scope").contains_key(name) {
@@ -515,8 +683,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             name.to_string(),
             Local {
                 php: php.clone(),
-                ty,
+                capture_anchor: None,
+                constraint: ty.clone(),
+                ty: read_ty,
                 mutable,
+                binding,
+                view: Vec::new(),
             },
         );
         php
@@ -539,19 +711,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return Ok(Resolved::Local(l.clone()));
             }
         }
-        let mut depth = 0;
+        let mut functions = vec![fx.function];
         let mut outer = fx.outer.as_deref();
         let mut found = None;
         while let Some(o) = outer {
-            depth += 1;
             if let Some(l) = o.scopes.iter().rev().find_map(|s| s.get(name)) {
                 found = Some(l.clone());
                 break;
             }
+            functions.push(o.function);
             outer = o.outer.as_deref();
         }
-        if let Some(l) = found {
-            let _ = depth;
+        if let Some(mut l) = found {
+            for function in functions.into_iter().rev() {
+                l.ty = self
+                    .effects
+                    .capture_type(function, l.binding, &l.view, &l.ty, &l.constraint);
+            }
             // Record the capture on every closure level between here and the owner.
             let fx = self.fx.as_mut().expect("fn");
             let var = l.php.trim_start_matches('$').to_string();
@@ -563,7 +739,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(caps) = &mut c.captures
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
-                    caps.push((var.clone(), l.mutable));
+                    caps.push((var.clone(), l.mutable || self.effects.shared(l.binding)));
+                    if let Some(anchor) = &l.capture_anchor {
+                        caps.push((anchor.trim_start_matches('$').to_string(), false));
+                    }
                 }
                 cur = c.outer.as_deref_mut();
             }
@@ -588,8 +767,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn resolve_ann(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, Ty>) -> Result<Ty> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
+            TyAnn::NumLit(n) => Ty::NumLit(*n),
             TyAnn::Str => Ty::Str,
+            TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
             TyAnn::Bool => Ty::Bool,
+            TyAnn::BoolLit(value) => Ty::BoolLit(*value),
             TyAnn::Null | TyAnn::Undefined | TyAnn::Void => Ty::Null,
             TyAnn::Unknown => Ty::Unknown,
             TyAnn::Never => Ty::Never,
@@ -630,6 +812,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
             TyAnn::Ref(name, args, span) => {
                 if let Some(t) = generics.get(name) {
                     return Ok(t.clone());
+                }
+                if args.is_empty() {
+                    for stmt in &self.ev_program().modules[module].body {
+                        if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::ZERO_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                {
+                                    match imported.as_str() {
+                                        "FieldAccessCtx" => return Ok(types::field_access_ctx()),
+                                        "JobCtx" => return Ok(types::job_ctx()),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 match (name.as_str(), args.as_slice()) {
                     ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),
@@ -755,7 +956,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         for s in stmts {
             if let Stmt::Func(f) = s {
                 let name = f.name.clone().expect("named");
-                let php = self.declare_local(&name, Ty::Unknown, false);
+                let php = self.declare_local(&name, Ty::Unknown, false, f.span);
                 let c = self.closure_expr(f)?;
                 self.set_local_ty(&name, c.ty.clone());
                 let _ = writeln!(out, "{}{php} = {};", pad(indent), c.php);
@@ -811,7 +1012,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         d.clone()
                     }
                     (Some(d), None) => d.clone().nullable(),
-                    (None, Some(v)) => widen_literal_array(&v.ty),
+                    (None, Some(v)) => inferred_binding_type(&v.ty, *kind == DeclKind::Let),
                     (None, None) => {
                         return err_help(
                             *span,
@@ -823,8 +1024,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mutable = *kind == DeclKind::Let;
                 match pat {
                     Pat::Id(n, _) => {
-                        let php = self.declare_local(n, ty, mutable);
+                        let php = self.declare_local(n, ty, mutable, pat.span());
                         let v = value.map(|v| v.php).unwrap_or_else(|| "null".into());
+                        self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }
                     pat => {
@@ -898,13 +1100,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 test,
                 update,
                 body,
-                ..
+                span,
             } => {
                 self.fx().scopes.push(HashMap::new());
-                let init_php = match init {
-                    Some(i) => self.stmt(i, 0)?.trim().trim_end_matches(';').to_string(),
-                    None => String::new(),
-                };
+                if let Some(init) = init {
+                    out.push_str(&self.stmt(init, indent)?);
+                }
+                self.invalidate_loop(*span);
                 let test_php = match test {
                     Some(t) => self.cond(t)?,
                     None => String::new(),
@@ -913,20 +1115,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
-                let _ = writeln!(out, "{p}for ({init_php}; {test_php}; {update_php}) {{");
+                let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
             Stmt::ForOf {
-                kind, pat, iter, body, ..
+                kind,
+                pat,
+                iter,
+                body,
+                span,
             } => {
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Array(t) => ((**t).clone(), it.php.clone()),
-                    Ty::Tuple(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    Ty::Str => (Ty::Str, format!("mb_str_split({})", it.php)),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
+                    t if t.is_str() => (Ty::Str, format!("mb_str_split({})", it.php)),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 if it.ty.is_nullable() {
@@ -937,23 +1143,55 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.fx().scopes.push(HashMap::new());
+                let el = widen_fresh_literals(&el);
                 let mutable = *kind == DeclKind::Let;
                 match pat {
                     Pat::Id(n, _) => {
-                        let php = self.declare_local(n, el, mutable);
-                        let _ = writeln!(out, "{p}foreach ({src} as {php}) {{");
+                        let php = self.declare_local(n, el.clone(), mutable, pat.span());
+                        if self.effects.by_ref(pat) {
+                            if !matches!(el.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional))
+                            {
+                                return err_help(
+                                    pat.span(),
+                                    "a mutating loop binding needs an object with required fields",
+                                    "change arrays, records, or optional fields through their source index instead",
+                                );
+                            }
+                            let source = match &it.place {
+                                Some(place) => place.clone(),
+                                None => {
+                                    let tmp = self.tmp_var();
+                                    let _ = writeln!(out, "{p}{tmp} = {src};");
+                                    tmp
+                                }
+                            };
+                            let tmp = self.tmp_var();
+                            let _ = writeln!(out, "{p}foreach ({source} as &{tmp}) {{");
+                            let anchor = self.object_binding(&php, &tmp, &mut out, indent + 1);
+                            self.fx().scopes.last_mut().unwrap().get_mut(n).unwrap().capture_anchor = Some(anchor);
+                        } else if self.effects.captured(pat.span()) {
+                            let tmp = self.tmp_var();
+                            let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
+                            self.fresh_binding(&php, pat.span(), &mut out, indent + 1);
+                            let _ = writeln!(out, "{}{php} = {tmp};", pad(indent + 1));
+                        } else {
+                            let _ = writeln!(out, "{p}foreach ({src} as {php}) {{");
+                        }
                     }
                     pat => {
+                        self.check_destructured_mutation(pat, "loop binding")?;
                         let tmp = self.tmp_var();
                         let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
                         self.bind_pattern(pat, &tmp, &el, mutable, &mut out, indent + 1)?;
                     }
                 }
+                self.invalidate_loop(*span);
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
             }
             Stmt::While(test, body) => {
+                self.invalidate_loop(test.span);
                 let t = self.cond(test)?;
                 let _ = writeln!(out, "{p}while ({t}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
@@ -985,7 +1223,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
                     let var = match param {
-                        Some((n, _)) => self.declare_local(n, Ty::Error, false),
+                        Some((n, span)) => self.declare_local(n, Ty::Error, false, *span),
                         None => "$__e".to_string(),
                     };
                     // Database and validation errors propagate: they must roll back the request.
@@ -1002,7 +1240,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Switch { disc, cases, span } => {
                 let d = self.expr(disc)?;
                 let d = self.finish_value(d, disc.span)?;
-                if !(d.ty.is_num() || d.ty.non_null() == Ty::Str || d.ty.non_null() == Ty::Bool) {
+                if !(d.ty.is_num() || d.ty.non_null().is_str() || d.ty.non_null().is_bool()) {
                     return err(
                         *span,
                         format!(
@@ -1012,6 +1250,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 // PHP `switch` compares loosely; compile to strict comparisons.
+                let mut case_types = Vec::new();
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {};", d.php);
                 let _ = writeln!(out, "{p}switch (true) {{");
@@ -1020,6 +1259,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Some(t) => {
                             let tv = self.expr(t)?;
                             let cmp = self.strict_eq(&Out::atom(tmp.clone(), d.ty.clone()), &tv);
+                            case_types.push(tv.ty);
                             let _ = writeln!(out, "{p}    case {cmp}:");
                         }
                         None => {
@@ -1030,6 +1270,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let inner = self.block(body, indent + 2);
                     self.fx().switch_depth -= 1;
                     out.push_str(&inner?);
+                }
+                if switch_is_exhaustive(&d.ty, &case_types) {
+                    self.fx().exhaustive_switches.insert(*span);
                 }
                 let _ = writeln!(out, "{p}}}");
             }
@@ -1042,9 +1285,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(out)
     }
 
+    fn invalidate_loop(&mut self, span: Span) {
+        for local in self
+            .fx
+            .as_mut()
+            .expect("fn")
+            .scopes
+            .iter_mut()
+            .flat_map(|scope| scope.values_mut())
+        {
+            local.ty = self
+                .effects
+                .invalidate_loop(span, local.binding, &local.view, &local.ty, &local.constraint);
+        }
+    }
+
     fn loop_body(&mut self, body: &[Stmt], indent: usize) -> Result<String> {
         let saved = std::mem::take(&mut self.fx().switch_depth);
+        let saved_bindings = self.fx().loop_bindings.clone();
+        let bindings: Vec<_> = self
+            .fx()
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.values().map(|l| l.binding))
+            .collect();
+        self.fx().loop_bindings.extend(bindings);
         let r = self.block(body, indent);
+        self.fx().loop_bindings = saved_bindings;
         self.fx().switch_depth = saved;
         r
     }
@@ -1101,7 +1368,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {
                 let v = self.expr(e)?;
                 let v = self.finish_value(v, e.span)?;
-                if v.ty == Ty::Bool {
+                if v.ty.is_bool() || v.ty == Ty::Never {
                     return Ok(v);
                 }
                 err_help(
@@ -1184,18 +1451,64 @@ impl<'a, 'p> Compiler<'a, 'p> {
         out: &mut String,
         indent: usize,
     ) -> Result<()> {
+        self.bind_pattern_types(
+            pat,
+            src,
+            BindingTypes {
+                read: ty.clone(),
+                constraint: ty.clone(),
+            },
+            mutable,
+            out,
+            indent,
+        )
+    }
+
+    fn declare_binding(&mut self, name: &str, types: BindingTypes, mutable: bool, binding: Span) -> String {
+        let php = self.declare_local(name, types.constraint, mutable, binding);
+        let read = self.effects.parameter_type(binding, &types.read);
+        self.fx()
+            .scopes
+            .last_mut()
+            .expect("scope")
+            .get_mut(name)
+            .expect("binding")
+            .ty = read;
+        php
+    }
+
+    fn fresh_binding(&self, php: &str, binding: Span, out: &mut String, indent: usize) {
+        if self.effects.captured(binding) {
+            let _ = writeln!(out, "{}unset({php});", pad(indent));
+        }
+    }
+
+    fn bind_pattern_types(
+        &mut self,
+        pat: &Pat,
+        src: &str,
+        types: BindingTypes,
+        mutable: bool,
+        out: &mut String,
+        indent: usize,
+    ) -> Result<()> {
         let p = pad(indent);
+        let BindingTypes { read: ty, constraint } = types;
         match pat {
             Pat::Id(n, _) => {
-                let php = self.declare_local(n, ty.clone(), mutable);
+                let php = self.declare_binding(n, BindingTypes { read: ty, constraint }, mutable, pat.span());
+                self.fresh_binding(&php, pat.span(), out, indent);
                 let _ = writeln!(out, "{p}{php} = {src};");
             }
             Pat::Default(inner, default) => {
                 let d = self.expr(default)?;
-                let t = Ty::union([ty.non_null(), d.ty.clone()]);
+                let types = BindingTypes {
+                    read: default_binding_type(&ty, &d.ty, mutable),
+                    constraint: default_binding_type(&constraint, &d.ty, mutable),
+                };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src} ?? {};", d.php);
-                self.bind_pattern(inner, &tmp, &t, mutable, out, indent)?;
+                self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
                 let t = ty.non_null();
@@ -1217,49 +1530,75 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         format!("{src}[{}]", php_str(key))
                     };
-                    let ft = if optional || matches!(t, Ty::Map(_)) {
+                    let read = if optional || matches!(t, Ty::Map(_)) {
                         ft.nullable()
                     } else {
                         ft
                     };
-                    self.bind_pattern(p2, &access, &ft, mutable, out, indent)?;
+                    let original = constraint.non_null();
+                    let (ct, optional) = original.field(key).expect("authored field");
+                    let constraint = if optional || matches!(original, Ty::Map(_)) {
+                        ct.nullable()
+                    } else {
+                        ct
+                    };
+                    self.bind_pattern_types(p2, &access, BindingTypes { read, constraint }, mutable, out, indent)?;
                 }
-                if let Some((name, _)) = rest {
+                if let Some((name, span)) = rest {
                     let keys: Vec<String> = props.iter().map(|(k, _)| php_str(k)).collect();
-                    let rest_ty = match &t {
+                    let omit = |ty: &Ty| match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
-                            f.iter()
-                                .filter(|(k, _)| !props.iter().any(|(pk, _)| pk == *k))
-                                .map(|(k, v)| (k.clone(), v.clone()))
+                            f.into_iter()
+                                .filter(|(k, _)| !props.iter().any(|(pk, _)| pk == k))
                                 .collect(),
                         ),
-                        other => other.clone(),
+                        other => other,
                     };
-                    let php = self.declare_local(name, rest_ty, mutable);
+                    let types = BindingTypes {
+                        read: omit(&ty),
+                        constraint: omit(&constraint),
+                    };
+                    let php = self.declare_binding(name, types, mutable, *span);
+                    self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(out, "{p}{php} = \\Zero\\Js::omit({src}, [{}]);", keys.join(", "));
                 }
             }
             Pat::Arr { elems, rest, span } => {
-                let (el_of, is_tuple): (Box<dyn Fn(usize) -> Ty>, bool) = match ty.non_null() {
-                    Ty::Array(t) => {
-                        let t = (*t).clone();
-                        (Box::new(move |_| t.clone()), false)
-                    }
-                    Ty::Tuple(ts) => (Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null)), true),
-                    other => return err(*span, format!("can't destructure {} as an array", other.describe())),
+                if ty.is_nullable() {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                let element = |ty: &Ty, i: usize| match ty.non_null() {
+                    Ty::Array(t) => Some((*t).nullable()),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Null).nullable()),
+                    _ => None,
                 };
+                if element(&ty, 0).is_none() {
+                    return err(*span, format!("can't destructure {} as an array", ty.describe()));
+                }
                 for (i, e) in elems.iter().enumerate() {
                     if let Some(e) = e {
-                        let access = if is_tuple {
-                            format!("{src}[{i}]")
-                        } else {
-                            format!("({src}[{i}] ?? null)")
+                        let access = format!("({src}[{i}] ?? null)");
+                        let types = BindingTypes {
+                            read: element(&ty, i).expect("array read"),
+                            constraint: element(&constraint, i).expect("authored array"),
                         };
-                        self.bind_pattern(e, &access, &el_of(i), mutable, out, indent)?;
+                        self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
                     }
                 }
-                if let Some((name, _)) = rest {
-                    let php = self.declare_local(name, Ty::Array(Box::new(el_of(elems.len()).non_null())), mutable);
+                if let Some((name, span)) = rest {
+                    let tail = |ty: &Ty| match ty.non_null() {
+                        Ty::Array(t) => Ty::Array(t),
+                        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(elems.len()))))
+                        }
+                        _ => unreachable!("array binding"),
+                    };
+                    let types = BindingTypes {
+                        read: tail(&ty),
+                        constraint: tail(&constraint),
+                    };
+                    let php = self.declare_binding(name, types, mutable, *span);
+                    self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(out, "{p}{php} = array_slice({src}, {});", elems.len());
                 }
             }
@@ -1347,6 +1686,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.apply_narrowing(&left, true);
                 self.collect_narrowing(r, false, out);
                 self.fx().scopes.pop();
+                let right = out.split_off(start + left.len());
+                out.truncate(start);
+                out.extend(
+                    left.into_iter()
+                        .filter(|(name, _, _)| self.refinement_survives(r, name)),
+                );
+                out.extend(right);
                 // Only the "true" side is sound for both operands: the false side keeps the declared type.
                 for entry in &mut out[start..] {
                     if let Some(declared) = self.declared_path_ty(&entry.0) {
@@ -1358,6 +1704,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    fn refinement_survives(&self, expression: &Expr, path: &str) -> bool {
+        let mut parts = path.split('.');
+        let name = parts.next().expect("path");
+        let Some(local) = self.scope_local(name) else {
+            return true;
+        };
+        let view: Vec<_> = parts.map(|part| effects::Step::Field(part.to_string())).collect();
+        !self.effects.changes_refinement(expression.span, local.binding, &view)
+    }
+
     /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local.
     fn path_ty(&mut self, e: &Expr) -> Option<(String, Ty)> {
         let path = self.path_of(e)?;
@@ -1367,12 +1723,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Some((path, t?))
     }
 
+    fn scope_local(&self, name: &str) -> Option<&Local> {
+        let mut context = self.fx.as_ref();
+        while let Some(fx) = context {
+            if let Some(local) = fx.scopes.iter().rev().find_map(|scope| scope.get(name)) {
+                return Some(local);
+            }
+            context = fx.outer.as_deref();
+        }
+        None
+    }
+
     fn path_of(&self, e: &Expr) -> Option<String> {
         match &e.kind {
-            ExprKind::Ident(n) => {
-                let fx = self.fx.as_ref()?;
-                fx.scopes.iter().any(|s| s.contains_key(n)).then(|| n.clone())
-            }
+            ExprKind::Ident(n) => self.scope_local(n).map(|_| n.clone()),
             ExprKind::Member { obj, prop, .. } => Some(format!("{}.{prop}", self.path_of(obj)?)),
             ExprKind::Chain(inner) | ExprKind::NonNull(inner) => self.path_of(inner),
             _ => None,
@@ -1386,6 +1750,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .scopes
             .iter()
             .find_map(|s| s.get(name))
+            .or_else(|| self.scope_local(name))
             .map(|l| l.ty.clone())
     }
 
@@ -1397,26 +1762,51 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .iter()
             .rev()
             .find_map(|s| s.get(path))
-            .map(|l| l.ty.clone())
+            .map(|l| {
+                if self.fx.as_ref().unwrap().loop_bindings.contains(&l.binding) {
+                    self.effects.read_view_type(l.binding, &l.view, &l.ty)
+                } else {
+                    l.ty.clone()
+                }
+            })
     }
 
     fn apply_narrowing(&mut self, n: &[(String, Ty, Ty)], truthy: bool) {
         for (name, yes, no) in n {
             let t = if truthy { yes.clone() } else { no.clone() };
             if name.contains('.') {
+                let mut parts = name.split('.');
+                let (binding, mut constraint) = match self.resolve(parts.next().unwrap(), Span::NONE) {
+                    Ok(Resolved::Local(local)) => (local.binding, local.constraint),
+                    _ => (Span::NONE, t.clone()),
+                };
+                let mut view = Vec::new();
+                for part in parts {
+                    constraint = constraint
+                        .non_null()
+                        .field(part)
+                        .map(|(ty, _)| ty)
+                        .unwrap_or_else(|| t.clone());
+                    view.push(effects::Step::Field(part.to_string()));
+                }
                 // Member path: a type override read by `member()`, never a PHP variable.
                 self.fx().scopes.last_mut().expect("scope").insert(
                     name.clone(),
                     Local {
                         php: String::new(),
+                        capture_anchor: None,
+                        constraint,
                         ty: t,
                         mutable: false,
+                        binding,
+                        view,
                     },
                 );
                 continue;
             }
-            let Some(local) = self.fx().scopes.iter().rev().find_map(|s| s.get(name)).cloned() else {
-                continue;
+            let local = match self.resolve(name, Span::NONE) {
+                Ok(Resolved::Local(local)) => local,
+                _ => continue,
             };
             self.fx()
                 .scopes
@@ -1437,18 +1827,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn truthy(&self, v: &Out) -> String {
         match &v.ty {
-            Ty::Bool => v.php.clone(),
+            t if t.is_bool() => v.php.clone(),
             // Objects, arrays, and functions are always truthy; only null is falsy.
             t if t.non_null().all(|x| {
                 matches!(
                     x,
-                    Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::Fn(..) | Ty::Date | Ty::Error
+                    Ty::Obj(_)
+                        | Ty::Map(_)
+                        | Ty::Array(_)
+                        | Ty::Tuple(_)
+                        | Ty::ArrayLiteral(_)
+                        | Ty::Fn(..)
+                        | Ty::Date
+                        | Ty::Error
                 )
             }) =>
             {
                 format!("{} !== null", v.wrapped())
             }
-            t if t.non_null() == Ty::Str => format!("({} ?? '') !== ''", v.wrapped()),
+            t if t.non_null().is_str() => format!("({} ?? '') !== ''", v.wrapped()),
             _ => format!("\\Zero\\Js::truthy({})", v.php),
         }
     }
@@ -1476,16 +1873,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn expr(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
-        Ok(match &e.kind {
-            ExprKind::Num(n) => Out::atom(php_number(*n), Ty::Num),
-            ExprKind::Str(s) => Out::atom(php_str(s), Ty::Str),
-            ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::Bool),
+        let out = match &e.kind {
+            ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
+            ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
+            ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
             ExprKind::Null | ExprKind::Undefined => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => Out::atom(
                 format!("\\Zero\\Js::re({}, {})", php_str(pattern), php_str(flags)),
                 Ty::Regex,
             ),
             ExprKind::Template(quasis, exprs) => {
+                if exprs.is_empty() {
+                    return Ok(Out::atom(php_str(&quasis[0]), Ty::FreshStrLit(quasis[0].clone())));
+                }
                 let mut parts = Vec::new();
                 if !quasis[0].is_empty() {
                     parts.push(php_str(&quasis[0]));
@@ -1520,7 +1920,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let v = self.expr(x)?;
                             match v.ty.non_null() {
                                 Ty::Array(t) => tys.push(*t),
-                                Ty::Tuple(ts) => tys.extend(ts),
+                                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => tys.extend(ts),
                                 other => {
                                     return err(x.span, format!("can't spread {} into an array", other.describe()));
                                 }
@@ -1530,7 +1930,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 let ty = if items.iter().all(|i| matches!(i, ArrEl::Item(_))) && !tys.is_empty() && tys.len() <= 8 {
-                    Ty::Tuple(tys)
+                    Ty::ArrayLiteral(tys)
                 } else {
                     Ty::Array(Box::new(Ty::union(tys)))
                 };
@@ -1583,7 +1983,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             } else {
                                 v.wrapped()
                             };
-                            parts.push(format!("...{src}"));
+                            parts.push(format!("...\\Zero\\Js::copyObject({src})"));
                         }
                     }
                 }
@@ -1599,10 +1999,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let v = self.expr(x)?;
                 let v = self.finish_value(v, x.span)?;
                 match op {
-                    UnOp::Not => Out::new(format!("!{}", paren(&self.truthy(&v))), Ty::Bool),
+                    UnOp::Not => {
+                        let ty = match (truthiness_part(&v.ty, true), truthiness_part(&v.ty, false)) {
+                            (Ty::Never, Ty::Never) => Ty::Never,
+                            (Ty::Never, _) => Ty::FreshBoolLit(true),
+                            (_, Ty::Never) => Ty::FreshBoolLit(false),
+                            _ => Ty::Bool,
+                        };
+                        Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
+                    }
                     UnOp::Neg => {
                         self.need_num(&v, x.span, "`-`")?;
-                        Out::new(format!("-{}", v.wrapped()), Ty::Num)
+                        let ty = match v.ty {
+                            Ty::NumLit(n) | Ty::FreshNumLit(n) => Ty::FreshNumLit(-n),
+                            _ => Ty::Num,
+                        };
+                        Out::new(format!("-{}", v.wrapped()), ty)
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -1639,21 +2051,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
                 let b = b?;
                 let b = self.finish_value(b, r.span)?;
+                let ty = logical_result_type(*op, &a.ty, &b.ty);
                 match op {
-                    LogOp::Nullish => Out::new(
-                        format!("{} ?? {}", a.wrapped(), b.wrapped()),
-                        Ty::union([a.ty.non_null(), b.ty]),
-                    ),
-                    LogOp::And | LogOp::Or if a.ty == Ty::Bool && b.ty == Ty::Bool => Out::new(
-                        format!(
-                            "{} {} {}",
-                            a.wrapped(),
-                            if *op == LogOp::And { "&&" } else { "||" },
-                            b.wrapped()
-                        ),
-                        Ty::Bool,
-                    ),
+                    LogOp::Nullish => Out::new(format!("{} ?? {}", a.wrapped(), b.wrapped()), ty),
                     LogOp::Or | LogOp::And => {
+                        if a.ty.is_bool() && b.ty.is_bool() {
+                            return Ok(Out::new(
+                                format!(
+                                    "{} {} {}",
+                                    a.wrapped(),
+                                    if *op == LogOp::And { "&&" } else { "||" },
+                                    b.wrapped()
+                                ),
+                                ty,
+                            ));
+                        }
                         // `x || y` / `x && y` return an operand, not a boolean.
                         let tmp = self.tmp_var();
                         let test = self.truthy(&Out::new(format!("{tmp} = {}", a.php), a.ty.clone()));
@@ -1661,11 +2073,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             (tmp.clone(), b.wrapped())
                         } else {
                             (b.wrapped(), tmp.clone())
-                        };
-                        let ty = if *op == LogOp::Or {
-                            Ty::union([a.ty.non_null(), b.ty])
-                        } else {
-                            Ty::union([a.ty, b.ty])
                         };
                         Out::new(format!("{} ? {yes} : {no}", paren(&test)), ty)
                     }
@@ -1691,7 +2098,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
             ExprKind::Update { inc, prefix, target } => {
-                let t = self.place(target)?;
+                let t = self.place(target)?.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
                 let o = if *inc { "++" } else { "--" };
                 Out::new(
@@ -1730,7 +2137,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let t = v.ty.non_null();
                 Out { ty: t, ..v }
             }
-        })
+        };
+        if out.ty == Ty::Never {
+            self.fx().diverging.insert(span);
+        }
+        // A closure's body is compiled now, but its captured writes occur at
+        // its call sites. Do not apply them to the enclosing function here.
+        for local in self
+            .fx
+            .as_mut()
+            .expect("fn")
+            .scopes
+            .iter_mut()
+            .flat_map(|scope| scope.values_mut())
+        {
+            local.ty = self
+                .effects
+                .invalidate(span, local.binding, &local.view, &local.ty, &local.constraint);
+            local.ty = self.effects.write_type(span, local.binding, &local.view, &local.ty);
+        }
+        Ok(out)
     }
 
     fn need_num(&self, v: &Out, span: Span, what: &str) -> Result<()> {
@@ -1750,8 +2176,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// The value as a PHP string expression, safe to join with `.`.
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
         Ok(match &v.ty {
-            Ty::Str => v.wrapped(),
-            Ty::Num | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
+            t if t.is_str() => v.wrapped(),
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -1762,7 +2188,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
                     Out::new(format!("{} + {}", a.wrapped(), b.wrapped()), Ty::Num)
-                } else if a.ty == Ty::Str || b.ty == Ty::Str {
+                } else if a.ty.is_str() || b.ty.is_str() {
                     let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
                     Out::new(format!("{x} . {y}"), Ty::Str)
                 } else {
@@ -1798,7 +2224,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 if a.ty.is_num() && b.ty.is_num() {
                     Out::new(format!("{} {sym} {}", a.wrapped(), b.wrapped()), Ty::Bool)
-                } else if a.ty == Ty::Str && b.ty == Ty::Str {
+                } else if a.ty.is_str() && b.ty.is_str() {
                     // JS compares strings by UTF-16 code units; for UTF-8 that matches byte order
                     // except across surrogate pairs, which strcmp handles consistently enough.
                     Out::new(format!("strcmp({}, {}) {sym} 0", a.php, b.php), Ty::Bool)
@@ -1827,7 +2253,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `===` on arrays/objects compares identity in JS; PHP arrays have none.
     fn check_identity_eq(&self, a: &Out, b: &Out, span: Span) -> Result<()> {
-        let by_ref = |t: &Ty| matches!(t.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::Obj(_) | Ty::Map(_));
+        let by_ref = |t: &Ty| {
+            matches!(
+                t.non_null(),
+                Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) | Ty::Obj(_) | Ty::Map(_)
+            )
+        };
         if by_ref(&a.ty) && by_ref(&b.ty) {
             return err_help(
                 span,
@@ -1854,7 +2285,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match self.resolve(n, span)? {
             Resolved::Local(l) => Ok(Out {
                 php: l.php.clone(),
-                ty: l.ty,
+                ty: if self.fx().loop_bindings.contains(&l.binding) {
+                    self.effects.read_view_type(l.binding, &l.view, &l.ty)
+                } else {
+                    l.ty
+                },
                 place: Some(l.php),
                 atomic: true,
                 helper: None,
@@ -1879,11 +2314,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &v {
             Value::Closure(c) => {
                 let key = closure_key(c);
-                let name = match self.helpers.get(&key) {
+                let helper_key = (key, self.fx().no_db);
+                let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
-                        self.helpers.insert(key, name.clone());
+                        self.helpers.insert(helper_key, name.clone());
                         self.compile_helper_now(c, &name)?;
                         name
                     }
@@ -1913,12 +2349,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
+            Value::Builtin(Builtin::Env | Builtin::Once | Builtin::Jobs) | Value::Env(_) => err_help(
+                span,
+                "not implemented until lane D",
+                "runtime enqueue/once/env calls become available in lane D",
+            ),
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
             | Value::Relation(_)
             | Value::Action(_)
+            | Value::Job(_)
+            | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
@@ -1928,6 +2371,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Regex,
             )),
             data => {
+                validate_captured_data(data, span, &mut HashSet::new())?;
                 let Some(json) = to_json(data) else {
                     return err(
                         span,
@@ -1945,9 +2389,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
+        let no_db = self.fx().no_db;
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
-        let r = self.compile_function(c, name, None, None);
+        let r = self.compile_function(c, name, None, None, no_db);
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);
         self.output.push_str(&helper_src);
@@ -1955,7 +2400,93 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn closure_expr(&mut self, f: &Rc<Func>) -> Result<Out> {
-        self.closure_with_types(f, &[])
+        self.closure_with_types(f, None)
+    }
+
+    fn initialize_parameter(&mut self, parameter: &Param, php: &str, ty: &Ty, indent: usize) -> Result<(Ty, String)> {
+        let read = self.effects.parameter_type(parameter.pat.span(), ty);
+        let Some(default) = &parameter.default else {
+            return Ok((read, String::new()));
+        };
+        let value = self.expr(default)?;
+        if !assignable(&value.ty, ty) {
+            return err(
+                default.span,
+                format!(
+                    "this default is {}, but the parameter expects {}",
+                    value.ty.describe(),
+                    ty.describe()
+                ),
+            );
+        }
+        let present = read.non_null();
+        let initialized = if assignable(&value.ty, &present) {
+            present
+        } else {
+            Ty::union([present, value.ty])
+        };
+        let initialization = if self.effects.by_ref(&parameter.pat) {
+            format!(
+                "{}if ({php} === null) {{\n{}unset({php});\n{}{php} = {};\n{}}}\n",
+                pad(indent),
+                pad(indent + 1),
+                pad(indent + 1),
+                value.php,
+                pad(indent),
+            )
+        } else {
+            format!("{}{php} ??= {};\n", pad(indent), value.php)
+        };
+        Ok((initialized, initialization))
+    }
+
+    fn declare_parameter(&mut self, parameter: &Param, ty: &Ty, body: &mut String, indent: usize) -> Result<String> {
+        let Pat::Id(name, _) = &parameter.pat else {
+            unreachable!("identifier parameter")
+        };
+        let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
+        let (read, initialization) = self.initialize_parameter(parameter, &php, ty, indent)?;
+        body.push_str(&initialization);
+        let capture_anchor = if self.effects.by_ref(&parameter.pat) && self.effects.captured(parameter.pat.span()) {
+            if !matches!(ty.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional)) {
+                return err_help(
+                    parameter.span,
+                    "a captured mutating parameter needs an object with required fields",
+                    "capture scalar values instead of a mutable array, record, or object with optional fields",
+                );
+            }
+            Some(self.object_binding(&php, &php, body, indent))
+        } else {
+            None
+        };
+        let local = self
+            .fx()
+            .scopes
+            .last_mut()
+            .expect("scope")
+            .get_mut(name)
+            .expect("parameter");
+        local.ty = read;
+        local.capture_anchor = capture_anchor;
+        Ok(php)
+    }
+
+    fn object_binding(&mut self, binding: &str, source: &str, out: &mut String, indent: usize) -> String {
+        let tmp = self.tmp_var();
+        let anchor = self.tmp_var();
+        let _ = writeln!(
+            out,
+            "{}{tmp} = null;\n{}{anchor} = null;\n{}if ({source} !== null) {{\n{}{tmp} = \\Zero\\Js::objectBinding({source});\n{}{anchor} = {source};\n{}}}\n{}unset({binding});\n{}{binding} = {tmp};",
+            pad(indent),
+            pad(indent),
+            pad(indent),
+            pad(indent + 1),
+            pad(indent + 1),
+            pad(indent),
+            pad(indent),
+            pad(indent),
+        );
+        anchor
     }
 
     fn closure_body(&mut self, f: &Func, param_tys: &[Ty]) -> Result<(String, String)> {
@@ -1963,19 +2494,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut body = String::new();
         for (i, p) in f.params.iter().enumerate() {
             match &p.pat {
-                Pat::Id(n, _) => {
-                    let php = self.declare_local(n, param_tys[i].clone(), true);
-                    let default = if p.optional || p.default.is_some() {
-                        " = null"
-                    } else {
-                        ""
-                    };
-                    params.push(format!("{php}{default}"));
+                Pat::Id(_, _) => {
+                    let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
+                    let default = parameter_default_suffix(p);
+                    let amp = if self.effects.by_ref(&p.pat) { "&" } else { "" };
+                    params.push(format!("{amp}{php}{default}"));
                 }
                 pat => {
+                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
-                    params.push(tmp.clone());
-                    self.bind_pattern(pat, &tmp, &param_tys[i], false, &mut body, 2)?;
+                    params.push(format!("{tmp}{}", parameter_default_suffix(p)));
+                    let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;
+                    body.push_str(&initialization);
+                    self.bind_pattern_types(
+                        pat,
+                        &tmp,
+                        BindingTypes {
+                            read,
+                            constraint: param_tys[i].clone(),
+                        },
+                        true,
+                        &mut body,
+                        2,
+                    )?;
                 }
             }
         }
@@ -1986,7 +2527,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.note_return(&v.ty, e.span)?;
                 let _ = writeln!(body, "{}return {};", pad(2), v.php);
             }
-            FnBody::Block(stmts) => body.push_str(&self.block(stmts, 2)?),
+            FnBody::Block(stmts) => {
+                body.push_str(&self.block(stmts, 2)?);
+                self.note_fallthrough(stmts, f.span)?;
+            }
         }
         Ok((params.join(", "), body))
     }
@@ -1994,33 +2538,47 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Compiles a callback argument with its parameters typed from context.
     fn callback(&mut self, e: &Expr, params: &[Ty]) -> Result<Out> {
         if let ExprKind::Func(f) = &e.kind {
-            return self.closure_with_types(f, params);
+            return self.closure_with_types(f, Some(params));
         }
         let v = self.expr(e)?;
-        if !matches!(v.ty, Ty::Fn(..)) {
+        let Ty::Fn(declared, _) = &v.ty else {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
-        }
+        };
+        check_callback_parameters(params, declared, e.span)?;
         Ok(v)
     }
 
-    fn closure_with_types(&mut self, f: &Rc<Func>, params: &[Ty]) -> Result<Out> {
+    fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {
         let module = f.module;
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
+            let given = params.and_then(|ps| ps.get(i));
             let t = match &p.ann {
-                Some(a) => self.resolve_ann(a, module, &HashMap::new())?,
-                None => match params.get(i) {
-                    Some(t) => t.clone(),
+                Some(a) => {
+                    let declared = self.resolve_ann(a, module, &HashMap::new())?;
+                    if let Some(given) = given {
+                        check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
+                    } else if params.is_some() && !p.optional && p.default.is_none() {
+                        return err(p.span, "this callback parameter is never given a value");
+                    }
+                    declared
+                }
+                None => match given {
+                    Some(t) => widen_fresh_literals(t),
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
             };
-            param_tys.push(t);
+            param_tys.push(parameter_input_type(p, t));
         }
         let mut inner = FnCtx {
+            function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
             ret: None,
             returns: Vec::new(),
+            diverging: HashSet::new(),
+            exhaustive_switches: HashSet::new(),
+            loop_bindings: HashSet::new(),
             env: self.fx().env.clone(),
             module,
             by_ref: HashSet::new(),
@@ -2081,38 +2639,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn assign(&mut self, op: Option<AssignOp>, target: &Expr, value: &Expr, span: Span) -> Result<Out> {
-        let t = self.place(target)?;
+        let AssignmentPlace { read: t, constraint } = self.place(target)?;
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
+        if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
+            return err(
+                span,
+                format!(
+                    "can't assign {} to something of type {}",
+                    v.ty.describe(),
+                    constraint.describe()
+                ),
+            );
+        }
         match op {
-            None => {
-                if !assignable(&v.ty, &t.ty) {
-                    return err(
-                        span,
-                        format!(
-                            "can't assign {} to something of type {}",
-                            v.ty.describe(),
-                            t.ty.describe()
-                        ),
-                    );
-                }
-                if let ExprKind::Ident(n) = &target.kind {
-                    // Assignment narrows: `x = 5` makes x a number until reassigned.
-                    let declared = t.ty.clone();
-                    let _ = declared;
-                    let _ = n;
-                }
-                Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty))
-            }
+            None => Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty)),
             Some(AssignOp::Bin(b)) => {
                 let r = self.binary(b, t.clone(), v, span)?;
-                if !assignable(&r.ty, &t.ty) {
+                if !(assignable(&r.ty, &constraint)
+                    || r.ty.is_num() && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
+                {
                     return err(
                         span,
                         format!(
                             "can't assign {} to something of type {}",
                             r.ty.describe(),
-                            t.ty.describe()
+                            constraint.describe()
                         ),
                     );
                 }
@@ -2120,7 +2672,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Some(AssignOp::Log(LogOp::Nullish)) => Ok(Out::new(
                 format!("{} ??= {}", t.php, v.php),
-                Ty::union([t.ty.non_null(), v.ty]),
+                logical_result_type(LogOp::Nullish, &t.ty, &v.ty),
             )),
             Some(AssignOp::Log(l)) => {
                 let cond = self.truthy(&t);
@@ -2131,26 +2683,47 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 Ok(Out::new(
                     format!("{} = {} ? {} : {}", t.php, paren(&keep), t.php, v.wrapped()),
-                    Ty::union([t.ty, v.ty]),
+                    logical_result_type(l, &t.ty, &v.ty),
                 ))
             }
         }
     }
 
     /// An assignable PHP place.
-    fn place(&mut self, target: &Expr) -> Result<Out> {
-        match &target.kind {
+    fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
+        self.place_inner(target, true)
+    }
+
+    fn place_inner(&mut self, target: &Expr, assign_binding: bool) -> Result<AssignmentPlace> {
+        let mut place = match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
-                    if !l.mutable {
+                    if assign_binding && l.view.is_empty() && self.effects.shared_parameter(l.binding) {
+                        return err_help(
+                            target.span,
+                            format!(
+                                "can't reassign `{n}`: this parameter also shares member mutations with its caller"
+                            ),
+                            "change the parameter's fields, or use a separate local binding for the replacement",
+                        );
+                    }
+                    if assign_binding && !l.mutable {
                         return err(target.span, format!("can't assign to `{n}`: it's a constant"));
                     }
-                    Ok(Out {
-                        php: l.php.clone(),
-                        ty: l.ty,
-                        place: Some(l.php),
-                        atomic: true,
-                        helper: None,
+                    let ty = if self.fx().loop_bindings.contains(&l.binding) {
+                        self.effects.read_view_type(l.binding, &l.view, &l.ty)
+                    } else {
+                        l.ty
+                    };
+                    Ok(AssignmentPlace {
+                        constraint: l.constraint,
+                        read: Out {
+                            php: l.php.clone(),
+                            ty,
+                            place: Some(l.php),
+                            atomic: true,
+                            helper: None,
+                        },
                     })
                 }
                 Resolved::Value(..) => err_help(
@@ -2163,28 +2736,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                let o = self.place(obj)?;
-                let Some((ft, _)) = o.ty.non_null().field(prop) else {
+                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
                 };
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
                 let php = format!("{}[{}]", o.php, php_str(prop));
-                Ok(Out {
-                    php: php.clone(),
-                    ty: ft,
-                    place: Some(php),
-                    atomic: true,
-                    helper: None,
+                let constraint = constraint
+                    .non_null()
+                    .field(prop)
+                    .map(|(t, _)| t)
+                    .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
+                Ok(AssignmentPlace {
+                    constraint,
+                    read: Out {
+                        php: php.clone(),
+                        ty: if optional { ft.nullable() } else { ft },
+                        place: Some(php),
+                        atomic: true,
+                        helper: None,
+                    },
                 })
             }
             ExprKind::Index { obj, index, .. } => {
-                let o = self.place(obj)?;
+                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
+                if o.ty.is_nullable() {
+                    return err(target.span, "can't index this: it might be null");
+                }
                 let (php, ty) = match o.ty.non_null() {
-                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), *t),
-                    Ty::Map(t) if i.ty == Ty::Str => (format!("{}[{}]", o.php, i.php), *t),
+                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
+                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
                             target.span,
@@ -2192,17 +2776,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                 };
-                Ok(Out {
-                    php: php.clone(),
-                    ty,
-                    place: Some(php),
-                    atomic: true,
-                    helper: None,
+                let constraint = match constraint.non_null() {
+                    Ty::Array(t) | Ty::Map(t) => *t,
+                    other => return err(target.span, format!("can't assign into {}", other.describe())),
+                };
+                Ok(AssignmentPlace {
+                    constraint,
+                    read: Out {
+                        php: php.clone(),
+                        ty,
+                        place: Some(php),
+                        atomic: true,
+                        helper: None,
+                    },
                 })
             }
-            ExprKind::NonNull(x) | ExprKind::As(x, _) => self.place(x),
+            ExprKind::NonNull(x) => {
+                let mut p = self.place_inner(x, assign_binding)?;
+                p.read.ty = p.read.ty.non_null();
+                Ok(p)
+            }
+            ExprKind::As(x, _) => self.place_inner(x, assign_binding),
             _ => err(target.span, "can't assign to this"),
+        }?;
+        if matches!(target.kind, ExprKind::Member { .. })
+            && let Some(ty) = self.path_of(target).and_then(|path| self.narrowed_path(&path))
+        {
+            place.read.ty = ty;
         }
+        Ok(place)
     }
 
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {
@@ -2280,11 +2882,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         Ok(match (&base, prop) {
-            (Ty::Str, "length") => {
+            (t, "length") if t.is_str() => {
                 let php = guarded(self, &|x| format!("\\Zero\\Js::length({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
-            (Ty::Array(_) | Ty::Tuple(_), "length") => {
+            (Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
                 let php = guarded(self, &|x| format!("count({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
@@ -2344,16 +2946,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         Ok(match (&base, &i.ty) {
-            (Ty::Array(t), it) if it.is_num() => {
-                Out::atom(format!("({}[{}] ?? null)", o.php, int_index(&i)), wrap((**t).clone()))
-            }
-            (Ty::Tuple(ts), _) => match &index.kind {
+            (Ty::Array(t), it) if it.is_num() => Out::atom(
+                format!("({}[{}] ?? null)", o.php, int_index(&i)),
+                wrap((**t).clone().nullable()),
+            ),
+            (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
                 ExprKind::Num(n) if n.fract() == 0.0 && *n >= 0.0 => {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Null);
                     let place = o.place.as_ref().map(|p| format!("{p}[{}]", *n as usize));
                     Out {
-                        php: format!("{}[{}]", o.php, *n as usize),
-                        ty: wrap(t),
+                        php: format!("({}[{}] ?? null)", o.php, *n as usize),
+                        ty: wrap(t.nullable()),
                         place,
                         atomic: true,
                         helper: None,
@@ -2365,11 +2968,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
-            (Ty::Map(t), Ty::Str) => Out::atom(
+            (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
                 format!("({}[{}] ?? null)", o.php, i.php),
                 wrap((**t).clone().nullable()),
             ),
-            (Ty::Obj(fields), Ty::Str) => {
+            (Ty::Obj(fields), i) if i.is_str() => {
                 if let ExprKind::Str(k) = &index.kind {
                     return self.member(obj, k, optional, index.span, span);
                 }
@@ -2380,7 +2983,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "use a `Record<string, T>` or a `switch`",
                 );
             }
-            (Ty::Str, it) if it.is_num() => Out::atom(
+            (s, it) if s.is_str() && it.is_num() => Out::atom(
                 format!("\\Zero\\Js::strAt({}, {})", o.php, i.php),
                 wrap(Ty::Str.nullable()),
             ),
@@ -2474,9 +3077,47 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// Numeric updates broaden read/return inference, while authored parameter
+    /// and assignment constraints still govern which values can be supplied.
+    fn argument_constraint(&mut self, e: &Expr) -> Option<Ty> {
+        match &e.kind {
+            ExprKind::Ident(name) => match self.resolve(name, e.span).ok()? {
+                Resolved::Local(local) => Some(local.constraint),
+                _ => None,
+            },
+            ExprKind::Member { obj, prop, .. } => {
+                self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
+            }
+            ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
+                Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
+                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
+                    ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => {
+                        Some(ts.get(*n as usize).cloned().unwrap_or(Ty::Null).nullable())
+                    }
+                    _ => Some(Ty::union(ts).nullable()),
+                },
+                Ty::Obj(fields) => match &index.kind {
+                    ExprKind::Str(key) => fields.get(key).map(|(t, _)| t.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            ExprKind::NonNull(e) => self.argument_constraint(e).map(|ty| ty.non_null()),
+            _ => None,
+        }
+    }
+
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
+        }
+        if let ExprKind::Ident(n) = &callee.kind
+            && let Resolved::Value(Value::Builtin(Builtin::Once), _) = self.resolve(n, callee.span)?
+        {
+            let key = self.arg(args, 0, span, "once")?;
+            if !self.expr(key)?.ty.is_str() {
+                return err_help(key.span, "once key must be a string", "use a stable string key");
+            }
         }
         match &callee.kind {
             ExprKind::Member {
@@ -2492,7 +3133,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return self.static_call(g, prop, args, span);
                 }
                 let recv = self.expr(obj)?;
-                self.method_call(recv, obj.span, prop, *opt, *prop_span, args, span)
+                self.method_call(recv, obj, prop, *opt, *prop_span, args, span)
             }
             ExprKind::Ident(n) => {
                 if let Resolved::Global(g) = self.resolve(n, callee.span)? {
@@ -2513,6 +3154,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(callee_span, format!("{} isn't a function", f.ty.describe()));
         };
         let mut argv = Vec::new();
+        let mut unpacked = Vec::new();
+        let mut needs_unpack = false;
         for (i, a) in args.iter().enumerate() {
             let ArrEl::Item(x) = a else {
                 return err(span, "spread arguments aren't supported in calls");
@@ -2527,6 +3170,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             if let Some(w) = &want
                 && !assignable(&v.ty, w)
+                && (v.ty.is_nullable() && !w.is_nullable()
+                    || !self.argument_constraint(x).is_some_and(|t| assignable(&t, w)))
             {
                 return err(
                     x.span,
@@ -2540,11 +3185,41 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if want.is_none() {
                 return err(x.span, "too many arguments");
             }
+            let by_ref = self.effects.argument_by_ref(span, i);
+            if by_ref && v.place.is_some() {
+                for later in &args[i + 1..] {
+                    let (ArrEl::Item(later) | ArrEl::Spread(later)) = later;
+                    if self.effects.replaces_argument(x.span, later.span) {
+                        return err_help(
+                            later.span,
+                            "a later argument replaces an object or array already passed by reference",
+                            "evaluate the arguments in separate statements before calling this function",
+                        );
+                    }
+                }
+            }
+            if by_ref {
+                needs_unpack = true;
+            }
+            unpacked.push(match (&v.place, by_ref) {
+                // A guarded read (`?? null`) is not addressable in PHP. Keep
+                // present storage by reference, but don't create missing fields
+                // or array elements merely by passing them to a function.
+                (Some(place), true) => format!("...(isset({place}) ? [&{place}] : [null])"),
+                _ => v.php.clone(),
+            });
             argv.push(v.php);
         }
+        // Unpacking gives temporary containers addressable storage for helpers
+        // that mutate their parameters. Existing local containers retain references.
+        let argv = if needs_unpack {
+            format!("...[{}]", unpacked.join(", "))
+        } else {
+            argv.join(", ")
+        };
         let php = match &f.helper {
-            Some(name) => format!("{name}({})", argv.join(", ")),
-            None => format!("{}({})", f.wrapped(), argv.join(", ")),
+            Some(name) => format!("{name}({argv})"),
+            None => format!("{}({argv})", f.wrapped()),
         };
         Ok(Out::new(php, *ret))
     }
@@ -2684,7 +3359,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Object", "fromEntries") => {
                 let t = match a0.map(|a| a.ty.non_null()) {
                     Some(Ty::Array(el)) => match *el {
-                        Ty::Tuple(ts) if ts.len() == 2 => ts[1].clone(),
+                        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) if ts.len() == 2 => ts[1].clone(),
                         _ => Ty::Unknown,
                     },
                     _ => return err(span, "Object.fromEntries needs an array of [key, value] pairs"),
@@ -2732,13 +3407,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn method_call(
         &mut self,
         recv: Out,
-        recv_span: Span,
+        recv_expr: &Expr,
         m: &str,
         optional: bool,
         m_span: Span,
         args: &[ArrEl],
         span: Span,
     ) -> Result<Out> {
+        let recv_span = recv_expr.span;
         match recv.ty.clone() {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
             Ty::Db => return self.db_call(m, args, span, m_span),
@@ -2756,9 +3432,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let base = recv.ty.non_null();
         let r = match &base {
-            Ty::Str => self.string_method(&recv, m, args, span, m_span)?,
-            Ty::Array(_) | Ty::Tuple(_) => self.array_method(&recv, m, args, span, m_span)?,
-            Ty::Num => match m {
+            t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
+            Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => {
+                let constraint = self.argument_constraint(recv_expr);
+                self.array_method(&recv, constraint.as_ref(), m, args, span, m_span)?
+            }
+            t if t.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv
@@ -2788,7 +3467,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "test" => {
                     let argv = self.plain_args(args)?;
                     let s = argv.first().ok_or_else(|| Diag::new(span, "test() needs a string"))?;
-                    if s.ty != Ty::Str {
+                    if !s.ty.is_str() {
                         return err(span, format!("test() needs a string, not {}", s.ty.describe()));
                     }
                     Out::atom(format!("{}->test({})", recv.wrapped(), s.php), Ty::Bool)
@@ -2822,18 +3501,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
         if matches!(m, "replace" | "replaceAll") {
-            let pat = self.expr(self.arg(args, 0, span, "a pattern")?)?;
+            let pat_e = self.arg(args, 0, span, "a pattern")?;
+            let pat = self.expr(pat_e)?;
             let rep_e = self.arg(args, 1, span, "a replacement")?;
-            let rep = match &rep_e.kind {
-                ExprKind::Func(_) => self.callback(rep_e, &[Ty::Str, Ty::Str, Ty::Str, Ty::Str, Ty::Str])?,
-                _ => self.expr(rep_e)?,
-            };
-            if !(pat.ty == Ty::Str || pat.ty == Ty::Regex) {
+            if !(pat.ty.is_str() || pat.ty == Ty::Regex) {
                 return err(
                     span,
                     format!("{m}() needs a string or regex pattern, not {}", pat.ty.describe()),
                 );
             }
+            let pattern = match &pat_e.kind {
+                ExprKind::Regex { pattern, .. } => Some(pattern.clone()),
+                ExprKind::Ident(name) => match self.resolve(name, pat_e.span)? {
+                    Resolved::Value(Value::Regex(pattern, _), _) => Some(pattern.to_string()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let parameters = |count| replacement_parameters(&pat.ty, pattern.as_deref(), count);
+            let rep = if let ExprKind::Func(f) = &rep_e.kind {
+                self.callback(rep_e, &parameters(f.params.len()))?
+            } else {
+                let rep = self.expr(rep_e)?;
+                if let Ty::Fn(declared, _) = &rep.ty {
+                    check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
+                    Out::atom(format!("\\Closure::fromCallable({})", rep.php), rep.ty)
+                } else if !rep.ty.is_str() {
+                    return err(rep_e.span, "a replacement must be a string or a function");
+                } else {
+                    rep
+                }
+            };
             return Ok(Out::atom(
                 format!("\\Zero\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
                 Ty::Str,
@@ -2843,7 +3541,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {
-                Some(x) if x.ty == Ty::Str => Ok(x.php.clone()),
+                Some(x) if x.ty.is_str() => Ok(x.php.clone()),
                 Some(x) => err(span, format!("{m}() needs a string, not {}", x.ty.describe())),
                 None => {
                     let _ = c;
@@ -2898,11 +3596,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    fn array_method(&mut self, a: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+    fn array_method(
+        &mut self,
+        a: &Out,
+        constraint: Option<&Ty>,
+        m: &str,
+        args: &[ArrEl],
+        span: Span,
+        m_span: Span,
+    ) -> Result<Out> {
         let el = match a.ty.non_null() {
             Ty::Array(t) => *t,
-            Ty::Tuple(ts) => Ty::union(ts),
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
             _ => unreachable!(),
+        };
+        let element_constraint = match constraint.unwrap_or(&a.ty).non_null() {
+            Ty::Array(t) => *t,
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
+            _ => el.clone(),
+        };
+        let check_insert = |items: &[Out]| -> Result<()> {
+            for item in items {
+                if !assignable(&item.ty, &element_constraint) && element_constraint != Ty::Never {
+                    return err(
+                        span,
+                        format!(
+                            "can't insert {} into an array of {}",
+                            item.ty.describe(),
+                            element_constraint.describe()
+                        ),
+                    );
+                }
+            }
+            Ok(())
         };
         let cb = |c: &mut Self, extra: &[Ty]| -> Result<Out> {
             let f = c.arg(args, 0, span, "a function")?;
@@ -2950,9 +3676,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "flatMap" => {
                 let f = cb(self, &[])?;
-                let r = match ret_of(&f) {
+                let flatten = |t| match t {
                     Ty::Array(t) => *t,
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
                     t => t,
+                };
+                let r = match ret_of(&f) {
+                    Ty::Union(ts) => Ty::union(ts.into_iter().map(flatten)),
+                    t => flatten(t),
                 };
                 Out::atom(
                     format!("\\Zero\\Js::flatMap({}, {})", a.php, f.php),
@@ -2975,8 +3706,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let acc_ty = init
                     .as_ref()
-                    .map(|i| widen_literal_array(&i.ty))
-                    .unwrap_or_else(|| el.clone());
+                    .map(|i| widen_fresh_literals(&i.ty))
+                    .unwrap_or_else(|| widen_fresh_literals(&el));
                 let f = self.arg(args, 0, span, "a function")?;
                 let f = self.callback(f, &[acc_ty.clone(), el.clone(), Ty::Num])?;
                 let r = ret_of(&f);
@@ -3011,33 +3742,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Out::atom(format!("\\Zero\\Js::sorted({}{fp})", a.php), Ty::Array(Box::new(el)))
                 }
             }
-            "push" => {
+            "push" | "unshift" => {
                 let p = place()?;
                 let argv = self.plain_args(args)?;
-                for x in &argv {
-                    if !assignable(&x.ty, &el) && el != Ty::Never {
-                        return err(
-                            span,
-                            format!("can't push {} into an array of {}", x.ty.describe(), el.describe()),
-                        );
-                    }
-                }
+                check_insert(&argv)?;
                 let items: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
-                Out::atom(format!("array_push({p}, {})", items.join(", ")), Ty::Num)
+                Out::atom(format!("array_{m}({p}, {})", items.join(", ")), Ty::Num)
             }
             "pop" => Out::atom(format!("array_pop({})", place()?), el.nullable()),
             "shift" => Out::atom(format!("array_shift({})", place()?), el.nullable()),
-            "unshift" => {
-                let argv = self.plain_args(args)?;
-                Out::atom(
-                    format!(
-                        "array_unshift({}, {})",
-                        place()?,
-                        argv.iter().map(|x| x.php.clone()).collect::<Vec<_>>().join(", ")
-                    ),
-                    Ty::Num,
-                )
-            }
             "reverse" if a.place.is_some() => {
                 Out::atom(format!("\\Zero\\Js::reverse({})", place()?), Ty::Array(Box::new(el)))
             }
@@ -3045,6 +3758,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toReversed" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
+                check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
                     format!("\\Zero\\Js::splice({}, {})", place()?, extra.join(", ")),
@@ -3063,7 +3777,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
                     "join" => {
                         if let Some(sep) = argv.first()
-                            && sep.ty != Ty::Str
+                            && !sep.ty.is_str()
                         {
                             return err(span, "join() needs a string separator");
                         }
@@ -3098,6 +3812,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Out::atom(format!("\\Zero\\Js::flat({all})"), Ty::Array(Box::new(inner)))
                     }
                     _ => {
+                        check_insert(&argv[..argv.len().min(1)])?;
                         let p = place()?;
                         Out::atom(
                             format!("\\Zero\\Js::fill({p}, {})", extra.join(", ")),
@@ -3519,14 +4234,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 "in" | "notIn" => {
                     let x = self.expr(v)?;
-                    if !matches!(x.ty.non_null(), Ty::Array(_) | Ty::Tuple(_)) {
+                    if !matches!(x.ty.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)) {
                         return err(v.span, format!("`{op}` takes an array"));
                     }
                     x.php
                 }
                 "like" | "ilike" | "notLike" | "notIlike" => {
                     let x = self.expr(v)?;
-                    if x.ty != Ty::Str {
+                    if !x.ty.is_str() {
                         return err(v.span, format!("`{op}` takes a string pattern"));
                     }
                     x.php
@@ -3565,8 +4280,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date | Ty::Num) => format!("\\Zero\\Js::iso({})", v.php),
-            (ColType::Date, Ty::Date | Ty::Num) => format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
+                format!("\\Zero\\Js::iso({})", v.php)
+            }
+            (ColType::Date, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
+                format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php)
+            }
             _ => v.php.clone(),
         }
     }
@@ -3722,14 +4441,6 @@ fn col_value_ty(c: &crate::schema::Column) -> Ty {
     }
 }
 
-/// The table a column path belongs to, for `json().$type<T>()` lookups.
-fn owner_table(o: &Owner) -> &str {
-    match o {
-        Owner::Collection(t) => t,
-        _ => "",
-    }
-}
-
 fn obj_values_ty(t: Option<&Ty>) -> Ty {
     match t.map(Ty::non_null) {
         Some(Ty::Obj(f)) => Ty::union(f.values().map(|(t, _)| t.clone())),
@@ -3757,10 +4468,10 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) => "array ",
-        Ty::Str => "string ",
-        Ty::Bool => "bool ",
-        Ty::Num => "int|float ",
+        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
+        t if t.is_str() => "string ",
+        t if t.is_bool() => "bool ",
+        Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => "int|float ",
         _ => "",
     }
 }
@@ -3769,23 +4480,190 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
     use serde_json::Value as J;
     match v {
         J::Null => Ty::Null,
-        J::Bool(_) => Ty::Bool,
-        J::Number(_) => Ty::Num,
-        J::String(_) => Ty::Str,
+        J::Bool(value) => Ty::FreshBoolLit(*value),
+        J::Number(value) => Ty::FreshNumLit(value.as_f64().expect("JSON number")),
+        J::String(s) => Ty::FreshStrLit(s.clone()),
         J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
         J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
     }
 }
 
-fn widen_literal_array(t: &Ty) -> Ty {
+fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
     match t {
-        Ty::Tuple(ts) => Ty::Array(Box::new(Ty::union(ts.clone()))),
+        Ty::FreshNumLit(_) | Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
+        Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
+        _ => widen_fresh_literals(t),
+    }
+}
+
+fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
+    if op == LogOp::Nullish {
+        return Ty::union([left.non_null(), right.clone()]);
+    }
+    let retain_truthy = op == LogOp::Or;
+    let retained = truthiness_part(left, retain_truthy);
+    if truthiness_part(left, !retain_truthy) == Ty::Never {
+        retained
+    } else {
+        Ty::union([retained, right.clone()])
+    }
+}
+
+fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
+    match t {
+        Ty::Union(ts) => Ty::union(ts.iter().map(|t| truthiness_part(t, truthy))),
+        Ty::Bool => Ty::BoolLit(truthy),
+        Ty::BoolLit(value) | Ty::FreshBoolLit(value) if *value == truthy => t.clone(),
+        Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
+        Ty::NumLit(n) | Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
+        Ty::NumLit(_) | Ty::FreshNumLit(_) => t.clone(),
+        Ty::Null if truthy => Ty::Never,
+        Ty::Null => Ty::Null,
+        Ty::Str if !truthy => Ty::StrLit(String::new()),
+        Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
+        Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Never => t.clone(),
+        Ty::Array(_)
+        | Ty::Tuple(_)
+        | Ty::ArrayLiteral(_)
+        | Ty::Obj(_)
+        | Ty::Map(_)
+        | Ty::Fn(..)
+        | Ty::Promise(_)
+        | Ty::Date
+        | Ty::Regex
+        | Ty::Error
+        | Ty::Collection(_)
+        | Ty::Db
+        | Ty::DbQuery
+        | Ty::QueryColl(_)
+        | Ty::Builder(_) => {
+            if truthy {
+                t.clone()
+            } else {
+                Ty::Never
+            }
+        }
+    }
+}
+
+fn default_binding_type(ty: &Ty, default: &Ty, mutable: bool) -> Ty {
+    let present = ty.non_null();
+    if assignable(default, &present) {
+        present
+    } else {
+        Ty::union([present, inferred_binding_type(default, mutable)])
+    }
+}
+
+fn replacement_parameters(ty: &Ty, pattern: Option<&str>, count: usize) -> Vec<Ty> {
+    let mut params = vec![Ty::Str];
+    if !ty.is_str() {
+        let Some(pattern) = pattern else {
+            // A runtime regex can supply any number of captures before the offset.
+            params.resize(count.max(1), Ty::Unknown);
+            return params;
+        };
+        let mut chars = pattern.chars().peekable();
+        let mut in_class = false;
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => {
+                    chars.next();
+                }
+                '[' => in_class = true,
+                ']' => in_class = false,
+                '(' if !in_class => {
+                    let mut tail = chars.clone();
+                    let captures = tail.next() != Some('?')
+                        || (tail.next() == Some('<') && !matches!(tail.next(), Some('=' | '!')));
+                    if captures {
+                        params.push(Ty::Str.nullable());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    params.extend([Ty::Num, Ty::Str]);
+    params
+}
+
+fn check_parameter_argument(given: &Ty, declared: &Ty, span: Span) -> Result<()> {
+    let given = widen_fresh_literals(given);
+    if !assignable(&given, declared) {
+        return err_help(
+            span,
+            format!(
+                "this parameter is declared as {}, but it receives {}",
+                declared.describe(),
+                given.describe()
+            ),
+            "accept the supplied argument type, or change the values supplied to the function",
+        );
+    }
+    Ok(())
+}
+
+fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Result<()> {
+    for (i, declared) in declared.iter().enumerate() {
+        check_parameter_argument(given.get(i).unwrap_or(&Ty::Null), declared, span)?;
+    }
+    Ok(())
+}
+
+fn parameter_default_suffix(parameter: &Param) -> &'static str {
+    if parameter.optional || parameter.default.is_some() {
+        " = null"
+    } else {
+        ""
+    }
+}
+
+fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
+    if parameter.optional || parameter.default.is_some() {
+        ty.nullable()
+    } else {
+        ty
+    }
+}
+
+fn widen_fresh_literals(t: &Ty) -> Ty {
+    match t {
+        Ty::FreshNumLit(_) => Ty::Num,
+        Ty::FreshStrLit(_) => Ty::Str,
+        Ty::FreshBoolLit(_) => Ty::Bool,
+        Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_fresh_literals)))),
+        Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(widen_fresh_literals).collect()),
+        Ty::Array(t) => Ty::Array(Box::new(widen_fresh_literals(t))),
+        Ty::Union(ts) => Ty::union(ts.iter().map(widen_fresh_literals)),
         Ty::Obj(f) => Ty::Obj(
             f.iter()
-                .map(|(k, (t, o))| (k.clone(), (widen_literal_array(t), *o)))
+                .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
                 .collect(),
         ),
-        other => other.clone(),
+        Ty::Map(t) => Ty::Map(Box::new(widen_fresh_literals(t))),
+        Ty::Fn(params, ret) => Ty::Fn(
+            params.iter().map(widen_fresh_literals).collect(),
+            Box::new(widen_fresh_literals(ret)),
+        ),
+        Ty::Promise(t) => Ty::Promise(Box::new(widen_fresh_literals(t))),
+        Ty::Num
+        | Ty::NumLit(_)
+        | Ty::Str
+        | Ty::StrLit(_)
+        | Ty::Bool
+        | Ty::BoolLit(_)
+        | Ty::Null
+        | Ty::Unknown
+        | Ty::Never
+        | Ty::Date
+        | Ty::Regex
+        | Ty::Error
+        | Ty::Collection(_)
+        | Ty::Db
+        | Ty::DbQuery
+        | Ty::QueryColl(_)
+        | Ty::Builder(_) => t.clone(),
     }
 }
 
@@ -3795,12 +4673,20 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
+        (Ty::NumLit(_) | Ty::FreshNumLit(_), Ty::Num) => true,
+        (Ty::NumLit(x), Ty::FreshNumLit(y)) | (Ty::FreshNumLit(x), Ty::NumLit(y)) => x == y,
+        (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
+        (Ty::BoolLit(_) | Ty::FreshBoolLit(_), Ty::Bool) => true,
+        (Ty::BoolLit(x), Ty::FreshBoolLit(y)) | (Ty::FreshBoolLit(x), Ty::BoolLit(y)) => x == y,
+        (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
         (Ty::Date, Ty::Num) => true,
         (Ty::Array(x), Ty::Array(y)) => **x == Ty::Never || assignable(x, y),
-        (Ty::Tuple(xs), Ty::Array(y)) => xs.iter().all(|x| assignable(x, y)),
-        (Ty::Tuple(xs), Ty::Tuple(ys)) => xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| assignable(x, y)),
+        (Ty::Tuple(xs) | Ty::ArrayLiteral(xs), Ty::Array(y)) => xs.iter().all(|x| assignable(x, y)),
+        (Ty::Tuple(xs) | Ty::ArrayLiteral(xs), Ty::Tuple(ys) | Ty::ArrayLiteral(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| assignable(x, y))
+        }
         (Ty::Obj(have), Ty::Obj(need)) => {
             need.iter().all(|(k, (t, optional))| match have.get(k) {
                 Some((ht, _)) => assignable(ht, t),
@@ -3809,6 +4695,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         }
         (Ty::Obj(have), Ty::Map(v)) => have.values().all(|(t, _)| assignable(t, v)),
         (Ty::Map(x), Ty::Map(y)) => assignable(x, y),
+        (Ty::Promise(x), Ty::Promise(y)) => assignable(x, y),
         (Ty::Fn(pa, ra), Ty::Fn(pb, rb)) => {
             pa.len() <= pb.len() && pa.iter().zip(pb).all(|(x, y)| assignable(y, x)) && assignable(ra, rb)
         }
@@ -3833,125 +4720,150 @@ fn ends_with_exit(stmts: &[Stmt]) -> bool {
     )
 }
 
-/// Parameters a function assigns into (`data.x = ...`, `items.push(...)`), passed by reference in PHP.
-fn mutated_params(f: &Func) -> HashSet<String> {
-    let mut names: HashSet<String> = HashSet::new();
-    let params: Vec<String> = f
-        .params
-        .iter()
-        .filter_map(|p| {
-            if let Pat::Id(n, _) = &p.pat {
-                Some(n.clone())
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Completion {
+    Normal,
+    Return,
+    Throw,
+    Break,
+    Continue,
+}
+
+fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> HashSet<Completion> {
+    if first.remove(&Completion::Normal) {
+        first.extend(second);
+    }
+    first
+}
+
+fn switch_is_exhaustive(ty: &Ty, case_types: &[Ty]) -> bool {
+    match ty {
+        Ty::Bool => {
+            case_types.iter().any(|ty| ty.bool_literal() == Some(true))
+                && case_types.iter().any(|ty| ty.bool_literal() == Some(false))
+        }
+        Ty::BoolLit(value) | Ty::FreshBoolLit(value) => case_types.iter().any(|ty| ty.bool_literal() == Some(*value)),
+        Ty::StrLit(value) | Ty::FreshStrLit(value) => case_types
+            .iter()
+            .any(|ty| matches!(ty, Ty::StrLit(case) | Ty::FreshStrLit(case) if case == value)),
+        Ty::NumLit(value) | Ty::FreshNumLit(value) => case_types
+            .iter()
+            .any(|ty| matches!(ty, Ty::NumLit(case) | Ty::FreshNumLit(case) if case == value)),
+        Ty::Null => case_types.contains(&Ty::Null),
+        Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, case_types)),
+        Ty::Never => true,
+        _ => false,
+    }
+}
+
+fn block_completions(
+    stmts: &[Stmt],
+    diverging: &HashSet<Span>,
+    exhaustive_switches: &HashSet<Span>,
+) -> HashSet<Completion> {
+    stmts.iter().fold(HashSet::from([Completion::Normal]), |flow, stmt| {
+        followed_by(flow, stmt_completions(stmt, diverging, exhaustive_switches))
+    })
+}
+
+fn stmt_completions(
+    stmt: &Stmt,
+    diverging: &HashSet<Span>,
+    exhaustive_switches: &HashSet<Span>,
+) -> HashSet<Completion> {
+    use Completion::*;
+    match stmt {
+        Stmt::Expr(expr)
+        | Stmt::Decl { init: Some(expr), .. }
+        | Stmt::If(expr, ..)
+        | Stmt::While(expr, _)
+        | Stmt::Switch { disc: expr, .. }
+            if diverging.contains(&expr.span) =>
+        {
+            HashSet::from([Throw])
+        }
+        Stmt::Return(..) => HashSet::from([Return]),
+        Stmt::Throw(_) => HashSet::from([Throw]),
+        Stmt::Break(_) => HashSet::from([Break]),
+        Stmt::Continue(_) => HashSet::from([Continue]),
+        Stmt::Block(body) => block_completions(body, diverging, exhaustive_switches),
+        Stmt::If(test, yes, no) => {
+            let yes = block_completions(yes, diverging, exhaustive_switches);
+            let no = no
+                .as_deref()
+                .map(|body| block_completions(body, diverging, exhaustive_switches))
+                .unwrap_or_else(|| HashSet::from([Normal]));
+            match test.kind {
+                ExprKind::Bool(true) => yes,
+                ExprKind::Bool(false) => no,
+                _ => yes.union(&no).copied().collect(),
+            }
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            let mut flow = block_completions(block, diverging, exhaustive_switches);
+            if let Some(handler) = handler {
+                flow.remove(&Throw);
+                flow.extend(block_completions(handler, diverging, exhaustive_switches));
+            }
+            if let Some(finalizer) = finalizer {
+                let mut final_flow = block_completions(finalizer, diverging, exhaustive_switches);
+                if final_flow.remove(&Normal) {
+                    final_flow.extend(flow);
+                }
+                flow = final_flow;
+            }
+            flow
+        }
+        Stmt::Switch { cases, span, .. } => {
+            let mut suffix = HashSet::from([Normal]);
+            let mut flow = HashSet::new();
+            for (_, body) in cases.iter().rev() {
+                suffix = followed_by(block_completions(body, diverging, exhaustive_switches), suffix);
+                flow.extend(&suffix);
+            }
+            let breaks = flow.remove(&Break);
+            if !(cases.iter().any(|(test, _)| test.is_none()) || exhaustive_switches.contains(span)) || breaks {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        Stmt::While(test, body)
+        | Stmt::For {
+            test: Some(test), body, ..
+        } => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            let breaks = flow.remove(&Break);
+            flow.remove(&Continue);
+            flow.remove(&Normal);
+            if !matches!(test.kind, ExprKind::Bool(true)) || breaks {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        Stmt::For { test: None, body, .. } => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            if flow.remove(&Break) {
+                flow.insert(Normal);
             } else {
-                None
+                flow.remove(&Normal);
             }
-        })
-        .collect();
-    fn root(e: &Expr) -> Option<&str> {
-        match &e.kind {
-            ExprKind::Ident(n) => Some(n),
-            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } | ExprKind::NonNull(obj) => root(obj),
-            _ => None,
+            flow.remove(&Continue);
+            flow
         }
-    }
-    fn walk_e(e: &Expr, params: &[String], out: &mut HashSet<String>) {
-        match &e.kind {
-            ExprKind::Assign { target, value, .. } => {
-                if !matches!(target.kind, ExprKind::Ident(_))
-                    && let Some(r) = root(target)
-                    && params.iter().any(|p| p == r)
-                {
-                    out.insert(r.to_string());
-                }
-                walk_e(value, params, out);
-            }
-            ExprKind::Update { target, .. } => {
-                if !matches!(target.kind, ExprKind::Ident(_))
-                    && let Some(r) = root(target)
-                    && params.iter().any(|p| p == r)
-                {
-                    out.insert(r.to_string());
-                }
-            }
-            ExprKind::Call { callee, args, .. } => {
-                if let ExprKind::Member { obj, prop, .. } = &callee.kind
-                    && matches!(
-                        prop.as_str(),
-                        "push" | "pop" | "shift" | "unshift" | "splice" | "sort" | "reverse" | "fill"
-                    )
-                    && let Some(r) = root(obj)
-                    && params.iter().any(|p| p == r)
-                {
-                    out.insert(r.to_string());
-                }
-                walk_e(callee, params, out);
-                for a in args {
-                    match a {
-                        ArrEl::Item(x) | ArrEl::Spread(x) => walk_e(x, params, out),
-                    }
-                }
-            }
-            ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
-                walk_e(a, params, out);
-                walk_e(b, params, out);
-            }
-            ExprKind::Cond(a, b, c) => {
-                walk_e(a, params, out);
-                walk_e(b, params, out);
-                walk_e(c, params, out);
-            }
-            ExprKind::Unary(_, x)
-            | ExprKind::Await(x)
-            | ExprKind::Chain(x)
-            | ExprKind::As(x, _)
-            | ExprKind::NonNull(x)
-            | ExprKind::IsNullish(x, _) => walk_e(x, params, out),
-            _ => {}
+        Stmt::ForOf { body, .. } => {
+            let mut flow = block_completions(body, diverging, exhaustive_switches);
+            flow.remove(&Break);
+            flow.remove(&Continue);
+            flow.insert(Normal);
+            flow
         }
+        _ => HashSet::from([Normal]),
     }
-    fn walk_s(stmts: &[Stmt], params: &[String], out: &mut HashSet<String>) {
-        for s in stmts {
-            match s {
-                Stmt::Expr(e) | Stmt::Throw(e) => walk_e(e, params, out),
-                Stmt::Return(Some(e), _) => walk_e(e, params, out),
-                Stmt::Decl { init: Some(e), .. } => walk_e(e, params, out),
-                Stmt::If(t, a, b) => {
-                    walk_e(t, params, out);
-                    walk_s(a, params, out);
-                    if let Some(b) = b {
-                        walk_s(b, params, out);
-                    }
-                }
-                Stmt::Block(b) | Stmt::While(_, b) => walk_s(b, params, out),
-                Stmt::For { body, .. } | Stmt::ForOf { body, .. } => walk_s(body, params, out),
-                Stmt::Try {
-                    block,
-                    handler,
-                    finalizer,
-                    ..
-                } => {
-                    walk_s(block, params, out);
-                    if let Some(h) = handler {
-                        walk_s(h, params, out);
-                    }
-                    if let Some(f) = finalizer {
-                        walk_s(f, params, out);
-                    }
-                }
-                Stmt::Switch { cases, .. } => {
-                    for (_, b) in cases {
-                        walk_s(b, params, out);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    match &f.body {
-        FnBody::Expr(e) => walk_e(e, &params, &mut names),
-        FnBody::Block(b) => walk_s(b, &params, &mut names),
-    }
-    names
 }
 
 fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, String), (Vec<String>, TyAnn)>) {

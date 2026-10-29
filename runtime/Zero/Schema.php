@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * Read-only view of the generated schema.php (version 2, design §2) plus the value codecs shared
+ * Read-only view of the generated schema.php (version 3, phase-2 §3.1) plus the value codecs shared
  * by the write pipeline, filters, globals and action input validation (§3.4).
  *
  * Values exist in three forms:
@@ -17,7 +17,7 @@ namespace Zero;
  */
 final class Schema
 {
-    private const READ_V3 = false; // A2 enables the schema.php v3 contract.
+    public const SERIES = '0.2';
 
     public const ROLES = ['subscriber', 'author', 'editor', 'admin'];
     private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
@@ -36,8 +36,13 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
-        if (($raw['version'] ?? null) !== 2 && !(self::READ_V3 && ($raw['version'] ?? null) === 3)) {
-            throw new \RuntimeException('schema.php version 2 required');
+        if (($raw['version'] ?? null) !== 3) {
+            throw new \RuntimeException('schema.php version 3 required');
+        }
+
+        if (($raw['runtime'] ?? null) !== self::SERIES) {
+            $series = $raw['runtime'] ?? '(missing)';
+            throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES);
         }
 
         return new self($raw);
@@ -45,7 +50,7 @@ final class Schema
 
     public function version(): int
     {
-        return $this->raw['version'] ?? 2;
+        return $this->raw['version'] ?? 3;
     }
 
     public function runtime(): ?string
@@ -79,6 +84,41 @@ final class Schema
     public function actions(): array
     {
         return $this->raw['actions'] ?? [];
+    }
+
+    public function site(): array
+    {
+        return $this->raw['site'] ?? ['uidPrefix' => 'zr_'];
+    }
+
+    public function locales(): ?array
+    {
+        return $this->raw['locales'] ?? null;
+    }
+
+    public function media(): array
+    {
+        return $this->raw['media'] ?? ['sizes' => []];
+    }
+
+    public function files(): array
+    {
+        return $this->raw['files'] ?? [];
+    }
+
+    public function auth(): array
+    {
+        return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
+    }
+
+    public function jobs(): array
+    {
+        return $this->raw['jobs'] ?? [];
+    }
+
+    public function webhooks(): array
+    {
+        return $this->raw['webhooks'] ?? [];
     }
 
     public function hasCollection(string $name): bool
@@ -115,6 +155,11 @@ final class Schema
                 'editor' => $c['editor'] ?? false,
                 'drafts' => $c['drafts'] ?? false,
                 'revisions' => $c['revisions'] ?? false,
+                'uid' => $c['uid'] ?? false,
+                'sync' => $c['sync'] ?? null,
+                'auth' => $c['auth'] ?? false,
+                'agents' => $c['agents'] ?? true,
+                'localized' => $c['localized'] ?? false,
                 'title' => $c['title'] ?? null,
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
@@ -129,6 +174,7 @@ final class Schema
         foreach ($this->globals() as $name => $g) {
             $globals[$name] = [
                 'label' => $g['label'] ?? $name,
+                'agents' => $g['agents'] ?? true,
                 'fields' => array_map(self::publicColumn(...), $g['fields']),
                 'access' => array_map(self::accessSummary(...), Access::globalRules($g)),
             ];
@@ -137,17 +183,28 @@ final class Schema
         foreach ($this->actions() as $name => $a) {
             $actions[$name] = [
                 'input' => array_map(self::publicColumn(...), $a['input'] ?? []),
+                'agents' => $a['agents'] ?? true,
+                'idempotent' => $a['idempotent'] ?? false,
                 'access' => self::accessSummary($a['access'] ?? Access::DEFAULT_WRITE),
             ];
         }
 
-        return Extensions::describe(['name' => $this->name(), 'target' => $this->target(), 'collections' => $collections, 'globals' => $globals, 'actions' => $actions]);
+        return Extensions::describe([
+            'name' => $this->name(), 'target' => $this->target(),
+            'runtime' => ['series' => $this->runtime(), 'target' => $this->target()],
+            'locales' => $this->locales(), 'media' => $this->media(),
+            'files' => array_map(static fn (array $b): array => ['accept' => $b['accept'], 'maxBytes' => $b['maxBytes']], $this->files()),
+            'auth' => array_intersect_key($this->auth(), ['collection' => true, 'guests' => true]),
+            'collections' => $collections, 'globals' => $globals, 'actions' => $actions,
+        ]);
     }
 
     private static function accessSummary(array $rule): string|bool
     {
         return match (true) {
             isset($rule['fn']) => 'rule',
+            ($rule['self'] ?? false) === true => 'self',
+            ($rule['owner'] ?? false) === true => 'owner',
             isset($rule['role']) => (string) $rule['role'],
             ($rule['allow'] ?? false) === true => 'anyone',
             default => false,
@@ -163,6 +220,9 @@ final class Schema
         }
         if (isset($col['rules']['validate'])) {
             $col['rules']['validate'] = true;
+        }
+        if (isset($col['access'])) {
+            $col['access'] = array_map(self::accessSummary(...), $col['access']);
         }
         if (isset($col['fields'])) {
             $col['fields'] = array_map(self::publicColumn(...), $col['fields']);
@@ -235,7 +295,7 @@ final class Schema
         $type = $col['type'];
         $bad = static fn (): HttpError => HttpError::invalidInput("$name must be " . self::expected($type), $pointer);
         $out = match ($type) {
-            'integer', 'media' => match (true) {
+            'integer', 'media', 'file' => match (true) {
                 is_int($v) => $v,
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
                 default => throw $bad(),
@@ -402,6 +462,7 @@ final class Schema
             'timestamp' => 'an ISO-8601 timestamp or epoch milliseconds',
             'date' => 'a date (YYYY-MM-DD)',
             'media' => 'a media id',
+            'file' => 'a file id',
             'mediaList' => 'a list of media ids',
             'select' => 'a list of options',
             'group' => 'an object',
@@ -448,7 +509,7 @@ final class Schema
         }
 
         return match ($col['type']) {
-            'integer', 'media' => (int) $v,
+            'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
             'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,

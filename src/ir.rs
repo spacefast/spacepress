@@ -312,8 +312,11 @@ pub enum AssignOp {
 #[derive(Debug, Clone)]
 pub enum TyAnn {
     Num,
+    NumLit(f64),
     Str,
+    StrLit(String),
     Bool,
+    BoolLit(bool),
     Null,
     Undefined,
     Void,

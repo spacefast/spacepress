@@ -83,7 +83,7 @@ function items__beforeCreate(array &$data)
 ## Tests
 
 ```sh
-cargo test                     # rejections, blog golden, pantry over HTTP, Node↔PHP differential
+cargo test                     # rejections, goldens, HTTP, Node↔PHP differential, generated client (tsc or TSC)
 tests/php/run.sh               # runtime: JS parity (checked against node) + DB/HTTP suite
 cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
 ```

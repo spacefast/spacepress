@@ -204,13 +204,13 @@ fn column_sql(d: Dialect, name: &str, c: &Json, tables: &Map) -> String {
     let unsigned_ref = c["references"]["unsigned"].as_bool() == Some(true);
     let sql_ty = match d {
         Dialect::Sqlite => match ty {
-            "integer" | "boolean" | "media" => "integer".to_string(),
+            "integer" | "boolean" | "media" | "file" => "integer".to_string(),
             "real" => "real".to_string(),
             _ => "text".to_string(),
         },
         Dialect::Mysql => match ty {
-            "integer" | "media" if (pk && auto) || unsigned_ref => "BIGINT UNSIGNED".into(),
-            "integer" | "media" => "BIGINT".into(),
+            "integer" | "media" | "file" if (pk && auto) || unsigned_ref => "BIGINT UNSIGNED".into(),
+            "integer" | "media" | "file" => "BIGINT".into(),
             "real" => "DOUBLE".into(),
             "boolean" => "TINYINT(1)".into(),
             "timestamp" => "CHAR(24)".into(),

@@ -80,6 +80,7 @@ export default defineConfig({
           .set({ quantity: Math.max(0, item.quantity - amount) })
           .where({ id: itemId })
           .returning();
+        if (!updated) throw new HttpError(404, "not_found", `No item ${itemId}`);
         return { item: updated, message: `${updated.name}: ${updated.quantity} ${updated.unit} left` };
       },
     }),

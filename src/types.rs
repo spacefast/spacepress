@@ -21,6 +21,8 @@ pub enum Ty {
     Never,
     Array(Box<Ty>),
     Tuple(Vec<Ty>),
+    /// An inferred array literal whose elements widen at binding boundaries.
+    ArrayLiteral(Vec<Ty>),
     /// Object with known fields: (type, optional).
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
@@ -170,7 +172,9 @@ impl Ty {
             Ty::Unknown => "unknown".into(),
             Ty::Never => "never".into(),
             Ty::Array(t) => format!("{}[]", t.describe()),
-            Ty::Tuple(ts) => format!("[{}]", ts.iter().map(Ty::describe).collect::<Vec<_>>().join(", ")),
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+                format!("[{}]", ts.iter().map(Ty::describe).collect::<Vec<_>>().join(", "))
+            }
             Ty::Obj(fields) => {
                 let f: Vec<String> = fields
                     .iter()

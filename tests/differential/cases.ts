@@ -94,7 +94,10 @@ export default defineConfig({
       nested.words.push("b");
       let choice = total > 0 ? "a" : "b";
       choice = "c";
-      return { names, inStock, total, sorted, byQty, words, nested, choice, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      const callback = ["a"].map(value => { value = "b"; return value; });
+      let iteration = "";
+      for (let value of ["a"]) { value = "b"; iteration += value; }
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, iteration, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

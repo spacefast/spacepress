@@ -199,7 +199,9 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
                 format!("{inner}[]")
             }
         }
-        Ty::Tuple(ts) => format!("[{}]", ts.iter().map(|t| ty_ts(t, rows)).collect::<Vec<_>>().join(", ")),
+        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+            format!("[{}]", ts.iter().map(|t| ty_ts(t, rows)).collect::<Vec<_>>().join(", "))
+        }
         Ty::Obj(f) if f.is_empty() => "{}".into(),
         Ty::Obj(f) => format!(
             "{{ {} }}",

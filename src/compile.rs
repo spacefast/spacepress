@@ -440,7 +440,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     d
                 }
                 (Some(d), None) => d,
-                (None, Some(g)) => g,
+                (None, Some(g)) => widen_literal_array(&g),
                 (None, None) => {
                     return err_help(
                         p.span,
@@ -1058,7 +1058,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Array(t) => ((**t).clone(), it.php.clone()),
-                    Ty::Tuple(ts) => (Ty::union(ts.clone()), it.php.clone()),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
                     t if t.is_str() => (Ty::Str, format!("mb_str_split({})", it.php)),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
@@ -1070,6 +1070,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.fx().scopes.push(HashMap::new());
+                let el = widen_literal_array(&el);
                 let mutable = *kind == DeclKind::Let;
                 match pat {
                     Pat::Id(n, _) => {
@@ -1381,7 +1382,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let t = (*t).clone();
                         (Box::new(move |_| t.clone()), false)
                     }
-                    Ty::Tuple(ts) => (Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null)), true),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
+                        (Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null)), true)
+                    }
                     other => return err(*span, format!("can't destructure {} as an array", other.describe())),
                 };
                 for (i, e) in elems.iter().enumerate() {
@@ -1578,7 +1581,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t if t.non_null().all(|x| {
                 matches!(
                     x,
-                    Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::Fn(..) | Ty::Date | Ty::Error
+                    Ty::Obj(_)
+                        | Ty::Map(_)
+                        | Ty::Array(_)
+                        | Ty::Tuple(_)
+                        | Ty::ArrayLiteral(_)
+                        | Ty::Fn(..)
+                        | Ty::Date
+                        | Ty::Error
                 )
             }) =>
             {
@@ -1656,7 +1666,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let v = self.expr(x)?;
                             match v.ty.non_null() {
                                 Ty::Array(t) => tys.push(*t),
-                                Ty::Tuple(ts) => tys.extend(ts),
+                                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => tys.extend(ts),
                                 other => {
                                     return err(x.span, format!("can't spread {} into an array", other.describe()));
                                 }
@@ -1666,7 +1676,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 let ty = if items.iter().all(|i| matches!(i, ArrEl::Item(_))) && !tys.is_empty() && tys.len() <= 8 {
-                    Ty::Tuple(tys)
+                    Ty::ArrayLiteral(tys)
                 } else {
                     Ty::Array(Box::new(Ty::union(tys)))
                 };
@@ -1967,7 +1977,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `===` on arrays/objects compares identity in JS; PHP arrays have none.
     fn check_identity_eq(&self, a: &Out, b: &Out, span: Span) -> Result<()> {
-        let by_ref = |t: &Ty| matches!(t.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::Obj(_) | Ty::Map(_));
+        let by_ref = |t: &Ty| {
+            matches!(
+                t.non_null(),
+                Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) | Ty::Obj(_) | Ty::Map(_)
+            )
+        };
         if by_ref(&a.ty) && by_ref(&b.ty) {
             return err_help(
                 span,
@@ -2163,7 +2178,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let t = match &p.ann {
                 Some(a) => self.resolve_ann(a, module, &HashMap::new())?,
                 None => match params.get(i) {
-                    Some(t) => t.clone(),
+                    Some(t) => widen_literal_array(t),
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
             };
@@ -2439,7 +2454,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("\\Zero\\Js::length({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
-            (Ty::Array(_) | Ty::Tuple(_), "length") => {
+            (Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
                 let php = guarded(self, &|x| format!("count({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
@@ -2502,7 +2517,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (Ty::Array(t), it) if it.is_num() => {
                 Out::atom(format!("({}[{}] ?? null)", o.php, int_index(&i)), wrap((**t).clone()))
             }
-            (Ty::Tuple(ts), _) => match &index.kind {
+            (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
                 ExprKind::Num(n) if n.fract() == 0.0 && *n >= 0.0 => {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Null);
                     let place = o.place.as_ref().map(|p| format!("{p}[{}]", *n as usize));
@@ -2847,7 +2862,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Object", "fromEntries") => {
                 let t = match a0.map(|a| a.ty.non_null()) {
                     Some(Ty::Array(el)) => match *el {
-                        Ty::Tuple(ts) if ts.len() == 2 => ts[1].clone(),
+                        Ty::Tuple(ts) | Ty::ArrayLiteral(ts) if ts.len() == 2 => ts[1].clone(),
                         _ => Ty::Unknown,
                     },
                     _ => return err(span, "Object.fromEntries needs an array of [key, value] pairs"),
@@ -2920,7 +2935,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let base = recv.ty.non_null();
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
-            Ty::Array(_) | Ty::Tuple(_) => self.array_method(&recv, m, args, span, m_span)?,
+            Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => self.array_method(&recv, m, args, span, m_span)?,
             Ty::Num => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
@@ -3064,7 +3079,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn array_method(&mut self, a: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
         let el = match a.ty.non_null() {
             Ty::Array(t) => *t,
-            Ty::Tuple(ts) => Ty::union(ts),
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
             _ => unreachable!(),
         };
         let cb = |c: &mut Self, extra: &[Ty]| -> Result<Out> {
@@ -3682,7 +3697,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 "in" | "notIn" => {
                     let x = self.expr(v)?;
-                    if !matches!(x.ty.non_null(), Ty::Array(_) | Ty::Tuple(_)) {
+                    if !matches!(x.ty.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)) {
                         return err(v.span, format!("`{op}` takes an array"));
                     }
                     x.php
@@ -3912,7 +3927,7 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) => "array ",
+        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
         Ty::Bool => "bool ",
         Ty::Num => "int|float ",
@@ -3935,7 +3950,8 @@ fn ty_of_json(v: &serde_json::Value) -> Ty {
 fn widen_literal_array(t: &Ty) -> Ty {
     match t {
         Ty::FreshStrLit(_) => Ty::Str,
-        Ty::Tuple(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_literal_array)))),
+        Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_literal_array)))),
+        Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(widen_literal_array).collect()),
         Ty::Array(t) => Ty::Array(Box::new(widen_literal_array(t))),
         Ty::Union(ts) => Ty::union(ts.iter().map(widen_literal_array)),
         Ty::Obj(f) => Ty::Obj(
@@ -3960,8 +3976,10 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
         (Ty::Date, Ty::Num) => true,
         (Ty::Array(x), Ty::Array(y)) => **x == Ty::Never || assignable(x, y),
-        (Ty::Tuple(xs), Ty::Array(y)) => xs.iter().all(|x| assignable(x, y)),
-        (Ty::Tuple(xs), Ty::Tuple(ys)) => xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| assignable(x, y)),
+        (Ty::Tuple(xs) | Ty::ArrayLiteral(xs), Ty::Array(y)) => xs.iter().all(|x| assignable(x, y)),
+        (Ty::Tuple(xs) | Ty::ArrayLiteral(xs), Ty::Tuple(ys) | Ty::ArrayLiteral(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| assignable(x, y))
+        }
         (Ty::Obj(have), Ty::Obj(need)) => {
             need.iter().all(|(k, (t, optional))| match have.get(k) {
                 Some((ht, _)) => assignable(ht, t),

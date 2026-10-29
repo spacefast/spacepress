@@ -776,7 +776,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "maybe": null}, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "maybe": null}, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

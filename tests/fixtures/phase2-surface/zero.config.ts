@@ -26,6 +26,15 @@ export default defineConfig({
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
   actions: {
     inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: input => allowed(input.allow) }),
-    widened: action({ input: {}, handler: () => { const values = ["a"]; values.unshift("b"); let choice = values.length > 0 ? "a" : "b"; choice = "c"; const finite: ("a" | "b")[] = ["a"]; finite.push("b"); const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, maybe: maybeFirst() }; } } }),
+    widened: action({ input: {}, handler: () => {
+      const values = ["a"]; values.unshift("b");
+      let choice = values.length > 0 ? "a" : "b"; choice = "c";
+      const finite: ("a" | "b")[] = ["a"]; finite.push("b");
+      const nested = [1].map(() => ["a"]).map(items => { items.unshift("b"); return items; });
+      const callbacks = [1].map(() => ["a"]).map(items => { items.unshift("b"); switch (items[0]) { case "a": return true; } });
+      const pairs: [string, number][] = [["a", 2]];
+      const tuples = pairs.map(([label, count]) => label.repeat(count));
+      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, maybe: maybeFirst() }; }
+    } }),
   },
 });

@@ -529,6 +529,22 @@ fn rejects_phase2_static_contracts() {
         ("reject-field-access-query", "access rules can't query"),
         ("reject-field-access-async", "field rules must be synchronous"),
         ("reject-field-access-helper", "access rules can't query"),
+        (
+            "reject-field-access-fallthrough",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "reject-field-access-bare-return",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "reject-field-access-helper-fallthrough",
+            "access rules return true, false, or a filter",
+        ),
+        (
+            "reject-field-access-catch-fallthrough",
+            "field rules must return a boolean on every path",
+        ),
         ("reject-field-access-self", "self is only allowed on auth collection"),
         ("reject-showif-sibling", "showIf names non-sibling"),
         ("reject-showif-operator", "invalid showIf operator"),
@@ -697,6 +713,12 @@ fn phase2_schema_and_closures_match_the_contract() {
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
         $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
         $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $fieldThrows = false;
+        try {
+            $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        } catch (\Zero\JsError $error) {
+            $fieldThrows = $error->getMessage() === 'field blocked';
+        }
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
         $update = $fn(['data' => [], 'user' => null, 'target' => 'standalone', 'op' => 'update']);
@@ -704,11 +726,11 @@ fn phase2_schema_and_closures_match_the_contract() {
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
         $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);
         $job = $schema->jobs()['sendWelcome'];
-        $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com']);
+        $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
         $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $update, $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $fieldThrows, $update, $bucketGuest, $db->findMany('audit')]);
     "#,
         ])
         .arg(&app)
@@ -718,7 +740,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, false, [{"id": 1, "note": "a@example.com:job-test:2"}]])
+        serde_json::json!([false, true, true, true, false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

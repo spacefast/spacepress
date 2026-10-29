@@ -69,8 +69,15 @@
                             "default": {
                                 "value": "welcome"
                             }
+                        },
+                        "payload": {
+                            "type": "json"
                         }
                     }
+                },
+                "payload": {
+                    "type": "json",
+                    "notNull": true
                 }
             },
             "handler": "job__sendWelcome",

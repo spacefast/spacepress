@@ -11,7 +11,7 @@ use crate::eval::{Evaluator, GLOBALS, to_json};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
-use crate::schema::{ColType, HookKind, Owner, RelKind, Schema};
+use crate::schema::{ColType, Column, HookKind, Owner, RelKind, Schema};
 use crate::types::{self, Builder, BuilderKind, JSON_TYPES, Ty};
 use crate::value::*;
 use indexmap::IndexMap;
@@ -264,15 +264,41 @@ impl<'a, 'p> Compiler<'a, 'p> {
         name
     }
 
-    /// Resolves `json().$type<T>()` column types before any function is compiled.
+    /// Resolves all JSON annotations before any function is compiled, including nested handler inputs.
     pub fn resolve_json_types(&mut self) -> Result<()> {
-        for c in self.schema.collections.values() {
-            for col in c.columns.values() {
-                if let Some((ann, module)) = &col.ts_type {
-                    let t = self.resolve_ann(ann, *module, &HashMap::new())?;
-                    JSON_TYPES.with(|m| m.borrow_mut().insert(format!("{}.{}", c.table, col.name), t));
+        fn collect<'a>(columns: &'a IndexMap<String, Column>, out: &mut Vec<&'a Column>) {
+            for col in columns.values() {
+                if col.ts_type.is_some() {
+                    out.push(col);
+                }
+                if let Some(fields) = &col.fields {
+                    collect(fields, out);
+                }
+                if let Some(layouts) = &col.layouts {
+                    for fields in layouts.values() {
+                        collect(fields, out);
+                    }
                 }
             }
+        }
+        JSON_TYPES.with(|m| m.borrow_mut().clear());
+        let mut annotated = Vec::new();
+        for collection in self.schema.collections.values() {
+            collect(&collection.columns, &mut annotated);
+        }
+        for global in self.schema.globals.values() {
+            collect(&global.fields, &mut annotated);
+        }
+        for action in self.schema.actions.values() {
+            collect(&action.input, &mut annotated);
+        }
+        for job in self.schema.jobs.values() {
+            collect(&job.input, &mut annotated);
+        }
+        for col in annotated {
+            let (ann, module) = col.ts_type.as_ref().expect("annotated column");
+            let ty = self.resolve_ann(ann, *module, &HashMap::new())?;
+            JSON_TYPES.with(|m| m.borrow_mut().insert(col as *const Column as usize, ty));
         }
         Ok(())
     }
@@ -317,9 +343,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => vec![row, ctx],
                 }
             }
-            Slot::JobHandler { job } => vec![types::action_input(&self.schema.jobs[job].input), types::job_ctx()],
+            Slot::JobHandler { job } => vec![
+                types::action_input(&self.schema.jobs[job].input, &types::json_ty),
+                types::job_ctx(),
+            ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
-            Slot::ActionHandler { action } => vec![types::action_input(&self.schema.actions[action].input), ctx],
+            Slot::ActionHandler { action } => vec![
+                types::action_input(&self.schema.actions[action].input, &types::json_ty),
+                ctx,
+            ],
             Slot::Access { owner, op } => {
                 let data = match owner {
                     Owner::Collection(t) if op == "create" => types::partial(types::insert(self.schema, t)),
@@ -331,10 +363,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Slot::Validate { at } => {
                 let col = self.schema.column_at(at);
-                vec![
-                    types::col_base(col, &types::json_ty(owner_table(&at.owner)), false),
-                    types::validate_ctx(),
-                ]
+                vec![types::col_base(col, &types::json_ty, false), types::validate_ctx()]
             }
             Slot::Default { .. } | Slot::OnUpdate { .. } => vec![],
         }
@@ -521,6 +550,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
+                self.note_fallthrough(stmts, f.span)?;
             }
         }
         if let Some(Slot::Hook {
@@ -537,6 +567,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn note_return(&mut self, t: &Ty, span: Span) -> Result<()> {
         let fx = self.fx();
+        if matches!(&fx.access, Some((_, op)) if op == "field") && !assignable(t, &Ty::Bool) {
+            return err_help(
+                span,
+                "field rules must return a boolean on every path",
+                "return true or false, or throw an error",
+            );
+        }
         if let Some(r) = &fx.ret {
             if !assignable(t, r) {
                 let r = r.clone();
@@ -551,6 +588,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         } else {
             fx.returns.push(t.clone());
+        }
+        Ok(())
+    }
+
+    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
+        if block_completions(stmts).contains(&Completion::Normal) {
+            self.note_return(&Ty::Null, span)?;
         }
         Ok(())
     }
@@ -1176,7 +1220,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {
                 let v = self.expr(e)?;
                 let v = self.finish_value(v, e.span)?;
-                if v.ty == Ty::Bool {
+                if v.ty == Ty::Bool || v.ty == Ty::Never {
                     return Ok(v);
                 }
                 err_help(
@@ -2071,7 +2115,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.note_return(&v.ty, e.span)?;
                 let _ = writeln!(body, "{}return {};", pad(2), v.php);
             }
-            FnBody::Block(stmts) => body.push_str(&self.block(stmts, 2)?),
+            FnBody::Block(stmts) => {
+                body.push_str(&self.block(stmts, 2)?);
+                self.note_fallthrough(stmts, f.span)?;
+            }
         }
         Ok((params.join(", "), body))
     }
@@ -3815,14 +3862,6 @@ fn col_value_ty(c: &crate::schema::Column) -> Ty {
     }
 }
 
-/// The table a column path belongs to, for `json().$type<T>()` lookups.
-fn owner_table(o: &Owner) -> &str {
-    match o {
-        Owner::Collection(t) => t,
-        _ => "",
-    }
-}
-
 fn obj_values_ty(t: Option<&Ty>) -> Ty {
     match t.map(Ty::non_null) {
         Some(Ty::Obj(f)) => Ty::union(f.values().map(|(t, _)| t.clone())),
@@ -3924,6 +3963,115 @@ fn ends_with_exit(stmts: &[Stmt]) -> bool {
         stmts.last(),
         Some(Stmt::Return(..) | Stmt::Throw(_) | Stmt::Continue(_) | Stmt::Break(_))
     )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Completion {
+    Normal,
+    Return,
+    Throw,
+    Break,
+    Continue,
+}
+
+fn followed_by(mut first: HashSet<Completion>, second: HashSet<Completion>) -> HashSet<Completion> {
+    if first.remove(&Completion::Normal) {
+        first.extend(second);
+    }
+    first
+}
+
+fn block_completions(stmts: &[Stmt]) -> HashSet<Completion> {
+    stmts.iter().fold(HashSet::from([Completion::Normal]), |flow, stmt| {
+        followed_by(flow, stmt_completions(stmt))
+    })
+}
+
+fn stmt_completions(stmt: &Stmt) -> HashSet<Completion> {
+    use Completion::*;
+    match stmt {
+        Stmt::Return(..) => HashSet::from([Return]),
+        Stmt::Throw(_) => HashSet::from([Throw]),
+        Stmt::Break(_) => HashSet::from([Break]),
+        Stmt::Continue(_) => HashSet::from([Continue]),
+        Stmt::Block(body) => block_completions(body),
+        Stmt::If(test, yes, no) => {
+            let yes = block_completions(yes);
+            let no = no
+                .as_deref()
+                .map(block_completions)
+                .unwrap_or_else(|| HashSet::from([Normal]));
+            match test.kind {
+                ExprKind::Bool(true) => yes,
+                ExprKind::Bool(false) => no,
+                _ => yes.union(&no).copied().collect(),
+            }
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            let mut flow = block_completions(block);
+            if let Some(handler) = handler {
+                flow.remove(&Throw);
+                flow.extend(block_completions(handler));
+            }
+            if let Some(finalizer) = finalizer {
+                let mut final_flow = block_completions(finalizer);
+                if final_flow.remove(&Normal) {
+                    final_flow.extend(flow);
+                }
+                flow = final_flow;
+            }
+            flow
+        }
+        Stmt::Switch { cases, .. } => {
+            let mut suffix = HashSet::from([Normal]);
+            let mut flow = HashSet::new();
+            for (_, body) in cases.iter().rev() {
+                suffix = followed_by(block_completions(body), suffix);
+                flow.extend(&suffix);
+            }
+            let breaks = flow.remove(&Break);
+            if !cases.iter().any(|(test, _)| test.is_none()) || breaks {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        Stmt::While(test, body)
+        | Stmt::For {
+            test: Some(test), body, ..
+        } => {
+            let mut flow = block_completions(body);
+            let breaks = flow.remove(&Break);
+            flow.remove(&Continue);
+            flow.remove(&Normal);
+            if !matches!(test.kind, ExprKind::Bool(true)) || breaks {
+                flow.insert(Normal);
+            }
+            flow
+        }
+        Stmt::For { test: None, body, .. } => {
+            let mut flow = block_completions(body);
+            if flow.remove(&Break) {
+                flow.insert(Normal);
+            } else {
+                flow.remove(&Normal);
+            }
+            flow.remove(&Continue);
+            flow
+        }
+        Stmt::ForOf { body, .. } => {
+            let mut flow = block_completions(body);
+            flow.remove(&Break);
+            flow.remove(&Continue);
+            flow.insert(Normal);
+            flow
+        }
+        _ => HashSet::from([Normal]),
+    }
 }
 
 /// Parameters a function assigns into (`data.x = ...`, `items.push(...)`), passed by reference in PHP.

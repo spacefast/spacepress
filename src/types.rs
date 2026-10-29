@@ -231,14 +231,15 @@ pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty
         ColType::Json => json_ty(c),
         ColType::MediaList => Ty::Array(Box::new(Ty::Num)),
         ColType::Select => Ty::Array(Box::new(Ty::Str)),
-        ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), insert),
+        ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), json_ty, insert),
         ColType::Repeater => Ty::Array(Box::new(fields_obj(
             c.fields.as_ref().expect("repeater fields"),
+            json_ty,
             insert,
         ))),
         ColType::Blocks => Ty::Array(Box::new(Ty::union(c.layouts.as_ref().expect("layouts").iter().map(
             |(name, fields)| {
-                let Ty::Obj(mut f) = fields_obj(fields, insert) else {
+                let Ty::Obj(mut f) = fields_obj(fields, json_ty, insert) else {
                     unreachable!()
                 };
                 f.shift_insert(0, "layout".into(), (Ty::Str, false));
@@ -262,12 +263,12 @@ pub fn layout_of(t: &Ty) -> Option<&str> {
 }
 
 /// Sub-fields as an object type: every key present on read; optional ones may be omitted on write.
-fn fields_obj(fields: &IndexMap<String, Column>, insert: bool) -> Ty {
+fn fields_obj(fields: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     Ty::Obj(
         fields
             .values()
             .map(|f| {
-                let t = col_select(f, &|_| Ty::Unknown, insert);
+                let t = col_select(f, json_ty, insert);
                 (f.name.clone(), (t, insert && f.optional_on_insert()))
             })
             .collect(),
@@ -280,23 +281,21 @@ fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
 }
 
 thread_local! {
-    /// Resolved `json().$type<T>()` types, keyed by "table.column" (filled by the compiler).
-    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<String, Ty>> = Default::default();
+    /// Resolved annotations keyed by schema column identity, reset for each compilation.
+    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, Ty>> = Default::default();
 }
 
-pub fn json_ty(table: &str) -> impl Fn(&Column) -> Ty + '_ {
-    move |c: &Column| {
-        JSON_TYPES.with(|m| {
-            m.borrow()
-                .get(&format!("{table}.{}", c.name))
-                .cloned()
-                .unwrap_or(Ty::Unknown)
-        })
-    }
+pub fn json_ty(c: &Column) -> Ty {
+    JSON_TYPES.with(|m| {
+        m.borrow()
+            .get(&(c as *const Column as usize))
+            .cloned()
+            .unwrap_or(Ty::Unknown)
+    })
 }
 
 pub fn row_of(c: &Collection) -> Ty {
-    columns_row(&c.columns, &json_ty(&c.table))
+    columns_row(&c.columns, &json_ty)
 }
 
 pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -314,7 +313,7 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     let c = &schema.collections[table];
-    columns_insert(&c.columns, &json_ty(table))
+    columns_insert(&c.columns, &json_ty)
 }
 
 pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -344,12 +343,12 @@ pub fn partial(t: Ty) -> Ty {
 }
 
 /// Action input as the handler sees it, after defaults and validation.
-pub fn action_input(columns: &IndexMap<String, Column>) -> Ty {
+pub fn action_input(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     Ty::Obj(
         columns
             .values()
             .map(|c| {
-                let base = col_select(c, &|_| Ty::Unknown, false);
+                let base = col_select(c, json_ty, false);
                 let required = c.not_null || c.default.is_some();
                 let t = if c.not_null || c.default.is_some() {
                     base.non_null()

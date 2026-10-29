@@ -738,6 +738,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
         $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
         $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone', 'op' => 'read']);
         $fieldThrows = false;
         try {
             $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
@@ -768,7 +769,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
         ])
         .arg(&app)
@@ -778,7 +779,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

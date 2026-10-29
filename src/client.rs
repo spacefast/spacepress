@@ -186,6 +186,7 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
     }
     match t {
         Ty::Num | Ty::FreshNumLit(_) | Ty::Date => "number".into(),
+        Ty::NumLit(value) => value.to_string(),
         Ty::Str => "string".into(),
         Ty::StrLit(s) | Ty::FreshStrLit(s) => serde_json::to_string(s).expect("string"),
         Ty::Bool | Ty::FreshBoolLit(_) => "boolean".into(),

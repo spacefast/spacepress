@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
     Num,
+    NumLit(f64),
     FreshNumLit(f64),
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
@@ -167,7 +168,7 @@ impl Ty {
     }
 
     pub fn is_num(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Num | Ty::FreshNumLit(_) | Ty::Date))
+        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date))
     }
 
     pub fn is_str(&self) -> bool {
@@ -188,6 +189,7 @@ impl Ty {
     pub fn describe(&self) -> String {
         match self {
             Ty::Num | Ty::FreshNumLit(_) => "number".into(),
+            Ty::NumLit(value) => value.to_string(),
             Ty::Str => "string".into(),
             Ty::StrLit(s) | Ty::FreshStrLit(s) => format!("{s:?}"),
             Ty::Bool => "boolean".into(),

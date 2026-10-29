@@ -695,6 +695,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn resolve_ann(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, Ty>) -> Result<Ty> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
+            TyAnn::NumLit(n) => Ty::NumLit(*n),
             TyAnn::Str => Ty::Str,
             TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
             TyAnn::Bool => Ty::Bool,
@@ -1762,7 +1763,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     UnOp::Neg => {
                         self.need_num(&v, x.span, "`-`")?;
                         let ty = match v.ty {
-                            Ty::FreshNumLit(n) => Ty::FreshNumLit(-n),
+                            Ty::NumLit(n) | Ty::FreshNumLit(n) => Ty::FreshNumLit(-n),
                             _ => Ty::Num,
                         };
                         Out::new(format!("-{}", v.wrapped()), ty)
@@ -1913,7 +1914,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
-            Ty::Num | Ty::FreshNumLit(_) | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date => format!("\\Zero\\Js::numStr({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\Zero\\Js::str({})", v.php),
         })
@@ -2948,7 +2949,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
             Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => self.array_method(&recv, m, args, span, m_span)?,
-            Ty::Num | Ty::FreshNumLit(_) => match m {
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv
@@ -3755,8 +3756,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date | Ty::Num | Ty::FreshNumLit(_)) => format!("\\Zero\\Js::iso({})", v.php),
-            (ColType::Date, Ty::Date | Ty::Num | Ty::FreshNumLit(_)) => {
+            (ColType::Timestamp, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
+                format!("\\Zero\\Js::iso({})", v.php)
+            }
+            (ColType::Date, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
                 format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
@@ -3944,7 +3947,7 @@ fn php_hint(t: &Ty) -> &'static str {
         Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
-        Ty::Num | Ty::FreshNumLit(_) => "int|float ",
+        Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => "int|float ",
         _ => "",
     }
 }
@@ -3988,8 +3991,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::Bool => Ty::BoolLit(truthy),
         Ty::BoolLit(value) | Ty::FreshBoolLit(value) if *value == truthy => t.clone(),
         Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
-        Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
-        Ty::FreshNumLit(_) => t.clone(),
+        Ty::NumLit(n) | Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
+        Ty::NumLit(_) | Ty::FreshNumLit(_) => t.clone(),
         Ty::Null if truthy => Ty::Never,
         Ty::Null => Ty::Null,
         Ty::Str if !truthy => Ty::StrLit(String::new()),
@@ -4040,6 +4043,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         ),
         Ty::Promise(t) => Ty::Promise(Box::new(widen_fresh_literals(t))),
         Ty::Num
+        | Ty::NumLit(_)
         | Ty::Str
         | Ty::StrLit(_)
         | Ty::Bool
@@ -4064,7 +4068,8 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
-        (Ty::FreshNumLit(_), Ty::Num) => true,
+        (Ty::NumLit(_) | Ty::FreshNumLit(_), Ty::Num) => true,
+        (Ty::NumLit(x), Ty::FreshNumLit(y)) | (Ty::FreshNumLit(x), Ty::NumLit(y)) => x == y,
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
         (Ty::BoolLit(_) | Ty::FreshBoolLit(_), Ty::Bool) => true,
         (Ty::BoolLit(x), Ty::FreshBoolLit(y)) | (Ty::FreshBoolLit(x), Ty::BoolLit(y)) => x == y,
@@ -4136,6 +4141,9 @@ fn switch_is_exhaustive(ty: &Ty, case_types: &[Ty]) -> bool {
         Ty::StrLit(value) | Ty::FreshStrLit(value) => case_types
             .iter()
             .any(|ty| matches!(ty, Ty::StrLit(case) | Ty::FreshStrLit(case) if case == value)),
+        Ty::NumLit(value) | Ty::FreshNumLit(value) => case_types
+            .iter()
+            .any(|ty| matches!(ty, Ty::NumLit(case) | Ty::FreshNumLit(case) if case == value)),
         Ty::Null => case_types.contains(&Ty::Null),
         Ty::Union(items) => items.iter().all(|ty| switch_is_exhaustive(ty, case_types)),
         Ty::Never => true,

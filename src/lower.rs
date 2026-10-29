@@ -964,10 +964,17 @@ impl Lowerer {
                     TyAnn::StrLit(js(cooked, self.sp(q.span))?)
                 }
                 a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
-                a::TSLiteral::NumericLiteral(_) => TyAnn::Num,
+                a::TSLiteral::NumericLiteral(n) => TyAnn::NumLit(n.value),
                 a::TSLiteral::BooleanLiteral(value) => TyAnn::BoolLit(value.value),
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
-                    TyAnn::Num
+                    let a::Expression::NumericLiteral(n) = &u.argument else {
+                        unreachable!()
+                    };
+                    TyAnn::NumLit(if u.operator == UO::UnaryNegation {
+                        -n.value
+                    } else {
+                        n.value
+                    })
                 }
                 _ => return self.unsupported(l.span, "this literal type", ""),
             },

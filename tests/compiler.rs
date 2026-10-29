@@ -665,6 +665,30 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
+            "let value: 'a' | 'b' | null = 'a'; const make = () => { if (value === null) throw new Error('missing'); return () => value; }; const read = make(); value = null; if (ctx.user !== null) make(); switch (read()) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ('a' | 'b')[] = []; switch (values[0]) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: true[] = []; const value = (values[0] &&= true); switch (value) { case true: return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ['a', 'b'] = ['a', 'b']; values.pop(); switch (values[1]) { case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const values: ('a' | 'b')[] = []; const [value] = values; switch (value) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "function accept(value: 'a' | 'b') { switch (value) { case 'a': case 'b': return true; } } const values: ('a' | 'b')[] = []; return accept(values[0]);",
+            "function expects",
+        ),
+        (
             "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; const invoke = () => read(); value = null; switch (invoke()) { case 'a': case 'b': return true; }",
             "field rules must return a boolean on every path",
         ),
@@ -764,7 +788,7 @@ fn rejects_phase2_static_contracts() {
             "can't insert",
         ),
         (
-            "let values: (0 | 1)[] = [1]; values[0]++; values.push(2); return true;",
+            "let values: (0 | 1)[] = [1]; values[0]!++; values.push(2); return true;",
             "can't insert",
         ),
         (
@@ -778,7 +802,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
         for target in ["standalone", "wp"] {
             let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
@@ -814,19 +838,19 @@ fn rejects_phase2_static_contracts() {
     }
     for extraction in [
         "const write = writers.at(0)!; write()",
-        "writers.slice()[0]()",
-        "writers.concat(writers)[0]()",
-        "writers.reverse()[0]()",
-        "writers.toReversed()[0]()",
+        "writers.slice()[0]!()",
+        "writers.concat(writers)[0]!()",
+        "writers.reverse()[0]!()",
+        "writers.toReversed()[0]!()",
         "writers.pop()!()",
         "writers.shift()!()",
-        "writers.splice(0, 1)[0]()",
-        "const nested = [writers]; nested.flat()[0]()",
-        "Object.values({ write: writers[0] })[0]()",
-        "Object.entries({ write: writers[0] })[0][1]()",
-        "const entries: [string, () => void][] = [['write', writers[0]]]; Object.fromEntries(entries)['write']!()",
-        "Array.from(writers)[0]()",
-        "const objects = [{ write: writers[0] }]; objects.forEach(({ write }) => write())",
+        "writers.splice(0, 1)[0]!()",
+        "const nested = [writers]; nested.flat()[0]!()",
+        "Object.values({ write: writers[0]! })[0]!()",
+        "Object.entries({ write: writers[0]! })[0]![1]!()",
+        "const entries: [string, () => void][] = [['write', writers[0]!]]; Object.fromEntries(entries)['write']!()",
+        "Array.from(writers)[0]!()",
+        "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
@@ -962,9 +986,10 @@ fn phase2_schema_and_closures_match_the_contract() {
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": {"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "ordered": 4, "looped": "b", "earlier": 0}}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

@@ -78,6 +78,7 @@ impl Effects {
         for root in roots {
             graph.function(&root.closure.func, &[], &root.closure.env);
             graph.reachable.insert(root.closure.func.span);
+            graph.roots.insert(root.closure.func.span);
         }
         graph.solve()
     }
@@ -298,6 +299,7 @@ struct Call {
 
 #[derive(Default)]
 struct Graph {
+    roots: HashSet<Span>,
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
     history: HashMap<Span, HashSet<Span>>,
@@ -1157,13 +1159,44 @@ impl Graph {
                 break;
             }
         }
-        // Only writes after a capture's creation invalidate its refinements.
-        // Creation inside a helper happens after that helper's entry history.
+        // Possible entry events invalidate reads. Only events preceding every
+        // entry may be discounted at creation: two calls can create different
+        // instances of the same lexical closure. Loop events may repeat after
+        // creation, so they are never creation predecessors.
+        let repeating: HashSet<_> = self.loop_events.values().flatten().copied().collect();
+        let mut creation_entries = entry_history.clone();
+        for events in creation_entries.values_mut() {
+            events.retain(|event| !repeating.contains(event));
+        }
+        for root in &self.roots {
+            creation_entries.insert(*root, HashSet::new());
+        }
+        loop {
+            let mut next: HashMap<Span, HashSet<Span>> =
+                self.roots.iter().map(|root| (*root, HashSet::new())).collect();
+            for call in &self.calls {
+                if !self.reachable.contains(&call.owner) {
+                    continue;
+                }
+                let mut prior = creation_entries.get(&call.owner).cloned().unwrap_or_default();
+                prior.extend(call.prior.difference(&repeating));
+                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                    next.entry(*function)
+                        .and_modify(|events| events.retain(|event| prior.contains(event)))
+                        .or_insert_with(|| prior.clone());
+                }
+            }
+            if next == creation_entries {
+                break;
+            }
+            creation_entries = next;
+        }
         let mut capture_writes = self.function_writes.clone();
         for (function, prior) in &entry_history {
             let mut created = self.created_prior.get(function).cloned().unwrap_or_default();
+            created.retain(|event| !repeating.contains(event));
             if let Some(owner) = self.created_by.get(function) {
-                created.extend(entry_history.get(owner).into_iter().flatten());
+                created.extend(creation_entries.get(owner).into_iter().flatten());
             }
             for event in prior.difference(&created) {
                 capture_writes

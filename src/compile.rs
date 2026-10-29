@@ -1482,29 +1482,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             Pat::Arr { elems, rest, span } => {
-                let (el_of, is_tuple): (Box<dyn Fn(usize) -> Ty>, bool) = match ty.non_null() {
+                if ty.is_nullable() {
+                    return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
+                }
+                let (el_of, rest_ty): (Box<dyn Fn(usize) -> Ty>, Ty) = match ty.non_null() {
                     Ty::Array(t) => {
-                        let t = (*t).clone();
-                        (Box::new(move |_| t.clone()), false)
+                        let rest = (*t).clone();
+                        (Box::new(move |_| (*t).clone().nullable()), rest)
                     }
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
-                        (Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null)), true)
+                        let rest = Ty::union(ts.iter().skip(elems.len()).cloned());
+                        (
+                            Box::new(move |i| ts.get(i).cloned().unwrap_or(Ty::Null).nullable()),
+                            rest,
+                        )
                     }
                     other => return err(*span, format!("can't destructure {} as an array", other.describe())),
                 };
                 for (i, e) in elems.iter().enumerate() {
                     if let Some(e) = e {
-                        let access = if is_tuple {
-                            format!("{src}[{i}]")
-                        } else {
-                            format!("({src}[{i}] ?? null)")
-                        };
+                        let access = format!("({src}[{i}] ?? null)");
                         self.bind_pattern(e, &access, &el_of(i), mutable, out, indent)?;
                     }
                 }
                 if let Some((name, span)) = rest {
-                    let php =
-                        self.declare_local(name, Ty::Array(Box::new(el_of(elems.len()).non_null())), mutable, *span);
+                    let php = self.declare_local(name, Ty::Array(Box::new(rest_ty)), mutable, *span);
                     let _ = writeln!(out, "{p}{php} = array_slice({src}, {});", elems.len());
                 }
             }
@@ -2572,7 +2574,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(target.span, "can't index this: it might be null");
                 }
                 let (php, ty) = match o.ty.non_null() {
-                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), *t),
+                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
@@ -2751,16 +2753,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         Ok(match (&base, &i.ty) {
-            (Ty::Array(t), it) if it.is_num() => {
-                Out::atom(format!("({}[{}] ?? null)", o.php, int_index(&i)), wrap((**t).clone()))
-            }
+            (Ty::Array(t), it) if it.is_num() => Out::atom(
+                format!("({}[{}] ?? null)", o.php, int_index(&i)),
+                wrap((**t).clone().nullable()),
+            ),
             (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
                 ExprKind::Num(n) if n.fract() == 0.0 && *n >= 0.0 => {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Null);
                     let place = o.place.as_ref().map(|p| format!("{p}[{}]", *n as usize));
                     Out {
-                        php: format!("{}[{}]", o.php, *n as usize),
-                        ty: wrap(t),
+                        php: format!("({}[{}] ?? null)", o.php, *n as usize),
+                        ty: wrap(t.nullable()),
                         place,
                         atomic: true,
                         helper: None,
@@ -2893,10 +2896,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
             }
             ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
-                Ty::Array(ty) | Ty::Map(ty) => Some(*ty),
+                Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
-                    ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => ts.get(*n as usize).cloned(),
-                    _ => Some(Ty::union(ts)),
+                    ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => {
+                        Some(ts.get(*n as usize).cloned().unwrap_or(Ty::Null).nullable())
+                    }
+                    _ => Some(Ty::union(ts).nullable()),
                 },
                 Ty::Obj(fields) => match &index.kind {
                     ExprKind::Str(key) => fields.get(key).map(|(t, _)| t.clone()),

@@ -904,7 +904,9 @@ impl Lowerer {
             a::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
                 Ok(self.mk(id.span, ExprKind::Ident(id.name.to_string())))
             }
-            a::SimpleAssignmentTarget::TSNonNullExpression(n) => self.expr(&n.expression),
+            a::SimpleAssignmentTarget::TSNonNullExpression(n) => {
+                Ok(self.mk(n.span, ExprKind::NonNull(Box::new(self.expr(&n.expression)?))))
+            }
             a::SimpleAssignmentTarget::TSAsExpression(x) => self.expr(&x.expression),
             a::SimpleAssignmentTarget::TSSatisfiesExpression(x) => self.expr(&x.expression),
             a::SimpleAssignmentTarget::TSTypeAssertion(x) => self.expr(&x.expression),

@@ -94,6 +94,7 @@ export default defineConfig({
           .set({ quantity: Math.max(0, item.quantity - amount) })
           .where({ id: itemId })
           .returning();
+        if (!updated) throw new HttpError(404, "not_found", `No item ${itemId}`);
         return { item: updated, message: `${updated.name}: ${updated.quantity} ${updated.unit} left` };
       },
     }),
@@ -255,6 +256,11 @@ Supported: `const`/`let`, functions, arrows, closures, destructuring,
 spread, template literals, `if`/`for`/`for...of`/`while`/`switch`/`try`,
 `?.`, `??`, objects, arrays, type annotations, type aliases, interfaces,
 generics (erased).
+
+Indexed array/tuple reads and destructured elements include `null` when an
+entry is missing (Zero represents `undefined` as PHP null). Check the fetched
+value or supply a default with `??` or a destructuring initializer. A non-null
+assertion (`values[0]!`) is available when your code guarantees the entry exists.
 
 Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,

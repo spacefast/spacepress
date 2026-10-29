@@ -8,7 +8,7 @@ const SHOW = "show";
 const YES = true;
 const NIL = null;
 function templateResult(): "show" { return `show`; }
-function updateNumeric(value: 0 | 1) { value++; if (value > 0) { value--; } value += 1; let record: { count: 0 | 1, values: (0 | 1)[], keep: 0 } = { count: 1, values: [1], keep: 0 }; if (value > 0) { record.count++; record.values[0]--; } return { value, count: record.count, item: record.values[0], keep: record.keep }; }
+function updateNumeric(value: 0 | 1) { value++; if (value > 0) { value--; } value += 1; let record: { count: 0 | 1, values: (0 | 1)[], keep: 0 } = { count: 1, values: [1], keep: 0 }; if (value > 0) { record.count++; record.values[0]!--; } return { value, count: record.count, item: record.values[0], keep: record.keep }; }
 function captureNumeric(value: 0 | 1) { const read = () => value; value++; return read(); }
 function invokeNumeric(value: 0 | 1) { const bump = () => { value++; }; bump(); return value; }
 function loopNumeric(value: 0 | 1) { while (true) { if (value > 1) return value; value++; } }
@@ -31,6 +31,20 @@ function localDefaultNumeric(value: 0 | 1) { const run = (write: (() => void) | 
 function guardedNumeric(record: { count: number } | null): number { if (record !== null) { record.count = 1; record.count += 1; record.count++; return record.count; } return 0; }
 function logicalNumeric(value: 0 | 1) { value++; const nullish = (value ??= 1); const or = (value ||= 1); const and = (value &&= 1); const wrapper: { inner: { count: number } | null } = { inner: { count: 0 } }; if (wrapper.inner !== null) wrapper.inner.count = 4; return { nullish, or, and, guarded: guardedNumeric({ count: 0 }), absent: guardedNumeric(null), nested: wrapper.inner?.count }; }
 function mutateNullable(value: { count: number } | null, extra: number[]) { if (value !== null) value.count++; }
+function uncheckedReads() {
+  const empty: ("a" | "b")[] = [];
+  const pair: ["a", "b"] = ["a", "b"];
+  pair.pop();
+  const [, ...tail] = [0, null];
+  let value: "a" | "b" | null = "a";
+  const make = () => { if (value === null) throw new Error("missing"); return () => value; };
+  const first = make();
+  value = null;
+  const early = first();
+  value = "b";
+  const second = make();
+  return { empty: empty[0], shortened: pair[1], tail, early, late: second() };
+}
 function stableCapturedRead(): "a" | "b" { let value: "a" | "b" | null = null; value = "a"; if (value === null) throw new Error("missing value"); const read = (): "a" | "b" => value; return read(); }
 function loopGuard(): "a" | "b" { let value: "a" | "b" | null = "a"; let i = 0; while (true) { if (value === null) { value = "b"; } else { if (i === 1) return value; value = null; i++; } } }
 function nullableArguments(absent: { count: number } | null) {
@@ -50,12 +64,12 @@ function nullableArguments(absent: { count: number } | null) {
   const rebind = () => { before = { count: 9 }; return []; };
   const earlier = peek(before, rebind());
   const record: { inner: { count: number } | null, keep: { count: number } | null } = { inner: { count: 0 }, keep: { count: 3 } };
-  if (record.keep !== null) { record.inner = null; return { local, module, absent: absent?.count, sibling: record.keep.count, stable: stableCapturedRead(), ordered: present?.count, looped: loopGuard(), earlier }; }
+  if (record.keep !== null) { record.inner = null; return { local, module, absent: absent?.count, sibling: record.keep.count, stable: stableCapturedRead(), unchecked: uncheckedReads(), ordered: present?.count, looped: loopGuard(), earlier }; }
   throw new Error("missing sibling");
 }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }
 function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return true; case -1: return false; } }
-function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]() && !0; } } }
+function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]!() && !0; } } }
 function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return finiteFunction(); } } }
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
 function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": if (ctx.user === null) return true; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return true; } } }
@@ -63,7 +77,7 @@ function visible(value: unknown): boolean { const decision: `hide` | `show` = va
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label === "error") deny(); const decision = ctx.user === null ? 0 : 1; switch (decision) { case 0: return visible(ctx.data.label); case 1: return false; } case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
-function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0](); switch (flag) { case true: return true; } }
+function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
 const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
 const posts = collection("posts", {
@@ -92,11 +106,11 @@ export default defineConfig({
       const nested = [1].map(() => ["a"]).map(items => { items.unshift("b"); return items; });
       const callbacks = [1].map(() => ["a"]).map(items => { items.unshift("b"); switch (items[0]) { case "a": return true; } });
       const pairs: [string, number][] = [["a", 2]];
-      const tuples = pairs.map(([label, count]) => label.repeat(count));
+      const tuples = pairs.map(([label = "", count = 0]) => label.repeat(count));
       const optional: { pair?: [string, number], words?: ("a" | "b")[] } = {};
       const { pair = ["a", 2], words: finiteDefaults = ["a"] } = optional;
       finiteDefaults.push("b");
-      const defaultTuple = pair[0].repeat(pair[1]);
+      const defaultTuple = pair[0]!.repeat(pair[1]!);
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
       const numeric = updateNumeric(1);
@@ -104,7 +118,7 @@ export default defineConfig({
       const formatted = formatNumeric(-1);
       const numericChoice = values.length > 0 ? 0 : 1;
       const inferredNumber = numericChoice.toString();
-      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+      const selected = finite[0]; if (selected === null) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
     } }),
   },
 });

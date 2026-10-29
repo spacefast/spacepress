@@ -143,6 +143,7 @@ impl Project {
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_zero"))
+            .env_remove("ZERO_WP_PLUGIN_CACHE")
             .arg(command)
             .arg(&self.root)
             .args(args)
@@ -237,8 +238,8 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
         std::fs::read(p.out.join("plugins/feature/assets/data.txt")).unwrap(),
         b"artifact bytes"
     );
-    assert!(p.out.join("plugins/zero-fixtures/zero-fixtures.php").is_file());
-    assert!(p.out.join("plugins/zero-fixtures.zip").is_file());
+    assert!(p.out.join("plugins/zero-app-fixtures/zero-app-fixtures.php").is_file());
+    assert!(p.out.join("plugins/zero-app-fixtures.zip").is_file());
     let lock_path = p.root.join("zero/wp-plugins.lock.json");
     let locked = std::fs::read(&lock_path).unwrap();
     let lock: Value = serde_json::from_slice(&locked).unwrap();
@@ -256,26 +257,21 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     let before = tree(&p.out);
     drop(server);
     p.build();
-    // Generated zip uses filesystem timestamps; inspect trees and dependency lock, not zip byte identity.
-    let after = tree(&p.out);
-    assert_eq!(
-        before
-            .iter()
-            .filter(|(p, _)| p.extension().is_none_or(|e| e != "zip"))
-            .collect::<Vec<_>>(),
-        after
-            .iter()
-            .filter(|(p, _)| p.extension().is_none_or(|e| e != "zip"))
-            .collect::<Vec<_>>()
-    );
+    // The canonical assembler emits deterministic ZIPs as well as stable trees.
+    assert_eq!(before, tree(&p.out));
     assert_eq!(locked, std::fs::read(lock_path).unwrap());
     let custom = Command::new(env!("CARGO_BIN_EXE_zero"))
-        .args(["build", ".", "--out", "custom-content"])
+        .args(["build", ".", "--out", ".zero/wp/custom-content"])
         .current_dir(&p.root)
+        .env_remove("ZERO_WP_PLUGIN_CACHE")
         .output()
         .unwrap();
     assert!(custom.status.success(), "{}", String::from_utf8_lossy(&custom.stderr));
-    assert!(p.root.join("custom-content/plugins/feature/feature.php").is_file());
+    assert!(
+        p.root
+            .join(".zero/wp/custom-content/plugins/feature/feature.php")
+            .is_file()
+    );
 
     // Standalone emission never acquires or bundles WordPress plugins, even with a cold cache.
     std::fs::remove_dir_all(p.root.join(".zero/cache")).unwrap();
@@ -433,6 +429,33 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     )
     .unwrap();
     p.rejects("check", "plugins must be a package map");
+
+    for declarations in [
+        "const plugins = {alpha:'1.0',alpha:'2.0'};",
+        "const first = {alpha:'1.0',alpha:'2.0'}; const plugins = {...first};",
+        "const plugins = {...{alpha:'1.0'},...{alpha:'2.0'}};",
+        "const plugins = {alpha:{version:'1.0',version:'2.0'}};",
+        "const plugins = {alpha:'1.0'}; plugins.alpha = '2.0';",
+        "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
+    ] {
+        std::fs::write(p.root.join("zero.config.ts"), format!(
+            "import {{defineConfig}} from 'zero'; {declarations} export default defineConfig({{schema:{{}},plugins}});"
+        )).unwrap();
+        p.rejects("check", "duplicate plugin declaration/property");
+    }
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; export default defineConfig({schema:{},plugins:{alpha:'1.0'},plugins:{alpha:'2.0'}});"
+    ).unwrap();
+    p.rejects("check", "duplicate plugins declaration");
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; const plugins = {}; plugins.alpha = plugins; export default defineConfig({schema:{},plugins});"
+    ).unwrap();
+    p.rejects("check", "acyclic declarative data");
+    // Overwrites in other build-time data retain ordinary JavaScript semantics.
+    std::fs::write(p.root.join("zero.config.ts"),
+        "import {defineConfig} from 'zero'; const other = {value:'old',value:'new'}; export default defineConfig({schema:{},plugins:{alpha:'1.0'}});"
+    ).unwrap();
+    assert!(p.run("check", &[]).status.success());
 
     p.config(&[org("zero-runtime")]);
     p.rejects("check", "reserved plugin slug");

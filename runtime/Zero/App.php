@@ -61,6 +61,7 @@ final class App
             require_once $functions;
         }
         if ($store === null) {
+            Secret::load($appRoot);
             $store = new SqliteStore(SqliteStore::connect(getenv('ZERO_DB_PATH') ?: $appRoot . '/data/zero.sqlite'), $schema);
             $auth ??= new Identity($store);
             $media ??= new SqliteMedia($store, $appRoot . '/public');

@@ -84,13 +84,13 @@ impl Prepared {
             let locked = previous
                 .get(&plugin.slug)
                 .filter(|p| p.version == plugin.version && p.plugin_data == plugin.resource());
-            if let (Some(authored), Some(locked)) = (&plugin.sha256, locked) {
-                if authored != &locked.sha256 {
-                    return Err(invalid(format!(
-                        "plugin {}: authored sha256 conflicts with lock; explicitly remove the old lock entry to repin",
-                        plugin.slug
-                    )));
-                }
+            if let (Some(authored), Some(locked)) = (&plugin.sha256, locked)
+                && authored != &locked.sha256
+            {
+                return Err(invalid(format!(
+                    "plugin {}: authored sha256 conflicts with lock; explicitly remove the old lock entry to repin",
+                    plugin.slug
+                )));
             }
             let pin = plugin.sha256.as_deref().or_else(|| locked.map(|p| p.sha256.as_str()));
             let (zip, sha256) = acquire(plugin, pin, cache, &resource_url(&plugin.resource()))?;
@@ -178,7 +178,7 @@ impl Prepared {
     }
 }
 
-/// Temporary legacy-output bridge helpers. A3's assembler replaces the bridge, not acquisition.
+/// Copy existing output into the canonical assembler's private staging tree.
 pub fn copy_output(from: &Path, to: &Path) -> Result<()> {
     archive::copy_tree(from, to)
 }

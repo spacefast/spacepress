@@ -1,2 +1,5 @@
 /target
 .zero/
+
+**/vendor/
+/scripts/.tools/

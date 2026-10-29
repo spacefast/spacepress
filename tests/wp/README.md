@@ -1,16 +1,30 @@
 # WordPress test harness
 
-A disposable WordPress 7.1 + MariaDB 11.4 + Secure Custom Fields 6.9.7 in Docker,
-for the WordPress-target tests. The database lives on tmpfs, so data never
-outlives `down.sh`. The credentials in `compose.yml` and `up.sh` are throwaway
-values for this local container only and are tracked intentionally.
+The harness runs disposable WordPress 7.1, PHP 8.5 and MariaDB 11.4. It uses the
+platform floor pins in `tests/fixtures/platform.json`: SCF, Action Scheduler,
+MCP Adapter and, for localized apps, Polylang. Every downloaded ZIP is verified
+against its SHA-256. The database lives on tmpfs and `down` deletes its volume.
+Credentials in `compose.yml` and `harness.sh` are intentionally tracked disposable
+test credentials, scoped only to this local stack; they protect no customer or
+production data and may be rotated with the stack.
 
 ```sh
-tests/wp/up.sh path/to/built/plugin   # boot, install SCF + the plugin; last line is JSON:
-                                      # {"url","user","appPassword","wordpress","scf"}
-tests/wp/wp.sh plugin list            # WP-CLI inside the stack
-tests/wp/down.sh                      # remove containers and volumes
+cargo build
+target/debug/zero build tests/wp/app --target wp
+tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/.zero/wp-content"
+tests/wp/harness.sh wp plugin list
+tests/wp/harness.sh down
+tests/wp/run.sh
 ```
 
-`ZERO_WP_PORT` (default 8790) picks the host port. The SCF zip is downloaded
-once into `cache/` and checked against its sha256.
+`up` prints one JSON receipt with the URL, versions, app slug and application
+passwords for the four test users. `ZERO_WP_PORT` defaults to 8790. The canonical
+`plugins/` directory is bind-mounted; `run.sh` stages a stable copy so later
+build publication cannot orphan the mount. Apache and WP-CLI use the invoking
+user's UID/GID so installation preserves writable host ownership across runs.
+Dependencies activate before runtime,
+identity and app. The identity placeholder is replaced by the identity lane;
+the harness registers `app_zero_dev` with the local `/auth/callback` redirect
+when its CLI is present, and includes `identity.clientId` in the receipt
+(`identity: null` with the placeholder). HTTP identity callbacks are enabled only
+in this disposable development stack.

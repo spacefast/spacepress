@@ -2,6 +2,8 @@
 // WordPress, read back through WP-CLI and SQL.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { harness, sql, wp } from "./env.ts";
 
 test("activation registers the post types, field groups and options page, and creates InnoDB tables", () => {
@@ -28,6 +30,40 @@ test("activation registers the post types, field groups and options page, and cr
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%'");
   assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__migrations", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_signups", "InnoDB"]]);
   assert.deepEqual(sql("SELECT id FROM wp_zero__migrations").map((r) => r.id), ["0001_init"]);
+
+  const registry: unknown = JSON.parse(wp("eval", `
+    $plugin = \\Zero\\Wp\\Runtime::plugin();
+    $description = $plugin->schema->describe();
+    echo wp_json_encode([
+      get_option('zero_runtime_tables'),
+      $description['runtime']['series'],
+      $description['runtime']['wp']['actionScheduler'],
+      $description['runtime']['wp']['mcpAdapter'],
+      $description['runtime']['wp']['incompatibleTables'],
+      $description['runtime']['pendingMigrations'],
+      \\Zero\\Wp\\Runtime::app($plugin->dir, $plugin->dir . '/other-app.php'),
+      \\Zero\\Wp\\Runtime::plugin() === $plugin,
+    ]);
+  `));
+  assert.deepEqual(registry, ["0.2", "0.2", "4.2.0", "0.7.1", [], [], null, true]);
+  const incompatible: unknown = JSON.parse(wp("eval", `
+    $dir = sys_get_temp_dir() . '/zero-series-' . bin2hex(random_bytes(6));
+    mkdir($dir . '/zero/app', 0777, true);
+    $file = $dir . '/zero/app/schema.php';
+    try {
+      file_put_contents($file, '<?php return ' . var_export(['version'=>3, 'runtime'=>'0.1'], true) . ';');
+      $result = \\Zero\\Wp\\Runtime::app($dir, $dir . '/app.php');
+      ob_start(); do_action('admin_notices'); $notice = ob_get_clean();
+      echo wp_json_encode([$result, \\Zero\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'zero 0.2.x')]);
+    } finally {
+      unlink($file); rmdir($dir . '/zero/app'); rmdir($dir . '/zero'); rmdir($dir);
+    }
+  `, "--skip-plugins=zero-app-blog"));
+  assert.deepEqual(incompatible, [null, null, true, true]);
+  const diagnosis: unknown = JSON.parse(execFileSync(fileURLToPath(new URL("../../target/debug/zero", import.meta.url)), [
+    "doctor", fileURLToPath(new URL("app", import.meta.url)), "--wp", "--site", `${harness.url}/?rest_route=/zero/v1`, "--json",
+  ], { encoding: "utf8" }));
+  assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });
 
 test("activation grants collection capabilities: editors all, authors their own, subscribers none", () => {

@@ -1,0 +1,130 @@
+{
+  "name": "spacefast/zero-runtime",
+  "description": "Bundled Markdown and block merge for Zero sync",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.2",
+    "wp-php-toolkit/markdown": "^0.10",
+    "wp-php-toolkit/merge": "^0.10"
+  },
+  "config": {
+    "platform": {
+      "php": "8.2.30"
+    },
+    "sort-packages": true
+  },
+  "extra": {
+    "strauss": {
+      "namespace_prefix": "Zero\\Vendor\\",
+      "classmap_prefix": "Zero_Vendor_",
+      "constant_prefix": "ZERO_VENDOR_",
+      "target_directory": "vendor-prefixed",
+      "delete_vendor_packages": true,
+      "exclude_from_prefix": {
+        "namespaces": [
+          "Zero\\"
+        ]
+      },
+      "exclude_constants": {
+        "constants": [
+          "ABSPATH",
+          "WP_CONTENT_DIR",
+          "WP_PLUGIN_DIR",
+          "WP_CLI",
+          "WP_UNINSTALL_PLUGIN",
+          "ARRAY_A"
+        ]
+      },
+      "override_autoload": {
+        "wp-php-toolkit/bytestream": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ]
+        },
+        "wp-php-toolkit/data-liberation": {
+          "files": [
+            "URL/functions.php"
+          ],
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/",
+            "/bin/"
+          ]
+        },
+        "wp-php-toolkit/encoding": {
+          "files": [
+            "utf8.php",
+            "compat-utf8.php",
+            "utf8-encoder.php"
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ],
+          "classmap": [
+            "."
+          ]
+        },
+        "wp-php-toolkit/filesystem": {
+          "files": [
+            "functions.php"
+          ],
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ]
+        },
+        "wp-php-toolkit/html": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/",
+            "/html5-named-character-references.php"
+          ]
+        },
+        "wp-php-toolkit/http-client": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ]
+        },
+        "wp-php-toolkit/markdown": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/",
+            "/bin/",
+            "/vendor-patched/symfony/yaml/Command/",
+            "/vendor-patched/webuni/front-matter/src/Haml/",
+            "/vendor-patched/webuni/front-matter/src/Pug/",
+            "/vendor-patched/webuni/front-matter/src/Twig/"
+          ]
+        },
+        "wp-php-toolkit/merge": {
+          "classmap": [
+            "."
+          ]
+        },
+        "wp-php-toolkit/xml": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ]
+        }
+      }
+    }
+  }
+}

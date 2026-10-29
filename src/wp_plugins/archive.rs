@@ -58,10 +58,10 @@ pub(super) fn extract(zip: &Path, dest: &Path, plugin: &Plugin) -> Result<()> {
                 prefix.push('/');
             }
             prefix.push_str(part);
-            if let Some(existing) = spelling.insert(prefix.to_ascii_lowercase(), prefix.clone()) {
-                if existing != prefix {
-                    return Err(invalid("case-colliding archive directory"));
-                }
+            if let Some(existing) = spelling.insert(prefix.to_ascii_lowercase(), prefix.clone())
+                && existing != prefix
+            {
+                return Err(invalid("case-colliding archive directory"));
             }
         }
         total = total

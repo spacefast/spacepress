@@ -98,7 +98,7 @@ as a deployment activation order, though the build never activates plugins.
 
 ## Output and failure behavior
 
-With `plugins` present, builds currently use `.zero/wp-content` (`--out` selects
+WordPress builds use `.zero/wp-content` (`--out` selects
 the content root), containing `plugins/<dependency>` alongside the generated app
 plugin. Acquired ZIPs live in `.zero/cache/plugins/<sha256>.zip`; locked archives
 can be reused offline. A corrupt cache entry fails rather than trusting or
@@ -141,21 +141,23 @@ until copying finishes. The lock is `{version: 1, plugins: Dependency[]}` in sta
 dependency order. `treeSha256` hashes sorted relative paths, entry kinds, and file
 contents to detect changes before replacement; it is not a package signature.
 
-A3 owns the canonical assembler, `zero-manifest.json`, generated plugin ZIPs, and
+The canonical assembler owns `zero-manifest.json`, generated plugin ZIPs, and
 `--out`. Its order is: supply exact platform pins; resolve; acquire every tree;
 copy existing output to private staging; install dependencies; emit/lint generated
 `zero-runtime`, `zero-identity`, and `zero-app-<name>` plus their ZIPs; write its
 manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.
 
-Until A3 lands, `emit_wp_with_dependencies` is an opt-in bridge around the existing
-single-plugin emitter. It stages and publishes dependency trees plus the legacy
-`plugins/zero-<name>` and ZIP. Builds without `plugins` keep their existing
-`.zero/wp` layout. The bridge emits no second output manifest and does not claim
-to implement the planned three-plugin split. A3 replaces this call site and the
-interim `platform()` pin provider, retaining dependency resolution/acquisition.
-`zero dev --wp` still uses the legacy harness and is not a deployment path for
-these extra plugins until A3 updates it.
+Every WordPress build now uses this assembler, including configurations without
+`plugins`. The default output is `.zero/wp-content`; `--out` selects another
+wp-content root. `zero dev --wp` mounts its `plugins/` directory. Required
+platform pins come from `src/platform.rs`, checked against the PHP policy and
+the shared platform fixture. `ZERO_WP_PLUGIN_CACHE` can select a shared download
+cache; every cache hit is checked against its SHA-256 before extraction.
+
+The identity plugin is currently a tree-shape placeholder. Its presence in an
+artifact does not enable authentication; the site's `runtime.wp.identity`
+reports whether a compatible identity implementation is actually available.
 
 ## Blueprint scope and provenance
 

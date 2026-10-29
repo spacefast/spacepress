@@ -30,8 +30,10 @@ me`, and send `Authorization: Bearer <token>`.
 `zero check` compiles for both targets without writing anything. `zero build`
 writes new migrations to `zero/migrations/{sqlite,wp}/` and the typed client to
 `zero/client/` (commit both), and the app to `.zero/app`. `zero build --target
-wp` writes the plugin to `.zero/wp/zero-<name>/` and `zero-<name>.zip`; `zero
-dev --wp` boots it in a throwaway WordPress (docker).
+wp` writes `.zero/wp-content`, with separate runtime, optional identity, and
+app plugins plus pinned dependencies, ZIPs and one manifest. `zero dev --wp`
+boots that artifact in a throwaway WordPress (Docker). `zero doctor` checks a
+build; add `--site URL` to check the running platform.
 
 ## How it works
 

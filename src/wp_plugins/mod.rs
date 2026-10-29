@@ -266,45 +266,6 @@ pub fn resolve(config: &Config, required: &[Plugin]) -> Result<Plan> {
     Ok(plan)
 }
 
-/// Phase-2 platform baseline. A3 can replace this provider with its shared platform table.
-pub fn platform(localized: bool) -> Vec<Plugin> {
-    let mut pins = vec![
-        (
-            "secure-custom-fields",
-            "6.9.7",
-            "5b10edab948f64b84d44d81a29fd5794a2573205e0d5e7ea9538024fc93ff52c",
-        ),
-        (
-            "action-scheduler",
-            "4.2.0",
-            "a360712a5adb066a0d60db76cbe2768234731cbcc363ba7dc2d51bf4559e4551",
-        ),
-        (
-            "mcp-adapter",
-            "0.7.1",
-            "719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b",
-        ),
-    ];
-    if localized {
-        pins.push((
-            "polylang",
-            "3.9",
-            "6a8b939d5209090e33600114f6f6dae03513688856514734118613c5147c68c2",
-        ));
-    }
-    pins.into_iter()
-        .map(|(slug, version, sha)| Plugin {
-            slug: slug.into(),
-            version: version.into(),
-            sha256: Some(sha.into()),
-            requires: Vec::new(),
-            plugin_data: Some(Resource::WordPress {
-                slug: format!("{slug}.{version}.zip"),
-            }),
-        })
-        .collect()
-}
-
 pub fn digest(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }

@@ -484,18 +484,37 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
 
     let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let plugin = project.join(".zero/wp/zero-blog");
+    let plugin = project.join(".zero/wp-content/plugins/zero-app-blog");
     for rel in [
-        "zero-blog.php",
-        "zero/runtime/bootstrap.php",
-        "zero/runtime/Db.php",
+        "zero-app-blog.php",
         "zero/app/functions.php",
         "zero/app/migrations/0001_init.sql",
-        "vendor",
     ] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
-    assert!(project.join(".zero/wp/zero-blog.zip").is_file());
+    assert!(project.join(".zero/wp-content/plugins/zero-app-blog.zip").is_file());
+    let content = project.join(".zero/wp-content");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(content.join("zero-manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["runtime"], "0.2");
+    assert_eq!(manifest["app"], "blog");
+    for slug in ["zero-runtime", "zero-identity", "zero-app-blog"] {
+        let archive = std::fs::File::open(content.join("plugins").join(format!("{slug}.zip"))).unwrap();
+        let mut archive = zip::ZipArchive::new(archive).unwrap();
+        assert!(archive.by_name(&format!("{slug}/{slug}.php")).is_ok());
+    }
+    assert!(content.join("plugins/zero-runtime/zero/bootstrap.php").is_file());
+    let doctor = zero()
+        .args(["doctor", "--json", "--wp"])
+        .arg(&project)
+        .output()
+        .unwrap();
+    assert!(doctor.status.success(), "{}", String::from_utf8_lossy(&doctor.stdout));
+    let doctor: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    let platform: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/platform.json")).unwrap()).unwrap();
+    assert_eq!(doctor["data"]["requirements"], platform);
+
     let mut wp_schema = as_json(&plugin.join("zero/app/schema.php"));
     assert_eq!(wp_schema["target"], "wp");
     wp_schema["target"] = "standalone".into();
@@ -934,7 +953,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let schema_file = if target == "wp" {
-            tmp.join(".zero/wp/zero-phase2/zero/app/schema.php")
+            tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php")
         } else {
             tmp.join(".zero/app/zero/app/schema.php")
         };

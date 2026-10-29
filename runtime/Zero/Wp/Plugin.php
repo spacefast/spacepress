@@ -9,13 +9,13 @@ use Zero\Db;
 use Zero\Schema;
 
 /**
- * The plugin bootstrap (§4.9). `new Plugin(__DIR__)` from the generated main file wires every hook;
+ * The app bootstrap (§4.9). Runtime::app constructs it after compatibility checks;
  * the App (Db pipeline + stores) is booted lazily, the first time a request or an editor save needs it.
  */
 final class Plugin
 {
-    public const MIN_WP = '6.7';
-    public const MIN_SCF = '6.9.7';
+    public const MIN_WP = Platform::WORDPRESS;
+    public const MIN_SCF = Platform::PLUGINS['secure-custom-fields']['version'];
     private const PRIMITIVE_CAPS = ['edit_%s', 'edit_others_%s', 'delete_%s', 'publish_%s', 'read_private_%s',
         'delete_private_%s', 'delete_published_%s', 'delete_others_%s', 'edit_private_%s', 'edit_published_%s'];
     private const AUTHOR_CAPS = ['edit_%s', 'publish_%s', 'delete_%s', 'edit_published_%s', 'delete_published_%s'];
@@ -24,20 +24,18 @@ final class Plugin
 
     public readonly Schema $schema;
     private ?App $app = null;
+    private string $mainFile;
     private ?Connection $connection = null;
     /** @var array<int, ?array> post id → row before an editor update (null = treat as create) */
     private array $before = [];
     /** @var array<int, array{string, array}> post id → [collection, row] captured before an editor delete */
     private array $deleting = [];
 
-    public function __construct(public readonly string $dir, ?string $mainFile = null)
+    public function __construct(public readonly string $dir, string $mainFile)
     {
         self::$instance = $this;
         $this->schema = Schema::load($dir . '/zero/app/schema.php');
-        $mainFile ??= defined('ZERO_PLUGIN_FILE') ? (string) constant('ZERO_PLUGIN_FILE') : $dir . '/zero-' . $this->schema->name() . '.php';
-
-        register_activation_hook($mainFile, [$this, 'activate']);
-        add_action('plugins_loaded', [$this, 'checkRequirements']);
+        $this->mainFile = $mainFile;
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('rest_api_init', fn () => Rest::register(fn () => $this->app()));
@@ -50,10 +48,6 @@ final class Plugin
         add_action('wp_after_insert_post', [$this, 'afterEditorSave'], 20, 4);
         add_action('before_delete_post', [$this, 'beforeEditorDelete'], 10, 2);
         add_action('deleted_post', [$this, 'afterEditorDelete'], 10, 2);
-
-        if (defined('WP_CLI') && constant('WP_CLI')) {
-            \WP_CLI::add_command('zero', [$this, 'cli'], ['shortdesc' => 'Trusted Zero commands: find|insert|update|delete|action|migrate (JSON in, {data}|{error} out).']);
-        }
     }
 
     /**
@@ -113,19 +107,19 @@ final class Plugin
             $bad = $migrator->nonInnoDb();
         }
         if ($bad !== []) {
-            deactivate_plugins(plugin_basename(defined('ZERO_PLUGIN_FILE') ? (string) constant('ZERO_PLUGIN_FILE') : $this->dir));
-            wp_die(esc_html('Zero needs InnoDB tables for transactions; these are not: ' . implode(', ', $bad)), 'Zero', ['back_link' => true]);
+            deactivate_plugins(plugin_basename($this->mainFile));
+            wp_die(esc_html('Zero needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad)), 'Zero', ['back_link' => true]);
         }
-        update_option($this->schemaOption(), self::schemaHash(), false);
+        update_option($this->schemaOption(), $this->schemaHash(), false);
         $this->grantCapabilities();
     }
 
     public function maybeMigrate(): void
     {
-        if (get_option($this->schemaOption()) !== self::schemaHash()) {
+        if (get_option($this->schemaOption()) !== $this->schemaHash()) {
             $this->migrator()->migrate();
             $this->grantCapabilities();
-            update_option($this->schemaOption(), self::schemaHash(), false);
+            update_option($this->schemaOption(), $this->schemaHash(), false);
         }
     }
 
@@ -134,14 +128,24 @@ final class Plugin
         return new Migrator($this->connection(), $this->dir . '/zero/app/migrations', $this->schema);
     }
 
+    public function pendingMigrations(): array
+    {
+        return $this->migrator()->pending();
+    }
+
+    public function storageProblems(): array
+    {
+        return $this->migrator()->nonInnoDb();
+    }
+
     private function schemaOption(): string
     {
         return 'zero_' . $this->schema->name() . '_schema';
     }
 
-    private static function schemaHash(): string
+    private function schemaHash(): string
     {
-        return defined('ZERO_SCHEMA_HASH') ? (string) constant('ZERO_SCHEMA_HASH') : '';
+        return hash_file('sha256', $this->dir . '/zero/app/schema.php');
     }
 
     /** §4.1/§5.1: administrator + editor get every collection cap; author edits/publishes/deletes own. */
@@ -162,22 +166,6 @@ final class Plugin
     }
 
     // ================================================================ registration
-
-    public function checkRequirements(): void
-    {
-        $scf = defined('ACF_VERSION') ? (string) constant('ACF_VERSION') : null;
-        $problem = match (true) {
-            !class_exists('ACF') || $scf === null => 'Secure Custom Fields is not active',
-            version_compare($scf, self::MIN_SCF, '<') => 'Secure Custom Fields ' . self::MIN_SCF . '+ is required (found ' . $scf . ')',
-            version_compare((string) get_bloginfo('version'), self::MIN_WP, '<') => 'WordPress ' . self::MIN_WP . '+ is required',
-            default => null,
-        };
-        if ($problem !== null) {
-            remove_action('init', [$this, 'registerPostTypes'], 0);
-            remove_all_actions('rest_api_init');
-            add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('Zero: ' . $problem . '.')));
-        }
-    }
 
     public function registerPostTypes(): void
     {

@@ -3,16 +3,18 @@
 //! schema.php v3 carries these keys, but until the owning lane lands nothing reads them: a column
 //! `.access()` would hide nothing, and an `auth: true` collection would serve its password hashes.
 //! A config that relies on one must not build "ok". When a lane lands its feature, it deletes its
-//! row in `UNLANDED` and its fixture row in `tests/compiler.rs`. The last lane deletes this file,
+//! row in `UNLANDED` and its fixture rows in `tests/compiler.rs`. The last lane deletes this file,
 //! its call in `commands::build` and the `ZERO_ALLOW_UNLANDED_FEATURES` opt-in in `tests/compiler.rs`.
 //!
-//! Runs after extraction and compilation, so every static rejection of these declarations keeps
-//! its own message.
+//! The decision is made on the extracted schema, which is exactly what schema.php will carry, so
+//! config code can't hide a declaration from it. The config values only locate the error. Runs
+//! after extraction and compilation, so every static rejection keeps its own message.
 
 use crate::diag::{Diag, Result, Span};
 use crate::eval::Evaluator;
-use crate::schema::ColType;
+use crate::schema::{ColType, Column, Schema};
 use crate::value::{ColBuilder, Value};
+use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -20,7 +22,7 @@ use std::rc::Rc;
 enum Feature {
     FieldAccess,
     Sync,
-    Webhooks,
+    Jobs,
     Auth,
     Files,
     Localized,
@@ -31,7 +33,7 @@ enum Feature {
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
     (Feature::FieldAccess, 'B', "field access (`.access()` on a column)", "remove .access(); gate the whole collection with its access rule, or move the field to a stricter collection"),
     (Feature::Sync, 'C', "content sync (`sync`)", "remove sync"),
-    (Feature::Webhooks, 'D', "`webhooks`", "remove webhooks"),
+    (Feature::Jobs, 'D', "webhooks, signed and idempotent actions", "remove webhooks, and signature/idempotent from actions"),
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
     (Feature::Files, 'G', "private files (`files` and `file()`)", "remove the file bucket; use media() for public uploads"),
     (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
@@ -41,26 +43,13 @@ const UNLANDED: &[(Feature, char, &str, &str)] = &[
 /// (`phase2_schema_and_closures_match_the_contract`) still renders every key.
 const ALLOW: &str = "ZERO_ALLOW_UNLANDED_FEATURES";
 
-pub fn reject(config: &Value, ev: &Evaluator<'_>, fallback: Span) -> Result<()> {
+pub fn reject(schema: &Schema, config: &Value, ev: &Evaluator<'_>, fallback: Span) -> Result<()> {
     if cfg!(debug_assertions) && std::env::var(ALLOW).as_deref() == Ok("1") {
         return Ok(());
     }
-    let mut walk = Walk {
-        ev,
-        fallback,
-        seen: HashSet::new(),
-        found: Vec::new(),
-    };
-    for (key, feature) in [
-        ("webhooks", Feature::Webhooks),
-        ("locales", Feature::Localized),
-        ("files", Feature::Files),
-    ] {
-        walk.option(config, key, feature);
-    }
-    walk.value(config);
-    for (feature, span) in walk.found {
+    for feature in declared(schema) {
         if let Some((_, lane, what, help)) = UNLANDED.iter().find(|(f, ..)| *f == feature) {
+            let span = locate(feature, config, ev).unwrap_or(fallback);
             return Err(Diag::new(span, format!("{what}: not implemented until lane {lane}"))
                 .help(format!("it would build but not be enforced yet; {help}")));
         }
@@ -68,24 +57,86 @@ pub fn reject(config: &Value, ev: &Evaluator<'_>, fallback: Span) -> Result<()> 
     Ok(())
 }
 
-/// Every collection option and column builder reachable from the config (collections, globals,
-/// action and job inputs, nested fields).
+/// Authored (non-system) columns at any depth that satisfy `test`. System columns are the
+/// compiler's own: an auth collection's `role` carries an update rule, for instance.
+fn any_column(columns: &IndexMap<String, Column>, test: &dyn Fn(&Column) -> bool) -> bool {
+    columns.values().filter(|c| !c.system).any(|c| {
+        test(c)
+            || c.fields.as_ref().is_some_and(|f| any_column(f, test))
+            || c.layouts
+                .as_ref()
+                .is_some_and(|l| l.values().any(|f| any_column(f, test)))
+    })
+}
+
+/// Unlanded features the emitted schema declares, in a fixed order.
+fn declared(schema: &Schema) -> Vec<Feature> {
+    let columns = |test: &dyn Fn(&Column) -> bool| {
+        schema
+            .collections
+            .values()
+            .map(|c| &c.columns)
+            .chain(schema.globals.values().map(|g| &g.fields))
+            .chain(schema.actions.values().map(|a| &a.input))
+            .chain(schema.jobs.values().map(|j| &j.input))
+            .any(|c| any_column(c, test))
+    };
+    [
+        (columns(&|c| !c.access.is_empty()), Feature::FieldAccess),
+        (schema.collections.values().any(|c| c.sync.is_some()), Feature::Sync),
+        (
+            !schema.webhooks.is_empty() || schema.actions.values().any(|a| a.signature.is_some() || a.idempotent),
+            Feature::Jobs,
+        ),
+        (schema.collections.values().any(|c| c.auth), Feature::Auth),
+        (
+            !schema.files.is_empty() || columns(&|c| c.ty == ColType::File),
+            Feature::Files,
+        ),
+        (
+            schema.locales.is_some() || columns(&|c| c.localized),
+            Feature::Localized,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(on, feature)| on.then_some(feature))
+    .collect()
+}
+
+/// Where the config declares `feature`, for the error location.
+fn locate(feature: Feature, config: &Value, ev: &Evaluator<'_>) -> Option<Span> {
+    let mut walk = Walk {
+        ev,
+        seen: HashSet::new(),
+        found: Vec::new(),
+    };
+    for (key, f) in [
+        ("webhooks", Feature::Jobs),
+        ("locales", Feature::Localized),
+        ("files", Feature::Files),
+    ] {
+        walk.option(config, key, f);
+    }
+    walk.value(config);
+    walk.found
+        .into_iter()
+        .find(|(f, _)| *f == feature)
+        .map(|(_, span)| span)
+}
+
+/// Every collection option, action option and column builder reachable from the config.
 struct Walk<'a, 'p> {
     ev: &'a Evaluator<'p>,
-    fallback: Span,
     seen: HashSet<usize>,
     found: Vec<(Feature, Span)>,
 }
 
 impl Walk<'_, '_> {
-    /// `key` is set on `obj` to something other than undefined/null/false.
     fn option(&mut self, obj: &Value, key: &str, feature: Feature) {
-        let Value::Object(o) = obj else { return };
-        if o.borrow()
-            .get(key)
-            .is_some_and(|v| !matches!(v, Value::Undef | Value::Null | Value::Bool(false)))
+        if let Value::Object(o) = obj
+            && o.borrow().contains_key(key)
+            && let Some(span) = self.ev.key_span(obj, key)
         {
-            let span = self.ev.key_span(obj, key).unwrap_or(self.fallback);
             self.found.push((feature, span));
         }
     }
@@ -120,7 +171,11 @@ impl Walk<'_, '_> {
                     self.column(b);
                 }
             }
-            Value::Action(a) | Value::Job(a) if self.first_visit(a) => self.value(&a.config),
+            Value::Action(a) | Value::Job(a) if self.first_visit(a) => {
+                self.option(&a.config, "signature", Feature::Jobs);
+                self.option(&a.config, "idempotent", Feature::Jobs);
+                self.value(&a.config);
+            }
             Value::Column(b) => self.column(b),
             _ => {}
         }

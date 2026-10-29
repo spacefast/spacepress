@@ -12,9 +12,16 @@ const MAX_EXPANDED: u64 = 256 * 1024 * 1024;
 pub(super) fn extract(zip: &Path, dest: &Path, plugin: &Plugin) -> Result<()> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(zip)?)
         .map_err(|e| invalid(format!("plugin {}: invalid ZIP: {e}", plugin.slug)))?;
+    // ZipArchive indexes unique names; consult the raw-directory duplicate flag first.
+    if archive.has_duplicate_names() {
+        return Err(invalid("duplicate archive paths in central directory"));
+    }
     if archive.len() > MAX_FILES {
         return Err(invalid("plugin archive has too many entries"));
     }
+    archive
+        .validate_header_consistency()
+        .map_err(|e| invalid(format!("plugin {}: {e}", plugin.slug)))?;
     let mut paths = Vec::new();
     let mut seen = BTreeSet::new();
     let mut spelling = BTreeMap::new();
@@ -120,12 +127,16 @@ pub(super) fn extract(zip: &Path, dest: &Path, plugin: &Plugin) -> Result<()> {
 }
 
 fn header(text: &str, key: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        let line = line.trim_start_matches([' ', '\t', '/', '*', '#']);
-        let (name, value) = line.split_once(':')?;
-        name.eq_ignore_ascii_case(key)
-            .then(|| value.trim().trim_end_matches("*/").trim().to_string())
-    })
+    // Match WordPress get_file_data(), including PHPDoc @ prefixes and CR line endings.
+    let text = text.replace('\r', "\n");
+    let pattern = regex::Regex::new(&format!(
+        r"(?im)^(?:[ \t]*<\?php)?[ \t/*#@]*{}:(.*)$",
+        regex::escape(key)
+    ))
+    .expect("escaped header pattern");
+    let captures = pattern.captures(&text)?;
+    let value = captures.get(1)?.as_str().split("*/").next()?.split("?>").next()?;
+    Some(value.trim().to_string())
 }
 
 fn validate_headers(dir: &Path, plugin: &Plugin) -> Result<()> {

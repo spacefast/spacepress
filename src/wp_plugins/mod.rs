@@ -173,6 +173,9 @@ pub fn resolve(config: &Config, required: &[Plugin]) -> Result<Plan> {
                     p.slug
                 )));
             }
+            if p.version == platform.version && p.resource() == platform.resource() && entry.sha256.is_none() {
+                entry.sha256 = platform.sha256.clone();
+            }
             for dep in &platform.requires {
                 if !entry.requires.contains(dep) {
                     entry.requires.push(dep.clone());
@@ -268,7 +271,7 @@ pub fn digest(bytes: &[u8]) -> String {
 
 const MAX_ZIP: u64 = 64 * 1024 * 1024;
 
-fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path) -> Result<(PathBuf, String)> {
+fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path, url: &str) -> Result<(PathBuf, String)> {
     std::fs::create_dir_all(cache)?;
     if let Some(pin) = pin {
         let path = cache.join(format!("{pin}.zip"));
@@ -284,7 +287,6 @@ fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path) -> Result<(PathBuf,
             return Ok((path, pin.to_string()));
         }
     }
-    let url = plugin.resource().url();
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(60)))
         .https_only(url.starts_with("https:"))
@@ -292,7 +294,7 @@ fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path) -> Result<(PathBuf,
         .build()
         .into();
     let mut response = agent
-        .get(&url)
+        .get(url)
         .call()
         .map_err(|e| invalid(format!("plugin {}: download failed: {e}", plugin.slug)))?;
     let mut file = tempfile::NamedTempFile::new_in(cache)?;

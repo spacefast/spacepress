@@ -38,6 +38,16 @@ pub struct StagedPlugin {
 impl Prepared {
     /// All resolution must finish before acquisition; all acquisition finishes before publication.
     pub fn acquire(plan: &Plan, lock_path: &Path, cache: &Path) -> Result<Self> {
+        Self::acquire_using(plan, lock_path, cache, Resource::url)
+    }
+
+    // Separate resource naming from transport so local HTTP fixtures exercise the same locking path.
+    fn acquire_using(
+        plan: &Plan,
+        lock_path: &Path,
+        cache: &Path,
+        resource_url: impl Fn(&Resource) -> String,
+    ) -> Result<Self> {
         let previous = match std::fs::read(lock_path) {
             Ok(bytes) => {
                 let lock: Lock = serde_json::from_slice(&bytes)
@@ -83,7 +93,7 @@ impl Prepared {
                 }
             }
             let pin = plugin.sha256.as_deref().or_else(|| locked.map(|p| p.sha256.as_str()));
-            let (zip, sha256) = acquire(plugin, pin, cache)?;
+            let (zip, sha256) = acquire(plugin, pin, cache, &resource_url(&plugin.resource()))?;
             let directory = stage.path().join(&plugin.slug);
             archive::extract(&zip, &directory, plugin)?;
             let tree_sha256 = archive::tree_digest(&directory)?;
@@ -171,4 +181,71 @@ impl Prepared {
 /// Temporary legacy-output bridge helpers. A3's assembler replaces the bridge, not acquisition.
 pub fn copy_output(from: &Path, to: &Path) -> Result<()> {
     archive::copy_tree(from, to)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn wordpress_org_first_acquisition_records_a_pin_and_reuses_it_offline() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file("example/example.php", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer
+            .write_all(b"<?php\n/*\nPlugin Name: Example\nVersion: 1.0\n*/\n")
+            .unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        let expected_sha = crate::wp_plugins::digest(&bytes);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/example.1.0.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            conn.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0];
+            while conn.read(&mut byte).unwrap() != 0 {
+                request.push(byte[0]);
+                if request.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+            write!(
+                conn,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                bytes.len()
+            )
+            .unwrap();
+            conn.write_all(&bytes).unwrap();
+        });
+        let config =
+            crate::wp_plugins::parse(serde_json::json!({"plugins":[{"slug":"example","version":"1.0"}]})).unwrap();
+        let plan = crate::wp_plugins::resolve(&config, &[]).unwrap();
+        let lock = temp.path().join("plugins.lock.json");
+        let cache = temp.path().join("cache");
+        let first = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        server.join().unwrap();
+        assert_eq!(first.trees()[0].dependency.sha256, expected_sha);
+        assert_eq!(
+            first.trees()[0].dependency.plugin_data,
+            Resource::WordPress {
+                slug: "example.1.0.zip".into()
+            }
+        );
+        assert!(first.trees()[0].directory.join("example.php").is_file());
+        let bytes = first.lock_bytes().unwrap();
+        std::fs::write(&lock, &bytes).unwrap();
+        let second = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        assert_eq!(second.lock_bytes().unwrap(), bytes);
+        assert_eq!(
+            std::fs::read(first.trees()[0].directory.join("example.php")).unwrap(),
+            std::fs::read(second.trees()[0].directory.join("example.php")).unwrap()
+        );
+        std::fs::write(cache.join(format!("{expected_sha}.zip")), b"changed bytes").unwrap();
+        let failure = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone());
+        assert!(failure.err().unwrap().to_string().contains("corrupt or unsafe cache"));
+    }
 }

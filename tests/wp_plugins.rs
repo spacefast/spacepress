@@ -28,6 +28,23 @@ fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
     writer.finish().unwrap().into_inner()
 }
 
+fn replace_zip_names(mut bytes: Vec<u8>, from: &[u8], to: &[u8], all: bool) -> Vec<u8> {
+    assert_eq!(from.len(), to.len());
+    let positions: Vec<_> = bytes
+        .windows(from.len())
+        .enumerate()
+        .filter_map(|(i, name)| (name == from).then_some(i))
+        .collect();
+    assert!(!positions.is_empty());
+    for i in positions {
+        bytes[i..i + to.len()].copy_from_slice(to);
+        if !all {
+            break;
+        }
+    }
+    bytes
+}
+
 fn plugin_zip(slug: &str, version: &str, requires: &str) -> Vec<u8> {
     let header = format!(
         "<?php\n/**\n * Plugin Name: {slug}\n * Version: {version}\n * Requires Plugins: {requires}\n */\nthrow new Exception('BUILD MUST NEVER EXECUTE PLUGIN PHP');\n"
@@ -188,7 +205,7 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     let dep = zip(&[
         (
             "dependency.php",
-            b"<?php\n/*\nPlugin Name: dependency\nVersion: 2.1\n*/\n",
+            b"<?php\n/*\n@Plugin Name: dependency\n@Version: 2.1\n*/\n",
         ),
         ("assets/x.txt", b"dependency"),
     ]);
@@ -277,6 +294,42 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
         .add_symlink("link/escape", "../../outside", zip::write::SimpleFileOptions::default())
         .unwrap();
     routes.insert("/link.zip".into(), symlink.finish().unwrap().into_inner());
+    let duplicate = zip(&[
+        (
+            "duplicate/duplicate.php",
+            b"<?php\n/*\nPlugin Name: Duplicate\nVersion: 1.0\n*/",
+        ),
+        ("duplicate/first.txt", b"first"),
+        ("duplicate/other.txt", b"last"),
+    ]);
+    routes.insert(
+        "/duplicate.zip".into(),
+        replace_zip_names(duplicate, b"duplicate/other.txt", b"duplicate/first.txt", true),
+    );
+    let inconsistent = plugin_zip("header-mismatch", "1.0", "");
+    routes.insert(
+        "/header-mismatch.zip".into(),
+        replace_zip_names(
+            inconsistent,
+            b"header-mismatch/header-mismatch.php",
+            b"header-mismatch/header-mismatcH.php",
+            false,
+        ),
+    );
+    routes.insert(
+        "/at-header.zip".into(),
+        zip(&[(
+            "at-header/at-header.php",
+            b"<?php /**\r * @Plugin Name: At Header\r * @Version: 1.0\r * @Requires Plugins: missing\r */",
+        )]),
+    );
+    let mut many = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for i in 0..20_001 {
+        many.start_file(format!("limit/{i}.txt"), zip::write::SimpleFileOptions::default())
+            .unwrap();
+        many.write_all(b"x").unwrap();
+    }
+    routes.insert("/limit.zip".into(), many.finish().unwrap().into_inner());
     let server = Server::new(routes.clone());
     let p = Project::new();
     let mut plugins = platform(&server, &routes);
@@ -285,6 +338,10 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.build();
     let lock = std::fs::read(p.root.join("zero/wp-plugins.lock.json")).unwrap();
     for (name, error) in [
+        ("duplicate", "duplicate archive paths"),
+        ("header-mismatch", "header inconsistency"),
+        ("at-header", "header dependency"),
+        ("limit", "too many entries"),
         ("traversal", "unsafe archive path"),
         ("case", "duplicate/case-colliding"),
         ("file-parent", "file/directory collision"),
@@ -312,6 +369,25 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.config(&wrong);
     p.rejects("build", "sha256 mismatch");
     assert_eq!(before, tree(&p.out));
+    // An ergonomic repeat of the same platform source/version must retain the required checksum.
+    let lock_path = p.root.join("zero/wp-plugins.lock.json");
+    let mut substituted: Value = serde_json::from_slice(&lock).unwrap();
+    let scf = substituted["plugins"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|v| v["slug"] == "secure-custom-fields")
+        .unwrap();
+    scf["pluginData"] = json!({"resource":"wordpress.org/plugins","slug":"secure-custom-fields.6.9.7.zip"});
+    let altered = serde_json::to_vec_pretty(&substituted).unwrap();
+    std::fs::write(&lock_path, &altered).unwrap();
+    let mut equivalent = plugins.clone();
+    equivalent[0] = json!({"slug":"secure-custom-fields","version":"6.9.7"});
+    p.config(&equivalent);
+    p.rejects("build", "authored sha256 conflicts with lock");
+    assert_eq!(before, tree(&p.out));
+    assert_eq!(altered, std::fs::read(&lock_path).unwrap());
+    std::fs::write(lock_path, &lock).unwrap();
     // Existing unrelated and modified managed plugins must never be silently overwritten.
     std::fs::create_dir_all(p.out.join("plugins/traversal")).unwrap();
     std::fs::write(p.out.join("plugins/traversal/local.php"), "keep").unwrap();

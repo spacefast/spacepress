@@ -27,6 +27,7 @@ final class Register
     private static array $names = [];
     private static ?string $sanitizing = null;
     private static ?string $method = null;
+    private static ?string $untyped = null;
 
     public static function categories(): void
     {
@@ -88,11 +89,22 @@ final class Register
             return $valid;
         }
 
+        if (in_array(self::$sanitizing, ['GET', 'DELETE'], true)) {
+            // Core sanitizes (types) a query string only when all of it validates; remember which.
+            self::$untyped = $valid === true ? null : ($valid instanceof \WP_Error ? $valid->get_error_message() : 'Invalid input');
+        }
+
         return match (self::$sanitizing) {
             null => true,
             'GET', 'DELETE' => $valid,
             default => new \WP_Error('zero_raw_input', 'Zero validates JSON input itself'),
         };
+    }
+
+    /** Why core left this request's query-string input untyped, or null when it typed it. */
+    public static function untypedReason(): ?string
+    {
+        return self::$untyped;
     }
 
     /** rest_pre_dispatch … rest_request_before_callbacks brackets core's argument sanitizing. */
@@ -102,6 +114,7 @@ final class Register
             self::$sanitizing = $on && $request instanceof \WP_REST_Request ? $request->get_method() : null;
             if ($on) {
                 self::$method = self::$sanitizing;
+                self::$untyped = null;
             }
 
             return $passthrough;
@@ -112,6 +125,7 @@ final class Register
     public static function dispatched(mixed $response): mixed
     {
         self::$method = null;
+        self::$untyped = null;
 
         return $response;
     }

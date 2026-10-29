@@ -114,6 +114,12 @@ final class Invoke
     /** Refuse GET input that core couldn't type; `where` and `with` accept JSON strings instead, as REST's query does. */
     private static function requireTyped(array $op, array $input): void
     {
+        if (($reason = Register::untypedReason()) !== null) {
+            // Core typed none of it, so every value is still a string; a filter would read "false" as true.
+            preg_match('/input((?:\[[^\]]*\])+)/', $reason, $m);
+            $pointer = isset($m[1]) ? implode('', array_map(HttpError::seg(...), explode('][', trim($m[1], '[]')))) : '';
+            throw HttpError::invalidQuery($reason, $pointer);
+        }
         foreach (['where', 'with'] as $key) {
             if (isset($input[$key]) && !is_string($input[$key]) && self::untyped($input[$key], $op['input']['properties'][$key] ?? null)) {
                 throw HttpError::invalidQuery("This `$key` nests deeper than a GET query string can type; send it as a JSON string", "/$key");

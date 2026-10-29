@@ -2447,7 +2447,10 @@
           }
         },
         "orderBy": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "id": {
               "type": "string",
@@ -6734,7 +6737,10 @@
           }
         },
         "orderBy": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "id": {
               "type": "string",
@@ -10194,7 +10200,10 @@
           }
         },
         "orderBy": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "id": {
               "type": "string",
@@ -11536,7 +11545,10 @@
           }
         },
         "orderBy": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "id": {
               "type": "string",
@@ -14932,7 +14944,10 @@
           }
         },
         "orderBy": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "id": {
               "type": "string",

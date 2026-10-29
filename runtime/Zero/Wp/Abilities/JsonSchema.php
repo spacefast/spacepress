@@ -169,7 +169,7 @@ final class JsonSchema
         return ['type' => $depth > 0 ? ['object', 'string'] : 'object', 'properties' => $props];
     }
 
-    /** `orderBy`: `{ column: "asc" | "desc" }`, in priority order. */
+    /** `orderBy`: `{ column: "asc" | "desc" }` in priority order, or REST's `"title,-id"`. */
     public static function orderBy(array $columns): array
     {
         $props = [];
@@ -177,7 +177,7 @@ final class JsonSchema
             $props[$name] = ['type' => 'string', 'enum' => ['asc', 'desc']];
         }
 
-        return ['type' => 'object', 'properties' => $props];
+        return ['type' => ['object', 'string'], 'properties' => $props];
     }
 
     /** `with`: relations (true, or nested query options) and media columns to include; may be a JSON string. */

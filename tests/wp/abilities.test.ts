@@ -123,6 +123,11 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
     ["where", { id: postId, AND: [{ author: { userId: { [op]: false } } }] }],
     ["with", { comments: { where: { body: { [op]: false } } } }],
   ] as const;
+  // A query string core can't type as a whole stays all strings, the typed parts included.
+  const half = await runAbility("blog/posts-list", { where: { cover: { isNull: false } }, limit: "many" }, "editor", "GET");
+  assert.deepEqual([half.status, half.json.code, half.json.data?.pointer], [400, "zero_invalid_query", "/limit"]);
+  const sorted = await runAbility("blog/posts-list", { where: { id: postId, cover: { isNull: true } }, orderBy: "-id" }, "editor", "GET");
+  assert.deepEqual([sorted.status, sorted.json.rows?.map((r: any) => r.id)], [200, [postId]]);
   for (const op of ["isNull", "isNotNull"]) {
     for (const [key, value] of shapes(op)) {
       const input = { where: { id: postId }, [key]: value };

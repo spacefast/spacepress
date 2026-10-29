@@ -5,6 +5,9 @@ use super::{Entry, Failure, Source, entry, fail, pointer};
 
 type Object = Map<String, Value>;
 
+/// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
+const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
+
 fn object<'a>(v: &'a Value, at: &str) -> Result<&'a Object, Failure> {
     v.as_object().ok_or_else(|| fail(at, "expected an object"))
 }
@@ -416,8 +419,20 @@ fn field(
     if boolean(o, "unique", at)?.unwrap_or(false) {
         builder.push_str(".unique()");
     }
+    // Payload's sanitized config sets `defaultMaxTextLength: 40000`, and its text
+    // and textarea validators use it whenever a field declares no maxLength.
+    let implicit =
+        (matches!(source, Source::Payload) && matches!(kind, "text" | "textarea") && !o.contains_key("maxLength"))
+            .then(|| json!(PAYLOAD_DEFAULT_MAX_TEXT_LENGTH));
+    if implicit.is_some() {
+        report.push(entry(
+            at,
+            "mapped",
+            format!("Payload defaultMaxTextLength ({PAYLOAD_DEFAULT_MAX_TEXT_LENGTH}) applies without maxLength"),
+        ));
+    }
     for key in ["maxLength", "min", "max"] {
-        if let Some(n) = o.get(key) {
+        if let Some(n) = o.get(key).or(implicit.as_ref().filter(|_| key == "maxLength")) {
             if !n.is_number() {
                 return Err(fail(&pointer(at, key), "expected a number"));
             }

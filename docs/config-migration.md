@@ -47,7 +47,8 @@ Payload's sanitizer. Optional checkboxes keep their declared default or absence.
 Required Payload JSON values must be JavaScript-truthy: `false`, `0`, `""` and
 null are rejected; empty arrays and objects are allowed. Payload text bounds use
 generated validators that count UTF-16 code units, so a supplementary Unicode
-character counts as two. These validators preserve the source constraint rather
+character counts as two. A Payload `text` or `textarea` without `maxLength`
+receives Payload's default `defaultMaxTextLength` of 40000. These validators preserve the source constraint rather
 than using Zero's Unicode-character count for text `.max()`.
 
 A required text field named `title` enables a WordPress custom post type with

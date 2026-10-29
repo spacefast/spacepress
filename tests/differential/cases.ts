@@ -103,9 +103,12 @@ export default defineConfig({
       let { value = "a" } = { value: undefined }; value = "b";
       let flag = true; flag = false;
       const flags = [true]; flags.push(false);
+      let choose = () => true; choose = () => false;
+      let label = () => "a"; label = () => "b";
+      const predicates = [() => true]; predicates.push(() => false);
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
+      return { names, inStock, total, sorted, byQty, words, nested, choice, callback, callbackDefaults, iteration, defaults, value, flag, flags, chosen: choose(), label: label(), predicates: predicates.map(predicate => predicate()), reduced, reducedNested, some: ITEMS.some((i) => i.qty === 0), idx: ITEMS.findIndex((i) => i.name === "eggs") };
     }),
     objects: run(() => {
       const base = { a: 1, b: 2 };

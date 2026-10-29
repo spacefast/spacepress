@@ -5,13 +5,15 @@ const HIDE = "hide";
 const SHOW = "show";
 const YES = true;
 const NIL = null;
-function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return true; } } }
+function finiteFunction(): boolean { const predicates = [(): true => true]; const flag = predicates[0](); switch (flag) { case true: return true; } }
+function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return finiteFunction(); } } }
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
 function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": return true; } }
 function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label !== "error") return visible(ctx.data.label); deny(); case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
+function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0](); switch (flag) { case true: return true; } }
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
 const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
 const posts = collection("posts", {
@@ -47,7 +49,7 @@ export default defineConfig({
       const defaultTuple = pair[0].repeat(pair[1]);
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+      const selected = finite[0]; switch (selected) { case "a": case "b": return { values, choice, finite, nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
     } }),
   },
 });

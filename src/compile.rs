@@ -440,7 +440,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     d
                 }
                 (Some(d), None) => d,
-                (None, Some(g)) => widen_literal_array(&g),
+                (None, Some(g)) => widen_fresh_literals(&g),
                 (None, None) => {
                     return err_help(
                         p.span,
@@ -1065,7 +1065,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.fx().scopes.push(HashMap::new());
-                let el = widen_literal_array(&el);
+                let el = widen_fresh_literals(&el);
                 let mutable = *kind == DeclKind::Let;
                 match pat {
                     Pat::Id(n, _) => {
@@ -2180,7 +2180,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let t = match &p.ann {
                 Some(a) => self.resolve_ann(a, module, &HashMap::new())?,
                 None => match params.get(i) {
-                    Some(t) => widen_literal_array(t),
+                    Some(t) => widen_fresh_literals(t),
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
             };
@@ -3155,8 +3155,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let acc_ty = init
                     .as_ref()
-                    .map(|i| widen_literal_array(&i.ty))
-                    .unwrap_or_else(|| widen_literal_array(&el));
+                    .map(|i| widen_fresh_literals(&i.ty))
+                    .unwrap_or_else(|| widen_fresh_literals(&el));
                 let f = self.arg(args, 0, span, "a function")?;
                 let f = self.callback(f, &[acc_ty.clone(), el.clone(), Ty::Num])?;
                 let r = ret_of(&f);
@@ -3953,25 +3953,45 @@ fn inferred_binding_type(t: &Ty, mutable: bool) -> Ty {
     match t {
         Ty::FreshStrLit(_) | Ty::FreshBoolLit(_) if !mutable => t.clone(),
         Ty::Union(ts) => Ty::union(ts.iter().map(|t| inferred_binding_type(t, mutable))),
-        _ => widen_literal_array(t),
+        _ => widen_fresh_literals(t),
     }
 }
 
-fn widen_literal_array(t: &Ty) -> Ty {
+fn widen_fresh_literals(t: &Ty) -> Ty {
     match t {
         Ty::FreshStrLit(_) => Ty::Str,
         Ty::FreshBoolLit(_) => Ty::Bool,
-        Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_literal_array)))),
-        Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(widen_literal_array).collect()),
-        Ty::Array(t) => Ty::Array(Box::new(widen_literal_array(t))),
-        Ty::Union(ts) => Ty::union(ts.iter().map(widen_literal_array)),
+        Ty::ArrayLiteral(ts) => Ty::Array(Box::new(Ty::union(ts.iter().map(widen_fresh_literals)))),
+        Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(widen_fresh_literals).collect()),
+        Ty::Array(t) => Ty::Array(Box::new(widen_fresh_literals(t))),
+        Ty::Union(ts) => Ty::union(ts.iter().map(widen_fresh_literals)),
         Ty::Obj(f) => Ty::Obj(
             f.iter()
-                .map(|(k, (t, o))| (k.clone(), (widen_literal_array(t), *o)))
+                .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
                 .collect(),
         ),
-        Ty::Map(t) => Ty::Map(Box::new(widen_literal_array(t))),
-        other => other.clone(),
+        Ty::Map(t) => Ty::Map(Box::new(widen_fresh_literals(t))),
+        Ty::Fn(params, ret) => Ty::Fn(
+            params.iter().map(widen_fresh_literals).collect(),
+            Box::new(widen_fresh_literals(ret)),
+        ),
+        Ty::Promise(t) => Ty::Promise(Box::new(widen_fresh_literals(t))),
+        Ty::Num
+        | Ty::Str
+        | Ty::StrLit(_)
+        | Ty::Bool
+        | Ty::BoolLit(_)
+        | Ty::Null
+        | Ty::Unknown
+        | Ty::Never
+        | Ty::Date
+        | Ty::Regex
+        | Ty::Error
+        | Ty::Collection(_)
+        | Ty::Db
+        | Ty::DbQuery
+        | Ty::QueryColl(_)
+        | Ty::Builder(_) => t.clone(),
     }
 }
 

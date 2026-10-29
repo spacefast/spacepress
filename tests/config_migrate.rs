@@ -102,28 +102,41 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                 }
             );
             assert_eq!(notes["access"]["create"]["allow"], false);
-            if from == "sanity" && target == "standalone" {
+            if matches!(from, "sanity" | "emdash") && target == "standalone" {
                 let runtime = Command::new("php")
                     .args([
                         "-r",
                         r#"
                     require $argv[1] . '/zero/runtime/bootstrap.php';
                     $app = \Zero\App::boot($argv[1]);
-                    try { $app->db->insert('notes', ['title' => '']); }
-                    catch (\Zero\HttpError $e) { echo json_encode([$e->status, $e->pointer]); }
+                    $valid = ['title' => 'Title'];
+                    if ($argv[2] === 'emdash') $valid['description'] = 'Description';
+                    $app->db->insert('notes', $valid);
+                    $errors = [];
+                    foreach ($valid as $field => $_) {
+                        $values = $valid;
+                        $values[$field] = '';
+                        try { $app->db->insert('notes', $values); }
+                        catch (\Zero\HttpError $e) { $errors[$field] = [$e->status, $e->pointer]; }
+                    }
+                    echo json_encode($errors);
                 "#,
                     ])
                     .arg(dir.path().join(target))
+                    .arg(from)
                     .output()
                     .unwrap();
                 assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
                 assert_eq!(
                     serde_json::from_slice::<Value>(&runtime.stdout).unwrap(),
-                    json!([422, "/title"])
+                    if from == "emdash" {
+                        json!({"title": [422, "/title"], "description": [422, "/description"]})
+                    } else {
+                        json!({"title": [422, "/title"]})
+                    }
                 );
             }
             if from == "payload" {
-                assert_eq!(notes["columns"]["title"]["rules"]["max"], 120.0);
                 assert_eq!(notes["columns"]["priority"]["default"]["value"], 2);
                 assert_eq!(notes["columns"]["updatedAt"]["onUpdate"]["now"], true);
                 if target == "standalone" {
@@ -137,14 +150,17 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                         try { $app->db->insert('notes', ['title' => 'Invalid', 'body' => 'Body', 'tags' => ['one'], 'priority' => 6]); }
                         catch (\Zero\HttpError $e) { $error = $e->getMessage(); }
                         $required = [];
-                        foreach (['title' => '', 'body' => '', 'tags' => []] as $field => $empty) {
+                        foreach (['title' => '', 'body' => '', 'tags' => [], 'details' => false] as $field => $empty) {
                             $values = ['title' => 'Title', 'body' => 'Body', 'tags' => ['one']];
                             $values[$field] = $empty;
                             try { $app->db->insert('notes', $values); }
                             catch (\Zero\HttpError $e) { $required[$field] = [$e->status, $e->pointer]; }
                         }
+                        $app->db->insert('notes', ['title' => str_repeat('😀', 60), 'body' => 'Body', 'tags' => ['one']]);
+                        try { $app->db->insert('notes', ['title' => str_repeat('😀', 61), 'body' => 'Body', 'tags' => ['one']]); }
+                        catch (\Zero\HttpError $e) { $bound = [$e->status, $e->pointer]; }
                         $response = $app->handle('GET', '/notes', [], '');
-                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required]);
+                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required, 'bound' => $bound ?? null]);
                     "#,
                         ])
                         .arg(dir.path().join(target))
@@ -155,11 +171,14 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                     assert_eq!(result["row"]["priority"], 2);
                     assert_eq!(result["row"]["stage"], "todo");
                     assert_eq!(result["row"]["done"], false);
+                    assert_eq!(result["row"]["archived"], Value::Null);
+                    assert_eq!(result["row"]["details"], json!([]));
                     assert!(result["error"].as_str().unwrap().contains('5'));
                     assert_eq!(result["status"], 200);
-                    for field in ["title", "body", "tags"] {
+                    for field in ["title", "body", "tags", "details"] {
                         assert_eq!(result["required"][field], json!([422, format!("/{field}")]));
                     }
+                    assert_eq!(result["bound"], json!([422, "/title"]));
                 }
             }
         }
@@ -195,8 +214,18 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
         ),
         (
             "payload",
-            "export default { collections: [{slug:'notes',fields:[],access:{read: () => true}}] };",
+            "const notes = {slug:'notes',fields:[],access:{read: () => true}}; const collections = [notes]; export default { collections };",
             "/collections/0/access/read",
+        ),
+        (
+            "payload",
+            "const access = {'a/b~': () => true}; export default {collections:[{slug:'notes',fields:[],access}]};",
+            "/collections/0/access/a~1b~0",
+        ),
+        (
+            "payload",
+            "const unused = {read: () => true}; export default {collections:[]};",
+            "",
         ),
         (
             "payload",
@@ -222,6 +251,11 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
             "emdash",
             "export default {version:'1',collections:[],content:{notes:[]}};",
             "/content",
+        ),
+        (
+            "emdash",
+            "export default {version:'1',collections:[{slug:'notes',fields:[{slug:'link',type:'url'}]}]};",
+            "/collections/0/fields/0/type",
         ),
         (
             "payload",

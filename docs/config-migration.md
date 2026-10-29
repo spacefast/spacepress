@@ -29,18 +29,26 @@ a declarative export or a manual port. JSON and TypeScript duplicate keys fail.
 
 | Source | Fields supported by this importer |
 | --- | --- |
-| EmDash | `string`, `text`, `url`, `number`, `integer`, `boolean`, `datetime`, `json` |
+| EmDash | `string`, `text`, `number`, `integer`, `boolean`, `datetime`, `json` |
 | Payload | `text`, `textarea`, `email`, `number`, `checkbox`, `date`, `json`, string-valued `select` (including `hasMany`) |
 | Sanity | `string`, `text`, `number`, `boolean`, `datetime`; literal `initialValue`; `Rule => Rule.required()` |
 | Original Zero | Content `text`, `number`, `boolean`, `datetime`, `enum` (including `multiple`) |
 
-Required fields (including nonempty required Payload text/multi-selects and Sanity strings),
+Required fields (including nonempty required Payload text/multi-selects and EmDash/Sanity strings),
 scalar defaults, supported bounds, uniqueness and collection
 labels are carried where declared. Payload's automatic `createdAt`/`updatedAt`
 are generated unless `timestamps: false`. Field editor labels/descriptions are
 reported for manual admin mapping. Payload's plural collection label is carried;
 the loss of a distinct singular label is reported. Sanity's project/dataset
 metadata and EmDash's seed metadata are identified in the report, not deployed.
+
+Required Payload checkboxes without an explicit default receive `false`, matching
+Payload's sanitizer. Optional checkboxes keep their declared default or absence.
+Required Payload JSON values must be JavaScript-truthy: `false`, `0`, `""` and
+null are rejected; empty arrays and objects are allowed. Payload text bounds use
+generated validators that count UTF-16 code units, so a supplementary Unicode
+character counts as two. These validators preserve the source constraint rather
+than using Zero's Unicode-character count for text `.max()`.
 
 A required text field named `title` enables a WordPress custom post type with
 the target's draft/revision behavior. Otherwise the imported collection uses a
@@ -49,8 +57,10 @@ need to review publishing behavior. Import does not adopt existing WordPress
 post types. Original Zero's native `posts`, `pages` and `media` declarations are
 refused because creating new stores would change their ownership.
 
-Sanity URI fields are refused: Zero's URL validator cannot preserve Sanity's
-scheme/credential and empty-value policy. Optional Payload email fields carry a
+EmDash URL fields are refused because their relative, `mailto:` and `tel:` URL
+policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are also
+refused: Zero's URL validator cannot preserve Sanity's scheme/credential and
+empty-value policy. Optional Payload email fields carry a
 specific review entry because Zero rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 
@@ -67,6 +77,9 @@ The command prints JSON to stdout with `version: 1`, `source`, `status`,
 (`mapped`, `metadata` or `review`) and a `reason`. `written` means the config
 compiled for both WordPress and standalone; review entries still require source
 and target behavior to be compared. It does not mean a complete app was migrated.
+Pointers address the expanded default-export object, including references to
+constants. File-level errors and invalid unused declarations use the root pointer
+`""`; their reason names the affected binding when applicable.
 
 An unsupported construct exits 1 with `status: "refused"`, a pointer and reason.
 No config is published. The report may contain mappings completed before the

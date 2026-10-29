@@ -19,11 +19,12 @@ function maybeCapture(value: 0 | 1) { const read = () => value; value++; switch 
 function maybeHelper() { let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); switch (record.count) { case 0: case 1: return true; } }
 function finiteIdentity(value: 0 | 1): 0 | 1 { return value; }
 function earlyNumeric(value: 0 | 1): 0 | 1 { if (value === 0) return finiteIdentity(value); value++; return 1; }
-function byValueNumeric(value: 0 | 1): 0 | 1 { const unused = () => { value++; }; const read = (): 0 | 1 => value; captureNumeric(value); return read(); }
+function byValueNumeric(value: 0 | 1): 0 | 1 { let write = () => {}; const unused = () => { write = () => { value++; }; }; const read = (): 0 | 1 => value; write(); captureNumeric(value); return read(); }
 function shadowNumeric(value: 0 | 1) { const read = () => value; { let value: 0 | 1 = 1; value++; } return read(); }
 function acceptNumeric(value: 0 | 1) { switch (value) { case 0: case 1: return true; } }
 function acceptNumericMember(value: { count: 0 | 1, keep: 0 }) { return { maybe: acceptNumeric(value.count), keep: value.keep }; }
-function passedNumeric() { let value: 0 | 1 = 1; const bump = () => { value++; }; bump(); let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); return { scalar: acceptNumeric(value), member: acceptNumeric(record.count), object: acceptNumericMember(record) }; }
+function acceptDestructured({ count, keep }: { count: 0 | 1, keep: 0 }) { return { maybe: acceptNumeric(count), keep }; }
+function passedNumeric() { let value: 0 | 1 = 1; const bump = () => { value++; }; bump(); let record: { count: 0 | 1, keep: 0 } = { count: 1, keep: 0 }; bumpNumeric(record); return { scalar: acceptNumeric(value), member: acceptNumeric(record.count), object: acceptNumericMember(record), destructured: acceptDestructured(record) }; }
 function callbackNumeric() { let value: 0 | 1 = 0; const writers = [() => { value++; }]; const flattened = writers.flatMap(write => [write]); const selected = flattened.reduce((acc, write) => write, () => {}); selected(); selected(); return value; }
 function formatNumeric(value: 0 | -1): string { return value.toFixed(0); }
 function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return true; case -1: return false; } }

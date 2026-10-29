@@ -33,6 +33,30 @@ impl Place {
     }
 }
 
+/// An indexed read can select a named object property as well as an array
+/// element. Keep the remainder so container operations preserve nested values.
+fn projected_suffix<'a>(path: &'a [Step], prefix: &[Step]) -> Option<&'a [Step]> {
+    for (i, step) in prefix.iter().enumerate() {
+        if matches!(step, Step::Descendants) {
+            return Some(&[]);
+        }
+        let actual = path.get(i)?;
+        if actual != step
+            && !matches!(
+                (actual, step),
+                (Step::Field(_), Step::Index) | (Step::Index, Step::Field(_))
+            )
+        {
+            return None;
+        }
+    }
+    path.get(prefix.len()..)
+}
+
+fn callable_at(value: &Place, callee: &Place) -> bool {
+    value.binding == callee.binding && projected_suffix(&value.path, &callee.path).is_some_and(<[Step]>::is_empty)
+}
+
 #[derive(Default)]
 pub(super) struct Effects {
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
@@ -151,14 +175,15 @@ struct Graph {
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
     history: HashMap<Span, HashSet<Span>>,
-    functions: HashMap<Span, Vec<Option<Place>>>,
+    functions: HashMap<Span, Vec<Place>>,
     values: HashSet<(Place, Span)>,
-    copies: HashSet<(Place, Place)>,
+    copies: HashSet<(Place, Place, Span)>,
     calls: Vec<Call>,
     numeric: HashSet<Place>,
     writes: HashSet<Place>,
     max_depth: usize,
     bindings: HashMap<Span, Span>,
+    parameter_views: HashMap<Span, Place>,
     function_numeric: HashMap<Span, HashSet<Place>>,
     function_writes: HashMap<Span, HashSet<Place>>,
     events: HashMap<Span, HashSet<Place>>,
@@ -168,6 +193,7 @@ type Names = Vec<HashMap<String, Place>>;
 
 impl Graph {
     fn function(&mut self, f: &Rc<Func>, outer: &[HashMap<String, Place>], env: &Rc<Scope>) -> Place {
+        let owner = f.span;
         let value = Place::new(f.span);
         self.values.insert((value.clone(), f.span));
         if self.functions.contains_key(&f.span) {
@@ -184,10 +210,11 @@ impl Graph {
             .iter()
             .map(|p| {
                 self.bind(&p.pat, &mut names, f.span);
-                match &p.pat {
-                    Pat::Id(_, span) => Some(Place::new(*span)),
-                    _ => None,
-                }
+                let param = Place::new(p.pat.span());
+                self.bindings.insert(param.binding, owner);
+                self.bind_value(&p.pat, Some(param.clone()), owner);
+                self.parameter_pattern(&p.pat, &param);
+                param
             })
             .collect();
         self.functions.insert(f.span, params);
@@ -200,7 +227,7 @@ impl Graph {
         match &f.body {
             FnBody::Expr(e) => {
                 let result = self.expr(e, &mut names, env, f.span);
-                self.copy(result, Some(value.at(Step::Result)));
+                self.copy(result, Some(value.at(Step::Result)), owner);
             }
             FnBody::Block(body) => self.block(body, &mut names, env, f.span),
         }
@@ -242,7 +269,7 @@ impl Graph {
         match pat {
             Pat::Default(p, e) => {
                 let value = self.expr(e, names, env, owner);
-                self.bind_value(p, value);
+                self.bind_value(p, value, owner);
                 self.defaults(p, names, env, owner);
             }
             Pat::Obj { props, .. } => {
@@ -259,26 +286,59 @@ impl Graph {
         }
     }
 
-    fn bind_value(&mut self, pat: &Pat, src: Option<Place>) {
+    fn bind_value(&mut self, pat: &Pat, src: Option<Place>, owner: Span) {
         match pat {
-            Pat::Id(_, span) => self.copy(src, Some(Place::new(*span))),
-            Pat::Default(p, _) => self.bind_value(p, src),
-            Pat::Obj { props, .. } => {
+            Pat::Id(_, span) => self.copy(src, Some(Place::new(*span)), owner),
+            Pat::Default(p, _) => self.bind_value(p, src, owner),
+            Pat::Obj { props, rest, .. } => {
                 for (key, p) in props {
-                    self.bind_value(p, src.as_ref().map(|p| p.at(Step::Field(key.clone()))));
+                    self.bind_value(p, src.as_ref().map(|p| p.at(Step::Field(key.clone()))), owner);
+                }
+                if let Some((_, span)) = rest {
+                    self.copy(src, Some(Place::new(*span)), owner);
                 }
             }
-            Pat::Arr { elems, .. } => {
+            Pat::Arr { elems, rest, .. } => {
                 for p in elems.iter().flatten() {
-                    self.bind_value(p, src.as_ref().map(|p| p.at(Step::Index)));
+                    self.bind_value(p, src.as_ref().map(|p| p.at(Step::Index)), owner);
+                }
+                if let Some((_, span)) = rest {
+                    self.copy(src, Some(Place::new(*span)), owner);
                 }
             }
         }
     }
 
-    fn copy(&mut self, src: Option<Place>, dest: Option<Place>) {
+    fn parameter_pattern(&mut self, pat: &Pat, src: &Place) {
+        match pat {
+            Pat::Id(_, span) => {
+                if *span != src.binding {
+                    self.parameter_views.insert(*span, src.clone());
+                }
+            }
+            Pat::Default(p, _) => self.parameter_pattern(p, src),
+            Pat::Obj { props, rest, .. } => {
+                for (key, p) in props {
+                    self.parameter_pattern(p, &src.at(Step::Field(key.clone())));
+                }
+                if let Some((_, span)) = rest {
+                    self.parameter_views.insert(*span, src.clone());
+                }
+            }
+            Pat::Arr { elems, rest, .. } => {
+                for p in elems.iter().flatten() {
+                    self.parameter_pattern(p, &src.at(Step::Index));
+                }
+                if let Some((_, span)) = rest {
+                    self.parameter_views.insert(*span, src.clone());
+                }
+            }
+        }
+    }
+
+    fn copy(&mut self, src: Option<Place>, dest: Option<Place>, owner: Span) {
         if let (Some(src), Some(dest)) = (src, dest) {
-            self.copies.insert((src, dest));
+            self.copies.insert((src, dest, owner));
         }
     }
 
@@ -334,7 +394,7 @@ impl Graph {
                         self.function_numeric.entry(owner).or_default().insert(p.clone());
                     }
                 }
-                self.copy(src, target.clone());
+                self.copy(src, target.clone(), owner);
                 self.history.entry(owner).or_default().insert(e.span);
                 return target;
             }
@@ -372,7 +432,7 @@ impl Graph {
                             &argv
                         };
                         for src in inserted {
-                            self.copy(src.clone(), Some(recv.at(Step::Index)));
+                            self.copy(src.clone(), Some(recv.at(Step::Index)), owner);
                         }
                     }
                     let element = recv.as_ref().map(|p| p.at(Step::Index));
@@ -383,7 +443,7 @@ impl Graph {
                         "reduce" => {
                             let acc = value.clone();
                             let initial = argv.get(1).cloned().flatten().or(element.clone());
-                            self.copy(initial.clone(), Some(acc.clone()));
+                            self.copy(initial.clone(), Some(acc.clone()), owner);
                             Some((0, vec![initial, element.clone(), None], acc))
                         }
                         "sort" | "toSorted" => {
@@ -440,12 +500,70 @@ impl Graph {
                         });
                     }
                     match prop.as_str() {
-                        "flatMap" => {
-                            self.copy(Some(value.at(Step::Index).at(Step::Index)), Some(value.at(Step::Index)))
+                        "flatMap" => self.copy(
+                            Some(value.at(Step::Index).at(Step::Index)),
+                            Some(value.at(Step::Index)),
+                            owner,
+                        ),
+                        "filter" | "sort" | "toSorted" | "reverse" | "toReversed" | "slice" | "splice" | "fill" => {
+                            self.copy(element, Some(value.at(Step::Index)), owner)
                         }
-                        "filter" | "sort" | "toSorted" => self.copy(element, Some(value.at(Step::Index))),
-                        "find" | "findLast" => self.copy(element, Some(value.clone())),
+                        "find" | "findLast" | "at" | "pop" | "shift" => self.copy(element, Some(value.clone()), owner),
+                        "concat" => {
+                            self.copy(element, Some(value.at(Step::Index)), owner);
+                            for arg in &argv {
+                                self.copy(arg.clone(), Some(value.at(Step::Index)), owner);
+                                self.copy(
+                                    arg.as_ref().map(|p| p.at(Step::Index)),
+                                    Some(value.at(Step::Index)),
+                                    owner,
+                                );
+                            }
+                        }
+                        "flat" => {
+                            self.copy(element, Some(value.at(Step::Index)), owner);
+                            let depth = match args.first() {
+                                None => Some(1),
+                                Some(ArrEl::Item(Expr {
+                                    kind: ExprKind::Num(n), ..
+                                })) => Some(n.max(0.0) as usize),
+                                _ => None,
+                            };
+                            if let Some(mut src) = recv.clone() {
+                                if let Some(depth @ 0..=1) = depth {
+                                    for _ in 0..=depth {
+                                        src = src.at(Step::Index);
+                                    }
+                                } else {
+                                    src = src.at(Step::Descendants);
+                                }
+                                self.copy(Some(src), Some(value.at(Step::Index)), owner);
+                            }
+                        }
                         _ => {}
+                    }
+                    if let ExprKind::Member { obj, .. } = &callee.kind
+                        && let ExprKind::Ident(global) = &obj.kind
+                        && self.ident(global, names, env).is_none()
+                    {
+                        let source = argv.first().cloned().flatten();
+                        match (global.as_str(), prop.as_str()) {
+                            ("Array", "from") if argv.len() == 1 => self.copy(source, Some(value.clone()), owner),
+                            ("Object", "values") => {
+                                self.copy(source.map(|p| p.at(Step::Index)), Some(value.at(Step::Index)), owner)
+                            }
+                            ("Object", "entries") => self.copy(
+                                source.map(|p| p.at(Step::Index)),
+                                Some(value.at(Step::Index).at(Step::Index)),
+                                owner,
+                            ),
+                            ("Object", "fromEntries") => self.copy(
+                                source.map(|p| p.at(Step::Index).at(Step::Index)),
+                                Some(value.at(Step::Index)),
+                                owner,
+                            ),
+                            _ => {}
+                        }
                     }
                 }
                 if let Some(callee) = callee_value {
@@ -469,7 +587,7 @@ impl Graph {
                     } else {
                         src
                     };
-                    self.copy(src, Some(value.at(Step::Index)));
+                    self.copy(src, Some(value.at(Step::Index)), owner);
                 }
             }
             ExprKind::Object(props) => {
@@ -484,11 +602,11 @@ impl Graph {
                                     Step::Index
                                 }
                             };
-                            self.copy(src, Some(value.at(step)));
+                            self.copy(src, Some(value.at(step)), owner);
                         }
                         Prop::Spread(e) => {
                             let src = self.expr(e, names, env, owner);
-                            self.copy(src, Some(value.clone()));
+                            self.copy(src, Some(value.clone()), owner);
                         }
                     }
                 }
@@ -497,13 +615,13 @@ impl Graph {
                 self.expr(test, names, env, owner);
                 for e in [a, b] {
                     let src = self.expr(e, names, env, owner);
-                    self.copy(src, Some(value.clone()));
+                    self.copy(src, Some(value.clone()), owner);
                 }
             }
             ExprKind::Logical(_, a, b) => {
                 for e in [a, b] {
                     let src = self.expr(e, names, env, owner);
-                    self.copy(src, Some(value.clone()));
+                    self.copy(src, Some(value.clone()), owner);
                 }
             }
             ExprKind::Binary(_, a, b) => {
@@ -552,7 +670,7 @@ impl Graph {
         match s {
             Stmt::Decl { pat, init, .. } => {
                 let src = init.as_ref().and_then(|e| self.expr(e, names, env, owner));
-                self.bind_value(pat, src);
+                self.bind_value(pat, src, owner);
                 self.defaults(pat, names, env, owner);
             }
             Stmt::Func(f) => {
@@ -563,7 +681,7 @@ impl Graph {
             }
             Stmt::Return(Some(e), _) => {
                 let src = self.expr(e, names, env, owner);
-                self.copy(src, Some(Place::new(owner).at(Step::Result)));
+                self.copy(src, Some(Place::new(owner).at(Step::Result)), owner);
             }
             Stmt::If(e, a, b) => {
                 self.expr(e, names, env, owner);
@@ -609,7 +727,7 @@ impl Graph {
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
                 names.push(HashMap::new());
                 self.bind(pat, names, owner);
-                self.bind_value(pat, src);
+                self.bind_value(pat, src, owner);
                 self.defaults(pat, names, env, owner);
                 self.block(body, names, env, owner);
                 self.loop_history(owner, first_call, &before);
@@ -680,7 +798,7 @@ impl Graph {
         self.max_depth = self
             .copies
             .iter()
-            .flat_map(|(a, b)| [a.path.len(), b.path.len()])
+            .flat_map(|(a, b, _)| [a.path.len(), b.path.len()])
             .chain(self.numeric.iter().map(|p| p.path.len()))
             .max()
             .unwrap_or(0)
@@ -701,28 +819,47 @@ impl Graph {
                 if !self.reachable.contains(&call.owner) {
                     continue;
                 }
-                for (_, function) in self.values.iter().filter(|(value, _)| value == &call.callee) {
+                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
                     self.reachable.insert(*function);
                     let params = &self.functions[function];
                     for (arg, param) in call.args.iter().zip(params) {
-                        if let (Some(arg), Some(param)) = (arg, param) {
-                            self.copies.insert((arg.clone(), param.clone()));
+                        if let Some(arg) = arg {
+                            self.copies.insert((arg.clone(), param.clone(), call.owner));
                         }
                     }
                     self.copies
-                        .insert((Place::new(*function).at(Step::Result), call.result.clone()));
+                        .insert((Place::new(*function).at(Step::Result), call.result.clone(), call.owner));
                 }
             }
             let values: Vec<_> = self.values.iter().cloned().collect();
-            for (src, dest) in &self.copies {
+            for (src, dest, owner) in &self.copies {
+                if !self.reachable.contains(owner) {
+                    continue;
+                }
                 for (value, function) in &values {
-                    if value.binding == src.binding && value.path.starts_with(&src.path) {
+                    if value.binding == src.binding
+                        && let Some(suffix) = projected_suffix(&value.path, &src.path)
+                    {
                         let mut target = dest.clone();
-                        target.path.extend_from_slice(&value.path[src.path.len()..]);
+                        target.path.extend_from_slice(suffix);
                         self.values.insert((self.bounded(target), *function));
                     }
                 }
             }
+            let mut projected = Vec::new();
+            for (binding, view) in &self.parameter_views {
+                for p in &self.incoming {
+                    if p.binding == view.binding
+                        && let Some(path) = projected_suffix(&p.path, &view.path)
+                    {
+                        projected.push(Place {
+                            binding: *binding,
+                            path: path.to_vec(),
+                        });
+                    }
+                }
+            }
+            self.incoming.extend(projected);
             self.numeric = self
                 .function_numeric
                 .iter()
@@ -740,9 +877,9 @@ impl Graph {
                 if !self.reachable.contains(&call.owner) {
                     continue;
                 }
-                for (_, function) in self.values.iter().filter(|(value, _)| value == &call.callee) {
+                for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
                     for (arg, param) in call.args.iter().zip(&self.functions[function]) {
-                        let (Some(arg), Some(param)) = (arg, param) else {
+                        let Some(arg) = arg else {
                             continue;
                         };
                         // Use writes that can precede this call, rather than
@@ -757,9 +894,11 @@ impl Graph {
                             .chain(self.numeric.iter().filter(|_| captures));
                         let mut incoming = Vec::new();
                         for p in inputs {
-                            if p.binding == arg.binding && p.path.starts_with(&arg.path) {
+                            if p.binding == arg.binding
+                                && let Some(path) = projected_suffix(&p.path, &arg.path)
+                            {
                                 let mut target = param.clone();
-                                target.path.extend_from_slice(&p.path[arg.path.len()..]);
+                                target.path.extend_from_slice(path);
                                 incoming.push(self.bounded(target));
                             }
                         }
@@ -769,7 +908,7 @@ impl Graph {
                     for p in summary {
                         let param = self.functions[function]
                             .iter()
-                            .position(|param| param.as_ref().is_some_and(|param| param.binding == p.binding));
+                            .position(|param| param.binding == p.binding);
                         let target = if let Some(i) = param {
                             if p.path.is_empty() {
                                 continue;
@@ -793,7 +932,7 @@ impl Graph {
                         self.numeric.insert(target);
                     }
                     for (arg, param) in call.args.iter().zip(&self.functions[function]) {
-                        let (Some(arg), Some(param)) = (arg, param) else {
+                        let Some(arg) = arg else {
                             continue;
                         };
                         let propagated: Vec<_> = self

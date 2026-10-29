@@ -2339,18 +2339,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let t = self.place(target)?;
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
+        if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &t.ty) {
+            return err(
+                span,
+                format!(
+                    "can't assign {} to something of type {}",
+                    v.ty.describe(),
+                    t.ty.describe()
+                ),
+            );
+        }
         match op {
             None => {
-                if !assignable(&v.ty, &t.ty) {
-                    return err(
-                        span,
-                        format!(
-                            "can't assign {} to something of type {}",
-                            v.ty.describe(),
-                            t.ty.describe()
-                        ),
-                    );
-                }
                 if let ExprKind::Ident(n) = &target.kind {
                     // Assignment narrows: `x = 5` makes x a number until reassigned.
                     let declared = t.ty.clone();
@@ -2785,7 +2785,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return self.static_call(g, prop, args, span);
                 }
                 let recv = self.expr(obj)?;
-                self.method_call(recv, obj.span, prop, *opt, *prop_span, args, span)
+                self.method_call(recv, obj, prop, *opt, *prop_span, args, span)
             }
             ExprKind::Ident(n) => {
                 if let Resolved::Global(g) = self.resolve(n, callee.span)? {
@@ -3049,13 +3049,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn method_call(
         &mut self,
         recv: Out,
-        recv_span: Span,
+        recv_expr: &Expr,
         m: &str,
         optional: bool,
         m_span: Span,
         args: &[ArrEl],
         span: Span,
     ) -> Result<Out> {
+        let recv_span = recv_expr.span;
         match recv.ty.clone() {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
             Ty::Db => return self.db_call(m, args, span, m_span),
@@ -3074,7 +3075,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let base = recv.ty.non_null();
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
-            Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => self.array_method(&recv, m, args, span, m_span)?,
+            Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => {
+                let constraint = self.argument_constraint(recv_expr);
+                self.array_method(&recv, constraint.as_ref(), m, args, span, m_span)?
+            }
             t if t.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
@@ -3215,11 +3219,39 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    fn array_method(&mut self, a: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+    fn array_method(
+        &mut self,
+        a: &Out,
+        constraint: Option<&Ty>,
+        m: &str,
+        args: &[ArrEl],
+        span: Span,
+        m_span: Span,
+    ) -> Result<Out> {
         let el = match a.ty.non_null() {
             Ty::Array(t) => *t,
             Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
             _ => unreachable!(),
+        };
+        let element_constraint = match constraint.unwrap_or(&a.ty).non_null() {
+            Ty::Array(t) => *t,
+            Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
+            _ => el.clone(),
+        };
+        let check_insert = |items: &[Out]| -> Result<()> {
+            for item in items {
+                if !assignable(&item.ty, &element_constraint) && element_constraint != Ty::Never {
+                    return err(
+                        span,
+                        format!(
+                            "can't insert {} into an array of {}",
+                            item.ty.describe(),
+                            element_constraint.describe()
+                        ),
+                    );
+                }
+            }
+            Ok(())
         };
         let cb = |c: &mut Self, extra: &[Ty]| -> Result<Out> {
             let f = c.arg(args, 0, span, "a function")?;
@@ -3333,33 +3365,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Out::atom(format!("\\Zero\\Js::sorted({}{fp})", a.php), Ty::Array(Box::new(el)))
                 }
             }
-            "push" => {
+            "push" | "unshift" => {
                 let p = place()?;
                 let argv = self.plain_args(args)?;
-                for x in &argv {
-                    if !assignable(&x.ty, &el) && el != Ty::Never {
-                        return err(
-                            span,
-                            format!("can't push {} into an array of {}", x.ty.describe(), el.describe()),
-                        );
-                    }
-                }
+                check_insert(&argv)?;
                 let items: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
-                Out::atom(format!("array_push({p}, {})", items.join(", ")), Ty::Num)
+                Out::atom(format!("array_{m}({p}, {})", items.join(", ")), Ty::Num)
             }
             "pop" => Out::atom(format!("array_pop({})", place()?), el.nullable()),
             "shift" => Out::atom(format!("array_shift({})", place()?), el.nullable()),
-            "unshift" => {
-                let argv = self.plain_args(args)?;
-                Out::atom(
-                    format!(
-                        "array_unshift({}, {})",
-                        place()?,
-                        argv.iter().map(|x| x.php.clone()).collect::<Vec<_>>().join(", ")
-                    ),
-                    Ty::Num,
-                )
-            }
             "reverse" if a.place.is_some() => {
                 Out::atom(format!("\\Zero\\Js::reverse({})", place()?), Ty::Array(Box::new(el)))
             }
@@ -3367,6 +3381,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toReversed" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
+                check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
                     format!("\\Zero\\Js::splice({}, {})", place()?, extra.join(", ")),
@@ -3420,6 +3435,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Out::atom(format!("\\Zero\\Js::flat({all})"), Ty::Array(Box::new(inner)))
                     }
                     _ => {
+                        check_insert(&argv[..argv.len().min(1)])?;
                         let p = place()?;
                         Out::atom(
                             format!("\\Zero\\Js::fill({p}, {})", extra.join(", ")),

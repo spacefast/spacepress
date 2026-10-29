@@ -128,18 +128,37 @@ final class JsonSchema
         return $s;
     }
 
-    /** `where`: per column a value or an operator object (§1.3 grammar), plus AND/OR/NOT. */
-    public static function where(array $spec): array
+    /**
+     * `where`: per column a value or an operator object (§1.3 grammar), plus AND/OR/NOT, which
+     * repeat the column filters one level down so core types GET query-string values there too.
+     * Deeper groups stay generic objects: typed JSON (POST, MCP) is exact at any depth.
+     */
+    public static function where(array $spec, int $depth = 1): array
+    {
+        return self::filterObject($spec['columns'], $depth);
+    }
+
+    /** The media library's filterable columns (§4.6). */
+    public static function mediaWhere(): array
+    {
+        return self::filterObject([
+            'id' => ['type' => 'integer'], 'filename' => ['type' => 'text'], 'mime' => ['type' => 'text'],
+            'alt' => ['type' => 'text'], 'createdAt' => ['type' => 'timestamp'],
+        ], 1);
+    }
+
+    private static function filterObject(array $columns, int $depth): array
     {
         $props = [];
-        foreach ($spec['columns'] as $name => $col) {
+        foreach ($columns as $name => $col) {
             if (!($col['hidden'] ?? false) && ($f = self::filter($col)) !== null) {
                 $props[(string) $name] = $f;
             }
         }
-        $props['AND'] = ['type' => 'array', 'items' => ['type' => 'object']];
-        $props['OR'] = ['type' => 'array', 'items' => ['type' => 'object']];
-        $props['NOT'] = ['type' => 'object'];
+        $nested = $depth > 0 ? self::filterObject($columns, $depth - 1) : ['type' => 'object'];
+        $props['AND'] = ['type' => 'array', 'items' => $nested];
+        $props['OR'] = ['type' => 'array', 'items' => $nested];
+        $props['NOT'] = $nested;
 
         return ['type' => 'object', 'properties' => $props];
     }

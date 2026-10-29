@@ -74,17 +74,22 @@ test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and
 });
 
 test("executing an ability answers each user exactly as REST does", async () => {
-  // [ability, input, run method, the REST request it stands for]
-  const cases: [string, unknown, "GET" | "POST" | "DELETE", string, string, unknown][] = [
-    ["blog/posts-update", { id: postId, patch: { excerpt: `by agent ${run}` } }, "POST", "PATCH", `/posts/${postId}`, { excerpt: `by agent ${run}` }],
+  // [ability, input, run method, REST method, REST path, REST body, the ability's effect when it succeeds]
+  type Case = [string, unknown, "GET" | "POST" | "DELETE", string, string, unknown, (() => Promise<void>)?];
+  const cases: Case[] = [
+    ["blog/posts-update", { id: postId, patch: { excerpt: `by agent ${run}` } }, "POST", "PATCH", `/posts/${postId}`, { excerpt: `by rest ${run}` },
+      async () => assert.equal((await ok("GET", `/posts/${postId}`, { as: "editor" })).excerpt, `by agent ${run}`)],
     ["blog/signups-list", { limit: 1 }, "GET", "GET", "/signups?limit=1", undefined],
-    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `agents ${run}` }],
+    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `rest ${run}` },
+      async () => assert.equal((await ok("GET", "/globals/settings")).tagline, `agents ${run}`)],
     ["blog/approve-comment", { id: 999999999 }, "POST", "POST", "/actions/approveComment", { id: 999999999 }],
   ];
   const seen: Record<string, Record<Who, { status: number; code: string | null }>> = {};
-  for (const [name, input, method, restMethod, restPath, restBody] of cases) {
+  for (const [name, input, method, restMethod, restPath, restBody, effect] of cases) {
     for (const who of ["anonymous", "subscriber", "author", "editor"] as Who[]) {
       const viaAbility = outcome(await runAbility(name, input, who, method));
+      // The ability's write is checked before REST writes, so REST can't stand in for it.
+      if (viaAbility.status < 300) await effect?.();
       const viaRest = outcome(await http(restMethod, api + restPath, { ...as(who), body: restBody }));
       assert.deepEqual(viaAbility, viaRest, `${name} as ${who}`);
       (seen[name] ??= {} as any)[who] = viaAbility;
@@ -99,10 +104,16 @@ test("executing an ability answers each user exactly as REST does", async () => 
   assert.deepEqual(seen["blog/signups-list"].author, { status: 403, code: "forbidden" });
   assert.deepEqual(seen["blog/global-settings-update"].editor, { status: 200, code: null });
   assert.deepEqual(seen["blog/approve-comment"].editor, { status: 404, code: "not_found" });
+});
 
-  // Effects land in the app: the editor's ability writes are what /zero/v1 now reads.
-  assert.equal((await ok("GET", `/posts/${postId}`, { as: "editor" })).excerpt, `by agent ${run}`);
-  assert.equal((await ok("GET", "/globals/settings")).tagline, `agents ${run}`);
+test("list input typed by core over GET reaches Zero typed inside AND/OR/NOT", async () => {
+  // GET input is a query string; core types it from the schema, one group level included.
+  const where = { AND: [{ id: postId }], NOT: { id: { in: [0] } }, OR: [{ id: postId }] };
+  const viaAbility = await runAbility("blog/posts-list", { where }, "editor", "GET");
+  assert.equal(viaAbility.status, 200, JSON.stringify(viaAbility.json));
+  assert.deepEqual(viaAbility.json.rows.map((r: any) => r.id), [postId]);
+  const media = await runAbility("blog/media-list", { where: { id: { gt: 0 } }, limit: 1 }, "editor", "GET");
+  assert.equal(media.status, 200, JSON.stringify(media.json));
 });
 
 test("an ability create runs the pipeline and is visible in /zero/v1", async () => {
@@ -122,7 +133,9 @@ test("invalid ability input is REST's 422 problem, untouched by core's coercion"
     assert.equal(viaRest.status, 422, JSON.stringify(input));
     assert.deepEqual([viaAbility.status, viaAbility.json.code, viaAbility.json.data?.pointer], [422, "zero_invalid_input", viaRest.json.pointer], JSON.stringify(input));
   }
-  // Envelope keys only abilities have are checked too.
+});
+
+test("ability-only input keys are validated: the update patch and list sort directions", async () => {
   const noPatch = await runAbility("blog/posts-update", { id: postId, patch: '{"title":"x"}' }, "editor");
   assert.deepEqual([noPatch.status, noPatch.json.data?.pointer], [422, "/patch"]);
   const badOrder = await runAbility("blog/posts-list", { orderBy: { title: "sideways" } }, "editor", "GET");

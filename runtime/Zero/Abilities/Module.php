@@ -16,28 +16,18 @@ use Zero\Wp\Abilities\Register;
  */
 final class Module
 {
-    private static bool $sync = false;
     /** @var ?\Closure(string, array): mixed */
     private static ?\Closure $enqueue = null;
 
     /**
-     * Lane C's one line, from its module's register(): the `/sync/{c}` routes (§5.3) of every
-     * collection with `sync` become `<app>/<c>-sync-read|apply|trash` abilities.
+     * Lane D's one line, from its module's register(): `Module::jobs(fn (string $job, array $input)
+     * => $jobId)` adds `<app>/job-<name>` for `agents: true` jobs. The enqueue runs in a transaction
+     * with the calling user bound as actor. Sync needs no line: abilities appear for collections
+     * with `sync` as soon as a `/sync` route is registered (§5.3).
      */
-    public static function sync(): void
-    {
-        self::$sync = true;
-    }
-
-    /** Lane D's one line: `Module::jobs(fn (string $job, array $input) => $jobId)` adds `<app>/job-<name>` for `agents: true` jobs. */
     public static function jobs(callable $enqueue): void
     {
         self::$enqueue = $enqueue(...);
-    }
-
-    public static function syncEnabled(): bool
-    {
-        return self::$sync;
     }
 
     public static function enqueuer(): ?\Closure

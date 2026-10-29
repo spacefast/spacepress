@@ -6,6 +6,7 @@ namespace Zero\Wp\Abilities;
 
 use Zero\Abilities\Module;
 use Zero\Access;
+use Zero\Extensions;
 use Zero\HttpError;
 use Zero\Schema;
 use Zero\Wp\Runtime;
@@ -246,7 +247,7 @@ final class Register
             ];
         }
         // Content sync (§5.3) rides its `/sync` routes: these exist exactly when the sync feature does.
-        if (Module::syncEnabled() && ($spec['sync'] ?? null) !== null) {
+        if (($spec['sync'] ?? null) !== null && Extensions::routeHandler('sync') !== null) {
             // Apply is a create or an update depending on `expect`; only the sync route can tell, so it decides.
             $sync = static fn (string $op, string $label, string $description, array $input, array $annotations, \Closure $call, bool $defer = false): array => $base + [
                 'name' => "$app/$k-sync-$op", 'op' => "sync-$op", 'label' => $label, 'description' => $description, 'defer' => $defer,
@@ -277,8 +278,8 @@ final class Register
             'name' => "$app/" . self::kebab($name), 'op' => 'run', 'agents' => (bool) ($action['agents'] ?? true),
             'label' => "Run $name", 'description' => "Run the $name action of the $appLabel app.",
             'input' => JsonSchema::input($props, $required), 'output' => [],
-            // `writes` (the compiler's "handler deletes" flag) marks the action destructive once emitted.
-            'annotations' => array_filter(['idempotent' => (bool) ($action['idempotent'] ?? false), 'destructive' => (bool) ($action['writes'] ?? false)]),
+            // §7.1's destructive flag needs the compiler's `writes` (handler calls db.delete); schema.php v3 has none yet.
+            'annotations' => ($action['idempotent'] ?? false) ? ['idempotent' => true] : [],
             'rule' => [$action['access'] ?? Access::DEFAULT_WRITE, 'create', "run $name"],
             // A signature replaces the access check (§6.1); the action path verifies it, so nothing is judged early.
             'defer' => ($action['signature'] ?? null) !== null,
@@ -323,7 +324,7 @@ final class Register
         return [
             $base + [
                 'name' => "$app/media-list", 'op' => 'list', 'label' => 'List media', 'description' => "List the media library of the $appLabel app.",
-                'input' => JsonSchema::input(['where' => ['type' => 'object'], 'orderBy' => ['type' => 'object'],
+                'input' => JsonSchema::input(['where' => JsonSchema::mediaWhere(), 'orderBy' => ['type' => 'object'],
                     'limit' => ['type' => 'integer', 'minimum' => 0], 'offset' => ['type' => 'integer', 'minimum' => 0]]),
                 'output' => ['type' => 'object', 'properties' => ['rows' => ['type' => 'array', 'items' => $row]], 'required' => ['rows']],
                 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [Access::MEDIA['read'], 'read', 'read media'],
@@ -357,7 +358,15 @@ final class Register
                 Access::require(Access::DEFAULT_WRITE, Invoke::viewer(), 'create', null, "enqueue $name");
                 $db = Runtime::plugin()?->app()->db ?? throw new \RuntimeException('No Zero app is active');
 
-                return ['id' => $db->transaction(static fn () => $enqueue($name, $in))];
+                return ['id' => $db->transaction(static function () use ($db, $enqueue, $name, $in) {
+                    $previous = $db->actor();
+                    $db->setActor(Invoke::viewer()->user);
+                    try {
+                        return $enqueue($name, $in);
+                    } finally {
+                        $db->setActor($previous);
+                    }
+                })];
             },
         ];
     }

@@ -15,13 +15,14 @@ namespace Zero\Wp;
  */
 final class Migrator
 {
-    public function __construct(private readonly Connection $db, private readonly string $dir)
+    public function __construct(private readonly Connection $db, private readonly string $dir, private readonly \Zero\Schema $schema)
     {
     }
 
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
+        \Zero\SystemTables::apply(CompositeStore::create($this->schema, $this->db));
         $ledger = $this->table('zero__migrations');
         $this->db->run("CREATE TABLE IF NOT EXISTS `$ledger` (`id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $done = array_flip(array_column($this->db->run("SELECT `id` FROM `$ledger`"), 'id'));

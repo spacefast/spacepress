@@ -346,6 +346,45 @@ $e = problem('JsError from afterUpdate → rejected', fn () => $db->transaction(
 check('JsError keeps its message', $e instanceof JsError && $e->getMessage() === 'qty cannot go negative');
 eq('transaction rolled back the update and the hook insert', [$db->findFirst('items', ['where' => ['id' => $hammer['id']]])['qty'], $logCount()], [5, $before]);
 
+// Callback effects use another connection: they must see committed rows, never uncommitted state.
+$observer = \Zero\Store\SqliteStore::connect("$root/data/zero.sqlite");
+$committed = [];
+$db->transaction(function () use ($db, $observer, &$committed) {
+    \Zero\Extensions::afterCommit(function () use ($observer, &$committed) {
+        $committed[] = 'outer:' . $observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn();
+    });
+    $db->transaction(function () use ($db, $observer, &$committed) {
+        $db->update('items', ['qty' => 6], ['name' => 'Hammer']);
+        \Zero\Extensions::afterCommit(function () use ($observer, &$committed) {
+            $committed[] = 'inner:' . $observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn();
+        });
+    });
+    eq('nested transaction defers callbacks until the outer commit', $committed, []);
+});
+eq('both callbacks see the committed row in registration order', $committed, ['outer:6', 'inner:6']);
+problem('outer rollback discards callbacks registered by a nested write', function () use ($db, &$committed) {
+    $db->transaction(function () use ($db, &$committed) {
+        $db->transaction(function () use ($db, &$committed) {
+            $db->update('items', ['qty' => 99], ['name' => 'Hammer']);
+            \Zero\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'rolled back'; });
+        });
+        throw new JsError('rollback');
+    });
+}, 422, 'rejected');
+// A post-commit failure cannot roll back durable data or undo callbacks already applied.
+problem('post-commit exception propagates', function () use ($db, $root) {
+    $db->transaction(function () use ($db, $root) {
+        file_put_contents("$root/committed-file", 'durable');
+        $db->store()->onRollback(static fn () => unlink("$root/committed-file"));
+        $db->update('items', ['qty' => 5], ['name' => 'Hammer']);
+        \Zero\Extensions::afterCommit(static fn () => throw new JsError('after commit'));
+    });
+}, 422, 'rejected');
+eq('post-commit failure never undoes committed filesystem effects', is_file("$root/committed-file"), true);
+\Zero\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
+eq('rollback and post-commit failure leave no stale callbacks', [$observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
+
+$before = $logCount();
 $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:8']));
 eq('8 levels of nested hook writes are allowed', $logCount(), $before + 9);
 problem('a 9th level → hook_recursion', fn () => $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:9'])), 500, 'hook_recursion');
@@ -467,8 +506,8 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 };
 
 $r = http('OPTIONS', '/api/items');
-eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null],
-    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization']);
+eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null, $r['headers']['access-control-expose-headers'] ?? null],
+    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization, idempotency-key', 'Idempotent-Replayed']);
 
 $r = http('GET', '/api/_schema');
 check('GET /api/_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'

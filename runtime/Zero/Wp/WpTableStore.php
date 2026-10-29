@@ -28,6 +28,16 @@ final class WpTableStore implements Store
     ) {
     }
 
+    public function afterCommit(callable $fn): void
+    {
+        $this->db->afterCommit($fn);
+    }
+
+    public function applySystemStatements(array $statements): void
+    {
+        $this->db->applySystemStatements($statements);
+    }
+
     public function transaction(callable $fn): mixed
     {
         return $this->db->transaction($fn);
@@ -56,7 +66,10 @@ final class WpTableStore implements Store
 
     public function select(string $collection, array $q): array
     {
-        return $this->db->run($q['sql'], $q['params']);
+        $rows = $this->db->run($q['sql'], $q['params']);
+        \Zero\Extensions::lookup($collection, array_column($rows, $this->schema->collection($collection)['primaryKey']));
+
+        return $rows;
     }
 
     public function insert(string $collection, array $values): int|string

@@ -109,7 +109,9 @@ final class Db
     /** @return list<array> */
     public function findMany(string $collection, array $opts = [], ?Viewer $viewer = null): array
     {
-        return $this->project($this->fetch($collection, $opts, '', $viewer), $collection, $opts, '');
+        $rows = $this->fetch($collection, $opts, '', $viewer);
+
+        return $this->project($rows, $collection, $opts, '');
     }
 
     public function findFirst(string $collection, array $opts = [], ?Viewer $viewer = null): ?array
@@ -126,12 +128,25 @@ final class Db
      * @param list<array> $guards extra filters (access) — read guards are added here when $viewer is set
      * @return list<array>
      */
-    private function fetch(string $collection, array $opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = []): array
+    private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
+    {
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards);
+        $rows = Extensions::read($decoded, $collection, $viewer);
+        if (isset($opts['with']) && $rows !== []) {
+            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
+        }
+
+        return $rows;
+    }
+
+    /** Select full storage rows without presentation transforms; write guards remain SQL filters. */
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = []): array
     {
         if (!$this->schema->hasCollection($collection)) {
             throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
         }
         $spec = $this->schema->collection($collection);
+        Extensions::query($collection, $opts, $viewer, $ptr);
         foreach ($opts as $k => $_) {
             if (!in_array($k, self::QUERY_OPTS, true)) {
                 throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));
@@ -144,15 +159,18 @@ final class Db
             return [];
         }
         $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards);
-        $rows = array_map(
+        return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),
         );
-        if (isset($opts['with']) && $rows !== []) {
-            $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer);
-        }
+    }
 
-        return $rows;
+    /** Mutation results and revision snapshots may bypass selects, or follow hooks that replace caches. */
+    private function present(array $rows, string $collection, ?Viewer $viewer): array
+    {
+        Extensions::lookup($collection, array_column($rows, $this->schema->collection($collection)['primaryKey']));
+
+        return Extensions::read($rows, $collection, $viewer);
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
@@ -174,13 +192,16 @@ final class Db
     }
 
     /** Load each requested relation with one query, never N+1; populate media columns in place. */
-    private function attach(string $collection, array $rows, mixed $with, string $ptr, ?Viewer $viewer): array
+    private function attach(string $collection, array $rows, mixed $with, string $ptr, ?Viewer $viewer, array $decoded): array
     {
         if (!is_array($with) || ($with !== [] && array_is_list($with))) {
             throw HttpError::invalidQuery('with must be an object', $ptr);
         }
         $spec = $this->schema->collection($collection);
         $relations = $spec['relations'] ?? [];
+        // Read transforms may remove a foreign key; keep linkage private while attaching relations.
+        $sources = array_column($decoded, null, $spec['primaryKey']);
+        $sourceFor = static fn (array $row): array => $sources[$row[$spec['primaryKey']]];
         foreach ($with as $name => $opts) {
             $name = (string) $name;
             $rptr = $ptr . HttpError::seg($name);
@@ -203,8 +224,9 @@ final class Db
             }
             $keys = [];
             foreach ($rows as $row) {
-                if ($row[$rel['from']] !== null) {
-                    $keys[self::key($row[$rel['from']])] = $row[$rel['from']];
+                $source = $sourceFor($row);
+                if ($source[$rel['from']] !== null) {
+                    $keys[self::key($source[$rel['from']])] = $source[$rel['from']];
                 }
             }
             $targetCols = $this->schema->collection($rel['collection'])['columns'];
@@ -212,13 +234,16 @@ final class Db
                 static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
                 array_values($keys),
             );
-            $children = $this->fetch($rel['collection'], $opts, $rptr, $viewer, [$rel['to'], $values]);
+            $children = $this->fetch($rel['collection'], $opts, $rptr, $viewer, [$rel['to'], $values], decoded: $childDecoded);
+            $childSources = array_column($childDecoded, null, $this->schema->collection($rel['collection'])['primaryKey']);
+            $childPk = $this->schema->collection($rel['collection'])['primaryKey'];
             $groups = [];
             foreach ($this->project($children, $rel['collection'], $opts, $rptr) as $i => $child) {
-                $groups[self::key($children[$i][$rel['to']])][] = $child;
+                $groups[self::key($childSources[$children[$i][$childPk]][$rel['to']])][] = $child;
             }
             foreach ($rows as &$row) {
-                $group = $row[$rel['from']] === null ? [] : ($groups[self::key($row[$rel['from']])] ?? []);
+                $source = $sourceFor($row);
+                $group = $source[$rel['from']] === null ? [] : ($groups[self::key($source[$rel['from']])] ?? []);
                 $row[$name] = $rel['kind'] === 'many' ? $group : ($group[0] ?? null);
             }
             unset($row);
@@ -231,6 +256,9 @@ final class Db
     {
         $ids = [];
         foreach ($rows as $row) {
+            if (!array_key_exists($col, $row)) {
+                continue;
+            }
             foreach ($list ? ($row[$col] ?? []) : [$row[$col]] as $id) {
                 if ($id !== null) {
                     $ids[$id] = true;
@@ -239,6 +267,9 @@ final class Db
         }
         $media = $this->media->getMany(array_keys($ids));
         foreach ($rows as &$row) {
+            if (!array_key_exists($col, $row)) {
+                continue;
+            }
             if ($list) {
                 $row[$col] = $row[$col] === null ? null : array_values(array_filter(array_map(static fn ($id) => $media[$id] ?? null, $row[$col])));
             } else {
@@ -277,22 +308,25 @@ final class Db
 
     // ================================================================ writes
 
-    /** @return ?list<array> */
-    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null): ?array
+    /**
+     * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
+     * @return ?list<array>
+     */
+    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
         $rows = $values !== [] && array_is_list($values) ? $values : [$values];
 
-        return $this->nested(function () use ($collection, $rows, $returning, $viewer) {
+        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
             $out = [];
             foreach ($rows as $data) {
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
-                $out[] = $this->createOne($collection, $spec, $data, $viewer);
+                $out[] = $this->createOne($collection, $spec, $data, $viewer, $around);
             }
 
-            return $returning ? $out : null;
+            return $returning ? $this->present($out, $collection, $viewer) : null;
         });
     }
 
@@ -303,11 +337,12 @@ final class Db
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
-            foreach ($this->fetch($collection, ['where' => $where], '', null, null, $guards) as $existing) {
-                $out[] = $this->updateOne($collection, $spec, $existing, $set);
+            $opts = ['where' => $where];
+            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards) as $existing) {
+                $out[] = $this->updateOne($collection, $spec, $existing, $set, $viewer);
             }
 
-            return $returning ? $out : null;
+            return $returning ? $this->present($out, $collection, $viewer) : null;
         });
     }
 
@@ -316,12 +351,13 @@ final class Db
     {
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
-            $rows = $this->fetch($collection, ['where' => $where], '', null, null, $guards);
+            $opts = ['where' => $where];
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards);
             foreach ($rows as $row) {
-                $this->deleteOne($collection, $row);
+                $this->deleteOne($collection, $row, $viewer);
             }
 
-            return $returning ? $rows : null;
+            return $returning ? $this->present($rows, $collection, $viewer) : null;
         });
     }
 
@@ -336,9 +372,11 @@ final class Db
         return is_array($r) ? [$r] : [];
     }
 
-    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer): array
+    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
+        $provided = $data;
+        Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
         foreach ($columns as $name => $col) {
@@ -349,6 +387,8 @@ final class Db
         if ($spec['drafts'] ?? false) {
             $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
         }
+        Extensions::write('create', $collection, $data, null, $viewer, $provided);
+        $this->rejectUnknown($columns, $data);
         $fills = $spec['beforeCreateFills'] ?? [];
         foreach ($columns as $name => $col) {
             if (Schema::isRequired($col) && !array_key_exists($name, $data) && !in_array($name, $fills, true)
@@ -359,6 +399,14 @@ final class Db
         if ($viewer !== null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
         }
+        $write = fn (): array => $this->persistCreate($collection, $spec, $data);
+
+        return $around === null ? $write() : $around($write);
+    }
+
+    private function persistCreate(string $collection, array $spec, array $data): array
+    {
+        $columns = $spec['columns'];
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeCreate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
@@ -402,14 +450,17 @@ final class Db
             $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($spec, 'afterCreate', $row);
+        Extensions::written('create', $collection, $row, null);
 
         return $row;
     }
 
-    private function updateOne(string $collection, array $spec, array $existing, array $patch): array
+    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer): array
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
+        $provided = $patch;
+        Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
@@ -420,6 +471,8 @@ final class Db
             $patch = $this->draftRules($patch, null, $existing);
         }
         $previous = $existing;
+        Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
+        $this->checkPatch($spec, $previous, $patch);
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeUpdate'];
@@ -459,13 +512,16 @@ final class Db
             $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($spec, 'afterUpdate', $row, $previous);
+        Extensions::written('update', $collection, $row, $previous);
 
         return $row;
     }
 
-    private function deleteOne(string $collection, array $row): void
+    private function deleteOne(string $collection, array $row, ?Viewer $viewer): void
     {
         $spec = $this->schema->collection($collection);
+        $existing = $row;
+        Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
         $this->hook($spec, 'beforeDelete', $row);
         $this->referentialActions($collection, $row);
         try {
@@ -474,6 +530,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         $this->hook($spec, 'afterDelete', $row);
+        Extensions::written('delete', $collection, $row, $existing);
     }
 
     /**
@@ -489,13 +546,14 @@ final class Db
                     continue;
                 }
                 $where = [$col => $row[$ref['column']]];
+                $opts = ['where' => $where, 'limit' => 1];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
                     $this->delete((string) $child, $where);
                 } elseif ($action === 'set null' || $action === 'set default') {
                     $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c['type']) : null;
                     $this->update((string) $child, [$col => $value], $where);
-                } elseif ($this->fetch((string) $child, ['where' => $where, 'limit' => 1], '', null) !== []) {
+                } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
                 }
             }
@@ -561,7 +619,8 @@ final class Db
             if ($self !== null) {
                 $where[$pk] = ['ne' => $self];
             }
-            if ($this->fetch($collection, ['where' => $where, 'limit' => 1], '', null) === []) {
+            $opts = ['where' => $where, 'limit' => 1];
+            if ($this->selectDecoded($collection, $opts, '', null) === []) {
                 return $candidate;
             }
         }
@@ -602,7 +661,8 @@ final class Db
             if ($ref === null || $v === null) {
                 continue;
             }
-            if ($this->fetch($ref['collection'], ['where' => [$ref['column'] => $v], 'limit' => 1], '', null) === []) {
+            $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
+            if ($this->selectDecoded($ref['collection'], $opts, '', null) === []) {
                 throw new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
             }
         }
@@ -674,6 +734,14 @@ final class Db
 
     // ================================================================ editor saves (WP, §4.9)
 
+    /** Trusted editor capture: full decoded storage values, without display transforms or projection. */
+    public function editorRow(string $collection, int|string $pk): ?array
+    {
+        $opts = ['where' => [$this->schema->collection($collection)['primaryKey'] => $pk], 'limit' => 1];
+
+        return $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
+    }
+
     /**
      * After a wp-admin/core REST save: afterCreate (no $previousRow) or afterUpdate, with the row
      * re-read through the store. Counts toward MAX_HOOK_DEPTH. Runs in one transaction.
@@ -684,6 +752,7 @@ final class Db
             $spec = $this->schema->collection($collection);
             [$row] = $this->readByPk($collection, $spec, $pk);
             $previousRow === null ? $this->hook($spec, 'afterCreate', $row) : $this->hook($spec, 'afterUpdate', $row, $previousRow);
+            Extensions::written($previousRow === null ? 'create' : 'update', $collection, $row, $previousRow);
         });
     }
 
@@ -692,6 +761,8 @@ final class Db
     {
         $this->asEditor($user, function () use ($collection, $row) {
             $spec = $this->schema->collection($collection);
+            $existing = $row;
+            Extensions::write('delete', $collection, $row, $existing, null, $existing);
             $this->hook($spec, 'beforeDelete', $row);
             $this->referentialActions($collection, $row);
         });
@@ -700,7 +771,10 @@ final class Db
     /** After an editor-side delete: afterDelete($row). */
     public function afterEditorDelete(string $collection, array $row, ?array $user = null): void
     {
-        $this->asEditor($user, fn () => $this->hook($this->schema->collection($collection), 'afterDelete', $row));
+        $this->asEditor($user, function () use ($collection, $row) {
+            $this->hook($this->schema->collection($collection), 'afterDelete', $row);
+            Extensions::written('delete', $collection, $row, $row);
+        });
     }
 
     private function asEditor(?array $user, callable $fn): void
@@ -731,6 +805,13 @@ final class Db
     public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
+
+        return $this->present([$this->revisionRow($collection, $pk, $revisionId)], $collection, $viewer)[0]
+            ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
+    }
+
+    private function revisionRow(string $collection, int|string $pk, int $revisionId): array
+    {
         $rev = $this->store->revision($collection, $pk, $revisionId)
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
 
@@ -744,7 +825,8 @@ final class Db
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
         $spec = $this->schema->collection($collection);
-        $row = $this->revision($collection, $pk, $revisionId, $viewer);
+        $this->requireRevisable($collection, $pk, $viewer);
+        $row = $this->revisionRow($collection, $pk, $revisionId);
         $patch = [];
         foreach ($spec['columns'] as $name => $col) {
             if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])) {
@@ -763,7 +845,8 @@ final class Db
             throw HttpError::notFound("$collection keeps no revisions");
         }
         $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, null);
-        if ($this->fetch($collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1], '', null, null, $guards) === []) {
+        $opts = ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1];
+        if ($this->selectDecoded($collection, $opts, '', null, null, $guards) === []) {
             throw HttpError::notFound("No $collection row $pk");
         }
     }
@@ -855,7 +938,8 @@ final class Db
                         $this->update((string) $c, [$col => null], [$col => $id]);
                     } elseif ($def['type'] === 'mediaList') {
                         $pk = $spec['primaryKey'];
-                        foreach ($this->fetch((string) $c, ['where' => [$col => ['has' => $id]]], '', null) as $r) {
+                        $opts = ['where' => [$col => ['has' => $id]]];
+                        foreach ($this->selectDecoded((string) $c, $opts, '', null) as $r) {
                             $kept = array_values(array_filter($r[$col], static fn ($x) => $x !== $id));
                             $this->update((string) $c, [$col => $kept], [$pk => $r[$pk]]);
                         }

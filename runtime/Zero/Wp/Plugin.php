@@ -62,8 +62,11 @@ final class Plugin
      *
      * @param list<string> $args
      */
-    public function cli(array $args): void
+    public function cli(array $args, array $assocArgs = []): void
     {
+        foreach ($assocArgs as $name => $value) {
+            $args[] = '--' . $name . ($value === true ? '' : '=' . ($value === false ? 'false' : (string) $value));
+        }
         if (($args[0] ?? '') === 'migrate') {
             [$code, $out] = [0, \Zero\Js::jsonStringify(['data' => ['applied' => $this->migrator()->migrate()]])];
         } else {
@@ -128,7 +131,7 @@ final class Plugin
 
     private function migrator(): Migrator
     {
-        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations');
+        return new Migrator($this->connection(), $this->dir . '/zero/app/migrations', $this->schema);
     }
 
     private function schemaOption(): string
@@ -229,7 +232,7 @@ final class Plugin
         }
         $post = get_post($postId);
         $this->before[$postId] = $post instanceof \WP_Post && $post->post_status !== 'auto-draft'
-            ? $this->app()->db->findFirst($collection, ['where' => [$this->pk($collection) => $postId]])
+            ? $this->app()->db->editorRow($collection, $postId)
             : null;
     }
 
@@ -253,7 +256,7 @@ final class Plugin
             return;
         }
         $db = $this->app()->db;
-        $row = $db->findFirst($collection, ['where' => [$this->pk($collection) => $postId]]);
+        $row = $db->editorRow($collection, $postId);
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             $db->beforeEditorDelete($collection, $row, WpAuth::current());
@@ -314,11 +317,6 @@ final class Plugin
         }
 
         return null;
-    }
-
-    private function pk(string $collection): string
-    {
-        return $this->schema->collection($collection)['primaryKey'];
     }
 
     /** Db for code that runs outside a Zero request (WP-CLI helpers, tests). */

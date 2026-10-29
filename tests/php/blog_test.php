@@ -148,14 +148,30 @@ eq('promotion keeps publishedAt, writes no revision', [$row['status'], $row['pub
 // ================================================================ revisions (§6.4)
 
 $p = req('POST', '/posts', ['title' => 'Rev 1', 'excerpt' => 'first'], 'alice')[1];
-req('PATCH', "/posts/{$p['id']}", ['title' => 'Rev 2'], 'alice');
+req('PATCH', "/posts/{$p['id']}", ['title' => 'Rev 2', 'excerpt' => 'second'], 'alice');
+\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer): array {
+    if ($c === 'posts' && $viewer !== null) {
+        foreach ($rows as &$row) {
+            if (in_array($row['title'], ['Rev 1', 'Rev 2'], true)) {
+                unset($row['excerpt']);
+            }
+        }
+        unset($row);
+    }
+
+    return $rows;
+});
 [$s, $list] = req('GET', "/posts/{$p['id']}/revisions", as: 'alice');
 eq('one revision per create/update, newest first, with the user', [$s, count($list), $list[0]['user'] ?? null, $list[0]['id'] > $list[1]['id']], [200, 2, ['id' => $users['alice']['id'], 'name' => 'alice'], true]);
 eq('revision row is the state written then', req('GET', "/posts/{$p['id']}/revisions/{$list[1]['id']}", as: 'alice')[1]['title'] ?? null, 'Rev 1');
 isProblem('revisions need update access on the row (other author: masked)', req('GET', "/posts/{$p['id']}/revisions", as: 'bob'), 404, 'not_found');
 isProblem('unknown revision', req('GET', "/posts/{$p['id']}/revisions/999999", as: 'alice'), 404, 'not_found');
 [$s, $restored] = req('POST', "/posts/{$p['id']}/revisions/{$list[1]['id']}/restore", as: 'alice');
-eq('restore runs the update pipeline', [$s, $restored['title'] ?? null, count(req('GET', "/posts/{$p['id']}/revisions", as: 'alice')[1])], [200, 'Rev 1', 3]);
+eq('restore uses full revision data while hiding response fields', [
+    $s, $restored['title'] ?? null, array_key_exists('excerpt', $restored),
+    $db->findFirst('posts', ['where' => ['id' => $p['id']]])['excerpt'],
+    count(req('GET', "/posts/{$p['id']}/revisions", as: 'alice')[1]),
+], [200, 'Rev 1', false, 'first', 3]);
 isProblem('collections without revisions', req('GET', "/comments/{$c1['id']}/revisions", as: 'ed'), 404, 'not_found');
 
 // ================================================================ globals (§3.6)
@@ -171,6 +187,8 @@ eq('patch merges; untouched fields keep their defaults', req('PATCH', '/globals/
     ['siteTitle' => 'My blog', 'tagline' => 'Hi', 'postsPerPage' => 20, 'social' => [['label' => 'Site', 'href' => 'https://example.com']]]);
 eq('trusted db sees the same values', $db->globalGet('settings')['postsPerPage'], 20);
 isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
+
+\Zero\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
 
 // ================================================================ media (§4.6)
 
@@ -208,5 +226,287 @@ $db->delete('authors', ['id' => $aliceProfile['id']]);
 eq('onDelete set null', array_unique(array_column($db->findMany('posts', ['where' => ['id' => ['in' => [$pub['id'], $mine['id']]]]]), 'authorId')), [null]);
 $db->delete('posts', ['id' => $pub['id']]);
 eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['id']]]), []);
+
+// ================================================================ extension seams
+
+\Zero\SystemTables::register('seam', [
+    'CREATE TABLE IF NOT EXISTS "__zero_seam" ("id" integer PRIMARY KEY, "event" text NOT NULL)',
+    static function (\Zero\Store $store): void {
+        if (!$store instanceof \Zero\Store\SqliteStore) {
+            throw new \LogicException('SQLite upgrade needs the SQLite store');
+        }
+        if (!in_array('extra', array_column($store->run('PRAGMA table_info("__zero_seam")')->fetchAll(), 'name'), true)) {
+            $store->applySystemStatements(['ALTER TABLE "__zero_seam" ADD COLUMN "extra" text']);
+        }
+    },
+], ['CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` bigint PRIMARY KEY, `event` text NOT NULL) ENGINE=InnoDB']);
+$systemStore = new \Zero\Store\SqliteStore(\Zero\Store\SqliteStore::connect(':memory:'), $app->schema);
+$systemStore->run('INSERT INTO "__zero_seam" ("id", "event") VALUES (1, ?)', ['automatic']);
+eq('registered tables are installed during standalone store construction', $systemStore->run('SELECT event FROM "__zero_seam"')->fetchColumn(), 'automatic');
+\Zero\SystemTables::apply($db->store());
+$db->store()->run('INSERT INTO "__zero_seam" ("id", "event", "extra") VALUES (1, ?, ?)', ['kept', 'upgraded']);
+\Zero\SystemTables::apply($db->store());
+eq('idempotent system DDL and guarded ALTER preserve data', $db->store()->run('SELECT event, extra FROM "__zero_seam"')->fetch(), ['event' => 'kept', 'extra' => 'upgraded']);
+problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \Zero\SystemTables::apply($db->store())), 500, 'internal');
+
+$transformMutationRows = false;
+\Zero\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
+    if ($transformMutationRows && $c === 'posts') {
+        foreach ($rows as &$row) {
+            $row['excerpt'] = 'display only';
+        }
+        unset($row);
+    }
+
+    return $rows;
+});
+\Zero\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
+    if ($c === 'posts') {
+        unset($data['translationOf']);
+        if (array_key_exists('password', $data)) {
+            eq('input normalization receives the full stored row', $existing['excerpt'], 'extension');
+            $data['excerpt'] = $data['password'];
+            unset($data['password']);
+        }
+    }
+});
+\Zero\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\Zero\Viewer $viewer, array $provided): void {
+    if ($c === 'posts' && ($data['title'] ?? '') === 'Extension') {
+        eq('write extension retains virtual input and distinguishes it from defaults', $provided, ['title' => 'Extension', 'translationOf' => 123]);
+        // Defaults precede the extension, and the application hook derives authorId afterwards.
+        $data['title'] = $data['status'] . ' ' . $viewer->user['name'];
+        $data['excerpt'] = 'extension';
+    }
+    if ($c === 'posts' && $op === 'update' && ($data['excerpt'] ?? '') === 'revise') {
+        eq('update extension retains the original virtual patch', $provided, ['password' => 'revise']);
+        $data['excerpt'] = $existing['excerpt'] . ' revised';
+    }
+    if ($c === 'posts' && $op === 'delete' && $data['excerpt'] === 'extension revised') {
+        throw new \Zero\JsError('extension refused delete');
+    }
+});
+\Zero\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
+    if ($c !== 'posts' || !str_starts_with($row['excerpt'] ?? '', 'extension')) {
+        return;
+    }
+    $db->insert('comments', ['postId' => $row['id'], 'name' => $op, 'body' => $previous['excerpt'] ?? 'created']);
+    if ($row['excerpt'] === 'extension fail') {
+        throw new \Zero\JsError('extension rolled back');
+    }
+    \Zero\Extensions::afterCommit(static function () use ($db, $op, $row): void {
+        $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$op . ':' . $row['excerpt']]);
+    });
+});
+$seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
+[$status, $seam] = req('POST', '/posts', ['title' => 'Extension', 'translationOf' => 123], 'alice');
+eq('write extension sees defaults and viewer before the application hook', [$status, $seam['title'], $seam['excerpt'], $seam['authorId']], [201, 'published alice', 'extension', $seamAuthor['id']]);
+$transformMutationRows = true;
+$seam = req('PATCH', '/posts/' . $seam['id'], ['password' => 'revise'], 'ed')[1];
+$transformMutationRows = false;
+eq('update extension receives stored data and transforms only its response', [
+    $seam['excerpt'], $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
+], ['display only', 'extension revised']);
+isProblem('normalization still rejects unconsumed create inputs', req('POST', '/posts', ['title' => 'Rejected', 'unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
+isProblem('normalization still rejects unconsumed update inputs', req('PATCH', '/posts/' . $seam['id'], ['unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
+eq('written extension can nest writes and schedule durable effects', [
+    array_column($db->findMany('comments', ['where' => ['postId' => $seam['id']], 'orderBy' => ['id' => 'asc']]), 'body'),
+    $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id')->fetchAll(\PDO::FETCH_COLUMN),
+], [['created', 'extension'], ['kept', 'create:extension', 'update:extension revised']]);
+isProblem('written extension failure rolls back row and nested effects', req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'extension fail'], 'ed'), 422, 'rejected');
+eq('failed write preserves row and nested data', [
+    $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
+    count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
+    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam"')->fetchColumn(),
+], ['extension revised', 2, 3]);
+$transformMutationRows = true;
+isProblem('delete extension receives stored data before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
+$transformMutationRows = false;
+
+// The lookup seam primes a page cache which a read transform consumes, including nested relations.
+$cache = [];
+\Zero\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
+    $cache[$c] = array_fill_keys($pks, 'looked up');
+});
+\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
+    if ($viewer === null) {
+        return $rows;
+    }
+    foreach ($rows as &$row) {
+        if ($c === 'posts' && $row['title'] === 'Replay seam') {
+            $row['excerpt'] = $cache[$c][$row['id']] ?? 'missing cache';
+        } elseif ($c === 'posts' && $row['excerpt'] === 'extension revised') {
+            $row['excerpt'] = $cache[$c][$row['id']] . (isset($row['comments']) ? ' after with' : ' before with');
+            unset($row['authorId'], $row['cover']);
+        } elseif ($c === 'comments' && in_array($row['name'], ['create', 'update'], true)) {
+            $row['body'] = $cache[$c][$row['id']] . ($row['approved'] === true ? ' decoded' : ' raw');
+            unset($row['postId']);
+        }
+    }
+    unset($row);
+
+    return $rows;
+});
+$read = req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['with' => 'comments,author,cover'])[1];
+eq('lookup precedes decoded read transforms, before with, at every relation level', [$read['excerpt'], array_column($read['comments'], 'body')], ['looked up before with', ['looked up decoded', 'looked up decoded']]);
+
+eq('read stripping keeps relation linkage private and does not resurrect populated media', [
+    array_key_exists('authorId', $read), array_key_exists('cover', $read),
+    $read['author']['id'], array_key_exists('postId', $read['comments'][0]),
+], [false, false, $seamAuthor['id'], false]);
+$revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
+eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
+eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
+\Zero\Extensions::beforeRead(static function (string $c, array &$opts, ?\Zero\Viewer $viewer): void {
+    if (isset($opts['idsOnly'])) {
+        $opts['columns'] = ['id' => true];
+        unset($opts['idsOnly']);
+    }
+    if ($c !== 'posts') {
+        return;
+    }
+    if ($viewer !== null && isset($opts['orderBy']['excerpt'])) {
+        throw new \Zero\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
+    }
+    if (isset($opts['seamId'])) {
+        $opts['where'] = ['id' => $opts['seamId']];
+        unset($opts['seamId']);
+    }
+    if (array_key_exists('locale', $opts)) {
+        if ($opts['locale'] !== 'de') {
+            throw \Zero\HttpError::invalidQuery('Unsupported test locale', '/locale');
+        }
+        $opts['where'] = ['AND' => [$opts['where'] ?? [], ['title' => 'published alice']]];
+        unset($opts['locale']);
+    }
+});
+eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
+    'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
+]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'standalone')), 403, 'forbidden', '/orderBy/excerpt');
+eq('REST list and item queries deliver feature options before SQL', [
+    array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
+    req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['locale' => 'de'])[1]['id'],
+], [[$seam['id']], $seam['id']]);
+isProblem('feature query validation reaches item REST', req('GET', '/posts/' . $seam['id'], query: ['locale' => 'invalid']), 400, 'invalid_query', '/locale');
+isProblem('unconsumed feature options remain invalid on other collections', req('GET', '/authors', query: ['locale' => 'de']), 400, 'invalid_query', '/locale');
+
+$db->setActor($users['sub']);
+$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed'], 'standalone'));
+eq('operation invocation uses explicit authority and restores its caller actor', [$db->findFirst('comments', ['where' => ['id' => $invoked['id']]])['approved'], $db->actor()], [true, $users['sub']]);
+problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'], 'standalone')), 403, 'forbidden');
+eq('throwing operation invocation also restores the caller actor', $db->actor(), $users['sub']);
+$db->setActor(null);
+
+\Zero\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
+eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
+
+\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($db): \Zero\Response {
+    if (!isset($headers['idempotency-key'])) {
+        return $next();
+    }
+    $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
+    $stored = $db->store()->run('SELECT extra FROM "__zero_seam" WHERE event = ?', [$key])->fetchColumn();
+    if ($stored !== false) {
+        $receipt = json_decode($stored, true);
+
+        return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
+    }
+    $result = $next();
+    $db->store()->run('INSERT INTO "__zero_seam" (event, extra) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
+    if ($headers['idempotency-key'] === 'fail') {
+        throw new \Zero\JsError('Receipt persistence failed');
+    }
+
+    return $result;
+});
+$receiptHeaders = ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'create'];
+$firstReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+$cache = [];
+$replayReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+eq('create replay primes fresh lookup caches without repeating its write pipeline', [
+    $firstReceipt[0], $replayReceipt[0], $replayReceipt[1]['Idempotent-Replayed'], $firstReceipt[2] === $replayReceipt[2],
+    json_decode($replayReceipt[2], true)['data']['excerpt'],
+    count($db->findMany('posts', ['where' => ['title' => 'Replay seam']])),
+], [201, 201, 'true', true, 'looked up', 1]);
+eq('create authorization still runs before replay middleware', $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', ['Idempotency-Key' => 'create'])[0], 401);
+$failedReceipt = $app->handle('POST', '/posts', [], '{"title":"Rolled back receipt"}', ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'fail']);
+eq('failed operation wrapper rolls back both its result and receipt', [
+    $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
+    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam" WHERE event LIKE ?', ['receipt:%:fail'])->fetchColumn(),
+], [422, [], 0]);
+
+\Zero\Extensions::route('download-proof', static function () use ($db): \Zero\Response {
+    $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download prepared']);
+    \Zero\Extensions::afterCommit(static fn () => $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download committed']));
+
+    return \Zero\Response::raw(static function () use ($db): void {
+        echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
+    }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
+        ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
+            'access-control-allow-origin' => 'https://app.example',
+            'access-control-expose-headers' => 'Content-Disposition']);
+});
+[$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
+ob_start();
+\Zero\Response::emit($downloadBody);
+$emitted = ob_get_clean();
+eq('download response streams raw bytes and headers after commit', [
+    $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
+    $downloadHeaders['access-control-allow-origin'], $downloadHeaders['access-control-expose-headers'],
+    count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
+], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
+
+\Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
+    App::allow($method, ['POST']);
+
+    return [202, [$segments, $query, $body, $viewer->user['name'] ?? null, $files, $form]];
+});
+eq('route extension owns a prefix before collections and receives all request parts',
+    req('POST', '/posts/a%20b/c/d/e/f', ['raw' => true], 'ed', ['q' => 'value'], ['file' => ['name' => 'x']], ['alt' => 'y']),
+    [202, [['posts', 'a b', 'c', 'd', 'e', 'f'], ['q' => 'value'], '{"raw":true}', 'ed', ['file' => ['name' => 'x']], ['alt' => 'y']]]);
+isProblem('extension errors use the normal problem envelope', req('GET', '/posts'), 405, 'method_not_allowed');
+isProblem('prefix dispatch matches complete segments', req('GET', '/postsExtra'), 404, 'not_found');
+
+\Zero\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\Zero\Viewer $viewer): void {
+    if ($name === 'approveComment' && ($headers['x-proof'] ?? '') !== hash('sha256', $raw)) {
+        throw new \Zero\HttpError(403, 'forbidden', 'Bad raw-body proof');
+    }
+    if ($name === 'publishedCount' && $viewer === null && trim($raw) === '{"reject":true}') {
+        throw new \Zero\JsError('CLI action extension');
+    }
+});
+$seamComment = $db->findFirst('comments', ['where' => ['postId' => $seam['id']]]);
+$raw = '{ "id": ' . $seamComment['id'] . ' }';
+[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['Authorization' => 'Bearer ' . $tokens['ed'], 'X-Proof' => hash('sha256', $raw)]);
+eq('action invocation extension gets exact raw body and normalized headers', [$s, json_decode($out, true)['data']['id']], [200, $seamComment['id']]);
+[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('action extension may reject before handler execution', [$s, json_decode($out, true)['code']], [403, 'forbidden']);
+$actionHeaders = ['authorization' => 'Bearer ' . $tokens['ed'], 'x-proof' => hash('sha256', $raw), 'idempotency-key' => 'action'];
+$app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders);
+[$s, $replayedHeaders, $out] = $app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders);
+eq('action middleware receives result and can replay it with response metadata', [$s, $replayedHeaders['Idempotent-Replayed'], json_decode($out, true)['data']['id']], [200, 'true', $seamComment['id']]);
+$actionHeaders['x-proof'] = 'invalid';
+eq('action signature guard still runs before replay middleware', $app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders)[0], 403);
+[$code, $out] = $app->cli(['action', 'publishedCount', '{"reject":true}']);
+eq('trusted CLI actions share the invocation extension', [$code, json_decode($out, true)['error']['code']], [1, 'rejected']);
+\Zero\Extensions::cli('seam', static function (array $args, array $flags) use ($db): array {
+    $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$args[0]]);
+    if (isset($flags['fail'])) {
+        throw new \Zero\JsError('CLI extension rollback');
+    }
+
+    return ['args' => $args, 'flags' => $flags];
+});
+[$code, $out] = $app->cli(['seam', 'saved', '--mode=local']);
+eq('CLI extension runs through the canonical envelope', [$code, json_decode($out, true)['data']], [0, ['args' => ['saved'], 'flags' => ['mode' => 'local']]]);
+$app->cli(['seam', 'discarded', '--fail']);
+eq('CLI extension effects join the command transaction', $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn(), 'saved');
+
+\Zero\Extensions::route('auth', static function (string $method, array $segments, array $query, string $body): array {
+    App::allow($method, ['POST']);
+
+    return [200, ['grant' => json_decode($body, true)['grant_type'], 'path' => $segments]];
+});
+eq('auth module can replace token dispatch while unregistered routes retain built-in behavior', req('POST', '/auth/token', ['grant_type' => 'refresh_token']), [200, ['grant' => 'refresh_token', 'path' => ['auth', 'token']]]);
 
 finish('blog_test');

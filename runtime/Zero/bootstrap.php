@@ -19,3 +19,5 @@ spl_autoload_register(static function (string $class): void {
 
 // Db.php also defines the function Zero\db(); functions cannot be autoloaded.
 require_once __DIR__ . '/Db.php';
+
+\Zero\Features::register();

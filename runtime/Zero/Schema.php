@@ -17,13 +17,15 @@ namespace Zero;
  */
 final class Schema
 {
+    private const READ_V3 = false; // A2 enables the schema.php v3 contract.
+
     public const ROLES = ['subscriber', 'author', 'editor', 'admin'];
     private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
     private const STRING_TYPES = ['text', 'email', 'url', 'slug', 'richText'];
     private const LIST_TYPES = ['mediaList', 'select', 'repeater', 'blocks'];
     private const SLUG_RE = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
 
-    /** @param array{version?: int, collections?: array<string, array>, globals?: array<string, array>, actions?: array<string, array>} $raw */
+    /** @param array{version?: int, runtime?: string, collections?: array<string, array>, globals?: array<string, array>, actions?: array<string, array>} $raw */
     public function __construct(private readonly array $raw)
     {
     }
@@ -34,11 +36,21 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
-        if (($raw['version'] ?? null) !== 2) {
+        if (($raw['version'] ?? null) !== 2 && !(self::READ_V3 && ($raw['version'] ?? null) === 3)) {
             throw new \RuntimeException('schema.php version 2 required');
         }
 
         return new self($raw);
+    }
+
+    public function version(): int
+    {
+        return $this->raw['version'] ?? 2;
+    }
+
+    public function runtime(): ?string
+    {
+        return $this->raw['runtime'] ?? null;
     }
 
     public function name(): string
@@ -129,7 +141,7 @@ final class Schema
             ];
         }
 
-        return ['name' => $this->name(), 'target' => $this->target(), 'collections' => $collections, 'globals' => $globals, 'actions' => $actions];
+        return Extensions::describe(['name' => $this->name(), 'target' => $this->target(), 'collections' => $collections, 'globals' => $globals, 'actions' => $actions]);
     }
 
     private static function accessSummary(array $rule): string|bool

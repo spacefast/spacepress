@@ -33,6 +33,15 @@ final class Scf
     private const SCF_TYPES = ['text', 'textarea', 'select', 'number', 'true_false', 'date_picker', 'date_time_picker', 'email', 'url',
         'wysiwyg', 'image', 'file', 'gallery', 'post_object', 'group', 'repeater', 'flexible_content'];
 
+    /** @var list<callable> */
+    private static array $fieldFilters = [];
+
+    /** @param callable(array $field, array $def, string $col, array $spec): array $fn */
+    public static function fieldFilter(callable $fn): void
+    {
+        self::$fieldFilters[] = $fn;
+    }
+
     // ================================================================ registration (acf/init, priority 5)
 
     public static function register(Schema $schema): void
@@ -51,7 +60,7 @@ final class Scf
                     || $col === ($spec['slug'] ?? null) || ($def['system'] ?? false)) {
                     continue;
                 }
-                $fields[] = ['zero_top' => true] + self::field($schema, $spec['wp']['fieldKeyPrefix'] . $col, $spec['wp']['metaPrefix'] . $col, $col, $def);
+                $fields[] = ['zero_top' => true] + self::field($schema, $spec['wp']['fieldKeyPrefix'] . $col, $spec['wp']['metaPrefix'] . $col, $col, $def, $spec);
             }
             acf_add_local_field_group([
                 'key' => $spec['wp']['groupKey'],
@@ -78,7 +87,7 @@ final class Scf
             $fields = [];
             foreach ($g['fields'] as $field => $def) {
                 // Option names are `<postId>_<name>` (SCF's convention), so the field name is the bare field.
-                $fields[] = ['zero_top' => true] + self::field($schema, $wp['fieldKeyPrefix'] . $field, (string) $field, (string) $field, $def);
+                $fields[] = ['zero_top' => true] + self::field($schema, $wp['fieldKeyPrefix'] . $field, (string) $field, (string) $field, $def, $g);
             }
             acf_add_local_field_group([
                 'key' => $wp['groupKey'],
@@ -105,7 +114,7 @@ final class Scf
     }
 
     /** The SCF field array for one column (the field-builder switch, adapted from the original Zero). */
-    private static function field(Schema $schema, string $key, string $name, string $col, array $def): array
+    private static function field(Schema $schema, string $key, string $name, string $col, array $def, array $spec): array
     {
         $rules = $def['rules'] ?? [];
         $type = $def['type'];
@@ -123,13 +132,13 @@ final class Scf
         $sub = static function (array $fields, string $prefix) use ($schema): array {
             $out = [];
             foreach ($fields as $s => $sdef) {
-                $out[] = self::field($schema, $prefix . $s, (string) $s, (string) $s, $sdef);
+                $out[] = self::field($schema, $prefix . $s, (string) $s, (string) $s, $sdef, ['fields' => $fields]);
             }
 
             return $out;
         };
 
-        return $field + match (true) {
+        $field += match (true) {
             $type === 'text' && isset($def['enum']) => ['type' => 'select', 'choices' => $choices($def['enum']), 'allow_null' => ($def['notNull'] ?? false) ? 0 : 1, 'multiple' => 0, 'return_format' => 'value', 'ui' => 1],
             $type === 'text' && ($def['multiline'] ?? false) => ['type' => 'textarea', 'maxlength' => $rules['max'] ?? '', 'rows' => 4, 'new_lines' => ''],
             $type === 'text' => ['type' => 'text', 'maxlength' => $rules['max'] ?? ''],
@@ -155,6 +164,11 @@ final class Scf
                 'layouts' => self::layouts($key, $def['layouts'] ?? [], $sub)],
             default => throw new \LogicException("No SCF field for column type '$type'"),
         };
+        foreach (self::$fieldFilters as $fn) {
+            $field = $fn($field, $def, $col, $spec);
+        }
+
+        return $field;
     }
 
     private static function reference(Schema $schema, array $ref): array

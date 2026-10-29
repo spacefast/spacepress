@@ -20,7 +20,8 @@ final class App
     private const CORS = [
         'Access-Control-Allow-Origin' => '*',
         'Access-Control-Allow-Methods' => 'GET, POST, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers' => 'content-type, authorization',
+        'Access-Control-Allow-Headers' => 'content-type, authorization, idempotency-key',
+        'Access-Control-Expose-Headers' => 'Idempotent-Replayed',
     ];
     private const TITLES = [
         'invalid_input' => 'Invalid input',
@@ -92,17 +93,45 @@ final class App
     }
 
     /** Validate input against an action's schema, check its access, run its handler. */
-    public function runAction(string $name, mixed $input, ?Viewer $viewer = null): mixed
+    private function action(string $name, string $rawBody, array $headers = [], ?Viewer $viewer = null): Response
     {
+        $input = self::parseBody($rawBody);
         $action = $this->schema->action($name);
         if ($viewer !== null) {
             Access::require($action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name");
         }
+        Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
         $fn = '\\ZeroApp\\' . $action['handler'];
 
-        return $fn($input, $ctx);
+        return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
+            static fn (): Response => Response::json($fn($input, $ctx)));
+    }
+
+    /** Invoke any API operation with explicit authority. No authentication, JSON envelope or error conversion. */
+    public function invoke(string $method, string $path, array $query, mixed $body, Viewer $viewer): mixed
+    {
+        $raw = is_string($body) ? $body : ($body === null ? '' : (Js::jsonStringify($body) ?? ''));
+
+        return $this->dispatch($method, $path, $query, $raw, $viewer)->data;
+    }
+
+    /** The shared operation dispatcher; errors throw, and response emission belongs to the transport. */
+    public function dispatch(string $method, string $path, array $query, string $body, Viewer $viewer, array $headers = [], array $files = [], array $form = []): Response
+    {
+        return $this->db->transaction(function () use ($method, $path, $query, $body, $viewer, $headers, $files, $form): Response {
+            $previous = $this->db->actor();
+            $this->db->setActor($viewer->user);
+            try {
+                $this->db->promoteDue();
+                $result = $this->route($method, $path, $query, $body, $viewer, array_change_key_case($headers, CASE_LOWER), $files, $form);
+
+                return $result instanceof Response ? $result : Response::json($result[1], $result[0]);
+            } finally {
+                $this->db->setActor($previous);
+            }
+        });
     }
 
     // ================================================================ HTTP
@@ -127,7 +156,7 @@ final class App
         foreach ($out as $name => $value) {
             header("$name: $value");
         }
-        echo $body;
+        Response::emit($body);
     }
 
     /**
@@ -136,7 +165,7 @@ final class App
      *
      * @param array<string, mixed> $query
      * @param array<string, string> $headers lower-cased names
-     * @return array{int, array<string, string>, string}
+     * @return array{int, array<string, string>, string|\Closure}
      */
     public function handle(string $method, string $path, array $query, string $body, array $headers = [], array $files = [], array $form = []): array
     {
@@ -144,18 +173,14 @@ final class App
             return [204, self::CORS, ''];
         }
         try {
-            [$status, $data] = $this->db->transaction(function () use ($method, $path, $query, $body, $headers, $files, $form) {
-                $this->db->promoteDue();
+            $response = $this->db->transaction(function () use ($method, $path, $query, $body, $headers, $files, $form): Response {
                 $user = $this->auth->resolve(array_change_key_case($headers, CASE_LOWER));
-                $this->db->setActor($user);
-                try {
-                    return $this->route($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $files, $form);
-                } finally {
-                    $this->db->setActor(null);
-                }
-            });
 
-            return [$status, ['Content-Type' => 'application/json'] + self::CORS, Js::jsonStringify(['data' => $data]) ?? '{}'];
+                return $this->dispatch($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $headers, $files, $form);
+            });
+            [$status, $out, $payload] = $response->http();
+
+            return [$status, Response::mergeHeaders(self::CORS, $out), $payload];
         } catch (\Throwable $e) {
             return self::respond($e);
         }
@@ -169,14 +194,17 @@ final class App
         return [$problem['status'], ['Content-Type' => 'application/problem+json'] + self::CORS, Js::jsonStringify($problem) ?? '{}'];
     }
 
-    /** @return array{int, mixed} */
-    private function route(string $method, string $path, array $query, string $body, Viewer $viewer, array $files, array $form): array
+    /** @return array{int, mixed}|Response */
+    private function route(string $method, string $path, array $query, string $body, Viewer $viewer, array $headers, array $files, array $form): array|Response
     {
         $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($s) => $s !== '')));
         $n = count($segments);
         $name = $segments[0] ?? '';
         $notFound = static fn () => HttpError::notFound("No route for " . self::PREFIX . $path);
 
+        if (($handler = Extensions::routeHandler($name)) !== null) {
+            return $handler($method, $segments, $query, $body, $viewer, $files, $form);
+        }
         switch (true) {
             case $name === '_schema' && $n === 1:
                 self::allow($method, ['GET']);
@@ -197,17 +225,17 @@ final class App
             case $name === 'actions' && $n === 2:
                 self::allow($method, ['POST']);
 
-                return [200, $this->runAction($segments[1], self::parseBody($body), $viewer)];
+                return $this->action($segments[1], $body, $headers, $viewer);
             case $name === 'globals' && $n === 2:
                 self::allow($method, ['GET', 'PATCH']);
 
                 return $method === 'GET'
                     ? [200, $this->db->globalGet($segments[1], $viewer)]
                     : [200, $this->db->globalUpdate($segments[1], self::object(self::parseBody($body)), $viewer)];
-            case $name === 'media':
-                return $this->mediaRoute($method, $segments, $query, $viewer, $files, $form);
-            case $n < 1 || $n > 5:
-                throw $notFound();
+        }
+
+        if ($n < 1 || $n > 5) {
+            throw $notFound();
         }
 
         if (!$this->schema->hasCollection($name)) {
@@ -225,7 +253,16 @@ final class App
             $this->gate($spec, 'create');
             $data = self::object(self::parseBody($body));
 
-            return [201, $this->db->insert($name, $data, true, $viewer)[0]];
+            $result = null;
+            $around = static function (callable $write) use ($name, $spec, $body, $headers, $viewer, &$result): array {
+                $result = Extensions::execute('create:' . $name, $spec, $body, $headers, $viewer,
+                    static fn (): Response => Response::json($write(), 201));
+
+                return $result->data;
+            };
+            $row = $this->db->insert($name, $data, true, $viewer, $around)[0];
+
+            return Response::json($row, $result->status, $result->headers);
         }
 
         $pk = $this->pkFromPath($spec, $segments[1]);
@@ -237,7 +274,7 @@ final class App
             $this->gate($spec, ['GET' => 'get', 'PATCH' => 'update', 'DELETE' => 'delete'][$method]);
 
             return match ($method) {
-                'GET' => [200, $this->db->findFirst($name, ['where' => $where] + (isset($query['with']) ? ['with' => self::withOption($query['with'])] : []), $viewer) ?? throw $missing()],
+                'GET' => [200, $this->db->findFirst($name, ['where' => $where] + self::itemOptions($query), $viewer) ?? throw $missing()],
                 'PATCH' => [200, $this->db->update($name, self::object(self::parseBody($body)), $where, true, $viewer)[0] ?? throw $missing()],
                 'DELETE' => [200, $this->db->delete($name, $where, true, $viewer)[0] ?? throw $missing()],
             };
@@ -273,51 +310,7 @@ final class App
         return [200, $this->db->restoreRevision($name, $pk, $rid, $viewer)];
     }
 
-    /** @return array{int, mixed} */
-    private function mediaRoute(string $method, array $segments, array $query, Viewer $viewer, array $files, array $form): array
-    {
-        $n = count($segments);
-        if ($n === 1) {
-            self::allow($method, ['GET', 'POST']);
-            if ($method === 'GET') {
-                $opts = self::listOptions($query);
-                if (isset($opts['with'])) {
-                    throw HttpError::invalidQuery('media has no relations', '/with');
-                }
-
-                return [200, $this->db->mediaList($opts)];
-            }
-            $file = $files['file'] ?? null;
-            if (!is_array($file) || is_array($file['error'] ?? null)) {
-                throw HttpError::invalidInput('Send the file as multipart/form-data field "file"', '/file');
-            }
-            $err = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
-            if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
-                throw new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts');
-            }
-            if ($err !== UPLOAD_ERR_OK) {
-                throw HttpError::invalidInput('The upload failed (error ' . $err . ')', '/file');
-            }
-            $alt = $form['alt'] ?? null;
-            if ($alt !== null && !is_string($alt)) {
-                throw HttpError::invalidInput('alt must be a string', '/alt');
-            }
-
-            return [201, $this->db->mediaUpload((string) $file['tmp_name'], (string) ($file['name'] ?? 'file'), $alt, $viewer)];
-        }
-        if ($n !== 2) {
-            throw HttpError::notFound('No such media route');
-        }
-        self::allow($method, ['GET', 'DELETE']);
-        $id = preg_match('/^\d{1,18}$/D', $segments[1]) ? (int) $segments[1] : -1;
-        $missing = static fn () => HttpError::notFound("No media with id {$segments[1]}");
-
-        return $method === 'GET'
-            ? [200, $this->db->mediaGet($id) ?? throw $missing()]
-            : [200, $this->db->mediaDelete($id, $viewer) ?? throw $missing()];
-    }
-
-    private static function allow(string $method, array $allowed): void
+    public static function allow(string $method, array $allowed): void
     {
         if (!in_array($method, $allowed, true)) {
             throw new HttpError(405, 'method_not_allowed', "$method is not allowed here");
@@ -344,7 +337,7 @@ final class App
         return (int) $id;
     }
 
-    private static function listOptions(array $query): array
+    public static function listOptions(array $query): array
     {
         $opts = ['limit' => min(self::queryInt($query, 'limit') ?? self::LIST_LIMIT, self::MAX_LIST_LIMIT)];
         if (isset($query['where'])) {
@@ -371,7 +364,12 @@ final class App
             $opts['with'] = self::withOption($query['with']);
         }
 
-        return $opts;
+        return $opts + array_diff_key($query, array_fill_keys(['limit', 'where', 'status', 'orderBy', 'offset', 'with'], true));
+    }
+
+    private static function itemOptions(array $query): array
+    {
+        return (isset($query['with']) ? ['with' => self::withOption($query['with'])] : []) + array_diff_key($query, ['with' => true]);
     }
 
     /** `with=author,comments` or JSON `with={"author":true}`. */
@@ -547,6 +545,9 @@ final class App
             if ($cmd === 'publish-due') {
                 return ['promoted' => (object) $promoted];
             }
+            if (($handler = Extensions::cliHandler($cmd)) !== null) {
+                return $handler(array_slice($pos, 1), $flags);
+            }
             $sub = $pos[1] ?? null;
             if ($cmd === 'user' || $cmd === 'users') {
                 $id = $this->identity();
@@ -574,7 +575,7 @@ final class App
             }
 
             return match ($cmd) {
-                'action' => $this->runAction($sub, $json(2, false)),
+                'action' => $this->action($sub, $pos[2] ?? '')->data,
                 'find' => $this->db->findMany($sub, self::object($json(2, false) ?? [])),
                 'insert' => $this->db->insert($sub, self::rows($json(2)), true),
                 'update' => $this->db->update($sub, self::object($json(3)), self::object($json(2)), true),

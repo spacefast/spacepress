@@ -38,6 +38,12 @@ interface Store
     /** Open a transaction (or join one). Any Throwable rolls back everything written inside. */
     public function transaction(callable $fn): mixed;
 
+    /** Run after the outermost commit (immediately without a transaction); discarded on rollback. */
+    public function afterCommit(callable $fn): void;
+
+    /** @param list<string> $statements idempotent DDL; MySQL replaces {prefix}. Never inside a request transaction. */
+    public function applySystemStatements(array $statements): void;
+
     /**
      * Raw rows matching a compiled query. $q is produced by Sql::select() against $this->dialect()
      * and $this->source($collection): ['sql' => string, 'params' => list<scalar>]. Rows come back as

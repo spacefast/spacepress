@@ -602,6 +602,9 @@
                 }
               }
             },
+            "posts": {
+              "type": "object"
+            },
             "AND": {
               "type": "array",
               "items": {
@@ -1194,6 +1197,9 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "posts": {
+                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -1806,6 +1812,9 @@
                       }
                     }
                   },
+                  "posts": {
+                    "type": "object"
+                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -2415,6 +2424,9 @@
                     }
                   }
                 },
+                "posts": {
+                  "type": "object"
+                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -2431,9 +2443,6 @@
                   "type": "object"
                 }
               }
-            },
-            "posts": {
-              "type": "object"
             }
           }
         },
@@ -2507,7 +2516,10 @@
           "minimum": 0
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "posts": {
               "type": [
@@ -2616,7 +2628,10 @@
           "type": "integer"
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "posts": {
               "type": [
@@ -3998,6 +4013,12 @@
                 }
               }
             },
+            "author": {
+              "type": "object"
+            },
+            "comments": {
+              "type": "object"
+            },
             "AND": {
               "type": "array",
               "items": {
@@ -4878,6 +4899,12 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "author": {
+                    "type": "object"
+                  },
+                  "comments": {
+                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -5778,6 +5805,12 @@
                       }
                     }
                   },
+                  "author": {
+                    "type": "object"
+                  },
+                  "comments": {
+                    "type": "object"
+                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -6675,6 +6708,12 @@
                     }
                   }
                 },
+                "author": {
+                  "type": "object"
+                },
+                "comments": {
+                  "type": "object"
+                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -6691,12 +6730,6 @@
                   "type": "object"
                 }
               }
-            },
-            "author": {
-              "type": "object"
-            },
-            "comments": {
-              "type": "object"
             }
           }
         },
@@ -6819,7 +6852,10 @@
           "minimum": 0
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "author": {
               "type": [
@@ -7075,7 +7111,10 @@
           "type": "integer"
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "author": {
               "type": [
@@ -8850,6 +8889,9 @@
                 }
               }
             },
+            "post": {
+              "type": "object"
+            },
             "AND": {
               "type": "array",
               "items": {
@@ -9262,6 +9304,9 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "post": {
+                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -9694,6 +9739,9 @@
                       }
                     }
                   },
+                  "post": {
+                    "type": "object"
+                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -10123,6 +10171,9 @@
                     }
                   }
                 },
+                "post": {
+                  "type": "object"
+                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -10139,9 +10190,6 @@
                   "type": "object"
                 }
               }
-            },
-            "post": {
-              "type": "object"
             }
           }
         },
@@ -10201,7 +10249,10 @@
           "minimum": 0
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "post": {
               "type": [
@@ -10280,7 +10331,10 @@
           "type": "integer"
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "post": {
               "type": [
@@ -12547,6 +12601,9 @@
                 }
               }
             },
+            "post": {
+              "type": "object"
+            },
             "AND": {
               "type": "array",
               "items": {
@@ -13301,6 +13358,9 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "post": {
+                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -14075,6 +14135,9 @@
                       }
                     }
                   },
+                  "post": {
+                    "type": "object"
+                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -14846,6 +14909,9 @@
                     }
                   }
                 },
+                "post": {
+                  "type": "object"
+                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -14862,9 +14928,6 @@
                   "type": "object"
                 }
               }
-            },
-            "post": {
-              "type": "object"
             }
           }
         },
@@ -14959,7 +15022,10 @@
           "minimum": 0
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "post": {
               "type": [
@@ -15084,7 +15150,10 @@
           "type": "integer"
         },
         "with": {
-          "type": "object",
+          "type": [
+            "object",
+            "string"
+          ],
           "properties": {
             "post": {
               "type": [

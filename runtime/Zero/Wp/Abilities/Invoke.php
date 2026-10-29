@@ -60,9 +60,8 @@ final class Invoke
             if (isset($op['run'])) {
                 return ($op['run'])($input);
             }
-            if (Register::queryString() && isset($op['input']['properties']['where'], $input['where'])
-                && self::untyped($input['where'], $op['input']['properties']['where'])) {
-                throw HttpError::invalidQuery('This filter nests deeper than a GET query string can type; send `where` as a JSON string', '/where');
+            if (Register::queryString()) {
+                self::requireTyped($op, $input);
             }
             [$method, $path, $query, $body] = ($op['call'])($input);
             $data = $plugin->app()->invoke($method, $path, $query, $body, self::viewer());
@@ -73,23 +72,53 @@ final class Invoke
         }
     }
 
-    /** True when a non-empty value sits in a schema region core can't type (JsonSchema::UNTYPED). */
-    public static function untyped(mixed $value, array $schema): bool
+    /**
+     * True when part of $value has no typed schema: core types a GET query string only where the
+     * schema says how, and leaves every other value a string ("false" would read as truthy).
+     * Allowed: values whose schema has a `type` other than a bare object, objects whose keys all
+     * have schemas, lists whose items do. Everything else, at any depth, is untyped.
+     */
+    public static function untyped(mixed $value, ?array $schema): bool
     {
-        if ($schema === JsonSchema::UNTYPED) {
-            return is_array($value) && $value !== [];
+        if ($value === null || $value === []) {
+            return false;
+        }
+        if ($schema === null) {
+            return true;
         }
         if (!is_array($value)) {
             return false;
         }
+        if (array_is_list($value)) {
+            foreach ($value as $v) {
+                if (self::untyped($v, $schema['items'] ?? null)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        $props = $schema['properties'] ?? null;
+        if (!is_array($props)) {
+            return true;
+        }
         foreach ($value as $k => $v) {
-            $child = array_is_list($value) ? ($schema['items'] ?? null) : ($schema['properties'][$k] ?? null);
-            if (is_array($child) && self::untyped($v, $child)) {
+            if (self::untyped($v, $props[$k] ?? null)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /** Refuse GET input that core couldn't type; `where` and `with` accept JSON strings instead, as REST's query does. */
+    private static function requireTyped(array $op, array $input): void
+    {
+        foreach (['where', 'with'] as $key) {
+            if (isset($input[$key]) && !is_string($input[$key]) && self::untyped($input[$key], $op['input']['properties'][$key] ?? null)) {
+                throw HttpError::invalidQuery("This `$key` nests deeper than a GET query string can type; send it as a JSON string", "/$key");
+            }
+        }
     }
 
     /** An omitted input is `{}`; anything but an object is not an operation input. */

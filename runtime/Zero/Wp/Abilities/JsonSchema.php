@@ -138,12 +138,7 @@ final class JsonSchema
      */
     public static function where(array $spec): array
     {
-        $w = self::filterObject($spec['columns'], 1);
-        foreach (array_keys($spec['relations'] ?? []) as $name) {
-            $w['properties'][(string) $name] = self::UNTYPED;
-        }
-
-        return $w;
+        return self::filterObject($spec['columns'], 1, array_keys($spec['relations'] ?? []));
     }
 
     /** The media library's filterable columns (§4.6). */
@@ -155,7 +150,7 @@ final class JsonSchema
         ], 1);
     }
 
-    private static function filterObject(array $columns, int $depth): array
+    private static function filterObject(array $columns, int $depth, array $relations = []): array
     {
         $props = [];
         foreach ($columns as $name => $col) {
@@ -163,7 +158,10 @@ final class JsonSchema
                 $props[(string) $name] = $f;
             }
         }
-        $nested = $depth > 0 ? self::filterObject($columns, $depth - 1) : self::UNTYPED;
+        foreach ($relations as $name) {
+            $props[(string) $name] = self::UNTYPED;
+        }
+        $nested = $depth > 0 ? self::filterObject($columns, $depth - 1, $relations) : self::UNTYPED;
         $props['AND'] = ['type' => 'array', 'items' => $nested];
         $props['OR'] = ['type' => 'array', 'items' => $nested];
         $props['NOT'] = $nested;
@@ -182,7 +180,7 @@ final class JsonSchema
         return ['type' => 'object', 'properties' => $props];
     }
 
-    /** `with`: relations and media columns to include. */
+    /** `with`: relations (true, or nested query options) and media columns to include; may be a JSON string. */
     public static function with(array $spec): array
     {
         $props = [];
@@ -195,7 +193,7 @@ final class JsonSchema
             }
         }
 
-        return ['type' => 'object', 'properties' => $props];
+        return ['type' => ['object', 'string'], 'properties' => $props];
     }
 
     /** The built-in media row (§4.6); feature lanes may add keys. */

@@ -116,17 +116,24 @@ test("list input typed by core over GET reaches Zero typed inside AND/OR/NOT", a
   assert.equal(media.status, 200, JSON.stringify(media.json));
 });
 
-test("a GET filter deeper than core types is refused; as a JSON string it matches REST at any depth", async () => {
+test("GET filters core can't type are refused; as JSON strings they match REST at any depth", async () => {
+  // Bracketed, `false` in these places would arrive as the truthy string "false" and invert.
+  const shapes = (op: string) => [
+    ["where", { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] }],
+    ["where", { id: postId, AND: [{ author: { userId: { [op]: false } } }] }],
+    ["with", { comments: { where: { body: { [op]: false } } } }],
+  ] as const;
   for (const op of ["isNull", "isNotNull"]) {
-    const where = { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] };
-    // Bracketed, `false` would arrive as the truthy string "false" and invert the filter.
-    const refused = await runAbility("blog/posts-list", { where }, "editor", "GET");
-    assert.deepEqual([refused.status, refused.json.code, refused.json.data?.pointer], [400, "zero_invalid_query", "/where"]);
-    const viaAbility = await runAbility("blog/posts-list", { where: JSON.stringify(where) }, "editor", "GET");
-    const viaRest = await ok("GET", `/posts?where=${encodeURIComponent(JSON.stringify(where))}`, { as: "editor" });
-    assert.equal(viaAbility.status, 200, JSON.stringify(viaAbility.json));
-    assert.deepEqual(viaAbility.json.rows.map((r: any) => r.id), viaRest.map((r: any) => r.id));
-    assert.deepEqual(viaRest.map((r: any) => r.id), op === "isNull" ? [] : [postId]);
+    for (const [key, value] of shapes(op)) {
+      const input = { where: { id: postId }, [key]: value };
+      const refused = await runAbility("blog/posts-list", input, "editor", "GET");
+      assert.deepEqual([refused.status, refused.json.code, refused.json.data?.pointer], [400, "zero_invalid_query", `/${key}`], JSON.stringify(input));
+      const asJson = Object.fromEntries(Object.entries(input).map(([k, v]) => [k, JSON.stringify(v)]));
+      const viaAbility = await runAbility("blog/posts-list", asJson, "editor", "GET");
+      const viaRest = await ok("GET", `/posts?${new URLSearchParams(asJson)}`, { as: "editor" });
+      assert.equal(viaAbility.status, 200, JSON.stringify(viaAbility.json));
+      assert.deepEqual(viaAbility.json.rows, viaRest, JSON.stringify(input));
+    }
   }
 });
 

@@ -665,6 +665,26 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; value = null; switch (read()) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; value = null; switch (value) { case 'a': case 'b': return true; }",
+            "field rules must return a boolean on every path",
+        ),
+        (
+            "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; if (record.inner !== null) { record.inner = null; record.inner.count = 1; } return true;",
+            "object might be null",
+        ),
+        (
+            "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; function clear(value: { inner: { count: number } | null }) { value.inner = null; } if (record.inner !== null) { clear(record); record.inner.count = 1; } return true;",
+            "object might be null",
+        ),
+        (
+            "const a = { count: 0 }; const reset = (v: { count: number }) => { if (v.count < 0) v.count++; v = { count: 9 }; }; reset(a); return true;",
+            "this parameter also shares member mutations",
+        ),
+        (
             "let value: 0 | 1 = 1; const read = () => value; value++; switch (read()) { case 0: case 1: return true; }",
             "field rules must return a boolean on every path",
         ),
@@ -899,6 +919,9 @@ fn phase2_schema_and_closures_match_the_contract() {
         }
         $fn = '\\ZeroApp\\' . $schema->action('widened')['handler'];
         $widened = $fn([]);
+        // Ordinary array mutation/reduction results belong to the differential
+        // owner; this fixture retains their generated-client type proof.
+        unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
         $update = $fn(['data' => [], 'op' => 'update'] + $actor);
@@ -921,7 +944,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"values": ["b", "a"], "choice": "c", "finite": ["a", "b"], "nested": [["b", "a"]], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "reduced": "a", "reducedNested": ["a"], "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": {"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a"}}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

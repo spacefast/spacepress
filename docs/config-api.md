@@ -260,7 +260,9 @@ Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook, mutating an
-object after storing it in another (PHP copies on store), `await` on
+object after storing it in another (PHP copies on store), reassigning a
+parameter that also mutates its object or array (use a separate local
+binding for the replacement), `await` on
 anything that isn't a Zero API call or your own `async` function, an
 `async` call without `await`.
 

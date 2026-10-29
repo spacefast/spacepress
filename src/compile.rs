@@ -185,6 +185,7 @@ enum Resolved {
 }
 
 struct FnCtx {
+    function: Span,
     scopes: Vec<HashMap<String, Local>>,
     is_async: bool,
     ret: Option<Ty>,
@@ -407,6 +408,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let mut fx = FnCtx {
+            function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
             ret: None,
@@ -708,7 +710,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 cur = c.outer.as_deref_mut();
             }
             return Ok(Resolved::Local(Local {
-                ty: self.effects.read_view_type(l.binding, &l.view, &l.ty),
+                ty: self.effects.capture_type(
+                    self.fx.as_ref().expect("fn").function,
+                    l.binding,
+                    &l.view,
+                    &l.ty,
+                    &l.constraint,
+                ),
                 ..l
             }));
         }
@@ -1599,17 +1607,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let t = if truthy { yes.clone() } else { no.clone() };
             if name.contains('.') {
                 let mut parts = name.split('.');
-                let binding = match self.resolve(parts.next().unwrap(), Span::NONE) {
-                    Ok(Resolved::Local(local)) => local.binding,
-                    _ => Span::NONE,
+                let (binding, mut constraint) = match self.resolve(parts.next().unwrap(), Span::NONE) {
+                    Ok(Resolved::Local(local)) => (local.binding, local.constraint),
+                    _ => (Span::NONE, t.clone()),
                 };
-                let view = parts.map(|p| effects::Step::Field(p.to_string())).collect();
+                let mut view = Vec::new();
+                for part in parts {
+                    constraint = constraint
+                        .non_null()
+                        .field(part)
+                        .map(|(ty, _)| ty)
+                        .unwrap_or_else(|| t.clone());
+                    view.push(effects::Step::Field(part.to_string()));
+                }
                 // Member path: a type override read by `member()`, never a PHP variable.
                 self.fx().scopes.last_mut().expect("scope").insert(
                     name.clone(),
                     Local {
                         php: String::new(),
-                        constraint: t.clone(),
+                        constraint,
                         ty: t,
                         mutable: false,
                         binding,
@@ -1964,6 +1980,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .iter_mut()
             .flat_map(|scope| scope.values_mut())
         {
+            local.ty = self
+                .effects
+                .invalidate(span, local.binding, &local.view, &local.ty, &local.constraint);
             local.ty = self.effects.write_type(span, local.binding, &local.view, &local.ty);
         }
         Ok(out)
@@ -2280,6 +2299,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             param_tys.push(t);
         }
         let mut inner = FnCtx {
+            function: f.span,
             scopes: vec![HashMap::new()],
             is_async: f.is_async,
             ret: None,
@@ -2406,6 +2426,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut place = match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
+                    if assign_binding && l.view.is_empty() && self.effects.shared_parameter(l.binding) {
+                        return err_help(
+                            target.span,
+                            format!(
+                                "can't reassign `{n}`: this parameter also shares member mutations with its caller"
+                            ),
+                            "change the parameter's fields, or use a separate local binding for the replacement",
+                        );
+                    }
                     if assign_binding && !l.mutable {
                         return err(target.span, format!("can't assign to `{n}`: it's a constant"));
                     }
@@ -2881,7 +2910,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if want.is_none() {
                 return err(x.span, "too many arguments");
             }
-            let container = v.ty.all(|t| {
+            let container = v.ty.non_null().all(|t| {
                 matches!(
                     t,
                     Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
@@ -2898,7 +2927,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if (container || container_param) && v.place.is_none() {
                 needs_unpack = true;
             }
-            unpacked.push(match (&v.place, container) {
+            unpacked.push(match (&v.place, container || container_param) {
                 (Some(place), true) => format!("&{place}"),
                 _ => v.php.clone(),
             });

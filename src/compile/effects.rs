@@ -62,7 +62,10 @@ pub(super) struct Effects {
     numeric: HashMap<Span, HashSet<Vec<Step>>>,
     incoming: HashMap<Span, HashSet<Vec<Step>>>,
     writes: HashSet<Place>,
+    parameters: HashSet<Span>,
+    capture_writes: HashMap<Span, HashSet<Place>>,
     events: HashMap<Span, HashSet<Place>>,
+    write_events: HashMap<Span, HashSet<Place>>,
 }
 
 impl Effects {
@@ -104,6 +107,27 @@ impl Effects {
         matches!(pat, Pat::Id(_, span) if self.writes.iter().any(|p| p.binding == *span && !p.path.is_empty()))
     }
 
+    pub fn shared_parameter(&self, binding: Span) -> bool {
+        self.parameters.contains(&binding) && self.writes.iter().any(|p| p.binding == binding && !p.path.is_empty())
+    }
+
+    /// A write invalidates refinements of that location and its descendants.
+    /// Sibling refinements and the authored assignment constraint remain intact.
+    pub fn invalidate(&self, event: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
+        self.write_events.get(&event).map_or_else(
+            || ty.clone(),
+            |paths| invalidate_paths(paths, binding, view, ty, constraint),
+        )
+    }
+
+    pub fn capture_type(&self, function: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
+        let ty = self.capture_writes.get(&function).map_or_else(
+            || ty.clone(),
+            |paths| invalidate_paths(paths, binding, view, ty, constraint),
+        );
+        self.read_view_type(binding, view, &ty)
+    }
+
     pub fn write_type(&self, event: Span, binding: Span, view: &[Step], ty: &Ty) -> Ty {
         self.events.get(&event).map_or_else(
             || ty.clone(),
@@ -114,6 +138,71 @@ impl Effects {
                     .fold(ty.clone(), |ty, p| widen(&ty, &p.path[view.len()..]))
             },
         )
+    }
+}
+
+fn invalidate_paths(paths: &HashSet<Place>, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
+    paths.iter().filter(|p| p.binding == binding).fold(ty.clone(), |ty, p| {
+        if let Some(path) = projected_suffix(&p.path, view) {
+            restore(&ty, constraint, path)
+        } else if projected_suffix(view, &p.path).is_some() {
+            constraint.clone()
+        } else {
+            ty
+        }
+    })
+}
+
+fn restore(ty: &Ty, constraint: &Ty, path: &[Step]) -> Ty {
+    let Some((step, rest)) = path.split_first() else {
+        return constraint.clone();
+    };
+    match (ty, step) {
+        (Ty::Union(ts), _) => Ty::union(ts.iter().map(|t| restore(t, constraint, path))),
+        (_, Step::Descendants) => constraint.clone(),
+        (Ty::Obj(fields), Step::Field(field)) => {
+            let mut fields = fields.clone();
+            if let Some((ty, _)) = fields.get_mut(field)
+                && let Some((original, _)) = constraint.non_null().field(field)
+            {
+                *ty = restore(ty, &original, rest);
+            }
+            Ty::Obj(fields)
+        }
+        (Ty::Obj(fields), Step::Index) => Ty::Obj(
+            fields
+                .iter()
+                .map(|(key, (ty, optional))| {
+                    let original = constraint
+                        .non_null()
+                        .field(key)
+                        .map(|(t, _)| t)
+                        .unwrap_or_else(|| ty.clone());
+                    (key.clone(), (restore(ty, &original, rest), *optional))
+                })
+                .collect(),
+        ),
+        (Ty::Array(t), Step::Index) => match constraint.non_null() {
+            Ty::Array(original) => Ty::Array(Box::new(restore(t, &original, rest))),
+            _ => ty.clone(),
+        },
+        (Ty::Map(t), _) => match constraint.non_null() {
+            Ty::Map(original) => Ty::Map(Box::new(restore(t, &original, rest))),
+            _ => ty.clone(),
+        },
+        (Ty::Tuple(ts), Step::Index) | (Ty::ArrayLiteral(ts), Step::Index) => {
+            let original = match constraint.non_null() {
+                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts,
+                _ => return ty.clone(),
+            };
+            let values = ts.iter().zip(&original).map(|(t, c)| restore(t, c, rest)).collect();
+            if matches!(ty, Ty::Tuple(_)) {
+                Ty::Tuple(values)
+            } else {
+                Ty::ArrayLiteral(values)
+            }
+        }
+        _ => ty.clone(),
     }
 }
 
@@ -175,6 +264,7 @@ struct Graph {
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
     history: HashMap<Span, HashSet<Span>>,
+    created_prior: HashMap<Span, HashSet<Span>>,
     functions: HashMap<Span, Vec<Place>>,
     values: HashSet<(Place, Span)>,
     copies: HashSet<(Place, Place, Span)>,
@@ -187,6 +277,7 @@ struct Graph {
     function_numeric: HashMap<Span, HashSet<Place>>,
     function_writes: HashMap<Span, HashSet<Place>>,
     events: HashMap<Span, HashSet<Place>>,
+    write_events: HashMap<Span, HashSet<Place>>,
 }
 
 type Names = Vec<HashMap<String, Place>>;
@@ -357,7 +448,12 @@ impl Graph {
         let value = Place::new(e.span);
         match &e.kind {
             ExprKind::Ident(name) => return self.ident(name, names, env),
-            ExprKind::Func(f) => return Some(self.function(f, names, env)),
+            ExprKind::Func(f) => {
+                self.created_prior
+                    .entry(f.span)
+                    .or_insert_with(|| self.history.get(&owner).cloned().unwrap_or_default());
+                return Some(self.function(f, names, env));
+            }
             ExprKind::Member { obj, prop, .. } => {
                 return self
                     .expr(obj, names, env, owner)
@@ -377,6 +473,7 @@ impl Graph {
             }
             ExprKind::Update { target, .. } => {
                 if let Some(p) = self.expr(target, names, env, owner) {
+                    self.write_events.entry(e.span).or_default().insert(p.clone());
                     self.numeric.insert(p.clone());
                     self.events.entry(e.span).or_default().insert(p.clone());
                     self.function_numeric.entry(owner).or_default().insert(p.clone());
@@ -388,6 +485,7 @@ impl Graph {
                 let target = self.expr(target, names, env, owner);
                 let src = self.expr(value, names, env, owner);
                 if let Some(p) = &target {
+                    self.write_events.entry(e.span).or_default().insert(p.clone());
                     self.function_writes.entry(owner).or_default().insert(p.clone());
                     if matches!(op, Some(AssignOp::Bin(_))) {
                         self.numeric.insert(p.clone());
@@ -420,7 +518,9 @@ impl Graph {
                         "push" | "pop" | "shift" | "unshift" | "splice" | "sort" | "reverse" | "fill"
                     ) && let Some(p) = &recv
                     {
-                        self.function_writes.entry(owner).or_default().insert(p.at(Step::Index));
+                        let target = p.at(Step::Index);
+                        self.write_events.entry(e.span).or_default().insert(target.clone());
+                        self.function_writes.entry(owner).or_default().insert(target);
                     }
                     if matches!(prop.as_str(), "push" | "unshift" | "fill" | "splice")
                         && let Some(recv) = &recv
@@ -675,6 +775,9 @@ impl Graph {
                 self.defaults(pat, names, env, owner);
             }
             Stmt::Func(f) => {
+                self.created_prior
+                    .entry(f.span)
+                    .or_insert_with(|| self.history.get(&owner).cloned().unwrap_or_default());
                 self.function(f, names, env);
             }
             Stmt::Expr(e) | Stmt::Throw(e) | Stmt::ExportDefault(e) => {
@@ -815,6 +918,7 @@ impl Graph {
                 self.function_numeric.values().map(HashSet::len).sum::<usize>(),
                 self.function_writes.values().map(HashSet::len).sum::<usize>(),
                 self.events.values().map(HashSet::len).sum::<usize>(),
+                self.write_events.values().map(HashSet::len).sum::<usize>(),
             );
             for call in &self.calls {
                 if !self.reachable.contains(&call.owner) {
@@ -932,22 +1036,28 @@ impl Graph {
                             .insert(target.clone());
                         self.numeric.insert(target);
                     }
-                    for (arg, param) in call.args.iter().zip(&self.functions[function]) {
-                        let Some(arg) = arg else {
+                    let summary = self.function_writes.get(function).cloned().unwrap_or_default();
+                    for p in summary {
+                        let param = self.functions[function]
+                            .iter()
+                            .position(|param| param.binding == p.binding);
+                        let target = if let Some(i) = param {
+                            if p.path.is_empty() {
+                                continue;
+                            }
+                            let Some(Some(arg)) = call.args.get(i) else {
+                                continue;
+                            };
+                            let mut target = arg.clone();
+                            target.path.extend_from_slice(&p.path);
+                            self.bounded(target)
+                        } else if self.bindings.get(&p.binding) != Some(function) {
+                            p
+                        } else {
                             continue;
                         };
-                        let propagated: Vec<_> = self
-                            .writes
-                            .iter()
-                            .filter(|p| p.binding == param.binding && !p.path.is_empty())
-                            .map(|p| {
-                                let mut target = arg.clone();
-                                target.path.extend_from_slice(&p.path);
-                                self.bounded(target)
-                            })
-                            .collect();
-                        self.writes.extend(propagated.iter().cloned());
-                        self.function_writes.entry(call.owner).or_default().extend(propagated);
+                        self.write_events.entry(call.span).or_default().insert(target.clone());
+                        self.function_writes.entry(call.owner).or_default().insert(target);
                     }
                 }
             }
@@ -962,16 +1072,44 @@ impl Graph {
                     self.function_numeric.values().map(HashSet::len).sum::<usize>(),
                     self.function_writes.values().map(HashSet::len).sum::<usize>(),
                     self.events.values().map(HashSet::len).sum::<usize>(),
+                    self.write_events.values().map(HashSet::len).sum::<usize>(),
                 )
             {
                 break;
+            }
+        }
+        // Captures retain their creation-time refinements until a reachable
+        // call can observe a subsequent write. Writes before creation have
+        // already contributed to the captured read view and need no reset.
+        let mut capture_writes = self.function_writes.clone();
+        for call in &self.calls {
+            if !self.reachable.contains(&call.owner) {
+                continue;
+            }
+            for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                for event in &call.prior {
+                    if self
+                        .created_prior
+                        .get(function)
+                        .is_some_and(|prior| prior.contains(event))
+                    {
+                        continue;
+                    }
+                    capture_writes
+                        .entry(*function)
+                        .or_default()
+                        .extend(self.write_events.get(event).into_iter().flatten().cloned());
+                }
             }
         }
         let mut effects = Effects {
             numeric: HashMap::new(),
             incoming: HashMap::new(),
             writes: self.writes,
+            parameters: self.functions.values().flatten().map(|p| p.binding).collect(),
+            capture_writes,
             events: self.events,
+            write_events: self.write_events,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

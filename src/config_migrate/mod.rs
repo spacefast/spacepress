@@ -148,7 +148,7 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
     let check = tempfile::tempdir().map_err(|e| fail("", e.to_string()))?;
     std::fs::write(check.path().join("zero.config.ts"), &config).map_err(|e| fail("", e.to_string()))?;
     for target in [crate::schema::Target::Wp, crate::schema::Target::Standalone] {
-        crate::build(check.path(), Some(target)).map_err(|d| {
+        crate::commands::validate_config(check.path(), target).map_err(|d| {
             fail(
                 "",
                 format!(

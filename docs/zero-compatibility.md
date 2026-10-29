@@ -40,7 +40,7 @@ explicitly changed with the application's owner.
 | Ability catalogs and typed CLI calls | Phase 2 plans WordPress Abilities + MCP | Preserve names/schema/capabilities, platform/content catalog composition and original CLI discovery/call behavior |
 | Server environment, local dev identities, publish/sealed releases | Rust build/check/dev and PHP migrations exist | Secret injection, environment differences, deployment activation/rollback and release validation integration |
 
-Phase 2 already covers field access, content sync, jobs/outbox/webhooks,
+The phase-2 plan includes field access, content sync, jobs/outbox/webhooks,
 frontend auth, Abilities/MCP, image/private-file features and localization.
 Those lanes need their runtime tests and integration; accepting declarations in
 schema v3 is not completion. Pages/islands/realtime, legacy table semantics and
@@ -53,7 +53,7 @@ The immediate gaps are behavioral, not extra field spellings:
 
 | Source ecosystem | Existing Zero direction | Missing for a faithful migration |
 | --- | --- | --- |
-| WordPress | Native PHP plugin runtime, posts/meta/media/editor/revisions; exact plugin resource acquisition | Final shared-plugin assembly, activation/environment checks, native legacy-store adoption and tested compatibility of deployed third-party plugins |
+| WordPress | Native PHP plugin runtime, posts/meta/media/editor/revisions; split runtime/app artifacts, exact plugin resource acquisition and platform diagnostics | Deployment activation, native legacy-store adoption and tested compatibility of deployed third-party plugins |
 | EmDash | Primitive seed schema import and planned content sync/localization | Portable Text/custom blocks, seeded documents/assets, taxonomies, menus, widgets, settings, routes and publication semantics |
 | Payload | Collections, typed fields, access/hooks/actions, globals, drafts/revisions; primitive config import | Execute neither Payload callbacks nor plugins automatically; port hook/access behavior, relationships/uploads, nested fields, Lexical content, auth and data IDs |
 | Sanity | Primitive document schema import; structured fields in Zero's API | Portable Text/custom annotations, named object/array/reference types, validation chains, live query/client behavior, localization and dataset/asset migration |

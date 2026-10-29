@@ -29,6 +29,10 @@ struct Built {
     hints: Vec<String>,
 }
 
+pub(crate) fn validate_config(project: &Path, target: Target) -> Result<(), Diag> {
+    build(project, Some(target)).map(|_| ())
+}
+
 /// Runs the whole pipeline in memory.
 fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
     let entry = project.join("zero.config.ts");

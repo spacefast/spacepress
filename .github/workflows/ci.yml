@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  XDEBUG_MODE: 'off'
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -88,7 +91,10 @@ jobs:
         run: |
           git diff --exit-code -- ':(glob)**/vendor-prefixed/**'
           untracked=$(git ls-files --others --exclude-standard -- ':(glob)**/vendor-prefixed/**')
-          test -z "$untracked"
+          if [ -n "$untracked" ]; then
+            printf 'Untracked generated bundle files:\n%s\n' "$untracked"
+            exit 1
+          fi
 
   types:
     runs-on: ubuntu-24.04

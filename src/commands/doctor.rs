@@ -13,8 +13,16 @@ fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String
 pub(super) fn run(args: &Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
     let wp = args.wp
-        || args.target == Some(crate::schema::Target::Wp)
-        || project.join(".zero/wp-content/zero-manifest.json").is_file();
+        || args.target.map_or_else(
+            || {
+                args.out
+                    .clone()
+                    .unwrap_or_else(|| project.join(".zero/wp-content"))
+                    .join("zero-manifest.json")
+                    .is_file()
+            },
+            |target| target == crate::schema::Target::Wp,
+        );
     let out = args
         .out
         .clone()
@@ -88,7 +96,27 @@ pub(super) fn run(args: &Args) -> ExitCode {
 }
 
 fn local(out: &Path, checks: &mut Vec<Value>) {
-    let script = r#"$root=$argv[1]; $schema=is_file($root.'/zero/app/schema.php') ? require $root.'/zero/app/schema.php' : []; $pending=[]; $applied=[]; if (extension_loaded('pdo_sqlite') && is_file($root.'/data/zero.sqlite')) { $db=new PDO('sqlite:'.$root.'/data/zero.sqlite',null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); if ($db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='__zero_migrations'")->fetchColumn()) $applied=$db->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN); } foreach(glob($root.'/zero/app/migrations/*.sql')?:[] as $file) if (!in_array(basename($file,'.sql'),$applied,true)) $pending[]=basename($file); echo json_encode(['php'=>PHP_VERSION,'extensions'=>get_loaded_extensions(),'runtime'=>$schema['runtime']??null,'identity'=>($schema['auth']['collection']??null)!==null,'migrations'=>$pending]);"#;
+    let script = r#"
+$root = $argv[1];
+$schema = is_file($root . '/zero/app/schema.php') ? require $root . '/zero/app/schema.php' : [];
+$database = getenv('ZERO_DB_PATH') ?: $root . '/data/zero.sqlite';
+$pending = [];
+$applied = [];
+if (extension_loaded('pdo_sqlite') && is_file($database)) {
+    $db = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    if ($db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='__zero_migrations'")->fetchColumn()) {
+        $applied = $db->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN);
+    }
+}
+foreach (glob($root . '/zero/app/migrations/*.sql') ?: [] as $file) {
+    if (!in_array(basename($file, '.sql'), $applied, true)) {
+        $pending[] = basename($file);
+    }
+}
+echo json_encode(['php' => PHP_VERSION, 'extensions' => get_loaded_extensions(),
+    'runtime' => $schema['runtime'] ?? null, 'identity' => ($schema['auth']['collection'] ?? null) !== null,
+    'migrations' => $pending]);
+"#;
     let result = Command::new("php").args(["-r", script]).arg(out).output();
     match result {
         Ok(output) if output.status.success() => {

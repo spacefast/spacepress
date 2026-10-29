@@ -515,6 +515,67 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/platform.json")).unwrap()).unwrap();
     assert_eq!(doctor["data"]["requirements"], platform);
 
+    let standalone = project.join(".zero/app");
+    let diagnose_standalone = |database: Option<&Path>| {
+        let mut command = zero();
+        command
+            .args(["doctor", "--target", "standalone", "--json"])
+            .arg(&project)
+            .env_remove("ZERO_DB_PATH");
+        if let Some(database) = database {
+            command.env("ZERO_DB_PATH", database);
+        }
+        let output = command.output().unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        (output.status.code(), report)
+    };
+    // An explicit target must diagnose that artifact even when the other target exists.
+    let saved_standalone = tmp.join("standalone");
+    std::fs::rename(&standalone, &saved_standalone).unwrap();
+    let (code, report) = diagnose_standalone(None);
+    assert_eq!(code, Some(1), "{report}");
+    assert!(
+        report["data"]["checks"].as_array().unwrap().iter().any(|check| {
+            check["name"] == "built runtime series" && check["ok"] == false && check["detail"] == "missing"
+        }),
+        "{report}"
+    );
+    std::fs::rename(&saved_standalone, &standalone).unwrap();
+
+    let migrate = |database: Option<&Path>| {
+        let mut command = Command::new("php");
+        command
+            .arg(standalone.join("zero/bin/zero.php"))
+            .arg("migrate")
+            .env_remove("ZERO_DB_PATH");
+        if let Some(database) = database {
+            command.env("ZERO_DB_PATH", database);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    let external = tmp.join("external.sqlite");
+    migrate(Some(&external));
+    let (code, report) = diagnose_standalone(Some(&external));
+    assert_eq!(code, Some(0), "{report}");
+    migrate(None);
+    // A migrated default database must not conceal an unmigrated configured database.
+    let (code, report) = diagnose_standalone(Some(&tmp.join("unmigrated.sqlite")));
+    assert_eq!(code, Some(1), "{report}");
+    assert!(
+        report["data"]["checks"].as_array().unwrap().iter().any(|check| {
+            check["name"] == "pending migrations"
+                && check["ok"] == false
+                && check["detail"].as_str().unwrap().starts_with("1;")
+        }),
+        "{report}"
+    );
+
     let mut wp_schema = as_json(&plugin.join("zero/app/schema.php"));
     assert_eq!(wp_schema["target"], "wp");
     wp_schema["target"] = "standalone".into();

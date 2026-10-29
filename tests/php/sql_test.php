@@ -130,8 +130,8 @@ $wp = new CompileOnlyStore($mysql, [
     'logs' => Source::plain($mysql, '`wp_zero_logs`', $schema->collection('logs')['columns']),
 ]);
 /** WHERE clause of a compiled MySQL read on notes (everything after the outer WHERE). */
-$where = static function (array $filter, string $c = 'notes') use ($schema, $wp): array {
-    $q = Sql::select($schema, $wp, $c, ['where' => $filter]);
+$where = static function (array $filter, string $c = 'notes', ?Closure $guardsFor = null) use ($schema, $wp): array {
+    $q = Sql::select($schema, $wp, $c, ['where' => $filter], guardsFor: $guardsFor);
     $base = $c === 'notes' ? "t0.post_type = 'zero_notes' AND t0.post_status NOT IN ('trash', 'auto-draft', 'inherit') AND " : '';
     $w = substr($q['sql'], strpos($q['sql'], ' WHERE ') + 7);
 
@@ -172,8 +172,15 @@ eq('eq [] on a serialized list: missing, \'\' or a:0:{}', $where(['tags' => []])
 eq('isNull on a repeater: no rows / zero count', $where(['steps' => ['isNull' => true]]), ["NULLIF(NULLIF(t0_m13.meta_value, ''), '0') IS NULL", []]);
 eq('relation filter into a plain table', $where(['logs' => ['level' => 'warn']]),
     ['EXISTS (SELECT 1 FROM `wp_zero_logs` t1 WHERE t1.`noteId` = t0.ID AND t1.`level` = ?)', ['warn']]);
-eq('relation filter into a post-backed collection carries its baseWhere and joins', $where(['note' => ['rating' => 5]], 'logs'),
-    ["EXISTS (SELECT 1 FROM `wp_posts` t1 LEFT JOIN `wp_postmeta` t1_m4 ON t1_m4.post_id = t1.ID AND t1_m4.meta_key = 'zero_rating' WHERE t1.post_type = 'zero_notes' AND t1.post_status NOT IN ('trash', 'auto-draft', 'inherit') AND t1.ID = t0.`noteId` AND CAST(NULLIF(t1_m4.meta_value, '') AS SIGNED) = ?)", [5]]);
+// A viewer's relation filter only sees target rows the viewer may read: the target's read guards
+// (here a draft filter plus a rule that itself filters through a relation) run inside the EXISTS.
+// Guards are the app's own rules, so the relation inside one is not guarded again.
+$readable = static fn (string $c): array => ['notes' => [['status' => 'published'], ['logs' => ['level' => 'public']]]][$c];
+eq('relation filter into a post-backed collection carries its baseWhere, joins and read guards', $where(['note' => ['rating' => 5]], 'logs', $readable),
+    ["EXISTS (SELECT 1 FROM `wp_posts` t1 LEFT JOIN `wp_postmeta` t1_m4 ON t1_m4.post_id = t1.ID AND t1_m4.meta_key = 'zero_rating' WHERE t1.post_type = 'zero_notes' AND t1.post_status NOT IN ('trash', 'auto-draft', 'inherit') AND t1.ID = t0.`noteId`"
+        . " AND (CASE t1.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END = ?)"
+        . " AND (EXISTS (SELECT 1 FROM `wp_zero_logs` t2 WHERE t2.`noteId` = t1.ID AND t2.`level` = ?))"
+        . " AND CAST(NULLIF(t1_m4.meta_value, '') AS SIGNED) = ?)", ['published', 'public', 5]]);
 eq('custom-table list: JSON_CONTAINS with a JSON param', $where(['labels' => ['has' => 'a']], 'logs'), ['JSON_CONTAINS(t0.`labels`, ?)', ['"a"']]);
 
 $q = Sql::select($schema, $wp, 'logs', ['orderBy' => ['level' => 'asc'], 'limit' => 2], ['noteId', [1, 2]]);

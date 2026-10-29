@@ -1,6 +1,7 @@
 // Post-backed reads run against wp_posts + wp_postmeta for real (§3.5.1): typed CAST comparisons and
 // ordering on meta, Ymd dates, UTC timestamps, `has` over SCF's serialized arrays, missing vs ''
-// meta, the shared rejections, and relation filters / `with` across post↔post and post↔table.
+// meta, the shared rejections, and relation filters / `with` across post↔post and post↔table,
+// confined to target rows the viewer may read.
 // The SQL text is pinned in tests/php/sql_test.php; this suite proves MariaDB agrees with it.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -67,4 +68,19 @@ test("relation filters and `with` across post↔post and post↔table", async ()
   // table → post: comments filtered by their post's title (an EXISTS over wp_posts), post attached.
   const comments = await ok("GET", "/comments" + qs({ where: { post: { title: `Meta ${run}` } }, with: { post: true } }), { as: "editor" });
   assert.deepEqual(comments.map((c: any) => [c.id, c.post.title]), [[comment.id, `Meta ${run}`]]);
+});
+
+test("relation filters only see target rows the viewer may read", async () => {
+  // A draft author (post-backed, shorthand read + drafts) behind a published post.
+  const ghost = await ok("POST", "/authors", { as: "admin", body: { name: `Ghost ${run}`, email: `price-42-${run}@example.test`, status: "draft" } });
+  const byGhost = await ok("POST", "/posts", { as: "editor", body: { title: `By ghost ${run}`, authorId: ghost.id } });
+  await ok("POST", "/signups", { body: { email: `sk-live-7-${run}@example.test`, postId: byGhost.id } });
+  const where = (w: object) => qs({ where: { AND: [w, { id: byGhost.id }] } });
+  const draftOracle = where({ author: { email: { like: `price-4%${run}%` } } });
+  assert.deepEqual(await ok("GET", "/posts" + draftOracle), []);
+  assert.deepEqual((await ok("GET", "/posts" + draftOracle, { as: "editor" })).map((p: any) => p.id), [byGhost.id]);
+  // signups are editor-only: filtering through them is denied exactly like `with`.
+  const keyOracle = where({ signups: { email: { like: `sk-live-7%` } } });
+  await problem("GET", "/posts" + keyOracle, {}, { status: 401, code: "unauthenticated", pointer: undefined });
+  assert.deepEqual((await ok("GET", "/posts" + keyOracle, { as: "editor" })).map((p: any) => p.id), [byGhost.id]);
 });

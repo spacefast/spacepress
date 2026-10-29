@@ -18,7 +18,7 @@ tests/wp/run.sh
 ```
 
 `up` prints one JSON receipt with the URL, versions, app slug and application
-passwords for the four test users. `ZERO_WP_PORT` defaults to 8790. The canonical
+passwords for the four test users. `ZERO_WP_PORT` defaults to 8790 and `ZERO_WP_PROJECT` (the compose project) to `zero-wp-test`; give each worktree its own pair to run stacks side by side. The canonical
 `plugins/` directory is bind-mounted; `run.sh` stages a stable copy so later
 build publication cannot orphan the mount. Apache and WP-CLI use the invoking
 user's UID/GID so installation preserves writable host ownership across runs.

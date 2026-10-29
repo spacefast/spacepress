@@ -7,5 +7,7 @@ export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {};
-/** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
-export const config = {};
+/** Image sizes (phase 2 §7.2): one cover crop the focal point drives, one inside fit. */
+export const config = {
+  media: { sizes: { card: { width: 120, height: 120, fit: "cover" as const }, wide: { width: 200, fit: "inside" as const } } },
+};

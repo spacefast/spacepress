@@ -55,8 +55,12 @@ for (const input of Object.keys(result.metafile.inputs)) {
           "LICENSE",
           "LICENSE.md",
           "LICENSE.txt",
+          "LICENCE",
+          "LICENCE.md",
+          "LICENCE.txt",
           "license",
           "license.md",
+          "license.txt",
           "COPYING",
         ]) {
           try {

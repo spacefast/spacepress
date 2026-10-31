@@ -50,9 +50,9 @@ zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.co
 zero migrate site <content-model.php> [--dry-run]
 ```
 
-`zero build` writes new migrations to `zero/migrations/wp/`, the typed client
-to `zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all
-committed), and the artifact to `.zero/wp-content`: plugin folders, ZIPs,
+`zero build --target wp` writes new migrations to `zero/migrations/wp/`, the
+typed client to `zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json`
+(all committed), and the artifact to `.zero/wp-content`: plugin folders, ZIPs,
 pinned dependencies and one `zero-manifest.json`. `zero dev --wp` boots that
 artifact with the harness from `tests/wp`, which an installed binary carries
 embedded; set `ZERO_WP_PROJECT` and `--port` to run several stacks side by

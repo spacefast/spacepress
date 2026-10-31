@@ -149,7 +149,8 @@ final class Db
             throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
         }
         $spec = $this->schema->collection($collection);
-        Extensions::query($collection, $opts, $viewer, $ptr);
+        // A viewer-bound mutation selector is a query too: extensions see its viewer.
+        Extensions::query($collection, $opts, $viewer ?? $filterViewer, $ptr);
         foreach ($opts as $k => $_) {
             if (!in_array($k, self::QUERY_OPTS, true)) {
                 throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));

@@ -50,8 +50,13 @@ type WithValue<K extends CollectionKey, P, V> = P extends keyof Rels<K>
 export type RowWith<K extends CollectionKey, W> = [Requested<W>] extends [never]
   ? Row<K>
   : ([Requested<W> & keyof Row<K>] extends [never] ? Row<K> : Omit<Row<K>, Requested<W> & keyof Row<K>>) & {
-      -readonly [P in Requested<W>]: WithValue<K, P, W[P]>;
+      -readonly [P in Exclude<Requested<W>, OptionalKeys<Row<K>>>]: WithValue<K, P, W[P]>;
+    } & {
+      // A column the viewer may not read (field access) stays optional when populated.
+      -readonly [P in Extract<Requested<W>, OptionalKeys<Row<K>>>]?: WithValue<K, P, W[P]>;
     };
+
+type OptionalKeys<T> = { [P in keyof T]-?: {} extends Pick<T, P> ? P : never }[keyof T] & PropertyKey;
 
 /** Rejects `with` keys that are neither relations nor media columns (`with: { autor: true }`). */
 type ExactWith<K extends CollectionKey, W> = W & { [P in Exclude<keyof W, keyof Collections[K]["with"]>]: never };

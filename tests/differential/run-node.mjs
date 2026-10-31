@@ -1,7 +1,7 @@
 // Usage: node run-node.mjs <config.ts>
 // Prints {"<case>": {"data": ...} | {"error": message}} as JSON for every action (called with
-// input {} and HookCtx CTXS.hook) and every collection access rule and `.validate` closure
-// (called with each fake ctx in CTXS / each value in VALUES exported by the config).
+// input {} and HookCtx CTXS.hook) and every collection access rule, column `.access` rule and
+// `.validate` closure (called with each fake ctx in ACCESS_CTXS / FIELD_CTXS / each value in VALUES).
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 register(new URL("./resolve-zero.mjs", import.meta.url));
@@ -27,6 +27,12 @@ for (const c of Object.values(config.schema ?? {})) {
     }
   }
   for (const [col, b] of Object.entries(c.cols)) {
+    for (const [op, rule] of Object.entries(b.$meta?.access ?? {})) {
+      if (typeof rule !== "function") continue;
+      for (const [i, ctx] of (mod.FIELD_CTXS ?? []).entries()) {
+        await run(`field:${c.name}:${col}:${op}:${i}`, () => rule({ ...ctx, op }));
+      }
+    }
     const v = b.$meta?.validate;
     if (!v) continue;
     for (const [i, value] of (mod.VALIDATE_VALUES?.[`${c.name}.${col}`] ?? []).entries()) {

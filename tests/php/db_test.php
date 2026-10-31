@@ -84,6 +84,101 @@ $files = [
                     'access' => $open,
                     'api' => ['list' => true, 'get' => true, 'create' => false, 'update' => false, 'delete' => false],
                 ],
+                // ---- lane B: field access
+                'teams' => [
+                    'primaryKey' => 'id',
+                    'columns' => [
+                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                        'name' => ['type' => 'text', 'notNull' => true],
+                        'budget' => ['type' => 'integer', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]],
+                    ],
+                    'relations' => ['members' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'teamId']],
+                    'access' => $open,
+                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+                ],
+                'profiles' => [
+                    'primaryKey' => 'id',
+                    'revisions' => true,
+                    'columns' => [
+                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                        'name' => ['type' => 'text', 'notNull' => true],
+                        'email' => ['type' => 'email', 'access' => ['read' => ['role' => 'editor']]],
+                        'ownerId' => ['type' => 'integer'],
+                        'salary' => ['type' => 'integer', 'access' => ['read' => ['fn' => 'profiles__field__salary__read'], 'update' => ['role' => 'admin']]],
+                        'approved' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false], 'access' => ['create' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                        'notes' => ['type' => 'group', 'fields' => [
+                            'public' => ['type' => 'text'],
+                            'private' => ['type' => 'text', 'access' => ['read' => ['role' => 'editor']]],
+                            'flag' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                            'pinned' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
+                            'tag' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__notes__tag__create'], 'update' => ['fn' => 'profiles__field__notes__tag__update']]],
+                        ]],
+                        'blocks' => ['type' => 'blocks', 'layouts' => [
+                            'memo' => ['text' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]]],
+                            'link' => ['href' => ['type' => 'text']],
+                        ]],
+                        'mentorId' => ['type' => 'integer', 'access' => ['read' => ['role' => 'editor']]],
+                        'stamp' => ['type' => 'group', 'fields' => [
+                            'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
+                            'note' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__stamp__note__create']]],
+                        ]],
+                        'pairs' => ['type' => 'repeater', 'fields' => [
+                            'label' => ['type' => 'text'],
+                            'details' => ['type' => 'group', 'fields' => ['secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]]]],
+                        ]],
+                        'rounds' => ['type' => 'repeater', 'fields' => [
+                            'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
+                            'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__rounds__note__update']]],
+                        ]],
+                        'fixed' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => ['a' => ['type' => 'text'], 'b' => ['type' => 'text']]],
+                        'gated' => ['type' => 'group', 'fields' => [
+                            'gate' => ['type' => 'boolean', 'default' => ['value' => true], 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                            'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__gated__door__update']]],
+                        ]],
+                        'seeded' => ['type' => 'repeater', 'fields' => [
+                            'label' => ['type' => 'text'],
+                            'origin' => ['type' => 'text', 'default' => ['value' => 'api'], 'access' => ['create' => ['allow' => false], 'update' => ['allow' => false]]],
+                        ]],
+                        // door is declared before the group whose hidden value its rule reads.
+                        'vault' => ['type' => 'group', 'fields' => [
+                            'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__vault__door__update']]],
+                            'config' => ['type' => 'group', 'fields' => ['locked' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]]]],
+                        ]],
+                        'seen' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => [
+                            'x' => ['type' => 'text', 'access' => ['read' => ['fn' => 'profiles__field__seen__x__read']]],
+                        ]],
+                        // Hidden containers holding unwritable fields (round-11 review).
+                        'locker' => ['type' => 'group', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'pin' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                        ]],
+                        'diary' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'label' => ['type' => 'text'],
+                            'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                        ]],
+                        'entries' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                        ]],
+                        'cleared' => ['type' => 'boolean', 'access' => ['update' => ['fn' => 'profiles__field__cleared__update']]],
+                        'meta' => ['type' => 'json', 'access' => ['update' => ['allow' => false]]],
+                        'checks' => ['type' => 'repeater', 'fields' => [
+                            'open' => ['type' => 'boolean'],
+                            'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__checks__note__update']]],
+                        ]],
+                        'tasks' => ['type' => 'repeater', 'fields' => [
+                            'label' => ['type' => 'text'],
+                            'rate' => ['type' => 'integer', 'access' => ['update' => ['role' => 'editor']]],
+                            'secret' => ['type' => 'text', 'access' => ['read' => ['allow' => false]]],
+                        ]],
+                        'teamId' => ['type' => 'integer', 'references' => ['collection' => 'teams', 'column' => 'id', 'onDelete' => 'set null']],
+                    ],
+                    'relations' => [
+                        'team' => ['kind' => 'one', 'collection' => 'teams', 'from' => 'teamId', 'to' => 'id', 'optional' => true],
+                        'mentor' => ['kind' => 'one', 'collection' => 'profiles', 'from' => 'mentorId', 'to' => 'id', 'optional' => true],
+                        'mentees' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'mentorId'],
+                    ],
+                    'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['fn' => 'profiles__access__update'], 'delete' => ['role' => 'editor']],
+                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+                ],
             ],
             'actions' => [
                 'restock' => [
@@ -140,6 +235,71 @@ $files = [
             }
         }
 
+        // ---- lane B: field access. Owners and editors see the salary; owners update their own row.
+        function profiles__field__salary__read($ctx)
+        {
+            return $ctx['user'] !== null && ($ctx['user']['role'] === 'editor' || $ctx['user']['role'] === 'admin' || $ctx['data']['ownerId'] === $ctx['user']['id']);
+        }
+
+        // Sub-field rules see the enclosing item after its defaults.
+        function profiles__field__notes__tag__create($ctx)
+        {
+            return $ctx['data']['pinned'] === true;
+        }
+
+        function profiles__field__checks__note__update($ctx)
+        {
+            return ($ctx['data']['open'] ?? null) === true;
+        }
+
+        // Counts its calls: the value a rule saw must be the value stored, so it may run once per item.
+        function profiles__stamp__n__default()
+        {
+            return ++$GLOBALS['stampCalls'];
+        }
+
+        function profiles__field__rounds__note__update($ctx)
+        {
+            return $ctx['data']['n'] === 1;
+        }
+
+        function profiles__field__gated__door__update($ctx)
+        {
+            return $ctx['data']['gate'] === true;
+        }
+
+        function profiles__field__vault__door__update($ctx)
+        {
+            return ($ctx['data']['config']['locked'] ?? null) !== true;
+        }
+
+        function profiles__field__seen__x__read($ctx)
+        {
+            return $ctx['user'] !== null;
+        }
+
+        // Reads another column's incoming value: only a supplied notes.flag === false allows it.
+        function profiles__field__cleared__update($ctx)
+        {
+            return ($ctx['data']['notes']['flag'] ?? null) === false;
+        }
+
+        function profiles__field__stamp__note__create($ctx)
+        {
+            return $ctx['data']['n'] === 1;
+        }
+
+        // A tag may change only while the note stays pinned.
+        function profiles__field__notes__tag__update($ctx)
+        {
+            return ($ctx['data']['pinned'] ?? null) === true;
+        }
+
+        function profiles__access__update($ctx)
+        {
+            return in_array($ctx['user']['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx['user']['id'] ?? -1];
+        }
+
         function action__restock($input)
         {
             $item = db()->findFirst('items', ['where' => ['id' => $input['itemId']]])
@@ -175,6 +335,40 @@ $files = [
         	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
         	"message" text NOT NULL,
         	"at" text NOT NULL
+        );
+        --> statement-breakpoint
+        CREATE TABLE "teams" (
+        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        	"name" text NOT NULL,
+        	"budget" integer
+        );
+        --> statement-breakpoint
+        CREATE TABLE "profiles" (
+        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        	"name" text NOT NULL,
+        	"email" text,
+        	"ownerId" integer,
+        	"salary" integer,
+        	"approved" integer DEFAULT 0 NOT NULL,
+        	"notes" text,
+        	"blocks" text,
+        	"mentorId" integer,
+        	"stamp" text,
+        	"pairs" text,
+        	"rounds" text,
+        	"fixed" text,
+        	"gated" text,
+        	"seeded" text,
+        	"vault" text,
+        	"seen" text,
+        	"locker" text,
+        	"entries" text,
+        	"diary" text,
+        	"cleared" integer,
+        	"meta" text,
+        	"checks" text,
+        	"tasks" text,
+        	"teamId" integer REFERENCES "teams"("id") ON DELETE set null
         );
         SQL,
 ];
@@ -623,5 +817,195 @@ stopServer();
     problem('a viewer\'s update selector is denied the unreadable target', fn () => $db->update('comments', ['ownerId' => 1], $key, true, $anon), 401, 'unauthenticated');
     eq('… and a viewer\'s delete selector matches no draft target', $db->delete('comments', ['article' => ['secret' => ['like' => 'price=4%']]], true, $anon), []);
 })();
+
+// ================================================================ field access (lane B, phase 2 §4)
+
+$ids = $app->identity();
+$fa = [];
+foreach (['fa_alice' => 'author', 'fa_bob' => 'author', 'fa_ed' => 'editor', 'fa_admin' => 'admin'] as $name => $role) {
+    $fa[$name] = ['user' => $ids->addUser($name, $role, null), 'token' => $ids->createToken($name, null)['token']];
+}
+/** In-process API call as one of the field-access users (null = anonymous); returns [status, data or problem]. */
+$as = function (?string $who, string $method, string $path, mixed $body = null, array $query = []) use ($app, &$fa): array {
+    $headers = $who === null ? [] : ['authorization' => 'Bearer ' . $fa[$who]['token']];
+    [$status, , $out] = $app->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
+    $json = json_decode($out, true);
+
+    return [$status, $status < 300 ? $json['data'] : $json];
+};
+$faProblem = function (string $label, array $r, int $status, string $code, ?string $pointer): void {
+    check("$label → $status $code $pointer", $r[0] === $status && ($r[1]['code'] ?? null) === $code && ($r[1]['pointer'] ?? null) === $pointer, $r[1]);
+};
+$aliceId = $fa['fa_alice']['user']['id'];
+$team = $db->insert('teams', ['name' => 'Core', 'budget' => 1000], true)[0];
+[$mine, $theirs] = $db->insert('profiles', [
+    ['name' => 'Alice', 'email' => 'alice@example.test', 'ownerId' => $aliceId, 'salary' => 10, 'notes' => ['public' => 'hi', 'private' => 'secret', 'flag' => true],
+        'tasks' => [['label' => 'a', 'rate' => 1], ['label' => 'b', 'rate' => 2]], 'blocks' => [['layout' => 'memo', 'text' => 'kept']], 'teamId' => $team['id']],
+    ['name' => 'Bob', 'email' => 'bob@example.test', 'ownerId' => $fa['fa_bob']['user']['id'], 'salary' => 20, 'teamId' => $team['id']],
+], true);
+$byName = static fn (array $rows) => array_column($rows, null, 'name');
+
+// read: shorthand rules once per page, function rules per row; hidden keys are removed, not nulled.
+$anon = $byName($as(null, 'GET', '/profiles')[1]);
+eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
+$alice = $byName($as('fa_alice', 'GET', '/profiles')[1]);
+eq('a function read rule runs per row (author sees only her own salary)', [$alice['Alice']['salary'] ?? 'hidden', $alice['Bob']['salary'] ?? 'hidden', isset($alice['Alice']['email'])], [10, 'hidden', false]);
+$editor = $as('fa_ed', 'GET', "/profiles/{$theirs['id']}")[1];
+eq('editors read everything the rules allow them', [$editor['email'], $editor['salary']], ['bob@example.test', 20]);
+eq('trusted reads see every column', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes'], ['public' => 'hi', 'private' => 'secret', 'flag' => true, 'pinned' => true, 'tag' => null]);
+
+// `with` rows go through the same strip, in both directions of a relation.
+$withTeam = $as('fa_ed', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'team'])[1];
+eq('with-loaded parent strips its hidden column (budget is admin-only)', [$withTeam['team']['name'], array_key_exists('budget', $withTeam['team'])], ['Core', false]);
+$withMembers = $as(null, 'GET', "/teams/{$team['id']}", query: ['with' => 'members'])[1];
+eq('with-loaded children are stripped per row', array_map(static fn ($m) => array_key_exists('email', $m) || array_key_exists('salary', $m), $withMembers['members']), [false, false]);
+eq('an admin sees the with-loaded column', $as('fa_admin', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'team'])[1]['team']['budget'], 1000);
+
+// Filters, sorts and selections can't name a column the viewer may not read, at any depth.
+$faProblem('where on a hidden column', $as(null, 'GET', '/profiles', query: ['where' => '{"email":{"like":"a%"}}']), 403, 'forbidden', '/where/email');
+$faProblem('where on a hidden column inside OR', $as(null, 'GET', '/profiles', query: ['where' => '{"OR":[{"name":"x"},{"email":"a"}]}']), 403, 'forbidden', '/where/OR/1/email');
+$faProblem('where on a column with a per-row rule', $as('fa_alice', 'GET', '/profiles', query: ['where' => '{"salary":{"gt":15}}']), 403, 'forbidden', '/where/salary');
+$faProblem('where on a group holding a hidden sub-field', $as(null, 'GET', '/profiles', query: ['where' => '{"notes":{"isNull":true}}']), 403, 'forbidden', '/where/notes');
+$faProblem('relation filter probing a hidden column of the target', $as('fa_ed', 'GET', '/profiles', query: ['where' => '{"team":{"budget":{"gt":500}}}']), 403, 'forbidden', '/where/team/budget');
+$faProblem('relation filter from the other side', $as('fa_alice', 'GET', '/teams', query: ['where' => '{"members":{"salary":{"gt":15}}}']), 403, 'forbidden', '/where/members/salary');
+$faProblem('nested with filter', $as(null, 'GET', '/teams', query: ['with' => '{"members":{"where":{"email":"a"}}}']), 403, 'forbidden', '/with/members/where/email');
+$faProblem('with across a hidden link column (source end)', $as('fa_alice', 'GET', '/profiles', query: ['with' => 'mentor']), 403, 'forbidden', '/with/mentor');
+$faProblem('with across a hidden link column (target end)', $as('fa_alice', 'GET', '/profiles', query: ['with' => 'mentees']), 403, 'forbidden', '/with/mentees');
+$faProblem('relation filter across a hidden link column (target end)', $as('fa_alice', 'GET', '/profiles', query: ['where' => '{"mentees":{"name":"Bob"}}']), 403, 'forbidden', '/where/mentees');
+eq('editors may follow the link', $as('fa_ed', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'mentor'])[1]['mentor'], null);
+$faProblem('orderBy on a hidden column', $as(null, 'GET', '/profiles', query: ['orderBy' => '-email']), 403, 'forbidden', '/orderBy/email');
+problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null, 'standalone')), 403, 'forbidden', '/columns/email');
+problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'], 'standalone')), 403, 'forbidden', '/columns/salary');
+eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'standalone'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
+eq('a readable column filters normally; trusted filters see everything', [
+    array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
+    array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
+], [['Bob'], ['Core']]);
+
+// Writes: a supplied key the viewer can't set → 403 at its pointer. Defaults and hooks are trusted.
+$faProblem('update rule (admin) refuses the owner', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['salary' => 99]), 403, 'forbidden', '/salary');
+eq('the refused update persisted nothing', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['salary'], 10);
+$faProblem('anonymous: 401, as for collection rules', $as(null, 'PATCH', "/teams/{$team['id']}", ['budget' => 1]), 401, 'unauthenticated', '/budget');
+$faProblem('create rule refuses an author setting approved', $as('fa_alice', 'POST', '/profiles', ['name' => 'Self-approved', 'approved' => true]), 403, 'forbidden', '/approved');
+[$s, $created] = $as('fa_alice', 'POST', '/profiles', ['name' => 'Plain', 'ownerId' => $aliceId]);
+eq('the default for a guarded column is not the viewer\'s input', [$s, $created['approved']], [201, false]);
+eq('an editor may set it', $as('fa_ed', 'PATCH', "/profiles/{$created['id']}", ['approved' => true])[1]['approved'], true);
+[$s, $resent] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['name' => 'Alice B', 'salary' => 10, 'approved' => false]);
+eq('resending readable values unchanged is not a write to them (read-modify-write)', [$s, $resent['name']], [200, 'Alice B']);
+[$s, $patched] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'edited']]);
+eq('replacing a group keeps the sub-field the viewer cannot see', [$s, $patched['notes'], $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']], [200, ['public' => 'edited', 'pinned' => true, 'tag' => null], ['public' => 'edited', 'private' => 'secret', 'flag' => true, 'pinned' => true, 'tag' => null]]);
+eq('an empty group patch keeps omitted hidden sub-fields', [$as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => new \stdClass()])[0], $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']['private']], [200, 'secret']);
+// A rule over sibling data is judged on the incoming item too: unpinning while omitting the tag keeps it.
+$db->update('profiles', ['notes' => ['public' => 'p', 'pinned' => true, 'tag' => 'kept', 'private' => 'secret', 'flag' => true]], ['id' => $mine['id']]);
+[$s] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'p', 'pinned' => false]]);
+eq('omitting a field whose rule the new item fails keeps it', [$s, $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']['tag']], [200, 'kept']);
+$faProblem('… and supplying it is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['pinned' => false, 'tag' => null]]), 403, 'forbidden', '/notes/tag');
+$faProblem('a hidden sub-field can\'t be probed: its stored value is refused too', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'edited', 'flag' => true]]), 403, 'forbidden', '/notes/flag');
+$faProblem('… and so is the other value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'edited', 'flag' => false]]), 403, 'forbidden', '/notes/flag');
+eq('a sub-field rule sees the item after its defaults', $as('fa_alice', 'POST', '/profiles', ['name' => 'Tagged', 'notes' => ['tag' => 'x']])[0], 201);
+$GLOBALS['stampCalls'] = 0;
+[$s, $stamped] = $as('fa_alice', 'POST', '/profiles', ['name' => 'Stamped', 'stamp' => ['note' => 'x']]);
+eq('a dynamic sub-field default is generated once: the value the rule saw is stored', [$s, $stamped['stamp'] ?? null, $GLOBALS['stampCalls']], [201, ['n' => 1, 'note' => 'x'], 1]);
+$faProblem('a null group would erase the hidden sub-field', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
+// Repeater items have no identity: protected values must be resent unchanged in place, never moved or dropped.
+$faProblem('an emptied repeater would drop protected values', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => []]), 403, 'forbidden', '/tasks/0');
+$faProblem('reordered items would move protected values', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'b'], ['label' => 'a']]]), 403, 'forbidden', '/tasks/0');
+$faProblem('changing a protected sub-field in an item', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'a', 'rate' => 9, 'secret' => null], ['label' => 'b', 'rate' => 2]]]), 403, 'forbidden', '/tasks/0/rate');
+// Editing an item that holds a field she can't see means supplying it (write-only) and resending the
+// value she can't set unchanged; items left as she sees them, and new items, need nothing more.
+[$s, $tasks] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'a!', 'rate' => 1, 'secret' => null], ['label' => 'b', 'rate' => 2], ['label' => 'new']]]);
+eq('editing visible sub-fields and appending items is allowed', [$s, $tasks['tasks'] ?? null], [200, [['label' => 'a!', 'rate' => 1], ['label' => 'b', 'rate' => 2], ['label' => 'new', 'rate' => null]]]);
+eq('an editor may rewrite the repeater', $as('fa_ed', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => []])[1]['tasks'], []);
+// A write-only sub-field (read: false, update allowed) may be changed inside a repeater item.
+$db->update('profiles', ['tasks' => [['label' => 'w', 'secret' => 'old']]], ['id' => $mine['id']]);
+[$s, $writeOnly] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'rate' => null, 'secret' => 'new']]]);
+eq('a write-only sub-field can be replaced, and stays hidden', [$s, $writeOnly['tasks'], $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['tasks'][0]['secret']], [200, [['label' => 'w', 'rate' => null]], 'new']);
+$db->update('profiles', ['checks' => [['open' => true, 'note' => 'n']]], ['id' => $mine['id']]);
+$faProblem('closing a repeater item while omitting a field its rule then protects is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['checks' => [['open' => false]]]), 403, 'forbidden', '/checks/0');
+eq('… and storage is unchanged', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['checks'][0]['note'], 'n');
+$db->update('profiles', ['pairs' => [['label' => 'x', 'details' => ['secret' => 'sx']], ['label' => 'y', 'details' => ['secret' => 'sy']]]], ['id' => $mine['id']]);
+$faProblem('swapping items while a nested group omits the hidden value is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['pairs' => [['label' => 'y', 'details' => new \stdClass()], ['label' => 'x', 'details' => new \stdClass()]]]), 403, 'forbidden', '/pairs/0');
+eq('… and the pairs are intact', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['pairs'], [['label' => 'x', 'details' => ['secret' => 'sx']], ['label' => 'y', 'details' => ['secret' => 'sy']]]);
+// A list item's defaults are generated once: the value its rules saw is the value stored.
+$db->update('profiles', ['rounds' => [['n' => 1, 'note' => 'protected']]], ['id' => $mine['id']]);
+$GLOBALS['stampCalls'] = 0;
+$faProblem('an item leaving out a function-ruled field must match what she sees', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['rounds' => [new \stdClass()]]), 403, 'forbidden', '/rounds/0');
+eq('… so the protected value survives', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['rounds'][0]['note'], 'protected');
+$GLOBALS['stampCalls'] = 0;
+[$s] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['rounds' => [['n' => 1, 'note' => 'protected'], ['note' => 'new']]]);
+eq('a new item\'s default is generated once: the n its rule allowed is the n stored', [$s, $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['rounds'], $GLOBALS['stampCalls']], [200, [['n' => 1, 'note' => 'protected'], ['n' => 1, 'note' => 'new']], 1]);
+// Unchanged-value resends compare structure, not key order.
+$db->update('profiles', ['fixed' => ['a' => 'A', 'b' => 'B']], ['id' => $mine['id']]);
+eq('a readable group she can\'t set may be resent with its keys reordered', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['fixed' => ['b' => 'B', 'a' => 'A']])[0], 200);
+// Rules see the effective item: a kept hidden value, not the default that would have filled it.
+$db->update('profiles', ['gated' => ['gate' => false, 'door' => 'shut']], ['id' => $mine['id']]);
+$faProblem('a rule reads the kept hidden value, not its default', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['gated' => ['door' => 'open']]), 403, 'forbidden', '/gated/door');
+// Defaults are trusted, in list items as in groups.
+[$s, $seeded] = $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['seeded' => [['label' => 'new']]]);
+eq('a list-item default under a create: false rule is not input', [$s, $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['seeded']], [200, [['label' => 'new', 'origin' => 'api']]]);
+// Rules see the whole resolved item, whatever order its fields are declared in.
+$db->update('profiles', ['vault' => ['door' => 'shut', 'config' => ['locked' => true]]], ['id' => $mine['id']]);
+$faProblem('a rule reads a kept nested hidden value declared after it', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['vault' => ['door' => 'open', 'config' => new \stdClass()]]), 403, 'forbidden', '/vault/door');
+// Replacing with null is refused from the rules alone: same answer for either hidden value.
+$faProblem('null over a group with a function rule (hidden lock on)', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['vault' => null]), 403, 'forbidden', '/vault');
+$db->update('profiles', ['vault' => ['door' => 'shut', 'config' => ['locked' => false]]], ['id' => $mine['id']]);
+$faProblem('… and with it off', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['vault' => null]), 403, 'forbidden', '/vault');
+// A group she reads in full may be resent unchanged even under a function read rule.
+$db->update('profiles', ['seen' => ['x' => 'v']], ['id' => $mine['id']]);
+eq('a fully visible group resends unchanged', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['seen' => $as('fa_alice', 'GET', "/profiles/{$mine['id']}")[1]['seen']])[0], 200);
+// Under a hidden container, nothing about its contents can be learned by writing: right or wrong
+// guesses, empty or populated lists, all refused the same way.
+$db->update('profiles', ['locker' => ['pin' => '1234'], 'entries' => []], ['id' => $mine['id']]);
+$faProblem('right guess of a pin inside a hidden group', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['locker' => ['pin' => '1234']]), 403, 'forbidden', '/locker');
+$faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['locker' => ['pin' => '0000']]), 403, 'forbidden', '/locker');
+$faProblem('emptying a hidden list that is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
+$db->update('profiles', ['entries' => [['v' => 'x']]], ['id' => $mine['id']]);
+$faProblem('… and one that is not', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
+// The same for a hidden list whose children are writable but include one hidden from the viewer.
+$db->update('profiles', ['diary' => [['label' => 'real', 'secret' => 's']]], ['id' => $mine['id']]);
+$faProblem('right guess of a label in a hidden list', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['diary' => [['label' => 'real']]]), 403, 'forbidden', '/diary');
+$faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['diary' => [['label' => 'nope']]]), 403, 'forbidden', '/diary');
+// Top-level rules see the incoming patch as sent, not a sibling group already merged with hidden values.
+$db->update('profiles', ['notes' => ['public' => 'p', 'flag' => false], 'cleared' => false], ['id' => $mine['id']]);
+$faProblem('a merged hidden value is not incoming data (group first)', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'n'], 'cleared' => true]), 403, 'forbidden', '/cleared');
+$faProblem('… nor with the keys reversed', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['cleared' => true, 'notes' => ['public' => 'n']]), 403, 'forbidden', '/cleared');
+eq('… and nothing was stored', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['cleared'], false);
+// Update/delete selectors run as the viewer: they can't filter on a column hidden from it.
+$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user'], 'standalone');
+problem('an update selector on a hidden column is refused', fn () => $db->update('profiles', ['name' => 'x'], ['email' => 'alice@example.test'], true, $aliceViewer), 403, 'forbidden', '/where/email');
+problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'], 'standalone')), 403, 'forbidden', '/where/salary');
+// An unchanged resend must be the same value: a list resent as an object is a change.
+$db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
+$faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
+eq('… the stored list is untouched, and the true resend passes', [$db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta'], $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
+// Carrying an omitted protected value forward compares only what the viewer sees: any hidden value
+// in that item is refused alike, right guess or wrong.
+$db->update('profiles', ['tasks' => [['label' => 'w', 'rate' => 5, 'secret' => 'old']]], ['id' => $mine['id']]);
+$faProblem('right guess of a hidden value while carrying a protected one', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'secret' => 'old']]]), 403, 'forbidden', '/tasks/0');
+$faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'secret' => 'nope']]]), 403, 'forbidden', '/tasks/0');
+$faProblem('an item edited while leaving out what she can\'t see is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w!', 'rate' => 5]]]), 403, 'forbidden', '/tasks/0');
+$faProblem('so is a partial resend', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [[]]]), 403, 'forbidden', '/tasks/0');
+eq('resending the item as she sees it keeps the stored item whole', [$as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'rate' => 5]]])[0], $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['tasks']], [200, [['label' => 'w', 'rate' => 5, 'secret' => 'old']]]);
+// Group null and item removal are refused from the rules alone: the same answer whether or not a
+// hidden value is stored, so a destructive write can't test for presence.
+$db->update('profiles', ['notes' => ['public' => 'x', 'flag' => null]], ['id' => $mine['id']]);
+$faProblem('a null group is refused even when the hidden sub-field is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
+$faProblem('an unchanged group resend can\'t confirm a hidden value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']]), 403, 'forbidden', '/notes/flag');
+$faProblem('switching a block\'s layout would erase its protected value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'link', 'href' => 'x']]]), 403, 'forbidden', '/blocks/0');
+eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
+$faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
+
+// Revisions are read through the same strip.
+$rev = $db->revisions('profiles', $mine['id'])[0]['id'];
+$revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
+eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
+// Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
+// value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
+$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/notes/flag');
+eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
+
+// /_schema reports per-column summaries (no function names).
+$described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
+eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'diary' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
 
 finish('db_test');

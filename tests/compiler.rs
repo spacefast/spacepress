@@ -393,7 +393,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let fixtures = Command::new("node")
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ register }} from 'node:module'; register({:?}); const m = await import({:?}); process.stdout.write(JSON.stringify({{ ctxs: m.ACCESS_CTXS, values: m.VALIDATE_VALUES, vctx: m.VALIDATE_CTX }}));",
+            "import {{ register }} from 'node:module'; register({:?}); const m = await import({:?}); process.stdout.write(JSON.stringify({{ ctxs: m.ACCESS_CTXS, fctxs: m.FIELD_CTXS ?? [], values: m.VALIDATE_VALUES, vctx: m.VALIDATE_CTX }}));",
             format!("file://{}", dir.join("resolve-zero.mjs").display()),
             format!("file://{}", dir.join("cases.ts").display()),
         ))
@@ -424,6 +424,10 @@ fn compiled_php_matches_node_on_every_differential_case() {
         let out = match parts.as_slice() {
             ["access", _, _, i] => {
                 let ctx = &fixtures["ctxs"][i.parse::<usize>().unwrap()];
+                php_case(&app, name, serde_json::json!({ "ctx": ctx }))
+            }
+            ["field", _, _, _, i] => {
+                let ctx = &fixtures["fctxs"][i.parse::<usize>().unwrap()];
                 php_case(&app, name, serde_json::json!({ "ctx": ctx }))
             }
             ["validate", c, col, i] => {
@@ -658,8 +662,21 @@ fn rejects_phase2_static_contracts() {
             "field rules must return a boolean on every path",
         ),
         ("reject-field-access-self", "self is only allowed on auth collection"),
+        (
+            "reject-field-access-global",
+            "field access applies to collection columns",
+        ),
         ("reject-showif-sibling", "showIf names non-sibling"),
         ("reject-showif-operator", "invalid showIf operator"),
+        (
+            "reject-showif-boolean-null",
+            "which is never empty; compare it with true or false",
+        ),
+        ("reject-showif-empty-in", "invalid showIf operator or operand \"in\""),
+        (
+            "reject-showif-nested-date",
+            "the editor can't compare the value of \"due\"",
+        ),
         ("reject-showif-structured", "compare a scalar sibling"),
         ("reject-showif-nested-sibling", "showIf names non-sibling"),
         ("reject-showif-title", "title is always readable"),
@@ -694,7 +711,6 @@ fn rejects_phase2_static_contracts() {
             "env() values can't be stored inside captured data",
         ),
         // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
-        ("reject-unlanded-field-access", "not implemented until lane B"),
         ("reject-unlanded-sync", "not implemented until lane C"),
         ("reject-unlanded-auth", "not implemented until lane E"),
         ("reject-unlanded-files", "not implemented until lane G"),
@@ -1091,6 +1107,9 @@ fn phase2_schema_and_closures_match_the_contract() {
             "ESNext",
             "--moduleResolution",
             "bundler",
+            "--allowImportingTsExtensions",
+            "--lib",
+            "ES2022,DOM",
         ])
         .arg(tmp.join("client.ts"))
         .output()

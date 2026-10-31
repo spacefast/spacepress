@@ -2,7 +2,7 @@
 //! `zero/client/schema.ts` (the `SCHEMA` descriptor the runtime reads), and
 //! the handwritten runtime from `runtime/client/` (`index.ts`, `README.md`).
 
-use crate::schema::{ColType, Collection, Column, RelKind, Schema};
+use crate::schema::{Access, ColType, Collection, Column, RelKind, Schema};
 use crate::types::Ty;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -116,6 +116,14 @@ fn col_ts(c: &Column, insert: bool) -> String {
     if c.not_null { v } else { format!("{v} | null") }
 }
 
+/// A read rule other than "anyone" can hide the column from a viewer, and hidden keys are removed
+/// from rows (phase 2 §4.3), so read types make it optional.
+fn may_hide(c: &Column) -> bool {
+    c.access
+        .get("read")
+        .is_some_and(|r| !matches!(r, Access::Allow(true)) && !matches!(r, Access::Role(role) if role == "anyone"))
+}
+
 fn fields_ts(fields: &IndexMap<String, Column>, insert: bool) -> String {
     if fields.is_empty() {
         return "{}".into();
@@ -123,7 +131,8 @@ fn fields_ts(fields: &IndexMap<String, Column>, insert: bool) -> String {
     let parts: Vec<String> = fields
         .values()
         .map(|f| {
-            let opt = if insert && f.optional_on_insert() { "?" } else { "" };
+            let optional = if insert { f.optional_on_insert() } else { may_hide(f) };
+            let opt = if optional { "?" } else { "" };
             format!("{}{opt}: {}", key(&f.name), col_ts(f, insert))
         })
         .collect();
@@ -313,7 +322,14 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let row: Vec<String> = c
         .columns
         .values()
-        .map(|col| format!("{}: {}", key(&col.name), col_ts(col, false)))
+        .map(|col| {
+            format!(
+                "{}{}: {}",
+                key(&col.name),
+                if may_hide(col) { "?" } else { "" },
+                col_ts(col, false)
+            )
+        })
         .collect();
     let _ = writeln!(s, "export interface {n} {{ {} }}", row.join("; "));
     let insert: Vec<String> = c
@@ -384,6 +400,39 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     s.push('\n');
 }
 
+/// Column → its `showIf` filter; sub-field conditions nest under `fields` (and `layouts`).
+fn show_if(columns: &IndexMap<String, Column>) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for c in columns.values() {
+        let mut entry = serde_json::Map::new();
+        if let Some(f) = &c.show_if {
+            entry.insert("when".into(), f.clone());
+        }
+        if let Some(fs) = c
+            .fields
+            .as_ref()
+            .map(show_if)
+            .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()))
+        {
+            entry.insert("fields".into(), fs);
+        }
+        let layouts: serde_json::Map<String, serde_json::Value> = c
+            .layouts
+            .iter()
+            .flatten()
+            .map(|(name, fs)| (name.clone(), show_if(fs)))
+            .filter(|(_, v)| v.as_object().is_some_and(|o| !o.is_empty()))
+            .collect();
+        if !layouts.is_empty() {
+            entry.insert("layouts".into(), layouts.into());
+        }
+        if !entry.is_empty() {
+            out.insert(c.name.clone(), entry.into());
+        }
+    }
+    out.into()
+}
+
 /// `SCHEMA`: collection → relations/media columns, plus globals and actions (§7).
 pub fn schema_ts(schema: &Schema) -> String {
     let mut collections = serde_json::Map::new();
@@ -411,18 +460,21 @@ pub fn schema_ts(schema: &Schema) -> String {
             .filter(|col| col.ty == ColType::MediaList)
             .map(|col| serde_json::json!(col.name))
             .collect();
-        collections.insert(
-            c.key.clone(),
-            serde_json::json!({
-                "path": c.table,
-                "primaryKey": c.primary_key().map(|p| p.name.clone()).unwrap_or_else(|| "id".into()),
-                "drafts": c.drafts,
-                "revisions": c.revisions,
-                "relations": rels,
-                "media": media,
-                "mediaList": media_multiple,
-            }),
-        );
+        let mut entry = serde_json::json!({
+            "path": c.table,
+            "primaryKey": c.primary_key().map(|p| p.name.clone()).unwrap_or_else(|| "id".into()),
+            "drafts": c.drafts,
+            "revisions": c.revisions,
+            "relations": rels,
+            "media": media,
+            "mediaList": media_multiple,
+        });
+        // Editor conditions (§4.3), so a frontend form can mirror the editor; only when present.
+        let conditions = show_if(&c.columns);
+        if conditions.as_object().is_some_and(|o| !o.is_empty()) {
+            entry["showIf"] = conditions;
+        }
+        collections.insert(c.key.clone(), entry);
     }
     let globals: Vec<serde_json::Value> = schema.globals.keys().map(|g| serde_json::json!(g)).collect();
     let actions: Vec<serde_json::Value> = schema.actions.keys().map(|a| serde_json::json!(a)).collect();

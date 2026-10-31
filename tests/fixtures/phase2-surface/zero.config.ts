@@ -1,4 +1,4 @@
-import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
+import { collection, id, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "zero";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
@@ -89,7 +89,7 @@ function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (value
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
 const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
-const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true });
+const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }), avatar: media().access({ read: "authenticated" }) }, { title: "name", uid: true });
 const posts = collection("posts", {
   id: id(), title: text().notNull().localized(), content: richText().localized(), slug: slug({ source: "title" }),
   authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),

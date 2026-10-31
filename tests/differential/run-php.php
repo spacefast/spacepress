@@ -21,6 +21,13 @@ try {
 
             return $fn($ctx);
         })(),
+        'field' => (function () use ($schema, $parts, $args) {
+            $ctx = $args['ctx'];
+            $ctx['op'] = $parts[3];
+            $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['access'][$parts[3]]['fn'];
+
+            return $fn($ctx);
+        })(),
         'validate' => (function () use ($schema, $parts, $args) {
             $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['rules']['validate'];
             $value = $args['value'];

@@ -14,10 +14,12 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 
 work="$(mktemp -d)"
-home="$work/home" project="$work/project" bin="$work/bin"
+# A HOME with a space: the stop command the binary prints must still work when pasted.
+home="$work/my home" project="$work/project" bin="$work/bin"
+stop=""
 down() {
-  local script="$home/.cache/zero/wp-harness/wp/harness.sh"
-  [[ ! -f $script ]] || bash "$script" down || true
+  # Teardown runs exactly what the binary told the user to run.
+  [[ -z $stop ]] || (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || true
   rm -rf "$work"
 }
 trap down EXIT
@@ -40,6 +42,7 @@ out="$(env -u ZERO_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
   "$bin/zero" dev --wp --port "$ZERO_WP_PORT" 2>&1)" || { echo "$out" >&2; echo 'FAIL: zero dev --wp exited non-zero' >&2; exit 1; }
 echo "$out"
 grep -q "WordPress is up on http://127.0.0.1:$ZERO_WP_PORT" <<< "$out" || { echo 'FAIL: no "WordPress is up" line' >&2; exit 1; }
+stop="$(sed -n 's/^WordPress is up on .* Stop it with: //p' <<< "$out")"
 
 # This app (named after its directory) answers, and its collections are public to read: an empty list.
 api="http://127.0.0.1:$ZERO_WP_PORT/wp-json/zero/v1"
@@ -54,3 +57,9 @@ assert schema["name"] == "project" and schema["target"] == "wp", schema
 assert json.load(open(sys.argv[1] + "/locations.json"))["data"] == []
 CHECK
 echo 'ok - an installed zero binary boots `zero dev --wp` from its embedded harness'
+# The printed stop command takes the stack down.
+(cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || { echo "FAIL: the printed stop command failed: $stop" >&2; exit 1; }
+stop=""
+[[ -z $(docker compose -p "$ZERO_WP_PROJECT" ps -q) ]] || { echo 'FAIL: the stack is still up after the printed stop command' >&2; exit 1; }
+echo 'ok - the printed stop command stops it'
+

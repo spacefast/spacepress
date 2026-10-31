@@ -386,8 +386,8 @@ export const comments = collection({ postId: ref("posts").notNull() });
 expands to
 
 ```
-posts.author     : one authors     (from posts.authorId, to authors.id, optional: true)
-comments.post    : one posts       (from comments.postId, to posts.id, optional: false)   // notNull
+posts.author     : one authors     (from posts.authorId, to authors.id)
+comments.post    : one posts       (from comments.postId, to posts.id)   // FK NOT NULL; the loaded row is still Row | null
 authors.posts    : many posts      (reverse of posts.author)
 posts.comments   : many comments   (reverse of comments.post)
 ```

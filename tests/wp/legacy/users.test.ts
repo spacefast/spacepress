@@ -140,6 +140,28 @@ test("a failure after writes have begun rolls every user back, WordPress's cache
   assert.equal(inProcess, "old-ada@example.test");
 });
 
+test("generated unique values the database holds equal refuse the run, which writes nothing", () => {
+  // The members app plus a unique `code` whose generated default gives Ada "InviteA" and Bo
+  // "invitea": distinct bytes, but one value to MariaDB's collation, which every member write's
+  // unique check uses.
+  const before = [meta(), identity()];
+  const r = JSON.parse(wp("eval", `
+    eval('namespace ZeroApp; function legacy_case_code() { static $n = 0; return $n++ % 2 ? "invitea" : "InviteA"; }');
+    $plugin = \\Zero\\Wp\\Runtime::plugin();
+    $plugin->app();
+    $raw = require $plugin->dir . '/zero/app/schema.php';
+    $raw['collections']['members']['columns']['code'] = ['type' => 'text', 'unique' => true, 'rules' => ['max' => 191], 'default' => ['fn' => 'legacy_case_code']];
+    try {
+      $plugin->connection()->transaction(static fn () => (new \\Zero\\Wp\\Legacy\\Users($plugin->connection(), new \\Zero\\Schema($raw)))->run('legacy-space', false));
+      echo json_encode('moved');
+    } catch (\\Zero\\HttpError $e) {
+      echo json_encode([$e->status, $e->errorCode, $e->pointer, $e->getMessage()]);
+    }
+  `));
+  assert.deepEqual(r, [409, "unique_violation", `/users/${bo}/code`, `code 'invitea' already belongs to WordPress user ${ada}`]);
+  assert.deepEqual([meta(), identity()], before);
+});
+
 test("app users get zero-identity accounts with their verified email, and stay members", () => {
   // Since activation Ada changed her WordPress email, lost a member field and gained a bio: the move
   // restores the address the original account verified and the declared defaults, and a column

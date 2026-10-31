@@ -140,9 +140,14 @@ stays suspended (and one already suspended or erased in the new app stays so).
 The member collection's own columns start at their defaults (a column without
 one starts empty), validated like any write with the user's role in view. A
 reference, media or file column can't take a default here, so set those after
-the move. An app user without a verified email, or whose email another user
-holds, refuses the run with `/users/<id>/email`, and nothing changes. A second run skips users already moved. Original Zero guests lived
-only in the browser, so there are none to move.
+the move. An app user without a verified email refuses the run with
+`/users/<id>/email`. So does a unique value (`/users/<id>/<column>`, the email
+included) that another user holds, or that an earlier user in the same run just
+took, compared the way the database compares (`Invite` and `invite` are one
+value). Nothing
+changes on a refusal, and the dry run catches all of these. A second run skips
+users already moved. Original Zero guests lived only in the browser, so there
+are none to move.
 
 ## Refusals
 

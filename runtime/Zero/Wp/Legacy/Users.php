@@ -27,8 +27,9 @@ use Zero\Wp\WpUserStore;
  * The WordPress role is left as it is: original app users carried no stored role (authority was
  * per request), and role capabilities are the app plugin's to grant.
  *
- * Every member row is validated by Zero's codecs and rules, with uniqueness checked among the moved
- * users and against existing members, before anything is written. A refusal names the user and
+ * Every member row is validated by Zero's codecs and rules before anything is written. Each user is
+ * then checked for uniqueness against the site as it stands, users moved before it in the run
+ * included, so the database compares values under its own collations, and written. A refusal names the user and
  * column, `/users/<wp user id>/<column>`. One transaction (rolled back on any failure, caches
  * included); moved users are stamped, so a second run skips them.
  */
@@ -52,6 +53,9 @@ final class Users
         $collection = $this->schema->auth()['collection'] ?? null;
         if ($collection === null) {
             throw Model::refuse('', 'the new app has no auth: true collection to hold the original app users');
+        }
+        if (!$this->db->inTransaction()) {
+            throw new \LogicException('Users::run writes, even in a dry run: run it inside a transaction');
         }
         $spec = $this->schema->collection($collection);
         $w = $this->db->wpdb();
@@ -104,11 +108,11 @@ final class Users
                 'values' => self::member($spec, $id, $email, (string) $row['display_name'], $this->role($id), $at),
             ];
         }
-        $this->checkUnique($spec, $users);
-        if (!$dryRun) {
-            foreach ($users as $id => $user) {
-                $this->write($spec, $id, $user, $identity);
-            }
+        // Each user is checked against the site as it stands, earlier moves included, then written.
+        // A dry run writes too: Module rolls its transaction back, so it refuses what a real run would.
+        foreach ($users as $id => $user) {
+            $this->checkUnique($spec, $id, $user);
+            $this->write($spec, $id, $user, $identity);
         }
 
         return ['dryRun' => $dryRun, 'collection' => (string) $collection, 'users' => array_keys($users), 'skipped' => $skipped];
@@ -179,45 +183,35 @@ final class Users
     }
 
     /**
-     * unique() member columns (email included, it is wp_users' own): no two moved users share a
-     * value, and none repeats an existing user's. Values are compared as WpUserStore stores them.
+     * unique() member columns (email included, it is wp_users' own): user $id's value repeats no
+     * other user's, users moved earlier in this run included. The database compares (under each
+     * column's collation, so `InviteA` meets `invitea`), with locking reads like WpUserStore's
+     * own checks: until this transaction commits, no other writer can take the value.
      */
-    private function checkUnique(array $spec, array $users): void
+    private function checkUnique(array $spec, int $id, array $user): void
     {
         $w = $this->db->wpdb();
         foreach (['email' => true] + array_filter(array_map(static fn ($d) => $d['unique'] ?? false, $spec['columns'])) as $col => $_) {
             $col = (string) $col;
-            if ($col === $spec['primaryKey']) {
+            $stored = $user['values'][$col] ?? null;
+            if ($col === $spec['primaryKey'] || $stored === null) {
                 continue;
             }
-            $seen = [];
-            foreach ($users as $id => $user) {
-                $stored = $user['values'][$col] ?? null;
-                if ($stored === null) {
-                    continue;
-                }
-                $key = in_array($col, ['email', 'name'], true) ? (string) $stored : (string) maybe_serialize(WpUserStore::metaForm($spec['columns'][$col], $stored));
-                $ptr = "/users/$id" . HttpError::seg($col);
-                if (isset($seen[$key])) {
-                    throw new HttpError(409, 'unique_violation', "app users {$seen[$key]} and $id share the unique $col value", $ptr);
-                }
-                $seen[$key] = $id;
-                // Locking reads, as WpUserStore's own checks: until this transaction commits, no
-                // other writer can take the value.
-                $hit = match ($col) {
-                    'email' => $this->db->run("SELECT ID FROM `{$w->users}` WHERE user_email = ? AND ID <> ? LIMIT 1 FOR UPDATE", [$key, $id]),
-                    'name' => $this->db->run("SELECT ID FROM `{$w->users}` WHERE display_name = ? AND ID <> ? LIMIT 1 FOR UPDATE", [$key, $id]),
-                    default => $this->db->run("SELECT user_id FROM `{$w->usermeta}` WHERE meta_key = ? AND meta_value = ? AND user_id <> ? LIMIT 1 FOR UPDATE", [WpUserStore::META . $col, $key, $id]),
-                };
-                if ($hit !== []) {
-                    throw new HttpError(409, 'unique_violation', "$col '$key' already belongs to WordPress user " . reset($hit[0]), $ptr);
-                }
-                if ($col === 'email') {
-                    // zero-identity keeps one verified owner per address, site-wide.
-                    $owner = $this->db->run("SELECT wp_user_id FROM `{$w->prefix}zero_identity_emails` WHERE normalized = ? AND wp_user_id <> ? FOR UPDATE", [$key, $id]);
-                    if ($owner !== []) {
-                        throw new HttpError(409, 'unique_violation', "$key is verified for zero-identity account {$owner[0]['wp_user_id']}", $ptr);
-                    }
+            $key = in_array($col, ['email', 'name'], true) ? (string) $stored : (string) maybe_serialize(WpUserStore::metaForm($spec['columns'][$col], $stored));
+            $ptr = "/users/$id" . HttpError::seg($col);
+            $hit = match ($col) {
+                'email' => $this->db->run("SELECT ID FROM `{$w->users}` WHERE user_email = ? AND ID <> ? LIMIT 1 FOR UPDATE", [$key, $id]),
+                'name' => $this->db->run("SELECT ID FROM `{$w->users}` WHERE display_name = ? AND ID <> ? LIMIT 1 FOR UPDATE", [$key, $id]),
+                default => $this->db->run("SELECT user_id FROM `{$w->usermeta}` WHERE meta_key = ? AND meta_value = ? AND user_id <> ? LIMIT 1 FOR UPDATE", [WpUserStore::META . $col, $key, $id]),
+            };
+            if ($hit !== []) {
+                throw new HttpError(409, 'unique_violation', "$col '$key' already belongs to WordPress user " . reset($hit[0]), $ptr);
+            }
+            if ($col === 'email') {
+                // zero-identity keeps one verified owner per address, site-wide.
+                $owner = $this->db->run("SELECT wp_user_id FROM `{$w->prefix}zero_identity_emails` WHERE normalized = ? AND wp_user_id <> ? FOR UPDATE", [$key, $id]);
+                if ($owner !== []) {
+                    throw new HttpError(409, 'unique_violation', "$key is verified for zero-identity account {$owner[0]['wp_user_id']}", $ptr);
                 }
             }
         }

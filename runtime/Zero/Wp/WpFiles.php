@@ -106,11 +106,19 @@ final class WpFiles implements FileStorage
     public static function probe(): bool
     {
         if (!is_dir(self::root()) && !wp_mkdir_p(self::root())) {
-            throw new \RuntimeException('Cannot create ' . self::root());
+            update_option(self::OK, '0', true);
+
+            return false;
         }
         $name = 'probe-' . bin2hex(random_bytes(8)) . '.txt';
         $file = self::root() . '/' . $name;
-        file_put_contents($file, 'zero');
+        if (@file_put_contents($file, 'zero') !== 4) {
+            // No probe file means no proof: a 404 for a missing file says nothing about the web server.
+            update_option(self::OK, '0', true);
+            update_option(self::CHECKED, time(), false);
+
+            return false;
+        }
         try {
             $url = self::url($name);
             $response = wp_remote_get(self::loopback($url), ['timeout' => 5, 'redirection' => 0, 'sslverify' => false]);

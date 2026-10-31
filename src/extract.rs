@@ -75,7 +75,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "agents",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
-const RESERVED_COLLECTIONS: &[&str] = &["media", "globals", "actions", "me", "_schema", "auth"];
+const RESERVED_COLLECTIONS: &[&str] = &["media", "files", "globals", "actions", "me", "_schema", "auth"];
 /// WordPress limits post types to 20 characters; Zero prefixes `zero_`.
 const MAX_POST_TYPE_TABLE: usize = 15;
 /// MySQL utf8mb4 index prefix limit.
@@ -230,6 +230,13 @@ pub fn extract(
                 Diag::new(c.span, format!("\"{}\" isn't a valid collection name", c.table))
                     .help("use letters, digits, and underscores, starting with a letter"),
             );
+        }
+        if ["media", "files"].contains(&key.as_str()) && c.table != *key {
+            return Err(Diag::new(
+                span,
+                format!("`{key}` is reserved: the typed client serves built-in {key} under that name"),
+            )
+            .help("pick another schema key"));
         }
         if RESERVED_COLLECTIONS.contains(&c.table.as_str()) {
             return Err(Diag::new(
@@ -1175,6 +1182,10 @@ fn column(
     {
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
             .help("declare it in config.files with files()"));
+    }
+    if b.bucket.is_some() && place == Place::Global {
+        return Err(Diag::new(b.span, "file() columns belong to collections, not globals")
+            .help("keep the file id on a collection row, or use media() for a public asset"));
     }
     let outer = place != Place::Top;
     // Builders and modifiers that only make sense on a top-level collection column.

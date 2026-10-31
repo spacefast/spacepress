@@ -393,6 +393,18 @@ add_action('rest_api_init', fn () => register_rest_route('zero-test/v1', '/rollb
   assert.equal((await fetch(row.url)).status, 200);
 });
 
+test("a probe that cannot write its file is a failed probe, not a pass", async () => {
+  assert.equal(probe(), "protected");
+  wp("eval", "chmod(\\Zero\\Wp\\WpFiles::root(), 0555);");
+  try {
+    assert.equal(probe(), "exposed");
+    assert.equal((await uploadDeck(pdf("unproven"))).status, 503);
+  } finally {
+    wp("eval", "chmod(\\Zero\\Wp\\WpFiles::root(), 0755);");
+  }
+  assert.equal(probe(), "protected");
+});
+
 test("without .htaccess the probe fails and uploads answer 503 until protection is back", async () => {
   assert.equal(probe(), "protected");
   wp("eval", "unlink(\\Zero\\Wp\\WpFiles::root() . '/.htaccess');");

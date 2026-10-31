@@ -109,4 +109,4 @@ cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
 
 WordPress builds can also [declare additional pinned plugins](docs/wp-plugins.md) in `zero.config.ts`; see `examples/wp-plugins`.
 
-Import a declarative CMS config with `zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>`. See [config migration](docs/config-migration.md) for the supported subset and [compatibility coverage](docs/zero-compatibility.md) for remaining original Zero features.
+Import a declarative CMS config with `zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>`. See [config migration](docs/config-migration.md) for the supported subset and [compatibility coverage](docs/zero-compatibility.md) for remaining original Zero features. To move a site built with the original Zero 0.8, follow [migrating from Zero 0.8](docs/migrating-from-zero.md) (`zero migrate site`).

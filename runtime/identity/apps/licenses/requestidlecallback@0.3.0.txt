@@ -1,0 +1,8 @@
+requestidlecallback 0.3.0, by Alexander Farkas <info@corrupt-system.de>.
+
+The author declares the MIT license in the package's package.json and in the
+npm registry record for this version, but has published no license text: the
+npm package and the upstream repository (https://github.com/aFarkas/requestIdleCallback)
+contain only index.js, README.md, package.json and tests. This entry records
+that declaration and attribution; no license text exists upstream to reproduce.
+It reaches this bundle through @wordpress/priority-queue.

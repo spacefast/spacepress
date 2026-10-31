@@ -68,6 +68,16 @@ for (const input of Object.keys(result.metafile.inputs)) {
             break;
           } catch {}
         }
+        // A package that publishes no license text gets its notice from licenses/ (see the
+        // README there); a bundled package with neither fails the build rather than shipping
+        // code whose notice is missing.
+        if (!text.trim()) {
+          try {
+            text = await readFile(join(apps, "licenses", key.replace("/", "+") + ".txt"), "utf8");
+          } catch {
+            throw new Error(`${key} is bundled but ships no license file and has no licenses/${key.replace("/", "+")}.txt`);
+          }
+        }
         licenses.set(
           key,
           key +

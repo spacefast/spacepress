@@ -477,18 +477,20 @@ type TranslationInsert<TCols> =
   | Simplify<
       InsertShape<Pick<TCols, (LocalizedKeys<TCols> | "locale") & keyof TCols>> &
         InsertShape<Pick<TCols, PerRowKeys<TCols>>> &
-        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: number }
+        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: RowId<TCols> }
     >;
-type LocaleColumns = {
+/** The row id type of a collection: its `id()` column's (a number), else its `id` column's. */
+type RowId<TCols> = "id" extends keyof TCols ? NonNullable<SelectValue<TCols["id"]>> : number;
+type LocaleColumns<TCols> = {
   locale: ColumnBuilder<"text", Locale, true, true>;
-  translations: ColumnBuilder<"json", Partial<Record<Locale, number>>, true, true>;
+  translations: ColumnBuilder<"json", Partial<Record<Locale, RowId<TCols>>>, true, true>;
 };
 type AuthColumns = { role: ColumnBuilder<"text", Role, true, true> };
 type IdentityOptions<TUid extends boolean, TSync extends string | undefined> = { uid?: TUid; sync?: TSync };
 type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = TUid extends true
   ? { uid: ColumnBuilder<"text", string, true, true> }
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
-type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns : {};
+type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
 export declare function collection<
   const TName extends string, TCols extends ColumnsConfig,

@@ -490,6 +490,37 @@ fn php_case(app: &Path, case: &str, args: serde_json::Value) -> std::process::Ou
         .unwrap()
 }
 
+/// §7.3: the generated client types localized collections; translation ids follow the primary key.
+#[test]
+fn localized_generated_client_types() {
+    let tmp = std::env::temp_dir().join(format!("zero-locales-client-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/locales-client"), &tmp);
+    let out = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "generated client contract failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// §9.1 golden: `zero build examples/blog` emits a schema.php equal, as data, to the frozen
 /// fixture the runtime and the WP stores code against; `--target wp` emits the §4.9 plugin.
 #[test]

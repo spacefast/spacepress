@@ -307,6 +307,13 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s
 }
 
+/// The TS type of a collection's primary key (row ids in `translations` and `translationOf`).
+fn pk_ts(c: &Collection) -> String {
+    c.primary_key()
+        .map(|p| value_ts(p, false))
+        .unwrap_or_else(|| "number".into())
+}
+
 /// The configured locales as a TS union (`never` without `locales`).
 fn locale_ts(schema: &Schema) -> String {
     let all: Vec<String> = schema
@@ -343,7 +350,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         .map(|col| match col.name.as_str() {
             // §7.3: locale → id of every row in the translation group.
             "translations" if c.localized && col.system => {
-                format!("translations: Partial<Record<{}, number>>", locale_ts(schema))
+                format!("translations: Partial<Record<{}, {}>>", locale_ts(schema), pk_ts(c))
             }
             _ => format!(
                 "{}{}: {}",
@@ -387,7 +394,8 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         };
         let _ = writeln!(
             s,
-            "export type {n}Insert = {n}Fields | (Omit<{n}Fields, {synced} | \"translationOf\"> & Partial<Pick<{n}Fields, {synced}>> & {{ translationOf: number }});"
+            "export type {n}Insert = {n}Fields | (Omit<{n}Fields, {synced} | \"translationOf\"> & Partial<Pick<{n}Fields, {synced}>> & {{ translationOf: {} }});",
+            pk_ts(c)
         );
         // `locale` is fixed per row; `translationOf` only applies on create.
         let _ = writeln!(

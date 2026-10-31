@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
     process::ExitCode,
@@ -48,8 +49,9 @@ const HARNESS: &[(&str, &str)] = &[
 ];
 
 /// The harness's `harness.sh`: `$ZERO_WP_HARNESS/harness.sh` when set (a checkout's `tests/wp`), else
-/// the embedded copy, written to `$XDG_CACHE_HOME/zero/wp-harness` (or `~/.cache/...`). Its plugin
-/// downloads and stack state stay there between runs; the files are rewritten from this binary each time.
+/// the embedded copy, written to `$XDG_CACHE_HOME/zero/wp-harness/<digest>` (or `~/.cache/...`). The
+/// directory is named by the files' digest, so binaries with different harnesses never overwrite each
+/// other's; the same harness reuses it, with its plugin downloads and stack state, between runs.
 pub(super) fn harness() -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("ZERO_WP_HARNESS") {
         let script = PathBuf::from(dir).join("harness.sh");
@@ -68,12 +70,21 @@ pub(super) fn harness() -> Result<PathBuf, String> {
                 .map(|h| PathBuf::from(h).join(".cache"))
         })
         .ok_or("no cache directory for the WordPress harness: set XDG_CACHE_HOME or HOME (or ZERO_WP_HARNESS)")?;
-    let root = cache.join("zero/wp-harness");
     let platform = serde_json::to_string_pretty(&crate::platform::requirements()).expect("requirements serialize");
-    let files = HARNESS
+    let files: Vec<(&str, &str)> = HARNESS
         .iter()
         .copied()
-        .chain([("fixtures/platform.json", platform.as_str())]);
+        .chain([("fixtures/platform.json", platform.as_str())])
+        .collect();
+    let mut digest = Sha256::new();
+    for (rel, contents) in &files {
+        for part in [rel.as_bytes(), contents.as_bytes()] {
+            digest.update((part.len() as u64).to_le_bytes());
+            digest.update(part);
+        }
+    }
+    let digest: String = digest.finalize()[..8].iter().map(|b| format!("{b:02x}")).collect();
+    let root = cache.join("zero/wp-harness").join(digest);
     for (rel, contents) in files {
         let path = root.join(rel);
         if std::fs::read(&path).is_ok_and(|current| current == contents.as_bytes()) {
@@ -112,11 +123,11 @@ pub(super) fn wp(content: &Path, port: u16) -> ExitCode {
     match status {
         Ok(s) if s.success() => {
             let project = std::env::var("ZERO_WP_PROJECT")
-                .map(|p| format!("ZERO_WP_PROJECT={p} "))
+                .map(|p| format!("ZERO_WP_PROJECT={} ", shell_quote(&p)))
                 .unwrap_or_default();
             println!(
                 "WordPress is up on http://127.0.0.1:{port} (admin / zero-test-admin). Stop it with: {project}bash {} down",
-                script.display()
+                shell_quote(&script.display().to_string())
             );
             ExitCode::SUCCESS
         }
@@ -126,4 +137,15 @@ pub(super) fn wp(content: &Path, port: u16) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// `s` as one POSIX shell word, so a printed command can be pasted whatever the path holds.
+fn shell_quote(s: &str) -> String {
+    if !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/._-+=:@,".contains(&b))
+    {
+        return s.to_string();
+    }
+    format!("'{}'", s.replace('\'', "'\\''"))
 }

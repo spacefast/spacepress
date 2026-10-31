@@ -130,6 +130,7 @@ curl -X POST localhost:8787/api/locations -H "Authorization: Bearer $TOKEN" -d '
 curl -X POST localhost:8787/api/items -H "Authorization: Bearer $TOKEN" -d '{"name":" Eggs ","quantity":1,"locationId":1}'
 curl localhost:8787/api/shopping_list            # the afterCreate hook added Eggs
 curl -X POST localhost:8787/api/actions/consume -H "Authorization: Bearer $TOKEN" -d '{"itemId":1}'
+curl localhost:8787/api/shopping_list            # a moment later, the notifyLowStock job stamped notifiedAt
 ```
 
 The same project builds for WordPress. Stop the standalone server (Ctrl-C),
@@ -252,14 +253,17 @@ document root. Any PHP 8.2 host with the extensions listed under
 
 | Example | Shows |
 |---|---|
-| [`examples/pantry`](examples/pantry) | hooks, actions, relations, shared field sets; the quick start |
-| [`examples/blog`](examples/blog) | a CMS on both targets: rich fields, groups, repeaters, blocks, access rules, a global, a static page using the client |
-| [`examples/site`](examples/site) | a publication with jobs, webhooks, private files, image sizes and sync; driven end to end by the system suite |
+| [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
+| [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, translations, with a browser page |
+| [`examples/site`](examples/site) | the publication that the system suite drives end to end on both targets |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
+
+[`docs/examples.md`](docs/examples.md) walks through each one and how to run it.
 
 ## Docs
 
-- [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API and the enforced subset
+- [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API, the enforced subset and the known gaps
+- [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas

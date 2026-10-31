@@ -1168,6 +1168,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         namespace ZeroApp;
         // Records every afterUpdate as "<locale>:<price>", so per-row hooks during group sync are observable.
         function pages__afterUpdate($row, $previous) {
+            if ($row['price'] === 13 && $row['locale'] === 'de') {
+                throw new \Zero\JsError('de refuses 13');
+            }
+            if ($row['price'] === 21 && $row['locale'] === 'en' && ($other = \Zero\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
+                \Zero\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
+            }
             $group = $row['translations'];
             ksort($group);
             \Zero\db()->insert('notes', ['pageId' => $row['id'], 'body' => 'afterUpdate ' . $row['locale'] . ':' . $row['price'] . ' ' . json_encode($group)]);
@@ -1210,6 +1216,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('a synced column that differs from the group → 422', fn () => $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => 9]), 422, 'invalid_input', '/price');
     problem('one row per locale per group → 409', fn () => $db->insert('pages', ['title' => 'Tee 2', 'locale' => 'de', 'translationOf' => $tea['id']]), 409, 'unique_violation', '/locale');
     problem('translationOf must name a row', fn () => $db->insert('pages', ['title' => 'x', 'locale' => 'fr', 'translationOf' => 999]), 422, 'invalid_input', '/translationOf');
+    problem('a malformed locale is invalid input', fn () => $db->insert('pages', ['title' => 'x', 'locale' => [], 'translationOf' => $tea['id']]), 422, 'invalid_input', '/locale');
     problem('translations are derived', fn () => $db->insert('pages', ['title' => 'x', 'translations' => []]), 422, 'invalid_input', '/translations');
     $the = $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tee['id'], 'price' => 3], true)[0];
     problem('locale is immutable', fn () => $db->update('pages', ['locale' => 'de'], ['id' => $the['id']]), 422, 'invalid_input', '/locale');
@@ -1226,11 +1233,20 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     ]);
     eq('each synced row keeps its own revision', count($db->revisions('pages', $tee['id'])), 2);
     $notesBefore = count($db->findMany('notes'));
-    problem('a failing sync rolls back the whole group', fn () => $db->update('pages', ['price' => 'x'], ['id' => $tea['id']]), 422, 'invalid_input', '/price');
-    eq('… nothing changed', [array_column($db->findMany('pages', ['locale' => '*']), 'price'), count($db->findMany('notes'))], [[4, 4, 4], $notesBefore]);
+    $revisionsBefore = count($db->revisions('pages', $tea['id']));
+    problem('a sibling hook failing mid-sync rolls back the whole group', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 13], ['id' => $tea['id']])), 422, 'rejected');
+    eq('… rows, hook effects and revisions written before the failure are gone', [
+        array_column($db->findMany('pages', ['locale' => '*']), 'price'), count($db->findMany('notes')), count($db->revisions('pages', $tea['id'])),
+    ], [[4, 4, 4], $notesBefore, $revisionsBefore]);
 
     // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
     $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];
+    $kaffee = $db->insert('pages', ['title' => 'Kaffee', 'locale' => 'de', 'translationOf' => $coffee['id']], true)[0];
+    $db->update('pages', ['price' => 21], ['id' => $the['id']]);
+    eq('a sync that writes another group still propagates that group', array_column($db->findMany('pages', ['locale' => '*', 'orderBy' => ['id' => 'asc']]), 'price'), [21, 21, 21, 22, 22]);
+    $db->delete('pages', ['id' => $kaffee['id']]);
+    $db->update('pages', ['price' => 4], ['id' => $the['id']]);
+    $db->update('pages', ['price' => 5], ['id' => $coffee['id']]);
     eq('locale=de: the de row, else the group\'s default-locale row', $titles($db->findMany('pages', ['locale' => 'de', 'orderBy' => ['id' => 'asc']])), ['de:Tee', 'en:Coffee']);
     eq('locale=fr with a filter', $titles($db->findMany('pages', ['locale' => 'fr', 'where' => ['price' => ['gte' => 4]], 'orderBy' => ['id' => 'asc']])), ['fr:Thé vert', 'en:Coffee']);
     eq('a filter that excludes the translation does not resurrect its fallback', $titles($db->findMany('pages', ['locale' => 'fr', 'where' => ['title' => ['like' => 'Tea%']]])), []);
@@ -1264,6 +1280,15 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     // hooks see rows as stored (locale, translations, translationGroup)
     $stored = $db->findFirst('pages', ['where' => ['id' => $the['id']]]);
     check('trusted rows carry the group id', is_string($stored['translationGroup']) && strlen($stored['translationGroup']) === 36, $stored);
+
+    // translationOf copies synced values from storage, not from the caller's field-filtered view.
+    $hidePrice = true;
+    \Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $v) use (&$hidePrice): array {
+        return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
+    });
+    $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];
+    $hidePrice = false;
+    eq('a hidden synced column is copied at create (no repair update, one revision)', [$db->findFirst('pages', ['where' => ['id' => $de['id']]])['price'], count($db->revisions('pages', $de['id']))], [4, 1]);
 
     \Zero\Db::setInstance($previous);
 })();

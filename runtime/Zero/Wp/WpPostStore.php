@@ -228,7 +228,8 @@ final class WpPostStore implements Store
         $this->db->touchPost($id);
         $this->writeMeta($spec, $id, $values);
         if (isset($values['locale']) && ($spec['localized'] ?? false)) {
-            $this->db->core(static fn () => Polylang::assign($collection, $id, (string) $values['locale']));
+            $group = json_decode((string) ($values['translations'] ?? '{}'), true) ?: [];
+            $this->db->core(fn () => Polylang::assign($this->db, $id, (string) $values['locale'], $group));
         }
         clean_post_cache($id);
 

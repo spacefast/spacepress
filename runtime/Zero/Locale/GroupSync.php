@@ -22,7 +22,8 @@ use function Zero\db;
  */
 final class GroupSync
 {
-    private static bool $syncing = false;
+    /** @var array<string, true> translation groups whose synced values are being propagated right now */
+    private static array $active = [];
 
     public static function normalize(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
@@ -43,6 +44,11 @@ final class GroupSync
         unset($data['translationOf']);
     }
 
+    /**
+     * Prepares a create's group membership without persisting it (operations may replay before
+     * persistence): one row per locale is enforced where the row is stored, by the
+     * (translationGroup, locale) index on tables and under a group lock in Wp\Polylang::assign.
+     */
     public static function write(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
         if ($op !== 'create' || !Module::localized($collection)) {
@@ -50,6 +56,7 @@ final class GroupSync
         }
         $spec = db()->schema()->collection($collection);
         $pk = $spec['primaryKey'];
+        $data['locale'] = Schema::normalize($spec['columns']['locale'], $data['locale'] ?? null, 'locale', '/locale');
         $of = $provided['translationOf'] ?? null;
         if ($of === null) {
             if (!Module::polylang($collection)) {
@@ -61,11 +68,11 @@ final class GroupSync
         if (!Js::isInteger($of) && !is_string($of)) {
             throw HttpError::invalidInput('translationOf must be the id of an existing row', '/translationOf');
         }
-        $source = db()->findFirst($collection, ['where' => [$pk => $of], 'locale' => '*'], $viewer)
-            ?? throw HttpError::invalidInput("No $collection row with $pk " . Js::str($of), '/translationOf');
-        $locale = $data['locale'];
-        if (isset(Module::members($source, $pk)[$locale])) {
-            throw new HttpError(409, 'unique_violation', "This translation group already has a $locale row", '/locale');
+        $find = static fn (?Viewer $v) => db()->findFirst($collection, ['where' => [$pk => $of], 'locale' => '*'], $v);
+        // The caller must be able to read the source; its values are copied from storage, not from
+        // the caller's (possibly field-filtered) view of it.
+        if (($viewer !== null && $find($viewer) === null) || ($source = $find(null)) === null) {
+            throw HttpError::invalidInput("No $collection row with $pk " . Js::str($of), '/translationOf');
         }
         foreach (Module::synced($spec) as $col) {
             if (array_key_exists($col, $provided)
@@ -75,25 +82,26 @@ final class GroupSync
             $data[$col] = $source[$col];
         }
         if (Module::polylang($collection)) {
-            \Zero\Wp\Polylang::pend($collection, $locale, $source[$pk]); // WpPostStore::insert joins the group
-
-            return;
+            $data['translations'] = Module::members($source, $pk); // the group WpPostStore::insert joins
+        } else {
+            if ($source['translationGroup'] === null) { // a row from before the collection was localized
+                $source['translationGroup'] = self::uuid();
+                db()->store()->update($collection, $source[$pk], ['translationGroup' => $source['translationGroup']]);
+            }
+            $data['translationGroup'] = $source['translationGroup'];
         }
-        $group = db()->findFirst($collection, ['where' => [$pk => $source[$pk]], 'locale' => '*'])['translationGroup'] ?? null;
-        if ($group === null) { // a row from before the collection was localized
-            $group = self::uuid();
-            db()->store()->update($collection, $source[$pk], ['translationGroup' => $group]);
-        }
-        $data['translationGroup'] = $group;
     }
 
     public static function written(string $op, string $collection, array $row, ?array $previous): void
     {
-        if ($op === 'delete' || self::$syncing || !Module::localized($collection)) {
+        if ($op === 'delete' || !Module::localized($collection)) {
             return;
         }
         $spec = db()->schema()->collection($collection);
         $pk = $spec['primaryKey'];
+        if (isset(self::$active[self::key($collection, $row, $pk)])) {
+            return; // this row is being given its group's values
+        }
         $changed = [];
         foreach ($previous === null ? [] : Module::synced($spec) as $col) {
             if (!Module::same($row[$col], $previous[$col])) {
@@ -108,7 +116,7 @@ final class GroupSync
             return;
         }
         $siblings = array_values(array_filter(Module::members($row, $pk), static fn ($id) => $id !== $row[$pk]));
-        self::quietly(static function () use ($collection, $pk, $siblings, $changed): void {
+        self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
             foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
                 $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
                 if ($patch !== []) {
@@ -125,7 +133,8 @@ final class GroupSync
         $pk = $spec['primaryKey'];
         $ids = array_values(Module::members($row, $pk));
         $oldest = $ids === [] ? null : min($ids);
-        if ($oldest === null || $oldest === $row[$pk] || ($source = self::fresh($collection, $pk, $oldest)) === null) {
+        if ($oldest === null || $oldest === $row[$pk]
+            || ($source = db()->findFirst($collection, ['where' => [$pk => $oldest], 'locale' => '*'])) === null) {
             return;
         }
         $patch = [];
@@ -135,23 +144,29 @@ final class GroupSync
             }
         }
         if ($patch !== []) {
-            self::quietly(static fn () => db()->update($collection, $patch, [$pk => $row[$pk]]));
+            self::quietly(self::key($collection, $row, $pk), static fn () => db()->update($collection, $patch, [$pk => $row[$pk]]));
         }
     }
 
-    private static function fresh(string $collection, string $pk, int|string $id): ?array
+    /** A translation group's identity while its members don't change: its oldest member. */
+    private static function key(string $collection, array $row, string $pk): string
     {
-        return db()->findFirst($collection, ['where' => [$pk => $id], 'locale' => '*']);
+        $ids = array_values(Module::members($row, $pk));
+
+        return $collection . ':' . Js::str($ids === [] ? $row[$pk] : min($ids));
     }
 
-    /** Group writes are trusted pipeline updates that must not re-trigger group sync. */
-    private static function quietly(callable $fn): void
+    /** Propagation writes are trusted pipeline updates that must not re-propagate within the same group. */
+    private static function quietly(string $group, callable $fn): void
     {
-        [$was, self::$syncing] = [self::$syncing, true];
+        $was = self::$active[$group] ?? null;
+        self::$active[$group] = true;
         try {
             $fn();
         } finally {
-            self::$syncing = $was;
+            if ($was === null) {
+                unset(self::$active[$group]);
+            }
         }
     }
 

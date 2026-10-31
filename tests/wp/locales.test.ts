@@ -1,10 +1,11 @@
 // Localization on WordPress (§7.3): Polylang owns each post's language and its translation group,
-// Zero writes them through Polylang's API and keeps synced columns equal across the group. Every
-// group/language assertion reads Polylang's own functions through WP-CLI, not Zero's view of them.
-// `phrases` (editor: false) proves Zero's own translationGroup column on MySQL.
+// Zero writes them through Polylang's API and keeps synced columns equal across the group. Group and
+// language assertions read Polylang's own functions through WP-CLI, not Zero's view of them.
+// Pipeline semantics (validation, 409s, fallback edge cases) are proven in tests/php; this file
+// proves what Polylang and MySQL add. `phrases` (editor: false) uses Zero's own group column.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ok, problem, qs, run, wp } from "./env.ts";
+import { core, http, ok, problem, qs, run, wp } from "./env.ts";
 
 /** Polylang's view of a post: [language slug, translations]. */
 function polylang(id: number): [string, Record<string, number>] {
@@ -12,55 +13,70 @@ function polylang(id: number): [string, Record<string, number>] {
 }
 
 const titles = (rows: { locale: string; title: string }[]) => rows.map((r) => `${r.locale}:${r.title}`);
+const log = async (ids: number[]) =>
+  (await ok("GET", "/guide_log" + qs({ where: { guideId: { in: ids } }, orderBy: "id" }))).map((r: any) => `${r.guideId}=${r.entry}`);
+
+async function pair(tag: string) {
+  const en = await ok("POST", "/guides", { as: "editor", body: { title: `${tag} ${run}`, summary: "Hot leaves", price: 3, tags: ["tea"] } });
+  const fr = await ok("POST", "/guides", { as: "editor", body: { title: `${tag} FR ${run}`, locale: "fr", translationOf: en.id } });
+  return { en, fr };
+}
 
 test("Polylang treats localized post types as translatable and has every configured language", () => {
   const out = JSON.parse(wp("eval", `echo wp_json_encode([pll_is_translated_post_type('zero_guides'), pll_is_translated_post_type('zero_posts'), pll_languages_list(['fields' => 'slug']), pll_default_language()]);`));
   assert.deepEqual(out, [true, false, ["en", "de", "fr"], "en"]);
 });
 
-test("translationOf joins Polylang's group, synced columns follow, locale reads fall back", async () => {
-  const en = await ok("POST", "/guides", { as: "editor", body: { title: `Tea ${run}`, summary: "Hot leaves", price: 3, tags: ["tea"] } });
-  assert.deepEqual([en.locale, en.translations], ["en", { en: en.id }]);
-  const fr = await ok("POST", "/guides", { as: "editor", body: { title: `Thé ${run}`, locale: "fr", translationOf: en.id } });
-  assert.deepEqual([fr.locale, fr.price, fr.tags, fr.summary], ["fr", 3, ["tea"], null]);
-  assert.deepEqual(fr.translations, { en: en.id, fr: fr.id });
-  // 1. Polylang itself reports both posts in one group.
+test("translationOf puts both posts in one Polylang group and copies synced columns", async () => {
+  const { en, fr } = await pair("Tea");
+  assert.deepEqual([fr.locale, fr.price, fr.tags, fr.summary, fr.translations], ["fr", 3, ["tea"], null, { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(en.id), ["en", { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(fr.id), ["fr", { en: en.id, fr: fr.id }]);
-  await problem("POST", "/guides", { as: "editor", body: { title: "Tee", locale: "de", translationOf: en.id, price: 9 } }, { status: 422, code: "invalid_input", pointer: "/price" });
-  await problem("POST", "/guides", { as: "editor", body: { title: "Thé 2", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
+  await problem("POST", "/guides", { as: "editor", body: { title: "Again", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
+  assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id }, "a refused join leaves Polylang's group as it was");
+});
 
-  // 2. A synced (non-localized) change on either row reaches the other; localized columns stay.
+test("a synced column change through the API reaches the translation's postmeta, hooks per row", async () => {
+  const { en, fr } = await pair("Sync");
   await ok("PATCH", `/guides/${fr.id}`, { as: "editor", body: { price: 4, summary: "Feuilles chaudes" } });
   const both = await ok("GET", "/guides" + qs({ locale: "*", where: { id: { in: [en.id, fr.id] } }, orderBy: "id" }), { as: "editor" });
   assert.deepEqual(both.map((r: any) => [r.locale, r.price, r.summary]), [["en", 4, "Hot leaves"], ["fr", 4, "Feuilles chaudes"]]);
   assert.equal(wp("eval", `echo get_post_meta(${en.id}, 'zero_price', true);`), "4");
-
-  // 3 + 4. locale=fr returns the French row, falls back per group, combines with a filter.
-  const coffee = await ok("POST", "/guides", { as: "editor", body: { title: `Coffee ${run}`, price: 4 } });
-  const mine = { id: { in: [en.id, coffee.id, fr.id] } };
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "fr", where: mine, orderBy: "id" }))), [`fr:Thé ${run}`, `en:Coffee ${run}`]);
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ where: mine, orderBy: "id" }))), [`en:Tea ${run}`, `en:Coffee ${run}`]);
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "fr", where: { AND: [mine, { title: { like: "Th%" } }] } }))), [`fr:Thé ${run}`]);
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "de", where: { AND: [mine, { price: 4 }] }, orderBy: "id" }))), [`en:Tea ${run}`, `en:Coffee ${run}`]);
-  assert.equal((await ok("GET", `/guides/${en.id}` + qs({ locale: "fr" }))).title, `Thé ${run}`);
-  await problem("GET", "/guides" + qs({ locale: "es" }), {}, { status: 400, code: "invalid_query", pointer: "/locale" });
-  await problem("GET", "/posts" + qs({ locale: "en" }), {}, { status: 400, code: "invalid_query", pointer: "/locale" });
-
-  // A draft translation is per row: anonymous readers fall back past it.
-  const de = await ok("POST", "/guides", { as: "editor", body: { title: `Tee ${run}`, locale: "de", translationOf: en.id, status: "draft" } });
-  assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id, de: de.id });
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "de", where: mine, orderBy: "id" }))), [`en:Tea ${run}`, `en:Coffee ${run}`]);
-  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "de", where: { id: { in: [en.id, de.id] } } }), { as: "editor" })), [`de:Tee ${run}`]);
-
-  // Delete removes that row only; Polylang's group shrinks.
-  await ok("DELETE", `/guides/${de.id}`, { as: "editor" });
-  assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id });
+  assert.deepEqual(await log([en.id, fr.id]), [`${fr.id}=fr:4`, `${en.id}=en:4`]);
 });
 
-test("a translation linked in wp-admin (Polylang API) adopts the group's synced columns", async () => {
+test("a synced column change saved in the editor (core REST) runs the sibling's pipeline too", async () => {
+  const { en, fr } = await pair("Editor");
+  const saved = await http("POST", `${core}/zero_guides/${en.id}`, { as: "editor", body: { acf: { zero_price: 6 } } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.equal(wp("eval", `echo get_post_meta(${fr.id}, 'zero_price', true);`), "6");
+  assert.deepEqual(await log([en.id, fr.id]), [`${en.id}=en:6`, `${fr.id}=fr:6`]);
+  assert.equal((await ok("GET", `/guides/${fr.id}/revisions`, { as: "editor" })).length, 2);
+});
+
+test("locale reads: the locale's row, else the group's default-locale row, combined with filters", async () => {
+  const { en, fr } = await pair("Read");
+  const solo = await ok("POST", "/guides", { as: "editor", body: { title: `Solo ${run}`, price: 3 } });
+  const mine = { id: { in: [en.id, fr.id, solo.id] } };
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "fr", where: mine, orderBy: "id" }))), [`fr:Read FR ${run}`, `en:Solo ${run}`]);
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ where: mine, orderBy: "id" }))), [`en:Read ${run}`, `en:Solo ${run}`]);
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "fr", where: { AND: [mine, { title: { like: "Read%" } }] } }))), [`fr:Read FR ${run}`]);
+  assert.equal((await ok("GET", `/guides/${en.id}` + qs({ locale: "fr" }))).title, `Read FR ${run}`);
+  // A draft translation is its own row: anonymous readers fall back past it, editors see it.
+  const de = await ok("POST", "/guides", { as: "editor", body: { title: `Read DE ${run}`, locale: "de", translationOf: en.id, status: "draft" } });
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "de", where: mine, orderBy: "id" }))), [`en:Read ${run}`, `en:Solo ${run}`]);
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ locale: "de", where: { id: { in: [en.id, de.id] } } }), { as: "editor" })), [`de:Read DE ${run}`]);
+  await problem("GET", "/posts" + qs({ locale: "en" }), {}, { status: 400, code: "invalid_query", pointer: "/locale" });
+});
+
+test("delete removes one post; Polylang's group shrinks", async () => {
+  const { en, fr } = await pair("Delete");
+  await ok("DELETE", `/guides/${fr.id}`, { as: "editor" });
+  assert.deepEqual(polylang(en.id), ["en", { en: en.id }]);
+});
+
+test("a translation linked outside the API (Polylang's +) adopts the group's synced columns", async () => {
   const en = await ok("POST", "/guides", { as: "editor", body: { title: `Admin ${run}`, price: 7, tags: ["coffee"] } });
-  // What Polylang's "+" does: a new post in a language, then the group saved.
   const de = Number(wp("eval", `
     $id = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Admin DE ${run}', 'post_status' => 'publish'], 'de');
     pll_save_post_translations(['en' => ${en.id}, 'de' => $id]);
@@ -69,14 +85,28 @@ test("a translation linked in wp-admin (Polylang API) adopts the group's synced 
   assert.deepEqual([row.locale, row.price, row.tags, row.translations], ["de", 7, ["coffee"], { en: en.id, de }]);
 });
 
-test("editor: false collections keep their own translation group with the same behaviour", async () => {
+test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
+  const out = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $en = $db->insert('guides', ['title' => 'Rollback ${run}'], true)[0]['id'];
+    try {
+      $db->transaction(function () use ($db, $en) {
+        $db->insert('guides', ['title' => 'Rollback FR ${run}', 'locale' => 'fr', 'translationOf' => $en]);
+        throw new \\RuntimeException('later failure');
+      });
+    } catch (\\RuntimeException $e) {}
+    echo wp_json_encode([$en, pll_get_post_translations($en)]);`));
+  assert.deepEqual(out[1], { en: out[0] }, "the rolled-back join is not visible through Polylang in the same process");
+});
+
+test("editor: false collections keep their own translation group", async () => {
   const en = await ok("POST", "/phrases", { as: "editor", body: { text: `Hello ${run}`, weight: 1 } });
   const fr = await ok("POST", "/phrases", { as: "editor", body: { text: `Bonjour ${run}`, locale: "fr", translationOf: en.id } });
   assert.deepEqual([fr.weight, fr.translations], [1, { en: en.id, fr: fr.id }]);
   await ok("PATCH", `/phrases/${en.id}`, { as: "editor", body: { weight: 2 } });
   const mine = { id: { in: [en.id, fr.id] } };
   assert.deepEqual((await ok("GET", "/phrases" + qs({ locale: "*", where: mine, orderBy: "id" }))).map((r: any) => r.weight), [2, 2]);
-  assert.deepEqual((await ok("GET", "/phrases" + qs({ locale: "fr", where: mine }))).map((r: any) => r.text), [`Bonjour ${run}`]);
   assert.deepEqual((await ok("GET", "/phrases" + qs({ locale: "de", where: mine }))).map((r: any) => r.text), [`Hello ${run}`]);
+  // The (translationGroup, locale) unique key on MySQL backs one row per locale.
   await problem("POST", "/phrases", { as: "editor", body: { text: "Salut", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
 });

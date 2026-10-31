@@ -262,8 +262,11 @@ final class SqliteStore implements Store
             return $e;
         }
         $msg = $e->getMessage();
-        if (preg_match('/UNIQUE constraint failed: ([^\s]+(?:, [^\s]+)*)/', $msg, $m)) {
+        if (preg_match('/UNIQUE constraint failed: ([^\s,]+(?:, [^\s,]+)*)/', $msg, $m)) {
             $cols = array_map(static fn ($c) => substr($c, strrpos($c, '.') + 1), explode(', ', $m[1]));
+            if ($cols === ['translationGroup', 'locale']) { // §7.3: one row per locale per group
+                $cols = ['locale'];
+            }
 
             return new HttpError(409, 'unique_violation', 'A row with this ' . implode(', ', $cols) . ' already exists', count($cols) === 1 ? HttpError::seg($cols[0]) : null);
         }

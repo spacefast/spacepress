@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Zero\Wp;
 
 use Zero\ColumnRef;
+use Zero\HttpError;
 use Zero\Locale\GroupSync;
 use Zero\Schema;
 
@@ -17,8 +18,6 @@ use Zero\Schema;
  */
 final class Polylang
 {
-    /** @var list<array{string, string, int|string}> [collection, locale, source id] of API creates joining a group */
-    private static array $pending = [];
     private static bool $busy = false;
 
     public static function boot(): void
@@ -35,8 +34,17 @@ final class Polylang
 
             return $types;
         }, 10, 2);
-        // Zero syncs its own columns in the pipeline; Polylang's live meta sync would pre-empt it.
-        add_filter('pll_copy_post_metas', static fn (mixed $metas, mixed $sync): array => $sync && self::zeroWriting() ? [] : (array) $metas, 100, 2);
+        // Zero syncs its own columns in the pipeline (hooks and revisions per row). Polylang's live
+        // meta sync would update siblings first, behind the pipeline's back, so it never touches
+        // Zero's fields; its one-time copy into a new translation (wp-admin "+") stays.
+        add_filter('pll_copy_post_metas', static function (mixed $metas, mixed $sync, mixed $from = 0): array {
+            $metas = (array) $metas;
+            if (!$sync || !in_array(get_post_type((int) $from), self::postTypes(), true)) {
+                return $metas;
+            }
+
+            return array_values(array_filter($metas, static fn ($key) => !str_starts_with((string) $key, 'zero_') && !str_starts_with((string) $key, '_zero_')));
+        }, 100, 3);
         // A group linked outside Zero's API (wp-admin "+", pll_save_post_translations): adopt synced columns.
         add_action('set_object_terms', static function (int $objectId, mixed $terms, mixed $ttIds, string $taxonomy): void {
             if ($taxonomy === 'post_translations' && !self::$busy && !self::zeroWriting()) {
@@ -86,29 +94,70 @@ final class Polylang
         return new ColumnRef('NULL', '', '', 'json');
     }
 
-    /** After WpPostStore::insert: set the language and join the group a `translationOf` create asked for. */
-    public static function assign(string $collection, int $id, string $locale): void
+    /**
+     * After WpPostStore::insert: set the new post's language and, for a `translationOf` create, join
+     * $group (locale => id, from the source row). Membership changes are serialized per group by
+     * locking its posts, and the group is re-read under the lock, so a locale is added at most once
+     * (409 at /locale). On rollback the members' and group terms' caches are dropped.
+     *
+     * @param array<string, int> $group
+     */
+    public static function assign(Connection $db, int $id, string $locale, array $group): void
     {
         self::busy(static fn () => pll_set_post_language($id, self::slug($locale)));
-        foreach (array_reverse(self::$pending, true) as $i => [$c, $l, $source]) {
-            if ($c === $collection && $l === $locale) {
-                array_splice(self::$pending, $i, 1);
-                $group = pll_get_post_translations((int) $source);
-                $group[self::slug((string) pll_get_post_language((int) $source))] = (int) $source;
-                $group[self::slug($locale)] = $id;
-                self::busy(static fn () => pll_save_post_translations($group));
-                break;
+        if ($group === []) {
+            return;
+        }
+        $current = self::lockedGroup($db, array_map('intval', array_values($group)));
+        if (isset($current[self::slug($locale)])) {
+            throw new HttpError(409, 'unique_violation', "This translation group already has a $locale row", '/locale');
+        }
+        $current[self::slug($locale)] = $id;
+        $terms = [];
+        foreach ($current as $member) {
+            $db->touchPost($member);
+            clean_object_term_cache($member, (string) get_post_type($member));
+            foreach (wp_get_object_terms($member, 'post_translations', ['fields' => 'ids']) as $term) {
+                $terms[(int) $term] = true;
             }
         }
+        // The full, freshly locked group: Polylang merges it into the group term and links every member.
+        self::busy(static fn () => pll_save_post_translations($current));
+        foreach (wp_get_object_terms($id, 'post_translations', ['fields' => 'ids']) as $term) {
+            $terms[(int) $term] = true;
+        }
+        $db->onRollback(static function () use ($terms): void {
+            foreach (array_keys($terms) as $term) {
+                clean_term_cache($term, 'post_translations');
+            }
+        });
     }
 
-    /** GroupSync: the next insert of $collection in $locale joins $source's group. */
-    public static function pend(string $collection, string $locale, int|string $source): void
+    /**
+     * language slug => post id of the group $ids belong to, read with locking reads of the core
+     * taxonomy tables (latest committed state, then held), so concurrent joins serialize per group.
+     *
+     * @param list<int> $ids
+     * @return array<string, int>
+     */
+    private static function lockedGroup(Connection $db, array $ids): array
     {
-        self::$pending[] = [$collection, $locale, $source];
-        Runtime::plugin()?->connection()->onRollback(static function (): void {
-            self::$pending = [];
-        });
+        $p = $db->prefix();
+        $in = static fn (array $v) => implode(', ', array_fill(0, count($v), '?'));
+        $db->run("SELECT ID FROM `{$p}posts` WHERE ID IN ({$in($ids)}) ORDER BY ID FOR UPDATE", $ids);
+        $groups = array_column($db->run("SELECT DISTINCT tr.term_taxonomy_id AS g FROM `{$p}term_relationships` tr JOIN `{$p}term_taxonomy` tt ON tt.term_taxonomy_id = tr.term_taxonomy_id"
+            . " WHERE tr.object_id IN ({$in($ids)}) AND tt.taxonomy = 'post_translations' FOR UPDATE", $ids), 'g');
+        if ($groups !== []) {
+            $members = array_map('intval', array_column($db->run("SELECT object_id AS id FROM `{$p}term_relationships` WHERE term_taxonomy_id IN ({$in($groups)}) FOR UPDATE", $groups), 'id'));
+            $ids = array_values(array_unique([...$ids, ...$members]));
+        }
+        $out = [];
+        foreach ($db->run("SELECT tr.object_id AS id, t.slug FROM `{$p}term_relationships` tr JOIN `{$p}term_taxonomy` tt ON tt.term_taxonomy_id = tr.term_taxonomy_id"
+            . " JOIN `{$p}terms` t ON t.term_id = tt.term_id WHERE tr.object_id IN ({$in($ids)}) AND tt.taxonomy = 'language' ORDER BY tr.object_id FOR UPDATE", $ids) as $r) {
+            $out[(string) $r['slug']] ??= (int) $r['id'];
+        }
+
+        return $out;
     }
 
     /** Create every configured locale missing from Polylang; the default locale becomes Polylang's default. */

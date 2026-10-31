@@ -42,6 +42,9 @@ final class Plugin
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
+        if (($this->schema->auth()['collection'] ?? null) !== null) {
+            WpUserStore::trackRoles();
+        }
         // Users created outside Zero (identity's hosted sign-up, wp-admin) become members with defaults.
         add_action('user_register', function (int $userId): void {
             if (!$this->connection()->busy()) {
@@ -144,6 +147,7 @@ final class Plugin
         }
         foreach (get_users(['fields' => 'ID', 'number' => -1]) as $id) {
             WpUserStore::fillDefaults($this->schema, (int) $id);
+            WpUserStore::syncRole((int) $id);
         }
     }
 

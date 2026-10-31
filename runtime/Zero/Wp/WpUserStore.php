@@ -103,34 +103,38 @@ final class WpUserStore implements Store
         };
     }
 
+    public const ROLE_META = 'zero_role';
+
     /**
-     * The ladder role as SQL over the serialized `wp_capabilities`, decided as WpAuth::map decides
-     * it from WP_User::has_cap: a step's capability is held when the user is granted it directly
-     * (`s:N:"cap";b:1;`), or holds a role that grants it and isn't denied it directly (`b:0;`).
-     * Filters, ordering and access then agree with authentication, overrides included.
+     * The ladder role every member row, filter and access rule reads: kept in `zero_role` usermeta
+     * and recomputed from WP_User::has_cap (WordPress's own ordered role/capability merge, exactly
+     * what authentication uses) whenever a user's roles or capabilities change.
      */
-    private static function roleExpression(): string
+    public static function syncRole(int $userId): void
     {
-        $like = static fn (string $needle): string => "{j}.meta_value LIKE '%" . esc_sql(addcslashes($needle, '_%\\')) . "%'";
-        // Each capability on its own: granted directly, or by a role that grants *that* capability
-        // while the user isn't denied it directly. A step holds when any of its capabilities does.
-        $has = static function (string ...$caps) use ($like): string {
-            $parts = [];
-            foreach ($caps as $cap) {
-                $roles = array_keys(array_filter(wp_roles()->roles, static fn (array $role) => !empty($role['capabilities'][$cap])));
-                $parts[] = $like(serialize($cap) . 'b:1;');
-                if ($roles !== []) {
-                    $parts[] = '((' . implode(' OR ', array_map(static fn ($r) => $like(serialize((string) $r) . 'b:1;'), $roles)) . ') AND NOT ' . $like(serialize($cap) . 'b:0;') . ')';
-                }
+        $user = get_userdata($userId);
+        if ($user instanceof \WP_User) {
+            update_user_meta($userId, self::ROLE_META, WpAuth::map($user)['role']);
+        }
+    }
+
+    /** Keep `zero_role` current: role changes, capability edits, new users; backfill on activation. */
+    public static function trackRoles(): void
+    {
+        $sync = static fn ($userId) => self::syncRole((int) $userId);
+        add_action('set_user_role', $sync);
+        add_action('add_user_role', $sync);
+        add_action('remove_user_role', $sync);
+        add_action('user_register', $sync, 20);
+        add_action('profile_update', $sync);
+        // Direct capability edits write wp_capabilities; follow that meta key on any write path.
+        $onMeta = static function ($metaId, $userId, $key) use ($sync): void {
+            if (str_ends_with((string) $key, 'capabilities')) {
+                $sync($userId);
             }
-
-            return '(' . implode(' OR ', $parts) . ')';
         };
-
-        return 'CASE WHEN ' . $has('manage_options') . " THEN 'admin'"
-            . ' WHEN ' . $has('edit_others_posts') . " THEN 'editor'"
-            . ' WHEN ' . $has('publish_posts', 'edit_posts') . " THEN 'author'"
-            . ' WHEN ' . $like(serialize('zero_guest') . 'b:1;') . " THEN 'guest' ELSE 'subscriber' END";
+        add_action('added_user_meta', $onMeta, 10, 3);
+        add_action('updated_user_meta', $onMeta, 10, 3);
     }
 
     /**
@@ -161,7 +165,8 @@ final class WpUserStore implements Store
         $meta = static fn (string $key) => "LEFT JOIN `{$wpdb->usermeta}` {j} ON {j}.user_id = {a}.ID AND {j}.meta_key = '" . addslashes($key) . "'";
         $v = "NULLIF({j}.meta_value, '')";
         $capabilities = $wpdb->get_blog_prefix() . 'capabilities';
-        $role = self::roleExpression();
+        // A user without zero_role yet (created before tracking) reads as subscriber until backfilled.
+        $role = "COALESCE({j}.meta_value, 'subscriber')";
         $status = $wpdb->prefix . 'zero_identity_accounts';
         $refs = [];
         foreach ($spec['columns'] as $col => $def) {
@@ -170,7 +175,7 @@ final class WpUserStore implements Store
                 $col === $spec['primaryKey'] => new ColumnRef('{a}.ID', '', '', 'scalar'),
                 $col === 'email' => new ColumnRef('{a}.user_email', '', '', 'scalar'),
                 $col === 'name' => new ColumnRef('{a}.display_name', '', '', 'scalar'),
-                $col === 'role' => new ColumnRef($role, $meta($capabilities), '', 'scalar'),
+                $col === 'role' => new ColumnRef($role, $meta(self::ROLE_META), '', 'scalar'),
                 $col === 'guest' => new ColumnRef("CASE WHEN {j}.meta_value LIKE '%\"zero_guest\"%' THEN 1 ELSE 0 END", $meta($capabilities), '', 'scalar'),
                 $col === 'passwordHash' => new ColumnRef('NULL', '', '', 'scalar'),
                 $col === 'suspendedAt' => $this->identityTable($status)
@@ -205,18 +210,6 @@ final class WpUserStore implements Store
         $rows = $this->db->run($q['sql'], $q['params']);
         $spec = $this->schema->collection($collection);
         \Zero\Extensions::lookup($collection, array_column($rows, $spec['primaryKey']));
-        if (isset($spec['columns']['role'])) {
-            // Rows carry exactly the role Zero authenticates the user with (WP_User::has_cap, ordered
-            // role merge included). The SQL expression decides filters and ordering and agrees with
-            // it except for users holding several roles that grant and deny the same capability.
-            foreach ($rows as &$row) {
-                $user = get_userdata((int) $row[$spec['primaryKey']]);
-                if ($user instanceof \WP_User) {
-                    $row['role'] = WpAuth::map($user)['role'];
-                }
-            }
-            unset($row);
-        }
         foreach ($spec['columns'] as $col => $def) {
             if ($def['type'] !== 'select') {
                 continue;

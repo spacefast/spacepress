@@ -211,8 +211,10 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   assert.equal(authRole, "subscriber", "the same answer authentication gives");
   // Several roles, one granting and a later one denying manage_options: rows follow WordPress's merge.
   wp("eval", `add_role('zero_test_deny', 'Deny', ['manage_options' => false]); $u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->add_role('zero_test_deny');`);
-  const merged = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id } })));
-  assert.equal(merged.data[0].role, wp("eval", `echo \\Zero\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`), "the row's role is the authenticated role");
+  const authenticated = wp("eval", `echo \\Zero\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
+  const merged = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: authenticated } })));
+  assert.equal(merged.data[0]?.role, authenticated, "rows and role filters follow WordPress's ordered merge");
+  assert.notEqual(authenticated, "admin", "the later role's denial wins, as in WordPress");
   wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_role('zero_test_deny'); $u->set_role('subscriber'); remove_role('zero_test_deny');`);
 });
 

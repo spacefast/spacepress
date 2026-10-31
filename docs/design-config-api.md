@@ -283,9 +283,18 @@ Modifiers (14, down from 18):
   `defaultNow`, `$onUpdateFn` go (F2, F4). The evaluator already branches on
   `Value::Closure` inside `default` to reject it (`src/eval.rs:1952`); it
   routes to `now_or_fn` instead. `() => new Date()` on a time column still
-  means SQL "now". `$onUpdate` loses the `$` because nothing else in the
-  modifier set has one and Drizzle's `$` marks "runtime-only", which every
-  Zero modifier is.
+  means "now" (`DefaultVal::Now`, filled by the PHP pipeline; SQL defaults
+  carry constants only, `src/migrate.rs:130`). `$onUpdate` loses the `$`
+  because nothing else in the modifier set has one and Drizzle's `$` marks
+  "not a SQL default", which is true of every Zero default function.
+- **`.onUpdate()` no longer counts as a default.** Today `$onUpdate` sets
+  `hasDefault` in the types (`index.d.ts:168`) but not in the compiler
+  (`src/extract.rs:1383`, `optional_on_insert` at `src/schema.rs:213`), so
+  `timestamp().notNull().$onUpdate(fn)` may be omitted on insert in
+  TypeScript and is required by the build. The compiler's reading is the
+  right one and the types follow it; a column that needs both uses
+  `.default(fn).onUpdate(fn)`, which is what the automatic `updatedAt`
+  expands to.
 - **`.default()` implies `.notNull()`** (F24). This is a behaviour change,
   not a removal of redundant syntax: today `.default(false)` alone still
   accepts an explicit `null`; after it, the column is NOT NULL, an explicit
@@ -350,6 +359,10 @@ collection({ ...columns }, {
   (`shopping_list` today) and a camel-case key (`shoppingList`) is the
   table name `shoppingList`, which SQLite and MySQL accept; the REST path is
   the key too. The three namings (key, table, `.$name`) collapse to one.
+  WordPress lower-cases registered post-type names, so a content
+  collection's key must be lowercase (`blog_posts`, not `blogPosts`): a
+  camel-case key on a content collection is a build error, beside today's
+  15-character one. Tables keep any identifier.
 - **`content` replaces `editor`** (F11). The word says what it means on both
   targets: a content collection has drafts, revisions, scheduling and a
   wp-admin editor; a table doesn't. `drafts: true` and `revisions: true`
@@ -383,7 +396,7 @@ Rejections stay as today where they are not subsumed: a content collection
 needs a title; names over 15 characters on content collections; reserved
 names; two slugs; user columns named `status`/`publishedAt`/`createdAt`/
 `updatedAt`/`id` colliding with system columns (new error: "`id` is added
-automatically; remove it, or use `.primaryKey()` on your own key").
+automatically; remove it, or name your own key").
 
 ### 4.3 Relations
 
@@ -433,13 +446,16 @@ Rules, all enforced at build time:
   (`with: true` becomes empty options, `Db.php:266`; an excluded target
   reads `null`, `:292`). Today's `optional: false` claimed otherwise and was
   unsound; the pantry's `i.location?.name` is the right shape and stays.
-- An inferred reverse that collides with a column, a forward relation, or
-  another inferred reverse on the target is a build error naming both
-  (`authors` gets `posts` from `posts.authorId` and already has `postsId`
-  giving the forward `posts`: "name the reverse of posts.authorId in
-  authors.relations"). An explicit `relations:` entry on the target
-  replaces the inferred reverse for every `ref` column it names, so naming
-  one of two conflicting reverses is enough.
+- One rule for reverses, in order: first, every `ref` column named by an
+  explicit `relations:` entry on the target is taken out of inference;
+  then each remaining `ref` column gets the reverse `<referencing key>` on
+  the target; a reverse whose name is already taken on the target (by a
+  column, a forward relation, or another reverse from the same pass) is a
+  build error naming both sides ("name the reverse of posts.editorId in
+  authors.relations"). So with `posts.authorId` and `posts.editorId` both
+  targeting `authors`, naming `written: many("posts", "authorId")` leaves
+  `editorId` to infer `authors.posts`, which is then unambiguous and
+  allowed; naming neither is the error.
 - `onDelete` defaults to `"set null"` for nullable refs and `"restrict"` for
   NOT NULL refs, the same rule the importer already applies
   (`docs/config-migration.md`, "Original Zero reference"); `cascade` is
@@ -485,8 +501,8 @@ Rule = boolean | "anyone" | "authenticated" | Role | "self" | ((ctx) => boolean 
   `user()` column (§4.8), `"self"` on `read`, `update` or `delete` means
   "rows whose `user()` column is the viewer" (an anonymous viewer gets
   nothing). On an auth collection it means the viewer's own row, as today.
-  With two `user()` columns (`createdBy`, `assignedTo`) `"self"` is a build
-  error asking for a function rule naming the column. On `create`, `"self"`
+  With two `user()` columns (`createdById`, `assignedToId`) `"self"` is a
+  build error asking for a function rule naming the column. On `create`, `"self"`
   stays rejected as today (open question 5 proposes a meaning). The
   hand-written `ownerId`/`userId` column plus `{ ownerId: ctx.user?.id ?? -1 }`
   function pair (8 uses) becomes `userId: user()` and `"self"`. `"owner"`
@@ -543,11 +559,12 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   compiler insists on (`src/extract.rs:2402`). Declaring `email` yourself
   stays allowed for extra rules.
 - **`user(opts?)`** is a new column: an integer reference to the app's user
-  (`User.id`), conventionally named `userId`. With an auth collection in the
-  config it is exactly `ref("<auth key>")` plus the ownership meaning: the
-  `Id`-stripping rule names the relation (`userId` gives `user`, loadable
-  with `with: { user: true }`) and the reverse on the auth collection is
-  inferred as for any `ref`. Without an auth collection there is no row to
+  (`User.id`), named with the `Id` suffix like any `ref` (`userId`,
+  `createdById`). With an auth collection in the config it is exactly
+  `ref("<auth key>")` plus the ownership meaning: the `Id`-stripping rule
+  names the relation (`userId` gives `user`, loadable with
+  `with: { user: true }`) and the reverse on the auth collection is inferred
+  as for any `ref`. Without an auth collection there is no row to
   load, so it declares no relation. Deletion of the user follows `ref()`'s rule:
   `"set null"` when nullable, `"restrict"` when `.notNull()`, and
   `{ onDelete: "cascade" }` explicitly. It is what `authors.userId` and the
@@ -564,8 +581,10 @@ Each default, what it expands to, and the one word that turns it off.
 
 Every collection without a `.primaryKey()` column gets
 `id: integer().primaryKey()` (autoincrement) as its first column. Off: declare
-your own `.primaryKey()`. Error: a user column named `id` without
-`.primaryKey()`.
+your own `.primaryKey()` under another name. A user column named `id` is
+always an error, with or without `.primaryKey()` ("`id` is added
+automatically; remove it, or name your own key"), so the manual spelling
+F3 removes does not survive under a new name.
 
 #### 4.9.2 `title`
 
@@ -628,14 +647,22 @@ or `slug({ source: false })`.
 
 #### 4.9.6 Relations
 
-As §4.3: every `ref()` is a `one`, every `one` gets a `many` back unless the
-target already has one from the same collection. Off: name the reverse
-explicitly with `relations:` on the target.
+As §4.3: every `ref()` is a `one`, every `one` not named in the target's
+`relations:` gets a `many` back named after the referencing collection; a
+taken name is an error. Off: name the reverse explicitly with `relations:`
+on the target.
 
 #### 4.9.7 `uid`
 
 A `uid` column exists on synced collections and on every collection a synced
-collection references. Off: none; it is a system column.
+collection references. Off: none; it is a system column. In the types the
+first case is local (`sync` is an option of the collection, as today's
+`IdentityColumns` reads it, `index.d.ts:489`); the second is not knowable
+from the collection alone, so `uid` on a reference target is typed through
+the registered config, where the referencing collection's `sync` and its
+`ref` targets are both visible, the same place relations are typed (§4.3).
+Hooks and `Row<typeof authors>` see `uid` only once the config is
+registered, which `zero build` does on every build.
 
 #### 4.9.8 Access on auth collections
 
@@ -996,9 +1023,14 @@ export default defineConfig({
 
 The pantry is all tables: none of the three has a `richText`, a `title`
 column or `sync`, so `content` is inferred `false` for each and the three
-`editor: false` go. `items.slug` was a `text().unique().max(191)` filled by a
-`slugify` helper in `beforeCreate`; the proposed `slug({ source: "name" })` is
-the same column, derived by the runtime. `restock` was typed
+`editor: false` go. `items.slug` was a NOT NULL `text().unique().max(191)`
+overwritten by a `slugify` helper in `beforeCreate` on every create; the
+proposed `slug({ source: "name" })` is a behaviour change, not the same
+column: a supplied slug is kept, an omitted one is derived with `-2`, `-3`
+suffixes on collision (`Db.php:639`), the slug grammar is Zero's, and the
+column is nullable for a name with no sluggable characters. The example
+accepts that (it is what the site's posts already do); `.notNull()` and a
+`.validate()` would restore the old guarantees. `restock` was typed
 `InferSelectModel<typeof items>`; because it is now referenced from inside
 `items`' own options, it is typed by the four fields it reads (§4.2, open
 question 9). `lib/fields.ts` keeps `UNITS` and `LOW_STOCK` (4 lines).
@@ -1047,7 +1079,7 @@ work from. "Where" names the compiler site that changes.
 | `.default(x)` alone (nullable, explicit null accepted) | `.default(x)` is NOT NULL; `.nullable().default(x)` for the old meaning | `src/eval.rs:1907,1952`; `Db.php:429` |
 | `.unique().max(191)` on text | `.unique()` | `src/extract.rs:1224` |
 | `ctx.user?.role === "admin" \|\| …` | `ctx.is("editor")` | `src/compile.rs:390` (ctx types), `Access.php:53` |
-| `ownerId: integer()` + function rule | `user: user()` + `"self"` | new column kind; `src/extract.rs:918` |
+| `ownerId: integer()` + function rule | `userId: user()` + `"self"` | new column kind; `src/extract.rs:918` |
 
 ### 6.2 Added
 

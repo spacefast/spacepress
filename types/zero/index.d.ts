@@ -430,7 +430,7 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: InsertShape<Omit<TCols, "translations">> & ("locale" extends keyof TCols ? { translationOf?: number } : {}) & (TAuth extends true ? { password?: string } : {});
+  readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -463,6 +463,17 @@ type HasLocalized<TCols> = true extends (TCols extends unknown ? {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: infer L } } ? L : false;
 }[keyof TCols] : never) ? true : false;
 
+/** Keys of columns translated per locale (`.localized()`); every other column is synced across a group. */
+type LocalizedKeys<TCols> = {
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: true } } ? K : never;
+}[keyof TCols];
+/** A localized insert: a new row, or a translation (`translationOf`) that copies every synced column, so those may be omitted. */
+type TranslationInsert<TCols> =
+  | (InsertShape<Omit<TCols, "translations">> & { translationOf?: undefined })
+  | Simplify<
+      InsertShape<Pick<TCols, (LocalizedKeys<TCols> | "locale") & keyof TCols>> &
+        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | "locale" | "translations">>> & { translationOf: number }
+    >;
 type LocaleColumns = {
   locale: ColumnBuilder<"text", Locale, true, true>;
   translations: ColumnBuilder<"json", Partial<Record<Locale, number>>, true, true>;

@@ -1162,6 +1162,15 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                     'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
                     'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
                 ]],
+            'codes' => ['primaryKey' => 'code', 'localized' => true, 'access' => $open, 'api' => $api, 'relations' => [],
+                'columns' => [
+                    'code' => ['type' => 'text', 'primaryKey' => true, 'notNull' => true],
+                    'label' => ['type' => 'text', 'localized' => true],
+                    'rank' => ['type' => 'integer'],
+                    'locale' => ['type' => 'text', 'enum' => ['en', 'de', 'fr'], 'notNull' => true, 'default' => ['value' => 'en'], 'system' => true],
+                    'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
+                    'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
+                ]],
             'notes' => ['primaryKey' => 'id', 'access' => $open, 'api' => $api, 'relations' => [],
                 'columns' => ['id' => $id, 'pageId' => ['type' => 'integer'], 'body' => ['type' => 'text', 'notNull' => true]]],
         ]];
@@ -1210,6 +1219,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         CREATE UNIQUE INDEX "pages_translationGroup_locale" ON "pages" ("translationGroup", "locale");
         --> statement-breakpoint
         CREATE TABLE "notes" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "pageId" integer, "body" text NOT NULL);
+        --> statement-breakpoint
+        CREATE TABLE "codes" ("code" text PRIMARY KEY NOT NULL, "label" text, "rank" integer, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
+        --> statement-breakpoint
+        CREATE UNIQUE INDEX "codes_translationGroup_locale" ON "codes" ("translationGroup", "locale");
         SQL;
     foreach (['zero/app/schema.php' => $schemaPhp, 'zero/app/functions.php' => $functionsPhp, 'zero/app/migrations/0001_init.sql' => $migration] as $rel => $content) {
         @mkdir(dirname("$app/$rel"), 0777, true);
@@ -1304,6 +1317,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $stampedDe = $db->insert('pages', ['title' => 'Stamped DE', 'locale' => 'de', 'translationOf' => $stamped['id']], true)[0];
     check('a generated column is per row', $stampedDe['stampedAt'] !== $stamped['stampedAt'], [$stamped['stampedAt'], $stampedDe['stampedAt']]);
     $db->delete('pages', ['id' => ['in' => [$stamped['id'], $stampedDe['id']]]]);
+
+    // Text primary keys that look like numbers stay text through groups, sync and reads.
+    $db->insert('codes', ['code' => '01', 'label' => 'One', 'rank' => 1]);
+    $db->insert('codes', ['code' => '001', 'label' => 'Eins', 'locale' => 'de', 'translationOf' => '01']);
+    $db->update('codes', ['rank' => 2], ['code' => '001']);
+    eq('numeric-looking text keys keep their type', array_map(static fn ($r) => [$r['code'], $r['rank'], $r['translations']], $db->findMany('codes', ['locale' => '*', 'orderBy' => ['code' => 'asc']])),
+        [['001', 2, ['en' => '01', 'de' => '001']], ['01', 2, ['en' => '01', 'de' => '001']]]);
 
     // A synced group with an admin-only sub-field: an editor can't confirm the hidden value by guessing.
     $boxed = $db->insert('pages', ['title' => 'Boxed', 'box' => ['label' => 'L', 'secret' => 's3cret']], true)[0];

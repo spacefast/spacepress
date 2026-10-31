@@ -278,34 +278,67 @@ final class Db
             if (!is_array($opts)) {
                 throw HttpError::invalidQuery('Relation options must be true or an object', $rptr);
             }
-            $keys = [];
+            // A `many` relation between localized collections resolves per parent (§7.3): a parent's
+            // children in that parent row's locale, falling back per translation group like a top-level
+            // read, one query per distinct parent locale (a nested `locale` overrides that). References
+            // name one specific row, so when the relation starts at the parent's primary key, children of
+            // any row in the parent's group belong to it (limit/offset then apply per parent, here).
+            $parentPk = $spec['primaryKey'];
+            $localizedMany = $rel['kind'] === 'many' && $this->localized($collection) && $this->localized($rel['collection']);
+            $perLocale = $localizedMany && !array_key_exists('locale', $opts);
+            $byGroup = $localizedMany && $rel['from'] === $parentPk;
+            $default = $perLocale ? $this->schema->locales()['default'] : null;
+            $bucketOf = static fn (array $source): string => $perLocale ? (string) ($source['locale'] ?? $default) : '';
+            $keysOf = static fn (array $source): array => $byGroup
+                ? array_values(Locale\Module::members($source, $parentPk))
+                : ($source[$rel['from']] === null ? [] : [$source[$rel['from']]]);
+            $buckets = [];
+            $owner = []; // bucket => key(referenced value) => key(the parent row's own `from` value)
             foreach ($rows as $row) {
                 $source = $sourceFor($row);
-                if ($source[$rel['from']] !== null) {
-                    $keys[self::key($source[$rel['from']])] = $source[$rel['from']];
+                $bucket = $bucketOf($source);
+                foreach ($keysOf($source) as $v) {
+                    $buckets[$bucket][self::key($v)] = $v;
+                    $owner[$bucket][self::key($v)] = self::key($source[$rel['from']]);
                 }
             }
             $targetCols = $this->schema->collection($rel['collection'])['columns'];
-            $values = array_map(
-                static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
-                array_values($keys),
-            );
-            $children = $this->fetch($rel['collection'], $opts, $rptr, $viewer, [$rel['to'], $values], decoded: $childDecoded);
-            $childSources = array_column($childDecoded, null, $this->schema->collection($rel['collection'])['primaryKey']);
             $childPk = $this->schema->collection($rel['collection'])['primaryKey'];
             $groups = [];
-            foreach ($this->project($children, $rel['collection'], $opts, $rptr) as $i => $child) {
-                $groups[self::key($childSources[$children[$i][$childPk]][$rel['to']])][] = $child;
+            foreach ($buckets as $bucket => $keys) {
+                $bucketOpts = $perLocale ? ['locale' => (string) $bucket] + $opts : $opts;
+                if ($byGroup) {
+                    unset($bucketOpts['limit'], $bucketOpts['offset']);
+                    $bucketOpts['orderBy'] ??= [$childPk => 'asc']; // the order a windowed read pages in
+                }
+                $values = array_map(
+                    static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
+                    array_values($keys),
+                );
+                $children = $this->fetch($rel['collection'], $bucketOpts, $rptr, $viewer, [$rel['to'], $values], decoded: $childDecoded);
+                $childSources = array_column($childDecoded, null, $childPk);
+                foreach ($this->project($children, $rel['collection'], $bucketOpts, $rptr) as $i => $child) {
+                    $to = self::key($childSources[$children[$i][$childPk]][$rel['to']]);
+                    $groups[$bucket][$owner[$bucket][$to] ?? $to][] = $child;
+                }
             }
             foreach ($rows as &$row) {
                 $source = $sourceFor($row);
-                $group = $source[$rel['from']] === null ? [] : ($groups[self::key($source[$rel['from']])] ?? []);
+                $group = $source[$rel['from']] === null ? [] : ($groups[$bucketOf($source)][self::key($source[$rel['from']])] ?? []);
+                if ($byGroup && (isset($opts['limit']) || isset($opts['offset']))) {
+                    $group = array_slice($group, (int) ($opts['offset'] ?? 0), isset($opts['limit']) ? (int) $opts['limit'] : null);
+                }
                 $row[$name] = $rel['kind'] === 'many' ? $group : ($group[0] ?? null);
             }
             unset($row);
         }
 
         return $rows;
+    }
+
+    private function localized(string $collection): bool
+    {
+        return $this->schema->locales() !== null && ($this->schema->collection($collection)['localized'] ?? false);
     }
 
     private function populateMedia(array $rows, string $col, bool $list): array

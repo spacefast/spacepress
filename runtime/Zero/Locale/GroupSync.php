@@ -168,31 +168,28 @@ final class GroupSync
             // Every member as currently committed, locked: a translation created concurrently can't be missed.
             $members = Lock::members($collection, $row, Module::members($row, $pk));
             $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
-            $handed = false;
-            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed, &$handed): void {
+            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
                 foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
-                    $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
+                    // A sibling an open bulk update will write later gets the values with its own
+                    // update, so its hooks and revision happen once. Values already queued for it are
+                    // replaced, also by one that equals what it stores now.
+                    $bulk = db()->pendingUpdate($collection, $sibling[$pk]);
+                    $queued = $bulk?->handed[\Zero\Db::rowKey($sibling[$pk])] ?? [];
+                    $patch = array_filter($changed, static fn ($v, $col) => array_key_exists($col, $queued) || !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
                     if ($patch === []) {
                         continue;
                     }
-                    // A sibling an open bulk update will write later gets the values with its own
-                    // update, so its hooks and revision happen once.
-                    $bulk = db()->pendingUpdate($collection, $sibling[$pk]);
                     if ($bulk !== null) {
                         $bulk->hand($sibling[$pk], $patch);
-                        $handed = true;
                     } else {
                         db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                     }
                 }
             });
-            if ($handed) {
-                self::checkAfterBulk($collection, $row[$pk]);
-
-                return;
-            }
         }
-        if ($receiving !== []) {
+        if (db()->outermostUpdate($collection) !== null) {
+            // A bulk update is open on this collection: rows of this group may still hold values handed
+            // to them, so the group is checked once the outermost bulk update has written every row.
             self::checkAfterBulk($collection, $row[$pk]);
 
             return;
@@ -203,7 +200,7 @@ final class GroupSync
     /** The group invariant once the outermost open bulk update has written every row (handed values included). */
     private static function checkAfterBulk(string $collection, int|string $id): void
     {
-        db()->outermostUpdate($collection)->after[] = static fn () => self::agrees($collection, $id);
+        db()->outermostUpdate($collection)->after[\Zero\Db::rowKey($id)] = static fn () => self::agrees($collection, $id);
     }
 
     /**

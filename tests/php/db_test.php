@@ -1221,6 +1221,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($existing['title'] === 'Spawn on adopt' && isset($patch['price'])) {
                 \Zero\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing['id']]);
             }
+            if ($existing['title'] === 'Order EN' && ($patch['stampedAt'] ?? null) === '2001-01-01T00:00:00.000Z') {
+                $patch['price'] = 5; // a hook changes a synced value during a bulk update of another column
+            }
             if ($existing['title'] === 'Move DE') {
                 $patch['locale'] = 'fr';
             }
@@ -1233,6 +1236,14 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         function pages__afterUpdate($row, $previous) {
             if ($row['price'] === 13 && $row['locale'] === 'de') {
                 throw new \Zero\JsError('de refuses 13');
+            }
+            if ($row['title'] === 'Between' && $row['price'] === 41) {
+                // between two rows of one group in a bulk update: touch the first again
+                \Zero\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
+            }
+            if ($row['title'] === 'Between' && $row['stampedAt'] === '2001-01-01T00:00:00.000Z') {
+                // restore the first row's synced value: what was handed to the second must follow
+                \Zero\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
             }
             if ($row['title'] === 'Kick' && $row['price'] === 31) {
                 // a nested bulk update over two translations whose group the outer update also covers,
@@ -1326,6 +1337,18 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('… a nested bulk over the same group commits both changes to every row', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$nest['id'], $nestDe['id'], $nestFr['id']]]]])),
         [[31, ['b']], [31, ['b']], [31, ['b']]]);
     $db->delete('pages', ['id' => ['in' => [$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']]]]);
+    $db->delete('notes', ['id' => ['notIn' => $before]]);
+    // Writes between two rows of one group in a bulk update see the handoff through: a nested write
+    // waits for it, and a later change replaces the handed value even when it equals what is stored.
+    $order = $db->insert('pages', ['title' => 'Order', 'price' => 1], true)[0];
+    $between = $db->insert('pages', ['title' => 'Between', 'price' => 1], true)[0];
+    $orderDe = $db->insert('pages', ['title' => 'Order DE', 'locale' => 'de', 'translationOf' => $order['id']], true)[0];
+    $three = ['id' => ['in' => [$order['id'], $between['id'], $orderDe['id']]]];
+    $db->update('pages', ['price' => 41], $three);
+    eq('… a nested write between the rows commits with the group agreeing', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
+    $db->update('pages', ['stampedAt' => '2001-01-01T00:00:00.000Z'], $three);
+    eq('… a later change back to the stored value replaces the handed one', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
+    $db->delete('pages', $three);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
     // A row from before localization (no group yet): its old revisions show the group it has now.
     $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];

@@ -1,11 +1,11 @@
 //! `zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp "<wp-cli command>"]`
 //!
 //! Runs the runtime's `wp zero migrate-legacy` against a WordPress site with the new app active.
-//! The original release is sent on stdin, so the target can be a local harness (the default:
-//! `tests/wp/harness.sh wp`, honouring ZERO_WP_PROJECT), a container, or `wp --ssh=<host>`.
+//! The original release is sent on stdin, so the target can be a local harness (the default: the
+//! `zero dev --wp` harness's `wp`, honouring ZERO_WP_PROJECT), a container, or `wp --ssh=<host>`.
 //! The PHP command owns the migration; this wrapper only transports it and keeps its exit status.
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
 const USAGE: &str =
@@ -54,13 +54,8 @@ fn wp_command(wp: Option<&str>) -> Result<Command, String> {
         command.args(parts);
         return Ok(command);
     }
-    let harness = std::env::var_os("ZERO_WP_HARNESS")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/wp"))
-        .join("harness.sh");
-    if !harness.is_file() {
-        return Err("no WordPress target: pass --wp \"wp --path=/srv/site\" (or set ZERO_WP_HARNESS)".into());
-    }
+    let harness =
+        super::dev::harness().map_err(|e| format!("no WordPress target: pass --wp \"wp --path=/srv/site\" ({e})"))?;
     let mut command = Command::new("bash");
     command.arg(harness).arg("wp");
     Ok(command)

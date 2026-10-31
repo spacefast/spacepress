@@ -113,6 +113,10 @@ final class PostsController extends \WP_REST_Posts_Controller
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */
     public function delete_item($request)
     {
+        // Inside a transaction someone else opened, a refusal must abort it, not become a response.
+        if (Plugin::instance()?->connection()->inTransaction()) {
+            return parent::delete_item($request);
+        }
         try {
             return parent::delete_item($request);
         } catch (\Zero\HttpError | \Zero\JsError $e) {

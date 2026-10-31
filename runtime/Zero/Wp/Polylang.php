@@ -14,7 +14,8 @@ use Zero\Schema;
  * language (`language` taxonomy) and its translation group (`post_translations` taxonomy); Zero
  * writes them through Polylang's public API (`pll_set_post_language`, `pll_save_post_translations`)
  * and reads them in SQL as term subqueries, so `locale`, `translations` and the locale rule compile
- * like any other column. Polylang languages are created from `locales.all` on activation.
+ * like any other column. Polylang languages are created from `locales.all` on the first request after
+ * activation or a change to them.
  */
 final class Polylang
 {
@@ -52,15 +53,33 @@ final class Polylang
                 self::adopt($objectId, (int) reset($ttIds));
             }
         }, 10, 4);
-        add_action('activated_plugin', static function (): void {
-            self::ensureLanguages();
-        });
-        add_action('admin_init', static function (): void {
-            $schema = Runtime::plugin()?->schema;
-            if ($schema?->locales() !== null && get_option('zero_polylang_languages') !== self::state($schema->locales())) {
-                self::ensureLanguages();
+        // Languages follow `locales` on the first request Zero can serve (REST, cron, CLI, admin) after
+        // activation or a change. Activation alone can't: with Polylang activated in the same request,
+        // its model isn't loaded yet. (On a site with no languages Polylang builds no front-end
+        // context, so a theme page doesn't provision; Zero serves nothing there.)
+        // Concurrent first requests queue on one lock and recheck the marker, so a language is added once.
+        add_action('init', static function (): void {
+            $plugin = Runtime::plugin();
+            $locales = $plugin?->schema->locales();
+            // Not while storage lags the build (the schema's locales may not be the stored ones yet).
+            // The marker only says provisioning is done; assign() checks each write's language itself.
+            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
+                return;
             }
-        });
+            // Until every language exists a localized write would store no language, so a failure
+            // (lock timeout, Polylang refusing) refuses Zero like lagging storage; the next request retries.
+            $problem = Migrator::upgrade($plugin->connection(), 'zero_polylang_languages', static fn (): bool => self::provisioned($locales, true), self::ensureLanguages(...));
+            // Whoever provisioned, this request may hold the language list it loaded before: reload
+            // it, and refuse if a configured language is still missing.
+            self::reload();
+            $missing = array_diff(array_map(self::slug(...), $locales['all']), array_map('strval', (array) pll_languages_list(['fields' => 'slug'])));
+            if ($problem === null && $missing !== []) {
+                $problem = 'Polylang is missing the languages ' . implode(', ', $missing);
+            }
+            if ($problem !== null) {
+                $plugin->refuse($problem);
+            }
+        }, 2);
     }
 
     /** locale => post id of $postId's group (self included), in configured locale spelling. */
@@ -124,6 +143,15 @@ final class Polylang
      */
     public static function assign(Connection $db, int $id, string $locale, array $group): void
     {
+        // Polylang resolves the slug through the language list this request loaded; one loaded before
+        // another request provisioned the language wouldn't know it. Reload once, then refuse rather
+        // than store a post without its language.
+        if (!PLL()->model->get_language(self::slug($locale))) {
+            self::reload();
+        }
+        if (!PLL()->model->get_language(self::slug($locale))) {
+            throw new HttpError(503, 'unavailable', "Polylang has no $locale language yet; try again shortly");
+        }
         self::busy(static fn () => pll_set_post_language($id, self::slug($locale)));
         if ($group === []) {
             return;
@@ -194,6 +222,7 @@ final class Polylang
         if ($locales === null || !function_exists('PLL') || !function_exists('pll_languages_list')) {
             return;
         }
+        self::reload(); // another request may have added some since this one loaded them
         $have = array_map('strval', (array) pll_languages_list(['fields' => 'slug']));
         $ordered = array_values(array_unique([$locales['default'], ...$locales['all']]));
         foreach ($ordered as $i => $locale) {
@@ -222,6 +251,26 @@ final class Polylang
             }
         }
         update_option('zero_polylang_languages', self::state($locales), false);
+    }
+
+    /** Polylang's language list as committed now: its own cache, and WordPress's term-query cache it reads through. */
+    private static function reload(): void
+    {
+        wp_cache_set_terms_last_changed();
+        PLL()->model->clean_languages_cache();
+    }
+
+    private static function provisioned(array $locales, bool $fresh = false): bool
+    {
+        if ($fresh) {
+            // Under the lock: the committed value, past the option caches (an absent option is
+            // cached as a negative entry in `notoptions`, which deleting the key alone keeps).
+            global $wpdb;
+
+            return $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'zero_polylang_languages')) === self::state($locales);
+        }
+
+        return get_option('zero_polylang_languages') === self::state($locales);
     }
 
     /** Provisioning marker: the default plus every locale, so changing either re-provisions. */

@@ -154,6 +154,12 @@ final class Plugin
         return Runtime::unavailable() ?? $this->unavailable;
     }
 
+    /** A later first-request step (Polylang languages) failed: refuse Zero operations for this request too. */
+    public function refuse(string $problem): void
+    {
+        $this->unavailable ??= $problem;
+    }
+
     /** rest_pre_dispatch: core /wp/v2 writes to a Zero collection get a 503 while storage is behind. */
     public function refuseCoreWrites(mixed $result, \WP_REST_Server $server, \WP_REST_Request $request): mixed
     {

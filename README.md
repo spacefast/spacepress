@@ -280,11 +280,13 @@ WordPress, and CI proves it on every change, but the config API, the wire
 format and the plugin layout will change before a first release. There are no
 binary releases yet; you build the compiler from source.
 
-What's next, none of it shipped: a website with an interactive config builder
-that loads your config into WordPress Playground, one-click publish to
-Spacefast, and two companion projects still being designed, Zero Blocks
-(Gutenberg blocks and block themes written in TSX) and Zero Admin (an optional
-admin plugin for Zero apps).
+What's next, none of it shipped:
+
+- A website with an interactive config builder that loads your config into
+  WordPress Playground, and one-click publish to Spacefast.
+- Zero Blocks: an optional add-on for authoring Gutenberg content and full
+  block themes in TSX.
+- Zero Admin: an optional admin plugin for Zero apps, still being designed.
 
 ## License
 

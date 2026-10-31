@@ -375,6 +375,19 @@ test("structured member fields on the profile form: rendered from the member, sa
   const after = (await call("GET", `/members/${gu.id}`, { token: self.json.access_token })).json.data;
   assert.deepEqual([after.address, after.links], [row.address, row.links]);
 
+  // The add-user form has no checked path for structured values: they are edited once the user exists.
+  const addForm = await (await fetch(`${site}/wp-admin/user-new.php`, { headers: { cookie: await adminCookie("admin", "zero-test-admin") } })).text();
+  assert.match(addForm, /data-name="zero_plan"/);
+  assert.doesNotMatch(addForm, /data-name="zero_(address|links|sections)"/);
+  // Code calling SCF's update_field (no form, no user: a trusted caller) writes through Zero, in site time.
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    wp("eval", `update_field('field_zero_member_links', [['field_zero_member_links_label' => 'Code', 'field_zero_member_links_at' => '2026-07-01 14:30:00']], 'user_${gu.id}');`);
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  assert.deepEqual(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: gu.id } }))).data[0].links, [{ label: "Code", at: "2026-07-01T12:30:00.000Z" }]);
+
   // The collection's update rule decides the form too: `update: "self"`, so an admin editing this
   // member is refused as on /zero/v1, while on their own profile the admin may set the admin-only sub-field.
   const adminCookieJar = await adminCookie("admin", "zero-test-admin");

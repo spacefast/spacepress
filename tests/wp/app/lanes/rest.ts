@@ -28,6 +28,8 @@ export const payroll = collection("payroll", {
   id: id(),
   title: text().notNull(),
   salary: text().access({ read: "admin", update: "admin" }),
+  // A unique value only admins see (and set): no conflict may reveal it.
+  badge: text().unique().max(60).access({ read: "admin" }),
   // An admin-only reference: SCF links (and can embed) the post it names.
   managerId: integer().references(() => ledger.id).access({ read: "admin" }),
 }, { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });

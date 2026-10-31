@@ -216,6 +216,18 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   assert.equal(merged.data[0]?.role, authenticated, "rows and role filters follow WordPress's ordered merge");
   assert.notEqual(authenticated, "admin", "the later role's denial wins, as in WordPress");
   wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_role('zero_test_deny'); $u->set_role('subscriber'); remove_role('zero_test_deny');`);
+  // Capability changes that don't go through a role assignment still move the stored role.
+  wp("eval", `$u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->remove_all_caps();`);
+  assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "subscriber", "remove_all_caps");
+  wp("user", "set-role", String(dupe.id), "contributor");
+  wp("cap", "remove", "contributor", "edit_posts");
+  try {
+    assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } }))).data.length, 1, "a role definition edit");
+  } finally {
+    wp("cap", "add", "contributor", "edit_posts");
+  }
+  assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "author", "and back");
+  wp("user", "set-role", String(dupe.id), "subscriber");
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {

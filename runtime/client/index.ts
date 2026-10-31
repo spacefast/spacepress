@@ -667,9 +667,16 @@ export function createClient(options: ClientOptions = {}): Client {
       }, from)) throw authError(409, "session_changed", "Another sign-in or sign-out happened first");
       const user = await auth.me();
       if (!user) throw authError(401, "unauthenticated", "The issuer's tokens were not accepted");
-      // Back to where signIn({ returnTo }) started (same-origin paths only).
-      if (typeof pkce.returnTo === "string" && pkce.returnTo.startsWith("/") && !pkce.returnTo.startsWith("//")) {
-        location?.assign(pkce.returnTo);
+      // Back to where signIn({ returnTo }) started: only to this origin, and only when the tokens
+      // survive a page load (sessionStorage); with memory storage the caller navigates itself.
+      if (typeof pkce.returnTo === "string" && location && authOpts.storage === "session") {
+        let to: URL | null = null;
+        try {
+          to = new URL(pkce.returnTo, location.href);
+        } catch {
+          to = null;
+        }
+        if (to && to.origin === new URL(location.href).origin) location.assign(to.href);
       }
       return user;
     },

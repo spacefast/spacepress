@@ -102,7 +102,7 @@ function stubBrowser(search = "") {
     configurable: true,
     value: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) },
   });
-  Object.defineProperty(globalThis, "location", { configurable: true, value: { search, assign: (to: string) => (visits.push(to), navigate(to)) } });
+  Object.defineProperty(globalThis, "location", { configurable: true, value: { search, href: `https://blog.test/callback${search}`, assign: (to: string) => (visits.push(to), navigate(to)) } });
   return {
     store,
     navigated,
@@ -747,7 +747,7 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     const zero = wpMod.createClient({ url: base, auth });
     seen = [];
     assert.deepEqual(await zero.auth.handleCallback(), member);
-    assert.equal(await browser.navigated, "/drafts", "back to signIn's returnTo");
+    assert.equal(await browser.navigated, "https://blog.test/drafts", "back to signIn's returnTo");
     assert.deepEqual([seen[0].path, seen[0].headers["content-type"], seen[0].headers.authorization], ["/identity/token", "application/x-www-form-urlencoded", undefined]);
     assert.deepEqual(form(seen[0]), {
       grant_type: "authorization_code",
@@ -773,6 +773,30 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     );
   } finally {
     browser.restore();
+  }
+});
+
+test("WP handleCallback returns only to its own origin, and only when tokens survive the page load", async () => {
+  const issuer = `${origin}/identity`;
+  const base = `${origin}/wp-json/zero/v1`;
+  const member = { id: 3, name: "ann", role: "subscriber" };
+  reply = (s) => (s.path === "/identity/token"
+    ? { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, token_type: "Bearer" }) }
+    : ok(member)());
+  for (const [returnTo, storage, expected] of [
+    ["/\\evil.test/", "session", []],             // resolves to another origin: refused
+    ["/\tevil.test/", "session", ["https://blog.test/evil.test/"]], // tab stripped by URL parsing: same origin
+    ["https://evil.test/x", "session", []],
+    ["/drafts", "memory", []],                     // memory tokens wouldn't survive the load
+  ] as const) {
+    const browser = stubBrowser(`?code=c&state=${"s".repeat(43)}`);
+    try {
+      browser.store.set("zero.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
+      await wpMod.createClient({ url: base, auth: { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage } }).auth.handleCallback();
+      assert.deepEqual(browser.visits, expected, `returnTo ${JSON.stringify(returnTo)} with ${storage} storage`);
+    } finally {
+      browser.restore();
+    }
   }
 });
 

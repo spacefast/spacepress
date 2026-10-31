@@ -135,6 +135,20 @@ final class WpUserStore implements Store
         };
         add_action('added_user_meta', $onMeta, 10, 3);
         add_action('updated_user_meta', $onMeta, 10, 3);
+        add_action('deleted_user_meta', static function ($metaIds, $userId, $key) use ($sync): void {
+            if (str_ends_with((string) $key, 'capabilities')) {
+                $sync($userId); // remove_all_caps()
+            }
+        }, 10, 3);
+        // A role definition changed (add_cap/remove_cap on a role, add_role/remove_role): every user's
+        // ladder role may have moved.
+        $roles = wp_roles()->role_key;
+        $everyone = static function () use ($sync): void {
+            foreach (get_users(['fields' => 'ID', 'number' => -1]) as $id) {
+                $sync($id);
+            }
+        };
+        add_action("update_option_$roles", $everyone);
     }
 
     /**

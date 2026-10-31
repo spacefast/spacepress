@@ -761,6 +761,10 @@ $isProblem('invalid JSON body', http('POST', '/api/items', raw: '{"name":'), 400
 $r = http('POST', '/api/locations', raw: '{"name":"Big","meta":{"n":9007199254740993}}');
 eq('a request body integer past 2^53 is the nearest double, stored and read back', [$r['status'], $r['body'] !== '' && str_contains($r['body'], '"meta":{"n":9007199254740992}'),
     $db->findFirst('locations', ['where' => ['name' => 'Big']])['meta']['n'] == 9007199254740992], [201, true, true]);
+// An integer column holding a value past 2^53 (written outside the runtime) reads back as JS would.
+$pdo->exec("INSERT INTO items (name, qty) VALUES ('huge', 9007199254740993)");
+eq('an integer column past 2^53 reads as the nearest double', $db->findFirst('items', ['where' => ['name' => 'huge']])['qty'], 9007199254740992.0);
+$pdo->exec("DELETE FROM items WHERE name = 'huge'");
 $isProblem('coercion error with pointer', http('POST', '/api/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/api/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');

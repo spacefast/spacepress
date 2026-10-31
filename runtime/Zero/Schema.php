@@ -535,7 +535,8 @@ final class Schema
         }
 
         return match ($col['type']) {
-            'integer', 'media', 'file' => (int) $v,
+            'integer' => Js::n(is_float($v) ? $v : (int) $v), // past 2^53 the stored text reads as JS would
+            'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
             'json', 'mediaList', 'select' => is_string($v) ? self::json($v) : $v,

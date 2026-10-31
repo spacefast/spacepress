@@ -258,6 +258,11 @@ final class Js
      */
     public static function pow(int|float $a, int|float $b): int|float
     {
+        // ECMA-262 Number::exponentiate, where PHP's pow differs: x ** NaN is NaN (PHP: 1 ** NaN = 1) and
+        // (±1) ** ±Infinity is NaN (PHP: 1).
+        if (is_nan((float) $b) || (is_infinite((float) $b) && abs($a) == 1)) {
+            return NAN;
+        }
         if (is_int($a) && is_int($b) && $b >= 0) {
             $p = $a ** $b;
             if (is_int($p)) {

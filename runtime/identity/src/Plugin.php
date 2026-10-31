@@ -145,6 +145,21 @@ final class Plugin
             },
             100,
         );
+        // A password set anywhere (profile, reset, wp_set_password) ends every identity sign-in.
+        $passwordChanged = static function ($user): void {
+            $uid = $user instanceof \WP_User ? (int) $user->ID : (int) $user;
+            if ($uid > 0 && self::$db->row("SELECT wp_user_id FROM " . self::$db->prefix . "accounts WHERE wp_user_id=%d", $uid)) {
+                self::$sessions->revoke($uid);
+            }
+        };
+        add_action("wp_set_password", static fn ($password, $uid) => $passwordChanged((int) $uid), 10, 2);
+        add_action("after_password_reset", static fn ($user) => $passwordChanged($user));
+        add_action("profile_update", static function ($uid, $old) use ($passwordChanged): void {
+            $now = get_userdata((int) $uid);
+            if ($now && $old instanceof \WP_User && $now->user_pass !== $old->user_pass) {
+                $passwordChanged((int) $uid);
+            }
+        }, 10, 2);
         // Access tokens on the REST API (`Authorization: Bearer`), after core's own resolvers.
         add_filter("determine_current_user", [Bearer::class, "resolve"], 20);
         add_filter("rest_authentication_errors", [Bearer::class, "errors"], 20);
@@ -388,6 +403,8 @@ final class Plugin
                 $params = array_filter([
                     "factor" => $result["kind"] === "mfa_required" ? $result["challenge_id"] : null,
                     "return_to" => $signedIn["return_to"] ?: null,
+                    // A reauthentication resumes through its browser-bound cookie after the factor.
+                    "reauth" => $signedIn["return_to"] === "/identity/authorize?resume=1" ? "1" : null,
                 ]);
                 if ($result["kind"] === "signed_in" && $signedIn["return_to"] !== "") {
                     wp_safe_redirect(home_url($signedIn["return_to"]));

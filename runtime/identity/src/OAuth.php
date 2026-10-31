@@ -350,7 +350,8 @@ final class OAuth
      * A guest's browser holds Bearer tokens but no identity cookie. A handoff turns a live guest
      * access token into a single-use, 60 s code that `/identity/authorize?handoff=` exchanges for
      * a first-party identity session, so the hosted screen can upgrade that same user (§3.5).
-     * The handoff stays bound to the token's session and family: revoking either first voids it.
+     * The handoff stays bound to the token's session, family and application: revoking either or
+     * disabling the application first voids it.
      */
     public function handoff(string $access): string
     {
@@ -363,7 +364,7 @@ final class OAuth
             "guest_handoff",
             $token["uid"],
             $token["session_id"],
-            ["family" => $token["family"]],
+            ["family" => $token["family"], "client_id" => $token["client_id"]],
             $secret,
             60,
         );
@@ -379,8 +380,9 @@ final class OAuth
             $uid = (int) $challenge["wp_user_id"];
             $this->db->lock($uid);
             $live = $this->db->row(
-                "SELECT t.id FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id WHERE t.family=%s AND t.session_id=%s AND t.wp_user_id=%d AND t.revoked=0 AND s.revoked_at IS NULL LIMIT 1 FOR UPDATE",
+                "SELECT t.id FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id JOIN {$this->db->prefix}applications c ON c.id=t.client_id WHERE t.family=%s AND t.client_id=%s AND t.session_id=%s AND t.wp_user_id=%d AND t.revoked=0 AND s.revoked_at IS NULL AND c.enabled=1 LIMIT 1 FOR UPDATE",
                 $challenge["payload"]["family"],
+                $challenge["payload"]["client_id"] ?? "",
                 $challenge["session_id"],
                 $uid,
             );

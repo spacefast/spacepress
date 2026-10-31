@@ -47,7 +47,7 @@ final class Providers
     /** Where the hosted screen may continue after sign-in: a pending authorization, nothing else. */
     public static function continuation(mixed $target): string
     {
-        return is_string($target) && (str_starts_with($target, "/identity/authorize?") || $target === "/identity/authorize?resume=1") && strlen($target) <= 4096
+        return is_string($target) && str_starts_with($target, "/identity/authorize?") && strlen($target) <= 4096
             ? $target
             : "";
     }

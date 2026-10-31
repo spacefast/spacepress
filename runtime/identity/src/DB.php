@@ -8,6 +8,8 @@ final class DB
 {
     public readonly string $prefix;
     private int $depth = 0;
+    /** @var array<int, true> users whose WordPress rows changed in the open transaction */
+    private array $touched = [];
     public function __construct(public readonly \wpdb $wp)
     {
         $this->prefix = $wp->prefix . "zero_identity_";
@@ -48,15 +50,15 @@ final class DB
         return (int) $this->wp->insert_id;
     }
     /**
-     * Run $fn in a transaction. Identity shares WordPress's `$wpdb` connection, so when another
-     * owner already has a transaction open on it (the Zero runtime reports one through the
-     * `zero_identity_outer_transaction` filter) identity joins it with a savepoint instead of
-     * issuing START TRANSACTION, which would silently commit the owner's work.
+     * Run $fn in a transaction. Identity shares WordPress's `$wpdb` connection, so when anyone
+     * already has a transaction open on it (the Zero runtime, another plugin) identity joins it
+     * with a savepoint instead of issuing START TRANSACTION, which would silently commit the
+     * owner's work. The connection itself is asked, so no host has to cooperate.
      */
     public function transaction(callable $fn): mixed
     {
         $level = $this->depth++;
-        if ($level === 0 && apply_filters("zero_identity_outer_transaction", false)) {
+        if ($level === 0 && $this->outerTransaction()) {
             $level = 1;
         }
         $savepoint = "zero_identity_" . $this->depth;
@@ -75,9 +77,36 @@ final class DB
                     ? "ROLLBACK"
                     : "ROLLBACK TO SAVEPOINT " . $savepoint,
             );
+            // SQL rolled back; WordPress's object cache didn't. Forget what it learned meanwhile.
+            foreach (array_keys($this->touched) as $uid) {
+                clean_user_cache($uid);
+            }
             throw $e;
         } finally {
-            $this->depth--;
+            if (--$this->depth === 0) {
+                $this->touched = [];
+            }
+        }
+    }
+    /** Record a user whose wp_users/usermeta rows change here, so a rollback clears their cache. */
+    public function touch(int $uid): void
+    {
+        $this->touched[$uid] = true;
+    }
+    /**
+     * Whether this connection has an open transaction that identity didn't start. Outside a
+     * transaction autocommit discards a savepoint at once, so releasing it fails; inside one it
+     * succeeds and changes nothing. Needs no privileges and works on MySQL and MariaDB alike.
+     */
+    private function outerTransaction(): bool
+    {
+        $suppress = $this->wp->suppress_errors(true);
+        try {
+            $this->wp->query("SAVEPOINT zero_identity_probe");
+            return $this->wp->query("RELEASE SAVEPOINT zero_identity_probe") !== false;
+        } finally {
+            $this->wp->suppress_errors($suppress);
+            $this->wp->last_error = "";
         }
     }
     public function lockSession(array $session): array

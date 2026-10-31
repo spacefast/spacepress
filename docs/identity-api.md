@@ -91,7 +91,7 @@ A token response is `{ access_token, token_type: "Bearer", expires_in: 300, refr
 
 **Guest handoff.** A guest's app holds Bearer tokens but no identity cookie. `POST /identity/handoff` with the guest's Bearer token returns `{ handoff }` (single use, 60 s). Sending the browser to `/identity/authorize?…&handoff=<handoff>` signs it in as that guest and opens the hosted screen to add an email; consent then returns to the app as usual. A handoff is bound to the guest's session and token family: revoking either first voids it. Upgrading a guest revokes all of its earlier sessions and token families, so nobody who held the guest's credentials keeps the verified account; the browser that verified gets fresh ones through consent.
 
-**Shared connection.** Identity runs on WordPress's `$wpdb` connection. A host that already owns a transaction on it (the Zero runtime) answers `true` from the `zero_identity_outer_transaction` filter; identity then joins with savepoints instead of committing the host's work.
+**Shared connection.** Identity runs on WordPress's `$wpdb` connection. When a transaction is already open on it (the Zero runtime's, another plugin's), identity detects it and joins with savepoints instead of committing the host's work.
 
 PHP API for the Zero runtime: `Accounts::issueForUser(int $wpUserId, string $clientId)` mints a session and token pair without a browser (only after `zero_runtime_loaded`), and `Accounts::status(int $wpUserId)` returns `active`, `suspended`, `deletion_requested`, `deleted` or `none`.
 

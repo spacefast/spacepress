@@ -123,6 +123,7 @@ final class Accounts
     }
     private function setPrimaryLocked(int $uid, int $id, string $email): void
     {
+        $this->db->touch($uid);
         $this->db->run(
             "UPDATE {$this->db->prefix}accounts SET primary_email_id=%d WHERE wp_user_id=%d",
             $id,
@@ -357,26 +358,52 @@ final class Accounts
     {
         return (new OAuth($this->db, $this))->issueForUser($wpUserId, $clientId);
     }
+    public static function isGuest(int $uid): bool
+    {
+        return in_array("zero_guest", (array) get_userdata($uid)?->roles, true);
+    }
     /**
      * Sign in with a verified email address. A guest (role `zero_guest`) holding the current
      * session keeps its user id: the address is attached to it and it becomes a subscriber. An
      * address that already belongs to someone signs into that account; the guest is left as is.
+     *
+     * The upgrade locks the guest's account and its originating session and rechecks both, so a
+     * second upgrade racing this one can't attach its email after the first commits. Every earlier
+     * credential of the guest ends: sessions, token families, and any passkey (guests can't enroll
+     * one, but nothing a former holder of the guest planted may outlive the upgrade).
+     *
+     * @param ?array $session the identity session the browser presented, if any
      */
-    public function verifiedSignIn(string $email, ?int $guest): int
+    public function verifiedSignIn(string $email, ?array $session): int
     {
         $email = self::email($email);
-        if ($guest === null || !in_array("zero_guest", (array) get_userdata($guest)?->roles, true)) {
+        $guest = $session === null ? null : (int) $session["wp_user_id"];
+        if ($guest === null || !self::isGuest($guest)) {
             return $this->emailLogin($email);
         }
-        return $this->db->transaction(function () use ($email, $guest) {
+        return $this->db->transaction(function () use ($email, $guest, $session) {
             if ($this->owner($email) || get_user_by("email", $email)) {
                 return $this->emailLogin($email);
             }
             $this->ensure($guest);
+            $this->db->lock($guest);
+            $live = $this->db->row(
+                "SELECT id FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
+                $session["id"],
+                $guest,
+            );
+            clean_user_cache($guest);
+            if (!$live || !self::isGuest($guest)) {
+                // Another upgrade won the race: this browser's guest session is gone.
+                throw new Failure("unauthenticated", "This guest session ended. Sign in again.", 401);
+            }
             $this->claim($guest, $email, "email_code");
-            // Whoever held the guest's credentials before must not keep the verified account:
-            // every guest session (and so every token family) ends; sign-in issues fresh ones.
             Plugin::$sessions->revoke($guest);
+            $this->db->run("DELETE FROM {$this->db->prefix}passkeys WHERE wp_user_id=%d", $guest);
+            $this->db->run("DELETE FROM {$this->db->prefix}mfa WHERE wp_user_id=%d", $guest);
+            $this->db->run("DELETE FROM {$this->db->prefix}recovery_codes WHERE wp_user_id=%d", $guest);
+            $this->db->run("DELETE FROM {$this->db->prefix}providers WHERE wp_user_id=%d", $guest);
+            $this->db->touch($guest);
             $user = new \WP_User($guest);
             $user->set_role("subscriber");
             clean_user_cache($guest);

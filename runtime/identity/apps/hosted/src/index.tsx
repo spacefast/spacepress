@@ -43,6 +43,8 @@ function App() {
     }
   }
   const reauth = new URLSearchParams(location.search).has("reauth");
+  // A pending second factor (e.g. after an external provider) wins over any existing session.
+  const factor = new URLSearchParams(location.search).has("factor");
   const upgrade =
     upgradeRequested ||
     (state.kind === "signed_in" && state.data.account.guest);
@@ -73,7 +75,7 @@ function App() {
               onComplete={finish}
             />
           </div>
-        ) : state.kind === "signed_out" || reauth ? (
+        ) : state.kind === "signed_out" || reauth || factor ? (
           <div className="signin-layout">
             <div className="welcome">
               <span className="eyebrow">A PLACE FOR EVERYTHING YOU MAKE</span>

@@ -188,10 +188,7 @@ final class Api
                 (string) ($_COOKIE[Sessions::COOKIE] ?? ""),
             );
             return $this->login(
-                $this->accounts->verifiedSignIn(
-                    $c["payload"]["email"],
-                    $current ? (int) $current["wp_user_id"] : null,
-                ),
+                $this->accounts->verifiedSignIn($c["payload"]["email"], $current),
             );
         }
         if ($op === "sign-in/mfa" && $method === "POST") {
@@ -363,6 +360,11 @@ final class Api
             return ["verified" => true];
         }
         $this->sessions->recent($s);
+        if (Accounts::isGuest($uid)) {
+            // A guest saves its account through the email upgrade only: no passkeys, factors,
+            // providers or passwords that a former holder of the guest could keep using.
+            throw new Failure("guest_account", "Add your email first to save this account.", 403);
+        }
         if ($op === "emails/verify" && $method === "POST") {
             $c = $this->security->consume(
                 $this->field($r, "challenge_id"),

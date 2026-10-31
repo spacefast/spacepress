@@ -120,6 +120,30 @@ again), so the original app's data model is still there to roll back to.
 If the site hosted more than one original Space, pass `--space=<id>`. The
 command refuses to guess.
 
+## 6. App users (optional)
+
+If the original Space had sign-in, its app users are already WordPress users:
+the identity plugin's accounts, marked as members of the Space. To make them
+members of the new app, add an `auth: true` collection to the config (see
+`docs/config-api.md`), build and activate it, then run:
+
+```sh
+wp zero migrate-legacy-users --space=<id> --dry-run
+wp zero migrate-legacy-users --space=<id>
+```
+
+Activate zero-identity first: the command carries each account's state into
+it. Each app user keeps their WordPress id, password and role. Their verified
+primary email becomes the member's email and their zero-identity email, and
+their account status carries over, so a user suspended on the original platform
+stays suspended (and one already suspended or erased in the new app stays so).
+The member collection's own columns start at their defaults (a column without
+one starts empty), validated like any write with the user's role in view. A
+reference, media or file column can't take a default here, so set those after
+the move. An app user without a verified email, or whose email another user
+holds, refuses the run with `/users/<id>/email`, and nothing changes. A second run skips users already moved. Original Zero guests lived
+only in the browser, so there are none to move.
+
 ## Refusals
 
 A refusal is a JSON problem with an RFC 6901 pointer, and the whole run rolls
@@ -146,7 +170,7 @@ The config and content migration don't move:
 - Native `posts`, `pages` and `media` collections.
 - `schema` tables, queries, mutations, actions, endpoints, pages, islands,
   connectors and sync bindings: port them to `zero.config.ts` actions and hooks.
-- App users and sign-in. See the `auth: true` collections in the new Zero.
+- Sign-in providers and sessions of the original platform (app users themselves move with step 6).
 - The original Space's routes, redirects and private file storage.
 
 The [compatibility inventory](zero-compatibility.md) tracks each of these.

@@ -48,4 +48,4 @@ fi
 # The release, inside the container, for tests that plan against a variant of the new schema.
 docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" cp "$here/content-model.php" cli:/tmp/zero-legacy-release.php >/dev/null 2>&1
 ZERO_WP_HARNESS="$wp/.harness-legacy.json" ZERO_LEGACY_SITE="$wp/.legacy-site.json" ZERO_BIN="$zero" \
-  node --test --test-concurrency=1 "$here"/*.test.ts
+  node --test --test-concurrency=1 "$here/legacy.test.ts"

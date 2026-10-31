@@ -10,26 +10,29 @@ use Zero\Js;
 use Zero\Wp\Plugin;
 
 /**
- * `wp zero migrate-legacy <content-model.php | -> [--dry-run] [--space=<id>]` (WordPress only; see
- * Migrate). A site maintenance command like `wp zero migrate`: it runs in its own transaction, not
- * the app CLI's, so nothing else (scheduled promotion) commits alongside it, and a dry run rolls
- * the whole transaction back.
+ * `wp zero migrate-legacy <content-model.php | -> [--dry-run] [--space=<id>]` (Migrate) and
+ * `wp zero migrate-legacy-users --space=<id> [--dry-run]` (Users), WordPress only. Site maintenance
+ * commands like `wp zero migrate`: each runs in its own transaction, not the app CLI's, so nothing
+ * else (scheduled promotion) commits alongside it, and a dry run rolls the whole transaction back.
  */
 final class Module
 {
     private const USAGE = 'Usage: migrate-legacy <content-model.php | -> [--dry-run] [--space=<id>]';
+    private const USERS_USAGE = 'Usage: migrate-legacy-users --space=<id> [--dry-run]';
 
     /** @param list<string> $args the WP-CLI arguments after `zero` */
     public static function handles(array $args): bool
     {
-        return ($args[0] ?? '') === 'migrate-legacy';
+        return in_array($args[0] ?? '', ['migrate-legacy', 'migrate-legacy-users'], true);
     }
 
     /** Runs the command and prints `{data}` / `{error}`; returns the exit code. */
     public static function wpCli(Plugin $plugin, array $args, array $flags): int
     {
         try {
-            $data = self::run($plugin, array_slice($args, 1), $flags);
+            $data = $args[0] === 'migrate-legacy-users'
+                ? self::users($plugin, array_slice($args, 1), $flags)
+                : self::run($plugin, array_slice($args, 1), $flags);
             \WP_CLI::line((string) Js::jsonStringify(['data' => $data]));
 
             return 0;
@@ -63,6 +66,37 @@ final class Module
         try {
             $plugin->connection()->transaction(static function () use ($migrate, $release, $space, &$report): void {
                 $report = $migrate->run($release, true, $space);
+                throw new DryRun();
+            });
+        } catch (DryRun) {
+        }
+
+        return $report;
+    }
+
+    private static function users(Plugin $plugin, array $args, array $flags): array
+    {
+        $unknown = array_diff(array_keys($flags), ['dry-run', 'space']);
+        if ($args !== [] || $unknown !== [] || (isset($flags['dry-run']) && $flags['dry-run'] !== true)
+            || !is_string($flags['space'] ?? null) || $flags['space'] === '') {
+            throw new HttpError(400, 'invalid_command', self::USERS_USAGE . ($unknown === [] ? '' : ' (unknown: --' . implode(', --', $unknown) . ')'));
+        }
+        $plugin->app();
+        $users = new Users($plugin->connection(), $plugin->schema);
+
+        return self::inTransaction($plugin, isset($flags['dry-run']), static fn (bool $dry) => $users->run($flags['space'], $dry));
+    }
+
+    /** Run $fn in its own transaction; a dry run plans with real reads, then rolls back. */
+    private static function inTransaction(Plugin $plugin, bool $dryRun, callable $fn): array
+    {
+        if (!$dryRun) {
+            return $plugin->connection()->transaction(static fn () => $fn(false));
+        }
+        $report = null;
+        try {
+            $plugin->connection()->transaction(static function () use ($fn, &$report): void {
+                $report = $fn(true);
                 throw new DryRun();
             });
         } catch (DryRun) {

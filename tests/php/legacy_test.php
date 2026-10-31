@@ -11,6 +11,7 @@ require __DIR__ . '/harness.php';
 use Zero\HttpError;
 use Zero\Schema;
 use Zero\Wp\Legacy\Model;
+use Zero\Wp\Legacy\Users;
 
 // The release the original compiler produced for tests/wp/legacy/capsule.ts.
 $release = require __DIR__ . '/../wp/legacy/content-model.php';
@@ -95,5 +96,33 @@ eq('a new plain column with a default maps', array_keys(Model::map($release, $sc
 $refuses('a destination with a slug column', fn () => Model::map($release, $schema(['tasks' => ['slug' => 'handle', 'columns' => ['handle' => ['type' => 'slug']]]])), $at('tasks') . '/id');
 
 $refuses('a destination whose primary key is not id', fn () => Model::map($release, $schema(['projects' => ['primaryKey' => 'postId', 'columns' => ['postId' => ['type' => 'integer', 'primaryKey' => true], 'id' => ['type' => 'integer', 'unique' => true]]]])), $at('projects') . '/id');
+
+// ---- Users::member: the member row an original app user becomes (pure; the move is in tests/wp/legacy).
+$memberSpec = static fn (array $columns) => ['primaryKey' => 'id', 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true],
+    'email' => ['type' => 'email', 'notNull' => true], 'name' => ['type' => 'text', 'notNull' => true, 'rules' => ['max' => 80]],
+    'role' => ['type' => 'text', 'system' => true]] + $columns];
+$member = static fn (array $columns, string $role = 'subscriber', string $name = 'Ada') => Users::member($memberSpec($columns), 5, 'ada@example.test', $name, $role, '/users/5');
+eq('a member row: email, name and normalized defaults in storage form', $member(['since' => ['type' => 'timestamp', 'default' => ['value' => '2026-03-01T12:00:00+02:00']], 'tags' => ['type' => 'select', 'enum' => ['a', 'b'], 'default' => ['value' => ['a']]]]),
+    ['email' => 'ada@example.test', 'name' => 'Ada', 'since' => '2026-03-01T10:00:00.000Z', 'tags' => '["a"]']);
+eq('a column without a default is cleared (validators see the row the move leaves)', $member(['note' => ['type' => 'text']]), ['email' => 'ada@example.test', 'name' => 'Ada', 'note' => null]);
+putenv('ZERO_NOW=2030-01-01T00:00:00.000Z');
+putenv('ZERO_NOW_STEP=1'); // every clock read moves the pinned clock a millisecond
+try {
+    $stamps = $member(['joinedAt' => ['type' => 'timestamp', 'default' => ['now' => true]], 'seenAt' => ['type' => 'timestamp', 'default' => ['now' => true]]]);
+} finally {
+    putenv('ZERO_NOW_STEP');
+    putenv('ZERO_NOW');
+}
+eq('a member row\'s now defaults are one instant', [$stamps['joinedAt'], $stamps['seenAt']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
+problem('a name over the member column\'s bound', fn () => $member([], 'subscriber', str_repeat('x', 81)), 422, 'invalid_input', '/users/5/name');
+problem('a required member column with no default', fn () => $member(['plan' => ['type' => 'text', 'notNull' => true]]), 422, 'invalid_input', '/users/5/plan');
+problem('a default breaking its own rule', fn () => $member(['code' => ['type' => 'text', 'default' => ['value' => 'ab'], 'rules' => ['min' => 3]]]), 422, 'invalid_input', '/users/5/code');
+problem('a media default', fn () => $member(['avatar' => ['type' => 'media', 'default' => ['value' => 9]]]), 422, 'legacy_unmappable', '/users/5/avatar');
+problem('a private file default', fn () => $member(['brief' => ['type' => 'file', 'bucket' => 'briefs', 'default' => ['value' => 999]]]), 422, 'legacy_unmappable', '/users/5/brief');
+problem('...or one nested in a group', fn () => $member(['profile' => ['type' => 'group', 'fields' => ['cv' => ['type' => 'file', 'bucket' => 'briefs']], 'default' => ['value' => ['cv' => 999]]]]), 422, 'legacy_unmappable', '/users/5/profile');
+problem('a reference default', fn () => $member(['teamId' => ['type' => 'integer', 'default' => ['value' => 1], 'references' => ['collection' => 'teams', 'column' => 'id']]]), 422, 'legacy_unmappable', '/users/5/teamId');
+eval('namespace ZeroApp; function legacy_role_check($v, $ctx) { return ($ctx["data"]["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
+problem('validators see the user\'s role (a subscriber can\'t default to pro)', fn () => $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]]), 422, 'invalid_input', '/users/5/plan');
+eq('...and an admin can', $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]], 'admin')['plan'], 'pro');
 
 finish('legacy_test');

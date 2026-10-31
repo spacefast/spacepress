@@ -97,7 +97,7 @@ final class WpUserStore implements Store
     }
 
     /** Storage form (§3.4) → the usermeta value SCF's own field would keep. */
-    private static function metaForm(array $def, int|float|string $stored): mixed
+    public static function metaForm(array $def, int|float|string $stored): mixed
     {
         return match ($def['type'] ?? '') {
             'select' => json_decode((string) $stored, true),   // an array; WordPress serializes it

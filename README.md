@@ -130,7 +130,7 @@ curl -X POST localhost:8787/api/locations -H "Authorization: Bearer $TOKEN" -d '
 curl -X POST localhost:8787/api/items -H "Authorization: Bearer $TOKEN" -d '{"name":" Eggs ","quantity":1,"locationId":1}'
 curl localhost:8787/api/shopping_list            # the afterCreate hook added Eggs
 curl -X POST localhost:8787/api/actions/consume -H "Authorization: Bearer $TOKEN" -d '{"itemId":1}'
-curl localhost:8787/api/shopping_list            # a moment later, the notifyLowStock job stamped notifiedAt
+curl localhost:8787/api/shopping_list            # repeat until notifiedAt is set: the notifyLowStock job runs within a second
 ```
 
 The same project builds for WordPress. Stop the standalone server (Ctrl-C),

@@ -36,8 +36,9 @@ const user = await wp.auth.handleCallback(); // on /callback
 // Both: anonymous visitors write as guests, and keep their rows when they sign up.
 // With `guests: true`, a write that is refused as unauthenticated starts a guest session and is
 // retried; a write a collection allows anonymously (create: "anyone") never needs one, so start the
-// session yourself when you want the rows kept. The upgrade login is a name, or an email once the
-// app has an `auth: true` collection.
+// session yourself when you want the rows kept. `comments` below stands for a collection of yours
+// whose create rule admits guests. The upgrade login is a name, or an email once the app has an
+// `auth: true` collection.
 const guest = createClient({ auth: { guests: true } });
 await guest.auth.guest();                                                 // role "guest", tokens held
 await guest.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // written by the guest

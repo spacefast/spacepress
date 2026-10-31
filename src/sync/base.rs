@@ -73,8 +73,13 @@ impl Bases {
         &self.path
     }
 
-    pub fn save(&self) -> Result<(), String> {
+    /// Ok(true) when the file changed.
+    pub fn save(&self) -> Result<bool, String> {
         let text = serde_json::to_string_pretty(&self.doc).expect("serializable") + "\n";
-        super::write_atomic(&self.path, text.as_bytes())
+        if std::fs::read(&self.path).is_ok_and(|old| old == text.as_bytes()) {
+            return Ok(false);
+        }
+        super::write_atomic(&self.path, text.as_bytes())?;
+        Ok(true)
     }
 }

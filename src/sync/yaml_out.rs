@@ -90,6 +90,7 @@ fn block_body(out: &mut String, indent: usize, s: &str) {
         if line.is_empty() {
             out.push('\n');
         } else {
+            // Whitespace-only lines are written indented too, so their spaces survive.
             out.push_str(&format!("{pad}{line}\n"));
         }
     }
@@ -107,6 +108,8 @@ fn block_safe(s: &str) -> bool {
         && !content.starts_with([' ', '\t'])
         && !s.contains('\r')
         && !content.split('\n').any(|l| l.starts_with('\t'))
+        // A last line of only spaces would read back as a trailing blank line.
+        && content.rsplit('\n').next().is_some_and(|l| !l.trim_start_matches(' ').is_empty())
         && s.chars().all(|c| c == '\n' || c == '\t' || !c.is_control())
 }
 
@@ -129,7 +132,17 @@ fn scalar(value: &Value) -> String {
     match value {
         Value::Null => "null".into(),
         Value::Bool(b) => b.to_string(),
-        Value::Number(_) => canon::json(value),
+        // Integers the reader keeps exact (i64) as digits; anything larger in the float spelling it reads back.
+        Value::Number(n) if n.as_i64().is_some() => canon::json(value),
+        Value::Number(n) => {
+            let f = n.as_f64().unwrap_or(0.0);
+            let text = canon::number(f);
+            if text.contains(['.', 'e']) {
+                text
+            } else {
+                format!("{text}.0")
+            }
+        }
         Value::String(s) if plain_safe(s) => s.clone(),
         Value::String(s) => quote(s),
         _ => inline(value),

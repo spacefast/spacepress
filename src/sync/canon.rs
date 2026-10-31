@@ -19,11 +19,10 @@ pub fn digest(value: &Value) -> String {
 fn write(value: &Value, out: &mut String) {
     match value {
         Value::Null | Value::Bool(_) | Value::String(_) => out.push_str(&value.to_string()),
-        Value::Number(n) => match (n.as_i64(), n.as_u64(), n.as_f64()) {
-            (Some(i), _, _) => out.push_str(&i.to_string()),
-            (_, Some(u), _) => out.push_str(&u.to_string()),
-            (_, _, Some(f)) => out.push_str(&number(f)),
-            _ => out.push_str(&n.to_string()),
+        // PHP decodes integers beyond i64 as floats; so does this, to digest the same bytes.
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => out.push_str(&i.to_string()),
+            None => out.push_str(&number(n.as_f64().unwrap_or(f64::NAN))),
         },
         Value::Array(items) => {
             out.push('[');

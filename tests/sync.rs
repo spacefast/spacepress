@@ -24,13 +24,34 @@ const notes = collection("notes", {
   authorId: integer().references(() => people.id, { onDelete: "set null" }),
 }, { editor: false, title: "title", content: "body", sync: "content/notes/*.md", access: { read: "anyone" } });
 
-export default defineConfig({ name: "notes", schema: { people, notes } });
+// A JSON collection without a content column: `body` is an ordinary field.
+const snippets = collection("snippets", {
+  id: id(),
+  name: text().notNull(),
+  body: text(),
+}, { editor: false, sync: "content/snippets/*.json", access: { read: "anyone" } });
+
+// Two collections that reference each other.
+const teams = collection("teams", {
+  id: id(),
+  name: text().notNull(),
+  leadId: integer().references((): any => players.id, { onDelete: "set null" }),
+}, { editor: false, sync: "content/teams/*.json", access: { read: "anyone" } });
+const players = collection("players", {
+  id: id(),
+  name: text().notNull(),
+  teamId: integer().references(() => teams.id, { onDelete: "set null" }),
+}, { editor: false, sync: "content/players/*.json", access: { read: "anyone" } });
+
+export default defineConfig({ name: "notes", schema: { people, notes, snippets, teams, players } });
 "#;
 
 struct Site {
     child: Child,
     port: u16,
     token: String,
+    /// An author's token: signed in, but the collections' update rule is "editor".
+    author: String,
 }
 
 impl Drop for Site {
@@ -83,11 +104,9 @@ fn git(project: &Path, args: &[&str]) -> String {
 }
 
 fn setup() -> (PathBuf, Site) {
-    let project = std::env::temp_dir().join(format!(
-        "zero-sync-{}-{}",
-        std::process::id(),
-        Instant::now().elapsed().as_nanos()
-    ));
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let project = std::env::temp_dir().join(format!("zero-sync-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
     std::fs::write(project.join("zero.config.ts"), CONFIG).unwrap();
@@ -103,7 +122,12 @@ fn setup() -> (PathBuf, Site) {
         serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
     };
     cli(&["users", "add", "ed", "--role", "editor"]);
+    cli(&["users", "add", "au", "--role", "author"]);
     let token = cli(&["tokens", "create", "ed"])["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let author = cli(&["tokens", "create", "au"])["data"]["token"]
         .as_str()
         .unwrap()
         .to_string();
@@ -137,7 +161,15 @@ fn setup() -> (PathBuf, Site) {
             "start",
         ],
     );
-    (project, Site { child, port, token })
+    (
+        project,
+        Site {
+            child,
+            port,
+            token,
+            author,
+        },
+    )
 }
 
 fn sync(project: &Path, site: &Site, extra: &[&str]) -> Output {
@@ -438,5 +470,132 @@ fn an_unreadable_file_is_reported_and_never_read_as_a_deletion() {
     let stderr = String::from_utf8_lossy(&out.stdout);
     assert!(stderr.contains("content/notes/a.md:3: anchors"), "{stderr}");
     assert_eq!(site.rows("notes").len(), 1, "the record survives its broken file");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn check_reports_a_new_file_alone_and_a_local_slug_edit_moves_its_file() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/fresh.md"),
+        "---\ntitle: Fresh\nslug: fresh\n---\n",
+    )
+    .unwrap();
+    let check = sync(&project, &site, &["--only", "notes", "--check"]);
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "a uid-less file is a pending creation: {}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+    assert!(
+        !read(&project, "content/notes/fresh.md").contains("uid:"),
+        "--check writes nothing"
+    );
+
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    std::fs::write(
+        project.join("content/notes/fresh.md"),
+        read(&project, "content/notes/fresh.md").replace("slug: fresh", "slug: renamed-here"),
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    assert!(project.join("content/notes/renamed-here.md").exists() && !project.join("content/notes/fresh.md").exists());
+    assert!(site.rows("notes").iter().any(|r| r["slug"] == "renamed-here"));
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_json_collection_keeps_an_ordinary_body_column() {
+    let (project, site) = setup();
+    std::fs::create_dir_all(project.join("content/snippets")).unwrap();
+    std::fs::write(
+        project.join("content/snippets/a.json"),
+        r#"{"name": "A", "body": "plain text"}"#,
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "snippets"]).status.code(), Some(0));
+    assert_eq!(site.rows("snippets")[0]["body"], "plain text");
+    let file: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::fs::read_dir(project.join("content/snippets"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(file["body"], "plain text");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn records_that_reference_each_other_are_created_in_one_run() {
+    let (project, site) = setup();
+    for dir in ["content/teams", "content/players"] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (team, player) = ("zr_aaaaaaaaaaaaaaaaaaa1", "zr_aaaaaaaaaaaaaaaaaaa2");
+    std::fs::write(
+        project.join("content/teams/t.json"),
+        format!(r#"{{"uid": "{team}", "name": "Reds", "leadId": "{player}"}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/players/p.json"),
+        format!(r#"{{"uid": "{player}", "name": "Kim", "teamId": "{team}"}}"#),
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "teams,players"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let teams = site.rows("teams");
+    let players = site.rows("players");
+    assert_eq!(
+        (teams[0]["leadId"].clone(), players[0]["teamId"].clone()),
+        (players[0]["id"].clone(), teams[0]["id"].clone())
+    );
+    assert_eq!(
+        data(&sync(&project, &site, &["--only", "teams,players"]))["applied"].as_u64(),
+        Some(0),
+        "both sides agree afterwards"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn access_refusals_exit_4_and_an_unreadable_directory_deletes_nothing() {
+    let (project, site) = setup();
+    std::fs::write(project.join("content/notes/n.md"), "---\ntitle: N\nslug: n\n---\n").unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+
+    // An author is signed in but may not sync (the update rule is "editor").
+    let author = site.author.clone();
+    let denied = zero()
+        .arg("sync")
+        .arg(&project)
+        .args(["--only", "notes", "--site", &site.url(), "--token", &author])
+        .output()
+        .unwrap();
+    assert_eq!(
+        denied.status.code(),
+        Some(4),
+        "{}{}",
+        String::from_utf8_lossy(&denied.stdout),
+        String::from_utf8_lossy(&denied.stderr)
+    );
+
+    // The directory turns into a file: it can't be listed, so its record must not be trashed.
+    std::fs::rename(project.join("content/notes"), project.join("content/notes.bak")).unwrap();
+    std::fs::write(project.join("content/notes"), "not a directory").unwrap();
+    let out = sync(&project, &site, &["--only", "notes", "--no-commit"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        site.rows("notes").len(),
+        1,
+        "the record survives an unreadable directory"
+    );
     let _ = std::fs::remove_dir_all(&project);
 }

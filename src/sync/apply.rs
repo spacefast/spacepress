@@ -23,9 +23,13 @@ struct Collection {
     dir: PathBuf,
     format: String,
     slug: Option<String>,
+    /// The collection designates a content column: the file's body (`body` key in JSON) is the record body.
+    content: bool,
     /// Columns a record's `fields` carries, in schema order.
     fields: Vec<String>,
     references: Vec<String>,
+    /// Columns that reference another record (sent as uids).
+    reference_columns: Vec<String>,
 }
 
 /// Collections that sync, targets of references first (a cycle keeps config order).
@@ -54,6 +58,11 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
             })
             .map(|(c, _)| c.clone())
             .collect();
+        let reference_columns = columns
+            .iter()
+            .filter(|(_, def)| def["references"].is_object())
+            .map(|(c, _)| c.clone())
+            .collect();
         let references = columns
             .values()
             .filter_map(|def| def["references"]["collection"].as_str().map(String::from))
@@ -66,8 +75,10 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                 dir: project.join(sync["dir"].as_str().unwrap_or(name)),
                 format: sync["format"].as_str().unwrap_or("md").into(),
                 slug: spec["slug"].as_str().map(String::from),
+                content: content.is_some(),
                 fields,
                 references,
+                reference_columns,
             },
         );
     }
@@ -97,13 +108,27 @@ struct File {
 fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<String, File>, bool) {
     let mut out = IndexMap::new();
     let mut clean = true;
-    let Ok(entries) = std::fs::read_dir(&c.dir) else {
-        return (out, true);
+    let entries = match std::fs::read_dir(&c.dir) {
+        Ok(entries) => entries,
+        // No directory yet: genuinely no files (first pull creates it).
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (out, true),
+        // Anything else would look like every file was deleted: report it and infer no deletions.
+        Err(e) => {
+            report.fail(format!("{}: {e}", report.rel(&c.dir)));
+            return (out, false);
+        }
     };
-    let mut paths: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some(c.format.as_str()))
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for entry in entries {
+        match entry {
+            Ok(entry) => paths.push(entry.path()),
+            Err(e) => {
+                report.fail(format!("{}: {e}", report.rel(&c.dir)));
+                clean = false;
+            }
+        }
+    }
+    paths.retain(|p| p.extension().and_then(|e| e.to_str()) == Some(c.format.as_str()));
     paths.sort();
     for path in paths {
         let rel = report.rel(&path);
@@ -116,7 +141,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
             }
         };
         let parsed = if c.format == "json" {
-            json_record(&text)
+            json_record(&text, c.content)
         } else {
             md_record(&text)
         };
@@ -142,7 +167,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
                 uid
             }
             None => {
-                report.note(format!("{rel}: has no uid yet; zero sync will give it one"));
+                report.pending(format!("{rel}: new file; zero sync will give it a uid and push it"));
                 continue;
             }
             Some(_) => {
@@ -182,11 +207,15 @@ fn md_record(text: &str) -> Parsed {
     Ok((doc.front, (!doc.body.is_empty()).then_some(doc.body)))
 }
 
-fn json_record(text: &str) -> Parsed {
+fn json_record(text: &str, content: bool) -> Parsed {
     let value: Value = serde_json::from_str(text).map_err(|e| (e.line(), e.to_string()))?;
     let Value::Object(mut map) = value else {
         return Err((1, "a sync file holds one JSON object".into()));
     };
+    // Without a content column, `body` is an ordinary field and stays among the fields.
+    if !content {
+        return Ok((map, None));
+    }
     let body = match map.shift_remove("body") {
         Some(Value::String(s)) if !s.is_empty() => Some(s),
         None | Some(Value::Null) | Some(Value::String(_)) => None,
@@ -212,7 +241,9 @@ fn render(c: &Collection, uid: &str, fields: &Map<String, Value>, body: Option<&
         let mut out = Map::new();
         out.insert("uid".into(), Value::String(uid.into()));
         out.extend(ordered);
-        out.insert("body".into(), body.map_or(Value::Null, |b| Value::String(b.into())));
+        if c.content {
+            out.insert("body".into(), body.map_or(Value::Null, |b| Value::String(b.into())));
+        }
         serde_json::to_string_pretty(&Value::Object(out)).expect("serializable") + "\n"
     } else {
         yaml_out::markdown(uid, &ordered, body)
@@ -237,7 +268,17 @@ fn pull(client: &Client, c: &Collection) -> Result<IndexMap<String, Remote>, Pro
     let mut after: i64 = 0;
     loop {
         let page = client.get(&format!("/sync/{}?after={after}&first=100", c.name))?;
-        for item in page["records"].as_array().into_iter().flatten() {
+        // Absence from this list means "deleted on the site", so the page must really be a page.
+        let Some(records) = page["records"]
+            .as_array()
+            .filter(|_| page["next"].is_null() || page["next"].is_i64())
+        else {
+            return Err(Problem {
+                status: 200,
+                body: json!({"detail": format!("/sync/{} answered without a records page", c.name), "code": "invalid_response"}),
+            });
+        };
+        for item in records {
             let uid = item["uid"]
                 .as_str()
                 .or(item["record"]["uid"].as_str())
@@ -265,7 +306,7 @@ fn pull(client: &Client, c: &Collection) -> Result<IndexMap<String, Remote>, Pro
 pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Report) -> Result<(), String> {
     let schema = client
         .get("/_schema")
-        .map_err(|p| format!("could not read the site's schema: {}", p.message()))?;
+        .map_err(|p| report.problem("could not read the site's schema", &p))?;
     let site = schema["site"]["id"]
         .as_str()
         .ok_or("the site's /_schema has no site id; is it running zero 0.2?")?
@@ -276,13 +317,29 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
     if !known {
         report.note("first sync with this site: records are matched, nothing is deleted".into());
     }
-    for c in collections(&schema, project, &options.only)? {
-        collection(client, &c, &site, label, known, &mut bases, options, report)?;
+    let all = collections(&schema, project, &options.only)?;
+    for c in &all {
+        collection(client, c, &site, label, known, &mut bases, options, report, None)?;
+    }
+    // Records whose references weren't on the site yet (cycles, self-references): once more, now that
+    // every collection's records have been pushed. Their bases only move when they land.
+    let deferred = std::mem::take(&mut report.deferred);
+    report.second_pass = true;
+    for c in &all {
+        let uids: Vec<String> = deferred
+            .iter()
+            .filter(|(n, _)| *n == c.name)
+            .map(|(_, u)| u.clone())
+            .collect();
+        if !uids.is_empty() {
+            collection(client, c, &site, label, known, &mut bases, options, report, Some(&uids))?;
+        }
     }
     if !options.check {
         bases.touch(&site);
-        bases.save()?;
-        report.written(bases.path());
+        if bases.save()? {
+            report.written(bases.path());
+        }
     }
     Ok(())
 }
@@ -297,15 +354,19 @@ fn collection(
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
+    only: Option<&[String]>,
 ) -> Result<(), String> {
     let (files, clean) = read_files(c, report, options.check);
-    let mut remote = pull(client, c).map_err(|p| format!("{}: {}", c.name, p.message()))?;
+    let mut remote = pull(client, c).map_err(|p| report.problem(&c.name, &p))?;
     let base_entries = bases.collection(site, &c.name);
     let mut uids: Vec<String> = files.keys().cloned().collect();
     for uid in remote.keys().chain(base_entries.keys()) {
         if !uids.contains(uid) {
             uids.push(uid.clone());
         }
+    }
+    if let Some(only) = only {
+        uids.retain(|u| only.contains(u));
     }
     // Bodies both sides changed are merged on the server, in batches.
     let mut merges: Vec<(String, plan::BodyMerge)> = Vec::new();
@@ -329,7 +390,7 @@ fn collection(
             .collect();
         let answer = client
             .post(&format!("/sync/{}/merge", c.name), &json!({"records": records}))
-            .map_err(|p| format!("{}: {}", c.name, p.message()))?;
+            .map_err(|p| report.problem(&c.name, &p))?;
         for ((uid, _), result) in chunk.iter().zip(answer["records"].as_array().into_iter().flatten()) {
             merged.insert(uid.clone(), result["merged"].as_str().map(String::from).ok_or(()));
         }
@@ -340,13 +401,23 @@ fn collection(
         let mut r = remote.shift_remove(uid).unwrap_or(Remote::Gone);
         let mut retried = false;
         loop {
-            let action = plan::plan(
-                file.map(|f| &f.item),
-                &r,
-                base.as_ref(),
-                known && clean,
-                merged.get(uid).cloned(),
-            );
+            // Second pass: the file's record goes to the site whole, over its identity-only first push.
+            let forced = only.and(file).map(|f| Action::Push {
+                record: f.item.record.clone(),
+                expect: match &r {
+                    Remote::Live(item) => item.digest.clone(),
+                    _ => "absent".into(),
+                },
+            });
+            let action = forced.unwrap_or_else(|| {
+                plan::plan(
+                    file.map(|f| &f.item),
+                    &r,
+                    base.as_ref(),
+                    known && clean,
+                    merged.get(uid).cloned(),
+                )
+            });
             match perform(
                 client,
                 c,
@@ -366,9 +437,20 @@ fn collection(
                     // Re-plan once against what the site holds now.
                     retried = true;
                     r = pull(client, c)
-                        .map_err(|p| format!("{}: {}", c.name, p.message()))?
+                        .map_err(|p| report.problem(&c.name, &p))?
                         .shift_remove(uid)
                         .unwrap_or(Remote::Gone);
+                    // The body merge was against the old remote body: merge against the new one, or none.
+                    merged.shift_remove(uid);
+                    if let Some((b, o, t)) = plan::body_merge(file.map(|f| &f.item), &r, base.as_ref()) {
+                        let answer = client
+                            .post(
+                                &format!("/sync/{}/merge", c.name),
+                                &json!({"base": b, "ours": o, "theirs": t}),
+                            )
+                            .map_err(|p| report.problem(&c.name, &p))?;
+                        merged.insert(uid.clone(), answer["merged"].as_str().map(String::from).ok_or(()));
+                    }
                 }
                 Err(Stale) => {
                     report.fail(format!("{}/{uid}: the site kept changing; run zero sync again", c.name));
@@ -400,7 +482,14 @@ fn perform(
     let name = &c.name;
     let pending = |report: &mut Report, what: &str| report.pending(format!("{name}/{uid}: {what}"));
     match action {
-        Action::Nothing => {}
+        // Both sides agree; a file whose slug changed on both sides alike still moves.
+        Action::Nothing => {
+            if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record)))
+                && !options.check
+            {
+                write_record(c, Some(&f.path), &f.item.record, report);
+            }
+        }
         Action::Skip(why) => report.note(format!("{name}/{uid}: {why}")),
         Action::Refused(message) => report.refused(message),
         Action::Adopt(item) => {
@@ -428,23 +517,48 @@ fn perform(
                 pending(report, "push to the site");
                 return Ok(());
             }
-            match client.post(&format!("/sync/{name}"), &json!({"record": record, "expect": expect})) {
+            match client.post(&format!("/sync/{name}"), &json!({"record": &record, "expect": &expect})) {
                 Ok(answer) => {
                     let stored = answer
                         .get("record")
                         .filter(|r| r.is_object())
                         .cloned()
-                        .unwrap_or(record);
+                        .unwrap_or_else(|| record.clone());
                     let digest = answer["digest"].as_str().unwrap_or_default().to_string();
-                    let landed = file.is_some_and(|f| f.item.digest == digest)
-                        || write_record(c, file.map(|f| f.path.as_path()), &stored, report);
+                    // The file already holds the stored record unless the server reshaped it or its slug moved it.
+                    let in_place =
+                        file.is_some_and(|f| f.item.digest == digest && f.path == c.dir.join(file_name(c, &stored)));
+                    let landed = in_place || write_record(c, file.map(|f| f.path.as_path()), &stored, report);
                     if landed {
                         bases.set(site, name, uid, &digest, &stored);
                         report.applied();
                     }
                 }
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
-                Err(p) => report.fail(format!("{name}/{uid}: {}", p.message())),
+                // A reference to a record a later collection (or this one) pushes this run: retry once
+                // after every collection's first pass (§5.4's identity-then-fields order for cycles).
+                Err(p) if p.code() == "sync_missing_reference" && !report.second_pass => {
+                    // Identity first: a new record is created without its references, so records that
+                    // point at each other can all exist; the second pass sends the references. The base
+                    // doesn't move until then.
+                    if expect == "absent" {
+                        let mut identity = record_without(&record, &c.reference_columns);
+                        identity["uid"] = json!(uid);
+                        if let Err(p) = client.post(
+                            &format!("/sync/{name}"),
+                            &json!({"record": identity, "expect": "absent"}),
+                        ) {
+                            let message = report.problem(&format!("{name}/{uid}"), &p);
+                            report.fail(message);
+                            return Ok(());
+                        }
+                    }
+                    report.defer(name.clone(), uid.to_string());
+                }
+                Err(p) => {
+                    let message = report.problem(&format!("{name}/{uid}"), &p);
+                    report.fail(message);
+                }
             }
         }
         Action::TrashRemote { expect } => {
@@ -458,7 +572,10 @@ fn perform(
                     report.applied();
                 }
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
-                Err(p) => report.fail(format!("{name}/{uid}: {}", p.message())),
+                Err(p) => {
+                    let message = report.problem(&format!("{name}/{uid}"), &p);
+                    report.fail(message);
+                }
             }
         }
         Action::DeleteFile => {
@@ -510,6 +627,19 @@ fn perform(
     Ok(())
 }
 
+/// The record with the given fields set to null.
+fn record_without(record: &Value, columns: &[String]) -> Value {
+    let mut out = record.clone();
+    if let Some(fields) = out["fields"].as_object_mut() {
+        for c in columns {
+            if fields.contains_key(c) {
+                fields.insert(c.clone(), Value::Null);
+            }
+        }
+    }
+    out
+}
+
 /// Write a record's file where it belongs, moving it when its slug changed. True when it landed.
 fn write_record(c: &Collection, current: Option<&Path>, record: &Value, report: &mut Report) -> bool {
     let empty = Map::new();
@@ -548,7 +678,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
     let (files_digest, site_digest) =
         conflict::digests(&text).ok_or("the conflict file's header is missing; rerun zero sync")?;
     let resolved = conflict::resolved(&text)?;
-    let schema = client.get("/_schema").map_err(|p| p.message())?;
+    let schema = client.get("/_schema").map_err(|p| report.problem("site", &p))?;
     let site = schema["site"]["id"]
         .as_str()
         .ok_or("the site's /_schema has no site id")?
@@ -556,7 +686,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
     let mut bases = Bases::load(project)?;
     for c in collections(&schema, project, &None)? {
         let (files, _) = read_files(&c, report, true);
-        let remote = pull(client, &c).map_err(|p| p.message())?;
+        let remote = pull(client, &c).map_err(|p| report.problem("site", &p))?;
         let in_files = files.get(uid);
         let on_site = remote.get(uid);
         if in_files.is_none() && on_site.is_none() && bases.get(&site, &c.name, uid).is_none() {
@@ -583,7 +713,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
                 &format!("/sync/{}", c.name),
                 &json!({"record": record, "expect": site_digest}),
             )
-            .map_err(|p| p.message())?;
+            .map_err(|p| report.problem("site", &p))?;
         let stored = answer
             .get("record")
             .filter(|r| r.is_object())
@@ -599,8 +729,9 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
             answer["digest"].as_str().unwrap_or_default(),
             &stored,
         );
-        bases.save()?;
-        report.written(bases.path());
+        if bases.save()? {
+            report.written(bases.path());
+        }
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         report.written(&path);
         report.applied();

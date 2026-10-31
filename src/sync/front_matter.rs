@@ -59,12 +59,17 @@ pub fn parse_document(text: &str) -> Result<Document> {
 
 /// Parse a YAML block whose first line is line `first` of the file.
 pub fn parse(yaml: &str, first: usize) -> Result<Value> {
+    // `split` yields an empty element after a final newline; it is the end of the text, not a line.
+    let text = yaml.strip_suffix('\n').unwrap_or(yaml);
     let mut parser = Parser {
-        lines: yaml
-            .split('\n')
-            .enumerate()
-            .map(|(i, l)| (first + i, l.to_string()))
-            .collect(),
+        lines: if text.is_empty() && yaml.is_empty() {
+            Vec::new()
+        } else {
+            text.split('\n')
+                .enumerate()
+                .map(|(i, l)| (first + i, l.to_string()))
+                .collect()
+        },
         pos: 0,
     };
     let Some(i) = parser.next_content()? else {
@@ -210,23 +215,30 @@ impl Parser {
             "+" => '+',
             _ => return err(no, "block scalars take | , |- or |+ only"),
         };
+        // The block's indentation is its first non-blank line's.
+        let block = self.lines[self.pos..]
+            .iter()
+            .map(|(_, l)| l)
+            .find(|l| !l.trim_start_matches(' ').is_empty())
+            .map(|l| l.len() - l.trim_start_matches(' ').len());
         let mut lines: Vec<&str> = Vec::new();
-        let mut indent = None;
         let mut end = self.pos;
         for (j, (_, line)) in self.lines.iter().enumerate().skip(self.pos) {
             let spaces = line.len() - line.trim_start_matches(' ').len();
             if line.trim_start_matches(' ').is_empty() {
-                lines.push("");
+                // A blank line keeps any spaces past the block's indentation: they are content.
+                lines.push(block.map_or("", |b| line.get(b..).unwrap_or("")));
                 end = j + 1;
                 continue;
             }
-            let block = *indent.get_or_insert(spaces);
+            let block = block.expect("a non-blank line exists");
             if spaces <= parent || spaces < block {
                 break;
             }
             lines.push(&line[block..]);
             end = j + 1;
         }
+        // Trailing blank lines belong to the block only as newlines; a whitespace-only line is content.
         let trailing = lines.iter().rev().take_while(|l| l.is_empty()).count();
         // Trailing blank lines past the block belong to whatever follows, unless the block keeps them.
         if chomp != '+' {
@@ -360,8 +372,13 @@ fn flow(text: &str, at: &mut usize, no: usize) -> Result<Value> {
                     while *at < bytes.len() && !matches!(bytes[*at], b':' | b',' | b'}') {
                         *at += 1;
                     }
-                    text[start..*at].trim().to_string()
+                    let key = text[start..*at].trim();
+                    check_plain_start(key, no)?;
+                    key.to_string()
                 };
+                if key == "<<" {
+                    return err(no, "merge keys (<<) are not supported; write the keys out");
+                }
                 skip(at);
                 if bytes.get(*at) != Some(&b':') {
                     return err(no, "flow maps are `{key: value}` on one line");
@@ -538,7 +555,9 @@ mod tests {
             "multi": "line one\nline two\n", "noFinalNewline": "a\nb", "indentedFirst": "  code\nmore",
             "float": 1.5, "big": 1e21, "negative": -3, "list": ["a, b", "c"], "nested": [[1, 2], {"k": "v"}],
             "maps": [{"a": 1, "b": {"c": [true]}}, {}], "emptyList": [], "emptyMap": {}, "deep": {"x": {"y": null}},
-            "quoted key: x": 1
+            "quoted key: x": 1,
+            "keepsTwo": "x\n\n", "keepsThree": "x\n\n\n", "spacesLine": "a\n  \nb\n", "lastSpaces": "a\n  ",
+            "huge": 1e20, "bigger": 1.5e300, "maxInt": 9223372036854775807i64, "minInt": -9223372036854775808i64
         });
         let rendered = yaml_out::markdown("zr_00000000000000000000", fields.as_object().unwrap(), None);
         let doc = parse_document(&rendered).unwrap_or_else(|e| panic!("line {}: {}\n{rendered}", e.line, e.message));
@@ -571,6 +590,10 @@ mod tests {
             ("a: 1\n\tb: 2", 2, "tabs"),
             ("a:\n  b: 1\n c: 2", 3, "indentation"),
             ("a: [1, 2", 1, "flow lists"),
+            ("a: 1\nm: {<<: {x: 1}}", 2, "merge keys"),
+            ("m: {&k a: 1}", 1, "anchors"),
+            ("m: {!t a: 1}", 1, "tags"),
+            ("m: {a: 1, a: 2}", 1, "duplicate key `a`"),
         ] {
             let error = parse(yaml, 1).expect_err(yaml);
             assert_eq!(error.line, line, "{yaml}: {}", error.message);

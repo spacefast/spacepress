@@ -370,6 +370,33 @@ test("zero sync against WordPress", async (t) => {
     assert.equal(sync("--check").status, 2, "a pending conflict is exit 2 under --check");
   });
 
+  await t.test("resolve applies the edited conflict file to WordPress and the file", () => {
+    const path = join(project, `.zero/conflicts/${created.uid}.md`);
+    const conflict = readFileSync(path, "utf8");
+    const header = conflict.split("\n").filter((l) => l.startsWith("#")).join("\n") + "\n";
+    const theirs = conflict.split("=======\n")[1].split(">>>>>>> wordpress")[0].replace("title: Title from WordPress", "title: Agreed title");
+    writeFileSync(path, header + theirs);
+    const out = sync("resolve", created.uid);
+    assert.equal(out.status, 0, out.stdout + out.stderr);
+    assert.equal(row().title, "Agreed title");
+    assert.match(readFileSync(file, "utf8"), /title: Agreed title/);
+    assert.ok(!existsSync(path));
+    assert.equal(JSON.parse(sync().stdout).data.applied, 0, "both sides agree after resolving");
+  });
+
+  await t.test("a slug renamed in the file moves the file and the post's slug", () => {
+    writeFileSync(file, readFileSync(file, "utf8").replace(`slug: ${slug}`, `slug: ${slug}-moved`));
+    assert.equal(sync().status, 0);
+    assert.equal(row().slug, `${slug}-moved`);
+    assert.ok(existsSync(join(project, `content/guides/${slug}-moved.md`)) && !existsSync(file));
+  });
+
+  await t.test("deleting the file moves the post to the WordPress trash", () => {
+    rmSync(join(project, `content/guides/${slug}-moved.md`));
+    assert.equal(sync().status, 0);
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${created.id}`)[0].post_status, "trash");
+  });
+
   await t.test("a post trashed in wp-admin deletes its file", () => {
     const other = zero("insert", "guides", JSON.stringify({ title: `Doomed ${run}`, slug: `doomed-${run}` }))[0];
     assert.equal(sync().status, 0);

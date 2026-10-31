@@ -155,7 +155,7 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut commit = None;
     if result.is_ok() && !check && flags.commit && !report.written.is_empty() {
         let mut paths = report.written.clone();
-        if git::ignore_build_output(&project).is_ok() {
+        if git::ignore_build_output(&project) == Ok(true) {
             paths.push(project.join(".gitignore"));
         }
         let message = format!(
@@ -169,6 +169,7 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
     let code = match (&result, check) {
+        _ if report.denied => 4,
         (Err(_), _) => 1,
         _ if !report.failures.is_empty() => 1,
         (_, true)

@@ -26,6 +26,11 @@ pub struct Report {
     pub failures: Vec<String>,
     pub refused: Vec<String>,
     pub notes: Vec<String>,
+    /// A call was refused for lack of access (401/403): the run exits 4.
+    pub denied: bool,
+    /// (collection, uid) pushes refused for a reference not on the site yet; retried after the first pass.
+    pub deferred: Vec<(String, String)>,
+    pub second_pass: bool,
 }
 
 impl Report {
@@ -39,6 +44,9 @@ impl Report {
             failures: Vec::new(),
             refused: Vec::new(),
             notes: Vec::new(),
+            denied: false,
+            deferred: Vec::new(),
+            second_pass: false,
         }
     }
 
@@ -70,6 +78,16 @@ impl Report {
 
     pub fn fail(&mut self, what: String) {
         self.failures.push(what);
+    }
+
+    pub fn defer(&mut self, collection: String, uid: String) {
+        self.deferred.push((collection, uid));
+    }
+
+    /// A failed site call; auth refusals also mark the run as denied.
+    pub fn problem(&mut self, what: &str, p: &client::Problem) -> String {
+        self.denied |= p.is_auth();
+        format!("{what}: {}", p.message())
     }
 
     pub fn refused(&mut self, what: String) {

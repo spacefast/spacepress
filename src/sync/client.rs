@@ -30,6 +30,11 @@ impl Problem {
         self.body["code"].as_str().unwrap_or("")
     }
 
+    /// The credential was refused (401) or lacks access (403): exit 4.
+    pub fn is_auth(&self) -> bool {
+        matches!(self.status, 401 | 403)
+    }
+
     pub fn message(&self) -> String {
         match self.body["detail"].as_str() {
             Some(detail) => format!("{} ({})", detail, self.code()),
@@ -99,14 +104,23 @@ impl Client {
             body: json!({"detail": format!("{method} {url}: {e}"), "code": "unreachable"}),
         })?;
         let status = response.status().as_u16();
-        let text = response.body_mut().read_to_string().unwrap_or_default();
-        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(
-            |_| json!({"detail": format!("{method} {url} answered {status} without JSON"), "code": "invalid_response"}),
-        );
+        let invalid = |why: String| Problem {
+            status,
+            body: json!({"detail": format!("{method} {url} answered {status} {why}"), "code": "invalid_response"}),
+        };
+        let text = response
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| invalid(format!("with an unreadable body: {e}")))?;
+        let parsed: Value = serde_json::from_str(&text).map_err(|_| invalid("without JSON".into()))?;
         if status >= 300 {
             return Err(Problem { status, body: parsed });
         }
-        Ok(parsed["data"].clone())
+        // A success is always `{ data }`; anything else is not a Zero site and must not read as "empty".
+        match parsed.get("data") {
+            Some(data) => Ok(data.clone()),
+            None => Err(invalid("without a data envelope".into())),
+        }
     }
 }
 

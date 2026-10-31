@@ -15,6 +15,17 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
     // Conflict files are the user's working files under the ignored .zero/; only the bases are committed.
     let conflicts = project.join(".zero/conflicts");
     let paths: Vec<PathBuf> = paths.iter().filter(|p| !p.starts_with(&conflicts)).cloned().collect();
+    // A path that's gone and was never tracked (written and moved within the run) isn't a change.
+    let tracked = |p: &PathBuf| {
+        Command::new("git")
+            .arg("-C")
+            .arg(project)
+            .args(["ls-files", "--error-unmatch", "--"])
+            .arg(p)
+            .output()
+            .is_ok_and(|o| o.status.success())
+    };
+    let paths: Vec<PathBuf> = paths.into_iter().filter(|p| p.exists() || tracked(p)).collect();
     let paths = paths.as_slice();
     if !inside.is_ok_and(|o| o.status.success()) || paths.is_empty() {
         return Ok(false);
@@ -46,11 +57,12 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
 }
 
 /// `.zero/*` ignored except the bases, added to `.gitignore` when absent (design §5.4 step 6).
-pub fn ignore_build_output(project: &Path) -> Result<(), String> {
+/// Ok(true) when it changed the file.
+pub fn ignore_build_output(project: &Path) -> Result<bool, String> {
     let path = project.join(".gitignore");
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     if current.lines().any(|l| l.trim() == "!.zero/sync-base.json") {
-        return Ok(());
+        return Ok(false);
     }
     let mut next = current
         .lines()
@@ -61,5 +73,6 @@ pub fn ignore_build_output(project: &Path) -> Result<(), String> {
         next.push('\n');
     }
     next.push_str(".zero/*\n!.zero/sync-base.json\n");
-    std::fs::write(&path, next).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::write(&path, next).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
 }

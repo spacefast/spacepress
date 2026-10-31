@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: approved for build (revision 11, 2026-10-31). Extends
+Status: approved for build (revision 12, 2026-10-31). Extends
 `design-phase2.md`; where this document is silent, phase 2 holds. The
 licensing and scope decisions in §1 and §9 govern the import PR (§8, PR 2).
 
@@ -146,12 +146,12 @@ files use `unlock(...)`. This is how the upstream framework worked and it is
 load-bearing for routing and DataViews. It is kept, renamed and pinned (§3.3,
 §10).
 
-A note on what is already in this repo: one file under
-`runtime/identity/apps/admin/src/` carries an attribution header naming the
-framework and its contributors as copyright holders. That file belongs to the
-identity lane and is outside this plan's files. It is an attribution notice,
-so it is **not** scrubbed; whether it stays as is, moves to a `NOTICE`, or is
-reworded follows the same §9.1 ruling. Flagged in §9.5.
+The identity plugin carries the same kind of Spacefast-authored source credit
+in `runtime/identity/NOTICE` and one adapted file under
+`runtime/identity/apps/admin/src/`; §9.5 gives both plugins one disposition:
+those lines read `Copyright (c) 2026 Spacefast`, GPL-2.0-or-later, "adapted
+from Spacefast's earlier WordPress admin work"; third-party notices stay
+verbatim.
 
 ### 1.4 Licensing
 
@@ -235,8 +235,8 @@ schema.php v3, accepted by `src/extract.rs`'s config allowlist. `zero build`
 emits `plugins/zero-admin` and lists it in `zero-manifest.json` only when the
 flag is true; a build that turns the flag off deletes the directory like any
 other `zero-*` output. There is no CLI flag: the artifact is a function of the
-config. (Zero is WordPress-only; there is no other target for the flag to be
-ignored on.)
+config. The plugin runs only inside WordPress, so the flag has no meaning
+elsewhere.
 
 Why opt-in and not always: the plugin is several megabytes of JS, it asks the
 site for pretty permalinks, and a headless, API-first Zero app has no one
@@ -690,18 +690,15 @@ example the editor panel's `showIf` toggling), it joins the same spec.
 
 ## 8. Phased PR plan (stacked on `main`)
 
-| # | Branch | Content | Gate |
+| # | Branch | Content | Validation |
 |---|---|---|---|
-| 1 | `p3/admin-design` | this document | review |
-| 2 | `p3/admin-import` | **one commit**: the kept subset, already pruned (§4) and scrubbed (§1.3), under `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib,LICENSE,NOTICE}`, with catalog pins and no `next` dist-tag. No pre-cleanup state is ever committed. `pnpm install --frozen-lockfile`, `tsc -b` and the workspace tests pass. No build output yet. | review of the PHP, manifests, catalog and every hand-edited module |
-| 3 | `p3/admin-build` | `build.mjs`-style manifest and licence file, committed `runtime/admin/build/`, the `admin` CI job, the drift line in `vendor_drift.php` | CI green |
-| 4 | `p3/admin-package` | `admin: true` (types, extract, schema, build.rs emission, manifest), harness activation, `tests/wp/admin.test.ts` activation + page-load cases, `tests/wp_plugins.rs` case | CI green, Sol clean |
-| 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media mutations over `/zero/v1/media`, the globals form, the menu builder with `CoreAccess::mayRead`, the readable-menu test; deletes the last `/types/*` public routes | needs #38 merged; CI green, Sol clean |
-| 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, the `zero doctor` row of §2.3 | CI green, Sol clean |
-| 7 | `p3/admin-docs` | `docs/admin.md` (what it is, opt-in, URL, permalinks, what's in scope), README row, `config-api.md` entry; the pin move to stable releases (§3.3 step 2) if it is small enough, else its own PR | CI green |
-
-Review diffs exclude `**/vendor-prefixed/**`, `runtime/admin/build/**` and
-`runtime/admin/apps/pnpm-lock.yaml`.
+| 1 | `p3/admin-design` | this document | |
+| 2 | `p3/admin-import` | **one commit**: the kept subset, already pruned (§4) and scrubbed (§1.3), under `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib,LICENSE,NOTICE}`, with catalog pins and no `next` dist-tag. No pre-cleanup state is ever committed. No build output yet. | `pnpm install --frozen-lockfile`, `tsc -b`, the workspace tests; every repo suite stays green without Node |
+| 3 | `p3/admin-build` | `build.mjs`-style manifest and licence file, committed `runtime/admin/build/`, the `admin` CI job, the drift line in `vendor_drift.php` | CI, including the new job and the drift check |
+| 4 | `p3/admin-package` | `admin: true` (types, extract, schema, build.rs emission, manifest), harness activation, `tests/wp/admin.test.ts` activation + page-load cases, `tests/wp_plugins.rs` case | CI; the WP suite on a real stack |
+| 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media mutations over `/zero/v1/media`, the globals form, the menu builder with `CoreAccess::mayRead`, the readable-menu test; deletes the last `/types/*` public routes | needs #38 merged; CI; the WP suite |
+| 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, the `zero doctor` row of §2.3 | CI; the WP suite and the browser journey |
+| 7 | `p3/admin-docs` | `docs/admin.md` (what it is, opt-in, URL, permalinks, what's in scope), README row, `config-api.md` entry; the pin move to stable releases (§3.3 step 2) if it is small enough, else its own PR | CI |
 
 ---
 

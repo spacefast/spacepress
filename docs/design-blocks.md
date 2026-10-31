@@ -1,8 +1,24 @@
 # Zero Blocks — Gutenberg JSX and TSX block themes
 
-Status: proposed, for review. An optional package in this repo. Nothing in
-Zero core (`src/`, `runtime/`, the `zero-*` plugins) depends on it, and a Zero
-app that does not use it gains no build step, dependency or output.
+Status: approved by the project owner as **an optional add-on**. That ruling
+has four parts, and every section below is read under them:
+
+1. **Separate package.** `@spacefast/zero-blocks` in `packages/blocks/`,
+   installed separately, with its own npm package, version and changelog.
+   Zero core never imports or depends on it: not the Rust compiler, not the
+   PHP runtime, not the generated plugins, not `types/zero`. A Zero app that
+   does not install it gets nothing new: no build step, no dependency, no
+   output.
+2. **Separate output.** It builds its own artifact, a block theme (and
+   content markup), installed alongside Zero's plugins and never modifying
+   them. The one coupling is the opt-in `bind.field()` binding to SCF meta,
+   and it is one-way: Blocks reads Zero's schema conventions; Zero knows
+   nothing about Blocks.
+3. **Separate CI.** Its jobs run only when `packages/blocks/**` or the
+   contract it reads changes, so Chromium and the extra Rust build never
+   slow a core PR (§8, §11).
+4. **WordPress-only.** WordPress renders everything this package produces;
+   there is no static or standalone rendering lane.
 
 This document decides the package, its authoring API, how a TSX theme becomes
 a block theme, how it is built, validated and tested, and in which PRs it
@@ -18,7 +34,7 @@ WordPress and nothing else.
 
 | Area | Decision |
 |---|---|
-| Package | `@spacefast/zero-blocks`, in `packages/blocks/`. Node ≥ 22, TypeScript, pnpm with a committed lockfile, `node --test`. Published to npm later; never a dependency of anything else in this repo. |
+| Package | `@spacefast/zero-blocks`, in `packages/blocks/`. Node ≥ 22, TypeScript, pnpm with a committed lockfile, `node --test`. Its own semver version and `CHANGELOG.md`, published to npm on its own cadence; never a dependency of anything else in this repo. |
 | What it is | Two things sharing one core: **content** (TSX → serialized Gutenberg block markup) and **theme** (a directory of TSX → a complete WordPress block theme). |
 | JSX | `jsxImportSource: "@spacefast/zero-blocks"`. No React, no vdom. HTML tags map to core blocks (`<p>` → `core/paragraph`), components are transparent functions, blocks are named components. Every node carries its source location, so every diagnostic has `file:line:col`. |
 | Serializer | Core's own `createBlock()` + `serialize()` from `@wordpress/blocks` with `@wordpress/block-library` registered under happy-dom, pinned to the exact package versions WordPress 7.1 bundles. Byte-parity with each block's `save()` is what makes templates open valid in the Site Editor; nothing leaner can promise that. |
@@ -29,7 +45,7 @@ WordPress and nothing else.
 | Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_excerpt" } }` for the meta key Zero writes. Pure markup; no runtime dependency on Zero. Query loops over Zero collections are **not** offered: `core/query` ignores non-viewable post types and Zero's are private (§5). |
 | Not in scope | Capsule frontends, islands, the `zero/component` dynamic block, `_pages` system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. |
 | Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's Zero artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
-| CI | Two jobs in `.github/workflows/ci.yml`: `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof). Zero core's jobs are untouched. |
+| CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and Zero core's jobs are untouched. |
 
 ## 1. Why, and what changes from the earlier work
 
@@ -118,9 +134,15 @@ pins and regenerating. Dev: `typescript` 5.9.3 (as CI), `@types/node`,
 `playwright` (the Site Editor proof only), `json-schema-to-typescript`.
 
 Rules the package keeps: no Rust changes; nothing in `src/`, `runtime/`,
-`tests/wp/*.test.ts`, `tests/system/`; root `.gitignore` gains two lines
-(`packages/blocks/node_modules/`, `packages/blocks/**/dist/`). No `cargo test`
-or PHP suite learns about it.
+`types/zero/`, `tests/wp/*.test.ts`, `tests/system/`; root `.gitignore` gains
+two lines (`packages/blocks/node_modules/`, `packages/blocks/**/dist/`). No
+`cargo test` or PHP suite learns about it. Its output is its own artifact
+(a theme directory and zip, or a markup file) that is installed next to
+Zero's plugins and never written into them. Versioning: `package.json`
+`version` is independent of the `zero` binary's; `packages/blocks/CHANGELOG.md`
+(Keep a Changelog format) gets an entry per user-visible change, and the
+WordPress floor the pins encode (7.1) is stated in the README and bumped as
+a minor release.
 
 License: the package is MIT, as Spacefast's earlier Gutenberg JSX package
 was, so the ported code keeps its license; the themes it builds declare
@@ -628,10 +650,16 @@ is being reworked by the integration PR; moving it is a one-line change later.
    pinned plugins. It adds a `cargo build` to the job.
 9. Teardown unless `ZERO_WP_KEEP=1`.
 
-CI job `blocks-wp` runs it on `ubuntu-24.04` (Docker preinstalled) with
-`npx playwright install --with-deps chromium`; job `blocks` runs
-`pnpm install --frozen-lockfile`, `tsc --noEmit`, `node --test`, and both
-codegen scripts in check mode. Neither job is added to the existing ones.
+Both jobs live in their own workflow, `.github/workflows/blocks.yml`, which
+triggers on `pull_request` and `push: main` with a `paths` filter:
+`packages/blocks/**`, `.github/workflows/blocks.yml`, and the contract the
+proof reads from the rest of the repo (`tests/wp/harness.sh`,
+`tests/wp/compose.yml`, `tests/wp/apache/**`, `tests/wp/php/**`,
+`tests/fixtures/platform.json`, `examples/blog/**`). Job `blocks-wp` runs on
+`ubuntu-24.04` (Docker preinstalled) with `npx playwright install --with-deps
+chromium`; job `blocks` runs `pnpm install --frozen-lockfile`, `tsc --noEmit`,
+`node --test`, and both codegen scripts in check mode. `ci.yml` is not
+edited; a core PR never runs either job.
 
 ## 9. Out of scope, and non-goals
 
@@ -683,7 +711,7 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
 3. **Site Editor validation via Playwright** adds Chromium to one CI job. The
    REST-plus-pinned-parser alternative proves less than the ask requires
    ("opens cleanly in the Site Editor"), so Playwright stays, in the WP job
-   only.
+   only. Ruling: accepted, path-filtered to the package's own workflow.
 4. **Example inside the package**, not under `examples/`, to stay out of the
    integration PR's way. Move later.
 5. **`@spacefast/zero-blocks`** as the npm name (free; mirrors how
@@ -702,4 +730,5 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    artifact** into the same WordPress to exercise the binding sugar (§8 step
    8). It makes the `blocks-wp` job build the Rust binary, which roughly
    doubles its runtime; the alternative, not proving `bind.field()` at all,
-   would leave the one Zero-specific feature untested.
+   would leave the one Zero-specific feature untested. Ruling: accepted,
+   path-filtered to the package's own workflow, so core PRs never pay for it.

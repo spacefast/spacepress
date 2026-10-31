@@ -2,7 +2,7 @@
 // proves what Polylang and MySQL add.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ok, qs, run } from "./env.ts";
+import { api, http, ok, qs, run, sql, wp } from "./env.ts";
 
 const tree = (rows: any[]) => rows.map((r) => [`${r.locale}:${r.title}`, r.legs.map((l: any) => `${l.locale}:${l.title}`)]);
 
@@ -36,4 +36,44 @@ test("a bulk update over several rows of one translation group runs each row's h
   assert.deepEqual(log.map((r: any) => `${r.tourId}=${r.entry}`).sort(), [`${en.id}=en:7 by Editor`, `${fr.id}=fr:7 by Editor`, `${de.id}=de:7 by Editor`].sort());
   const rows = await ok("GET", "/tours" + qs({ locale: "*", where: { id: { in: [en.id, fr.id, de.id] } } }));
   assert.deepEqual(rows.map((r: any) => r.price), [7, 7, 7]);
+});
+
+// Guest pruning (§6.2): `zero.prune-guests`, an Action Scheduler recurring action.
+const guest = async () => {
+  const res = await http("POST", `${api}/auth/guest`, {});
+  assert.equal(res.status, 201, JSON.stringify(res.json));
+  return res.json.data;
+};
+/** Make a guest look inactive since $days ago: registration and every refresh token it was minted. */
+const age = (id: number, days: number) => {
+  sql(`UPDATE wp_users SET user_registered = UTC_TIMESTAMP() - INTERVAL ${days} DAY WHERE ID = ${id}`);
+  sql(`UPDATE wp_zero_identity_tokens SET expires_at = expires_at - ${days * 86400} WHERE wp_user_id = ${id}`);
+};
+const user = (id: number) => sql(`SELECT ID FROM wp_users WHERE ID = ${id}`).length === 1;
+const runPrune = () => {
+  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'zero.prune-guests' AND a.status = 'pending' AND g.slug = 'zero'");
+  assert.ok(action, "the recurring action is scheduled in group zero");
+  wp("action-scheduler", "action", "run", action.action_id);
+};
+
+test("zero.prune-guests deletes stale guests with what they own, per onDelete, and keeps the rest", async () => {
+  const [stale, pinned, fresh, author] = [await guest(), await guest(), await guest(), await guest()];
+  const id = (g: any) => g.user.id as number;
+  const cart = await ok("POST", "/guest_carts", { as: "admin", body: { memberId: id(stale) } });
+  const note = await ok("POST", "/guest_notes", { as: "admin", body: { body: "mine", memberId: id(stale) } });
+  // guestbook.memberId has no onDelete: the row still requires its guest.
+  const entry = await ok("POST", "/guestbook", { as: "admin", body: { message: `pinned ${run}`, memberId: id(pinned) } });
+  // A post the guest authored stays, without an author.
+  const post = Number(wp("post", "create", "--post_type=zero_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
+  for (const g of [stale, pinned, author]) age(id(g), 40);
+  age(id(fresh), 5);
+  runPrune();
+  assert.deepEqual([stale, pinned, fresh, author].map((g) => user(id(g))), [false, true, true, false]);
+  assert.deepEqual(sql(`SELECT id FROM wp_zero_guest_carts WHERE id = ${cart.id}`), [], "cascade deleted the guest's cart");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_zero_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_zero_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
+  assert.deepEqual(sql(`SELECT post_author FROM wp_posts WHERE ID = ${post}`), [{ post_author: "0" }]);
+  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_zero_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
+  const me = await fetch(`${api}/me`, { headers: { authorization: `Bearer ${stale.accessToken}` } });
+  assert.equal(me.status, 401, "the pruned guest's token no longer signs in");
 });

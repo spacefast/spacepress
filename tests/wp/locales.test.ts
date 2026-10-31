@@ -5,7 +5,8 @@
 // proves what Polylang and MySQL add. `phrases` (editor: false) uses Zero's own group column.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { core, http, ok, problem, qs, run, wp } from "./env.ts";
+import { createHash } from "node:crypto";
+import { api, core, http, ok, problem, qs, run, wp } from "./env.ts";
 
 /** Polylang's view of a post: [language slug, translations]. */
 function polylang(id: number): [string, Record<string, number>] {
@@ -183,4 +184,30 @@ test("a trashed translation leaves the group usable; its locale can be translate
   await ok("PATCH", `/tours/${en.id}`, { as: "editor", body: { price: 8 } });
   const again = await ok("POST", "/tours", { as: "editor", body: { title: `Trash FR2 ${run}`, locale: "fr", translationOf: en.id } });
   assert.deepEqual([again.price, polylang(en.id)[1]], [8, { en: en.id, fr: again.id }]);
+});
+
+test("sync pulls a localized collection as one record per locale, and a pushed translation joins the Polylang group", async () => {
+  const { en, fr } = await pair("Synced");
+  // Pull: every locale is its own record; `translations` travels as locale → uid.
+  const records = new Map<string, any>();
+  for (let after = 0; ; ) {
+    const page = await ok("GET", "/sync/tours" + qs({ after: String(after), first: "100" }), { as: "editor" });
+    for (const item of page.records) if (item.record) records.set(item.record.uid, item.record);
+    if (page.next === null) break;
+    after = page.next;
+  }
+  const enRecord = records.get(en.uid);
+  const frRecord = records.get(fr.uid);
+  assert.deepEqual([enRecord.fields.locale, enRecord.fields.title, frRecord.fields.locale, frRecord.fields.title], ["en", `Synced ${run}`, "fr", `Synced FR ${run}`]);
+  assert.deepEqual([enRecord.fields.translations, frRecord.fields.translations], [{ en: en.uid, fr: fr.uid }, { en: en.uid, fr: fr.uid }]);
+  // Push: a new German file naming its group joins it through translationOf, copying synced columns.
+  const deUid = "zr_" + createHash("sha256").update(`${run}:tour-de`).digest("hex").slice(0, 20);
+  const pushed = await http("POST", `${api}/sync/tours`, {
+    as: "editor",
+    body: { expect: "absent", record: { uid: deUid, fields: { title: `Synced DE ${run}`, locale: "de", translations: { en: en.uid, fr: fr.uid } }, body: "Hallo **Tee**." } },
+  });
+  assert.equal(pushed.status, 201, JSON.stringify(pushed.json));
+  const [de] = await ok("GET", "/tours" + qs({ locale: "de", where: { uid: deUid } }), { as: "editor" });
+  assert.deepEqual([de.locale, de.price, de.tags], ["de", 3, ["tea"]]);
+  assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id, de: de.id });
 });

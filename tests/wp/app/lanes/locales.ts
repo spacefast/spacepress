@@ -2,8 +2,9 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 //
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
-// group), `phrases` an `editor: false` one (Zero's own translationGroup column).
-import { collection, db, id, integer, select, slug, text } from "zero";
+// group) that also syncs with Markdown files (lane C), `phrases` an `editor: false` one (Zero's own
+// translationGroup column).
+import { collection, db, id, integer, richText, select, slug, text } from "zero";
 
 export const tours = collection("tours", {
   id: id(),
@@ -12,7 +13,8 @@ export const tours = collection("tours", {
   slug: slug({ source: "title" }),
   price: integer(),
   tags: select({ options: ["tea", "coffee"], multiple: true }).notNull().default([]),
-}, { drafts: true, revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  body: richText().localized(),
+}, { title: "title", content: "body", drafts: true, revisions: true, sync: "content/tours/*.md", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 // Every tours afterUpdate leaves "<locale>:<price>", so per-row hooks during group sync are observable.
 export const tourLog = collection("tour_log", { id: id(), tourId: integer().notNull(), entry: text().notNull() }, { editor: false, access: { read: "anyone" } });

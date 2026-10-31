@@ -1115,6 +1115,14 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $filled = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
         eq('a size missing from the row is rendered on the next focal change', [$filled['sizes']['wide']['width'], $filled['sizes']['wide']['height']], [200, 100]);
 
+        // A size the original now fits (config changed) drops its old rendition: file and row entry.
+        $small = $post($png(80, 80), 'small.png')[1];
+        $staleRel = substr($small['url'], strlen('/uploads/'), -4) . '-thumb-stale.png';
+        copy("$mediaRoot/public{$small['url']}", "$mediaRoot/public/uploads/$staleRel");
+        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = json_set("sizes", \'$.thumb\', json(?)) WHERE "id" = ?', [json_encode(['file' => $staleRel, 'width' => 50, 'height' => 50]), $small['id']]);
+        $refit = $mediaReq('PATCH', "/media/{$small['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
+        eq('a size the original now fits is served by the original and its old file is gone', [$refit['sizes']['thumb']['url'], is_file("$mediaRoot/public/uploads/$staleRel")], [$small['url'], false]);
+
         $final = $mediaReq('GET', "/media/{$img['id']}", [])[1];
         $mediaReq('DELETE', "/media/{$img['id']}", $asEditor);
         check('deleting media removes the size files after commit', !is_file("$mediaRoot/public{$final['sizes']['thumb']['url']}") && !is_file("$mediaRoot/public$base.png"));

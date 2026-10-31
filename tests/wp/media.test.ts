@@ -222,6 +222,33 @@ test("core regeneration: the missing-sizes pass fills Zero sizes without touchin
   assert.deepEqual(after.filter((f) => before.includes(f)), [], "every replaced rendition is removed");
 });
 
+test("a size the original now fits drops its old rendition (metadata and file)", async () => {
+  // A 100x100 original fits card (120x120): model a rendition left from a smaller earlier card size.
+  const id = wp("eval", `
+    $tmp = wp_tempnam('fits.png');
+    imagepng(imagecreatetruecolor(100, 100), $tmp);
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    $id = media_handle_sideload(['name' => 'fits.png', 'tmp_name' => $tmp], 0);
+    $file = get_attached_file($id);
+    $stale = pathinfo($file, PATHINFO_FILENAME) . '-zero_card-stale.png';
+    copy($file, dirname($file) . '/' . $stale);
+    $meta = wp_get_attachment_metadata($id);
+    $meta['sizes']['zero_card'] = ['file' => $stale, 'width' => 50, 'height' => 50, 'mime-type' => 'image/png'];
+    wp_update_attachment_metadata($id, $meta);
+    echo $id;
+  `);
+  await ok("PATCH", `/media/${id}`, { as: "editor", body: { focal: { x: 0.5, y: 0.5 } } });
+  const left = JSON.parse(wp("eval", `
+    $file = get_attached_file(${id});
+    echo wp_json_encode([isset(wp_get_attachment_metadata(${id})['sizes']['zero_card']), is_file(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-zero_card-stale.png')]);
+  `));
+  assert.deepEqual(left, [false, false], "no zero_card entry and no stale file");
+  const row = await ok("GET", `/media/${id}`);
+  assert.equal(row.sizes.card.url, row.url, "the original serves the size");
+});
+
 test("without Jetpack the Image CDN adapter is inert", async () => {
   const schema = await ok("GET", "/_schema");
   assert.equal(schema.runtime.wp.imageCdn, false);

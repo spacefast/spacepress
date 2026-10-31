@@ -158,14 +158,20 @@ final class WpMedia implements Media
         $connection = Runtime::plugin()?->connection();
         $dir = dirname((string) get_attached_file($id));
         foreach (self::render($id, $meta, self::focalOf($id), $which) as $name => $size) {
-            $new = $dir . '/' . $size['file'];
-            $connection?->onRollback(static fn () => @unlink($new));
+            if ($size !== null) {
+                $new = $dir . '/' . $size['file'];
+                $connection?->onRollback(static fn () => @unlink($new));
+            }
             $old = $previous['zero_' . $name]['file'] ?? null;
-            if (is_string($old) && $old !== $size['file']) {
+            if (is_string($old) && $old !== ($size['file'] ?? null)) {
                 $old = $dir . '/' . $old;
                 $connection === null ? @unlink($old) : $connection->afterCommit(static fn () => @unlink($old));
             }
-            $meta['sizes']['zero_' . $name] = $size;
+            if ($size === null) {
+                unset($meta['sizes']['zero_' . $name]);
+            } else {
+                $meta['sizes']['zero_' . $name] = $size;
+            }
         }
 
         return $meta;
@@ -173,10 +179,11 @@ final class WpMedia implements Media
 
     /**
      * Render configured sizes for an attachment with wp_get_image_editor ($which picks sizes by
-     * name and fit; null = all). Sizes the original already fits are absent: the original serves them.
+     * name and fit; null = all). A size the original already fits maps to null: the original serves
+     * it, and a rendition left from an earlier configuration must go.
      *
      * @param ?callable(string $name, bool $cover): bool $which
-     * @return array<string, array{file: string, width: int, height: int, mime-type: string, filesize: int}>
+     * @return array<string, ?array{file: string, width: int, height: int, mime-type: string, filesize: int}>
      */
     private static function render(int $id, array $meta, ?array $focal, ?callable $which = null): array
     {
@@ -193,6 +200,7 @@ final class WpMedia implements Media
             }
             $dims = Images::dimensions((int) $meta['width'], (int) $meta['height'], (int) $size['width'], isset($size['height']) ? (int) $size['height'] : null, $cover, $focal);
             if ($dims === null) {
+                $out[$name] = null; // the original fits: no rendition; any previous one goes
                 continue;
             }
             [, , $x, $y, $w, $h, $sw, $sh] = $dims;
@@ -314,13 +322,19 @@ final class WpMedia implements Media
                 $fresh = self::render($id, $meta, $patch['focal'], static fn (string $name, bool $cover) => $cover || !isset($meta['sizes']['zero_' . $name]));
                 $dir = dirname((string) get_attached_file($id));
                 foreach ($fresh as $name => $size) {
-                    $new = $dir . '/' . $size['file'];
-                    $this->db->onRollback(static fn () => @unlink($new));
+                    if ($size !== null) {
+                        $new = $dir . '/' . $size['file'];
+                        $this->db->onRollback(static fn () => @unlink($new));
+                    }
                     if (isset($meta['sizes']['zero_' . $name])) {
                         $old = $dir . '/' . $meta['sizes']['zero_' . $name]['file'];
                         $this->db->afterCommit(static fn () => @unlink($old));
                     }
-                    $meta['sizes']['zero_' . $name] = $size;
+                    if ($size === null) {
+                        unset($meta['sizes']['zero_' . $name]);
+                    } else {
+                        $meta['sizes']['zero_' . $name] = $size;
+                    }
                 }
                 self::requireRendered();
                 wp_update_attachment_metadata($id, $meta);

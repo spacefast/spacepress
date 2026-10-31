@@ -332,17 +332,20 @@ fn emit_standalone(project: &Path, out: &Path, built: &Built) -> std::io::Result
 fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Result<()> {
     let schema_php = schema_php::render(&built.schema);
     let vars = plugin_vars(&built.schema, &schema_php);
-    for (slug, template) in [
-        ("zero-runtime".to_string(), "zero-runtime.php"),
-        (format!("zero-app-{}", built.schema.name), "zero-app.php"),
+    for (slug, name) in [
+        ("zero-runtime".to_string(), "zero-runtime"),
+        (format!("zero-app-{}", built.schema.name), "zero-app"),
     ] {
         let directory = plugins.join(&slug);
         std::fs::create_dir_all(&directory)?;
-        let template = runtime_file(&format!("wp-plugin/{template}")).expect("embedded plugin template");
+        let template = runtime_file(&format!("wp-plugin/{name}.php")).expect("embedded plugin template");
         write(
             &directory.join(format!("{slug}.php")),
             substitute(&String::from_utf8_lossy(template), &vars),
         )?;
+        // Deleting the plugin in wp-admin runs uninstall.php: options and capabilities go, content stays.
+        let uninstall = runtime_file(&format!("wp-plugin/{name}-uninstall.php")).expect("embedded uninstall template");
+        write(&directory.join("uninstall.php"), uninstall)?;
         write(
             &directory.join("readme.txt"),
             format!(

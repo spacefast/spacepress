@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { api, harness, http, run, sql, wp, wpTry } from "./env.ts";
+import { api, auth as authHeader, harness, http, run, sql, wp, wpTry } from "./env.ts";
 
 /** The runtime's system-tables marker: `<series>+<fingerprint of registered tables>`. */
 const tablesVersion = () => wp("eval", "echo \\Zero\\Wp\\Runtime::tablesVersion();");
@@ -401,6 +401,87 @@ test("a runtime-only update converts the blog's old ledger on its next request, 
     sql("DROP TABLE IF EXISTS wp_zero__migrations");
     sql("CREATE TABLE wp_zero__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     for (const r of saved) sql(`INSERT INTO wp_zero__migrations (app, id, applied_at) VALUES ('${r.app}', '${r.id}', '${r.applied_at}')`);
+  }
+});
+
+test("two apps' uninstallers run in one request, remove only derived capabilities, and keep queued work", () => {
+  // `wp plugin uninstall a b` includes both files in one process; create_<type> is never derived.
+  assert.deepEqual(evalFixture("two-uninstallers.php"), {
+    ran: ["alpha", "beta"],
+    left: ["create_zero_alpha"],
+    // Queued work is the app's content: its deliveries stay for a reinstall to run.
+    actions: { alpha: "pending", beta: "pending", other: "pending" },
+  });
+});
+
+test("a job falling due while the app is deactivated keeps its delivery and runs once the app is back", async () => {
+  // jobNotes' afterCreate enqueues `stamp`; deactivate the app before Action Scheduler runs it.
+  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `away ${run}` }) })).json();
+  const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
+  const deliveries = () => sql(`SELECT a.status AS s, g.slug AS g FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.hook = 'zero_job' AND a.args = '{"id":"${job.id}"}' ORDER BY a.action_id`).map((r) => `${r.g}:${r.s}`);
+  wp("plugin", "deactivate", harness.plugin);
+  try {
+    wp("action-scheduler", "run", "--hooks=zero_job");
+    assert.deepEqual(sql(`SELECT state FROM wp_zero__jobs WHERE id = '${job.id}'`).map((r) => r.state), ["pending"], "nothing ran it");
+    assert.deepEqual(deliveries(), ["zero-blog:complete", "zero-blog:pending"], "a fresh delivery waits in the app's own group");
+  } finally {
+    wp("plugin", "activate", harness.plugin);
+  }
+  sql(`UPDATE wp_actionscheduler_actions SET scheduled_date_gmt = UTC_TIMESTAMP(), scheduled_date_local = NOW() WHERE hook = 'zero_job' AND status = 'pending' AND args = '{"id":"${job.id}"}'`);
+  wp("action-scheduler", "run", "--hooks=zero_job");
+  assert.deepEqual(sql(`SELECT state, attempts FROM wp_zero__jobs WHERE id = '${job.id}'`), [{ state: "done", attempts: "1" }], "the app ran it exactly once");
+});
+
+test("a cancelled job's delivery isn't kept while the app is away", async () => {
+  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `cancelled ${run}` }) })).json();
+  const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
+  wp("zero", "jobs", "cancel", job.id);
+  wp("plugin", "deactivate", harness.plugin);
+  try {
+    wp("action-scheduler", "run", "--hooks=zero_job");
+    const statuses = sql(`SELECT status FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND args = '{"id":"${job.id}"}' ORDER BY action_id`).map((r) => r.status);
+    assert.deepEqual(statuses, ["complete"], "no replacement delivery for a dead job");
+  } finally {
+    wp("plugin", "activate", harness.plugin);
+  }
+});
+
+test("if the job's state can't be read while the app is away, the action fails instead of completing", async () => {
+  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `unreadable ${run}` }) })).json();
+  const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
+  wp("plugin", "deactivate", harness.plugin);
+  sql("RENAME TABLE wp_zero__jobs TO wp_zero__jobs_away");
+  try {
+    wp("action-scheduler", "run", "--hooks=zero_job");
+    const statuses = sql(`SELECT status FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND args = '{"id":"${job.id}"}' ORDER BY action_id`).map((r) => r.status);
+    assert.deepEqual(statuses, ["failed"], "a failed read is a failed action, never a quiet completion");
+  } finally {
+    sql("RENAME TABLE wp_zero__jobs_away TO wp_zero__jobs");
+    wp("plugin", "activate", harness.plugin);
+    wp("zero", "jobs", "cancel", job.id);
+  }
+});
+
+test("if the delivery can't be kept while the app is away, the action fails visibly instead of completing", async () => {
+  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `refused ${run}` }) })).json();
+  const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
+  const statuses = () => sql(`SELECT status FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND args = '{"id":"${job.id}"}' ORDER BY action_id`).map((r) => r.status);
+  wp("plugin", "deactivate", harness.plugin);
+  try {
+    // Action Scheduler refuses the replacement (its pre_as_schedule_single_action filter returns 0),
+    // via a must-use plugin for just this run.
+    const mu = "zero-test-refuse-schedule";
+    wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${mu}.php', "<?php add_filter('pre_as_schedule_single_action', fn () => 0);");`);
+    try {
+      wp("action-scheduler", "run", "--hooks=zero_job");
+    } finally {
+      wp("eval", `@unlink(WPMU_PLUGIN_DIR . '/${mu}.php');`);
+    }
+    assert.deepEqual(statuses(), ["failed"], "recorded as failed, not complete");
+    assert.deepEqual(sql(`SELECT state FROM wp_zero__jobs WHERE id = '${job.id}'`).map((r) => r.state), ["pending"]);
+  } finally {
+    wp("plugin", "activate", harness.plugin);
+    wp("zero", "jobs", "cancel", job.id);
   }
 });
 

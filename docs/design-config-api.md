@@ -548,7 +548,7 @@ changes: these two were designed together and are consistent.
 ### 4.7 Files, media, locales, webhooks
 
 ```ts
-export const manuscripts = bucket({ accept: ["application/pdf"], maxBytes: 1_000_000, access?: { read?, create?, delete? } });
+export const manuscripts = bucket({ accept: ["application/pdf"], maxBytes: 1_000_000, access?: { read?, write?, create?, delete? } });
 defineConfig({
   files: { manuscripts },
   media: { sizes: { card: { width, height?, fit? } } },
@@ -560,6 +560,8 @@ defineConfig({
 
 - `files(name, …)` becomes `bucket({…})` (F7, F15): the key names it,
   `file("key")` points at it, and "bucket" is what the docs already call it.
+  Its access takes `write` too, covering `create` and `delete` (a bucket
+  has no update).
 - `locales` as an array (F19): the first entry is the default. `fallback`
   (no use in the repo) moves to a sibling key, `localeFallback: false`, so
   there is one spelling of the list and `default` is never repeated.
@@ -582,7 +584,13 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   names the relation (`userId` gives `user`, loadable with
   `with: { user: true }`) and the reverse on the auth collection is inferred
   as for any `ref`. Without an auth collection there is no row to
-  load, so it declares no relation. Deletion of the user follows `ref()`'s rule:
+  load, so it declares no relation. Adding, renaming or removing the auth
+  collection changes what a `user()` id means on standalone (the runtime
+  already revokes every credential when the user table changes,
+  `Identity.php:42`); `zero build` refuses that change while any
+  collection has a `user()` column, with the same snapshot comparison
+  §4.9.3 uses ("`authors.userId` names users of the old table; migrate or
+  clear it before switching"). Deletion of the user follows `ref()`'s rule:
   `"set null"` when nullable, `"restrict"` when `.notNull()`, and
   `{ onDelete: "cascade" }` explicitly. It is what `authors.userId` and the
   `ownerId` columns are by hand today, and it is what `"self"` reads.
@@ -733,7 +741,10 @@ so the rename is a compiler change, not only a `.d.ts` one (§7.3).
 
 Not one way yet, and said so: `.notNull().default(x)` and `.default(x)` are
 the same column (the first is kept so the explicit form stays legal);
-`media.accept` and `bucket.accept` both take a pattern or a list.
+`media.accept` and `bucket.accept` both take a pattern or a list; `true`
+and `"anyone"` are the same access rule (`src/extract.rs:914`), kept
+because `true` is what a function rule returns and `"anyone"` is what a
+reader understands.
 
 ---
 
@@ -1146,8 +1157,12 @@ generated migration: a nullable-to-NOT NULL transition emits
 `UPDATE … SET col = <default> WHERE col IS NULL` before the constraint
 (function defaults have no SQL form, so a column with one is refused at
 build time: "`x` has a function default; backfill it in a hook or give it
-a constant default"), and an added NOT NULL timestamp is created with
-`CURRENT_TIMESTAMP` as its one-time SQL default;
+a constant default"), and an added NOT NULL timestamp is added nullable,
+backfilled with one canonical UTC ISO value the migration writes as a
+literal (`'2026-10-31T19:00:00.000Z'`, the build time, through
+`UPDATE … WHERE col IS NULL`), then constrained; SQLite refuses a
+non-constant default on a populated table and `CURRENT_TIMESTAMP` is not
+Zero's timestamp format anyway (`Schema.php:527` does not normalize it);
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on WordPress content collections `updatedAt` reads
@@ -1215,7 +1230,11 @@ them.
    `.onUpdate`, `.nullable`, implied NOT NULL, implied `.max(191)`, `media`
    MIME patterns. Fixtures and examples follow in the same PR.
 2. System columns: automatic `id`, `createdAt`, `updatedAt`; `timestamps`;
-   the WP post-date mapping; `id()` removed.
+   the WP post-date mapping; `id()` removed. The automatic `id` is added to
+   the evaluator's `CollectionVal.columns` (`src/eval.rs:1181`), not only to
+   the extracted schema, because `.references(() => authors.id)` still
+   resolves the property through the evaluator (`src/eval.rs:1059`) until
+   PR 3 replaces it.
 3. `ref()` and inferred relations; `many()`; `defineRelations` removed;
    `zero.gen.ts`, client and `.d.ts` relation typing.
 4. Collections: no name argument, `content` inferred, `body`, `hooks` in
@@ -1253,11 +1272,13 @@ Three places, all small:
   the compiler's annotation resolver matches `InferSelectModel`/
   `InferInsertModel` by name and accepts only `typeof collection`
   (`TyAnn::Query`, `src/compile.rs:854`). The new arm also accepts a string
-  literal, resolved as a `collections` key. Both forms compile to the same
-  extracted row type, which includes everything the build knows (an
-  inferred `uid` too); only the editor-side `.d.ts` distinguishes them
-  (§4.9.7), and the editor type is the narrower one, so code that compiles
-  under it is always valid for the compiler.
+  literal, resolved as a `collections` key. The compiler keeps the same
+  distinction the `.d.ts` makes (§4.9.7): `Row<typeof t>` is the extracted
+  row minus any column the build inferred from *other* collections (an
+  inherited `uid`), `Row<"t">` is the whole extracted row. The two agree
+  with the editor, so an object a helper builds to the value form never
+  lacks a field the compiler expects, and a helper that reads `uid` must
+  say `Row<"t">`.
 
 Nothing else is new to the evaluator: `select(array, opts)` is positional
 arguments it already handles; `collection(cols, opts)` drops an argument;

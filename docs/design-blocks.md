@@ -11,6 +11,8 @@ right and redesigns it where Zero v2's first principles say otherwise.
 
 Conventions: "error" = the build fails with `file:line:col` and a fix, and
 nothing is written. "WP" = WordPress 7.1, the pinned platform (`docs/design-phase2.md` §2.7).
+Zero is WordPress-only; everything this package produces is rendered by
+WordPress and nothing else.
 
 ## 0. Decisions in one screen
 
@@ -44,12 +46,12 @@ ported almost intact. What changes:
 
 | Earlier work | Here | Why |
 |---|---|---|
-| Content pages served by a Spacefast runtime, with a static lane and a WordPress lane | Content compiles to markup; themes compile to a theme. WordPress renders everything. | No capsule frontends, no second runtime. |
-| Islands (`client/` components → hydrated mounts), `zero/component` block | Removed. `core/html` remains for static HTML only. | A JS app runtime is out of scope by ruling. |
+| Content pages served by a Spacefast runtime, which also rendered blocks itself outside WordPress | Content compiles to markup; themes compile to a theme. WordPress renders everything; the package renders nothing. | No capsule frontends, no second runtime, no block renderer of our own. |
+| Islands (`client/` components → hydrated mounts), `zero/component` block | Removed. `core/html` remains for verbatim HTML only. | A JS app runtime is out of scope by ruling. |
 | `_pages/*.tsx` system pages → HTML documents | Removed. | Spacefast platform pages; nothing in Zero corresponds. |
-| `ZERO_DYNAMIC_BLOCKS` decided which serving lane a page needed | Removed. | Only mattered for the static lane. In a theme every template block is dynamic and that is fine. |
+| `ZERO_DYNAMIC_BLOCKS` decided whether WordPress or the Spacefast runtime had to serve a page | Removed. | WordPress serves every page, so the distinction has no meaning. In a theme every template block is dynamic and that is fine. |
 | Diagnostics per entry file | Diagnostics per JSX node: `templates/index.tsx:14:9`. | `jsxDEV` hands the runtime each element's source position; the mapper and serializer keep it. |
-| `core/query` forbidden from `inherit: true` | `inherit` is the normal archive loop in a template; `<QueryLoop>` requires the author to choose `inherit` or an explicit query. | The serving lane that had no main query is gone. |
+| `core/query` forbidden from `inherit: true` | `inherit` is the normal archive loop in a template; `<QueryLoop>` requires the author to choose `inherit` or an explicit query. | The restriction existed for a renderer with no main query; WordPress always has one. |
 | Attribute drift silently dropped by `createBlock` | Attributes checked against the registered schema; unknown or mistyped → error. | "never silently dropped" was the stated goal; this closes the gap. |
 | Nine hand-written "popular" blocks | Kept, extended with the template vocabulary (`TemplatePart`, `QueryLoop`, `PostContent`, `Navigation`, …). | Themes reach for those constantly. |
 | bun, `@spacefast/common`, zod | Node 22, `node --test`, no shared internal packages, hand-written narrowing. | This repo has no monorepo tooling, and the package must stand alone when published. |
@@ -286,8 +288,8 @@ single serializer for content, templates, parts and patterns.
 markup. It is the lowest-level tool and what the theme compiler calls per
 template. Feeding markup into a Zero collection is possible today without any
 seam: the typed client (or `wp post update`) writes it to the collection's
-content `richText` column, where block markup is stored as-is on both
-targets. Zero's file sync is **not** the route: its `*.html` format pulls by
+content `richText` column, where block markup is stored as-is as the post's
+content. Zero's file sync is **not** the route: its `*.html` format pulls by
 stripping block delimiters and refuses server-rendered blocks (phase 2 §5.2),
 so a round trip would not preserve what this package produced. A `*.tsx` sync
 format would be a Zero-core seam and is deferred.
@@ -596,7 +598,7 @@ is being reworked by the integration PR; moving it is a one-line change later.
    absent, the single template's bound paragraph on a core post shows its
    static text ("No summary."), which proves the theme degrades to a plain
    paragraph when the binding source is unregistered. Then: `zero build
-   examples/blog --target wp`, whose artifact already contains the resolved,
+   examples/blog` (the WordPress artifact), which already contains the resolved,
    checksum-verified dependency plugins (`secure-custom-fields`,
    `action-scheduler`, `mcp-adapter`) beside `zero-runtime` and
    `zero-app-blog`; copy all of `plugins/` from the artifact into the site's
@@ -626,7 +628,9 @@ codegen scripts in check mode. Neither job is added to the existing ones.
 - Capsule frontends, islands, hydration, any browser JavaScript the package
   emits. Not "later": the WordPress Interactivity API would be the way to add
   behaviour to a block theme and would be a separate design.
-- `_pages` system pages, Tailwind/`zero.css`, the Spacefast serving lane.
+- `_pages` system pages, Tailwind/`zero.css`, the Spacefast runtime, and any
+  rendering of block markup outside WordPress (the earlier work's own block
+  renderer is not ported; WordPress's `render_block` is the only renderer).
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
 - Markdown (Zero's sync owns it), classic themes, child themes (a `parent`
   header field is trivial and may land when asked), `functions.php` or any

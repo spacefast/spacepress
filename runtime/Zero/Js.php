@@ -1169,16 +1169,50 @@ final class Js
 
     // ---------------------------------------------------------------- misc
 
+    private static ?int $instant = null;
+
+    /**
+     * Run $fn with now() fixed to one instant (the current one, unless already inside an instant).
+     * A write runs its defaults, onUpdate values and draft dates inside one, so every `now` of a
+     * row, nested fields included, is the same millisecond.
+     *
+     * @template T
+     * @param callable(): T $fn
+     * @return T
+     */
+    public static function atInstant(callable $fn): mixed
+    {
+        if (self::$instant !== null) {
+            return $fn();
+        }
+        self::$instant = self::now();
+        try {
+            return $fn();
+        } finally {
+            self::$instant = null;
+        }
+    }
+
     /**
      * Epoch ms. `ZERO_NOW` (ISO string or epoch ms) pins the clock for time-travel tests (§9.1);
-     * it is read on every call so an in-process test can move it.
+     * it is read on every call so an in-process test can move it. With `ZERO_NOW_STEP` (ms) set too,
+     * every read advances the pinned clock by that step: a test-only seam that makes "two reads see two
+     * instants" deterministic. Inside atInstant() it is that one instant.
      */
     public static function now(): int
     {
+        if (self::$instant !== null) {
+            return self::$instant;
+        }
         $pinned = getenv('ZERO_NOW');
         if ($pinned !== false && $pinned !== '') {
             $ms = preg_match('/^-?\d+$/D', $pinned) ? (int) $pinned : self::date($pinned);
             if (is_int($ms)) {
+                $step = getenv('ZERO_NOW_STEP');
+                if ($step !== false && preg_match('/^\d+$/D', $step)) {
+                    putenv('ZERO_NOW=' . ($ms + (int) $step));
+                }
+
                 return $ms;
             }
         }

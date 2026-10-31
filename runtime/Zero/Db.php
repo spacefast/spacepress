@@ -329,7 +329,8 @@ final class Db
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
-                $out[] = $this->createOne($collection, $spec, $data, $viewer, $around);
+                // One instant per row: every `now` default, nested ones and publishedAt included.
+                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -345,7 +346,7 @@ final class Db
             $out = [];
             $opts = ['where' => $where];
             foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer) as $existing) {
-                $out[] = $this->updateOne($collection, $spec, $existing, $set, $viewer);
+                $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -888,7 +889,8 @@ final class Db
         $fields = $g['fields'];
         $this->rejectUnknown($fields, $patch);
 
-        return $this->transaction(function () use ($name, $fields, $patch) {
+        // One instant: never-written fields' `now` defaults and the patch's nested defaults agree.
+        return Js::atInstant(fn () => $this->transaction(function () use ($name, $fields, $patch) {
             $current = $this->globalGet($name);
             $norm = [];
             foreach ($patch as $field => $v) {
@@ -902,7 +904,7 @@ final class Db
             $this->store->globalWrite($name, $values);
 
             return $this->globalGet($name);
-        });
+        }));
     }
 
     // ================================================================ media (§4.6)

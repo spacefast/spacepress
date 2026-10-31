@@ -346,6 +346,11 @@ final class Plugin
      */
     public function fillEditorDefaults(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
+        \Zero\Js::atInstant(fn () => $this->fillEditorDefaultsAt($postId, $post, $update, $before));
+    }
+
+    private function fillEditorDefaultsAt(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
+    {
         $collection = $this->collectionOf($postId);
         if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;

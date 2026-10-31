@@ -55,8 +55,13 @@ $functions = <<<'PHP'
     // Authors and up create; while the test flag is set, only published rows (status comes from its default).
     function notes__create($ctx) {
         $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx['user']['role'] ?? ''] ?? 0;
-        return $rank >= 1 && (empty($GLOBALS['zeroCreateNeedsPublished'])
-            || (($ctx['data']['status'] ?? null) === 'published' && ($ctx['data']['publishedAt'] ?? null) !== null));
+        if (empty($GLOBALS['zeroCreateNeedsPublished'])) {
+            return $rank >= 1;
+        }
+        // The generated `now` values must be the instant the rule itself reads.
+        $now = \Zero\Js::iso(\Zero\Js::now());
+        return $rank >= 1 && ($ctx['data']['status'] ?? null) === 'published'
+            && ($ctx['data']['publishedAt'] ?? null) === $now && ($ctx['data']['updatedAt'] ?? null) === $now;
     }
     // Editors may update every note; authors only notes credited to a person with their name (a filter).
     function notes__update($ctx) {
@@ -237,11 +242,17 @@ isProblem('collections without sync have no sync route', req('GET', '/sync/peopl
 // Writes are authorized row by row through the pipeline: an author may create and may update rows
 // their filter matches, but a stale write discloses nothing to a caller who can't pull.
 $au = $db->insert('people', ['name' => 'au'], true)[0];
-// A create rule reading defaulted values sees them on sync as on an ordinary create.
+// A create rule reading defaulted values sees them on sync as on an ordinary create, and reads the
+// write's one instant: the clock moves a millisecond on every read (ZERO_NOW_STEP), so sync's preview
+// and the rule evaluation must not read it separately.
 $GLOBALS['zeroCreateNeedsPublished'] = true;
+putenv('ZERO_NOW=2026-01-01T00:00:00.000Z');
+putenv('ZERO_NOW_STEP=1');
 $plain = req('POST', '/notes', ['title' => 'Plain', 'slug' => 'plain-create'], as: 'au');
 [$s] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_12121212121212121212', 'fields' => ['title' => 'Synced', 'slug' => 'synced-create'], 'body' => null], 'expect' => 'absent'], as: 'au');
 eq('a create rule sees defaults on sync as on an ordinary create', [$plain[0], $s], [201, 201]);
+putenv('ZERO_NOW_STEP');
+putenv('ZERO_NOW');
 unset($GLOBALS['zeroCreateNeedsPublished']);
 $own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slug' => 'mine', 'meta' => null, 'authorId' => $au['uid'], 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'au');

@@ -99,7 +99,13 @@ final class Routes
 
     // ================================================================ write
 
+    /** One instant for the whole apply: the create rule previews the same `now` defaults the write stores. */
     private static function apply(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
+    {
+        return Js::atInstant(static fn () => self::applyAt($collection, $spec, $in, $body, $viewer));
+    }
+
+    private static function applyAt(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
     {
         $record = $in['record'] ?? null;
         if (!is_array($record) || ($record !== [] && array_is_list($record))) {

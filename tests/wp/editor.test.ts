@@ -26,6 +26,7 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
       seo: { metaTitle: "SEO", metaDescription: null, noindex: false }, status: "published", slug: `audit-${run}` },
   );
   assert.match(row.createdAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z$/, "defaults Zero generates are filled on editor saves");
+  assert.equal(row.updatedAt, row.createdAt, "every `now` default of one editor save is the same instant");
   assert.deepEqual(row.comments.map((c: any) => [c.name, c.body]), [["afterCreate", "by Editor"]]);
   // Every declared default is filled, booleans and lists included; SCF's '' for an unchecked toggle is false.
   const event = await http("POST", core + "/zero_events", { as: "editor", body: { title: `Defaults ${run}`, status: "publish" } });

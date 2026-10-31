@@ -72,6 +72,11 @@ final class WpUserStore implements Store
      */
     public static function fillDefaults(Schema $schema, int $userId): void
     {
+        \Zero\Js::atInstant(static fn () => self::fillDefaultsAt($schema, $userId));
+    }
+
+    private static function fillDefaultsAt(Schema $schema, int $userId): void
+    {
         $collection = $schema->auth()['collection'] ?? null;
         if ($collection === null) {
             return;

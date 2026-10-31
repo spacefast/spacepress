@@ -170,19 +170,45 @@ test("core regeneration: the missing-sizes pass fills Zero sizes without touchin
     echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-zero_*')));
   `));
 
-  // Drop Zero's card from the metadata and its file, then let core's missing-sizes pass run.
-  wp("eval", `
+  /** Drop sizes from the metadata (and their files), then let core's missing-sizes pass run. */
+  const dropAndUpdate = (sizes: string[]) => wp("eval", `
     $meta = wp_get_attachment_metadata(${img.id});
-    unlink(path_join(dirname(get_attached_file(${img.id})), $meta['sizes']['zero_card']['file']));
-    unset($meta['sizes']['zero_card']);
+    foreach (${JSON.stringify(sizes)} as $size) {
+      unlink(path_join(dirname(get_attached_file(${img.id})), $meta['sizes'][$size]['file']));
+      unset($meta['sizes'][$size]);
+    }
     wp_update_attachment_metadata(${img.id}, $meta);
     require_once ABSPATH . 'wp-admin/includes/image.php';
     wp_update_image_subsizes(${img.id});
   `);
+  // Only a Zero size missing: core returns early, Zero fills it.
+  dropAndUpdate(["zero_card"]);
   const filled = sizeOnDisk(img.id, "zero_card");
   assert.deepEqual([filled.w, filled.h], [120, 120]);
   assert.deepEqual(sizeOnDisk(img.id, "theme_card"), theme, "the theme's crop keeps its bytes");
   assert.equal(files().length, 2, "card + wide, nothing else");
+  // A Zero size and a theme size missing: core makes its own, Zero fills its absent one.
+  dropAndUpdate(["zero_card", "theme_card"]);
+  const both = sizeOnDisk(img.id, "zero_card");
+  assert.deepEqual([both.w, both.h, files().length], [120, 120, 2]);
+  const remade = sizeOnDisk(img.id, "theme_card");
+  assert.deepEqual([remade.file, remade.w, remade.h, remade.rgb], [theme.file, theme.w, theme.h, theme.rgb], "core re-made its top-left crop on its own file");
+
+  // A regeneration inside a transaction that rolls back keeps the committed metadata and files.
+  const committed = files();
+  const meta = wp("eval", `
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    try {
+      \\Zero\\Wp\\Runtime::plugin()->db()->transaction(function () {
+        wp_update_attachment_metadata(${img.id}, wp_generate_attachment_metadata(${img.id}, get_attached_file(${img.id})));
+        wp_get_attachment_metadata(${img.id});
+        throw new RuntimeException('roll back');
+      });
+    } catch (RuntimeException) {}
+    echo wp_get_attachment_metadata(${img.id})['sizes']['zero_card']['file'];
+  `);
+  assert.deepEqual(files(), committed, "rollback removes the new renditions and keeps the committed ones");
+  assert.ok(committed.includes(meta), "metadata (and its cache) still names a committed rendition");
 
   // A full core pass (what regenerate plugins call) renders fresh Zero renditions, and Zero removes
   // the ones they replace (WP-CLI's regenerate would delete old files itself, hiding Zero's cleanup).

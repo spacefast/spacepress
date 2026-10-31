@@ -90,18 +90,21 @@ final class WpMedia implements Media
             return $sizes;
         };
         add_filter('intermediate_image_sizes_advanced', $skip);
-        // Core's missing-sizes pass (wp_update_image_subsizes) returns early when only Zero sizes
-        // are missing, so Zero fills its own here and saves them before core decides.
+        // Core's missing-sizes pass (wp_update_image_subsizes): when only Zero sizes are missing core
+        // returns early, so Zero fills and saves them here; otherwise core goes on to make its own
+        // sizes and Zero fills its absent ones in the 'update' metadata pass below.
         add_filter('wp_get_missing_image_subsizes', static function (array $missing, array $meta, int $id) use ($skip): array {
+            $rest = $skip($missing);
             $zero = array_filter(array_keys(self::sizes()), static fn ($n) => isset($missing['zero_' . $n]));
-            if ($zero !== [] && isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
+            if ($rest === [] && $zero !== [] && isset($meta['width'], $meta['height']) && !ImageCdn::active()) {
+                Runtime::plugin()?->connection()->touchPost($id);
                 $filled = self::fill($id, $meta, static fn (string $name) => in_array($name, $zero, true));
                 if ($filled !== $meta) {
                     wp_update_attachment_metadata($id, $filled);
                 }
             }
 
-            return $skip($missing);
+            return $rest;
         }, 10, 3);
         // On a fresh pass ('create') every size is rendered and the renditions it replaces are removed
         // after commit; on core's missing-sizes pass ('update') only absent Zero sizes are filled in.
@@ -118,14 +121,16 @@ final class WpMedia implements Media
 
             return $meta;
         }, 10, 2);
-        // Core's full pass (upload, regenerate tools): render every Zero size afresh.
+        // Core's full pass (upload, regenerate tools) renders every Zero size afresh; its 'update'
+        // pass after making missing core sizes fills only the absent Zero ones.
         add_filter('wp_generate_attachment_metadata', static function (array $meta, int $id, string $context = 'create'): array {
             self::$failed = [];
-            if ($context !== 'create' || !isset($meta['width'], $meta['height']) || ImageCdn::active()) {
+            if (!isset($meta['width'], $meta['height']) || ImageCdn::active()) {
                 return $meta;
             }
+            Runtime::plugin()?->connection()->touchPost($id);
 
-            return self::fill($id, $meta, null);
+            return self::fill($id, $meta, $context === 'update' ? static fn (string $name) => !isset($meta['sizes']['zero_' . $name]) : null);
         }, 10, 3);
     }
 

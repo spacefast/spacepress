@@ -99,7 +99,13 @@ final class Routes
 
     // ================================================================ write
 
+    /** One instant for the whole apply: the create rule previews the same `now` defaults the write stores. */
     private static function apply(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
+    {
+        return Js::atInstant(static fn () => self::applyAt($collection, $spec, $in, $body, $viewer));
+    }
+
+    private static function applyAt(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
     {
         $record = $in['record'] ?? null;
         if (!is_array($record) || ($record !== [] && array_is_list($record))) {
@@ -293,11 +299,6 @@ final class Routes
 
     /** A create's values as the pipeline's create rule sees them: column defaults and the default status filled. */
     private static function createData(array $spec, array $data): array
-    {
-        return Js::atInstant(static fn () => self::createDataAt($spec, $data));
-    }
-
-    private static function createDataAt(array $spec, array $data): array
     {
         foreach ($spec['columns'] as $name => $col) {
             if (!array_key_exists($name, $data) && isset($col['default'])) {

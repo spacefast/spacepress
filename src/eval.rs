@@ -1507,9 +1507,18 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
-        if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray") | ("Object", "hasOwn")) {
+        if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray")) {
             for value in &args {
                 require_static_data(value, span)?;
+            }
+        }
+        // hasOwn reads an object's keys only; env() tokens among its values are carried, not consumed.
+        if (g, m) == ("Object", "hasOwn") {
+            if let Some(receiver @ Value::Env(_)) = args.first() {
+                require_static_data(receiver, span)?;
+            }
+            if let Some(key) = args.get(1) {
+                require_static_data(key, span)?;
             }
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);

@@ -653,6 +653,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-env-condition", "env() is only allowed in webhooks/signature"),
         ("reject-env-binary", "env() is only allowed in webhooks/signature"),
         ("reject-env-predicate", "env() is only allowed in webhooks/signature"),
+        ("reject-env-hasown", "env() is only allowed in webhooks/signature"),
         ("reject-signature-access", "signature cannot be combined with access"),
         ("reject-webhook-collection", "webhook event names an unknown collection"),
         ("reject-enqueue-unknown-job", "unknown job `send`"),

@@ -98,10 +98,18 @@ final class App
     {
         $input = self::parseBody($rawBody);
         $action = $this->schema->action($name);
-        if ($viewer !== null) {
-            Access::require($action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name");
+        if ($viewer !== null && ($action['signature'] ?? null) !== null) {
+            // A `signature` action authenticates by HMAC in the beforeAction seam instead of an access
+            // rule (§6.1): whoever is logged in, the verified caller is anonymous for everything after.
+            Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
+            $viewer = new Viewer(null, $viewer->target);
+            $this->db->setActor(null);
+        } else {
+            if ($viewer !== null) {
+                Access::require($action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name");
+            }
+            Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         }
-        Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
         $fn = '\\ZeroApp\\' . $action['handler'];

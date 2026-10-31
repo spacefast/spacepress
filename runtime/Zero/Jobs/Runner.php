@@ -53,14 +53,22 @@ final class Runner
         try {
             $spec = Jobs::spec((string) $locked['job']);
             $input = Js::jsonParse((string) $locked['input']);
-            Receipts::withFingerprint(hash('sha256', (string) $locked['input']), static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
-                $db->transaction(static function () use ($spec, $input, $attempt, $id, $db, &$committed): void {
+            $ctx = ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id];
+            if (is_callable($spec['handler'])) {
+                // Built-in jobs that only talk to the network (webhooks) run outside a transaction, so a
+                // slow endpoint never holds the database's write lock; only the bookkeeping is transactional.
+                ($spec['handler'])(is_array($input) ? $input : [], $ctx);
+            }
+            Receipts::withFingerprint(hash('sha256', (string) $locked['input']), static function () use ($spec, $input, $ctx, $attempt, $id, $db, &$committed): void {
+                $db->transaction(static function () use ($spec, $input, $ctx, $attempt, $id, &$committed): void {
                     // First commit callback: anything after it (other features' callbacks) runs on committed state.
                     \Zero\Extensions::afterCommit(static function () use (&$committed): void {
                         $committed = true;
                     });
-                    $fn = '\\ZeroApp\\' . $spec['handler'];
-                    $fn(is_array($input) ? $input : [], ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id]);
+                    if (is_string($spec['handler'])) {
+                        $fn = '\\ZeroApp\\' . $spec['handler'];
+                        $fn(is_array($input) ? $input : [], $ctx);
+                    }
                     Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
                 });
             });

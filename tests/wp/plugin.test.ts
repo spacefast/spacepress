@@ -35,7 +35,7 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["zero-global-settings", "zero_global_settings", "zero-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%'");
-  assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_signups", "InnoDB"]]);
+  assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_hookNotes", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_signups", "InnoDB"]]);
   assert.deepEqual(sql("SELECT id FROM wp_zero__migrations").map((r) => r.id), ["0001_init"]);
 
   const registry: unknown = JSON.parse(wp("eval", `

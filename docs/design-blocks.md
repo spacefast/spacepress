@@ -27,8 +27,10 @@ right and redesigns it where Zero v2's first principles say otherwise.
 
 Conventions: "error" = the build fails with `file:line:col` and a fix, and
 nothing is written. "WP" = WordPress 7.1, the pinned platform (`docs/design-phase2.md` §2.7).
-Zero is WordPress-only; everything this package produces is rendered by
-WordPress and nothing else.
+This package is WordPress-only by the owner's ruling (Zero's standalone
+target is being retired; until that lands, commands below pass `--target wp`
+explicitly): everything this package produces is rendered by WordPress and
+nothing else.
 
 ## 0. Decisions in one screen
 
@@ -45,7 +47,7 @@ WordPress and nothing else.
 | Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_excerpt" } }` for the meta key Zero writes. Pure markup; no runtime dependency on Zero. Query loops over Zero collections are **not** offered: `core/query` ignores non-viewable post types and Zero's are private (§5). |
 | Not in scope | Capsule frontends, islands, the `zero/component` dynamic block, `_pages` system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. |
 | Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's Zero artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
-| CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and Zero core's jobs are untouched. |
+| CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/wp/{apache,php,mu-plugins}/**`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and Zero core's jobs are untouched; core PRs outside those paths never run them. |
 
 ## 1. Why, and what changes from the earlier work
 
@@ -572,10 +574,13 @@ binding source is unregistered and the paragraph shows its static fallback
 text ("No summary."), a legitimate state for a theme. With SCF and a Zero app
 active, and a Zero row as the post being rendered, it shows that row's
 `excerpt` (or nothing when the row has none, since SCF answers `""` rather
-than `null`); a core post still shows the fallback, because a binding reads
-the current post and nothing else (§5). The second half of §8 proves both.
-It lives inside the package rather than in `examples/` because that directory
-is being reworked by the integration PR; moving it is a one-line change later.
+than `null`); a core post also shows an empty paragraph once SCF is active,
+because a binding reads the current post and nothing else (§5) and SCF
+answers `""` for a field the post does not have. The fallback text appears
+only while the binding source is unregistered. The second half of §8
+proves the row case and the empty case.
+It lives inside the package rather than in `examples/` so the add-on stays
+self-contained; moving it later is a one-line change.
 
 ## 8. Proof on real WordPress
 
@@ -630,7 +635,7 @@ is being reworked by the integration PR; moving it is a one-line change later.
    absent, the single template's bound paragraph on a core post shows its
    static text ("No summary."), which proves the theme degrades to a plain
    paragraph when the binding source is unregistered. Then: `zero build
-   examples/blog` (the WordPress artifact), which already contains the resolved,
+   examples/blog --target wp`, whose artifact already contains the resolved,
    checksum-verified dependency plugins (`secure-custom-fields`,
    `action-scheduler`, `mcp-adapter`) beside `zero-runtime` and
    `zero-app-blog`; copy all of `plugins/` from the artifact into the site's
@@ -645,7 +650,11 @@ is being reworked by the integration PR; moving it is a one-line change later.
    post (`setup_postdata`). The test asserts the `excerpt` text appears
    inside the bound paragraph for the first post, and that the paragraph is
    empty for the second (SCF returns `""` for an unset field, and WordPress
-   keeps the static fallback only for `null`). This proves `bind.field()`
+   keeps the static fallback only for `null`). Render the same markup for
+   the core post created in step 4, before SCF was active, and assert its
+   paragraph is now empty too: an absent SCF field also returns `""`, so
+   the fallback text survives only while the binding source is
+   unregistered. This proves `bind.field()`
    emits a binding SCF 6.9.7 resolves from Zero's meta key, on the real
    pinned plugins. It adds a `cargo build` to the job.
 9. Teardown unless `ZERO_WP_KEEP=1`.
@@ -655,11 +664,12 @@ triggers on `pull_request` and `push: main` with a `paths` filter:
 `packages/blocks/**`, `.github/workflows/blocks.yml`, and the contract the
 proof reads from the rest of the repo (`tests/wp/harness.sh`,
 `tests/wp/compose.yml`, `tests/wp/apache/**`, `tests/wp/php/**`,
-`tests/fixtures/platform.json`, `examples/blog/**`). Job `blocks-wp` runs on
-`ubuntu-24.04` (Docker preinstalled) with `npx playwright install --with-deps
-chromium`; job `blocks` runs `pnpm install --frozen-lockfile`, `tsc --noEmit`,
-`node --test`, and both codegen scripts in check mode. `ci.yml` is not
-edited; a core PR never runs either job.
+`tests/wp/mu-plugins/**`, `tests/fixtures/platform.json`,
+`examples/blog/**`). Job `blocks-wp` runs on `ubuntu-24.04` (Docker
+preinstalled) with `npx playwright install --with-deps chromium`; job
+`blocks` runs `pnpm install --frozen-lockfile`, `tsc --noEmit`, `node
+--test`, and both codegen scripts in check mode. `ci.yml` is not edited; a
+core PR outside the listed contract paths never runs either job.
 
 ## 9. Out of scope, and non-goals
 
@@ -681,17 +691,17 @@ edited; a core PR never runs either job.
 
 ## 10. PR plan
 
-Stacked on `main`, each reviewed with Sol on its own diff, each green on every
-existing job plus the package's:
+Small stacked PRs in this order, each reviewed on its own diff and green on
+the package's workflow (and on the existing jobs, which it must not disturb):
 
-| PR | Branch | Contents | Proof |
-|---|---|---|---|
-| 0 | `p3/blocks-design` | this document | review |
-| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
-| 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts`; the `blocks` job gains both codegen check-mode steps | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
-| 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
-| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |
-| 5 | `p3/blocks-docs` | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits Zero), a pointer section in the root README | docs render; links resolve |
+| PR | Contents | Proof |
+|---|---|---|
+| 0 | this document | review |
+| 1 | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 2 | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts`; the `blocks` job gains both codegen check-mode steps | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
+| 3 | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
+| 4 | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |
+| 5 | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits Zero), a pointer section in the root README | docs render; links resolve |
 
 Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
 
@@ -712,8 +722,8 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    REST-plus-pinned-parser alternative proves less than the ask requires
    ("opens cleanly in the Site Editor"), so Playwright stays, in the WP job
    only. Ruling: accepted, path-filtered to the package's own workflow.
-4. **Example inside the package**, not under `examples/`, to stay out of the
-   integration PR's way. Move later.
+4. **Example inside the package**, not under `examples/`, so the add-on is
+   self-contained. Move later if the examples directory wants it.
 5. **`@spacefast/zero-blocks`** as the npm name (free; mirrors how
    Spacefast scoped its earlier packages). The bare `zero-blocks` name is
    taken on npm.
@@ -731,4 +741,5 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    8). It makes the `blocks-wp` job build the Rust binary, which roughly
    doubles its runtime; the alternative, not proving `bind.field()` at all,
    would leave the one Zero-specific feature untested. Ruling: accepted,
-   path-filtered to the package's own workflow, so core PRs never pay for it.
+   path-filtered to the package's own workflow, so core PRs outside the
+   listed contract paths never pay for it.

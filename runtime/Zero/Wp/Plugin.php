@@ -326,8 +326,6 @@ final class Plugin
         $spec = $this->schema->collection($collection);
         $store = CompositeStore::create($this->schema, $this->connection())->posts;
         $values = [];
-        // Generated values go through the same codec as API writes (a bare-date timestamp default
-        // becomes full ISO; a generator returning non-ISO text fails like it would over the API).
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
             if (!$store->isMeta($spec, $col)) {
@@ -338,15 +336,29 @@ final class Plugin
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
             $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
-                $values[$col] = Schema::encode($def, Schema::generate($def['onUpdate'], $def['type']), $col, HttpError::seg($col));
+                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def['type']), $col);
             } elseif (isset($def['default']) && $empty) {
-                $values[$col] = Schema::encode($def, Schema::generate($def['default'], $def['type']), $col, HttpError::seg($col));
+                $values[$col] = self::generated($def, Schema::generate($def['default'], $def['type']), $col);
             } elseif ($def['type'] === 'boolean' && $raw === '') {
                 $values[$col] = Schema::store($def, false);
             }
         }
         if ($values !== []) {
             $store->update($collection, $postId, $values);
+        }
+    }
+
+    /**
+     * A generated default/onUpdate value in storage form, through the same codec as API writes (a
+     * bare-date timestamp default becomes full ISO). The post is already saved when this runs, so a
+     * value the codec refuses is stored raw as before rather than turning the editor save into a 500.
+     */
+    private static function generated(array $def, mixed $v, string $col): int|float|string|null
+    {
+        try {
+            return Schema::encode($def, $v, $col, HttpError::seg($col));
+        } catch (HttpError) {
+            return Schema::store($def, $v);
         }
     }
 

@@ -486,10 +486,14 @@ final class Schema
             return null;
         }
         try {
-            return Js::iso($ms);
+            $iso = Js::iso($ms);
         } catch (JsError) {
             return null;
         }
+
+        // Stored timestamps keep a four-digit year, so an input that normalizes outside 0000-9999
+        // (`9999-12-31T23:59:59-00:30`, a huge epoch) would not round-trip through this codec.
+        return preg_match('/^\d{4}-/', $iso) ? $iso : null;
     }
 
     private static function isIsoTimestamp(string $v): bool

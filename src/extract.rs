@@ -1636,13 +1636,27 @@ fn is_iso_timestamp(s: &str) -> bool {
     let (hms, frac) = clock.split_once('.').map_or((clock, None), |(a, b)| (a, Some(b)));
     let parts: Vec<&str> = hms.split(':').collect();
     let limits = [23, 59, 59];
+    // Like the runtime codec: the UTC-normalized value must keep a four-digit year.
+    let shifts_out = match zone.as_bytes().first() {
+        Some(b'+') => date.starts_with("0000-01-01") && clock < &zone[1..],
+        Some(b'-') => date.starts_with("9999-12-31") && *clock >= *rev_offset(&zone[1..]),
+        _ => false,
+    };
     zone_ok
+        && !shifts_out
         && (2..=3).contains(&parts.len())
         && frac.is_none_or(|f| parts.len() == 3 && !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
         && parts
             .iter()
             .zip(limits)
             .all(|(p, max)| p.len() == 2 && digits(p).is_some_and(|n| n <= max))
+}
+
+/// The earliest local time on 9999-12-31 that a negative offset `HH:MM` pushes into year 10000.
+fn rev_offset(offset: &str) -> String {
+    let (h, m) = (digits(&offset[0..2]).unwrap_or(0), digits(&offset[3..5]).unwrap_or(0));
+    let minutes = 24 * 60 - (h * 60 + m);
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
 fn digits(s: &str) -> Option<u32> {
@@ -2647,6 +2661,8 @@ mod tests {
             "2026-01-31",
             "0000-02-29T00:00:00Z",
             "2026-01-31T09:00:00-00:30",
+            "9999-12-31T23:29:59-00:30",
+            "0000-01-01T00:30:00+00:30",
         ] {
             assert!(is_iso_timestamp(ok), "{ok}");
         }
@@ -2659,6 +2675,8 @@ mod tests {
             "2026-01-01T10:00:00",
             "2026-01-01T10:00:00+0100",
             "2026-01-01T00:00Z00:00",
+            "9999-12-31T23:59:59-00:30",
+            "0000-01-01T00:00:00+00:30",
         ] {
             assert!(!is_iso_timestamp(bad), "{bad}");
         }

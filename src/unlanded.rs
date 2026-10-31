@@ -133,8 +133,15 @@ struct Walk<'a, 'p> {
 
 impl Walk<'_, '_> {
     fn option(&mut self, obj: &Value, key: &str, feature: Feature) {
+        // Only declarations that are on: `auth: false` or `webhooks: []` never carry the error.
+        let on = |v: &Value| match v {
+            Value::Undef | Value::Null | Value::Bool(false) => false,
+            Value::Array(a) => !a.borrow().is_empty(),
+            Value::Object(o) => !o.borrow().is_empty(),
+            _ => true,
+        };
         if let Value::Object(o) = obj
-            && o.borrow().contains_key(key)
+            && o.borrow().get(key).is_some_and(on)
             && let Some(span) = self.ev.key_span(obj, key)
         {
             self.found.push((feature, span));

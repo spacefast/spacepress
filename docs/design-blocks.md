@@ -23,10 +23,10 @@ nothing is written. "WP" = WordPress 7.1, the pinned platform (`docs/design-phas
 | Codegen | `Block.Core.*`: one typed component per registered core block, generated from `getBlockTypes()` (so `supports`-derived attributes are included), committed, drift-guarded by a test. `theme.json` types generated from the official 7.1 schema. |
 | Theme output | A real block theme: `style.css` (header), `theme.json` (v3), `templates/*.html`, `parts/*.html`, `patterns/*.php`, `styles/*.json`, copied `assets/`, plus `<slug>.zip`. Installable with `wp theme install`, no PHP of ours in it. |
 | Theme source | `theme.config.ts` (`defineTheme`: header + typed `theme.json`), `templates/<slug>.tsx`, `parts/<slug>.tsx`, `patterns/<name>.tsx`, `styles/<name>.ts`, `assets/`. File names are the template hierarchy. |
-| Validation | Unknown core block, unknown or mistyped attribute, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
-| Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `collection("posts")` → the post type Zero registers (`zero_posts`) for query loops, and `bind.field("dek")` → an SCF block binding. Pure markup; no runtime dependency on Zero. |
+| Validation | Unknown core block, unknown or mistyped attribute, a `save()` that throws, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
+| Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `collection("posts")` → the post type Zero registers (`zero_posts`) for query loops, and `bind.field("dek")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_dek" } }`. Pure markup; no runtime dependency on Zero. |
 | Not in scope | Capsule frontends, islands, the `zero/component` dynamic block, `_pages` system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. |
-| Proof | `packages/blocks/tests/wp/run.sh`: a fresh WordPress from `tests/wp/harness.sh up --bare` (own compose project, port 8840), the built example theme installed from its zip and activated, front-end render, `theme.json` styles in the page, and every template and part opened in the real Site Editor with no invalid block, read from the editor's own store. |
+| Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the blog example's Zero artifact is installed into the same site and the Zero sugar is proven on a real collection row and a real SCF field. |
 | CI | Two jobs in `.github/workflows/ci.yml`: `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof). Zero core's jobs are untouched. |
 
 ## 1. Why, and what changes from the earlier work
@@ -120,6 +120,15 @@ Rules the package keeps: no Rust changes; nothing in `src/`, `runtime/`,
 (`packages/blocks/node_modules/`, `packages/blocks/**/dist/`). No `cargo test`
 or PHP suite learns about it.
 
+License: the package is MIT, as Spacefast's earlier Gutenberg JSX package
+was, so the ported code keeps its license; the themes it builds declare
+GPL-2.0-or-later in `style.css` (the author can override the header field),
+which is what WordPress expects of a theme. The ported files are rewritten
+rather than copied where this design changes them (locations, attribute
+checks, the theme lane) and copied where it does not (the mapping table, the
+happy-dom registration, the passthrough block); either way they ship under
+this package's license.
+
 ## 3. Content: TSX → block markup
 
 ### 3.1 Authoring
@@ -187,9 +196,19 @@ those classes, never columns.
 the JSX runtime to this package's own copy so an author's `node_modules` cannot
 change what a page compiles to, writes the bundle to a fresh temp directory,
 imports it with source maps enabled, and calls the default export once. A
-module that imports `node:*` fails to bundle (neutral platform), which is the
-intended "no I/O at authoring time" boundary. A thrown error reports with the
-author's file and line through the source map.
+thrown error reports with the author's file and line through the source map.
+
+Execution model, stated plainly: authored modules are **trusted code run in
+the build's own Node process**, like a `vite.config.ts` or a Zero
+`zero.config.ts` before Zero's evaluator existed. The neutral platform makes
+static `node:*` imports a bundle error, which catches the common accident; it
+is not a sandbox, and `fetch`, `process`, `Date.now()` and `Math.random()`
+remain reachable. Determinism is therefore a contract the author keeps, not
+one the compiler enforces: the build runs each module once, and the example
+theme's double-build test (§4.7) proves the *compiler* adds no
+nondeterminism of its own. A restricted evaluator (Zero's Rust evaluator
+handles `zero.config.ts` this way) is the obvious upgrade if untrusted themes
+ever need building; it is out of scope here.
 
 `jsxDEV(type, props, key, isStatic, source)` receives `{fileName, lineNumber,
 columnNumber}` for every element; the runtime stores it as `loc` on the node,
@@ -210,34 +229,59 @@ restored after, as before) and, for each block node:
    `save()` that emits the children verbatim (ported), reported once as
    `unverified_block` at the `--verbose` level, never an error.
 2. **Attribute check** (new). Every attribute must exist on the registered
-   type (`unknown_attribute`, with the nearest attribute name) and its JSON
-   type must match the declared `type`/`enum` (`attribute_type`). Sourced
-   attributes (`source: html|rich-text|attribute|query`) are set only by the
-   mapper and the serializer; an author writing `content` on a paragraph gets
-   a hint to use children. `createBlock` would otherwise drop the attribute
-   silently, which is exactly the failure this package exists to prevent.
+   type (`unknown_attribute`, with the nearest attribute name) and its value
+   must fit the declared type (`attribute_type`). Sourced attributes are
+   ordinary inputs: `core/image.url`, `core/button.url`/`text`,
+   `core/heading.content` are all registered attributes that `createBlock`
+   accepts and `save()` writes into the markup rather than the comment, so
+   they are allowed like any other. The one rule about `content`: when a
+   block has both children and a `content` prop, that is two bodies for one
+   block (`content_and_children`). `createBlock` would drop an unknown
+   attribute silently, which is exactly the failure this package exists to
+   prevent.
+
+   Value typing follows the registry's vocabulary, not raw JSON types:
+   `string` and `rich-text` accept a string (`rich-text` is what `createBlock`
+   turns into `RichTextData`; the author-facing type is `string` and the
+   mapper's rendered HTML is such a string); `number`/`integer` a finite
+   number (`integer` also whole); `boolean`; `array`; `object` a plain
+   object; `null`; a `type` array is a union; `enum` narrows to the listed
+   literals. Structured `object` attributes (`style`, `layout`, `lock`,
+   `metadata`, `query`) are not validated deeper than "plain object": their
+   shapes belong to WordPress and are typed `BlockObjectAttribute` in the
+   generated components (ported decision). The same table drives the codegen
+   in §2, so what TypeScript accepts and what the serializer accepts are one
+   definition.
 3. **Rich text.** Phrasing nodes render to an HTML string and land in the
    block's `content` attribute when the registered type has one with a
    rich-text or HTML source; a block with no body (a cover, a group) gets an
    implicit paragraph, as typing into one in the editor would.
 4. `createBlock(name, attrs, innerBlocks)` then `serialize()` over the whole
    tree. `core/html` writes its `content` as `innerContent` verbatim (ported).
+   `serialize()` catches a throwing `save()` and emits an empty block, so the
+   serializer calls `getSaveContent(type, attrs, innerBlocks)` itself per
+   block first; a `save()` that throws becomes `save_failed` at the node's
+   location instead of silent empty markup.
 
-Output is the markup WordPress stores and the Site Editor opens. The parity
-test is the editor's own check: `parse(markup)` under the same pinned package
-reports `isValid: true` for every block, which is the assertion the unit
-suite makes for each mapped construct. This stays the single serializer for
-content, templates, parts and patterns.
+Output is the markup WordPress stores and the Site Editor opens. Two
+separate guarantees are tested, at the unit level, through the pinned
+parser: **validity** (`parse(markup)` reports `isValid: true` for every
+block and no `core/missing`) and **preservation** (the reparsed tree has the
+block names, nesting, rich-text strings and the attributes the author set).
+Validity alone would pass a block whose attribute vanished. This stays the
+single serializer for content, templates, parts and patterns.
 
 ### 3.5 CLI
 
 `zero-blocks content <file.tsx> [--out <file.html>]` prints or writes the
 markup. It is the lowest-level tool and what the theme compiler calls per
 template. Feeding markup into a Zero collection is possible today without any
-seam: the typed client writes it to a `richText` column, or the file goes into
-a `sync` directory as `*.html` (phase 2 §5.2 stores HTML bodies verbatim, so
-block delimiters survive). Deeper integration (a `*.tsx` sync format) would be
-a Zero-core seam and is deferred.
+seam: the typed client (or `wp post update`) writes it to the collection's
+content `richText` column, where block markup is stored as-is on both
+targets. Zero's file sync is **not** the route: its `*.html` format pulls by
+stripping block delimiters and refuses server-rendered blocks (phase 2 §5.2),
+so a round trip would not preserve what this package produced. A `*.tsx` sync
+format would be a Zero-core seam and is deferred.
 
 ## 4. Themes: a directory of TSX → a block theme
 
@@ -271,9 +315,10 @@ dist/zero-starter/
 dist/zero-starter.zip
 ```
 
-No `functions.php`, no PHP logic: a theme this package builds is data. Should
-a theme ever need PHP, the author adds a plugin; this package will not grow a
-PHP lane.
+No `functions.php`, no PHP logic: a theme this package builds is data. The
+one PHP the compiler writes is the pattern file header WordPress requires
+(§4.5), a comment and nothing executable. Should a theme ever need PHP, the
+author adds a plugin; this package will not grow a PHP lane.
 
 ### 4.2 `theme.config.ts` and typed tokens
 
@@ -335,24 +380,35 @@ export default defineTheme({
   `unknown_preset` with the file and line of the attribute.
 - The emitted `theme.json` is validated against the committed 7.1 schema with
   ajv; a failure reports the JSON pointer and `theme.config.ts`.
-- `templateParts`, `customTemplates` and `patterns` in `theme.json` are
-  **derived** from the files (§4.3–4.5) and merged with anything declared in
-  `defineTheme`; a declaration that names a file that does not exist is an
-  error.
+- `templateParts` and `customTemplates` in `theme.json` are **derived** from
+  the files (§4.3–4.4) and merged with anything declared in `defineTheme`; a
+  declaration that names a file that does not exist is an error.
+  `theme.json`'s `patterns` key means something else in WordPress (slugs to
+  pull from the wordpress.org Pattern Directory), so it is passed through
+  from `defineTheme({ patterns })` untouched and never derived. Local
+  patterns register themselves from `patterns/*.php` (§4.5). Patterns a
+  plugin registers can be referenced with `<Pattern slug>` when listed under
+  `defineTheme({ externalPatterns: ["acme/testimonials"] })`, which is only a
+  compile-time allow-list and writes nothing.
 
 ### 4.3 Templates and the hierarchy
 
 A template is `templates/<slug>.tsx` default-exporting a component; the file
 name is the slug WordPress resolves. `hierarchy.ts` holds WordPress's own
-list: the default block template types (`index`, `home`, `front-page`,
+list: the default block template types WordPress 7.1 declares
+(`get_default_block_template_types()`: `index`, `home`, `front-page`,
 `singular`, `single`, `page`, `archive`, `author`, `category`, `taxonomy`,
-`date`, `tag`, `attachment`, `search`, `privacy-policy`, `404`) and the
-derived forms (`single-<post_type>`, `single-<post_type>-<slug>`,
-`page-<slug>`, `page-<id>`, `archive-<post_type>`, `category-<slug>`,
-`tag-<slug>`, `taxonomy-<taxonomy>`, `taxonomy-<taxonomy>-<term>`,
-`author-<nicename>`). Any other name must export
-`meta = defineTemplate({ title, postTypes? })`, which puts it in
+`date`, `tag`, `attachment`, `search`, `privacy-policy`, `404`), the derived
+forms (`single-<post_type>`, `single-<post_type>-<slug>`, `page-<slug>`,
+`page-<id>`, `archive-<post_type>`, `category-<slug>`, `tag-<slug>`,
+`taxonomy-<taxonomy>`, `taxonomy-<taxonomy>-<term>`, `author-<nicename>`),
+and the attachment MIME forms (`<type>`, `<subtype>`, `<type>-<subtype>` for
+the types WordPress serves: `image`, `video`, `audio`, `application`, `text`,
+plus any `<type>-<subtype>` whose type is one of those). Any other name must
+export `meta = defineTemplate({ title, postTypes? })`, which puts it in
 `customTemplates`; otherwise `unknown_template` with both options as the hint.
+The proof suite checks one representative of each derived form resolves on
+real WordPress (a `single-post`, a `page-<slug>`, an `image` attachment).
 `templates/index.tsx` is required (`index_template_missing`).
 
 Template vocabulary (hand-written components over the generated set, all
@@ -361,7 +417,7 @@ checked by the serializer like any block):
 | Component | Block | Notes |
 |---|---|---|
 | `<TemplatePart slug="header" />` | `core/template-part` | `slug` must be a file in `parts/` → else `unknown_template_part`. `tagName`, `area` from the part's declaration. |
-| `<Pattern slug="zero-starter/hero" />` | `core/pattern` | slug must be a theme pattern or declared as external in `defineTheme({ patterns })`. |
+| `<Pattern slug="zero-starter/hero" />` | `core/pattern` | slug must be a theme pattern (§4.5) or listed in `defineTheme({ externalPatterns })`. |
 | `<QueryLoop inherit>` / `<QueryLoop postType perPage orderBy order …>` | `core/query` + `core/post-template` | exactly one of `inherit` or an explicit query (`query_mode_required`). Children are the per-post template; `NoResults`, `Pagination` are siblings inside the loop. |
 | `PostTitle PostContent PostExcerpt PostDate PostFeaturedImage PostAuthorName PostTerms ReadMore` | `core/post-*`, `core/read-more` | |
 | `SiteTitle SiteTagline SiteLogo Navigation` | `core/site-*`, `core/navigation` | `Navigation` with children `NavigationLink`/`PageList`; or `ref` for a saved menu |
@@ -384,10 +440,18 @@ is a warning, not an error (themes legitimately ship optional parts).
 `patterns/<name>.tsx` exports `meta = definePattern({ title, slug?,
 description?, categories?, keywords?, blockTypes?, postTypes?, templateTypes?,
 inserter?, viewportWidth? })` and a default component. The compiler writes
-`patterns/<name>.php` with WordPress's pattern header comment and the markup;
-the slug defaults to `<theme-slug>/<name>`. A pattern component can also be
-called inline in a template (`<Hero />`), which inlines its blocks; `<Pattern
-slug>` references it by name instead and lets the user swap it in the editor.
+`patterns/<name>.php` in the exact form WordPress's theme loader reads
+(`WP_Theme::get_block_patterns()`): a `<?php` opening, one `/** … */`
+comment with the headers `Title`, `Slug`, `Description`, `Viewport Width`,
+`Inserter`, `Categories`, `Keywords`, `Block Types`, `Post Types`, `Template
+Types` (lists comma-separated, booleans `yes`/`no`, only the ones set,
+`Title` and `Slug` always), then `?>` and the markup. No other PHP. The slug
+defaults to `<theme-slug>/<name>` and must be unique (`duplicate_slug`). A
+pattern component can also be called inline in a template (`<Hero />`),
+which inlines its blocks; `<Pattern slug>` references it by name instead and
+lets the user swap it in the editor. The proof suite checks registration
+through `GET /wp/v2/block-patterns/patterns` (title, categories, content)
+and the pattern's blocks in a rendered page, never the PHP text.
 
 ### 4.6 Style variations
 
@@ -416,14 +480,22 @@ them as `{ code, message, hint, file, line, column }` for tools.
 - `collection("posts")` → `"zero_posts"`, the post type Zero's WordPress
   target registers for a post-backed collection, for `<QueryLoop
   postType={collection("posts")}>` and for naming templates
-  (`single-zero_posts.tsx`). Given the app's generated `zero/client/schema.ts`
-  (`collection(schema, "posts")`) the name is type-checked against the app's
-  collections.
-- `bind.field("dek")` → `{ source: "acf/field", args: { field: "zero_dek" } }`,
-  the Secure Custom Fields block-binding source for the meta key Zero writes
-  (`zero_<column>`), usable as `<Paragraph bindings={{ content: bind.field("dek") }}>`
-  which lands in the block's `metadata.bindings`. SCF resolves it at render
-  time; nothing of ours runs.
+  (`single-zero_posts.tsx`). It is a string helper with one precondition the
+  author owns: the collection is post-backed (not `editor: false`, not `auth:
+  true`). The generated `zero/client/schema.ts` does not say which
+  collections are post-backed, and this package will not ask Zero's codegen
+  to grow a field for it; so there is no "checked" variant. The README states
+  the precondition and the proof suite exercises the helper against a real
+  Zero app.
+- `bind.field("dek")` → `{ source: "acf/field", args: { key: "zero_dek" } }`,
+  the Secure Custom Fields block-binding source (SCF 6.9.7 reads
+  `$source_attrs['key']` as the field name or key) for the meta key Zero
+  writes (`zero_<column>`), usable as
+  `<Paragraph bindings={{ content: bind.field("dek") }}>` which lands in the
+  block's `metadata.bindings`. SCF resolves it at render time; nothing of
+  ours runs. Only field types SCF allows in bindings resolve (text, textarea,
+  number, email, url, select, …); a `richText` column is a WYSIWYG field and
+  SCF refuses it, which is documented, not detected.
 
 Both emit plain block markup. A theme built with them works on any site with
 SCF and the Zero app plugin active, and the package has no import of Zero.
@@ -441,7 +513,7 @@ collection and uses core `post`/`page` for single views.
 | Code | Severity | Where |
 |---|---|---|
 | `style_prop_unsupported`, `unmappable_element` | error | mapper, node loc |
-| `unknown_block`, `unknown_attribute`, `attribute_type`, `sourced_attribute` | error | serializer, node loc |
+| `unknown_block`, `unknown_attribute`, `attribute_type`, `content_and_children`, `save_failed` | error | serializer, node loc |
 | `unverified_block` | info (`--verbose`) | serializer, first use |
 | `module_failed` (bundle or execution error), `default_export_missing`, `not_content` (a component returned something that is not JSX, text or a number) | error | module, mapped through the source map |
 | `index_template_missing`, `unknown_template`, `unknown_template_part`, `unknown_pattern`, `query_mode_required`, `unknown_preset`, `theme_json_invalid`, `declared_file_missing`, `duplicate_slug` | error | theme compiler |
@@ -453,8 +525,13 @@ A small, complete block theme: `theme.config.ts` with a palette, two font
 sizes, spacing scale, a font face from `assets/`; `templates/` index, single,
 page, archive, search, 404, front-page; `parts/` header (site title +
 navigation), footer; `patterns/` hero and a call to action; `styles/dark.ts`.
-The front page uses `<QueryLoop inherit>`; a `latest.tsx` custom template
-loops over `collection("posts")` to show the Zero sugar. It lives inside the
+The front page uses `<QueryLoop inherit>`; the hero pattern has several
+top-level blocks so the editor's pattern expansion is exercised. A
+`latest.tsx` custom template loops over `collection("posts")` and binds a
+paragraph to `bind.field("dek")`; it renders empty on a site without the blog
+app (a `core/query` over an unregistered post type matches nothing, an
+unresolved binding shows its static text), which is a legitimate state for a
+theme and what the second half of §8 proves otherwise. It lives inside the
 package rather than in `examples/` because that directory is being reworked by
 the integration PR; moving it is a one-line change later.
 
@@ -486,16 +563,32 @@ the integration PR; moving it is a one-line change later.
    for every template and part the REST API lists for the theme
    (`/wp/v2/templates?wp_theme=…`, `/wp/v2/template-parts?…`), opens
    `site-editor.php?postType=<type>&postId=zero-starter//<slug>&canvas=edit`,
-   waits for the editor to be ready, and reads
-   `wp.data.select("core/block-editor").getBlocks()` flattened; asserts no
-   block has `isValid === false`, none is `core/missing`, and the count of
-   top-level blocks equals what `parse()` of the REST `content.raw` gives.
-   This is the editor's own validation, in the editor, against the site's
-   real theme.json and block registry. It is what "opens cleanly in the Site
-   Editor" means and the only level that can prove it; the unit suite already
-   proves the pinned parser agrees per construct, so the two are not
-   redundant.
-8. Teardown unless `ZERO_WP_KEEP=1`.
+   waits (condition-based, no sleeps) until the edited entity record for that
+   id is loaded and `getBlocks()` is non-empty, then reads
+   `wp.data.select("core/block-editor").getBlocks()` flattened (patterns
+   expand to their blocks in the editor, so counts are not compared); asserts
+   no block has `isValid === false`, none is `core/missing`, and that the
+   template's distinguishing block is present (the header part's
+   `core/site-title`, the single template's `core/post-content`, the hero
+   pattern's blocks on the front page). This is the editor's own validation,
+   in the editor, against the site's real theme.json and block registry. It
+   is what "opens cleanly in the Site Editor" means and the only level that
+   can prove it; the unit suite already proves the pinned parser agrees per
+   construct, so the two are not redundant.
+8. **Zero sugar on a real app** (same stack): `zero build examples/blog
+   --target wp`, install SCF and the built `zero-runtime` + `zero-app-blog`
+   plugins into the site's `plugins/` directory through the harness's
+   mounted `wp-content` and `wp plugin activate` them (the harness's
+   `--bare` mode exists for exactly this, as `tests/system/wp.test.ts` does);
+   create a post through `/wp-json/zero/v1/posts` with a `dek`; create a page
+   assigned the `latest` custom template (`wp post create --post_type=page
+   --meta_input='{"_wp_page_template":"latest"}'`); fetch it and assert the
+   Zero post's title appears inside the query loop's markup and the `dek`
+   text appears where the bound paragraph is. This proves `collection()` names
+   the post type Zero registers and `bind.field()` resolves through SCF, on
+   the real pinned plugins. It adds a `cargo build` to the job; the plugin
+   zips come from the same checksum cache the other Docker jobs use.
+9. Teardown unless `ZERO_WP_KEEP=1`.
 
 CI job `blocks-wp` runs it on `ubuntu-24.04` (Docker preinstalled) with
 `npx playwright install --with-deps chromium`; job `blocks` runs
@@ -511,7 +604,8 @@ codegen scripts in check mode. Neither job is added to the existing ones.
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
 - Markdown (Zero's sync owns it), classic themes, child themes (a `parent`
   header field is trivial and may land when asked), `functions.php` or any
-  PHP, block registration, block style variations beyond `theme.json`,
+  executable PHP (the pattern header comment in §4.5 is the one exception),
+  block registration, block style variations beyond `theme.json`,
   `block.json` custom blocks.
 - A watch/dev server. `zero-blocks build` is fast enough to run on save from
   any file watcher; `zero dev --wp` does not learn about themes in this phase.
@@ -526,10 +620,10 @@ existing job plus the package's:
 | PR | Branch | Contents | Proof |
 |---|---|---|---|
 | 0 | `p3/blocks-design` | this document | review |
-| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer parity by reparse `isValid`, attribute refusals, located diagnostics through a real `.tsx`; one golden for the pricing page |
-| 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts` | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree |
-| 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check` | goldens of a fixture theme's output; every theme diagnostic by a fixture that triggers it; determinism; zip contents |
-| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`collection`, `bind`) used by the example | §8 on real WordPress |
+| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts` | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
+| 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; double build byte-equal |
+| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`collection`, `bind`) used by the example | §8 on real WordPress, both halves |
 | 5 | `p3/blocks-docs` | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits Zero), a pointer section in the root README | docs render; links resolve |
 
 Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
@@ -555,4 +649,17 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    Spacefast scoped its earlier packages). The bare `zero-blocks` name is
    taken on npm.
 6. **No Zero-core seam in this phase.** The one real gap (public permalinks
-   for collections, §5) is reported upward rather than patched here.
+   for collections, §5) is reported upward rather than patched here. The
+   `collection()` helper stays unchecked for the same reason: checking it
+   would need the generated client schema to say which collections are
+   post-backed.
+7. **Trusted execution of authored TSX** (§3.3), as every JS build tool does.
+   Zero core evaluates `zero.config.ts` in a pure Rust evaluator; this
+   package does not, because themes are the site owner's own code and the
+   block library it must run is itself a large untrusted-by-that-standard
+   JavaScript dependency.
+8. **The proof installs the blog example's Zero artifact** into the same
+   WordPress to exercise the sugar (§8 step 8). It makes the `blocks-wp` job
+   build the Rust binary, which doubles its runtime; the alternative, not
+   proving `collection()`/`bind.field()` at all, would leave the one
+   Zero-specific feature untested.

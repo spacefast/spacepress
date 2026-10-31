@@ -550,8 +550,10 @@ binding source is unregistered and the paragraph shows its static fallback
 text ("No summary."), a legitimate state for a theme. With SCF and a Zero app
 active, and a Zero row as the post being rendered, it shows that row's
 `excerpt` (or nothing when the row has none, since SCF answers `""` rather
-than `null`); a core post still shows the fallback, because a binding reads
-the current post and nothing else (§5). The second half of §8 proves both.
+than `null`). A core post with no matching SCF field also renders an empty
+paragraph: SCF returns `""` when the field is absent, so the fallback survives
+only while the binding source is unregistered. The second half of §8 proves
+these states.
 It lives inside the package rather than in `examples/` because that directory
 is being reworked by the integration PR; moving it is a one-line change later.
 
@@ -623,7 +625,9 @@ is being reworked by the integration PR; moving it is a one-line change later.
    post (`setup_postdata`). The test asserts the `excerpt` text appears
    inside the bound paragraph for the first post, and that the paragraph is
    empty for the second (SCF returns `""` for an unset field, and WordPress
-   keeps the static fallback only for `null`). This proves `bind.field()`
+   keeps the static fallback only for `null`). Render the same markup for
+   the core post created before SCF was activated and assert its paragraph
+   is now empty too: an absent SCF field also returns `""`. This proves `bind.field()`
    emits a binding SCF 6.9.7 resolves from Zero's meta key, on the real
    pinned plugins. It adds a `cargo build` to the job.
 9. Teardown unless `ZERO_WP_KEEP=1`.

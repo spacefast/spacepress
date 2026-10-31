@@ -44,7 +44,56 @@ const players = collection("players", {
   teamId: integer().references(() => teams.id, { onDelete: "set null" }),
 }, { editor: false, sync: "content/players/*.json", access: { read: "anyone" } });
 
-export default defineConfig({ name: "notes", schema: { people, notes, snippets, teams, players } });
+// A chain of required references inside one collection, and a required cycle between two.
+const steps = collection("steps", {
+  id: id(),
+  name: text().notNull(),
+  // Required: a step can't be created before the one it follows, so a chain needs a pass per link.
+  prevId: integer().notNull().references(() => people.id),
+  afterId: integer().references((): any => steps.id),
+}, { editor: false, sync: "content/steps/*.json", access: { read: "anyone" } });
+// A chain of required references across records of one collection.
+// A chain across three collections that must be created in order. Each requires (NOT NULL) a record
+// of the next, and the last requires a person. Collections are synced in config order here (no
+// reference makes one wait for another: the references go "backwards", against that order), so the
+// run meets the chain from its far end and needs a pass per link.
+const tops = collection("tops", {
+  id: id(),
+  midId: integer().notNull().references((): any => mids.id),
+  loopId: integer().references((): any => bottoms.id),
+}, { editor: false, sync: "content/tops/*.json", access: { read: "anyone" } });
+const mids = collection("mids", {
+  id: id(),
+  bottomId: integer().notNull().references((): any => bottoms.id),
+  loopId: integer().references(() => tops.id),
+}, { editor: false, sync: "content/mids/*.json", access: { read: "anyone" } });
+const bottoms = collection("bottoms", {
+  id: id(),
+  personId: integer().notNull().references(() => people.id),
+  loopId: integer().references(() => mids.id),
+}, { editor: false, sync: "content/bottoms/*.json", access: { read: "anyone" } });
+const eggs = collection("eggs", {
+  id: id(),
+  chickenId: integer().notNull().references((): any => chickens.id),
+}, { editor: false, sync: "content/eggs/*.json", access: { read: "anyone" } });
+const chickens = collection("chickens", {
+  id: id(),
+  eggId: integer().notNull().references(() => eggs.id),
+}, { editor: false, sync: "content/chickens/*.json", access: { read: "anyone" } });
+// A required reference to a target the syncing editor may not list (admins only), on a record whose
+// identity is pushed first because of an optional reference to a record not on the site yet.
+const safes = collection("safes", {
+  id: id(),
+  vaultId: integer().notNull().references(() => vaults.id),
+  keeperId: integer().references(() => people.id),
+}, { editor: false, sync: "content/safes/*.json", access: { read: "anyone" } });
+// A reference target the syncing editor may not list (admins only): sync resolves it anyway.
+const vaults = collection("vaults", {
+  id: id(),
+  name: text().notNull(),
+}, { editor: false, uid: true, access: { read: "admin" } });
+
+export default defineConfig({ name: "notes", schema: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes } });
 "#;
 
 struct Site {
@@ -664,4 +713,287 @@ fn a_deferred_push_keeps_what_the_merge_took_from_the_site() {
     );
     assert_eq!(row["leadId"], site.rows("players")[0]["id"]);
     let _ = std::fs::remove_dir_all(&project);
+}
+
+fn admin_token(project: &Path) -> String {
+    let cli = |args: &[&str]| {
+        let out = zero().args(args).arg("--dir").arg(project).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    cli(&["users", "add", "root", "--role", "admin"]);
+    cli(&["tokens", "create", "root"])["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn deferred_records_land_in_dependency_order_and_irreducible_cycles_are_reported() {
+    let (project, site) = setup();
+    for dir in [
+        "content/tops",
+        "content/mids",
+        "content/bottoms",
+        "content/eggs",
+        "content/chickens",
+    ] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (s, person) = site.call("POST", "/people", Some(serde_json::json!({"name": "Start"})));
+    assert_eq!(s, 201, "{person}");
+    let person = person["data"]["uid"].as_str().unwrap().to_string();
+    // top needs mid, mid needs bottom, bottom needs the person (all NOT NULL). The optional loopIds tie
+    // the three into one reference cycle, so no collection is ordered before another and the CLI meets
+    // top first: top waits for mid, which waits for bottom. Only repeated passes land all three.
+    let (top, mid, bottom) = (
+        "zr_cccccccccccccccccc01",
+        "zr_cccccccccccccccccc02",
+        "zr_cccccccccccccccccc03",
+    );
+    std::fs::write(
+        project.join("content/tops/t.json"),
+        format!(r#"{{"uid": "{top}", "midId": "{mid}", "loopId": null}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/mids/m.json"),
+        format!(r#"{{"uid": "{mid}", "bottomId": "{bottom}", "loopId": null}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/bottoms/b.json"),
+        format!(r#"{{"uid": "{bottom}", "personId": "{person}", "loopId": null}}"#),
+    )
+    .unwrap();
+    // Two records each requiring the other: no order creates them, so nothing is written for them.
+    let (egg, chicken) = ("zr_dddddddddddddddddd01", "zr_dddddddddddddddddd02");
+    std::fs::write(
+        project.join("content/eggs/e.json"),
+        format!(r#"{{"uid": "{egg}", "chickenId": "{chicken}"}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/chickens/c.json"),
+        format!(r#"{{"uid": "{chicken}", "eggId": "{egg}"}}"#),
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "tops,mids,bottoms,eggs,chickens"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let failed = data_or_error(&out)["failed"].to_string();
+    assert!(
+        failed.contains(egg) && failed.contains(chicken) && failed.contains("can't be created first"),
+        "{failed}"
+    );
+    assert!(
+        !failed.contains(top) && !failed.contains(mid) && !failed.contains(bottom),
+        "the chain landed: {failed}"
+    );
+    let (tops, mids, bottoms) = (site.rows("tops"), site.rows("mids"), site.rows("bottoms"));
+    assert_eq!((tops.len(), mids.len(), bottoms.len()), (1, 1, 1));
+    assert_eq!(tops[0]["midId"], mids[0]["id"]);
+    assert_eq!(mids[0]["bottomId"], bottoms[0]["id"]);
+    assert!(
+        site.rows("eggs").is_empty() && site.rows("chickens").is_empty(),
+        "an irreducible cycle writes nothing"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_reference_to_a_record_the_syncing_user_cannot_list_still_resolves() {
+    let (project, site) = setup();
+    let admin = admin_token(&project);
+    let admin_site = Site {
+        child: Command::new("true").spawn().unwrap(),
+        port: site.port,
+        token: admin,
+        author: String::new(),
+    };
+    let (s, vault) = admin_site.call("POST", "/vaults", Some(serde_json::json!({"name": "Secret"})));
+    assert_eq!(s, 201, "{vault}");
+    let vault = vault["data"]["uid"].as_str().unwrap().to_string();
+    std::fs::create_dir_all(project.join("content/safes")).unwrap();
+    std::fs::create_dir_all(project.join("content/people")).unwrap();
+    // The keeper isn't on the site (people don't sync), so the safe's push names keeperId as missing and
+    // its identity is pushed first. Its required vaultId, which the editor can't list, must be kept.
+    let safe = "zr_eeeeeeeeeeeeeeeeee01";
+    std::fs::write(
+        project.join("content/safes/s.json"),
+        format!(r#"{{"uid": "{safe}", "vaultId": "{vault}", "keeperId": "zr_eeeeeeeeeeeeeeeeee99"}}"#),
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "safes"]);
+    let report = data_or_error(&out);
+    let safes = admin_site.rows("safes");
+    assert_eq!(
+        safes.len(),
+        1,
+        "the safe's identity was created with its vault: {report}"
+    );
+    assert!(!safes[0]["vaultId"].is_null());
+    // The keeper never arrives, so the run reports it rather than writing a null.
+    assert_eq!(out.status.code(), Some(1));
+    assert!(report["failed"].to_string().contains(safe), "{report}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn an_edit_made_between_passes_is_not_overwritten() {
+    let (project, site) = setup();
+    for dir in ["content/teams", "content/players"] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
+    assert_eq!(s, 201);
+    let owner = owner["data"]["uid"].as_str().unwrap().to_string();
+    let team = "zr_ffffffffffffffffff01";
+    std::fs::write(
+        project.join("content/teams/t.json"),
+        format!(r#"{{"uid": "{team}", "name": "Before", "leadId": null, "ownerId": "{owner}"}}"#),
+    )
+    .unwrap();
+    assert_eq!(
+        sync(&project, &site, &["--only", "teams,players"]).status.code(),
+        Some(0)
+    );
+    let id = site.rows("teams")[0]["id"].as_i64().unwrap();
+    // The file points the team at a new player; a site hook-free edit lands while that push waits.
+    let player = "zr_ffffffffffffffffff02";
+    let team_file = project.join(format!("content/teams/{team}.json"));
+    let t = std::fs::read_to_string(&team_file).unwrap();
+    std::fs::write(
+        &team_file,
+        t.replace(r#""leadId": null"#, &format!(r#""leadId": "{player}""#)),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/players/p.json"),
+        format!(r#"{{"uid": "{player}", "name": "Mo", "teamId": "{team}"}}"#),
+    )
+    .unwrap();
+    // A wrapper site that renames the team between the first and second pass: the first /sync/players
+    // push is the moment the deferred team push is waiting.
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let proxy = proxy_editing_on_first(
+        &site,
+        "/api/sync/players",
+        format!("/teams/{id}"),
+        serde_json::json!({"name": "Renamed between passes"}),
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "teams,players",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        edited.load(std::sync::atomic::Ordering::SeqCst),
+        "the edit happened between passes"
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let row = site.rows("teams").into_iter().find(|r| r["id"] == id).unwrap();
+    assert_eq!(
+        row["name"], "Renamed between passes",
+        "the edit between passes survives: {row}"
+    );
+    assert_eq!(
+        row["leadId"],
+        site.rows("players")[0]["id"],
+        "and the deferred reference landed"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+fn data_or_error(out: &Output) -> serde_json::Value {
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    json.get("data")
+        .cloned()
+        .unwrap_or_else(|| json["error"]["data"].clone())
+}
+
+/// A pass-through HTTP proxy in front of `site` that, the first time a POST to `trigger` passes through,
+/// first applies `patch` to `path` on the site (as an editor working at that moment would).
+fn proxy_editing_on_first(
+    site: &Site,
+    trigger: &'static str,
+    path: String,
+    patch: serde_json::Value,
+    done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (upstream, token) = (site.port, site.token.clone());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut client) = stream else { continue };
+            let mut request = Vec::new();
+            let mut buf = [0u8; 65536];
+            // Read the head, then the body by Content-Length.
+            loop {
+                let n = client.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buf[..n]);
+                if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&request[..end]).to_string();
+                    let length = head
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    while request.len() < end + 4 + length {
+                        let n = client.read(&mut buf).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        request.extend_from_slice(&buf[..n]);
+                    }
+                    break;
+                }
+            }
+            let head = String::from_utf8_lossy(&request).to_string();
+            if head.starts_with(&format!("POST {trigger} ")) && !done.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let editor = Site {
+                    child: Command::new("true").spawn().unwrap(),
+                    port: upstream,
+                    token: token.clone(),
+                    author: String::new(),
+                };
+                let (s, _) = editor.call("PATCH", &path, Some(patch.clone()));
+                assert_eq!(s, 200);
+            }
+            // Forward as one write with Connection: close, and relay the answer.
+            let text = String::from_utf8_lossy(&request).replace("Connection: keep-alive", "Connection: close");
+            let text = if text.to_ascii_lowercase().contains("\r\nconnection:") {
+                text
+            } else {
+                text.replacen("\r\n", "\r\nConnection: close\r\n", 1)
+            };
+            let mut server = TcpStream::connect(("127.0.0.1", upstream)).unwrap();
+            server.write_all(text.as_bytes()).unwrap();
+            let mut answer = Vec::new();
+            server.read_to_end(&mut answer).unwrap();
+            let _ = client.write_all(&answer);
+        }
+    });
+    format!("http://127.0.0.1:{port}")
 }

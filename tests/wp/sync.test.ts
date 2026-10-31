@@ -334,7 +334,7 @@ test("zero sync against WordPress", async (t) => {
     const out = sync();
     assert.equal(out.status, 0, out.stdout + out.stderr);
     const text = readFileSync(file, "utf8");
-    assert.match(text, new RegExp(`^---\\nuid: ${created.uid}\\ntitle: CLI ${run}\\nslug: ${slug}\\nsummary: From WordPress\\nlevel: intro\\nwriterId: ${writer.uid}\\nstatus: published\\n`));
+    assert.match(text, new RegExp(`^---\\nuid: ${created.uid}\\ntitle: CLI ${run}\\nslug: ${slug}\\nsummary: From WordPress\\nlevel: intro\\nwriterId: ${writer.uid}\\nreview: null\\nstatus: published\\n`));
     assert.ok(text.endsWith("---\nFirst paragraph.\n\nSecond paragraph.\n"), text);
     assert.equal(JSON.parse(sync().stdout).data.applied, 0, "a second run is a no-op");
   });

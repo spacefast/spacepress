@@ -28,10 +28,6 @@ struct Collection {
     /// Columns a record's `fields` carries, in schema order.
     fields: Vec<String>,
     references: Vec<String>,
-    /// Columns that reference another record (sent as uids).
-    reference_columns: Vec<String>,
-    /// Reference column → target collection.
-    reference_targets: IndexMap<String, String>,
 }
 
 /// Collections that sync, targets of references first (a cycle keeps config order).
@@ -67,19 +63,6 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
             })
             .map(|(c, _)| c.clone())
             .collect();
-        let reference_targets: IndexMap<String, String> = columns
-            .iter()
-            .filter_map(|(c, def)| {
-                def["references"]["collection"]
-                    .as_str()
-                    .map(|t| (c.clone(), t.to_string()))
-            })
-            .collect();
-        let reference_columns = columns
-            .iter()
-            .filter(|(_, def)| def["references"].is_object())
-            .map(|(c, _)| c.clone())
-            .collect();
         let references = columns
             .values()
             .filter_map(|def| def["references"]["collection"].as_str().map(String::from))
@@ -95,8 +78,6 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                 content: content.is_some(),
                 fields,
                 references,
-                reference_columns,
-                reference_targets,
             },
         );
     }
@@ -350,8 +331,13 @@ fn entry(item: &Value) -> Result<(String, Remote), String> {
         .as_str()
         .filter(|d| digest_ok(d))
         .ok_or_else(|| format!("{uid} has no valid digest"))?;
-    if !record["fields"].is_object() || !(record["body"].is_null() || record["body"].is_string()) {
+    let body_ok = record.get("body").is_some_and(|b| b.is_null() || b.is_string());
+    if !record["fields"].is_object() || !body_ok {
         return Err(format!("{uid} is not a record"));
+    }
+    // The digest is what the next write expects and what the base remembers: it must be this record's.
+    if crate::sync::canon::digest(record) != digest {
+        return Err(format!("{uid}'s digest doesn't match its record"));
     }
     Ok((
         uid.into(),
@@ -382,26 +368,38 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
     }
     // Records whose references weren't on the site yet (cycles, self-references): once more, now that
     // every collection's records have been pushed. Their bases only move when they land.
-    let deferred = std::mem::take(&mut report.deferred);
-    report.second_pass = true;
-    for c in &all {
-        let records: IndexMap<String, Value> = deferred
-            .iter()
-            .filter(|(n, ..)| *n == c.name)
-            .map(|(_, u, r)| (u.clone(), r.clone()))
-            .collect();
-        if !records.is_empty() {
-            collection(
-                client,
-                c,
-                &site,
-                label,
-                known,
-                &mut bases,
-                options,
-                report,
-                Some(&records),
-            )?;
+    // Records waiting on references: pass again while each pass lands something, then report the rest.
+    loop {
+        let deferred = std::mem::take(&mut report.deferred);
+        if deferred.is_empty() {
+            break;
+        }
+        let waiting = deferred.len();
+        for c in &all {
+            let records: IndexMap<String, (Value, String)> = deferred
+                .iter()
+                .filter(|(n, ..)| *n == c.name)
+                .map(|(_, u, r, e)| (u.clone(), (r.clone(), e.clone())))
+                .collect();
+            if !records.is_empty() {
+                collection(
+                    client,
+                    c,
+                    &site,
+                    label,
+                    known,
+                    &mut bases,
+                    options,
+                    report,
+                    Some(&records),
+                )?;
+            }
+        }
+        if report.deferred.len() >= waiting {
+            for (name, uid, ..) in std::mem::take(&mut report.deferred) {
+                report.fail(format!("{name}/{uid}: references a record that isn't on the site and can't be created first; sync it, or make one of the references nullable"));
+            }
+            break;
         }
     }
     if !options.check {
@@ -423,8 +421,8 @@ fn collection(
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
-    // Second pass: exactly these uids, each sent as the record planned in the first pass.
-    only: Option<&IndexMap<String, Value>>,
+    // A later pass: exactly these uids, each with the record planned earlier and the digest it expects.
+    only: Option<&IndexMap<String, (Value, String)>>,
 ) -> Result<(), String> {
     let (files, clean) = read_files(c, report, options.check);
     let mut remote = pull(client, c).map_err(|p| report.problem(&c.name, &p))?;
@@ -471,15 +469,16 @@ fn collection(
         let mut r = remote.shift_remove(uid).unwrap_or(Remote::Gone);
         let mut retried = false;
         loop {
-            // Second pass: the file's record goes to the site whole, over its identity-only first push.
-            // The record the first pass planned (merged, if it was) goes up over its identity-only push.
-            let forced = only.and_then(|o| o.get(uid)).map(|record| Action::Push {
-                record: record.clone(),
-                expect: match &r {
-                    Remote::Live(item) => item.digest.clone(),
-                    _ => "absent".into(),
-                },
-            });
+            // A later pass sends the record the first pass planned (merged, if it was), expecting exactly the
+            // state it was planned against (or its identity push created). If the site changed since, the
+            // push is stale and the record is planned again against what is there now.
+            let forced = (!retried)
+                .then(|| only.and_then(|o| o.get(uid)))
+                .flatten()
+                .map(|(record, expect)| Action::Push {
+                    record: record.clone(),
+                    expect: expect.clone(),
+                });
             let action = forced.unwrap_or_else(|| {
                 plan::plan(
                     file.map(|f| &f.item),
@@ -608,24 +607,19 @@ fn perform(
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
                 // A reference to a record a later collection (or this one) pushes this run: retry once
                 // after every collection's first pass (§5.4's identity-then-fields order for cycles).
-                Err(p) if p.code() == "sync_missing_reference" && !report.second_pass => {
-                    // Identity first: a new record is created without its references, so records that
-                    // point at each other can all exist; the second pass sends the references. The base
-                    // doesn't move until then.
+                Err(p) if p.code() == "sync_missing_reference" => {
+                    // A reference to a record not on the site yet (a later collection's, this one's, a cycle):
+                    // the record waits for another pass. A new record is created first without the
+                    // references the site names as missing (identity first), so records that point at each
+                    // other can all exist. Its base doesn't move until the whole record lands.
+                    let mut expect_next = expect.clone();
                     if expect == "absent" {
-                        let mut identity =
-                            without_unresolved(client, &record, &c.reference_columns, &c.reference_targets);
-                        identity["uid"] = json!(uid);
-                        if let Err(p) = client.post(
-                            &format!("/sync/{name}"),
-                            &json!({"record": identity, "expect": "absent"}),
-                        ) {
-                            let message = report.problem(&format!("{name}/{uid}"), &p);
-                            report.fail(message);
-                            return Ok(());
+                        // When its own required references aren't there yet either, it is retried after others land.
+                        if let Ok(digest) = identity_push(client, name, &record, &p) {
+                            expect_next = digest;
                         }
                     }
-                    report.defer(name.clone(), uid.to_string(), record.clone());
+                    report.defer(name.clone(), uid.to_string(), record.clone(), expect_next);
                 }
                 Err(p) => {
                     let message = report.problem(&format!("{name}/{uid}"), &p);
@@ -699,43 +693,36 @@ fn perform(
     Ok(())
 }
 
-/// The record with every reference whose target isn't on the site yet set to null. References that
-/// resolve stay, so a required reference to an existing record keeps validating.
-fn without_unresolved(
-    client: &Client,
-    record: &Value,
-    columns: &[String],
-    targets: &IndexMap<String, String>,
-) -> Value {
-    let mut out = record.clone();
-    if let Some(fields) = out["fields"].as_object_mut() {
-        for c in columns {
-            let Some(uid) = fields.get(c).and_then(Value::as_str).map(String::from) else {
-                continue;
-            };
-            let resolves = targets.get(c).is_some_and(|target| {
-                client
-                    .get(&format!(
-                        "/{target}?where={}&limit=1",
-                        url_encode(&json!({"uid": uid}).to_string())
-                    ))
-                    .is_ok_and(|rows| rows.as_array().is_some_and(|r| !r.is_empty()))
-            });
-            if !resolves {
-                fields.insert(c.clone(), Value::Null);
+/// Create a record's identity: the record with the references the site reports as missing set to null,
+/// one at a time as the site names them (its `sync_missing_reference` pointer, `/fields/<column>`), so
+/// every reference that resolves is kept. The digest of what was created, for the full push to expect.
+fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -> Result<String, Problem> {
+    let mut identity = record.clone();
+    let mut problem = Problem {
+        status: first.status,
+        body: first.body.clone(),
+    };
+    loop {
+        let column = problem.body["pointer"]
+            .as_str()
+            .and_then(|p| p.strip_prefix("/fields/"))
+            .filter(|c| !c.contains('/'))
+            .map(|c| c.replace("~1", "/").replace("~0", "~"));
+        match column {
+            Some(c) if identity["fields"].get(&c).is_some_and(|v| !v.is_null()) => {
+                identity["fields"][c.as_str()] = Value::Null;
             }
+            _ => return Err(problem),
+        }
+        match client.post(
+            &format!("/sync/{name}"),
+            &json!({"record": identity, "expect": "absent"}),
+        ) {
+            Ok(answer) => return answer["digest"].as_str().map(String::from).ok_or(problem),
+            Err(p) if p.code() == "sync_missing_reference" => problem = p,
+            Err(p) => return Err(p),
         }
     }
-    out
-}
-
-fn url_encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 /// Write a record's file where it belongs, moving it when its slug changed. True when it landed.
@@ -853,7 +840,8 @@ mod tests {
     #[test]
     fn records_page_entries_must_be_well_formed() {
         let digest = format!("sha256:{}", "0".repeat(64));
-        let live = json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": null}, "digest": digest, "trashed": false});
+        let record = json!({"uid": "zr_00000000000000000000", "fields": {}, "body": null});
+        let live = json!({"record": record, "digest": crate::sync::canon::digest(&record), "trashed": false});
         assert!(matches!(entry(&live), Ok((_, Remote::Live(_)))));
         assert!(matches!(
             entry(&json!({"uid": "zr_00000000000000000000", "record": null, "digest": null, "trashed": true})),
@@ -865,6 +853,8 @@ mod tests {
             json!({"record": {"uid": "nope", "fields": {}, "body": null}, "digest": digest, "trashed": false}),
             json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": null}, "digest": "sha256:x", "trashed": false}),
             json!({"record": {"uid": "zr_00000000000000000000", "fields": [], "body": null}, "digest": digest, "trashed": false}),
+            json!({"record": {"uid": "zr_00000000000000000000", "fields": {}}, "digest": crate::sync::canon::digest(&json!({"uid": "zr_00000000000000000000", "fields": {}})), "trashed": false}),
+            json!({"record": record, "digest": digest, "trashed": false}),
             json!({"uid": "", "trashed": true}),
         ] {
             assert!(entry(&bad).is_err(), "{bad}");

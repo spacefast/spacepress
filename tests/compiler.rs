@@ -197,7 +197,10 @@ fn db_globals_read_defaults_and_write_typed_fields() {
         .args(["action", "emptyMeta"])
         .output()
         .unwrap();
-    assert_eq!(serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(), serde_json::json!({ "data": ["{}"] }));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),
+        serde_json::json!({ "data": ["{}"] })
+    );
     let _ = std::fs::remove_dir_all(tmp);
 }
 

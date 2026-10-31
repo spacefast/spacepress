@@ -49,12 +49,10 @@ pub fn reject(schema: &Schema, config: &Value, ev: &Evaluator<'_>, fallback: Spa
 
 /// Unlanded features the emitted schema declares, in a fixed order.
 fn declared(schema: &Schema) -> Vec<Feature> {
-    [
-        (schema.collections.values().any(|c| c.auth), Feature::Auth),
-    ]
-    .into_iter()
-    .filter_map(|(on, feature)| on.then_some(feature))
-    .collect()
+    [(schema.collections.values().any(|c| c.auth), Feature::Auth)]
+        .into_iter()
+        .filter_map(|(on, feature)| on.then_some(feature))
+        .collect()
 }
 
 /// Where the config declares `feature`, for the error location.

@@ -247,9 +247,11 @@ Anywhere else: the WordPress build is `.zero/wp-content/plugins/*.zip`, which
 you upload or copy like any plugin. The standalone build is `.zero/app/`: serve
 `public/` as the document root, route every request that isn't a file to
 `public/index.php` (as `php -S` does and as a `try_files` or rewrite rule does
-on Nginx or Apache), and keep `data/` and `private/` writable and outside the
-document root. Any PHP 8.2 host with the extensions listed under
-[Requirements](#requirements) runs it.
+on Nginx or Apache), keep `data/`, `private/` and `public/uploads/` writable,
+and run `php zero/bin/zero.php jobs work` from that directory as a long-lived
+process so jobs and webhook deliveries go out (`zero dev` starts it for you).
+Any PHP 8.2 host with the extensions listed under [Requirements](#requirements)
+runs it.
 
 ## Examples
 

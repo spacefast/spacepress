@@ -70,6 +70,11 @@ test("a post-backed timestamp keeps whole UTC seconds", async () => {
   assert.equal((await ok("GET", `/events/${created.id}`)).startsAt, "2026-01-01T08:00:00.000Z");
 });
 
+test("a json() meta value keeps {} apart from [] on WordPress", async () => {
+  const e = await ok("POST", "/events", { as: "editor", body: { title: `Json ${run}`, extra: { a: {}, b: [] } } });
+  assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { a: {}, b: [] });
+});
+
 test("relation filters and `with` across post↔post and post↔table", async () => {
   const comment = await ok("POST", "/comments", { as: "editor", body: { postId: post.id, name: "Staff", body: `On meta ${run}` } });
   // post → post through a meta reference: filtered on the target's serialized meta, target attached.

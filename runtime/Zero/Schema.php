@@ -286,6 +286,10 @@ final class Schema
      */
     public static function normalize(array $col, mixed $v, string $name, string $pointer): mixed
     {
+        // Only a json() value keeps the empty-object marker; every other kind is plain arrays.
+        if ($col['type'] !== 'json') {
+            $v = Js::plain($v);
+        }
         if ($v === null) {
             if ($col['notNull'] ?? false) {
                 throw HttpError::invalidInput("$name is required", $pointer);
@@ -343,7 +347,7 @@ final class Schema
      */
     public static function normalizeFields(array $fields, mixed $obj, string $base): array
     {
-        if ($obj === null) {
+        if ($obj === null || $obj instanceof JsObject) {
             $obj = [];
         }
         if (!self::isObject($obj)) {
@@ -447,7 +451,7 @@ final class Schema
 
     private static function isObject(mixed $v): bool
     {
-        return is_array($v) && ($v === [] || !array_is_list($v));
+        return $v instanceof JsObject || (is_array($v) && ($v === [] || !array_is_list($v)));
     }
 
     private static function expected(string $type): string
@@ -517,6 +521,16 @@ final class Schema
         return $mo >= 1 && $mo <= 12 && $d >= 1 && $d <= [31, $leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$mo - 1];
     }
 
+    /** Stored JSON text (written by this runtime, so valid; unreadable text decodes to null). */
+    private static function json(string $v): mixed
+    {
+        try {
+            return Js::decodeJson($v);
+        } catch (\JsonException) {
+            return null;
+        }
+    }
+
     /** Stored value → JS-facing value. */
     public static function decode(array $col, mixed $v): mixed
     {
@@ -528,7 +542,10 @@ final class Schema
             'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            // A json() value keeps `{}` as an object (the JsObject marker); structured columns are
+            // normalized against their fields, so plain arrays are exact there.
+            'json' => is_string($v) ? self::json($v) : $v,
+            'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
             'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? json_decode($v, true) : $v),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),
@@ -547,6 +564,9 @@ final class Schema
     /** Every sub-key present (stores other than SQLite may omit empty sub-fields). */
     private static function fillFields(array $fields, mixed $obj): mixed
     {
+        if ($obj instanceof JsObject) {
+            $obj = [];
+        }
         if (!is_array($obj)) {
             return $obj;
         }

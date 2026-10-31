@@ -621,7 +621,7 @@ fn field(
         if crate::extract::has_list_shaped_object(value) {
             return Err(fail(
                 &pointer(at, default_key),
-                "Zero's PHP runtime reads {} and objects keyed \"0\", \"1\", ... back as arrays; choose another default explicitly",
+                "Zero's PHP runtime reads objects keyed \"0\", \"1\", ... back as arrays; choose another default explicitly",
             ));
         }
         builder.push_str(&format!(".default({value})"));

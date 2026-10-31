@@ -140,7 +140,7 @@ final class SqliteMedia implements Media
         }
         if (array_key_exists('focal', $patch) && $patch['focal'] !== $r['focal']) {
             // Cover sizes follow the focal point; sizes configured after the upload are filled in.
-            $sizes = $r['sizes'] ?? [];
+            $sizes = $r['sizes'] instanceof \Zero\JsObject ? [] : ($r['sizes'] ?? []);
             if ($r['width'] !== null && Images::resizable($this->publicDir . '/uploads/' . $r['path'], $r['mime'])) {
                 $fresh = $this->renderSizes($r['path'], $r['mime'], (int) $r['width'], (int) $r['height'], $patch['focal'],
                     static fn (string $name, bool $cover) => $cover || !isset($sizes[$name]));

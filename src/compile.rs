@@ -57,6 +57,25 @@ pub fn php_json(v: &serde_json::Value) -> String {
     }
 }
 
+/// A captured value as a compiled-code PHP expression: like php_json, but an empty object `{}` is the
+/// JsObject marker so it stays an object in JSON. schema.php keeps plain arrays (php_json): it is data,
+/// loaded by tools without the runtime.
+fn php_js_value(v: &serde_json::Value) -> String {
+    use serde_json::Value as J;
+    match v {
+        J::Object(map) if map.is_empty() => "new \\Zero\\JsObject()".into(),
+        J::Array(items) => format!("[{}]", items.iter().map(php_js_value).collect::<Vec<_>>().join(", ")),
+        J::Object(map) => format!(
+            "[{}]",
+            map.iter()
+                .map(|(k, v)| format!("{} => {}", php_str(k), php_js_value(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        other => php_json(other),
+    }
+}
+
 fn err<T>(span: Span, msg: impl Into<String>) -> Result<T> {
     Err(Diag::new(span, msg))
 }
@@ -2001,7 +2020,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Obj(fields)
                 };
-                Out::atom(format!("[{}]", parts.join(", ")), ty)
+                // `{}` stays an object in JSON (PHP's [] is also the empty list): the JsObject marker.
+                // An object built only from spreads may be empty too, so Js::obj decides at runtime.
+                let php = if parts.is_empty() {
+                    "new \\Zero\\JsObject()".to_string()
+                } else if parts.iter().all(|p| p.starts_with("...")) {
+                    format!("\\Zero\\Js::obj([{}])", parts.join(", "))
+                } else {
+                    format!("[{}]", parts.join(", "))
+                };
+                Out::atom(php, ty)
             }
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
@@ -2403,7 +2431,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some((ann, module)) => self.resolve_ann(ann, *module, &HashMap::new())?,
                     None => ty_of_json(&json),
                 };
-                Ok(Out::atom(php_json(&json), ty))
+                Ok(Out::atom(php_js_value(&json), ty))
             }
         }
     }
@@ -2768,7 +2796,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
-                let php = format!("{}[{}]", o.php, php_str(prop));
+                // Writing into an object unwraps the empty-object marker first (Js::own).
+                let php = format!("\\Zero\\Js::own({})[{}]", o.php, php_str(prop));
                 let constraint = constraint
                     .non_null()
                     .field(prop)
@@ -2793,7 +2822,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
-                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
+                    Ty::Map(t) if i.ty.is_str() => (format!("\\Zero\\Js::own({})[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
                             target.span,
@@ -4712,7 +4741,8 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
+        Ty::Obj(_) | Ty::Map(_) => "array|\\Zero\\JsObject ",
+        Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
         Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => "int|float ",

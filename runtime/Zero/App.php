@@ -427,7 +427,8 @@ final class App
             return [];
         }
         try {
-            return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            // `{}` inside a json() column value stays an object; Db/Schema flatten it everywhere else.
+            return Js::decodeJson($body);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }
@@ -435,6 +436,9 @@ final class App
 
     private static function object(mixed $v): array
     {
+        if ($v instanceof JsObject) {
+            return []; // a top-level `{}` body: no fields
+        }
         if (!is_array($v) || ($v !== [] && array_is_list($v))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }

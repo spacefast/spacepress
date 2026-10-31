@@ -33,6 +33,7 @@ final class Js
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
             is_array($v) => array_is_list($v) ? self::join($v) : '[object Object]',
+            $v instanceof JsObject => '[object Object]',
             $v instanceof RegExp => (string) $v,
             $v instanceof \Closure => 'function () { [native code] }',
             $v instanceof \Stringable => (string) $v,
@@ -271,15 +272,6 @@ final class Js
         }
 
         return self::num((float) $a ** (float) $b);
-    }
-
-    /**
-     * JSON text → Zero values (assoc arrays for objects), with integers past ±2^53 as the doubles a
-     * JS parser would produce. Backs compiled `JSON.parse`; runtime storage and ids keep exact integers.
-     */
-    public static function decodeJson(string $s, int $depth = 512): mixed
-    {
-        return self::jsNumbers(json_decode($s, true, $depth, JSON_THROW_ON_ERROR));
     }
 
     private static function jsNumbers(mixed $v): mixed
@@ -1090,9 +1082,31 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
-    /** A parameter has its own binding while sharing the object's existing fields. */
-    public static function objectBinding(array &$source): array
+    /**
+     * An object-typed place, ready to write into: the empty-object marker becomes a plain array (a
+     * non-empty object is always one). Compiled writes through object/Record places go through this.
+     */
+    public static function &own(mixed &$place): mixed
     {
+        if ($place instanceof JsObject) {
+            $place = [];
+        }
+
+        return $place;
+    }
+
+    /** A JS object value: an empty array that stands for `{}` becomes the marker; anything else as is. */
+    public static function obj(array|JsObject $o): array|JsObject
+    {
+        return $o === [] ? new JsObject() : $o;
+    }
+
+    /** A parameter has its own binding while sharing the object's existing fields. */
+    public static function objectBinding(array|JsObject &$source): array|JsObject
+    {
+        if ($source instanceof JsObject) {
+            return $source;
+        }
         $binding = [];
         foreach ($source as $key => &$field) {
             $binding[$key] =& $field;
@@ -1102,8 +1116,11 @@ final class Js
     }
 
     /** Object spread/rest copy field values without retaining PHP reference cells. */
-    public static function copyObject(array $source): array
+    public static function copyObject(array|JsObject $source): array
     {
+        if ($source instanceof JsObject) {
+            return [];
+        }
         $copy = [];
         foreach ($source as $key => $value) {
             $copy[$key] = $value;
@@ -1138,45 +1155,45 @@ final class Js
     }
 
     /** @return list<string> */
-    public static function keys(array $o): array
+    public static function keys(array|JsObject $o): array
     {
-        return array_map('strval', self::ownKeys($o));
+        return $o instanceof JsObject ? [] : array_map('strval', self::ownKeys($o));
     }
 
-    public static function values(array $o): array
+    public static function values(array|JsObject $o): array
     {
-        return array_map(static fn ($k) => $o[$k], self::ownKeys($o));
+        return $o instanceof JsObject ? [] : array_map(static fn ($k) => $o[$k], self::ownKeys($o));
     }
 
     /** @return list<array{string, mixed}> */
-    public static function entries(array $o): array
+    public static function entries(array|JsObject $o): array
     {
-        return array_map(static fn ($k) => [(string) $k, $o[$k]], self::ownKeys($o));
+        return $o instanceof JsObject ? [] : array_map(static fn ($k) => [(string) $k, $o[$k]], self::ownKeys($o));
     }
 
-    public static function fromEntries(iterable $e): array
+    public static function fromEntries(iterable $e): array|JsObject
     {
         $out = [];
         foreach ($e as $entry) {
             $out[self::str($entry[0] ?? null)] = $entry[1] ?? null;
         }
 
-        return $out;
+        return self::obj($out);
     }
 
-    public static function omit(array $o, array $keys): array
+    public static function omit(array|JsObject $o, array $keys): array|JsObject
     {
         $o = self::copyObject($o);
         foreach ($keys as $k) {
             unset($o[$k]);
         }
 
-        return $o;
+        return self::obj($o);
     }
 
-    public static function hasOwn(array $o, string $k): bool
+    public static function hasOwn(array|JsObject $o, string $k): bool
     {
-        return array_key_exists($k, $o);
+        return is_array($o) && array_key_exists($k, $o);
     }
 
     // ---------------------------------------------------------------- JSON
@@ -1239,10 +1256,62 @@ final class Js
         return $open . "\n" . $inner . implode(",\n" . $inner, $parts) . "\n" . $indent . $close;
     }
 
+    /**
+     * JSON text → Zero values: objects as assoc arrays, the empty object `{}` as the JsObject marker (so
+     * it encodes back as `{}`, not `[]`). Integers stay exact: request bodies and stored json() values
+     * may carry ids. Throws \JsonException.
+     */
+    public static function decodeJson(string $s, int $depth = 512): mixed
+    {
+        return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
+    }
+
+    /** The marker → plain arrays at every depth: for values outside json() columns (groups, inputs, filters). */
+    public static function plain(mixed $v): mixed
+    {
+        if ($v instanceof JsObject) {
+            return [];
+        }
+        if (is_array($v)) {
+            foreach ($v as $k => $x) {
+                if (is_array($x) || $x instanceof JsObject) {
+                    $v[$k] = self::plain($x);
+                }
+            }
+        }
+
+        return $v;
+    }
+
+    private static function fromJson(mixed $v): mixed
+    {
+        if ($v instanceof \stdClass) {
+            $vars = get_object_vars($v);
+            if ($vars === []) {
+                return new JsObject();
+            }
+            foreach ($vars as $k => $x) {
+                $vars[$k] = self::fromJson($x);
+            }
+
+            return $vars;
+        }
+        if (is_array($v)) {
+            foreach ($v as $k => $x) {
+                if (is_array($x) || $x instanceof \stdClass) {
+                    $v[$k] = self::fromJson($x);
+                }
+            }
+        }
+
+        return $v;
+    }
+
     public static function jsonParse(string $s): mixed
     {
         try {
-            return self::decodeJson($s, 4096);
+            // Compiled JSON.parse: `{}` stays an object, and integers past ±2^53 are the doubles JS parses.
+            return self::jsNumbers(self::decodeJson($s, 4096));
         } catch (\JsonException $e) {
             throw new JsError('Unexpected token in JSON: ' . $e->getMessage(), 'SyntaxError');
         }

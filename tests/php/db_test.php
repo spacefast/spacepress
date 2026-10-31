@@ -759,6 +759,9 @@ $isProblem('invalid JSON body', http('POST', '/api/items', raw: '{"name":'), 400
 $isProblem('coercion error with pointer', http('POST', '/api/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/api/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
+$r = http('POST', '/api/locations', raw: '{"name":"Empty","meta":{"a":{},"b":[]}}');
+eq('a json column keeps {} apart from [] through storage and the API', [$r['status'], str_contains($r['body'], '"meta":{"a":{},"b":[]}'),
+    str_contains(http('GET', '/api/locations/' . ($r['json']['data']['id'] ?? 0))['body'], '"meta":{"a":{},"b":[]}')], [201, true, true]);
 $isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
 
 $r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => 7]);

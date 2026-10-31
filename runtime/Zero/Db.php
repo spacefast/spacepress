@@ -418,9 +418,22 @@ final class Db
         return is_array($r) ? [$r] : [];
     }
 
+    /** Only json() values keep the empty-object marker; field access, rules and hooks see plain arrays. */
+    private static function plainOutsideJson(array $columns, array $data): array
+    {
+        foreach ($data as $name => $v) {
+            if (($columns[$name]['type'] ?? null) !== 'json') {
+                $data[$name] = Js::plain($v);
+            }
+        }
+
+        return $data;
+    }
+
     private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
+        $data = self::plainOutsideJson($columns, $data);
         $provided = $data;
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
@@ -505,6 +518,7 @@ final class Db
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
+        $patch = self::plainOutsideJson($columns, $patch);
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);

@@ -244,6 +244,16 @@ export default defineConfig({
       return count;
     }),
     json: run(() => [JSON.stringify({ a: [1, 2.5, "x"], b: null }), JSON.stringify(1.0), JSON.parse('{"k":[1,2]}')]),
+    // `{}` stays an object (PHP's [] is also the empty list): literals, parsed JSON, filled and spread.
+    emptyObjects: run(() => {
+      const o: Record<string, number> = {};
+      const a: number[] = [];
+      const filled: Record<string, number> = {};
+      filled.k = 1;
+      const copy = { ...o };
+      const parsed = JSON.parse('{"x":{},"y":[]}');
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o];
+    }),
     errors: run(() => {
       try {
         throw new Error("boom");

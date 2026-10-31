@@ -37,7 +37,19 @@ pub fn render(schema: &Schema) -> Option<String> {
     let mut seen = std::collections::BTreeMap::new();
     for c in &collections {
         for col in c.columns.values().filter(|col| !c.is_core_column(&col.name)) {
-            let action = if col.translated() { "translate" } else { "copy" };
+            // Generated per row (default now/fn, onUpdate) like createdAt/updatedAt: never copied.
+            let generated = col.on_update.is_some()
+                || matches!(
+                    col.default,
+                    Some(crate::schema::DefaultKind::Now | crate::schema::DefaultKind::Fn(_))
+                );
+            let action = if col.translated() {
+                "translate"
+            } else if generated {
+                "ignore"
+            } else {
+                "copy"
+            };
             let nested = col.fields.is_some() || col.layouts.is_some();
             for key in [format!("zero_{}", col.name)]
                 .into_iter()

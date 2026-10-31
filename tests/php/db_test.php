@@ -1153,6 +1153,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                     'price' => ['type' => 'integer'],
                     'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['a', 'b'], 'notNull' => true, 'default' => ['value' => []]],
                     'seo' => ['type' => 'group', 'fields' => ['heading' => ['type' => 'text', 'localized' => true], 'noindex' => ['type' => 'boolean']]],
+                    'stampedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true]],
                     'box' => ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
                     'parentId' => ['type' => 'integer', 'references' => ['collection' => 'pages', 'column' => 'id', 'onDelete' => 'set null']],
                     'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
@@ -1202,7 +1203,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         }
         PHP;
     $migration = <<<'SQL'
-        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "box" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
+        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "stampedAt" text NOT NULL DEFAULT '2000-01-01T00:00:00.000Z', "box" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
         --> statement-breakpoint
         CREATE UNIQUE INDEX "pages_slug_unique" ON "pages" ("slug");
         --> statement-breakpoint
@@ -1287,6 +1288,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $moveDe = $db->insert('pages', ['title' => 'Move DE', 'locale' => 'de', 'translationOf' => $move['id']], true)[0];
     problem('a hook can\'t move a row to another locale either', fn () => $db->update('pages', ['title' => 'Move DE'], ['id' => $moveDe['id']]), 422, 'invalid_input', '/locale');
     $db->delete('pages', ['id' => ['in' => [$move['id'], $moveDe['id']]]]);
+
+    // Per-row generated values (default now, onUpdate) aren't synced: a translation keeps its own.
+    $stamped = $db->insert('pages', ['title' => 'Stamped', 'stampedAt' => '2000-01-01T00:00:00Z'], true)[0];
+    $stampedDe = $db->insert('pages', ['title' => 'Stamped DE', 'locale' => 'de', 'translationOf' => $stamped['id']], true)[0];
+    check('a generated column is per row', $stampedDe['stampedAt'] !== $stamped['stampedAt'], [$stamped['stampedAt'], $stampedDe['stampedAt']]);
+    $db->delete('pages', ['id' => ['in' => [$stamped['id'], $stampedDe['id']]]]);
 
     // A synced group with an admin-only sub-field: an editor can't confirm the hidden value by guessing.
     $boxed = $db->insert('pages', ['title' => 'Boxed', 'box' => ['label' => 'L', 'secret' => 's3cret']], true)[0];

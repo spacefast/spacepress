@@ -259,15 +259,25 @@ final class Polylang
                 continue;
             }
             $db = $plugin->db();
-            $db->transaction(static function () use ($db, $name, $spec, $postId): void {
-                $row = $db->editorRow((string) $name, $postId);
-                foreach ($row === null ? [] : \Zero\Locale\Module::members($row, $spec['primaryKey']) as $id) {
-                    $member = $db->editorRow((string) $name, $id);
-                    if ($member !== null) {
-                        GroupSync::adopt((string) $name, $member);
+            try {
+                $db->transaction(static function () use ($db, $name, $spec, $postId): void {
+                    $row = $db->editorRow((string) $name, $postId);
+                    foreach ($row === null ? [] : \Zero\Locale\Module::members($row, $spec['primaryKey']) as $id) {
+                        $member = $db->editorRow((string) $name, $id);
+                        if ($member !== null) {
+                            GroupSync::adopt((string) $name, $member);
+                        }
                     }
-                }
-            });
+                });
+            } catch (\Throwable $e) {
+                // Polylang wrote the link before Zero learned of it, so the rollback can't undo it:
+                // take this post back out of the group through Polylang, then refuse the link.
+                self::busy(static function () use ($postId): void {
+                    PLL()->model->post->delete_translation($postId);
+                });
+                clean_object_term_cache($postId, (string) get_post_type($postId));
+                throw $e;
+            }
 
             return;
         }

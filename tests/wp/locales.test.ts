@@ -100,6 +100,9 @@ test("a link made outside the API is refused when a hook would split the group",
     }
     echo wp_json_encode([$result, $id, get_post_meta($id, 'zero_price', true), get_post_meta(${en.id}, 'zero_price', true)]);`));
   assert.deepEqual([out[0], out[2], out[3]], ["409 conflict", "", "7"], "the adoption rolled back; no divergent price was committed");
+  // The link itself is undone too, as Polylang and Zero see it from a fresh request.
+  assert.deepEqual([polylang(en.id), polylang(out[1])], [["en", { en: en.id }], ["de", { de: out[1] }]]);
+  assert.deepEqual((await ok("GET", `/guides/${en.id}`, { as: "editor" })).translations, { en: en.id });
 });
 
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {

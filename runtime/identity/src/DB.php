@@ -74,7 +74,7 @@ final class DB
             if ($joined) {
                 // The host owns the commit and may still roll back. Leave nothing in WordPress's
                 // object cache that only the uncommitted rows justify: later reads hit the database.
-                $this->forget();
+                $this->clean();
             }
             return $value;
         } catch (\Throwable $e) {
@@ -84,7 +84,8 @@ final class DB
                     : "ROLLBACK TO SAVEPOINT " . $savepoint,
             );
             // SQL rolled back; WordPress's object cache didn't. Forget what it learned meanwhile.
-            $this->forget();
+            // The list stays until the outermost exit: an enclosing transaction may still roll back.
+            $this->clean();
             throw $e;
         } finally {
             if (--$this->depth === 0) {
@@ -92,13 +93,16 @@ final class DB
             }
         }
     }
-    private function forget(): void
+    private function clean(): void
     {
         foreach (array_keys($this->touched) as $uid) {
             clean_user_cache($uid);
             wp_cache_delete($uid, "user_meta");
         }
-        $this->touched = [];
+    }
+    public function inTransaction(): bool
+    {
+        return $this->depth > 0;
     }
     /**
      * Record a user whose wp_users/usermeta rows change here, so a rollback clears their cache.

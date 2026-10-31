@@ -155,6 +155,8 @@ test("a guest can't plant WordPress credentials, and the upgrade clears what exi
   const bearer = { authorization: `Bearer ${guest.access_token}` };
   const password = await fetch(`${site}/wp-json/wp/v2/users/me`, { method: "POST", headers: { ...bearer, "content-type": "application/json" }, body: JSON.stringify({ password: "attacker-password-123" }) });
   assert.equal(password.status, 403, "no password through core REST");
+  const upper = await fetch(`${site}/wp-json/wp/v2/USERS/me`, { method: "POST", headers: { ...bearer, "content-type": "application/json" }, body: JSON.stringify({ password: "attacker-password-123" }) });
+  assert.equal(upper.status, 403, "nor through a case variant of the route core also accepts");
   const appPassword = await fetch(`${site}/wp-json/wp/v2/users/me/application-passwords`, { method: "POST", headers: { ...bearer, "content-type": "application/json" }, body: JSON.stringify({ name: "planted" }) });
   assert.ok(appPassword.status >= 400, "no application password either");
 });

@@ -39,7 +39,7 @@ wp rewrite structure '/%postname%/' >/dev/null
 echo "WordPress $(wp core version)"
 wp plugin activate zero-identity
 
-suites=(migrations behavior security-capabilities admin-applications native-password credential-race email-race mfa-entrypoints webhooks provider-callback guests upgrade-race passkeys shared-transaction)
+suites=(migrations behavior security-capabilities admin-applications native-password credential-race email-race mfa-entrypoints webhooks provider-callback guests upgrade-race password-race passkeys shared-transaction)
 for suite in "${suites[@]}"; do
   compose exec -T wordpress php "/opt/identity-tests/$suite.php"
 done

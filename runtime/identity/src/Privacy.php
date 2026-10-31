@@ -110,6 +110,7 @@ final class Privacy
                 "UPDATE {$this->db->prefix}accounts SET primary_email_id=NULL,status='deleted' WHERE wp_user_id=%d",
                 $uid,
             );
+            $this->db->touch($uid);
             $this->db->run(
                 "UPDATE {$this->db->wp->users} SET user_login=%s,user_nicename=%s,user_email='',user_url='',display_name='Deleted account',user_activation_key='' WHERE ID=%d",
                 "deleted_" . $uid,

@@ -145,6 +145,23 @@ final class Plugin
             },
             100,
         );
+        // Every WordPress user write inside an identity transaction is recorded, so a rollback
+        // (identity's own or its host's) clears what the object cache learned from it.
+        $touched = static function ($uid): void {
+            if (self::$db->inTransaction() && (int) $uid > 0) {
+                self::$db->touch((int) $uid);
+            }
+        };
+        foreach (["profile_update", "user_register", "wp_set_password", "set_user_role", "added_user_meta", "updated_user_meta", "deleted_user_meta"] as $hook) {
+            add_action($hook, static function (...$args) use ($hook, $touched): void {
+                $touched(match ($hook) {
+                    "wp_set_password" => $args[1] ?? 0,
+                    "added_user_meta", "updated_user_meta" => $args[1] ?? 0,
+                    "deleted_user_meta" => $args[1] ?? 0,
+                    default => $args[0] ?? 0,
+                });
+            }, 1, 4);
+        }
         // A password set anywhere (profile, reset, wp_set_password) ends every identity sign-in.
         $passwordChanged = static function ($user): void {
             $uid = $user instanceof \WP_User ? (int) $user->ID : (int) $user;
@@ -167,10 +184,10 @@ final class Plugin
         // the request before its callback runs.
         add_filter("rest_request_before_callbacks", static function ($response, $handler, $request) {
             if (!$request instanceof \WP_REST_Request || $request->get_param("password") === null
-                || !preg_match('#^/wp/v2/users/(me|\d+)$#', $request->get_route(), $m)) {
+                || !preg_match('#^/wp/v2/users/(me|\d+)$#i', $request->get_route(), $m)) {
                 return $response;
             }
-            $id = $m[1] === "me" ? get_current_user_id() : (int) $m[1];
+            $id = strtolower($m[1]) === "me" ? get_current_user_id() : (int) $m[1];
             return $id > 0 && Accounts::isGuest($id)
                 ? new \WP_Error("guest_account", "Add your email first to save this account.", ["status" => 403])
                 : $response;

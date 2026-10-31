@@ -101,10 +101,13 @@ final class Api
      * only after the transaction commits, so a rollback never leaves a cookie for a row that
      * does not exist.
      */
-    private function login(int $uid): array
+    private function login(int $uid, ?callable $recheck = null): array
     {
-        [$result, $cookie] = $this->db->transaction(function () use ($uid) {
+        [$result, $cookie] = $this->db->transaction(function () use ($uid, $recheck) {
             $this->db->lock($uid);
+            if ($recheck !== null) {
+                $recheck();
+            }
             if ($this->mfa->enabled($uid)) {
                 $binding = Security::token();
                 $id = $this->security->challenge("mfa", $uid, "", [], $binding);
@@ -153,12 +156,17 @@ final class Api
                 "password:" . ($_SERVER["REMOTE_ADDR"] ?? ""),
             );
             $this->security->limit("password-account:" . strtolower($login));
-            return $this->login(
-                $this->accounts->password(
-                    $login,
-                    $this->field($r, "password", 1024),
-                ),
-            );
+            $password = $this->field($r, "password", 1024);
+            $uid = $this->accounts->password($login, $password);
+            // Check the password again under the account lock that session issuance holds: a reset
+            // committed in between (which revokes sessions) must not be outlived by this sign-in.
+            return $this->login($uid, function () use ($uid, $password): void {
+                clean_user_cache($uid);
+                $user = get_userdata($uid);
+                if (!$user || !wp_check_password($password, $user->user_pass, $uid)) {
+                    throw new Failure("invalid_credentials", "The sign-in details are incorrect.", 401);
+                }
+            });
         }
         if ($op === "sign-in/email" && $method === "POST") {
             $email = Accounts::email($this->field($r, "email", 254));

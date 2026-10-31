@@ -268,7 +268,8 @@ export default defineConfig({
       once["k" + j++] ??= j;
       const text: { s: string } = { s: "a" };
       const joined = (text.s += "b") + 1;
-      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep, once, j, joined, text];
+      const indexed = ({} as Record<string, number>)["x"] ?? -1;
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep, once, j, joined, text, indexed];
     }),
     errors: run(() => {
       try {

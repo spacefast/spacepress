@@ -215,6 +215,7 @@ req('PATCH', "/posts/{$mine['id']}", ['cover' => $img['id']], 'alice');
 eq('without with: the id', req('GET', "/posts/{$mine['id']}", as: 'alice')[1]['cover'], $img['id']);
 eq('with: { cover: true } populates in place', req('GET', "/posts/{$mine['id']}", as: 'alice', query: ['with' => '{"cover":true}'])[1]['cover'], $img);
 eq('GET /media/{id} and list', [req('GET', "/media/{$img['id']}")[1], array_column(req('GET', '/media', query: ['where' => '{"mime":"image/png"}'])[1], 'id')], [$img, [$img['id']]]);
+eq('an empty media filter object is no filter', [req('GET', '/media', query: ['where' => '{}'])[0], req('GET', '/media', query: ['where' => '{"AND":[{}]}'])[0]], [200, 200]);
 isProblem('media delete needs editor', req('DELETE', "/media/{$img['id']}", as: 'alice'), 403, 'forbidden');
 $revs = count($db->revisions('posts', $mine['id']));
 eq('editor deletes', req('DELETE', "/media/{$img['id']}", as: 'ed')[1]['id'] ?? null, $img['id']);

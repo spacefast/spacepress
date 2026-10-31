@@ -63,7 +63,8 @@ pub fn php_json(v: &serde_json::Value) -> String {
 fn php_js_value(v: &serde_json::Value) -> String {
     use serde_json::Value as J;
     match v {
-        J::Object(map) if map.is_empty() => "new \\Zero\\JsObject()".into(),
+        // Parenthesized: PHP 8.2/8.3 can't index or call on a bare `new` expression.
+        J::Object(map) if map.is_empty() => "(new \\Zero\\JsObject())".into(),
         J::Array(items) => format!("[{}]", items.iter().map(php_js_value).collect::<Vec<_>>().join(", ")),
         J::Object(map) => format!(
             "[{}]",
@@ -2026,7 +2027,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // `{}` stays an object in JSON (PHP's [] is also the empty list): the JsObject marker.
                 // An object built only from spreads may be empty too, so Js::obj decides at runtime.
                 let php = if parts.is_empty() {
-                    "new \\Zero\\JsObject()".to_string()
+                    "(new \\Zero\\JsObject())".to_string()
                 } else if parts.iter().all(|p| p.starts_with("...")) {
                     format!("\\Zero\\Js::obj([{}])", parts.join(", "))
                 } else {

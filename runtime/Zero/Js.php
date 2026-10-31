@@ -1082,6 +1082,28 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
+    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` markers are equal). */
+    public static function sameJson(mixed $a, mixed $b): bool
+    {
+        if ($a instanceof JsObject || $b instanceof JsObject) {
+            return $a instanceof JsObject && $b instanceof JsObject;
+        }
+        if (is_array($a) && is_array($b)) {
+            if (array_keys($a) !== array_keys($b)) {
+                return false;
+            }
+            foreach ($a as $k => $x) {
+                if (!self::sameJson($x, $b[$k])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return $a === $b;
+    }
+
     /** Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). */
     public static function at(mixed $root, array $path): mixed
     {

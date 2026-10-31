@@ -26,3 +26,14 @@ test("with: a localized `many` resolves to each parent row's locale through Poly
   const de = await ok("GET", "/tours" + qs({ locale: "de", where: { id: { in: [en.id, fr.id] } }, with: "legs" }));
   assert.deepEqual(tree(de), [[`en:Legs ${run}`, ["en:Harbour", "en:Castle", "en:Garden"]]]);
 });
+
+test("a bulk update over several rows of one translation group runs each row's hooks once", async () => {
+  const en = await ok("POST", "/tours", { as: "editor", body: { title: `Bulk ${run}`, price: 1 } });
+  const fr = await ok("POST", "/tours", { as: "editor", body: { title: `Bulk FR ${run}`, locale: "fr", translationOf: en.id } });
+  const de = await ok("POST", "/tours", { as: "editor", body: { title: `Bulk DE ${run}`, locale: "de", translationOf: en.id } });
+  assert.equal(await ok("POST", "/actions/bulkTourPrice", { as: "editor", body: { a: en.id, b: fr.id, price: 7 } }), 2);
+  const log = await ok("GET", "/tour_log" + qs({ where: { tourId: { in: [en.id, fr.id, de.id] } }, orderBy: "id" }));
+  assert.deepEqual(log.map((r: any) => `${r.tourId}=${r.entry}`).sort(), [`${en.id}=en:7 by Editor`, `${fr.id}=fr:7 by Editor`, `${de.id}=de:7 by Editor`].sort());
+  const rows = await ok("GET", "/tours" + qs({ locale: "*", where: { id: { in: [en.id, fr.id, de.id] } } }));
+  assert.deepEqual(rows.map((r: any) => r.price), [7, 7, 7]);
+});

@@ -1310,6 +1310,15 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'afterUpdate de:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
     ]);
     eq('each synced row keeps its own revision', count($db->revisions('pages', $tee['id'])), 2);
+    // A bulk update covering several rows of one group: each row's hooks and revision once, not
+    // once for the update and again for the group sync it already received.
+    $before = array_column($db->findMany('notes'), 'id');
+    $db->update('pages', ['price' => 5], ['id' => ['in' => [$tea['id'], $tee['id']]]]);
+    $bodies = array_map(static fn ($n) => substr($n['body'], 0, 16), $db->findMany('notes', ['where' => ['id' => ['notIn' => $before]], 'orderBy' => ['id' => 'asc']]));
+    eq('a bulk update over one group runs each row\'s afterUpdate once', $bodies, ['afterUpdate en:5', 'afterUpdate fr:5', 'afterUpdate de:5']);
+    eq('… one revision each', [count($db->revisions('pages', $tea['id'])), count($db->revisions('pages', $tee['id'])), count($db->revisions('pages', $the['id']))], [3, 3, 3]);
+    $db->update('pages', ['price' => 4], ['id' => ['in' => [$tea['id'], $tee['id'], $the['id']]]]);
+    $db->delete('notes', ['id' => ['notIn' => $before]]);
     // A row from before localization (no group yet): its old revisions show the group it has now.
     $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
     $db->store()->update('pages', $legacy['id'], ['translationGroup' => null]);

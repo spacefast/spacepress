@@ -21,6 +21,8 @@ final class Db
 
     private int $depth = 0;
     private ?array $actor = null;
+    /** @var list<BulkUpdate> open bulk updates, innermost last */
+    private array $bulk = [];
 
     public function __construct(
         private readonly Store $store,
@@ -75,6 +77,28 @@ final class Db
     public function hookCtx(): array
     {
         return ['user' => $this->actor, 'target' => $this->target];
+    }
+
+    /**
+     * The innermost open bulk update on $collection that has yet to write row $pk, else null. A write
+     * extension that would also write that row (group sync) hands it the values instead (BulkUpdate),
+     * so the row's own update applies them and its hooks run once.
+     */
+    public function pendingUpdate(string $collection, int|string $pk): ?BulkUpdate
+    {
+        foreach (array_reverse($this->bulk) as $bulk) {
+            if ($bulk->collection === $collection && isset($bulk->pending[self::key($pk)])) {
+                return $bulk;
+            }
+        }
+
+        return null;
+    }
+
+    /** The key BulkUpdate lists a primary key under. */
+    public static function rowKey(int|string $pk): string
+    {
+        return self::key($pk);
     }
 
     /** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
@@ -439,8 +463,22 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
-            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer) as $existing) {
-                $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $pk = $spec['primaryKey'];
+            $bulk = new BulkUpdate($collection, array_map(static fn (array $row) => self::key($row[$pk]), $rows));
+            $this->bulk[] = $bulk;
+            try {
+                foreach ($rows as $existing) {
+                    $key = self::key($existing[$pk]);
+                    unset($bulk->pending[$key]);
+                    $handed = $bulk->handed[$key] ?? [];
+                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer, $handed));
+                }
+            } finally {
+                array_pop($this->bulk);
+            }
+            foreach ($bulk->after as $fn) {
+                $fn();
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -650,7 +688,8 @@ final class Db
         return $row;
     }
 
-    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer): array
+    /** @param array $handed trusted values an extension handed this row during a bulk update (BulkUpdate); they win over $patch */
+    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $handed = []): array
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
@@ -668,6 +707,7 @@ final class Db
         }
         $previous = $existing;
         Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
+        $patch = $handed + $patch;
         $this->checkPatch($spec, $previous, $patch);
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {

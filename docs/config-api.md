@@ -125,7 +125,7 @@ export default defineConfig({
 | `boolean()` | INTEGER 0/1 | `boolean` |
 | `timestamp()` | TEXT (UTC ISO-8601 with ms) | `string` |
 | `date()` | TEXT `YYYY-MM-DD` | `string` |
-| `json()` / `json().$type<T>()` | TEXT (JSON) | `unknown` / `T` |
+| `json()` / `json().$type<T>()` | TEXT (JSON; an empty object reads back as `[]`, so a `.default()` can't contain `{}` or an object keyed `"0"`, `"1"`, ...) | `unknown` / `T` |
 | `text({ multiline: true })` | TEXT | `string` (textarea in wp-admin) |
 | `email()` / `url()` | TEXT, validated | `string` |
 | `slug({ source? })` | TEXT, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, derived from `source` when omitted | `string` |

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://emdashcms.com/seed.schema.json",
+  "version": "1",
+  "collections": [{
+    "slug": "notes",
+    "label": "Notes",
+    "fields": [
+      { "slug": "title", "label": "Title", "type": "string", "required": true },
+      { "slug": "description", "label": "Description", "type": "text", "required": true },
+      { "slug": "priority", "label": "Priority", "type": "integer", "defaultValue": 1 }
+    ]
+  }]
+}

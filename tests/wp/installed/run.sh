@@ -18,8 +18,12 @@ work="$(mktemp -d)"
 home="$work/my home" project="$work/project" bin="$work/bin"
 stop=""
 down() {
-  # Teardown runs exactly what the binary told the user to run.
-  [[ -z $stop ]] || (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || true
+  # Teardown runs exactly what the binary told the user to run; if it never got that far, the stack
+  # (if any) is removed by its compose project.
+  if [[ -n $stop ]]; then
+    (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || true
+  fi
+  docker compose -p "$ZERO_WP_PROJECT" down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap down EXIT
@@ -60,6 +64,7 @@ echo 'ok - an installed zero binary boots `zero dev --wp` from its embedded harn
 # The printed stop command takes the stack down.
 (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || { echo "FAIL: the printed stop command failed: $stop" >&2; exit 1; }
 stop=""
-[[ -z $(docker compose -p "$ZERO_WP_PROJECT" ps -q) ]] || { echo 'FAIL: the stack is still up after the printed stop command' >&2; exit 1; }
+left="$(docker compose -p "$ZERO_WP_PROJECT" ps -aq)"
+[[ -z $left ]] || { echo 'FAIL: the stack is still up after the printed stop command' >&2; exit 1; }
 echo 'ok - the printed stop command stops it'
 

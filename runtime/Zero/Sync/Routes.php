@@ -294,6 +294,11 @@ final class Routes
     /** A create's values as the pipeline's create rule sees them: column defaults and the default status filled. */
     private static function createData(array $spec, array $data): array
     {
+        return Js::atInstant(static fn () => self::createDataAt($spec, $data));
+    }
+
+    private static function createDataAt(array $spec, array $data): array
+    {
         foreach ($spec['columns'] as $name => $col) {
             if (!array_key_exists($name, $data) && isset($col['default'])) {
                 $data[$name] = Schema::generate($col['default'], $col['type']);

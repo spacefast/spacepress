@@ -46,6 +46,7 @@ $files = [
                         'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
                         // A function default between the two `now` defaults that moves the clock.
                         'tick' => ['type' => 'text', 'default' => ['fn' => 'locations__tick']],
+                        'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]], 'default' => ['value' => []]],
                         'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now],
                     ],
                     'relations' => [
@@ -328,6 +329,7 @@ $files = [
         	"meta" text,
         	"createdAt" text NOT NULL,
         	"tick" text,
+        	"audit" text,
         	"updatedAt" text NOT NULL
         );
         --> statement-breakpoint
@@ -396,11 +398,12 @@ $rebuild = <<<'SQL'
     	"meta" text,
     	"createdAt" text NOT NULL,
     	"tick" text,
+    	"audit" text,
     	"updatedAt" text NOT NULL,
     	"note" text
     );
     --> statement-breakpoint
-    INSERT INTO "__new_locations"("id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "updatedAt") SELECT "id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "updatedAt" FROM "locations";
+    INSERT INTO "__new_locations"("id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "audit", "updatedAt") SELECT "id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "audit", "updatedAt" FROM "locations";
     --> statement-breakpoint
     DROP TABLE "locations";
     --> statement-breakpoint
@@ -458,7 +461,8 @@ $garage = $db->insert('locations', ['name' => '  Garage  ', 'meta' => ['floor' =
 putenv('ZERO_NOW');
 eq('by-ref beforeCreate mutation is kept (trim + fill)', [$garage['name'], $garage['code']], ['Garage', 'GAR']);
 eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['shelf', true]);
-eq('default now: one instant per write, even when the clock moves between defaults', [$garage['createdAt'], $garage['updatedAt']], ['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z']);
+eq('default now: one instant per write, nested defaults included, even when the clock moves between defaults',
+    [$garage['createdAt'], $garage['updatedAt'], $garage['audit']['at'] ?? null], array_fill(0, 3, '2026-01-01T00:00:00.000Z'));
 eq('json column round-trips', $garage['meta'], ['floor' => 1, 'tags' => ['a/b', 'é']]);
 eq('json stored with unescaped slashes/unicode', $pdo->query('SELECT meta FROM locations')->fetchColumn(), '{"floor":1,"tags":["a/b","é"]}');
 
@@ -623,7 +627,7 @@ $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['i
 file_put_contents("$root/zero/app/migrations/0002_rebuild_locations.sql", $rebuild);
 eq('CLI migrate applies the rebuild', $cli('migrate'), [0, ['data' => ['applied' => ['0002_rebuild_locations']]]]);
 eq('child rows survive a parent rebuild (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[9] ?? null, 'note');
+eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[10] ?? null, 'note');
 problem('unique index recreated by the rebuild', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 
 file_put_contents("$root/zero/app/migrations/0003_orphan.sql", "DELETE FROM \"locations\" WHERE \"name\" = 'Garage';\n--> statement-breakpoint\nSELECT 1;");

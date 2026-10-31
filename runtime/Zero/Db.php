@@ -329,7 +329,8 @@ final class Db
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
-                $out[] = $this->createOne($collection, $spec, $data, $viewer, $around);
+                // One instant per row: every `now` default, nested ones and publishedAt included.
+                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -345,7 +346,7 @@ final class Db
             $out = [];
             $opts = ['where' => $where];
             foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer) as $existing) {
-                $out[] = $this->updateOne($collection, $spec, $existing, $set, $viewer);
+                $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -385,14 +386,13 @@ final class Db
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
-        $now = Js::now();
         foreach ($columns as $name => $col) {
             if (!array_key_exists($name, $data) && isset($col['default'])) {
-                $data[$name] = Schema::generate($col['default'], $col['type'], $now);
+                $data[$name] = Schema::generate($col['default'], $col['type']);
             }
         }
         if ($spec['drafts'] ?? false) {
-            $data = $this->draftRules($data, $statusGiven ? null : 'published', null, $now);
+            $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
         }
         Extensions::write('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
@@ -469,14 +469,13 @@ final class Db
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
-        $now = Js::now();
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
-                $patch[$name] = Schema::generate($col['onUpdate'], $col['type'], $now);
+                $patch[$name] = Schema::generate($col['onUpdate'], $col['type']);
             }
         }
         if (($spec['drafts'] ?? false) && (array_key_exists('status', $patch) || array_key_exists('publishedAt', $patch))) {
-            $patch = $this->draftRules($patch, null, $existing, $now);
+            $patch = $this->draftRules($patch, null, $existing);
         }
         $previous = $existing;
         Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
@@ -572,14 +571,14 @@ final class Db
      * §6.1 transitions. $defaultStatus: 'published' when status was absent on create. $existing: the
      * row being updated (null on create).
      */
-    private function draftRules(array $data, ?string $defaultStatus, ?array $existing, int $nowMs): array
+    private function draftRules(array $data, ?string $defaultStatus, ?array $existing): array
     {
         if ($defaultStatus !== null) {
             $data['status'] = $defaultStatus;
         }
         $status = array_key_exists('status', $data) ? $data['status'] : ($existing['status'] ?? null);
         $hasAt = array_key_exists('publishedAt', $data) && $data['publishedAt'] !== null;
-        $now = Js::iso($nowMs);
+        $now = Js::iso(Js::now());
         if ($status === 'published' && !$hasAt) {
             // Re-saving an already published row (publishedAt untouched) keeps its date.
             $keep = $existing !== null && !array_key_exists('publishedAt', $data) && $existing['status'] === 'published'

@@ -248,19 +248,14 @@ final class Schema
         return in_array($type, self::JSON_TYPES, true);
     }
 
-    /**
-     * Resolve a `default` / `onUpdate` spec. $now is the write's one instant (epoch ms): every top-level
-     * `now` default/onUpdate of a row shares it, so `createdAt === updatedAt` on create.
-     */
-    public static function generate(array $spec, string $type, ?int $now = null): mixed
+    /** Resolve a `default` / `onUpdate` spec. */
+    public static function generate(array $spec, string $type): mixed
     {
         if (array_key_exists('value', $spec)) {
             return $spec['value'];
         }
         if ($spec['now'] ?? false) {
-            $now ??= Js::now();
-
-            return $type === 'date' ? gmdate('Y-m-d', intdiv($now, 1000)) : Js::iso($now);
+            return $type === 'date' ? gmdate('Y-m-d', intdiv(Js::now(), 1000)) : Js::iso(Js::now());
         }
         if (isset($spec['fn'])) {
             $fn = '\\ZeroApp\\' . $spec['fn'];

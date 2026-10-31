@@ -331,6 +331,71 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
     assert!(!out.exists());
 }
 
+/// Migrate one inline source and build it for standalone; returns the app directory.
+fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join(file);
+    std::fs::write(&input, source).unwrap();
+    let out = migrate(from, &input, &dir.path().join("app/zero.config.ts"));
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let app = dir.path().join("standalone");
+    let build = zero()
+        .args(["build", "--target", "standalone", "--out"])
+        .arg(&app)
+        .arg(dir.path().join("app"))
+        .output()
+        .unwrap();
+    assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
+    (dir, app)
+}
+
+/// Insert each `{field: value}` case into `notes` (with `base` filled in); `true` = accepted.
+fn accepts(app: &Path, base: Value, cases: Value) -> Value {
+    let out = Command::new("php")
+        .args([
+            "-r",
+            r#"
+            require $argv[1] . '/zero/runtime/bootstrap.php';
+            $app = \Zero\App::boot($argv[1]);
+            $base = json_decode($argv[2], true);
+            $out = [];
+            foreach (json_decode($argv[3], true) as [$field, $value]) {
+                try { $app->db->insert('notes', [$field => $value] + $base); $out[] = true; }
+                catch (\Zero\HttpError $e) { $out[] = $e->pointer; }
+            }
+            echo json_encode($out);
+        "#,
+        ])
+        .arg(app)
+        .arg(base.to_string())
+        .arg(cases.to_string())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+#[test]
+fn payload_email_keeps_payloads_address_rule() {
+    let (_dir, app) = migrated_app(
+        "payload",
+        "payload.ts",
+        "export default {collections:[{slug:'notes',timestamps:false,fields:[{name:'title',type:'text',required:true},{name:'contact',type:'email'}]}]};",
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([
+                ["contact", "user.name+alias@example.co.uk"],
+                ["contact", "\"quoted\"@example.com"],
+                ["contact", "user@[127.0.0.1]"]
+            ])
+        ),
+        json!([true, "/contact", "/contact"])
+    );
+}
+
 #[test]
 fn json_defaults_with_empty_objects_are_refused_at_the_default() {
     let dir = tempfile::tempdir().unwrap();

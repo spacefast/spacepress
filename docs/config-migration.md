@@ -61,8 +61,10 @@ refused because creating new stores would change their ownership.
 EmDash URL fields are refused because their relative, `mailto:` and `tel:` URL
 policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are also
 refused: Zero's URL validator cannot preserve Sanity's scheme/credential and
-empty-value policy. Optional Payload email fields carry a
-specific review entry because Zero rejects empty strings that Payload accepts;
+empty-value policy. Payload email fields keep Payload's own address pattern on
+top of Zero's `email()` check, so quoted local parts and `[127.0.0.1]` address
+literals stay rejected. Optional Payload email fields also carry a specific
+review entry because Zero rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 
 Zero's PHP runtime has no empty JSON object: `{}` reads back as `[]`. A JSON

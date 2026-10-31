@@ -7,6 +7,9 @@ type Object = Map<String, Value>;
 
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
+/// Payload's email validator (`fields/validations.ts`, pinned commit in docs/zero-compatibility.md).
+/// Zero's email() accepts quoted local parts and address literals that Payload rejects.
+const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
 
 /// The PHP runtime decodes JSON objects as arrays, so an empty object would read back as `[]`.
 fn has_empty_object(v: &Value) -> bool {
@@ -371,6 +374,7 @@ fn field(
         }
         "boolean" | "checkbox" => "boolean()".into(),
         "datetime" | "date" => "timestamp()".into(),
+        "email" if matches!(source, Source::Payload) => format!("email().pattern({PAYLOAD_EMAIL})"),
         "email" => "email()".into(),
         "json" => "json()".into(),
         "enum" if matches!(source, Source::Zero) => {

@@ -1,9 +1,8 @@
 # Zero Admin — design and provenance audit
 
 Status: approved for build (revision 10, 2026-10-31; six review rounds folded in; §9.1 and §9.2 ruled, §9.3 and §9.5 accepted by default; WordPress-only per the owner's ruling). Extends `design-phase2.md`; where
-this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
-project owner before the import PR (§8, PR 2) can merge; everything else is
-decided here.
+this document is silent, phase 2 holds. The licensing and scope decisions in
+sections 1 and 9 govern the import PR (§8, PR 2).
 
 The ask: bring Spacefast's earlier WordPress admin work into Zero as an
 optional plugin that `zero build` can ship next to `zero-runtime`,

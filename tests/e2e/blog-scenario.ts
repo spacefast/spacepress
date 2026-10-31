@@ -116,6 +116,12 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
       () => editor.posts.create({ title: "Past", status: "scheduled", publishedAt: "2000-01-01T00:00:00.000Z" }),
       { status: 422, code: "invalid_input", pointer: "/publishedAt" },
     );
+    // An explicit "published" stays published with a future date: only "scheduled" schedules.
+    const dated = await editor.posts.create({ title: `Dated ${run}`, status: "published", publishedAt: at });
+    assert.deepEqual([dated.status, dated.publishedAt], ["published", at]);
+    const redated = await editor.posts.update(dated.id, { title: `Dated ${run} v2` });
+    assert.deepEqual([redated.status, redated.publishedAt], ["published", at]);
+    assert.equal((await anon.posts.get(dated.id)).title, `Dated ${run} v2`);
 
     const reader = (await env.promoteDue(at)) ?? anon;
     const seen = await reader.posts.get(scheduled.id);

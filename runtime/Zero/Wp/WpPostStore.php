@@ -211,7 +211,7 @@ final class WpPostStore implements Store
             'post_status' => 'publish',
             'post_author' => get_current_user_id(),
         ];
-        $id = $this->db->core(fn () => $this->withSlug($post, static fn () => wp_insert_post(wp_slash($post), true)));
+        $id = $this->db->core(fn () => $this->withStatus(fn () => $this->withSlug($post, static fn () => wp_insert_post(wp_slash($post), true))));
         if ($id instanceof \WP_Error) {
             throw new \RuntimeException('wp_insert_post failed: ' . $id->get_error_message());
         }
@@ -234,7 +234,7 @@ final class WpPostStore implements Store
             $post['ID'] = $id;
             // Zero writes the revision itself after the meta is saved (Db::updateOne → revisionWrite);
             // core's own post-update revision would be a second, meta-less one.
-            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true))));
+            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withStatus(fn () => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true)))));
             if ($r instanceof \WP_Error) {
                 throw new \RuntimeException('wp_update_post failed: ' . $r->get_error_message());
             }
@@ -290,6 +290,27 @@ final class WpPostStore implements Store
             return $fn();
         } finally {
             remove_filter('wp_revisions_to_keep', $none, PHP_INT_MAX);
+        }
+    }
+
+    /**
+     * Zero's status is explicit (§6.1): core turns `publish` with a future date into `future` and
+     * `future` within a minute into `publish`; keep the status Zero asked for (or the post already has).
+     */
+    private function withStatus(callable $fn): mixed
+    {
+        $filter = static function (array $data, array $postarr): array {
+            if (in_array($postarr['post_status'] ?? null, ['publish', 'future'], true)) {
+                $data['post_status'] = $postarr['post_status'];
+            }
+
+            return $data;
+        };
+        add_filter('wp_insert_post_data', $filter, PHP_INT_MAX, 2);
+        try {
+            return $fn();
+        } finally {
+            remove_filter('wp_insert_post_data', $filter, PHP_INT_MAX);
         }
     }
 

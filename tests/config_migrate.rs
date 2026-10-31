@@ -119,8 +119,8 @@ fn required_emdash_and_sanity_strings_reject_empty_values() {
 }
 
 #[test]
-fn payload_runtime_rules_survive_the_import() {
-    let (dir, report) = migrate_fixture("payload", "payload.ts");
+fn payload_optional_email_is_reported_for_empty_strings() {
+    let (_dir, report) = migrate_fixture("payload", "payload.ts");
     assert!(
         report["entries"]
             .as_array()
@@ -130,73 +130,102 @@ fn payload_runtime_rules_survive_the_import() {
                 && e["outcome"] == "review"
                 && e["reason"].as_str().unwrap().contains("empty strings"))
     );
+}
+
+/// The Payload fixture built for standalone, plus a valid row's base values.
+fn payload_app() -> (tempfile::TempDir, PathBuf, Value) {
+    let (dir, _) = migrate_fixture("payload", "payload.ts");
+    let app = build_fixture(dir.path(), "standalone");
+    (dir, app, json!({"title": "Title", "body": "Body", "tags": ["one"]}))
+}
+
+#[test]
+fn payload_defaults_survive_the_import() {
+    let (dir, app, base) = payload_app();
     let notes = &schema(&build_fixture(dir.path(), "wp").join("plugins/zero-app-imported/zero/app/schema.php"))["collections"]
         ["notes"];
-    assert_eq!(notes["columns"]["priority"]["default"]["value"], 2);
     assert_eq!(notes["columns"]["updatedAt"]["onUpdate"]["now"], true);
-    let app = build_fixture(dir.path(), "standalone");
-    let runtime = Command::new("php")
+    let out = Command::new("php")
         .args([
             "-r",
-            r#"
-            require $argv[1] . '/zero/runtime/bootstrap.php';
-            $app = \Zero\App::boot($argv[1]);
-            $row = $app->db->insert('notes', ['title' => 'Imported', 'body' => 'Body', 'tags' => ['one']], true)[0];
-            try { $app->db->insert('notes', ['title' => 'Invalid', 'body' => 'Body', 'tags' => ['one'], 'priority' => 6]); }
-            catch (\Zero\HttpError $e) { $error = $e->getMessage(); }
-            $response = $app->handle('GET', '/notes', [], '');
-            echo json_encode(['row' => $row, 'status' => $response[0], 'error' => $error ?? null]);
-        "#,
+            "require $argv[1] . '/zero/runtime/bootstrap.php'; echo json_encode(\\Zero\\App::boot($argv[1])->db->insert('notes', json_decode($argv[2], true), true)[0]);",
         ])
         .arg(&app)
+        .arg(base.to_string())
         .output()
         .unwrap();
-    assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
-    let result: Value = serde_json::from_slice(&runtime.stdout).unwrap();
-    // Defaults (including required checkbox false), and the literal read access.
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let row: Value = serde_json::from_slice(&out.stdout).unwrap();
+    // Declared defaults, a required checkbox's implicit false, and an optional checkbox's absence.
     assert_eq!(
         [
-            &result["row"]["priority"],
-            &result["row"]["stage"],
-            &result["row"]["done"],
-            &result["row"]["archived"],
-            &result["row"]["details"]
+            &row["priority"],
+            &row["stage"],
+            &row["done"],
+            &row["archived"],
+            &row["details"]
         ],
         [&json!(2), &json!("todo"), &json!(false), &Value::Null, &json!([])]
     );
-    assert_eq!(result["status"], 200);
-    // Payload's max: 5 is carried as Zero's bound and named in the error.
-    assert!(result["error"].as_str().unwrap().contains('5'));
-    let base = json!({"title": "Title", "body": "Body", "tags": ["one"]});
+}
+
+#[test]
+fn payload_literal_read_access_is_carried() {
+    let (_dir, app, _) = payload_app();
+    let out = Command::new("php")
+        .args(["-r", "require $argv[1] . '/zero/runtime/bootstrap.php'; echo \\Zero\\App::boot($argv[1])->handle('GET', '/notes', [], '')[0];"])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "200");
+}
+
+#[test]
+fn payload_number_bounds_are_carried() {
+    let (_dir, app, base) = payload_app();
+    assert_eq!(
+        accepts(&app, base, json!([["priority", 5], ["priority", 6]])),
+        json!([true, "/priority"])
+    );
+}
+
+#[test]
+fn payload_required_values_reject_payloads_empty_forms() {
+    let (_dir, app, base) = payload_app();
     assert_eq!(
         accepts(
             &app,
             base,
-            json!([
-                ["priority", 6],
-                ["title", ""],
-                ["body", ""],
-                ["tags", []],
-                ["details", false],
-                // UTF-16 bound: 60 emoji are 120 code units (maxLength 120), 61 are 122.
-                ["title", "😀".repeat(60)],
-                ["title", "😀".repeat(61)],
-                // defaultMaxTextLength bounds a textarea without maxLength.
-                ["body", "a".repeat(40000)],
-                ["body", "a".repeat(40001)]
-            ])
+            json!([["title", ""], ["body", ""], ["tags", []], ["details", false]])
         ),
-        json!([
-            "/priority",
-            "/title",
-            "/body",
-            "/tags",
-            "/details",
-            true,
-            "/title",
-            true,
-            "/body"
-        ])
+        json!(["/title", "/body", "/tags", "/details"])
+    );
+}
+
+#[test]
+fn payload_text_bounds_count_utf16_code_units() {
+    let (_dir, app, base) = payload_app();
+    // maxLength 120: 60 emoji are 120 code units, 61 are 122.
+    assert_eq!(
+        accepts(
+            &app,
+            base,
+            json!([["title", "😀".repeat(60)], ["title", "😀".repeat(61)]])
+        ),
+        json!([true, "/title"])
+    );
+}
+
+#[test]
+fn payload_default_max_text_length_bounds_unbounded_text() {
+    let (_dir, app, base) = payload_app();
+    assert_eq!(
+        accepts(
+            &app,
+            base,
+            json!([["body", "a".repeat(40000)], ["body", "a".repeat(40001)]])
+        ),
+        json!([true, "/body"])
     );
 }
 

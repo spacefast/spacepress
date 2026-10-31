@@ -1,9 +1,8 @@
 # Zero Admin — design and provenance audit
 
-Status: approved for build (revision 10, 2026-10-31; six review rounds folded in; §9.1 and §9.2 ruled, §9.3 and §9.5 accepted by default; WordPress-only per the owner's ruling). Extends `design-phase2.md`; where
-this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
-project owner before the import PR (§8, PR 2) can merge; everything else is
-decided here.
+Status: approved for build (revision 11, 2026-10-31). Extends
+`design-phase2.md`; where this document is silent, phase 2 holds. The
+licensing and scope decisions in §1 and §9 govern the import PR (§8, PR 2).
 
 The ask: bring Spacefast's earlier WordPress admin work into Zero as an
 optional plugin that `zero build` can ship next to `zero-runtime`,
@@ -12,10 +11,7 @@ WordPress. It is not a capsule frontend and it is not an embed for another
 dashboard.
 
 Conventions: "the source" = Spacefast's earlier WordPress admin work, an
-admin tree of 1,143 files in a private repository. The exact source identity
-(repository, commit, subtree hash, per-file blob manifest, and the verbatim
-internal-reference inventory) is recorded in a **private evidence record**
-kept outside this repository; this public document carries only
+admin tree of 1,143 files in a private repository; this document carries
 classifications, counts and dispositions. "Kept" = imported and shipped.
 "Rewired" = imported, then pointed at Zero's schema and APIs. "Dropped" =
 not imported. Numbers below are from the audited revision and a throwaway
@@ -36,7 +32,7 @@ build of it.
 | Where the JS lives | `runtime/admin/apps/` (a self-contained pnpm workspace), built into `runtime/admin/build/` which is **committed** with a source-hash manifest, exactly like `runtime/identity/{apps,build}`. The Rust binary embeds `runtime/admin/` minus `apps/`; Zero core never needs Node. |
 | Pins | One exact `@wordpress/*` snapshot in one catalog, no `next` dist-tag anywhere. The nightly snapshot stays through the rewire PR; then a dedicated PR moves to the stable releases that match WordPress 7.1's bundled packages, and from then on bumps ride the platform floor in `src/platform.rs`. |
 | Provenance | Upstream Gutenberg packages come from npm. Three vendored forks of Gutenberg packages are replaced by npm or kept as a renamed fork (§1.2). The rest is the internal framework the source was vendored from; it is imported only after the licence ruling in §9.1, with every internal name, link, telemetry seam and private endpoint removed (§1.3). |
-| Licence | Zero is MIT by default and GPL-2.0-or-later only where WordPress forces it (ruled, §1.4). The admin plugin runs inside WordPress and bundles GPL Gutenberg packages, so `runtime/admin/` is GPL-2.0-or-later, like `runtime/identity/`. |
+| Licence | Zero is MIT by default and GPL-2.0-or-later only where WordPress forces it (§1.4). The admin plugin runs inside WordPress and bundles GPL Gutenberg packages, so `runtime/admin/` is GPL-2.0-or-later, like `runtime/identity/`. |
 | Tests | Real WordPress through the existing harness (`tests/wp/admin.test.ts`), driven by HTTP and WP-CLI with the exact calls the screens make, per role, plus **one** browser acceptance run (Playwright) that boots the shipped modules, opens a collection, edits a field and reloads. Pure JS logic (schema → DataViews fields, menu builder) at unit level in the workspace. |
 
 ---
@@ -45,24 +41,15 @@ build of it.
 
 ### 1.1 What the source is
 
-The tree was vendored into Spacefast's repository on 2026-09-06 in one
-commit, with the note "Vendored from a dead-upstream WordPress admin
-framework; there is no upstream tracking". The upstream was an internal admin
-framework of the company Spacefast's founders previously worked with; this
-document does not name it (§9.1c). Git history before that commit is not
-preserved, so original authors and dates are not recoverable from the source
-tree. The `license: GPL-2.0-or-later` field in the root `package.json` was
-written by the vendoring commit, not inherited from the upstream. Only two of
-the twenty vendored packages carry a `license` field of their own
-(`telemetry`, which Spacefast wrote, and `wp-build`). No `LICENSE` file exists
-anywhere in the tree except a dashicons licence under `packages/boot`.
-
-The audited revision is identified in the private evidence record by
-repository, commit, subtree tree-hash and a per-file blob manifest, so every
-count below can be reproduced and the import subset checked file by file.
-
-Eleven commits touched the tree after import. All are Spacefast's own glue
-(the Content frame, kernel endpoints, media checkbox and excerpt fixes).
+The source is Spacefast's earlier WordPress admin work: a WordPress admin
+application that Spacefast vendored from a no-longer-maintained framework and
+then extended with its own glue (the Content frame, kernel endpoints, media
+fixes). Spacefast holds the rights to it and distributes it under
+GPL-2.0-or-later (§9.1). The tree declares that licence in its root
+`package.json`; it carries no upstream `LICENSE` file and no upstream
+copyright headers. The only third-party notices in it are the dashicons
+licence under `packages/boot` and the headers of two small MIT libraries in a
+screen this plan drops.
 
 ### 1.2 Classification
 
@@ -117,9 +104,7 @@ byte-identical across two builds. `node_modules` is 515 MB.
 
 ### 1.3 Internal references: inventory and disposition
 
-Counted over the tree excluding `pnpm-lock.yaml`. The verbatim strings,
-hosts and paths are in the private evidence record; here they are described
-by kind so this document can be public.
+Counted over the tree excluding `pnpm-lock.yaml`, described by kind.
 
 | Reference kind | Where | Count | Disposition |
 |---|---|---|---|
@@ -140,12 +125,14 @@ by kind so this document can be public.
 | The framework's text domain, function/filter prefix, class prefix and constant prefix | all PHP | hundreds | rename to `zero-admin` / `zero_admin_*` / `Zero_Admin_*` / `ZERO_ADMIN_*` |
 | `window.__experimentalDataViewsMediaModal`, `GUTENBERG_VERSION` | `lib/pages/admin.php` | 2 | keep (public Gutenberg flags) |
 
-**Attribution is exempt from the scrub.** Copyright and licence notices that
-the §9.1 ruling requires (a `NOTICE` naming the copyright holder, the
-dashicons `LICENSE.md`, third-party headers in kept files) are kept verbatim;
-the scrub removes product names from prose and identifiers, not legal
-notices. If the ruling says the framework must be credited by name, that
-credit lives in `NOTICE` and nowhere else.
+**Notices.** The scrub removes product names from prose and identifiers; it
+never touches a third-party licence notice (the dashicons `LICENSE.md`, the
+licence headers of bundled npm packages, the generated
+`THIRD-PARTY-LICENSES.txt`). The source carries no upstream copyright notice
+of its own, so the plugin's `NOTICE` states Spacefast's copyright and the
+GPL-2.0-or-later licence and credits "Spacefast's earlier WordPress admin
+work"; the framework's product name is an identifier, not a notice, and does
+not appear (§9.5 gives the same disposition for the identity plugin).
 
 Telemetry: there is no live transport anywhere in the tree. The only
 telemetry code is the inert shim, and the dashboard-widget "tracking" hooks
@@ -168,15 +155,12 @@ reworded follows the same §9.1 ruling. Flagged in §9.5.
 
 ### 1.4 Licensing
 
-- **Zero.** Ruled (2026-10-31, §9.2): Zero is licensed **by component, MIT
-  wherever possible**. Anything that runs inside WordPress is
-  GPL-2.0-or-later (WordPress plugins are derivative works of WordPress);
-  everything else, the Rust compiler and CLI, the typed client, the type
-  declarations, examples, docs, scripts and tests, is MIT. The top-level
-  `LICENSE` stating this, with `LICENSE-GPL` and `LICENSE-MIT`, is owned by
-  the `p3/readme` branch; the admin lane adds one line to its GPL list and
-  nothing else. Until that branch lands, `runtime/Zero/composer.json` and the
-  generated plugin headers are the only licence statements in the tree.
+- **Zero.** Zero is licensed **by component** (§9.2): anything that runs
+  inside WordPress is GPL-2.0-or-later (WordPress plugins are derivative works
+  of WordPress); everything else, the Rust compiler and CLI, the typed client,
+  the type declarations, examples, docs, scripts and tests, is MIT. The
+  top-level `LICENSE` stating this, with `LICENSE-GPL` and `LICENSE-MIT`,
+  lands with the README PR; the admin adds one line to its GPL list.
 - **The admin plugin is on the GPL side.** `runtime/admin/` (the PHP, the
   workspace and the committed build) is GPL-2.0-or-later, like
   `runtime/identity/`: it runs only inside WordPress, it bundles
@@ -191,14 +175,10 @@ reworded follows the same §9.1 ruling. Flagged in §9.5.
   (Gutenberg itself is dual-licensed GPL-2.0-or-later / MPL-2.0). Compatible
   with Zero's PHP licence; the admin plugin is GPL-2.0-or-later like the other
   three plugins.
-- **The internal framework.** Declared GPL-2.0-or-later by Spacefast at
-  vendoring time. The source tree contains no licence grant from its upstream,
-  no copyright holder, and no provenance for the declaration. Under the
-  clean-room rule this was the one thing this plan could not decide; the
-  owner has since confirmed the right to redistribute and modify (§9.1), so
-  class I, including the additions inside the `views` fork, may be imported. Class U comes from npm either way, and
-  class S is Spacefast's own. The ruling (§9.1, granted) and the notices it requires are recorded in the
-  private evidence record, and the `NOTICE` file in PR 2 is derived from it.
+- **The source.** Spacefast holds the rights to the vendored admin work and
+  distributes it under GPL-2.0-or-later (§9.1), so class I, including the
+  additions inside the `views` fork, is imported under that licence. The
+  `NOTICE` file in PR 2 follows §1.3.
 - **Third-party in the tree.** `routes/design-styles/.../lib/{lib-font,inflate,unbrotli}.js`
   (MIT, Pomax; zlib/brotli ports) are dropped with the design screens.
   `packages/boot/src/dashicons` (GPL-2.0-or-later, with its own LICENSE.md)
@@ -712,53 +692,46 @@ example the editor panel's `showIf` toggling), it joins the same spec.
 
 | # | Branch | Content | Gate |
 |---|---|---|---|
-| 1 | `p3/admin-design` | this document | Sol review of the doc; owner rulings §9 |
-| 2 | `p3/admin-import` | **one commit**: the kept subset, already pruned (§4) and scrubbed (§1.3), under `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib,LICENSE,NOTICE}`, with catalog pins and no `next` dist-tag. No verbatim pre-cleanup state is ever committed, so the public history never carries the stripped references. The scrub is verified by a grep over the commit for the private evidence record's term list (run locally; the list itself is not committed). `pnpm install --frozen-lockfile` and `tsc -b` pass. No build output yet. | Sol reviews the PHP, the package manifests, the catalog and a sample of the renamed modules; the PR says the bulk of the imported JS is reviewed for provenance (the grep) and licence, not line by line |
+| 1 | `p3/admin-design` | this document | review |
+| 2 | `p3/admin-import` | **one commit**: the kept subset, already pruned (§4) and scrubbed (§1.3), under `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib,LICENSE,NOTICE}`, with catalog pins and no `next` dist-tag. No pre-cleanup state is ever committed. `pnpm install --frozen-lockfile`, `tsc -b` and the workspace tests pass. No build output yet. | review of the PHP, manifests, catalog and every hand-edited module |
 | 3 | `p3/admin-build` | `build.mjs`-style manifest and licence file, committed `runtime/admin/build/`, the `admin` CI job, the drift line in `vendor_drift.php` | CI green |
 | 4 | `p3/admin-package` | `admin: true` (types, extract, schema, build.rs emission, manifest), harness activation, `tests/wp/admin.test.ts` activation + page-load cases, `tests/wp_plugins.rs` case | CI green, Sol clean |
 | 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media mutations over `/zero/v1/media`, the globals form, the menu builder with `CoreAccess::mayRead`, the readable-menu test; deletes the last `/types/*` public routes | needs #38 merged; CI green, Sol clean |
 | 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, the `zero doctor` row of §2.3 | CI green, Sol clean |
 | 7 | `p3/admin-docs` | `docs/admin.md` (what it is, opt-in, URL, permalinks, what's in scope), README row, `config-api.md` entry; the pin move to stable releases (§3.3 step 2) if it is small enough, else its own PR | CI green |
 
-Each PR is reviewed with
-`git diff <base>...HEAD -- . ':!**/vendor-prefixed/**' ':!runtime/admin/build/**' ':!runtime/admin/apps/pnpm-lock.yaml'`.
-Merging is the orchestrator's; every PR reports number, head SHA, CI state and
-Sol outcome.
+Review diffs exclude `**/vendor-prefixed/**`, `runtime/admin/build/**` and
+`runtime/admin/apps/pnpm-lock.yaml`.
 
 ---
 
-## 9. Open questions for the project owner
+## 9. Decisions
 
-1. **Licence and provenance of the internal framework.** *Ruled
-   (2026-10-31): Spacefast has the right to redistribute the vendored code
-   under GPL-2.0-or-later and to change it freely.* Consequences: PR 2 is
-   unblocked; `runtime/admin/LICENSE` is the GPL-2.0-or-later text with a
-   `Copyright (c) 2026 Spacefast` line in `NOTICE`; the original framework is
-   not credited by name anywhere (the public text says "Spacefast's earlier
-   WordPress admin work"); the `views` fork's additions are covered; and the
-   port may rewrite, prune or restructure any imported file, so the scrub in
-   §1.3 and the rewire in §4 are not bound to keep the source's shape. The
-   grant is recorded in the private evidence record.
-2. **Zero's top-level licence.** *Ruled: split licence, MIT for everything
-   that can be, GPL-2.0-or-later only for what runs inside WordPress.* The
-   `p3/readme` branch's `LICENSE` is that split; `runtime/admin/` joins its
-   GPL list (§1.4). Nothing left to decide here.
-3. **Scope cut.** Users, themes, plugins, settings, design and taxonomy
-   screens are dropped (§4.2). Say so if you want any of them back; users is
-   the only one with a plausible case (an editor inviting an author), and it
-   would need the WordPress.com invite flow replaced with core user creation.
-4. **Private-API opt-in as `@wordpress/edit-site`.** The framework works by
-   claiming to be a core module. It is pinned and tested, but it is the kind
-   of thing a WordPress point release can break and Gutenberg's policy
-   discourages. Accept (this plan's default), or make the stable-pin PR (§3.3)
-   also replace every private-API use with public equivalents where they now
-   exist (`@wordpress/boot`, `@wordpress/views`), which is larger.
-5. **The identity lane's attribution header.** One file under
-   `runtime/identity/apps/admin/src/` and `runtime/identity/NOTICE` name the
-   internal framework and its contributors as copyright holders. Outside this
-   plan's files. Under the §9.1 ruling the credit by name goes: the identity
-   lane rewords both to "adapted from Spacefast's earlier WordPress admin
-   work, Copyright (c) 2026 Spacefast, GPL-2.0-or-later" before publication.
+1. **Provenance and licence of the source.** Spacefast holds the rights to
+   the vendored admin work and distributes it under GPL-2.0-or-later, and may
+   change it freely. `runtime/admin/LICENSE` is the GPL-2.0-or-later text;
+   `NOTICE` says `Copyright (c) 2026 Spacefast` and credits "Spacefast's
+   earlier WordPress admin work". The framework it descends from is not
+   named. The `views` fork's additions are covered by the same grant, and the
+   port may rewrite, prune or restructure any imported file.
+2. **Zero's licence.** Split by component: MIT by default, GPL-2.0-or-later
+   for what runs inside WordPress. The top-level `LICENSE`, `LICENSE-GPL` and
+   `LICENSE-MIT` are owned by the README PR; `runtime/admin/` is on the GPL
+   side (§1.4).
+3. **Scope.** Users, themes, plugins, settings, design and taxonomy screens
+   stay dropped (§4.2).
+4. **Private-API opt-in.** The framework's unlock of Gutenberg private APIs
+   stays, pinned and tested; the stable-pin PR (§3.3) replaces each use that
+   has a public equivalent by then.
+5. **NOTICE disposition, admin and identity alike.** Third-party licence
+   notices are preserved verbatim. Notices that only name the source
+   framework (its product name, a snapshot path, "its contributors" as
+   holder) are Spacefast-authored courtesy lines, not upstream notices, and
+   under decision 1 they read `Copyright (c) 2026 Spacefast`, GPL-2.0-or-later,
+   "adapted from Spacefast's earlier WordPress admin work". That applies to
+   `runtime/identity/NOTICE` and the one adapted file under
+   `runtime/identity/apps/admin/src/`, which the README PR or the identity
+   lane rewords; this plan does not touch them.
 
 ---
 

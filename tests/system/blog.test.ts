@@ -30,8 +30,11 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   const first = sync();
   assert.equal(first.status, 0, first.stdout + first.stderr);
   assert.equal(JSON.parse(first.stdout).data.applied, 2);
+  // A no-op: nothing applied, written, refused or in conflict.
   const again = sync();
-  assert.equal(JSON.parse(again.stdout).data.applied, 0, again.stdout);
+  assert.equal(again.status, 0, again.stdout + again.stderr);
+  const { applied, written, refused, conflicts, failed } = JSON.parse(again.stdout).data;
+  assert.deepEqual({ applied, written, refused, conflicts, failed }, { applied: 0, written: [], refused: [], conflicts: [], failed: [] });
 
   // Both posts, as the files say: the published one public, the draft only for staff.
   const api = `${receipt.url}/wp-json/zero/v1`;

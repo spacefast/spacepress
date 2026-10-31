@@ -5,13 +5,8 @@ Write `zero.config.ts` (Drizzle-style collections, relations, hooks, and actions
 into a WordPress plugin (custom post types + Secure Custom Fields). Rust runs
 only at build time; at runtime it's all PHP, with no JS engine and no Composer.
 
-On top of the schema you get field-level access, background jobs and signed
-webhooks, image sizes with focal-point crops, private files, translations,
-member sign-in, Markdown sync with `zero sync`, and, on WordPress, abilities
-for agents over MCP. Both targets run the same app the same way.
-
-**Status: early.** The examples build and run end to end on both targets.
-Expect the API to move.
+**Status: early.** The pantry example builds and runs end to end. Expect the API
+to move.
 
 ## Try it
 
@@ -30,19 +25,7 @@ curl -X POST localhost:8787/api/actions/consume -d '{"itemId":1}'
 ```
 
 Writes need a user: `zero users add me --role editor` then `zero tokens create
-me`, and send `Authorization: Bearer <token>`. `zero dev` also runs the job
-worker.
-
-`examples/blog` is the full tour. Build it for the target you'll run, turn its
-client into browser JS, then serve it:
-
-```sh
-./target/release/zero build examples/blog --target standalone
-node examples/blog/build-client.mjs
-./target/release/zero dev examples/blog       # open http://127.0.0.1:8787/
-```
-
-Sign in, switch to German, comment, and sync its posts with `zero sync`.
+me`, and send `Authorization: Bearer <token>`.
 
 `zero check` compiles for both targets without writing anything. `zero build`
 writes new migrations to `zero/migrations/{sqlite,wp}/` and the typed client to
@@ -96,12 +79,10 @@ function items__beforeCreate(array &$data)
 
 - [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API, the
   enforced subset, and the known gaps
-- [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): move a site
-  built with the original Zero 0.8 onto this one
+- [`docs/examples.md`](docs/examples.md): the examples, how to run each, and
+  the suites that prove them
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the boundary between
   compiler output and the PHP runtime
-- [`docs/identity-api.md`](docs/identity-api.md): the zero-identity plugin
-  behind sign-in on WordPress
 
 ## Tests
 
@@ -109,8 +90,6 @@ function items__beforeCreate(array &$data)
 cargo test                     # rejections, goldens, HTTP, Node↔PHP differential, generated client (tsc or TSC)
 tests/php/run.sh               # runtime: JS parity (checked against node) + DB/HTTP suite
 cd types/zero/tests && tsc -p .  # the "zero" types catch real mistakes
-tests/wp/run.sh                # the runtime on real WordPress (Docker)
-tests/system/run.sh            # examples/site end to end on WordPress and standalone, plus a 0.8 site migration
 ```
 
 ## Layout
@@ -127,9 +106,8 @@ tests/system/run.sh            # examples/site end to end on WordPress and stand
 | `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
 | `runtime/` | the PHP runtime, embedded into the binary |
 | `types/zero/` | TypeScript declarations for `"zero"` |
-| `examples/pantry/` | home pantry tracker, with a background job |
-| `examples/blog/` | the CMS example (both targets): sign-in, translations, sync, files, jobs |
-| `examples/site/` | the publication the system suite drives end to end |
+| `examples/pantry/` | home pantry tracker |
+| `examples/blog/` | the CMS example (both targets) |
 
 WordPress builds can also [declare additional pinned plugins](docs/wp-plugins.md) in `zero.config.ts`; see `examples/wp-plugins`.
 

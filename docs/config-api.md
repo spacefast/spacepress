@@ -155,8 +155,8 @@ Phase-2 modifiers:
   the same shorthands as collection access or `(ctx) => boolean` (`ctx` has
   `user`, `target`, `op`, `data`). A hidden field is absent from the row (not
   `null`), and filtering or ordering by it is refused (403). Omitted
-  operations follow the collection. wp-admin ignores it; WordPress
-  capabilities govern there.
+  operations follow the collection. On WordPress it holds in wp-admin and
+  core `/wp/v2` too (see [Access](#access)).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
@@ -212,6 +212,15 @@ user, target, op, data? }`. Functions are compiled to PHP like hooks; they
 can't use `db`. A returned filter is checked against the collection like any
 literal filter and is ANDed into reads, updates and deletes; create rules
 return a boolean. Actions take `access` too (default `"editor"`).
+
+On WordPress these rules are the only gate, on every path into the data:
+Zero's API, core `/wp/v2`, wp-admin (lists, the editor, quick edit,
+revisions, autosaves, search) and abilities. A post type's capabilities
+(`edit_zero_posts`, `edit_others_zero_posts`, ...) are answered from its rules
+through `map_meta_cap`, and no role is granted them, so granting one by hand
+changes nothing. Core reads apply the read rule and field access; core writes
+and editor saves apply the create, update and field rules, and are authorized
+on the saved data before they commit.
 
 ## Globals
 
@@ -397,24 +406,10 @@ These are build errors with the same message the runtime returns.
 
 What the design specifies and this build doesn't do yet:
 
-- Guests are never pruned: the design's `zero.prune-guests` cleanup of guest
-  users with no rows after 30 days isn't implemented.
-- WordPress profile screens show an auth collection's scalar fields (`plan`,
-  say) but not its structured or list fields (json, group, repeater, blocks,
-  media lists); edit those through the API.
 - Adding an auth collection to an existing standalone app doesn't move the
   users `zero users add` created before it: recreate them as members.
-- Under a localized parent, a `many` relation loaded with `with` returns its
-  rows in every locale rather than in each parent's locale (one page loads
-  for all parents).
-- An update whose filter matches several translations of one group changes
-  shared fields on each of them, and propagation updates the others again, so
-  their update hooks run more than once.
-- In the `"zero"` types, a localized collection whose primary key isn't named
-  `id` types `translationOf` and `translations` ids as `number`, whatever the
-  key's type.
-- Sync skips the columns listed under [Sync](#sync); edit those through the site.
 - `zero sync --watch` isn't available; run `zero sync` again, or from a scheduler.
+- Sync skips the columns listed under [Sync](#sync); edit those through the site.
 
 ## The subset (enforced at build time)
 

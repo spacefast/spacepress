@@ -84,6 +84,14 @@
     let renders = 0;
     async function render() {
       const mine = ++renders;
+      try {
+        await paint(mine);
+      } catch (err) {
+        if (mine === renders) $("posts").innerHTML = `<p class="error">${esc(err.detail ?? err.message)}</p>`;
+      }
+    }
+
+    async function paint(mine) {
       const locale = $("lang").value;
       document.documentElement.lang = locale;
       const settings = await zero.globals.settings.get();
@@ -128,7 +136,7 @@
       }
       await Promise.all([renderMe(), render()]);
     }
-    start().catch((err) => { $("posts").innerHTML = `<p class="error">${esc(err.detail ?? err.message)}</p>`; });
+    start().catch((err) => { $("me").textContent = err.detail ?? err.message; });
   </script>
 </body>
 </html>

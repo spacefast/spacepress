@@ -13,23 +13,20 @@
 
 use crate::diag::{Diag, Result, Span};
 use crate::eval::Evaluator;
-use crate::schema::{Column, Schema};
+use crate::schema::Schema;
 use crate::value::{ColBuilder, Value};
-use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Feature {
     Auth,
-    Localized,
 }
 
 /// (feature, owning lane, what, fix until then). One row per lane; delete yours when it lands.
 #[rustfmt::skip]
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
-    (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
 ];
 
 /// Set to 1 to build these declarations anyway, in debug builds only: the schema.php v3 golden test
@@ -50,36 +47,10 @@ pub fn reject(schema: &Schema, config: &Value, ev: &Evaluator<'_>, fallback: Spa
     Ok(())
 }
 
-/// Authored (non-system) columns at any depth that satisfy `test`. System columns are the
-/// compiler's own: an auth collection's `role` carries an update rule, for instance.
-fn any_column(columns: &IndexMap<String, Column>, test: &dyn Fn(&Column) -> bool) -> bool {
-    columns.values().filter(|c| !c.system).any(|c| {
-        test(c)
-            || c.fields.as_ref().is_some_and(|f| any_column(f, test))
-            || c.layouts
-                .as_ref()
-                .is_some_and(|l| l.values().any(|f| any_column(f, test)))
-    })
-}
-
 /// Unlanded features the emitted schema declares, in a fixed order.
 fn declared(schema: &Schema) -> Vec<Feature> {
-    let columns = |test: &dyn Fn(&Column) -> bool| {
-        schema
-            .collections
-            .values()
-            .map(|c| &c.columns)
-            .chain(schema.globals.values().map(|g| &g.fields))
-            .chain(schema.actions.values().map(|a| &a.input))
-            .chain(schema.jobs.values().map(|j| &j.input))
-            .any(|c| any_column(c, test))
-    };
     [
         (schema.collections.values().any(|c| c.auth), Feature::Auth),
-        (
-            schema.locales.is_some() || columns(&|c| c.localized),
-            Feature::Localized,
-        ),
     ]
     .into_iter()
     .filter_map(|(on, feature)| on.then_some(feature))
@@ -93,7 +64,6 @@ fn locate(feature: Feature, config: &Value, ev: &Evaluator<'_>) -> Option<Span> 
         seen: HashSet::new(),
         found: Vec::new(),
     };
-    walk.option(config, "locales", Feature::Localized);
     walk.value(config);
     walk.found
         .into_iter()
@@ -165,9 +135,6 @@ impl Walk<'_, '_> {
     fn column(&mut self, b: &Rc<ColBuilder>) {
         if !self.first_visit(b) {
             return;
-        }
-        if b.localized {
-            self.found.push((Feature::Localized, b.span_of("localized")));
         }
         for sub in b.fields.iter().flat_map(|f| f.values()) {
             self.column(sub);

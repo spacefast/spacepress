@@ -8,6 +8,7 @@ echo $GLOBALS['wpdb']->get_var('SELECT CONNECTION_ID()'), "\n";
 fflush(STDOUT);
 ob_start();
 $_COOKIE['zi_factor'] = $input['binding'];
+header_remove(); // the worker is a browser response; cookies go nowhere
 $r = new WP_REST_Request('POST');
 $r->set_url_params(['operation' => 'sign-in/mfa']);
 $r->set_header('Origin', untrailingslashit(home_url()));

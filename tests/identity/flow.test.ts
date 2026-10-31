@@ -177,3 +177,16 @@ test("a Bearer request that also carries a WordPress login cookie without a nonc
   const cookieOnly = await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: { cookie: wpCookie } });
   assert.equal(cookieOnly.status, 401, "a cookie without a nonce still isn't REST authentication");
 });
+
+test("suspension also ends application-password access to core REST", async () => {
+  const email = `apppw-${Date.now().toString(36)}@example.test`;
+  await signIn(email);
+  const id = wp("user", "get", email, "--field=ID");
+  const login = wp("user", "get", id, "--field=user_login");
+  const password = wp("user", "application-password", "create", id, "flow", "--porcelain");
+  const basic = { authorization: "Basic " + btoa(`${login}:${password}`) };
+  assert.equal((await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: basic })).status, 200);
+  wp("zero-identity", "suspend", id);
+  assert.equal((await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: basic })).status, 401, "a suspended account's application password no longer authenticates");
+  wp("zero-identity", "restore", id);
+});

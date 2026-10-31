@@ -32,7 +32,7 @@ final class Privacy
     public function requireTransferredOwnership(int $uid): void
     {
         $memberships = $this->db->rows(
-            "SELECT organization_id FROM {$this->db->prefix}members WHERE wp_user_id=%d AND role='owner'",
+            "SELECT organization_id FROM {$this->db->prefix}members WHERE wp_user_id=%d AND role='owner' FOR UPDATE",
             $uid,
         );
         foreach ($memberships as $m) {
@@ -41,7 +41,7 @@ final class Privacy
                 $m["organization_id"],
             );
             $owners = $this->db->rows(
-                "SELECT wp_user_id FROM {$this->db->prefix}members WHERE organization_id=%s AND role='owner'",
+                "SELECT wp_user_id FROM {$this->db->prefix}members WHERE organization_id=%s AND role='owner' FOR UPDATE",
                 $m["organization_id"],
             );
             if (count($owners) < 2) {

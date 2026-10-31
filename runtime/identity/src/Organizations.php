@@ -22,10 +22,11 @@ final class Organizations
         }
         return $v;
     }
-    private function member(string $org, int $uid): array
+    /** A membership read; `$current` makes it a locking read that sees committed changes (InnoDB). */
+    private function member(string $org, int $uid, bool $current = false): array
     {
         $m = $this->db->row(
-            "SELECT role FROM {$this->db->prefix}members WHERE organization_id=%s AND wp_user_id=%d",
+            "SELECT role FROM {$this->db->prefix}members WHERE organization_id=%s AND wp_user_id=%d" . ($current ? " FOR UPDATE" : ""),
             $org,
             $uid,
         );
@@ -216,8 +217,10 @@ final class Organizations
                     "SELECT id FROM {$this->db->prefix}organizations WHERE id=%s FOR UPDATE",
                     $org,
                 );
-                $actor = $this->member($org, $uid);
-                $member = $this->member($org, $target);
+                // Locking reads after the organization lock: a plain read could reuse a snapshot
+                // taken before a concurrent demotion committed, and leave the organization ownerless.
+                $actor = $this->member($org, $uid, true);
+                $member = $this->member($org, $target, true);
                 if ($actor["role"] !== "owner") {
                     throw new Failure(
                         "owner_required",
@@ -227,7 +230,7 @@ final class Organizations
                 }
                 if ($member["role"] === "owner" && $role !== "owner") {
                     $owners = $this->db->rows(
-                        "SELECT wp_user_id FROM {$this->db->prefix}members WHERE organization_id=%s AND role='owner'",
+                        "SELECT wp_user_id FROM {$this->db->prefix}members WHERE organization_id=%s AND role='owner' FOR UPDATE",
                         $org,
                     );
                     if (count($owners) < 2) {

@@ -16,6 +16,9 @@ $mfa->verify($uid, \Zero\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['se
 $recovery = $mfa->recoveryCodes($uid)[0];
 $binding = Security::token();
 $challenge = Plugin::$security->challenge('mfa', $uid, '', [], $binding);
+// The worker runs from the CLI (no REMOTE_ADDR): start its rate-limit bucket empty, so earlier
+// runs in the same window can't stop it before it reaches the lock.
+$db->run("DELETE FROM {$db->prefix}limits WHERE id=%s", Security::hash('mfa::' . intdiv(time(), 300)));
 $db->run('START TRANSACTION');
 $db->lock($uid); // the reset holds the account
 $worker = worker('mfa-worker.php', ['challenge' => $challenge, 'binding' => $binding, 'code' => $recovery]);

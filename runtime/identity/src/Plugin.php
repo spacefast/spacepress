@@ -180,6 +180,12 @@ final class Plugin
         // Guests can't plant WordPress credentials (password, application passwords) a former
         // holder of the guest could keep after an upgrade: those belong to saved accounts.
         add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("zero_guest", (array) $user->roles, true)), 10, 2);
+        // Application passwords skip the `authenticate` filter; refuse inactive accounts here too.
+        add_action("wp_authenticate_application_password_errors", static function ($error, $user) {
+            if ($user instanceof \WP_User && !in_array(self::$accounts->status((int) $user->ID), ["active", "none"], true)) {
+                $error->add("account_unavailable", "This account is unavailable.", ["status" => 403]);
+            }
+        }, 10, 2);
         // Core's users controller ignores an error from rest_pre_insert_user on update, so stop
         // the request before its callback runs.
         add_filter("rest_request_before_callbacks", static function ($response, $handler, $request) {

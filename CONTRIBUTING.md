@@ -78,7 +78,7 @@ tests/wp/run.sh                  # the runtime on real WordPress (Docker)
 tests/system/run.sh              # examples/site end to end on WordPress and standalone
 ```
 
-CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -D
+CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
 warnings`, `cargo test --locked`, the PHP suites, `tsc` on the types and
 examples, the client's Node tests, the WordPress suites, and a check that the
 prefixed PHP dependencies regenerate byte-for-byte (see
@@ -110,7 +110,8 @@ prefixed PHP dependencies regenerate byte-for-byte (see
 
 ## Licensing
 
-Changes under `runtime/Zero`, `runtime/identity` and `runtime/wp-plugin` are
-GPL-2.0-or-later; everything else is MIT. [`LICENSE`](LICENSE) has the map.
+Changes under `runtime/Zero`, `runtime/identity`, `runtime/wp-plugin` and
+`runtime/bin` are GPL-2.0-or-later; everything else is MIT, and bundled
+third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
 Don't add a dependency to the runtime whose license is incompatible with
 GPL-2.0-or-later, and don't copy GPL code into the MIT side.

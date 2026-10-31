@@ -148,8 +148,8 @@ this boots a throwaway WordPress with your plugins activated:
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.
-Copy `zero/client/` into any frontend, or import it by path. Node 22 runs it
-as-is:
+Copy `zero/client/` into any frontend, or import it by path. Node 22.18+ runs
+it as-is:
 
 ```ts
 import { createClient } from "./zero/client/index.ts";
@@ -242,7 +242,7 @@ Zero apps can be deployed to [Spacefast](https://spacefast.com) natively.
 Anywhere else: the WordPress build is `.zero/wp-content/plugins/*.zip`, which
 you upload or copy like any plugin. The standalone build is `.zero/app/`, with
 `public/` as the document root and the SQLite file under `data/`; any PHP 8.2
-host with `pdo_sqlite` runs it.
+host with the extensions listed under [Requirements](#requirements) runs it.
 
 ## Examples
 

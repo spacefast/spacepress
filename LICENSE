@@ -28,7 +28,9 @@ separate works. The compiler stays MIT; the files it writes under
 .zero/wp-content/plugins/zero-runtime and zero-identity, and the runtime it
 writes into a standalone build, remain GPL-2.0-or-later. Files the compiler
 generates from your zero.config.ts (schema.php, functions.php, migrations,
-zero/client/, zero.gen.ts) are yours.
+zero.gen.ts, zero/client/types.ts and schema.ts) are yours. The client's
+index.ts and README.md are copied from runtime/client/ and stay MIT; the
+copy ships with its LICENSE.
 
 Third-party code keeps its own license and is not relicensed by this file:
 

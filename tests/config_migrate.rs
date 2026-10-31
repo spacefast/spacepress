@@ -30,25 +30,44 @@ fn schema(path: &Path) -> Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
+/// Migrate a fixture into a fresh directory; returns (dir, report).
+fn migrate_fixture(from: &str, file: &str) -> (tempfile::TempDir, Value) {
+    let dir = tempfile::tempdir().unwrap();
+    let out = migrate(from, &fixture(file), &dir.path().join("zero.config.ts"));
+    assert!(
+        out.status.success(),
+        "{from}: {}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    (dir, serde_json::from_slice(&out.stdout).unwrap())
+}
+
+fn build_fixture(dir: &Path, target: &str) -> PathBuf {
+    let out = dir.join(target);
+    let build = zero()
+        .args(["build", "--target", target, "--out"])
+        .arg(&out)
+        .arg(dir)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{target}: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    out
+}
+
 #[test]
-fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
-    for (from, file) in [
-        ("emdash", "emdash.json"),
-        ("payload", "payload.ts"),
-        ("sanity", "sanity.ts"),
-        ("zero", "legacy-zero.ts"),
+fn each_source_compiles_for_both_targets_with_its_storage_and_access() {
+    for (from, file, plugin, public) in [
+        ("emdash", "emdash.json", "zero-app-imported", false),
+        ("payload", "payload.ts", "zero-app-imported", true),
+        ("sanity", "sanity.ts", "zero-app-imported", false),
+        ("zero", "legacy-zero.ts", "zero-app-notes", true),
     ] {
-        let dir = tempfile::tempdir().unwrap();
-        let input = fixture(file);
-        let original = std::fs::read(&input).unwrap();
-        let out = migrate(from, &input, &dir.path().join("zero.config.ts"));
-        assert!(
-            out.status.success(),
-            "{from}: {}\n{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let (dir, report) = migrate_fixture(from, file);
         assert_eq!(report["status"], "written");
         assert!(
             report["entries"]
@@ -57,142 +76,128 @@ fn imports_each_source_into_a_real_compilable_wordpress_and_php_app() {
                 .iter()
                 .any(|e| e["outcome"] == "review")
         );
-        if from == "payload" {
-            assert!(
-                report["entries"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|e| e["pointer"] == "/collections/0/fields/4"
-                        && e["outcome"] == "review"
-                        && e["reason"].as_str().unwrap().contains("empty strings"))
-            );
-        }
-        for target in ["wp", "standalone"] {
-            let build = zero()
-                .args(["build", "--target", target, "--out"])
-                .arg(dir.path().join(target))
-                .arg(dir.path())
-                .output()
-                .unwrap();
-            assert!(
-                build.status.success(),
-                "{from}/{target}: {}",
-                String::from_utf8_lossy(&build.stderr)
-            );
-            let plugin = if target == "wp" {
-                if from == "zero" {
-                    "plugins/zero-app-notes/"
-                } else {
-                    "plugins/zero-app-imported/"
-                }
-            } else {
-                ""
-            };
-            let data = schema(&dir.path().join(target).join(plugin).join("zero/app/schema.php"));
+        for (target, schema_php) in [
+            ("wp", format!("plugins/{plugin}/zero/app/schema.php")),
+            ("standalone", "zero/app/schema.php".into()),
+        ] {
+            let data = schema(&build_fixture(dir.path(), target).join(schema_php));
             let notes = &data["collections"]["notes"];
-            assert_eq!(notes["editor"], true);
+            assert_eq!(notes["editor"], true, "{from}/{target}");
             assert_eq!(notes["columns"]["title"]["notNull"], true);
-            assert_eq!(
-                notes["access"]["read"]["allow"],
-                if from == "zero" || from == "payload" {
-                    json!(true)
-                } else {
-                    json!(false)
-                }
-            );
+            assert_eq!(notes["access"]["read"]["allow"], json!(public), "{from}/{target}");
             assert_eq!(notes["access"]["create"]["allow"], false);
-            if matches!(from, "sanity" | "emdash") && target == "standalone" {
-                let runtime = Command::new("php")
-                    .args([
-                        "-r",
-                        r#"
-                    require $argv[1] . '/zero/runtime/bootstrap.php';
-                    $app = \Zero\App::boot($argv[1]);
-                    $valid = ['title' => 'Title'];
-                    if ($argv[2] === 'emdash') $valid['description'] = 'Description';
-                    $app->db->insert('notes', $valid);
-                    $errors = [];
-                    foreach ($valid as $field => $_) {
-                        $values = $valid;
-                        $values[$field] = '';
-                        try { $app->db->insert('notes', $values); }
-                        catch (\Zero\HttpError $e) { $errors[$field] = [$e->status, $e->pointer]; }
-                    }
-                    echo json_encode($errors);
-                "#,
-                    ])
-                    .arg(dir.path().join(target))
-                    .arg(from)
-                    .output()
-                    .unwrap();
-                assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
-                assert_eq!(
-                    serde_json::from_slice::<Value>(&runtime.stdout).unwrap(),
-                    if from == "emdash" {
-                        json!({"title": [422, "/title"], "description": [422, "/description"]})
-                    } else {
-                        json!({"title": [422, "/title"]})
-                    }
-                );
-            }
-            if from == "payload" {
-                assert_eq!(notes["columns"]["priority"]["default"]["value"], 2);
-                assert_eq!(notes["columns"]["updatedAt"]["onUpdate"]["now"], true);
-                if target == "standalone" {
-                    let runtime = Command::new("php")
-                        .args([
-                            "-r",
-                            r#"
-                        require $argv[1] . '/zero/runtime/bootstrap.php';
-                        $app = \Zero\App::boot($argv[1]);
-                        $row = $app->db->insert('notes', ['title' => 'Imported', 'body' => 'Body', 'tags' => ['one']], true)[0];
-                        try { $app->db->insert('notes', ['title' => 'Invalid', 'body' => 'Body', 'tags' => ['one'], 'priority' => 6]); }
-                        catch (\Zero\HttpError $e) { $error = $e->getMessage(); }
-                        $required = [];
-                        foreach (['title' => '', 'body' => '', 'tags' => [], 'details' => false] as $field => $empty) {
-                            $values = ['title' => 'Title', 'body' => 'Body', 'tags' => ['one']];
-                            $values[$field] = $empty;
-                            try { $app->db->insert('notes', $values); }
-                            catch (\Zero\HttpError $e) { $required[$field] = [$e->status, $e->pointer]; }
-                        }
-                        $app->db->insert('notes', ['title' => str_repeat('😀', 60), 'body' => 'Body', 'tags' => ['one']]);
-                        try { $app->db->insert('notes', ['title' => str_repeat('😀', 61), 'body' => 'Body', 'tags' => ['one']]); }
-                        catch (\Zero\HttpError $e) { $bound = [$e->status, $e->pointer]; }
-                        // Payload's defaultMaxTextLength bounds a textarea that declares no maxLength.
-                        $app->db->insert('notes', ['title' => 'Long', 'body' => str_repeat('a', 40000), 'tags' => ['one']]);
-                        try { $app->db->insert('notes', ['title' => 'Longer', 'body' => str_repeat('a', 40001), 'tags' => ['one']]); }
-                        catch (\Zero\HttpError $e) { $implicit = [$e->status, $e->pointer]; }
-                        $response = $app->handle('GET', '/notes', [], '');
-                        echo json_encode(['row' => $row, 'error' => $error ?? null, 'status' => $response[0], 'required' => $required, 'bound' => $bound ?? null, 'implicit' => $implicit ?? null]);
-                    "#,
-                        ])
-                        .arg(dir.path().join(target))
-                        .output()
-                        .unwrap();
-                    assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
-                    let result: Value = serde_json::from_slice(&runtime.stdout).unwrap();
-                    assert_eq!(result["row"]["priority"], 2);
-                    assert_eq!(result["row"]["stage"], "todo");
-                    assert_eq!(result["row"]["done"], false);
-                    assert_eq!(result["row"]["archived"], Value::Null);
-                    assert_eq!(result["row"]["details"], json!([]));
-                    assert!(result["error"].as_str().unwrap().contains('5'));
-                    assert_eq!(result["status"], 200);
-                    for field in ["title", "body", "tags", "details"] {
-                        assert_eq!(result["required"][field], json!([422, format!("/{field}")]));
-                    }
-                    assert_eq!(result["bound"], json!([422, "/title"]));
-                    assert_eq!(result["implicit"], json!([422, "/body"]));
-                }
-            }
         }
-        assert_eq!(std::fs::read(input).unwrap(), original);
-        let before = std::fs::read(dir.path().join("zero.config.ts")).unwrap();
-        let collision = migrate(from, &fixture(file), &dir.path().join("zero.config.ts"));
-        assert_eq!(collision.status.code(), Some(1));
-        assert_eq!(std::fs::read(dir.path().join("zero.config.ts")).unwrap(), before);
     }
+}
+
+#[test]
+fn publication_never_overwrites_the_source_or_an_existing_config() {
+    let input = fixture("payload.ts");
+    let original = std::fs::read(&input).unwrap();
+    let (dir, _) = migrate_fixture("payload", "payload.ts");
+    let config = dir.path().join("zero.config.ts");
+    let before = std::fs::read(&config).unwrap();
+    let collision = migrate("payload", &input, &config);
+    assert_eq!(collision.status.code(), Some(1));
+    assert_eq!(std::fs::read(&config).unwrap(), before);
+    assert_eq!(std::fs::read(&input).unwrap(), original);
+}
+
+#[test]
+fn required_emdash_and_sanity_strings_reject_empty_values() {
+    for (from, file, fields) in [
+        ("emdash", "emdash.json", vec!["title", "description"]),
+        ("sanity", "sanity.ts", vec!["title"]),
+    ] {
+        let (dir, _) = migrate_fixture(from, file);
+        let app = build_fixture(dir.path(), "standalone");
+        let base: serde_json::Map<String, Value> = fields.iter().map(|f| (f.to_string(), json!("Value"))).collect();
+        let cases = json!(fields.iter().map(|f| json!([f, ""])).collect::<Vec<_>>());
+        let expected = json!(fields.iter().map(|f| json!(format!("/{f}"))).collect::<Vec<_>>());
+        assert_eq!(accepts(&app, Value::Object(base), cases), expected, "{from}");
+    }
+}
+
+#[test]
+fn payload_runtime_rules_survive_the_import() {
+    let (dir, report) = migrate_fixture("payload", "payload.ts");
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/collections/0/fields/4"
+                && e["outcome"] == "review"
+                && e["reason"].as_str().unwrap().contains("empty strings"))
+    );
+    let notes = &schema(&build_fixture(dir.path(), "wp").join("plugins/zero-app-imported/zero/app/schema.php"))["collections"]
+        ["notes"];
+    assert_eq!(notes["columns"]["priority"]["default"]["value"], 2);
+    assert_eq!(notes["columns"]["updatedAt"]["onUpdate"]["now"], true);
+    let app = build_fixture(dir.path(), "standalone");
+    let runtime = Command::new("php")
+        .args([
+            "-r",
+            r#"
+            require $argv[1] . '/zero/runtime/bootstrap.php';
+            $app = \Zero\App::boot($argv[1]);
+            $row = $app->db->insert('notes', ['title' => 'Imported', 'body' => 'Body', 'tags' => ['one']], true)[0];
+            try { $app->db->insert('notes', ['title' => 'Invalid', 'body' => 'Body', 'tags' => ['one'], 'priority' => 6]); }
+            catch (\Zero\HttpError $e) { $error = $e->getMessage(); }
+            $response = $app->handle('GET', '/notes', [], '');
+            echo json_encode(['row' => $row, 'status' => $response[0], 'error' => $error ?? null]);
+        "#,
+        ])
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(runtime.status.success(), "{}", String::from_utf8_lossy(&runtime.stderr));
+    let result: Value = serde_json::from_slice(&runtime.stdout).unwrap();
+    // Defaults (including required checkbox false), and the literal read access.
+    assert_eq!(
+        [
+            &result["row"]["priority"],
+            &result["row"]["stage"],
+            &result["row"]["done"],
+            &result["row"]["archived"],
+            &result["row"]["details"]
+        ],
+        [&json!(2), &json!("todo"), &json!(false), &Value::Null, &json!([])]
+    );
+    assert_eq!(result["status"], 200);
+    // Payload's max: 5 is carried as Zero's bound and named in the error.
+    assert!(result["error"].as_str().unwrap().contains('5'));
+    let base = json!({"title": "Title", "body": "Body", "tags": ["one"]});
+    assert_eq!(
+        accepts(
+            &app,
+            base,
+            json!([
+                ["priority", 6],
+                ["title", ""],
+                ["body", ""],
+                ["tags", []],
+                ["details", false],
+                // UTF-16 bound: 60 emoji are 120 code units (maxLength 120), 61 are 122.
+                ["title", "😀".repeat(60)],
+                ["title", "😀".repeat(61)],
+                // defaultMaxTextLength bounds a textarea without maxLength.
+                ["body", "a".repeat(40000)],
+                ["body", "a".repeat(40001)]
+            ])
+        ),
+        json!([
+            "/priority",
+            "/title",
+            "/body",
+            "/tags",
+            "/details",
+            true,
+            "/title",
+            true,
+            "/body"
+        ])
+    );
 }
 
 #[test]

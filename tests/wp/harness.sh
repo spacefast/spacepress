@@ -61,7 +61,13 @@ PINS
   for pin in "${pins[@]}"; do
     read -r slug version sha <<< "$pin"
     zip="cache/$slug.$version.zip"
-    [[ -f $zip ]] || curl -sSfL -o "$zip" "https://downloads.wordpress.org/plugin/$slug.$version.zip"
+    if [[ ! -f $zip ]]; then
+      # Verified under a private name, then published by rename: a concurrent `up` sharing this cache
+      # never sees a partial ZIP.
+      curl -sSfL -o "$zip.$$" "https://downloads.wordpress.org/plugin/$slug.$version.zip"
+      printf '%s  %s\n' "$sha" "$zip.$$" | sha256sum -c --quiet || { rm -f "$zip.$$"; exit 1; }
+      mv -f "$zip.$$" "$zip"
+    fi
     printf '%s  %s\n' "$sha" "$zip" | sha256sum -c --quiet
   done
 

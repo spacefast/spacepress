@@ -328,10 +328,15 @@ Modifiers (13, down from 18):
   defaulted, which is what the runtime already does. That needs the
   structured builders to carry their child builders (`F`) instead of the
   erased `SelectShape<F>` (`index.d.ts:301`), so `hasDefault` survives to the
-  write type; the read type is unchanged.
-- **`.unique()` on text implies `.max(191)`** (F25). The constant moves into
-  the compiler; an explicit larger `.max()` on a unique text column is the
-  build error it is today.
+  write type; the read type is unchanged. Globals get the same treatment:
+  their update type is `Partial<SelectShape>` today (`index.d.ts:1027`) and
+  the compiler checks `db.globals.x.update()` patches against the read shape
+  (`src/compile.rs:4491`); both move to the write shape so a defaulted
+  sub-field may be omitted in a global patch as it may in a row.
+- **`.unique()` on a text kind implies `.max(191)`** (F25): `text`,
+  `email` and `url`, the kinds today's check covers (`src/extract.rs:1224`,
+  `is_stringy`). The constant moves into the compiler; an explicit larger
+  `.max()` on a unique text column is the build error it is today.
 - **`.access({ write })`** is a shorthand for `create` and `update` together
   (F9); either may still be given alone and the specific one wins.
 
@@ -513,7 +518,11 @@ Rule = boolean | "anyone" | "authenticated" | Role | "self" | ((ctx) => boolean 
 - **`"self"` widens to ownership** (F16): on a collection with exactly one
   `user()` column (§4.8), `"self"` on `read`, `update` or `delete` means
   "rows whose `user()` column is the viewer" (an anonymous viewer gets
-  nothing). On an auth collection it means the viewer's own row, as today.
+  nothing), and it keeps the function rule's behaviour it replaces: the
+  draft guard that shorthand reads get for viewers below editor
+  (`Db.php:231`) is not added, so an author's `"self"` read sees their own
+  drafts, exactly as `{ userId: ctx.user?.id ?? -1 }` does today. On an auth
+  collection it means the viewer's own row, as today.
   With two `user()` columns (`createdById`, `assignedToId`) `"self"` is a
   build error asking for a function rule naming the column. On `create`, `"self"`
   stays rejected as today (open question 5 proposes a meaning). The
@@ -536,7 +545,12 @@ export const settings = global({ ...fields }, { label?, access?: { read?, update
 defineConfig({ globals: { settings } })
 ```
 
-No name argument (F7, F15); the key names it. Field rules unchanged.
+No name argument (F7, F15); the key names it. Field rules unchanged in
+substance, but the declarations are narrowed to what the compiler accepts:
+global fields take no `.access()` (`src/extract.rs:1143` rejects it today
+while the builder type allows it), and `GateRule` for actions and globals
+loses `"self"` (`src/extract.rs:927` rejects it; `index.d.ts:965` admits
+it).
 
 ### 4.6 Actions and jobs
 
@@ -633,8 +647,10 @@ designations go; `title: "name"` stays where the title column is not called
 #### 4.9.3 `content`
 
 A collection is a content collection when it has a `richText()` column, a
-`text()` column named `title`, an explicit `title:` option, or Markdown
-`sync`. Otherwise it is a table; `auth: true` is always a table and
+column named `title` whose kind is text (which includes a single
+`select()`, since that is a text column with an enum, F1; `.notNull()` is
+checked by the title rule, not this one), an explicit `title:` option, or
+Markdown `sync`. Otherwise it is a table; `auth: true` is always a table and
 `auth: true, content: true` is rejected (today's rule for `editor`). Off:
 `content: true` or `content: false` written out. The rule is printed in
 `zero build --explain` (§7.2), and the generated client's `SCHEMA` carries
@@ -714,7 +730,8 @@ any explicit `access`.
 
 #### 4.9.10 Unique text length
 
-`.unique()` on text implies `.max(191)`. Off: an explicit smaller `.max()`.
+`.unique()` on `text`, `email` or `url` implies `.max(191)`. Off: an
+explicit smaller `.max()`.
 
 ### 4.10 `defineConfig`
 

@@ -21,7 +21,6 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Feature {
-    Sync,
     Auth,
     Localized,
 }
@@ -29,7 +28,6 @@ enum Feature {
 /// (feature, owning lane, what, fix until then). One row per lane; delete yours when it lands.
 #[rustfmt::skip]
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
-    (Feature::Sync, 'C', "content sync (`sync`)", "remove sync"),
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
     (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
 ];
@@ -77,7 +75,6 @@ fn declared(schema: &Schema) -> Vec<Feature> {
             .any(|c| any_column(c, test))
     };
     [
-        (schema.collections.values().any(|c| c.sync.is_some()), Feature::Sync),
         (schema.collections.values().any(|c| c.auth), Feature::Auth),
         (
             schema.locales.is_some() || columns(&|c| c.localized),
@@ -147,7 +144,6 @@ impl Walk<'_, '_> {
             Value::Collection(c) if self.first_visit(c) => {
                 if let Some(options) = &c.options {
                     self.option(options, "auth", Feature::Auth);
-                    self.option(options, "sync", Feature::Sync);
                 }
                 for b in c.columns.values() {
                     self.column(b);

@@ -1,7 +1,7 @@
 // The WP test app: the blog example's schema, relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
-import { boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, real, select, text, timestamp, HttpError } from "zero";
+import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, real, select, text, timestamp, HttpError } from "zero";
 import { schema, settings, comments } from "../../../examples/blog/zero.config.ts";
 import blog from "../../../examples/blog/zero.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
@@ -53,7 +53,14 @@ export default defineConfig({
   schema: appSchema,
   relations: appRelations,
   globals: merge("global", [{ settings }, ...lanes.map((l) => l.globals)]),
-  actions: merge("action", [blog.actions, ...lanes.map((l) => l.actions)]),
+  actions: merge("action", [blog.actions, {
+    // Trusted db.globals from compiled code, against the WP options-backed global store.
+    bumpPostsPerPage: action({ input: {}, handler: async () => {
+      const before = await db.globals.settings.get();
+      const after = await db.globals.settings.update({ postsPerPage: before.postsPerPage + 1 });
+      return [before.postsPerPage, after.postsPerPage];
+    } }),
+  }, ...lanes.map((l) => l.actions)]),
   hooks: mergeHooks([
     {
     posts: {

@@ -164,6 +164,13 @@ final class Wire
             }
         }
 
+        // Authorization preflights and the pipeline see plain arrays outside json() values.
+        foreach ($data as $name => $v) {
+            if (isset($spec['columns'][$name])) {
+                $data[$name] = \Zero\Schema::plainOutsideJson($spec['columns'][$name], $v);
+            }
+        }
+
         return $data;
     }
 

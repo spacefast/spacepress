@@ -1503,6 +1503,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             $got = $e::class . ': ' . $e->getMessage();
         }
         eq('an update rule gets plain arrays; the json() value keeps {}', $got, [[], '{"a":{}}']);
+        // A json() filter operand keeps `{}`: deleting rows whose meta is {} leaves the one holding [].
+        $db->insert('marked', [['meta' => \Zero\Js::decodeJson('{}')], ['meta' => []]]);
+        $db->delete('marked', \Zero\Js::decodeJson('{"meta":{"eq":{}}}'));
+        eq('a json() filter compares {} and [] as different values', array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']),
+            $db->findMany('marked', ['orderBy' => ['id' => 'asc']])), ['{"a":{}}', '[]']);
     } finally {
         \Zero\Db::setInstance($previous);
     }

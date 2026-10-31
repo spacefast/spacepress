@@ -1285,13 +1285,14 @@ final class Js
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {
-            // PHP objects can't hold a property named "\u0000…": such valid JSON decodes as arrays
-            // (that one value then can't tell `{}` from `[]`), anything invalid still throws.
+            // PHP objects can't hold a property named "\u0000…". Such valid JSON is decoded with a
+            // placeholder for that one byte in keys, then restored, so `{}` elsewhere keeps its shape.
             if (!str_contains($s, '\\u0000')) {
                 throw $e;
             }
+            $mark = "\u{10FFFF}nul\u{10FFFF}";
 
-            return json_decode($s, true, $depth, JSON_THROW_ON_ERROR);
+            return self::restoreNul(self::fromJson(json_decode(str_replace('\\u0000', $mark, $s), false, $depth, JSON_THROW_ON_ERROR)), $mark);
         }
     }
 
@@ -1310,6 +1311,22 @@ final class Js
         }
 
         return $v;
+    }
+
+    private static function restoreNul(mixed $v, string $mark): mixed
+    {
+        if (is_string($v)) {
+            return str_replace($mark, "\0", $v);
+        }
+        if (!is_array($v)) {
+            return $v;
+        }
+        $out = [];
+        foreach ($v as $k => $x) {
+            $out[is_string($k) ? str_replace($mark, "\0", $k) : $k] = self::restoreNul($x, $mark);
+        }
+
+        return $out;
     }
 
     private static function fromJson(mixed $v): mixed

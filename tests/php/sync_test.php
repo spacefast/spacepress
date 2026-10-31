@@ -162,6 +162,9 @@ problem('a hook cannot change a uid either', fn () => $db->update('notes', ['tit
 $before = $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'];
 $db->update('notes', ['title' => 'drop it'], ['id' => $hooked['id']]);
 eq('a beforeUpdate returning {} replaces the patch with nothing', $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'], $before);
+// What sync authorizes (Wire::decode's data) is plain outside json(): a select sent as `{}` is [].
+eq('sync hands rules plain arrays outside json() values, and keeps {} inside them', \Zero\Js::jsonStringify(\Zero\Sync\Wire::decode('notes',
+    \Zero\Js::decodeJson('{"uid":"zr_0f0f0f0f0f0f0f0f0f0f","fields":{"title":"T","meta":{"a":{}}},"body":null}'), true)), '{"title":"T","meta":{"a":{}},"body":null}');
 eq('and the row keeps its uid and title', [$db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['uid'], $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']], [$hooked['uid'], 'Hooked']);
 $given = $db->insert('people', ['name' => 'Grace', 'uid' => 'zr_11111111111111111111'], true)[0];
 eq('a writer may supply the uid', $given['uid'], 'zr_11111111111111111111');

@@ -109,7 +109,7 @@ final class Db
     /** @return list<array> */
     public function findMany(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): array
     {
-        $opts = Js::plain($opts);
+        $opts = $this->plainQuery($collection, $opts);
         $rows = $this->fetch($collection, $opts, '', $viewer);
 
         return $this->project($rows, $collection, $opts, '');
@@ -117,7 +117,7 @@ final class Db
 
     public function findFirst(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): ?array
     {
-        $opts = Js::plain($opts);
+        $opts = $this->plainQuery($collection, $opts);
         return $this->findMany($collection, ['limit' => 1] + $opts, $viewer)[0] ?? null;
     }
 
@@ -383,7 +383,7 @@ final class Db
     /** @return ?list<array> */
     public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
-        [$set, $where] = [$set instanceof JsObject ? [] : $set, Js::plain($where)];
+        [$set, $where] = [$set instanceof JsObject ? [] : $set, $this->plainFilter($collection, $where)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
         $set = self::plainOutsideJson($this->schema->collection($collection)['columns'], $set);
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer) {
@@ -402,7 +402,7 @@ final class Db
     /** @return ?list<array> */
     public function delete(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
-        $where = Js::plain($where);
+        $where = $this->plainFilter($collection, $where);
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
@@ -424,6 +424,42 @@ final class Db
         }
 
         return is_array($r) ? [$r] : [];
+    }
+
+    /** Query options as plain arrays, except a json() column's filter operands (`{ meta: { eq: {} } }`). */
+    private function plainQuery(string $collection, array|JsObject $opts): array
+    {
+        $opts = $opts instanceof JsObject ? [] : $opts;
+        foreach ($opts as $k => $v) {
+            $opts[$k] = $k === 'where' ? $this->plainFilter($collection, $v) : Js::plain($v);
+        }
+
+        return $opts;
+    }
+
+    /**
+     * A filter as plain arrays, walking OR/AND/NOT and relations, but leaving a json() column's
+     * operands as given: `{}` and `[]` are different values to compare against.
+     */
+    private function plainFilter(string $collection, mixed $where): mixed
+    {
+        $where = $where instanceof JsObject ? [] : $where;
+        if (!is_array($where) || !$this->schema->hasCollection($collection)) {
+            return Js::plain($where);
+        }
+        $spec = $this->schema->collection($collection);
+        foreach ($where as $k => $v) {
+            $k = (string) $k;
+            $where[$k] = match (true) {
+                $k === 'OR' || $k === 'AND' => is_array($v) ? array_map(fn ($f) => $this->plainFilter($collection, $f), $v) : Js::plain($v),
+                $k === 'NOT' => $this->plainFilter($collection, $v),
+                ($spec['columns'][$k]['type'] ?? null) === 'json' => $v,
+                isset($spec['relations'][$k]) => $this->plainFilter($spec['relations'][$k]['collection'], $v),
+                default => Js::plain($v),
+            };
+        }
+
+        return $where;
     }
 
     /** Only json() values keep the empty-object marker; field access, rules and hooks see plain arrays. */

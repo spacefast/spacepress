@@ -1,6 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, id, text, integer, defineConfig, action } from "zero";
+import { job, jobs, once, env } from "zero"; // lane D
 
 const n = collection("n", { id: id() }, { editor: false });
 
@@ -235,5 +236,38 @@ export default defineConfig({
     thrown: run(() => {
       throw new Error("expected failure");
     }),
+    ...laneDActions(),
   },
+  jobs: laneDJobs(),
 });
+
+// ---- lane D: jobs, once(), env() (phase 2 §6.1). The Node shim keeps once() receipts and pending
+// enqueue keys in memory; PHP keeps them in __zero_receipts and the outbox. Keys are unique per case.
+function laneDJobs() {
+  return { ping: job({ input: { note: text() }, handler: async () => {} }) };
+}
+
+function laneDActions() {
+  return {
+    onceReplays: action({ input: {}, handler: async () => {
+      let runs = 0;
+      const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"] }; });
+      const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"] }; });
+      const other = await once("lane-d-other", () => { runs++; return runs; });
+      return { first, second, other, runs };
+    } }),
+    onceRegex: action({ input: {}, handler: async () => {
+      const first = await once("lane-d-regex", () => /^a+$/i);
+      const replay = await once("lane-d-regex", () => /never/);
+      return [first.test("AAA"), replay.test("AAA"), replay.test("b")];
+    } }),
+    onceNull: action({ input: {}, handler: async () => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")] }),
+    enqueueIds: action({ input: {}, handler: async () => {
+      const plain = await jobs.ping.enqueue({ note: "hi" });
+      const keyed = await jobs.ping.enqueue({ note: "x" }, { key: "lane-d", delay: 5 });
+      const same = await jobs.ping.enqueue({ note: "y" }, { key: "lane-d" });
+      return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
+    } }),
+    envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+  };
+}

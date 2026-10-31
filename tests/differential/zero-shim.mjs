@@ -16,6 +16,25 @@ export const group = builder, repeater = builder, blocks = builder;
 export const defineRelations = () => ({});
 export const defineConfig = (c) => c;
 export const action = (a) => a;
+export const job = (j) => j;
+// Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
+const receipts = new Map();
+export const once = async (key, fn) => {
+  if (!receipts.has(key)) receipts.set(key, (await fn()) ?? null);
+  return receipts.get(key);
+};
+const pending = new Map();
+export const jobs = new Proxy({}, {
+  get: (_, name) => ({
+    enqueue: async (input, opts = {}) => {
+      const id = crypto.randomUUID();
+      if (opts.key === undefined) return { id };
+      if (!pending.has(`${name}:${opts.key}`)) pending.set(`${name}:${opts.key}`, id);
+      return { id: pending.get(`${name}:${opts.key}`) };
+    },
+  }),
+});
+export const env = (name) => process.env[name] ?? null;
 export const db = new Proxy({}, { get() { throw new Error("db isn't available in differential tests"); } });
 export class HttpError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }

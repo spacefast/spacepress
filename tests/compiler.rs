@@ -655,10 +655,11 @@ fn rejects_phase2_static_contracts() {
         ("reject-env-predicate", "env() is only allowed in webhooks/signature"),
         ("reject-signature-access", "signature cannot be combined with access"),
         ("reject-webhook-collection", "webhook event names an unknown collection"),
-        ("reject-lane-d-enqueue", "not implemented until lane D"),
-        ("reject-lane-d-once", "not implemented until lane D"),
-        ("reject-lane-d-env", "not implemented until lane D"),
-        ("reject-lane-d-env-captured", "not implemented until lane D"),
+        ("reject-enqueue-unknown-job", "unknown job `send`"),
+        (
+            "reject-env-captured",
+            "env() values can't be stored inside captured data",
+        ),
         ("reject-auth-duplicate", "at most one auth: true collection"),
         (
             "reject-auth-email",
@@ -1116,4 +1117,48 @@ fn phase2_schema_and_closures_match_the_contract() {
         serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// §6.1 on standalone, through the binary: a compiled hook enqueues a compiled job, and
+/// `zero jobs work --once` / `zero jobs list` drive the PHP queue (its semantics live in tests/php/jobs_test.php).
+#[test]
+fn compiled_jobs_run_through_the_zero_jobs_cli() {
+    let tmp = std::env::temp_dir().join(format!("zero-jobs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/jobs"), &tmp);
+    let out = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let php = |args: &[&str]| -> serde_json::Value {
+        let out = Command::new("php")
+            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+            .args(args)
+            .output()
+            .unwrap();
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)))
+    };
+    let jobs = |args: &[&str]| -> serde_json::Value {
+        let out = zero().arg("jobs").args(args).arg("--dir").arg(&tmp).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()["data"].clone()
+    };
+    php(&[
+        "insert",
+        "items",
+        r#"[{"name":"Milk","quantity":1},{"name":"Eggs","quantity":9}]"#,
+    ]);
+    let queued = jobs(&["list", "--state", "pending"]);
+    assert_eq!(queued.as_array().unwrap().len(), 1, "{queued}");
+    assert_eq!(queued[0]["job"], "notifyLowStock");
+    assert_eq!(queued[0]["key"], "low-1");
+    assert_eq!(jobs(&["work", "--once"])["done"], 1);
+    assert_eq!(
+        php(&["find", "alerts"])["data"],
+        serde_json::json!([{ "id": 1, "itemId": 1, "note": "Milk is low (attempt 1)" }])
+    );
+    assert_eq!(jobs(&["list", "--state", "done"]).as_array().unwrap().len(), 1);
+    let _ = std::fs::remove_dir_all(&tmp);
 }

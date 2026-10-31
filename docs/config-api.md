@@ -149,6 +149,21 @@ onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
 length; lists: item count), `.pattern(/re/)` (strings), `.validate((value, ctx)
 => true | "message")` (compiled to PHP, runs on every write).
 
+Phase-2 modifiers:
+
+- `.access({ read?, create?, update? })`: who may see or write this field, with
+  the same shorthands as collection access or `(ctx) => boolean` (`ctx` has
+  `user`, `target`, `op`, `data`). A hidden field is absent from the row (not
+  `null`), and filtering or ordering by it is refused (403). Omitted
+  operations follow the collection. On WordPress it holds in wp-admin and
+  core `/wp/v2` too (see [Access](#access)).
+- `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
+  visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
+  with a top-level `OR`. It never hides data from the API.
+- `.localized()`: the field is translated per locale (text, richText, json,
+  select, group, repeater, blocks). See [Locales](#locales).
+- `file({ bucket })`: a column holding a private file's id. See [Files](#files).
+
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
 boolean, `.pattern()` on a number, `.references()` on text and so on fail the
 build at the modifier. `.unique()` text needs `.max(≤191)` (MySQL index limit).
@@ -175,6 +190,10 @@ is a build error.
 | `content` | a `content: richText()` column | the WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
 | `api` | all `true` | `{ list?, get?, create?, update?, delete? }` |
+| `uid` | `false` (`true` with `sync`) | a stable `uid` (`zr_` + 20 hex) on every row, immutable once set |
+| `sync` | none | `"content/posts/*.md"` or `"*.json"`: keep rows and files in step with `zero sync`. See [Sync](#sync) |
+| `auth` | `false` | this collection's rows are the app's users. See [Sign-in](#sign-in) |
+| `agents` | `true` | WordPress: expose its operations as abilities, and so over MCP |
 
 Rejected: an editor collection without a title, names longer than 15
 characters on editor collections (WordPress post types are ≤ 20 with the
@@ -185,12 +204,23 @@ and user columns named `status`/`publishedAt` on drafts collections.
 ### Access
 
 `access: { read, create, update, delete }`, each one of `true`/`false`,
-`"anyone"`, `"authenticated"`, a role (`"subscriber" < "author" < "editor" <
-"admin"`, that role or higher), or `(ctx) => boolean | filter` with `ctx = {
+`"anyone"`, `"authenticated"` (signed in, guests included), a role (`"guest" <
+"subscriber" < "author" < "editor" < "admin"`, that role or higher), `"self"`
+(on an `auth` collection: the signed-in user's own row), or
+`(ctx) => boolean | filter` with `ctx = {
 user, target, op, data? }`. Functions are compiled to PHP like hooks; they
 can't use `db`. A returned filter is checked against the collection like any
 literal filter and is ANDed into reads, updates and deletes; create rules
 return a boolean. Actions take `access` too (default `"editor"`).
+
+On WordPress these rules are the only gate, on every path into the data:
+Zero's API, core `/wp/v2`, wp-admin (lists, the editor, quick edit,
+revisions, autosaves, search) and abilities. A post type's capabilities
+(`edit_zero_posts`, `edit_others_zero_posts`, ...) are answered from its rules
+through `map_meta_cap`, and no role is granted them, so granting one by hand
+changes nothing. Core reads apply the read rule and field access; core writes
+and editor saves apply the create, update and field rules, and are authorized
+on the saved data before they commit.
 
 ## Globals
 
@@ -201,10 +231,10 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 
 ## defineConfig
 
-`defineConfig({ name?, target?, schema, relations?, globals?, hooks?, actions? })`.
-`name` (a slug, default: the project directory) names the WordPress plugin
-`zero-<name>`; `target` (`"standalone"` or `"wp"`) is the default for
-`zero build`.
+`defineConfig({ name?, target?, schema, relations?, globals?, hooks?, actions?,
+jobs?, webhooks?, media?, files?, locales?, plugins? })`. `name` (a slug,
+default: the project directory) names the WordPress plugin `zero-app-<name>`;
+`target` (`"standalone"` or `"wp"`) is the default for `zero build`.
 
 ## Relations
 
@@ -235,6 +265,116 @@ Throwing anything aborts the request and rolls back every write in it.
 `action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /api/actions/<name>`.
 `input` uses column builders for validation; the return value is the response `data`.
 
+- `idempotent: true`: a request with an `Idempotency-Key` header runs once per
+  key and caller; a repeat returns the stored result, and the same key with
+  different input is a 409. `once(key, fn)` does the same inside any handler.
+- `signature: { secret: env("NAME"), header, scheme: "zero" | "hmac-sha256" }`:
+  an inbound webhook. The HMAC over the raw body replaces the access rule;
+  `zero` also checks a timestamp so old deliveries are refused.
+- `agents: false` keeps it out of MCP and the abilities' public REST
+  discovery; it stays callable over the app's own API.
+
+## Jobs and webhooks
+
+```ts
+jobs: {
+  notifyEditors: job({ input: { commentId: integer().notNull() }, retries: 3, handler: async (input, ctx) => { ... } }),
+},
+webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated"] }],
+```
+
+`jobs.<name>.enqueue(input, { delay?, key? })` from a hook or action queues a
+job; it runs after the request commits, never inside it. `key` collapses
+duplicates still waiting. A handler that throws is retried with backoff up to
+`retries`, then marked dead; `ctx.attempt` and `ctx.jobId` say which run this
+is. Standalone runs the queue with `zero jobs work` (`zero dev` starts a
+worker); `zero jobs list|retry|cancel` manage it. WordPress hands each job to
+Action Scheduler (cron, or `wp action-scheduler run`).
+
+A webhook POSTs `{ id, event, collection, at, data: { row, previous? } }` for
+each matching write (`<collection>.created|updated|deleted`, or `"*"`), signed
+in the `zero-signature` header as `t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`.
+Deliveries are jobs, so a failing endpoint is retried. `env(name)` reads the
+process environment, or on WordPress a `wp-config.php` constant of that name.
+
+## Media and files
+
+`media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } }` makes
+each named size for every uploaded image. `cover` crops around the image's
+focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
+centre by default); `inside` scales to fit. Media rows carry
+`sizes.<name>.url`.
+
+<a id="files"></a>Private files live in buckets:
+
+```ts
+files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
+```
+
+and a `file({ bucket: "decks" })` column holds one by id. Files never get a
+public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
+valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
+`accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
+`payload_too_large`.
+
+## Locales
+
+```ts
+locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
+```
+
+A collection with a `.localized()` field stores one row per locale. Every
+other field is shared by a post's translations and kept equal across them,
+except what each row generates for itself: `status`, `publishedAt`, `slug`,
+`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
+(so `createdAt`/`updatedAt` are per translation). Each translation publishes
+on its own. Create a translation with
+`{ locale: "de", translationOf: <id> }`; rows carry `locale` and
+`translations` (locale → id). Reads take `?locale=de`, which returns German
+rows and, with `fallback`, the default-locale row of any group without one;
+`locale=*` returns every row. On WordPress, Polylang owns languages and
+translation groups, and the app plugin ships a `wpml-config.xml` saying which
+fields translate.
+
+## Sign-in
+
+One collection may be `auth: true`: its rows are the app's users (WordPress
+users on WordPress, the app's own table on standalone). It needs a unique
+`email`, gets a write-only `password` and an admin-only `role`, and can't be
+an editor collection. Members sign in through the typed client:
+`auth.login(email, password)` on standalone, or `auth.signIn()` and
+`auth.handleCallback()` on WordPress, which redirect through the
+zero-identity screens (register the frontend once with
+`wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
+`GET /me` returns the user with their `member` row. With no auth collection,
+standalone users are named by `zero users add`; with one, they're its emails.
+
+Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
+the first rejected write starts a guest session, and `auth.upgrade()` keeps the
+guest's rows when they sign up.
+
+## Sync
+
+```ts
+{ sync: "content/posts/*.md" }
+```
+
+`zero sync --site <url> --token <t>` (or `--app-password user:pass`) keeps
+`content/posts/<slug>.md` and the site in step: front matter for fields, the
+body as Markdown for the `content` column. Both sides may change; it merges
+per field, and writes `.zero/conflicts/<uid>.md` when the same field changed on
+both (`zero sync resolve <uid>` applies your edit of it).
+`--check` exits 2 when anything would change. The first sync with a site
+matches records and deletes nothing. It commits the files it wrote unless
+`--no-commit`. `zero build` adds `.zero/*` and `!.zero/sync-base.json` to
+`.gitignore`, because the sync base is committed.
+
+What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
+and fields the viewer's field access hides. A synced collection needs `id()`
+as its primary key. References to a `uid` collection are written as that
+row's uid. When required references form a cycle that no order of writes can
+satisfy, sync reports it and writes nothing.
+
 ## Database API (hooks and actions only)
 
 ```ts
@@ -261,6 +401,15 @@ These are build errors with the same message the runtime returns.
 `with: { cover: true }` on a media column puts the media row in place of the id.
 
 `await` on these calls compiles to plain blocking PHP calls.
+
+## Known gaps
+
+What the design specifies and this build doesn't do yet:
+
+- Adding an auth collection to an existing standalone app doesn't move the
+  users `zero users add` created before it: recreate them as members.
+- `zero sync --watch` isn't available; run `zero sync` again, or from a scheduler.
+- Sync skips the columns listed under [Sync](#sync); edit those through the site.
 
 ## The subset (enforced at build time)
 

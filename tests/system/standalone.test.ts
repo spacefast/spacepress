@@ -9,6 +9,7 @@ import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { createServer, connect } from "node:net";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createClient, type Client } from "../../examples/site/zero/client/index.ts";
 import { siteJourney, type Role } from "./journey.ts";
 import { clientOf, copySite, doctor, failing, receiver, sync, upgrade, work, zero } from "./project.ts";
@@ -24,6 +25,7 @@ const hook = await receiver(hookSecret);
 const siteEnv = { SITE_HOOK_URL: `http://127.0.0.1:${hook.port}/hook`, SITE_HOOK_SECRET: hookSecret };
 let base = "";
 let authorId = 0;
+let authorUser = 0;
 
 function cli(...args: string[]): any {
   const out = JSON.parse(execFileSync(php, [join(app, "zero/bin/zero.php"), ...args], { encoding: "utf8", env: { ...process.env, ...siteEnv } }));
@@ -65,11 +67,13 @@ before(async () => {
   copySite(project);
   rmSync(app, { recursive: true, force: true });
   zero("build", project, "--target", "standalone", "--out", app, "--quiet");
+  // The site's users are its `members` (an auth collection), named by email.
   for (const role of ["subscriber", "author", "editor", "admin"] as const) {
-    cli("user", "add", role, "--role", role);
-    tokens[role] = cli("token", "create", role).token;
+    const id = cli("user", "add", `${role}@example.test`, "--role", role).id;
+    tokens[role] = cli("token", "create", `${role}@example.test`).token;
+    if (role === "author") authorUser = id;
   }
-  const userId = cli("user", "list").find((u: { name: string }) => u.name === "author").id;
+  const userId = authorUser;
   [{ id: authorId }] = cli("insert", "authors", JSON.stringify({ name: "Ada Author", userId }));
   base = await serve();
   assert.deepEqual(failing(doctor(project, "--target", "standalone", "--out", app, "--site", base)), []);
@@ -115,6 +119,13 @@ test("the site journey on standalone", async (t) => {
         // Time travel: a second server on the same database with its clock past `at`.
         const later = await serve({ ZERO_NOW: new Date(Date.parse(at) + 1000).toISOString() });
         return client("anonymous", later);
+      },
+      async signIn(email, password) {
+        // The client this build generated: sign-in is per target (password here, redirects on WP).
+        const { createClient: standaloneClient } = await import(pathToFileURL(join(project, "zero/client/index.ts")).href);
+        const reader: Client = standaloneClient({ url: `${base}/api` });
+        await reader.auth.login(email, password);
+        return reader;
       },
       async upgrade() {
         // A redeploy: stop serving, rebuild into the same app directory, start again. With nothing

@@ -1,9 +1,9 @@
-// The WP test app: the blog example's schema, relations, globals and actions, plus hooks that leave
+// The WP test app: the frozen phase-1 blog's schema (tests/fixtures/blog), relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
 import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, real, select, text, timestamp, HttpError } from "zero";
-import { schema, settings, comments } from "../../../examples/blog/zero.config.ts";
-import blog from "../../../examples/blog/zero.config.ts";
+import { schema, settings, comments } from "../../fixtures/blog/zero.config.ts";
+import blog from "../../fixtures/blog/zero.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
 import * as fields from "./lanes/fields.ts";
 import * as sync from "./lanes/sync.ts";

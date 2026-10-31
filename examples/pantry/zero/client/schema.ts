@@ -11,6 +11,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "localized": false,
       "relations": {
         "items": {
           "kind": "many",
@@ -19,13 +20,15 @@ export const SCHEMA = {
         }
       },
       "media": [],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     },
     "items": {
       "path": "items",
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "localized": false,
       "relations": {
         "location": {
           "kind": "one",
@@ -34,13 +37,15 @@ export const SCHEMA = {
         }
       },
       "media": [],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     },
     "shoppingList": {
       "path": "shopping_list",
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "localized": false,
       "relations": {
         "item": {
           "kind": "one",
@@ -49,14 +54,16 @@ export const SCHEMA = {
         }
       },
       "media": [],
-      "mediaList": []
+      "mediaList": [],
+      "files": []
     }
   },
   "globals": [],
   "actions": [
     "consume",
     "expiringSoon"
-  ]
+  ],
+  "buckets": []
 } as const;
 
 export type SchemaDescriptor = typeof SCHEMA;

@@ -1,6 +1,6 @@
 import {
   collection, id, text, integer, boolean, date, timestamp, json,
-  defineRelations, defineConfig, action, db, HttpError,
+  defineRelations, defineConfig, action, job, jobs, db, HttpError,
   type InferSelectModel,
 } from "zero";
 import { UNITS, LOW_STOCK, timestamps, slugify } from "./lib/fields";
@@ -29,6 +29,7 @@ export const shoppingList = collection("shopping_list", {
   itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
   name: text().notNull(),
   done: boolean().notNull().default(false),
+  notifiedAt: timestamp(),                // set by the notifyLowStock job
   ...timestamps,
 }, { editor: false });
 
@@ -51,12 +52,24 @@ async function restock(item: Item) {
   const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
   if (!existing) {
     await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
+    // Off the request: runs after this write commits (`zero jobs work`, or the dev worker).
+    await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
   }
 }
 
 export default defineConfig({
   schema,
   relations,
+  jobs: {
+    // A real pantry would push a notification here; this one stamps the list entry.
+    notifyLowStock: job({
+      input: { itemId: integer().notNull() },
+      retries: 2,
+      handler: async ({ itemId }) => {
+        await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
+      },
+    }),
+  },
   hooks: {
     items: {
       beforeCreate(data) {

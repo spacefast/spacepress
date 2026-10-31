@@ -10,8 +10,17 @@ use std::process::ExitCode;
 
 const INDEX_PHP: &str = r#"<?php
 declare(strict_types=1);
-if (PHP_SAPI === 'cli-server' && is_file(__DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH)) && !str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '.php')) {
-    return false;
+// `php -S` (zero dev): static files are served as they are, and a directory by its index.html.
+if (PHP_SAPI === 'cli-server') {
+    $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    if (is_file(__DIR__ . $path) && !str_ends_with($path, '.php')) {
+        return false;
+    }
+    if (str_ends_with($path, '/') && is_file(__DIR__ . $path . 'index.html')) {
+        header('Content-Type: text/html; charset=utf-8');
+        readfile(__DIR__ . $path . 'index.html');
+        return true;
+    }
 }
 require __DIR__ . '/../zero/runtime/bootstrap.php';
 \Zero\App::boot(dirname(__DIR__))->handleHttp();

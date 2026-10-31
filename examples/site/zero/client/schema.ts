@@ -30,7 +30,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
-      "localized": false,
+      "localized": true,
       "relations": {
         "author": {
           "kind": "one",
@@ -114,6 +114,17 @@ export const SCHEMA = {
           "optional": true
         }
       },
+      "media": [],
+      "mediaList": [],
+      "files": []
+    },
+    "members": {
+      "path": "members",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {},
       "media": [],
       "mediaList": [],
       "files": []

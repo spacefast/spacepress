@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The WordPress lane (design §9.2): build the test app (tests/wp/app = examples/blog + test hooks) and
-# the blog's typed client, boot a fresh WordPress with the plugin, run every tests/wp/*.test.ts, tear
-# down. `cargo test` never depends on this. ZERO_WP_PORT (default 8790) picks the port;
+# The WordPress lane (design §9.2): build the test app (tests/wp/app = the frozen phase-1 blog in
+# tests/fixtures/blog + test hooks + lane fragments) and its typed client, boot a fresh WordPress with
+# the plugin, run every tests/wp/*.test.ts, tear down. `cargo test` never depends on this. ZERO_WP_PORT (default 8790) picks the port;
 # ZERO_WP_KEEP=1 leaves the stack up afterwards.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -10,7 +10,6 @@ cd "$repo"
 
 cargo build -q
 zero="${CARGO_TARGET_DIR:-target}/debug/zero"
-"$zero" build examples/blog --target wp --quiet >/dev/null       # the typed client the scenario uses
 "$zero" build tests/wp/app --target wp --quiet >/dev/null
 # Stage into a stable dir: the build replaces its output dir, which would orphan a bind mount.
 mkdir -p tests/wp/.wp-content

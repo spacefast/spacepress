@@ -77,8 +77,10 @@ function items__beforeCreate(array &$data)
 
 ## Docs
 
-- [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API and the
-  enforced subset
+- [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API, the
+  enforced subset, and the known gaps
+- [`docs/examples.md`](docs/examples.md): the examples, how to run each, and
+  the suites that prove them
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the boundary between
   compiler output and the PHP runtime
 

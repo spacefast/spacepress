@@ -411,22 +411,29 @@ final class Scf
     {
         $out = [];
         foreach ($fields as $name => $f) {
-            $found = false;
+            $key = null;
             foreach ([$prefix . $name, $name] as $k) {
                 if (array_key_exists($k, $row)) {
-                    $out[$name] = self::fromScf($f, $row[$k], $prefix . $name);
-                    $found = true;
+                    $key = $k;
                     break;
                 }
             }
-            if (!$found) {
+            if ($key === null) {
                 foreach ($row as $k => $v) {
                     if (is_string($k) && str_ends_with($k, '_' . $name) && !str_starts_with($k, 'field_')) {
-                        $out[$name] = self::fromScf($f, $v, $prefix . $name);
+                        $key = $k;
                         break;
                     }
                 }
             }
+            if ($key === null) {
+                continue;   // absent: Schema::normalize applies the default
+            }
+            // SCF keeps an unchecked true_false as ''. For a notNull boolean that can only mean false
+            // (a nullable one keeps '' as null, which is how a null is written).
+            $out[$name] = ($f['type'] ?? null) === 'boolean' && ($f['notNull'] ?? false) && $row[$key] === ''
+                ? false
+                : self::fromScf($f, $row[$key], $prefix . $name);
         }
 
         return $out;

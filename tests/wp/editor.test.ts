@@ -13,7 +13,8 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
       title: `Audit ${run}`,
       status: "publish",
       content: "<p>From the editor</p>",
-      acf: { zero_excerpt: "Core excerpt", zero_tags: ["guide", "news"], zero_seo: { metaTitle: "SEO" } },
+      // The block editor sends every sub-field; an unchecked toggle inside a group is `false`.
+      acf: { zero_excerpt: "Core excerpt", zero_tags: ["guide", "news"], zero_seo: { metaTitle: "SEO", noindex: false } },
     },
   });
   assert.equal(created.status, 201, JSON.stringify(created.json));

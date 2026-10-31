@@ -120,9 +120,8 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
       topics: ["science", "tech"],
       featured: true,
       authorId: env.authorId,
-      // `noindex: true`: SCF stores a false sub-field of a group as '' and Zero reads it back as null
-      // (reported; lane W fixed the top-level case). The revisions step covers noindex: false via the API.
-      seo: { noindex: true, metaTitle: null },
+      // An unchecked toggle inside a group: SCF stores it as '', and it must read back as false.
+      seo: { noindex: false, metaTitle: null },
       related: [{ label: "Docs", href: "https://example.com/docs" }],
       sections: [
         { layout: "pullQuote", text: "Less is more.", cite: "Mies" },

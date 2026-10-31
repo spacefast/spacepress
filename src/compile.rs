@@ -1148,6 +1148,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
+                // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
+                // it saw. PHP closures capture by reference, so a captured loop variable moves to a
+                // fresh cell before each update (earlier closures keep theirs; `continue` too).
+                let fresh: Vec<String> = match init.as_deref() {
+                    Some(Stmt::Decl {
+                        kind: DeclKind::Let,
+                        pat: Pat::Id(_, binding),
+                        ..
+                    }) if self.effects.captured(*binding) => self
+                        .fx()
+                        .scopes
+                        .last()
+                        .and_then(|s| s.values().find(|l| l.binding == *binding))
+                        .map(|l| vec![format!("{php} = &\\Zero\\Js::cell({php})", php = l.php)])
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                };
+                let update_php = fresh
+                    .into_iter()
+                    .chain((!update_php.is_empty()).then_some(update_php))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");

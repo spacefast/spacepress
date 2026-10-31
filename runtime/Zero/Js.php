@@ -1464,6 +1464,17 @@ final class Js
         }
     }
 
+    /**
+     * A fresh variable cell holding $v. `for (let i ...)` rebinds a captured `i` to one before each
+     * update (`$i = &Js::cell($i)`), so a closure from an earlier iteration keeps its own `i`, as in JS.
+     */
+    public static function &cell(mixed $v): mixed
+    {
+        $c = $v;
+
+        return $c;
+    }
+
     // ---------------------------------------------------------------- misc
 
     private static ?int $instant = null;

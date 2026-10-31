@@ -1,7 +1,7 @@
 //! TEMPORARY: phase-2 declarations the runtime does not enforce yet.
 //!
-//! schema.php v3 carries these keys, but until the owning lane lands nothing reads them: a column
-//! `.access()` would hide nothing, and an `auth: true` collection would serve its password hashes.
+//! schema.php v3 carries these keys, but until the owning lane lands nothing reads them: an
+//! `auth: true` collection, for instance, would serve its password hashes.
 //! A config that relies on one must not build "ok". When a lane lands its feature, it deletes its
 //! `Feature` variant (the compiler then points at every line that names it, including its row in
 //! `UNLANDED`) and its fixture row in `tests/compiler.rs`. The last lane deletes this file,
@@ -21,7 +21,6 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Feature {
-    FieldAccess,
     Sync,
     Auth,
     Files,
@@ -31,7 +30,6 @@ enum Feature {
 /// (feature, owning lane, what, fix until then). One row per lane; delete yours when it lands.
 #[rustfmt::skip]
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
-    (Feature::FieldAccess, 'B', "field access (`.access()` on a column)", "remove .access(); gate the whole collection with its access rule, or move the field to a stricter collection"),
     (Feature::Sync, 'C', "content sync (`sync`)", "remove sync"),
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
     (Feature::Files, 'G', "private files (`files` and `file()`)", "remove the file bucket; use media() for public uploads"),
@@ -81,7 +79,6 @@ fn declared(schema: &Schema) -> Vec<Feature> {
             .any(|c| any_column(c, test))
     };
     [
-        (columns(&|c| !c.access.is_empty()), Feature::FieldAccess),
         (schema.collections.values().any(|c| c.sync.is_some()), Feature::Sync),
         (schema.collections.values().any(|c| c.auth), Feature::Auth),
         (
@@ -180,9 +177,6 @@ impl Walk<'_, '_> {
     fn column(&mut self, b: &Rc<ColBuilder>) {
         if !self.first_visit(b) {
             return;
-        }
-        if b.access.is_some() {
-            self.found.push((Feature::FieldAccess, b.span_of("access")));
         }
         if b.localized {
             self.found.push((Feature::Localized, b.span_of("localized")));

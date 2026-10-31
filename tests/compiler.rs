@@ -711,7 +711,6 @@ fn rejects_phase2_static_contracts() {
             "env() values can't be stored inside captured data",
         ),
         // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
-        ("reject-unlanded-field-access", "not implemented until lane B"),
         ("reject-unlanded-sync", "not implemented until lane C"),
         ("reject-unlanded-auth", "not implemented until lane E"),
         ("reject-unlanded-files", "not implemented until lane G"),

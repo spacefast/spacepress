@@ -6,11 +6,20 @@ approval it lands as stacked PRs (§7).
 `zero.config.ts` is the product. Zero is "a TypeScript framework for building
 backends, fast", and the config file is the whole authoring surface: every
 collection, field, rule, hook, action, job and integration is written there,
-evaluated at build time by Zero's own evaluator, and compiled to PHP. The
-phase-1 and phase-2 lanes each added their own options in parallel, and the
-seams show. This document inventories what exists, checks every claim against
-the compiler (`src/extract.rs`, `src/eval.rs`), borrows from the systems users
-already know, and proposes one consistent, smaller API.
+evaluated at build time by Zero's own evaluator, and compiled to a WordPress
+plugin. The phase-1 and phase-2 lanes each added their own options in
+parallel, and the seams show. This document inventories what exists, checks
+every claim against the compiler (`src/extract.rs`, `src/eval.rs`), borrows
+from the systems users already know, and proposes one consistent, smaller
+API.
+
+Zero is WordPress-only (owner ruling, branch `p4/wp-only`: the standalone
+PHP+SQLite target is cut). This proposal is written for that Zero: every
+default below is a WordPress primitive (post status, roles and capabilities,
+SCF field types, attachments, `wp_users`), and §4.12 lists what the ruling
+lets the config drop outright. Line references to the compiler are to
+`main` at `b45e586`, before the cut; the extractor sites named still exist
+on `p4/wp-only` unless §4.12 says they go.
 
 Three sentences of the result:
 
@@ -23,6 +32,10 @@ Three sentences of the result:
 - **One way to say each thing.** Six duplicate spellings go, three
   single-purpose flags go, two flags become inferred, and the examples shrink by
   a sixth without losing a feature.
+- **WordPress is the vocabulary.** A content collection is a post type with
+  its native status, a table is a `$wpdb` table, access is roles and
+  capabilities, a user is a `wp_users` row, media is an attachment. Nothing
+  in the config exists to make a second runtime behave the same.
 
 The before/after rewrite of the two examples is in §5: `examples/site` goes
 from 205 to 168 lines (170 to 136 non-comment), `examples/pantry` from 117
@@ -108,7 +121,7 @@ that should be a default or inferred, **U** = no real use.
 | F8 | R | `uid: true` is implied by `sync`, required for being a sync reference target, and otherwise unused in examples except to satisfy that rule (3 uses, all for sync). | `uid = flag("uid")?.unwrap_or(sync.is_some())` (`src/extract.rs:705`); `sync references need uid: true on …` (`:2490`). |
 | F9 | R | `access.update` and `access.delete` are identical in 4 of 5 examples; `create`/`update`/`delete` are identical in most. There is no "all writes" shorthand. | `ACCESS_OPS` loop (`src/extract.rs:812`). |
 | F10 | R | `ctx.user?.role === "admin" \|\| ctx.user?.role === "editor"` is the way to say "editor or above" inside a function; the ladder exists in the runtime but not in `ctx`. 7 copies in the repo, plus a `STAFF` array in PR #50's site example. | `Access.php:53` has `roleRank`; `AccessCtx` has only `user`. |
-| F11 | I | `editor` names a WordPress storage choice but is the master switch for `drafts` and `revisions` on both targets; `editor: false` appears on 111 collections (93 in fixtures, 86 fixture files), i.e. the "default" is the minority case for everything that isn't blog content. | `editor = flag("editor")?.unwrap_or(!auth)`; `drafts … None => editor`; `revisions … unwrap_or(editor)` (`src/extract.rs:658-667`). |
+| F11 | I | `editor` names a WordPress storage choice but is the master switch for `drafts` and `revisions`, and it was explained as "no storage effect on standalone"; `editor: false` appears on 111 collections (93 in fixtures, 86 fixture files), i.e. the "default" is the minority case for everything that isn't blog content. | `editor = flag("editor")?.unwrap_or(!auth)`; `drafts … None => editor`; `revisions … unwrap_or(editor)` (`src/extract.rs:658-667`). |
 | F12 | I | `title`/`content` are inferred only from columns literally named `title` and `content`; a `name: text().notNull()` collection must add `title: "name"` (7 uses). WordPress needs a title; the inference rule could cover the first NOT NULL text. | `columns.get("title").filter(...)` (`src/extract.rs:716`). |
 | F13 | I | Structured builders take their fields under a key (`group({ fields })`, `blocks({ layouts })`) while `select` takes `options`; a bare object would do, since each builder has exactly one required option. | `required` table (`src/eval.rs:1390`). |
 | F14 | I | `media({ accept: "image" })` is a two-value enum while `files({ accept: ["image/*"] })` takes MIME patterns. Same concept, two grammars. | `src/eval.rs:1462`, `src/extract.rs:2149`. |
@@ -123,7 +136,7 @@ that should be a default or inferred, **U** = no real use.
 | F23 | D | `label` is title-cased from the table name; every explicit `label` in the examples equals the derived one except `"Site settings"`. | `title_case` (`src/schema.rs:526`). |
 | F24 | D | `.notNull().default(x)` is what nearly every defaulted column in the repo writes: `boolean().notNull().default(false)` 10 times, `.notNull().default([])` 5 times. The exceptions are global fields and sub-fields (`text().default("Hello")` in `phase2-surface`), where NOT NULL would need the default anyway. Today a default only fills an *absent* value; an explicit `null` is still accepted unless `.notNull()` is there too (`Db.php:429`). So the two words are not redundant, but the combination users almost always want is two words long. | `src/eval.rs:1907,1952`; `RequiredInsertKeys` (`index.d.ts:322`) makes a defaulted column optional on insert. |
 | F25 | D | `unique()` text needs `.max(191)` or the build fails; the number is a MySQL constant the user has to know (22 uses). | `MAX_UNIQUE_TEXT` (`src/extract.rs:82`). |
-| F26 | D | `target` in the config duplicates `zero build --target`; 3 uses, all in fixtures. A config should be target-independent (the Admin design says the same of `admin`). | `src/extract.rs:169`. |
+| F26 | D | `target` in the config duplicates `zero build --target`; 3 uses, all in fixtures. With one target it has no meaning at all. | `src/extract.rs:169`. |
 | F27 | U | `api: { list, get, create, update, delete }`: zero uses in the repo. Access rules cover everything but splitting `list` from `get` (either direction), and a disabled op answers 405 rather than 403 (`App.php:328`). | `src/extract.rs:854`. |
 | F28 | U | `references(..., { onUpdate })`: ids are autoincrement and never change; zero uses. | `src/eval.rs:2002`. |
 | F29 | U | `.primaryKey()` on a non-integer column: 3 fixture uses, two of them rejection tests. Auth collections require a key named `id`; editor and sync collections require an autoincrement integer key under any name (`src/extract.rs:681,2394,2475`). | `src/extract.rs:671,2394,2448`. |
@@ -170,7 +183,10 @@ Keystatic `conditional()` as the blocks primitive (Zero's `blocks()` is the
 same union with a nicer spelling); Payload-style default-deny access (Zero's
 public-read default is right for a CMS and its examples depend on it); Drizzle
 `snakeCase.table` casing wrappers (Zero's columns are the API's field names;
-WordPress meta keys are already prefixed).
+WordPress meta keys are already prefixed); Payload's own role model (a
+`users` collection with a `roles` field): Zero's roles *are* WordPress roles
+and its capabilities come from `map_meta_cap`, so inventing a second ladder
+would be the kind of parallel runtime the WordPress-only ruling removes.
 
 ---
 
@@ -192,6 +208,11 @@ WordPress meta keys are already prefixed).
 6. **Buildable.** Everything below is a literal, a builder chain, a closure
    or a lazy arrow, i.e. what the evaluator already folds. §7.3 lists the
    three places the subset grows.
+7. **WordPress primitives, not Zero re-inventions.** When a default needs a
+   concept, it is the WordPress one: `post_status` for drafts and scheduling,
+   `wp_users` and roles for identity and access, attachments for media, SCF
+   field types for the editor, Action Scheduler for jobs, Polylang for
+   locales. The config never names a runtime.
 
 ---
 
@@ -373,18 +394,23 @@ collection({ ...columns }, {
   the key;
   `zero_` prefixing is unchanged. Snake-case keys stay valid identifiers
   (`shopping_list` today) and a camel-case key (`shoppingList`) is the
-  table name `shoppingList`, which SQLite and MySQL accept; the REST path is
+  table name `shoppingList`, which MySQL accepts; the REST path is
   the key too. The three namings (key, table, `.$name`) collapse to one.
   WordPress lower-cases registered post-type names, so a content
   collection's key must be lowercase (`blog_posts`, not `blogPosts`): a
   camel-case key on a content collection is a build error, beside today's
   15-character one. Tables keep any identifier.
-- **`content` replaces `editor`** (F11). The word says what it means on both
-  targets: a content collection has drafts, revisions, scheduling and a
-  wp-admin editor; a table doesn't. `drafts: true` and `revisions: true`
-  stay as opt-ins on tables (F21: the only independent setting today), and
-  `revisions: false` as the opt-out on content. `drafts: false` on content
-  stays rejected.
+- **`content` replaces `editor`** (F11). The word says what it is: a
+  content collection is a WordPress post type (`zero_<key>`, SCF fields,
+  the block editor, core revisions, `post_status` with `future` for
+  scheduling, `/wp/v2/zero_<key>` under Zero's access rules); a table is a
+  `$wpdb` table. `editor` was named for a storage switch and then explained
+  as "no storage effect on standalone, it only drives defaults"; with one
+  target there is nothing to keep in step and the flag is the kind.
+  `drafts: true` and `revisions: true` stay as opt-ins on tables (F21: the
+  only independent setting today), and `revisions: false` as the opt-out on
+  content. `drafts: false` on content stays rejected: a post always has a
+  status.
 - **`body` replaces `content`** as the designation of the rich-text column,
   because `content` now names the collection kind, and "body" is the word the
   Markdown sync already uses for it.
@@ -405,8 +431,8 @@ collection({ ...columns }, {
   independent control of `list` and `get`, in either direction (unlisted but
   fetchable rows, or a list with no by-id route); nothing in the repo uses
   it; open question 10 asks whether to keep `api` for it.
-- **`target` goes** from the config (F26); `zero build --target` and
-  `zero.toml`/CLI defaults own it. `name` stays (it is the plugin slug).
+- **`target` goes** (F26, §4.12): there is one target. `name` stays (it is
+  the plugin slug).
 
 Rejections stay as today where they are not subsumed: a content collection
 needs a title; names over 15 characters on content collections; reserved
@@ -494,7 +520,7 @@ access?: {
   read?: Rule, write?: Rule,            // write = create + update + delete
   create?: Rule, update?: Rule, delete?: Rule,   // override write
 }
-Rule = boolean | "anyone" | "authenticated" | Role | "self" | ((ctx) => boolean | Filter)
+Rule = boolean | "anyone" | Role | "self" | ((ctx) => boolean | Filter)   // Role = "guest" | "subscriber" | "author" | "editor" | "admin"; a role admits itself and above
 ```
 
 - `write` is the shorthand (F9): it is copied into whichever of `create`,
@@ -569,8 +595,7 @@ export const manuscripts = bucket({ accept: ["application/pdf"], maxBytes: 1_000
 defineConfig({
   files: { manuscripts },
   media: { sizes: { card: { width, height?, fit? } } },
-  locales: ["en", "de"],              // first = default
-  localeFallback?: false,             // default true: read the default-locale row when a locale has no translation
+  locales: ["en", "de"],              // first = default; Polylang owns fallback
   webhooks: [{ url, secret, events }],
 })
 ```
@@ -580,8 +605,8 @@ defineConfig({
   Its access takes `write` too, covering `create` and `delete` (a bucket
   has no update).
 - `locales` as an array (F19): the first entry is the default. `fallback`
-  (no use in the repo) moves to a sibling key, `localeFallback: false`, so
-  there is one spelling of the list and `default` is never repeated.
+  (no use in the repo) goes: it emulated Polylang's fallback on standalone,
+  and Polylang's own settings decide it now (§4.12).
 - Webhook events name collections by key, which is now the only name (F18).
 
 ### 4.8 Auth and users
@@ -590,10 +615,15 @@ defineConfig({
 export const members = collection({ name: text().notNull() }, { auth: true });
 ```
 
-- `auth: true` adds `email` (`email().notNull().unique()`) as well as `role`
-  and the hidden columns; the user no longer declares the one column the
-  compiler insists on (`src/extract.rs:2402`). Declaring `email` yourself
-  stays allowed for extra rules.
+- `auth: true` marks the collection whose rows are per-user profiles: its
+  `id` is the `wp_users.ID`, it gets a read-only `role` column (the
+  WordPress role, mapped as in `WpUserStore.php:25`), and nothing else. The
+  `email` the compiler insists on today (`src/extract.rs:2402`), the virtual
+  `password` input and the hidden `passwordHash`/`suspendedAt`/`guest`
+  columns all go (§4.12): the email and password live on `wp_users`, the
+  suspension state in zero-identity, and a guest is a viewer with the
+  `zero_guest` role. A profile field that must mirror the account (an
+  `email` column) is an ordinary column the app keeps in a hook.
 - **`user(opts?)`** is a new column: an integer reference to the app's user
   (`User.id`), named with the `Id` suffix like any `ref` (`userId`,
   `createdById`). With an auth collection in the config it is exactly
@@ -606,19 +636,19 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   identity for it; add an auth collection, which gives users a uid, or
   drop sync"), since sync carries references as uids of registered
   collections only (`src/extract.rs:2488`, `Sync/Wire.php:215`). With an
-  auth collection, `user()` syncs as the `ref` it is. Adding, renaming or removing the auth
-  collection changes what a `user()` id means on standalone (the runtime
-  already revokes every credential when the user table changes,
-  `Identity.php:42`); `zero build` refuses that change while any
-  collection has a `user()` column, with the same snapshot comparison
-  §4.9.3 uses ("`authors.userId` names users of the old table; migrate or
-  clear it before switching"). Deletion of the user follows `ref()`'s rule:
-  `"set null"` when nullable, `"restrict"` when `.notNull()`, and
-  `{ onDelete: "cascade" }` explicitly. It is what `authors.userId` and the
-  `ownerId` columns are by hand today, and it is what `"self"` reads.
-  On WordPress it is a `wp_users` id; on standalone the `__zero_users` id; with
-  an auth collection it is also that collection's `id` (they are the same
-  number today, `src/extract.rs:2397`).
+  auth collection, `user()` syncs as the `ref` it is. A `user()` id is a
+  `wp_users.ID`, whether or not an auth collection exists (an auth
+  collection's `id` is the same number, `src/extract.rs:2397`), so adding
+  or removing the auth collection never changes what the column means; the
+  standalone user table that made that a hazard is gone (§4.12). Deletion of
+  the user (`wp_delete_user`) follows `ref()`'s rule: `"set null"` when
+  nullable, `"restrict"` when `.notNull()`, and `{ onDelete: "cascade" }`
+  explicitly, applied by the pipeline since `wp_users` has no FK. It is what
+  `authors.userId` and the `ownerId` columns are by hand today, and it is
+  what `"self"` reads. On a content collection the post's `post_author` is
+  set from the `user()` column when there is exactly one, so wp-admin's
+  "Mine" filter and author capabilities (`edit_others_posts`) agree with
+  `"self"`.
 
 ### 4.9 Magic that removes config
 
@@ -656,7 +686,7 @@ Markdown `sync`. Otherwise it is a table; `auth: true` is always a table and
 `zero build --explain` (§7.2), and the generated client's `SCHEMA` carries
 the result as today.
 
-Because the kind decides storage on WordPress (a post type or a table), a
+Because the kind decides storage (a post type or a `$wpdb` table), a
 kind change caused by an edit to the columns is refused, not applied:
 `zero build` compares the inferred kind with the migration snapshot's and
 fails with "`events` was a table and is now a content collection (it gained
@@ -678,13 +708,14 @@ as system columns, readable, filterable, orderable, never writable through the
 API or `db`. Sync treats them like today's `$onUpdate` columns: left out of
 the record (`Sync/Wire.php:27` keys on `onUpdate`; `createdAt` joins that
 list as a system column), so a Markdown file carries neither and a round
-trip never writes them. On WordPress content collections `updatedAt` is `post_modified_gmt`;
-`createdAt` is ordinary post meta like any other column, because
-`post_date_gmt` is the publication time (it already backs `publishedAt`,
-`WpPostStore.php:84`, and moves when a post is scheduled or re-dated,
-`:282`). On tables both are columns. Off: `timestamps: false`. Error: a
-user column of either name. Localized rows keep per-row timestamps (today's
-rule for `$onUpdate` columns).
+trip never writes them. On content collections `updatedAt` is
+`post_modified_gmt`, a core column every post already has; `createdAt` is
+post meta like any other column, because `post_date_gmt` is the
+publication time (it already backs `publishedAt`, `WpPostStore.php:84`, and
+moves when a post is scheduled or re-dated, `:282`). On tables both are
+columns of the `$wpdb` table. Off: `timestamps: false`. Error: a user
+column of either name. Localized rows keep per-row timestamps (today's rule
+for `$onUpdate` columns).
 
 #### 4.9.5 `body` and `slug`
 
@@ -737,7 +768,7 @@ explicit smaller `.max()`.
 
 ```ts
 defineConfig({
-  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, localeFallback?, webhooks?, plugins?, admin?,
+  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, webhooks?, plugins?, admin?,
 })
 ```
 
@@ -773,6 +804,65 @@ reader understands.
 
 ---
 
+### 4.12 WordPress-only simplifications
+
+The owner's ruling (branch `p4/wp-only`) removes the standalone PHP+SQLite
+target. Everything the config carried to keep two runtimes in step can go.
+This list is what the redesign removes *because* of the ruling, over and
+above §4.1 to §4.11; each row names the compiler site so the `p4/wp-only`
+cut and this redesign can be reconciled.
+
+| removed | why it existed | where |
+|---|---|---|
+| `defineConfig.target`, `zero build --target` | choose a runtime | `src/extract.rs:169`, `src/commands/build.rs` |
+| `ctx.target` in hooks, access, validators, jobs | branch on the runtime | `HookCtx.target`, `AccessCtx.target`, `ValidateCtx.target` (`index.d.ts:102,920,926`); `src/compile.rs:390` |
+| the `editor` flag's "no storage effect on standalone" meaning | one config, two behaviours | `src/extract.rs:658`; replaced by `content` (§4.2) |
+| `locales.fallback` / `localeFallback` | standalone had no Polylang; the pipeline emulated fallback | `src/extract.rs:2095`; Polylang's language settings own fallback on WordPress, so the config has only the list |
+| the `translationGroup` system column on content collections | standalone had no Polylang groups | `src/extract.rs:2467` (emitted when `!c.editor \|\| target == Standalone`); stays only for tables, where Polylang has no row |
+| `auth: true` as "the app's own user table" | standalone users and password login | the auth collection is now purely a per-user profile row joined to `wp_users` by `id`; `email`, `password`, `passwordHash`, `suspendedAt` and `guest` system columns go (`src/extract.rs:2402-2435`): `wp_users` holds the email and password, zero-identity holds suspension, and guests are the `zero_guest` role |
+| `password` as a virtual insert field on auth collections | standalone password login | `index.d.ts:429` (`{ password?: string }`); accounts are created through WordPress or zero-identity |
+| `"authenticated"` as distinct from `"guest"` | standalone guest tokens | the ladder `guest < subscriber < author < editor < admin` already makes `"guest"` mean "any signed-in viewer, guests included"; `"authenticated"` is the same rule spelled twice and goes (`src/extract.rs:915`, `Access.php:52`) |
+| `jobs` worker configuration, `zero jobs work` | standalone queue | Action Scheduler is the queue; `job()` is unchanged, the CLI shrinks |
+| `files` bucket storage choice | standalone wrote to disk under the app | buckets are uploads under `wp-content/uploads/zero-private/` streamed through PHP, as today on WP; `bucket()` is unchanged |
+| the media size emulation (GD pipeline) | standalone had no `add_image_size` | `media.sizes` registers `add_image_size('zero_<name>', …)` and the focal crop is the `image_resize_dimensions` filter; the config is unchanged |
+| `zero users add`, bearer tokens, `zt_` CLI tokens | standalone identity | application passwords and zero-identity; no config surface |
+| the standalone half of `sync`, `webhooks`, `once`, `env` | same feature, second runtime | `env()` reads `wp-config.php` constants; config unchanged |
+
+What the ruling *adds* to the defaults, now that WordPress is the only
+vocabulary:
+
+- **Status is `post_status`.** `status: "draft" \| "published" \| "scheduled"`
+  stays the API's spelling, mapped to `draft`/`publish`/`future` as today
+  (`WpPostStore.php:280`). `"pending"` and `"private"` are not modelled; a
+  collection that needs them says so in open question 11.
+- **Roles are WordPress roles.** `guest`, `subscriber`, `author`, `editor`,
+  `admin` map to `zero_guest`, `subscriber`, `author`, `editor`,
+  `administrator` (`WpUserStore.php:25`); `ctx.is("editor")` is
+  `roleRank`, and on content collections the same rule is what
+  `map_meta_cap` answers for `edit_post`/`delete_post`/`read_post`
+  (`CoreAccess.php:43`), so wp-admin and the API agree by construction.
+  `contributor` (write, no publish) has no Zero role; open question 12.
+- **`"self"` is `post_author`.** On a content collection with one `user()`
+  column, that column is written to `post_author`, so WordPress's own
+  "Mine" views and `edit_others_posts` capability match Zero's `"self"`.
+- **Field types are SCF types.** The builder table in §4.1 is one-to-one
+  with the SCF field types the plugin registers (`Wp/Scf.php:33,154-185`):
+  `text` / `textarea`, `number`, `true_false`, `date_picker`,
+  `date_time_picker`, `email`, `url`, `wysiwyg` (the body is
+  `post_content`), `image` / `file`, `select` / `checkbox`, `post_object`
+  (`ref` to a content collection; a number field to a table), `group`,
+  `repeater`, `flexible_content`. `user()` renders as SCF's `user` field,
+  the one new mapping (today's hand-written `userId: integer()` is a number
+  field). `showIf` is SCF conditional logic. There is no builder without an
+  SCF rendering.
+- **Media is an attachment.** `media()` is an attachment id; `sizes` are
+  registered image sizes; `focal` is `_zero_focal` meta.
+- **The title is `post_title`, the slug is `post_name`.** A content
+  collection's `slug()` column *is* `post_name` (`WpPostStore.php:272`),
+  which is why a collection has at most one; Zero's own `-2`, `-3`
+  suffixing (`Db.php:639`) keeps the API and the editor deriving the same
+  slug.
+
 ## 5. Before and after
 
 The "before" is PR #50's version of each example (the current state of the
@@ -800,8 +890,7 @@ actions and seven hooks.
 ```ts
 // A small publication: authors write posts with rich fields in English and German, readers sign in
 // as members and leave comments that editors moderate through an action, and editors keep the site
-// settings. tests/system drives a whole user journey through this app on both targets (WordPress and
-// standalone).
+// settings. tests/system drives a whole user journey through this app on real WordPress.
 import {
   collection, global, bucket, text, integer, boolean, richText, media, slug, select, repeater, group,
   blocks, email, url, ref, user, file, defineConfig, action, job, jobs, env, db, HttpError,
@@ -855,7 +944,7 @@ export const posts = collection({
   hooks: {
     // Each time a post becomes published (through the API or the editor) readers hear about it;
     // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
-    // publishes run no hooks (both targets), so they announce nothing.
+    // publishes run no hooks (WP cron parity), so they announce nothing.
     async afterCreate(row) {
       if (row.status === "published") await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
     },
@@ -907,8 +996,8 @@ export const announcements = collection({
   attempt: integer().notNull(),
 }, { access: { read: "editor", write: "admin" } });
 
-// Readers who sign in: WordPress users through the zero-identity screens, or a password on
-// standalone. Each member sees and edits only their own row.
+// Readers who sign in: WordPress users, through the zero-identity screens. Each member sees and
+// edits only their own row.
 export const members = collection({
   name: text().notNull().max(80),
   plan: select(["free", "supporter"]).default("free"),
@@ -1127,7 +1216,11 @@ work from. "Where" names the compiler site that changes.
 | `content: "col"` | `body: "col"` | `src/extract.rs:748` |
 | `uid: true` | inferred from sync and references | `src/extract.rs:705,2490` |
 | `api: {...}` | access rules | `src/extract.rs:854` |
-| `defineConfig.target` | CLI only | `src/extract.rs:169` |
+| `defineConfig.target` | none; one target | `src/extract.rs:169` |
+| `ctx.target` | none | `index.d.ts:102,920,926` |
+| `"authenticated"` | `"guest"` (the ladder's lowest role) | `src/extract.rs:915` |
+| `localeFallback` / `locales.fallback` | Polylang settings | `src/extract.rs:2095` |
+| auth system columns `email`, `password`, `passwordHash`, `suspendedAt`, `guest` | `wp_users` and zero-identity own them | `src/extract.rs:2402-2435`, `index.d.ts:429` |
 | `defineConfig.schema` | `defineConfig.collections` | `src/extract.rs:196` |
 | `defineConfig.relations`, `defineRelations`, `r.one`, `r.many`, `optional` | inferred from `ref()`; `relations: { x: many("t", "col") }` on the target for the ambiguous case | `src/extract.rs:1677` |
 | `defineConfig.hooks` | `collection(..., { hooks })` | `src/extract.rs:360` |
@@ -1150,8 +1243,7 @@ work from. "Where" names the compiler site that changes.
 `json<T>()`, `select(options, opts?)`, `.onUpdate()`, `.nullable()`,
 `.access({ write })`, `access.write`, `ctx.is()`, `collection.content`,
 `collection.body`, `collection.hooks`, `collection.timestamps`,
-`collection.relations`, `defineConfig.collections`, `localeFallback`,
-`Row`, `Insert`, system columns `id`, `createdAt`, `updatedAt`, the
+`collection.relations`, `defineConfig.collections`, `Row`, `Insert`, system columns `id`, `createdAt`, `updatedAt`, the
 kind-change refusal (§4.9.3), `zero build --explain`.
 
 ### 6.3 Unchanged
@@ -1185,9 +1277,9 @@ build time: "`x` has a function default; backfill it in a hook or give it
 a constant default"), and an added NOT NULL timestamp is added nullable,
 backfilled with one canonical UTC ISO value the migration writes as a
 literal (`'2026-10-31T19:00:00.000Z'`, the build time, through
-`UPDATE … WHERE col IS NULL`), then constrained; SQLite refuses a
-non-constant default on a populated table and `CURRENT_TIMESTAMP` is not
-Zero's timestamp format anyway (`Schema.php:527` does not normalize it);
+`UPDATE … WHERE col IS NULL`), then constrained; MySQL's
+`CURRENT_TIMESTAMP` is not Zero's timestamp format (`Schema.php:527` does
+not normalize it), so the literal is the only safe default;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on WordPress content collections `updatedAt` reads
@@ -1324,8 +1416,8 @@ inside the options object are closures found in an object literal, as
 - **Hooks beside the columns cost one typing pattern.** A named helper used
   as a hook can't be typed as `Row<typeof thisCollection>`; it types the
   fields it reads (§5.2). Open question 9.
-- **Automatic timestamps on WordPress tables** (`editor: false` today) are two
-  new NOT NULL columns in every custom table; the migration step needs the
+- **Automatic timestamps on tables** (`editor: false` today) are two new
+  NOT NULL columns in every `$wpdb` table; the migration step needs the
   backfill rules in §6.4, which it doesn't have today.
 - **Snake-case keys.** Today `collection("shopping_list")` with key
   `shoppingList` gives a snake-case table and a camel-case query key. Dropping
@@ -1358,18 +1450,18 @@ inside the options object are closures found in an object literal, as
 4. **Table names.** With the name argument gone, is the key the table name
    verbatim (`shoppingList` → `zero_shoppingList`), or snake-cased
    (`zero_shopping_list`)? The proposal picks verbatim (no second naming to
-   learn, and MySQL/SQLite accept it); snake-casing is a one-line change in
-   the extractor if the owner prefers SQL-looking tables.
+   learn, and MySQL accepts it); snake-casing is a one-line change in the
+   extractor if the owner prefers SQL-looking tables, and content
+   collections are lowercase either way (§4.2).
 5. **`"self"` on `create`.** Should `"self"` be allowed on `create` for a
    collection with a `user()` column, meaning "any signed-in viewer, and the
    row's `user()` column is set to them (filled when absent, 403 when
    different)"? It would make "members create their own rows" one word, and
    `write: "self"` would then cover all three writes. The proposal keeps
    today's rejection and asks.
-6. **Keep `agents`?** It is a WordPress-only MCP visibility flag with no
-   non-test use. Keeping it costs one option on four builders; removing it
-   means every ability is exposed when the MCP adapter is active. The proposal
-   keeps it.
+6. **Keep `agents`?** It is an MCP visibility flag with no non-test use.
+   Keeping it costs one option on four builders; removing it means every
+   ability is exposed when the MCP adapter is active. The proposal keeps it.
 7. **`revisions` on tables.** Two fixtures turn revisions on for a
    non-content table. If that is a real need, `revisions: true` stays as
    proposed; if not, `revisions` can fold into `content` entirely and go.
@@ -1388,3 +1480,15 @@ inside the options object are closures found in an object literal, as
     drops it (zero uses); the one thing access rules can't express is
     `list` and `get` set differently. If that matters (unlisted but linkable
     rows, say), `api` stays as the rarely-used option it is.
+11. **Model `pending` and `private` post statuses?** WordPress has them;
+    Zero's `status` has `draft`/`published`/`scheduled`. An editorial
+    workflow (contributors submit, editors publish) needs `pending`. The
+    proposal keeps three; adding `"pending"` is one enum value and one
+    mapping line, but every access rule that says `{ status: "published" }`
+    is unaffected either way.
+12. **Add `contributor` to the role ladder?** WordPress's `contributor` can
+    write but not publish, which is the role `pending` is for. Zero's ladder
+    skips it (`subscriber < author`). Adding it is one entry in
+    `WpUserStore::ROLES` and the `Role` union; leaving it out means
+    contributors are treated as subscribers by Zero's rules. Tied to
+    question 11.

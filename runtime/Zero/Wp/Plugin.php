@@ -24,6 +24,7 @@ final class Plugin
     private const AUTHOR_CAPS = ['edit_%s', 'publish_%s', 'delete_%s', 'edit_published_%s', 'delete_published_%s'];
 
     private static ?self $instance = null;
+    private static ?bool $keyed = null;
 
     public readonly Schema $schema;
     private ?App $app = null;
@@ -297,13 +298,22 @@ final class Plugin
         return $applied;
     }
 
+    /**
+     * Storage matches this build: the schema hash is recorded and the ledger is keyed by app. A
+     * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
+     * check costs one cached option read, plus one information_schema read the first time per process.
+     */
     private function current(bool $fresh = false): bool
     {
         if ($fresh) {
             wp_cache_delete($this->schemaOption(), 'options');
+            self::$keyed = null;
+        }
+        if (get_option($this->schemaOption()) !== $this->schemaHash()) {
+            return false;
         }
 
-        return get_option($this->schemaOption()) === $this->schemaHash();
+        return self::$keyed ??= $this->migrator()->keyed();
     }
 
     private function migrator(): Migrator

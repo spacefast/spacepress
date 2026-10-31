@@ -119,6 +119,11 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "reject-json-list-shaped-object",
         "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
         "zero.config.ts:3:",
+    ); // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
+    rejects(
+        "reject-default-timestamp",
+        "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
+        "zero.config.ts:3:",
     );
 }
 

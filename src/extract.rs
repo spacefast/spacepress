@@ -1454,9 +1454,44 @@ fn json_leaves_lossy(b: &ColBuilder, v: &Json) -> bool {
     }
 }
 
+/// A timestamp/date sub-field inside a group/repeater/blocks default that the runtime codec would
+/// reject when the default is applied. Returns the sub-field's name.
+fn bad_date_leaf(b: &ColBuilder, v: &Json) -> Option<String> {
+    let fields = |fields: &IndexMap<String, Rc<ColBuilder>>, item: &Json| {
+        fields.iter().find_map(|(name, f)| {
+            let x = item.get(name)?;
+            match (f.ty, x) {
+                (ColType::Timestamp, Json::String(s)) if !is_iso_timestamp(s) => Some(name.clone()),
+                (ColType::Date, Json::String(s)) if !is_date(s) => Some(name.clone()),
+                _ => bad_date_leaf(f, x),
+            }
+        })
+    };
+    match (b.ty, v) {
+        (ColType::Group, item) => b.fields.as_ref().and_then(|f| fields(f, item)),
+        (ColType::Repeater, Json::Array(items)) => {
+            b.fields.as_ref().and_then(|f| items.iter().find_map(|i| fields(f, i)))
+        }
+        (ColType::Blocks, Json::Array(items)) => b.layouts.as_ref().and_then(|layouts| {
+            items.iter().find_map(|i| {
+                let f = layouts.get(i.get("layout")?.as_str()?)?;
+                fields(f, i)
+            })
+        }),
+        _ => None,
+    }
+}
+
 fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     let span = b.span_of("default");
     let json = plain_json(v, span, "default")?;
+    if let Some(field) = bad_date_leaf(b, &json) {
+        return Err(Diag::new(
+            span,
+            format!("`{name}` defaults to a `{field}` value that isn't a real ISO 8601 date or timestamp"),
+        )
+        .help("use \"YYYY-MM-DD\" for dates and an ISO string like \"2026-01-31T09:00:00Z\" for timestamps"));
+    }
     // group/repeater/blocks defaults are normalized against their fields; an opaque json value
     // (the column itself or a json sub-field) is stored as given.
     if json_leaves_lossy(b, &json) {
@@ -1591,6 +1626,7 @@ fn is_iso_timestamp(s: &str) -> bool {
     };
     let zone_ok = zone == "Z"
         || (zone.len() == 6
+            && (zone.starts_with('+') || zone.starts_with('-'))
             && &zone[3..4] == ":"
             && digits(&zone[1..3]).is_some_and(|h| h <= 23)
             && digits(&zone[4..6]).is_some_and(|m| m <= 59));
@@ -2606,6 +2642,8 @@ mod tests {
             "2024-02-29T23:59:59.123456789012Z",
             "2026-01-31T09:00+05:30",
             "2026-01-31",
+            "0000-02-29T00:00:00Z",
+            "2026-01-31T09:00:00-00:30",
         ] {
             assert!(is_iso_timestamp(ok), "{ok}");
         }
@@ -2617,6 +2655,7 @@ mod tests {
             "2026-01-01T24:00:00Z",
             "2026-01-01T10:00:00",
             "2026-01-01T10:00:00+0100",
+            "2026-01-01T00:00Z00:00",
         ] {
             assert!(!is_iso_timestamp(bad), "{bad}");
         }

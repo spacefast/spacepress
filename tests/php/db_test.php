@@ -480,11 +480,6 @@ problem('boolean', fn () => $db->insert('locations', ['name' => 'Loft', 'active'
 problem('null for notNull', fn () => $db->insert('items', ['name' => 'x', 'qty' => null]), 422, 'invalid_input', '/qty');
 problem('NaN for real', fn () => $db->insert('items', ['name' => 'x', 'price' => NAN]), 422, 'invalid_input', '/price');
 problem('bad timestamp', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'yesterday-ish']), 422, 'invalid_input', '/seenAt');
-// Only ISO 8601 with real calendar/clock components: no relative words, no US dates, no zone-less
-// date-times, no out-of-range times, no Feb 30 rolling into March.
-foreach (['now', '+1 week', '10/30/2026', 'tomorrow', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T10:00:00', '2026-01-01T24:01:00Z', '2026-01-01T00:00:00+24:00', '2026-02-30T00:00:00Z'] as $bad) {
-    problem("bad timestamp $bad", fn () => $db->insert('items', ['name' => 'x', 'seenAt' => $bad]), 422, 'invalid_input', '/seenAt');
-}
 problem('impossible calendar date', fn () => $db->insert('items', ['name' => 'x', 'bestBefore' => '2023-02-29']), 422, 'invalid_input', '/bestBefore');
 problem('unique_violation with pointer', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 problem('reference_violation names the column', fn () => $db->insert('items', ['name' => 'x', 'locationId' => 99999]), 409, 'reference_violation', '/locationId');

@@ -72,6 +72,16 @@ eq('describe summarises access', [$schema->describe()['collections']['posts']['a
 
 // ---------------------------------------------------------------- scalar formats
 
+// Timestamps: epoch ms or ISO 8601 with Z/±HH:MM, every component a real calendar/clock value.
+$at = $schema->collection('posts')['columns']['createdAt'];
+eq('timestamp boundaries accepted (leap day, year 0000, negative offset, long fraction, bare date)', array_map(
+    fn ($v) => Schema::encode($at, $v, 'createdAt', '/createdAt'),
+    ['2024-02-29T23:59:59.999Z', '0000-02-29T00:00:00Z', '2026-01-01T00:00:00-00:30', '2026-01-01T00:00:00.123456Z', '2026-01-31'],
+), ['2024-02-29T23:59:59.999Z', '0000-02-29T00:00:00.000Z', '2026-01-01T00:30:00.000Z', '2026-01-01T00:00:00.123Z', '2026-01-31T00:00:00.000Z']);
+foreach (['now', '+1 week', '10/30/2026', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T10:00:00', '2026-01-01T24:00:00Z', '2026-01-01T00:00:00+24:00', '2026-01-01T00:00Z00:00', '2026-02-30T00:00:00Z'] as $bad) {
+    problem("timestamp rejected: $bad", fn () => Schema::encode($at, $bad, 'createdAt', '/createdAt'), 422, 'invalid_input', '/createdAt');
+}
+
 $email = $schema->collection('authors')['columns']['email'];
 eq('email accepted', Schema::encode($email, 'a.b@example.com', 'email', '/email'), 'a.b@example.com');
 problem('email rejected', fn () => Schema::encode($email, 'not-an-email', 'email', '/email'), 422, 'invalid_input', '/email');

@@ -502,8 +502,14 @@ final class Schema
 
     private static function isDate(string $v): bool
     {
-        return (bool) preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $v, $m)
-            && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $v, $m)) {
+            return false;
+        }
+        // Proleptic Gregorian, like JS: checkdate() would refuse year 0000.
+        [$y, $mo, $d] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        $leap = $y % 4 === 0 && ($y % 100 !== 0 || $y % 400 === 0);
+
+        return $mo >= 1 && $mo <= 12 && $d >= 1 && $d <= [31, $leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$mo - 1];
     }
 
     /** Stored value → JS-facing value. */

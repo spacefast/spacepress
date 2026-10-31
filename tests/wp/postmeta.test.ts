@@ -56,7 +56,9 @@ test("operators that can't run on postmeta are rejected with the shared messages
   await problem("GET", "/events" + qs({ where: { kinds: { in: ["talk"] } } }), {}, { status: 400, code: "invalid_query", pointer: "/where/kinds/in" });
   await problem("GET", "/posts" + qs({ where: { seo: { eq: {} } } }), {}, { status: 400, code: "invalid_query", pointer: "/where/seo/eq" });
   await problem("GET", "/posts" + qs({ orderBy: "tags" }), {}, { status: 400, code: "invalid_query", pointer: "/orderBy/tags" });
-  // Writes share the codec: a Feb 30 timestamp doesn't roll into March.
+});
+
+test("a post-backed timestamp write is strict ISO: Feb 30 is rejected, not rolled into March", async () => {
   await problem("POST", "/events", { as: "editor", body: { title: `Feb 30 ${run}`, startsAt: "2026-02-30T00:00:00Z" } }, { status: 422, code: "invalid_input", pointer: "/startsAt" });
 });
 

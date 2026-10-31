@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 2, 2026-10-31; revision 1 reviewed, findings folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 3, 2026-10-31; two review rounds folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -30,7 +30,7 @@ build of it.
 | Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build --target wp` only when `defineConfig({ admin: true })`. Standalone ignores the flag, like `plugins`. No admin by default. |
 | Mount | Full-page app at `/zero-admin/` (rewrite rule, `auth_redirect()`), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
 | Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. It is public metadata (it always was: the typed client, `zero doctor` and MCP read it) and stays so. The admin derives list fields and edit forms from it; what a viewer may *see* is decided by the data endpoints, never by the schema (§5). |
-| Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for every mutation and through core `/wp/v2/media` only for reads and attachment metadata edits (§5.3). The admin plugin registers **no REST route that reads or writes Zero data**. |
+| Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for upload, delete, alt text and focal point; core `/wp/v2/media` only for reads and for the two attachment fields Zero has no column for, caption and title (§5.3). Image cropping is dropped. The admin plugin registers **no REST route that reads or writes Zero data**. |
 | Scope | Collections, media, globals, the block editor, and a "classic admin" escape hatch. Users, themes, plugins, settings, design and taxonomy screens are dropped: they duplicate wp-admin with no Zero gain. |
 | Content frame | Out of scope. The host-embed contract (`native-*`) is Spacefast-dashboard-specific and is not imported. |
 | Where the JS lives | `runtime/admin/apps/` (a self-contained pnpm workspace), built into `runtime/admin/build/` which is **committed** with a source-hash manifest, exactly like `runtime/identity/{apps,build}`. The Rust binary embeds `runtime/admin/` minus `apps/`; Zero core never needs Node. |
@@ -81,7 +81,7 @@ Three classes:
 |---|---|---|---|---|
 | `@wordpress/*` (96 pinned nightlies in `pnpm-workspace.yaml` overrides) | U | n/a | Gutenberg packages, snapshot `v.202608281122` | npm, pinned (§3.3) |
 | one public npm grid-layout package under the framework's scope | U-like | n/a | Published on npm, GPL-2.0-or-later | dropped with the dashboard package |
-| `packages/image-cropper` | U fork | 8 | 5 of 8 files byte-identical to `@wordpress/image-cropper` at the same snapshot; the rest add a stylesheet and re-exports | **replace with npm** `@wordpress/image-cropper` |
+| `packages/image-cropper` | U fork | 8 | 5 of 8 files byte-identical to `@wordpress/image-cropper` at the same snapshot; the rest add a stylesheet and re-exports | **drop** with the crop editor (§4.2 `attachment`) |
 | `packages/global-styles-engine` | U fork | 25 | 7 of 23 source files identical to `@wordpress/global-styles-engine`; the rest are an older cut of the same files | **replace with npm** `@wordpress/global-styles-engine` |
 | `packages/views` | U fork + I additions | 13 | Same shape as `@wordpress/views` (use-view, load-view, preference keys) but no file identical; adds a `DataViews` wrapper, tab-filter merging and a stylesheet the routes depend on | keep as renamed fork `@zero-admin/views` **under the §9.1 ruling** (the additions are class I); migrate to stable `@wordpress/views` in the pin PR (§3.3) |
 | `packages/dataviews` | I | 3 | Re-exports `@wordpress/dataviews/wp` and its stylesheet | keep, rename `@zero-admin/dataviews` |
@@ -97,7 +97,7 @@ Three classes:
 | `packages/post-importer` | I | 2 | Unused (no importer anywhere in the tree) | drop |
 | `packages/dashboard` + `dashboard-widgets/*` | I | 49 | Widget dashboard with drag-and-drop layout; the weather widget is a stub with hard-coded data | drop (the landing page is the collections overview, §4) |
 | `packages/design-system` | I | 294 | Component library. Its own README marks it deprecated in favour of `@wordpress/ui` and links an internal storybook, an internal P2 and an internal tracker | keep, rename, scrub README; migrate to `@wordpress/ui` later (§8, after PR 7) |
-| `packages/ai-agent` | I | 13 | Chat panel driven by `window.wpOrchestratorAgent` from an internal plugin; README links an internal host and a WordPress.com endpoint | **drop** |
+| `packages/ai-agent` | I | 13 | Chat panel driven by a `window` global that an internal AI plugin exposes; README links an internal host and a hosted-platform endpoint | **drop** |
 | `packages/user-data` | I | 9 | User-invite store calling `/wp/v2/users/invite`, an endpoint no file in the tree defines (WordPress.com-only) | **drop** |
 | `packages/telemetry` | S | 2 | Inert no-op shim, GPL-2.0-or-later, written by Spacefast | drop the package and its 24 import sites (they are all no-ops) |
 | `packages/wp-build` | I | 10 | esbuild-based build: externalises `wp-*` classic scripts and `@wordpress/*` script modules, bundles the rest, emits `index.asset.php` per module and `build/index.php` | keep, rename `@zero-admin/wp-build` |
@@ -285,15 +285,24 @@ The wp-admin side keeps one top-level menu entry "Zero" (capability `read`)
 that redirects to `/zero-admin/`. The existing `/wp-admin/new` alias is not
 kept.
 
-Rewrite lifecycle: the rule is added on `init` every request (so it is in
-place for `wp rewrite flush` and for sites that regenerate rules), and it is
-persisted by `flush_rewrite_rules()` in the activation hook and in a one-shot
-`admin_init` check keyed on an option `zero_admin_rewrite` holding the plugin
-version (covers file-copy updates, the same pattern as the runtime's
-`zero_runtime_tables`). Deactivation flushes again so the rule disappears.
+Rewrite lifecycle. One function, `zero_admin_add_rewrite_rule()`, adds the
+rule; it is called from `init` on every request (so `wp rewrite flush` and
+any site-side regeneration include it). Activation runs after `init` has
+already fired for that request, so the activation hook calls the function
+itself and then `flush_rewrite_rules()`: register, then persist. Deactivation
+runs with the rule already registered in that request, so the hook first
+removes it from `$wp_rewrite->extra_rules_top` (`remove_rewrite_rule` does
+not exist in core; the key is the regex) and then flushes, so the persisted
+`rewrite_rules` option no longer contains it. A one-shot `admin_init` check
+keyed on an option `zero_admin_rewrite` holding the plugin version covers
+file-copy updates where no activation hook runs (the runtime's
+`zero_runtime_tables` pattern); it also calls the function before flushing.
 The harness activates the plugin **after** `wp rewrite structure` has already
-generated rules, which is the ordering a real site has; the activation test
-asserts the route answers without a manual flush.
+generated rules, which is the ordering a real site has. The activation test
+asserts the route answers on the very next request without a manual flush,
+and the deactivation test asserts that the persisted `rewrite_rules` option
+no longer contains the regex (read through WP-CLI), not just that the URL is
+404.
 
 ### 2.5 Harness
 
@@ -333,7 +342,16 @@ inputs. Two additions, both copied from `runtime/identity/apps/build.mjs`:
 
 - `build/.manifest.json` with `sources` = sha256 over every file under
   `apps/` except `node_modules`, so a drift check can tell a stale build;
-- `build/THIRD-PARTY-LICENSES.txt` from the esbuild metafile.
+- `build/THIRD-PARTY-LICENSES.txt` from the esbuild metafile, **plus every
+  notice that lives in the workspace itself** (today: the dashicons
+  `LICENSE.md` under the boot package; tomorrow: any file the §9.1 ruling
+  requires). Identity's generator only walks `node_modules` inputs, so the
+  admin's build script also appends each `LICENSE*`/`NOTICE*` file found under
+  `apps/packages/**` and `apps/routes/**` (excluding `node_modules`) with its
+  path as the heading. `build/` is what `build.rs` embeds and `zero build`
+  emits, so that one file is the complete notice bundle of the shipped plugin.
+  The drift suite checks that the bundle names every such workspace notice
+  (one assertion over the committed file against a glob of the sources).
 
 What is bundled and what is external is decided by `wp-build`'s rule, which is
 the right one for a WordPress plugin: classic `@wordpress/<x>` packages that
@@ -410,8 +428,28 @@ check.
 Plus one line in `tests/php/vendor_drift.php`: the admin build's
 `.manifest.json` `sources` must equal the digest of `runtime/admin/apps` (the
 same check identity has), so a stale commit fails `tests/php/run.sh` without
-Node. The `wp` job needs nothing new: `tests/wp/run.sh` builds the test app
-with `admin: true` and the new suite runs with the others.
+Node.
+
+The `wp` job runs the HTTP suite unchanged: `tests/wp/run.sh` builds the test
+app with `admin: true` and `tests/wp/admin.test.ts` runs under `node --test`
+with the others. The browser journey (§7) is a separate step in the same job,
+after the HTTP suite and against the same stack (`ZERO_WP_KEEP=1` is not
+needed; `run.sh` runs it before tear-down):
+
+```
+pnpm --dir runtime/admin/apps install --frozen-lockfile     # Playwright is a devDependency of the workspace
+pnpm --dir runtime/admin/apps exec playwright install --with-deps chromium
+pnpm --dir runtime/admin/apps exec playwright test --config tests/wp/admin-browser.config.ts
+```
+
+The spec lives at `tests/wp/admin-browser.spec.ts` (not `*.test.ts`, so the
+`node --test` glob in `run.sh` never picks it up), reads the harness receipt
+from `tests/wp/.harness.json` like `env.ts` does, and resolves Playwright from
+the workspace through the config's `testDir`/`rootDir`. `run.sh` runs the
+step when `runtime/admin/apps/node_modules/.bin/playwright` exists and fails
+with a clear message when it does not, so a local run without the workspace
+installed is an explicit skip, not a silent pass. The job's cache key gains
+the workspace lockfile.
 
 Node is a dev dependency of this repository already (`runtime/identity/apps`,
 `tests/wp/*.test.ts`); the admin adds pnpm, pinned through `packageManager`.
@@ -438,7 +476,7 @@ the content kernel Zero v2 replaces, or is capsule/host-specific.
 | `collection-edit` | `/collections/$collection/$slug` | kernel resolve + sync + field editor | **rewire** | by id, not slug; the block editor for `content` collections with a "Fields" sidebar panel rendered from `/_schema` columns and written through the `acf` REST field; a plain form for collections without `content`; `showIf` evaluated client-side from the sibling values; `editor: false` rows use the plain form over `/zero/v1` |
 | `post-list` | `/types/$type/list/$slug` | core `/wp/v2/<type>` + field collections | **keep for `attachment` only** (the media library); the generic post-type list is not exposed for Zero types | its DataViews/actions/quick-edit code is the base the collection list is built on |
 | `post-list-redirect`, `post`, `post-edit`, `post-new` | `/types/$type[...]` | core | **keep** the editor host (`boot/components/editor`), **drop** the public `/types/*` routes | the editor is reached through `/collections/...` only |
-| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep**, re-path, mutations rewired | reads and attachment-metadata edits (alt, caption, crop) stay on core `/wp/v2/media`; **upload and delete go through `/zero/v1/media`** so Zero's fixed media rules and reference cleanup apply (§5.3) |
+| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep** the details screen, re-path, mutations rewired; **drop the cropper** | reads stay on core `/wp/v2/media`; **upload, delete, alt text and focal point go through `/zero/v1/media`** so Zero's fixed media rules (`create: author`, `update: editor`, `delete: editor`) and reference cleanup apply; caption and title, which Zero has no column or rule for, stay on core (§5.3). The crop/rotate editor rewrites the file through core's `/wp/v2/media/{id}/edit` with WordPress capabilities and would bypass Zero's `update` rule, so it goes; a focal-point picker over `PATCH /zero/v1/media/{id}` replaces it (the runtime regenerates `cover` sizes from `focal`) |
 | `term-list`, `term-add`, `term-edit` | `/types/$type/taxonomies/$tax[...]` | core terms | **drop** | Zero has no taxonomies |
 | `user-list`, `user-add`, `user-profile`, `user`, `profile` | `/users[...]`, `/profile` | core users + WordPress.com invites | **drop** | duplicates wp-admin; the invite flow is WordPress.com-only; `/zero/v1/me` covers "who am I" |
 | `plugin-list`, `plugin` | `/plugins[...]` | core plugins + overrides | **drop** | duplicates wp-admin |
@@ -450,7 +488,7 @@ the content kernel Zero v2 replaces, or is capsule/host-specific.
 | `content-activity`, `content-settings`, `redirects` | `/content/...`, `/redirects` | Spacefast's kernel REST namespace | **drop** | Spacefast's content kernel, which Zero v2 replaces |
 | `legacy-admin` | `/legacy/$slug` | iframes a wp-admin page | **keep** | the escape hatch: "Classic admin" and media settings open here; 3 files. **Not** used for globals (their SCF options pages are governed by WordPress capabilities, not Zero's global rules; §5.3) |
 | new: `globals` | `/globals/$name` | `/zero/v1/globals/<g>` | **new** (PR 5, not 6) | one form per global rendered from `/_schema` fields; `GET`/`PATCH /zero/v1/globals/<g>`; the menu lists a global only when `GET` succeeds for the viewer |
-| new: `actions` | `/actions` | `/zero/v1/_schema`, `POST /zero/v1/actions/<a>` | **new, optional** (PR 6 if small) | a form per action from its `input` columns; shows only actions whose access summary the viewer meets; the response is printed as JSON |
+| new: `actions` | `/actions` | `/zero/v1/_schema`, `POST /zero/v1/actions/<a>` | **new, optional** (PR 6 if small) | a form per action from its `input` columns. Visibility: an action whose access summary is a role or `anyone`/`authenticated` is shown only when the viewer meets it; an action summarised as `"rule"` (a function) is always shown, because only the submission can decide, and its 401/403 is displayed inline. The response is printed as JSON |
 
 ### 4.3 PHP (`lib/`)
 
@@ -514,14 +552,16 @@ Rules, in order of where they are enforced:
 3. **Where WordPress rules apply instead, say so.** Two surfaces are
    governed by WordPress capabilities, not Zero rules, and the admin does not
    pretend otherwise:
-   - **Attachment metadata** (alt, caption, title, crop) is edited through
-     core `/wp/v2/media`, whose `edit_post` capability on attachments is
-     WordPress's. Zero's media rules are fixed (`read: anyone`, `create:
-     author`, `delete: editor`) and concern existence, not metadata. Upload
-     and delete, the two operations Zero does govern, go through
-     `POST`/`DELETE /zero/v1/media` so the rules and the reference cleanup
-     (nulling `media` columns) apply. The media list reads core `/wp/v2/media`
-     (read is `anyone` in Zero too).
+   - **Attachment caption and title** are edited through core `/wp/v2/media`,
+     whose `edit_post` capability on attachments is WordPress's. Zero's media
+     row has no caption or title column and no rule about them. Everything
+     Zero *does* govern goes through `/zero/v1/media`: upload (`create:
+     author`), delete (`delete: editor`, with the reference cleanup that nulls
+     `media` columns), and `PATCH /media/{id}` for `alt` and `focal`
+     (`update: editor`, phase 2 §7.2). The crop/rotate editor is dropped
+     (§4.2) because its save rewrites the file through core with WordPress
+     capabilities only. The media list reads core `/wp/v2/media` (read is
+     `anyone` in Zero too).
    - **SCF options pages for globals** in wp-admin are governed by SCF's
      `capability` (`edit_others_posts`). The admin does not link to them;
      globals are edited through `/zero/v1/globals/<g>`, which applies the

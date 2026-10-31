@@ -282,52 +282,58 @@ final class Db
             // children in that parent row's locale, falling back per translation group like a top-level
             // read, one query per distinct parent locale (a nested `locale` overrides that). References
             // name one specific row, so when the relation starts at the parent's primary key, children of
-            // any row in the parent's group belong to it (limit/offset then apply per parent, here).
+            // any row in the parent's translation group belong to it, and limit/offset window per group.
             $parentPk = $spec['primaryKey'];
             $localizedMany = $rel['kind'] === 'many' && $this->localized($collection) && $this->localized($rel['collection']);
             $perLocale = $localizedMany && !array_key_exists('locale', $opts);
             $byGroup = $localizedMany && $rel['from'] === $parentPk;
             $default = $perLocale ? $this->schema->locales()['default'] : null;
             $bucketOf = static fn (array $source): string => $perLocale ? (string) ($source['locale'] ?? $default) : '';
-            $keysOf = static fn (array $source): array => $byGroup
-                ? array_values(Locale\Module::members($source, $parentPk))
-                : ($source[$rel['from']] === null ? [] : [$source[$rel['from']]]);
+            // A parent's window: its translation group (named by its smallest member), else its own key.
+            $windowOf = static function (array $source) use ($byGroup, $parentPk, $rel): string {
+                if (!$byGroup) {
+                    return self::key($source[$rel['from']]);
+                }
+                $members = array_values(Locale\Module::members($source, $parentPk));
+                usort($members, static fn ($a, $b) => strcmp(self::key($a), self::key($b)));
+
+                return self::key($members[0] ?? $source[$parentPk]);
+            };
             $buckets = [];
-            $owner = []; // bucket => key(referenced value) => key(the parent row's own `from` value)
             foreach ($rows as $row) {
                 $source = $sourceFor($row);
                 $bucket = $bucketOf($source);
-                foreach ($keysOf($source) as $v) {
-                    $buckets[$bucket][self::key($v)] = $v;
-                    $owner[$bucket][self::key($v)] = self::key($source[$rel['from']]);
+                $buckets[$bucket] ??= [];
+                $window = $windowOf($source);
+                foreach ($byGroup ? Locale\Module::members($source, $parentPk) : [$source[$rel['from']]] as $v) {
+                    if ($v !== null) {
+                        $buckets[$bucket][self::key($v)] = [$v, $window];
+                    }
                 }
+            }
+            if ($buckets === []) {
+                $buckets[$perLocale ? (string) $default : ''] = []; // still checks access and options on the target
             }
             $targetCols = $this->schema->collection($rel['collection'])['columns'];
             $childPk = $this->schema->collection($rel['collection'])['primaryKey'];
             $groups = [];
             foreach ($buckets as $bucket => $keys) {
                 $bucketOpts = $perLocale ? ['locale' => (string) $bucket] + $opts : $opts;
-                if ($byGroup) {
-                    unset($bucketOpts['limit'], $bucketOpts['offset']);
-                    $bucketOpts['orderBy'] ??= [$childPk => 'asc']; // the order a windowed read pages in
-                }
                 $values = array_map(
-                    static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
+                    static fn (array $k) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $k[0], $rel['to'], ''),
                     array_values($keys),
                 );
-                $children = $this->fetch($rel['collection'], $bucketOpts, $rptr, $viewer, [$rel['to'], $values], decoded: $childDecoded);
+                $partition = $byGroup ? [$rel['to'], $values, array_column(array_values($keys), 1)] : [$rel['to'], $values];
+                $children = $this->fetch($rel['collection'], $bucketOpts, $rptr, $viewer, $partition, decoded: $childDecoded);
                 $childSources = array_column($childDecoded, null, $childPk);
                 foreach ($this->project($children, $rel['collection'], $bucketOpts, $rptr) as $i => $child) {
                     $to = self::key($childSources[$children[$i][$childPk]][$rel['to']]);
-                    $groups[$bucket][$owner[$bucket][$to] ?? $to][] = $child;
+                    $groups[$bucket][$keys[$to][1] ?? $to][] = $child;
                 }
             }
             foreach ($rows as &$row) {
                 $source = $sourceFor($row);
-                $group = $source[$rel['from']] === null ? [] : ($groups[$bucketOf($source)][self::key($source[$rel['from']])] ?? []);
-                if ($byGroup && (isset($opts['limit']) || isset($opts['offset']))) {
-                    $group = array_slice($group, (int) ($opts['offset'] ?? 0), isset($opts['limit']) ? (int) $opts['limit'] : null);
-                }
+                $group = $source[$rel['from']] === null ? [] : ($groups[$bucketOf($source)][$windowOf($source)] ?? []);
                 $row[$name] = $rel['kind'] === 'many' ? $group : ($group[0] ?? null);
             }
             unset($row);

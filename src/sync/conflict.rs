@@ -31,7 +31,8 @@ pub fn render(c: Conflict) -> String {
     out.push_str(&format!("# Fields: {}\n", c.pointers.join(", ")));
     out.push_str(&format!("# Files: {}\n", c.local_digest));
     out.push_str(&format!("# Site: {}\n", c.remote_digest));
-    out.push_str("# Edit the record between the markers into the version to keep, delete every marker line,\n");
+    out.push_str("# Edit the record between the markers into the version to keep (or leave only `(deleted)` to\n");
+    out.push_str("# delete it on both sides), delete every marker line,\n");
     out.push_str(&format!("# then run: zero sync resolve {uid}\n"));
     out.push_str(&format!("<<<<<<< files\n{}", rendered(uid, c.ours.record)));
     out.push_str(&format!("||||||| base\n{}", rendered(uid, c.base.record)));

@@ -406,8 +406,31 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         report.note("first sync with this site: records are matched, nothing is deleted".into());
     }
     let all = collections(&schema, project, &options.only)?;
-    for c in &all {
-        collection(client, c, &site, label, known, &mut bases, options, report, None)?;
+    // Every base change is made only after both sides landed, so whatever the run did is recorded
+    // even when a later step fails: a run that stops early never leaves an older base behind.
+    let outcome = run_collections(client, &all, &site, label, known, &mut bases, options, report);
+    if !options.check {
+        bases.touch(&site);
+        if bases.save()? {
+            report.written(bases.path());
+        }
+    }
+    outcome
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_collections(
+    client: &Client,
+    all: &[Collection],
+    site: &str,
+    label: &str,
+    known: bool,
+    bases: &mut Bases,
+    options: &Options,
+    report: &mut Report,
+) -> Result<(), String> {
+    for c in all {
+        collection(client, c, site, label, known, bases, options, report, None)?;
     }
     // Records whose references weren't on the site yet (cycles, self-references): once more, now that
     // every collection's records have been pushed. Their bases only move when they land.
@@ -418,24 +441,14 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
             break;
         }
         report.identities = 0;
-        for c in &all {
+        for c in all {
             let records: IndexMap<String, Deferred> = deferred
                 .iter()
                 .filter(|d| d.collection == c.name)
                 .map(|d| (d.uid.clone(), d.clone()))
                 .collect();
             if !records.is_empty() {
-                collection(
-                    client,
-                    c,
-                    &site,
-                    label,
-                    known,
-                    &mut bases,
-                    options,
-                    report,
-                    Some(&records),
-                )?;
+                collection(client, c, site, label, known, bases, options, report, Some(&records))?;
             }
         }
         // Progress is anything the site gained this pass: a record completing, or an identity created
@@ -453,12 +466,6 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
                 report.fail(format!("{}/{}: references a record that isn't on the site and can't be created first; sync it, or make one of the references nullable", d.collection, d.uid));
             }
             break;
-        }
-    }
-    if !options.check {
-        bases.touch(&site);
-        if bases.save()? {
-            report.written(bases.path());
         }
     }
     Ok(())
@@ -1013,6 +1020,43 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
             return Err(format!(
                 "{uid} changed since the conflict was written; delete .zero/conflicts/{uid}.md and run zero sync to write a fresh one"
             ));
+        }
+        // Keeping the deleted side: the draft below its header is exactly `(deleted)`. Both sides go.
+        if resolved.trim() == "(deleted)" {
+            if let Some(f) = in_files
+                && !unchanged(&f.path, Some(&f.bytes))
+            {
+                return Err(format!(
+                    "{} changed while resolve ran; nothing was deleted",
+                    report.rel(&f.path)
+                ));
+            }
+            if site_digest != "absent" {
+                client
+                    .post(
+                        &format!("/sync/{}/trash", c.name),
+                        &json!({"uid": uid, "expect": site_digest}),
+                    )
+                    .map_err(|p| report.problem("site", &p))?;
+            }
+            if let Some(f) = in_files {
+                std::fs::remove_file(&f.path).map_err(|e| format!("{}: {e}", report.rel(&f.path)))?;
+                report.written(&f.path);
+            }
+            bases.remove(&site, &c.name, uid);
+            if bases.save()? {
+                report.written(bases.path());
+            }
+            report.applied();
+            if !unchanged(&path, Some(&draft)) {
+                return Err(format!(
+                    "{} changed while resolve ran; the deletion was applied and your newer edit is kept there",
+                    report.rel(&path)
+                ));
+            }
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            report.written(&path);
+            return Ok(());
         }
         let (mut front, body) =
             md_record(&resolved).map_err(|(line, m)| format!("{}:{}: {m}", report.rel(&path), line + 6))?;

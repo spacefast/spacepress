@@ -1006,6 +1006,18 @@ fn proxy_acting_on_first(
     act: impl Fn() + Send + 'static,
     done: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> String {
+    proxy_with_outage(site, trigger, act, done, None)
+}
+
+/// As proxy_acting_on_first; once `act` has run, every GET starting with `outage` gets a broken
+/// answer, which makes the run stop there.
+fn proxy_with_outage(
+    site: &Site,
+    trigger: &'static str,
+    act: impl Fn() + Send + 'static,
+    done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    outage: Option<&'static str>,
+) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let upstream = site.port;
@@ -1057,6 +1069,14 @@ fn proxy_acting_on_first(
             } else {
                 text.replacen("\r\n", "\r\nConnection: close\r\n", 1)
             };
+            if let Some(prefix) = outage
+                && done.load(std::sync::atomic::Ordering::SeqCst)
+                && head.starts_with(&format!("GET {prefix}"))
+            {
+                let _ =
+                    client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndown");
+                continue;
+            }
             let mut server = TcpStream::connect(("127.0.0.1", upstream)).unwrap();
             server.write_all(text.as_bytes()).unwrap();
             let mut answer = Vec::new();
@@ -1961,5 +1981,128 @@ fn a_record_whose_uid_another_file_mentions_can_still_be_deleted() {
         !site.rows("notes").iter().any(|r| r["uid"] == a_uid.as_str()),
         "A is trashed"
     );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_failure_later_in_the_run_keeps_the_bases_already_moved() {
+    let (project, site) = setup();
+    std::fs::create_dir_all(project.join("content/snippets")).unwrap();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(
+        sync(&project, &site, &["--only", "notes,snippets"]).status.code(),
+        Some(0)
+    );
+    let file = project.join("content/notes/n.md");
+    let kept = std::fs::read_to_string(&file).unwrap();
+    std::fs::remove_file(&file).unwrap();
+    // The file comes back during its trash request, and then the next collection's pull fails, which
+    // stops the run. The trashed record's base must still be gone afterwards.
+    let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_with_outage(
+        &site,
+        "/api/sync/notes/trash",
+        move || std::fs::write(&path, &kept).unwrap(),
+        restored.clone(),
+        Some("/api/sync/snippets"),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes,snippets",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the run stopped: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(
+        sync(&project, &site, &["--only", "notes,snippets"]).status.code(),
+        Some(0)
+    );
+    assert!(file.exists(), "the restored file survives the next run");
+    assert_eq!(site.rows("notes").len(), 1, "and its record is back");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_delete_versus_edit_conflict_can_be_resolved_as_a_deletion_either_way() {
+    let (project, site) = setup();
+    for (case, delete_file) in [("file deleted", true), ("record deleted", false)] {
+        let slug = if delete_file { "gone-locally" } else { "gone-remotely" };
+        std::fs::write(
+            project.join(format!("content/notes/{slug}.md")),
+            format!("---\ntitle: T\nslug: {slug}\nlevel: null\nauthorId: null\n---\nFirst.\n"),
+        )
+        .unwrap();
+        assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+        let row = site.rows("notes").into_iter().find(|r| r["slug"] == slug).unwrap();
+        let (id, uid) = (row["id"].as_i64().unwrap(), row["uid"].as_str().unwrap().to_string());
+        let file = project.join(format!("content/notes/{slug}.md"));
+        if delete_file {
+            std::fs::remove_file(&file).unwrap();
+            let (s, _) = site.call(
+                "PATCH",
+                &format!("/notes/{id}"),
+                Some(serde_json::json!({"title": "Edited online"})),
+            );
+            assert_eq!(s, 200);
+        } else {
+            std::fs::write(
+                &file,
+                std::fs::read_to_string(&file)
+                    .unwrap()
+                    .replace("title: T", "title: Edited locally"),
+            )
+            .unwrap();
+            let (s, _) = site.call("DELETE", &format!("/notes/{id}"), None);
+            assert_eq!(s, 200);
+        }
+        sync(&project, &site, &["--only", "notes"]);
+        let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+        let conflict = std::fs::read_to_string(&draft).unwrap_or_else(|_| panic!("{case}: a conflict draft"));
+        let header: String = conflict
+            .lines()
+            .take_while(|l| l.starts_with('#'))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        std::fs::write(&draft, format!("{header}(deleted)\n")).unwrap();
+        let out = sync(&project, &site, &["resolve", &uid]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{case}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(!file.exists(), "{case}: no file");
+        assert!(
+            !site.rows("notes").iter().any(|r| r["uid"] == uid.as_str()),
+            "{case}: no record"
+        );
+        assert!(!draft.exists(), "{case}: no draft");
+        assert_eq!(
+            data(&sync(&project, &site, &["--only", "notes"]))["applied"].as_u64(),
+            Some(0),
+            "{case}: settled"
+        );
+    }
     let _ = std::fs::remove_dir_all(&project);
 }

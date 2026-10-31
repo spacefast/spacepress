@@ -176,9 +176,9 @@ client's generated README for sessions, guests and server-to-server auth.
 | | Minimum |
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
-| WordPress target | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `openssl` and `sodium`, MySQL 8.0 or MariaDB 10.11 |
+| WordPress target | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, MySQL 8.0 or MariaDB 10.11 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
-| Standalone target | PHP 8.2 with `pdo_sqlite`, `mbstring`, `json` and `gd` |
+| Standalone target | PHP 8.2 with `pdo_sqlite`, `mbstring`, `json`, `gd` and `fileinfo` |
 
 `zero build --target wp` downloads the required plugins at their pinned
 versions, verifies their checksums, and ships them next to yours. The runtime

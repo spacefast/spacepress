@@ -1195,7 +1195,9 @@ final class Js
 
     /**
      * Epoch ms. `ZERO_NOW` (ISO string or epoch ms) pins the clock for time-travel tests (§9.1);
-     * it is read on every call so an in-process test can move it. Inside atInstant() it is that instant.
+     * it is read on every call so an in-process test can move it. With `ZERO_NOW_STEP` (ms) set too,
+     * every read advances the pinned clock by that step: a test-only seam that makes "two reads see two
+     * instants" deterministic. Inside atInstant() it is that one instant.
      */
     public static function now(): int
     {
@@ -1206,6 +1208,11 @@ final class Js
         if ($pinned !== false && $pinned !== '') {
             $ms = preg_match('/^-?\d+$/D', $pinned) ? (int) $pinned : self::date($pinned);
             if (is_int($ms)) {
+                $step = getenv('ZERO_NOW_STEP');
+                if ($step !== false && preg_match('/^\d+$/D', $step)) {
+                    putenv('ZERO_NOW=' . ($ms + (int) $step));
+                }
+
                 return $ms;
             }
         }

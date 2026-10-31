@@ -889,7 +889,8 @@ final class Db
         $fields = $g['fields'];
         $this->rejectUnknown($fields, $patch);
 
-        return $this->transaction(function () use ($name, $fields, $patch) {
+        // One instant: never-written fields' `now` defaults and the patch's nested defaults agree.
+        return Js::atInstant(fn () => $this->transaction(function () use ($name, $fields, $patch) {
             $current = $this->globalGet($name);
             $norm = [];
             foreach ($patch as $field => $v) {
@@ -903,7 +904,7 @@ final class Db
             $this->store->globalWrite($name, $values);
 
             return $this->globalGet($name);
-        });
+        }));
     }
 
     // ================================================================ media (§4.6)

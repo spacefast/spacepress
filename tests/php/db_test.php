@@ -1442,4 +1442,29 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     \Zero\Db::setInstance($previous);
 })();
 
+// ================================================================ globals: one instant per update
+
+// A global update fills never-written `now` fields and the patch's nested defaults at one instant,
+// although every clock read here moves the pinned clock a millisecond (ZERO_NOW_STEP).
+(static function (): void {
+    $now = ['now' => true];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [], 'globals' => ['site' => [
+        'fields' => [
+            'createdAt' => ['type' => 'timestamp', 'default' => $now],
+            'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]]],
+        ],
+    ]]]);
+    $store = new \Zero\Store\SqliteStore(\Zero\Store\SqliteStore::connect(':memory:'), $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    putenv('ZERO_NOW=2030-01-01T00:00:00.000Z');
+    putenv('ZERO_NOW_STEP=1');
+    try {
+        $site = $db->globalUpdate('site', ['audit' => []]);
+    } finally {
+        putenv('ZERO_NOW_STEP');
+        putenv('ZERO_NOW');
+    }
+    eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
+})();
+
 finish('db_test');

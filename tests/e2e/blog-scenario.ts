@@ -1,6 +1,6 @@
 // The cross-target blog scenario (design §9.1): one function, driven only through the typed client,
 // that the standalone lane (tests/e2e/standalone.test.ts, P) and the WordPress lane
-// (tests/wp/rest.test.ts, W) both run against examples/blog. Every assertion is about what a client
+// (tests/wp/rest.test.ts, W) both run against the phase-1 blog (tests/fixtures/blog). Every assertion is about what a client
 // sees over HTTP, so "same behaviour on both targets" means "this function passes on both".
 //
 // What a lane provides (BlogScenarioEnv):
@@ -19,7 +19,7 @@
 // Each step is a `t.test` subtest when a node:test context is passed, so failures name the step.
 
 import assert from "node:assert/strict";
-import { ZeroError, type Client, type Media, type Post } from "../../examples/blog/zero/client/index.ts";
+import { ZeroError, type Client, type Media, type Post } from "../wp/app/zero/client/index.ts";
 
 export type ScenarioRole = "anonymous" | "subscriber" | "author" | "editor" | "admin";
 

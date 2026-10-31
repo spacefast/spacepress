@@ -1,7 +1,7 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
 import { action, db, text } from "zero";
-import { comments } from "../../../../examples/blog/zero.config.ts";
+import { comments } from "../../../fixtures/blog/zero.config.ts";
 
 export const schema = {};
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */

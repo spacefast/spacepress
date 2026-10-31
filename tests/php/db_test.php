@@ -1173,6 +1173,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($existing['title'] === 'Bump DE' && isset($patch['price'])) {
                 $patch['price']++;
             }
+            if ($existing['title'] === 'Tag DE' && isset($patch['price'])) {
+                $patch['tags'] = ['b']; // a different synced column than the one propagated
+            }
             return $patch;
         }
         function pages__afterUpdate($row, $previous) {
@@ -1259,6 +1262,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('a hook that diverges a synced column → 409, nothing committed', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $bump['id']])), 409, 'conflict', '/price');
     eq('… both rows keep the group value', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]]), 'price'), [1, 1]);
     $db->delete('pages', ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]);
+    $tag = $db->insert('pages', ['title' => 'Tag', 'price' => 1, 'tags' => ['a']], true)[0];
+    $tagDe = $db->insert('pages', ['title' => 'Tag DE', 'locale' => 'de', 'translationOf' => $tag['id']], true)[0];
+    problem('… also when the hook changes another synced column', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $tag['id']])), 409, 'conflict', '/tags');
+    eq('… nothing committed', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$tag['id'], $tagDe['id']]]], 'orderBy' => ['id' => 'asc']])), [[1, ['a']], [1, ['a']]]);
+    $db->delete('pages', ['id' => ['in' => [$tag['id'], $tagDe['id']]]]);
 
     // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
     $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];

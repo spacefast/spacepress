@@ -1124,6 +1124,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
+    let mut snapshots = Vec::new();
     for target in ["standalone", "wp"] {
         // The v3 golden renders every key, including features no runtime enforces yet (src/unlanded.rs).
         let out = zero()
@@ -1154,7 +1155,18 @@ fn phase2_schema_and_closures_match_the_contract() {
                 .remove("translationGroup");
         }
         assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
+        snapshots.push(std::fs::read_to_string(tmp.join("zero/migrations/snapshot.json")).unwrap());
     }
+    // §7.3: the migration snapshot is shared by both targets, so switching targets must plan no
+    // migration (a WP build must not drop the SQLite translation-group column).
+    assert_eq!(
+        snapshots[0], snapshots[1],
+        "the migration snapshot depends on the build target"
+    );
+    assert!(
+        !tmp.join("zero/migrations/sqlite/0002_update.sql").exists(),
+        "switching targets planned a SQLite migration"
+    );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
     let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
     assert_eq!(

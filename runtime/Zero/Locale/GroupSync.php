@@ -134,19 +134,22 @@ final class GroupSync
         // Every member as currently committed, locked: a translation created concurrently can't be missed.
         $members = Lock::members($collection, $row, Module::members($row, $pk));
         $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
-        self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
-            $find = static fn () => $siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']);
-            foreach ($find() as $sibling) {
+        $synced = Module::synced($spec);
+        self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $row, $siblings, $changed, $synced): void {
+            $find = static fn (array $ids) => $ids === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'locale' => '*']);
+            foreach ($find($siblings) as $sibling) {
                 $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
                 if ($patch !== []) {
                     db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                 }
             }
-            // Sibling hooks run per row; one that rewrites a synced value would split the group.
-            foreach ($find() as $sibling) {
-                foreach ($changed as $col => $v) {
-                    if (!Module::same($sibling[$col], $v)) {
-                        throw new HttpError(409, 'conflict', "A hook changed $col on a translation; synced columns must stay equal across the group", HttpError::seg($col));
+            // Hooks run per row and may write any column; the group must still agree on every
+            // synced column, the initiating row included, or the whole write is refused.
+            $members = $find([$row[$pk], ...$siblings]);
+            foreach ($synced as $col) {
+                foreach ($members as $member) {
+                    if (!Module::same($member[$col], $members[0][$col])) {
+                        throw new HttpError(409, 'conflict', "A hook changed $col on one translation; synced columns must stay equal across the group", HttpError::seg($col));
                     }
                 }
             }

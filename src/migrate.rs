@@ -74,15 +74,23 @@ pub fn snapshot(schema: &Schema) -> Json {
 fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     let mut cols = serde_json::Map::new();
     // Derived columns (a localized collection's `translations`) are computed on read, never stored.
-    for col in c.columns.values().filter(|col| !col.derived) {
-        let mut snap = column_snapshot(col, schema);
-        if col.system && col.name == "translationGroup" {
-            snap["max"] = json!(36); // a UUID; MySQL needs a bounded VARCHAR for the unique pair
-        }
-        cols.insert(col.name.clone(), snap);
+    for col in c
+        .columns
+        .values()
+        .filter(|col| !(col.derived || col.system && col.name == "translationGroup"))
+    {
+        cols.insert(col.name.clone(), column_snapshot(col, schema));
     }
     let mut t = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
-    if c.localized && c.columns.contains_key("translationGroup") {
+    if c.localized {
+        // §7.3: the SQLite table (and a MySQL `editor: false` table) links a translation group with
+        // this column. The snapshot is shared by both targets' builds, so it never depends on which
+        // target extracted the schema (post-backed WP groups live in Polylang, not in this column).
+        let mut group = crate::schema::Column::new("translationGroup", crate::schema::ColType::Text);
+        group.system = true;
+        let mut snap = column_snapshot(&group, schema);
+        snap["max"] = json!(36); // a UUID; MySQL needs a bounded VARCHAR for the unique pair
+        cols_insert(&mut t, "translationGroup", snap);
         t["localized"] = json!(true);
     }
     t
@@ -119,6 +127,12 @@ fn sql_default(col: &Column) -> Json {
     match &col.default {
         Some(DefaultKind::Value(v)) if !v.is_null() => v.clone(),
         _ => Json::Null,
+    }
+}
+
+fn cols_insert(table: &mut Json, name: &str, col: Json) {
+    if let Some(cols) = table["columns"].as_object_mut() {
+        cols.insert(name.into(), col);
     }
 }
 

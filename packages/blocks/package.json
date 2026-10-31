@@ -1,0 +1,60 @@
+{
+  "name": "@spacefast/zero-blocks",
+  "version": "0.1.0",
+  "description": "Write Gutenberg content and whole WordPress block themes in TSX.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "zero-blocks": "./bin/zero-blocks.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "vendor",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler/index.d.ts",
+      "default": "./dist/compiler/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "prepare": "node scripts/bundle-wp.mjs",
+    "build": "node scripts/bundle-wp.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test tests/unit/*.test.ts",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@wordpress/block-library": "10.2.0",
+    "@wordpress/blocks": "15.24.0",
+    "@wordpress/element": "8.3.0",
+    "esbuild": "0.28.2",
+    "happy-dom": "21.0.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.3",
+    "typescript": "5.9.3"
+  }
+}

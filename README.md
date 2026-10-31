@@ -9,8 +9,9 @@ works with Next.js, Astro, TanStack Start, or anything else that can call
 `fetch`.
 
 Zero is built on top of WordPress and runs alongside a traditional WordPress
-setup. It needs WordPress 7.1+, PHP 8.2+ and a small set of plugins that
-`zero build` pins for you. Zero apps can be deployed to
+setup. The WordPress target needs WordPress 7.1+, PHP 8.2+ and a small set of
+plugins that `zero build` pins for you; there's also a standalone target that
+needs only PHP. Zero apps can be deployed to
 [Spacefast](https://spacefast.com) natively.
 
 It's a new, experimental way of building backends for content and personal
@@ -150,8 +151,17 @@ plugins activated:
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.
-Copy `zero/client/` into any frontend, or import it by path. Node 22.18+ runs
-it as-is:
+Copy `zero/client/` into any frontend, or import it by path. To try it against
+the `journal` config from the top of this page: stop the pantry server, save
+the config as `journal/zero.config.ts`, then
+
+```sh
+./target/release/zero dev journal                    # builds journal/zero/client/, serves on :8787
+./target/release/zero users add me --role editor --dir journal
+./target/release/zero tokens create me --dir journal
+```
+
+Node 22.18+ runs this as-is from the `journal` directory:
 
 ```ts
 import { createClient } from "./zero/client/index.ts";

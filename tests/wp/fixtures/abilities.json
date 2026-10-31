@@ -4019,6 +4019,9 @@
             "author": {
               "type": "object"
             },
+            "signups": {
+              "type": "object"
+            },
             "comments": {
               "type": "object"
             },
@@ -4904,6 +4907,9 @@
                     }
                   },
                   "author": {
+                    "type": "object"
+                  },
+                  "signups": {
                     "type": "object"
                   },
                   "comments": {
@@ -5811,6 +5817,9 @@
                   "author": {
                     "type": "object"
                   },
+                  "signups": {
+                    "type": "object"
+                  },
                   "comments": {
                     "type": "object"
                   },
@@ -6714,6 +6723,9 @@
                 "author": {
                   "type": "object"
                 },
+                "signups": {
+                  "type": "object"
+                },
                 "comments": {
                   "type": "object"
                 },
@@ -6864,6 +6876,12 @@
           ],
           "properties": {
             "author": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "signups": {
               "type": [
                 "boolean",
                 "object"
@@ -7123,6 +7141,12 @@
           ],
           "properties": {
             "author": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "signups": {
               "type": [
                 "boolean",
                 "object"

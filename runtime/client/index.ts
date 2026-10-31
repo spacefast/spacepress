@@ -347,7 +347,7 @@ interface OidcTokens {
 /** The browser globals sign-in touches, looked up at call time (absent on servers). */
 interface BrowserGlobals {
   sessionStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void };
-  location?: { search: string; assign(url: string): void };
+  location?: { search: string; href: string; assign(url: string): void };
 }
 
 const browser = () => globalThis as unknown as BrowserGlobals;

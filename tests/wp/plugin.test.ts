@@ -41,7 +41,7 @@ test("activation registers the post types, field groups and options page, and cr
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%' AND TABLE_NAME NOT LIKE 'wp\\_zero\\_identity\\_%'");
   assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__files", "InnoDB"], ["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_field_teams", "InnoDB"], ["wp_zero_guestbook", "InnoDB"], ["wp_zero_hookNotes", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_phrases", "InnoDB"], ["wp_zero_reviews", "InnoDB"], ["wp_zero_signups", "InnoDB"], ["wp_zero_tour_log", "InnoDB"]]);
-  assert.deepEqual(sql("SELECT id FROM wp_zero__migrations").map((r) => r.id), ["0001_init"]);
+  assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
 
   const registry: unknown = JSON.parse(wp("eval", `
     $plugin = \\Zero\\Wp\\Runtime::plugin();
@@ -368,6 +368,40 @@ test("a statement that committed without its marker keeps failing until the oper
     retry: "still failing", markWrongStep: "refused", markOtherFile: "refused", markPathAlias: "refused",
     mark: "ok", resume: "ok", columns: ["id", "n"], ledger: ["9999_resume"],
   });
+});
+
+test("a second app on the site runs its own 0001_init: the ledger is per app", () => {
+  // The blog's ledger already holds `0001_init`; another app's `0001_init` is a different file.
+  assert.deepEqual(evalFixture("second-app-ledger.php"), [["0001_init"], ["0001_init"], true]);
+  assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is untouched");
+});
+
+test("an old unkeyed ledger goes to its one recorded app without replaying anything, or is refused", () => {
+  // A drop-then-re-add history with data in the re-added column: a replay would destroy it.
+  assert.deepEqual(evalFixture("legacy-ledger.php"), {
+    converted: { applied: [], ledger: ["legacy/0001_init", "legacy/0002_update", "legacy/0003_update"], data: "kept" },
+    refused: { unclear: true, keyed: false, data: "kept" },
+  });
+  assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is restored");
+});
+
+test("a runtime-only update converts the blog's old ledger on its next request, without replaying", async () => {
+  // The blog's build is unchanged (its schema hash stands); only the ledger is the old, unkeyed shape.
+  const saved = sql("SELECT app, id, applied_at FROM wp_zero__migrations");
+  sql("DROP TABLE wp_zero__migrations");
+  sql("CREATE TABLE wp_zero__migrations (`id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB");
+  sql("INSERT INTO wp_zero__migrations (id, applied_at) VALUES ('0001_init', '2026-01-01T00:00:00.000Z')");
+  const comments = sql("SELECT COUNT(*) AS n FROM wp_zero_comments")[0].n;
+  try {
+    assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200);
+    assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the old rows are the blog's");
+    assert.equal(sql("SELECT COUNT(*) AS n FROM wp_zero_comments")[0].n, comments, "nothing was replayed or dropped");
+  } finally {
+    // Whatever happened above, put back the canonical keyed ledger and the blog's rows.
+    sql("DROP TABLE IF EXISTS wp_zero__migrations");
+    sql("CREATE TABLE wp_zero__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    for (const r of saved) sql(`INSERT INTO wp_zero__migrations (app, id, applied_at) VALUES ('${r.app}', '${r.id}', '${r.applied_at}')`);
+  }
 });
 
 test("a runtime update whose system tables fail refuses Zero until they apply", async (t) => {

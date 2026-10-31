@@ -23,7 +23,7 @@ WordPress and nothing else.
 | JSX | `jsxImportSource: "@spacefast/zero-blocks"`. No React, no vdom. HTML tags map to core blocks (`<p>` → `core/paragraph`), components are transparent functions, blocks are named components. Every node carries its source location, so every diagnostic has `file:line:col`. |
 | Serializer | Core's own `createBlock()` + `serialize()` from `@wordpress/blocks` with `@wordpress/block-library` registered under happy-dom, pinned to the exact package versions WordPress 7.1 bundles. Byte-parity with each block's `save()` is what makes templates open valid in the Site Editor; nothing leaner can promise that. |
 | Codegen | `Block.Core.*`: one typed component per registered core block, generated from `getBlockTypes()` (so `supports`-derived attributes are included), committed, drift-guarded by a test. `theme.json` types generated from the official 7.1 schema. |
-| Theme output | A real block theme: `style.css` (header), `theme.json` (v3), `templates/*.html`, `parts/*.html`, `patterns/*.php`, `styles/*.json`, copied `assets/`, plus `<slug>.zip`. Installable with `wp theme install`, no PHP of ours in it. |
+| Theme output | A real block theme: `style.css` (header), `theme.json` (v3), `templates/*.html`, `parts/*.html`, `patterns/*.php`, `styles/*.json`, copied `assets/`, plus `<slug>.zip`. Installable with `wp theme install`; no executable PHP logic, only the pattern header comments WordPress requires. |
 | Theme source | `theme.config.ts` (`defineTheme`: header + typed `theme.json`), `templates/<slug>.tsx`, `parts/<slug>.tsx`, `patterns/<name>.tsx`, `styles/<name>.ts`, `assets/`. File names are the template hierarchy. |
 | Validation | Unknown core block, unknown or mistyped attribute, a `save()` that throws, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
 | Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_excerpt" } }` for the meta key Zero writes. Pure markup; no runtime dependency on Zero. Query loops over Zero collections are **not** offered: `core/query` ignores non-viewable post types and Zero's are private (§5). |
@@ -46,7 +46,7 @@ ported almost intact. What changes:
 
 | Earlier work | Here | Why |
 |---|---|---|
-| Content pages served by a Spacefast runtime, which also rendered blocks itself outside WordPress | Content compiles to markup; themes compile to a theme. WordPress renders everything; the package renders nothing. | No capsule frontends, no second runtime, no block renderer of our own. |
+| Content pages served by a Spacefast runtime | Content compiles to markup; themes compile to a theme. WordPress serves and renders all of it; the package renders nothing. | No capsule frontends, no second runtime. |
 | Islands (`client/` components → hydrated mounts), `zero/component` block | Removed. `core/html` remains for verbatim HTML only. | A JS app runtime is out of scope by ruling. |
 | `_pages/*.tsx` system pages → HTML documents | Removed. | Spacefast platform pages; nothing in Zero corresponds. |
 | `ZERO_DYNAMIC_BLOCKS` decided whether WordPress or the Spacefast runtime had to serve a page | Removed. | WordPress serves every page, so the distinction has no meaning. In a theme every template block is dynamic and that is fine. |
@@ -417,11 +417,10 @@ the types WordPress serves: `image`, `video`, `audio`, `application`, `text`,
 plus any `<type>-<subtype>` whose type is one of those). Any other name must
 export `meta = defineTemplate({ title, postTypes? })`, which puts it in
 `customTemplates`; otherwise `unknown_template` with both options as the hint.
-The proof suite checks one representative of each derived form resolves on
-real WordPress (a `single-post`, a `page-<slug>`, an `image` attachment; the
-last after `wp option update wp_attachment_pages_enabled 1`, since a fresh
-7.1 site redirects attachment pages away), each by a marker block only that
-template renders.
+The proof suite (§8 step 5) checks three representatives of the derived
+forms resolve on real WordPress, using a disposable copy of the example
+theme with `single-post.tsx`, `page-<slug>.tsx` and `image.tsx` added, each
+containing a marker block only that template renders.
 `templates/index.tsx` is required (`index_template_missing`).
 
 Template vocabulary (hand-written components over the generated set, all
@@ -518,9 +517,12 @@ means `single-zero_posts` has no front-end URL to resolve to. Both become
 possible the day a Zero collection can opt into being publicly viewable
 (a collection option in Zero core, outside this design); this package would
 then add `collection()` as a one-line helper. Until then the README says:
-Zero collection rows reach a block theme through bindings on the post that
-embeds them, through the Zero REST API from a plugin, or through rendering
-the collection's content column into a page with `zero-blocks content`.
+a binding resolves against the post WordPress is currently rendering, so it
+reads a Zero row's field only when that row *is* the current post (wp-admin
+previews, a plugin's own query loop with `setup_postdata`); a theme on its
+own cannot select a collection row from a core post. Other routes to Zero
+data from a theme are a plugin reading the Zero REST API, or writing
+`zero-blocks content` output into a collection's content column.
 
 ## 6. Diagnostics (complete list)
 
@@ -545,9 +547,11 @@ top-level blocks so the editor's pattern expansion is exercised. A
 `single.tsx` template carries one paragraph bound with
 `bind.field("excerpt")` under the post content. On a site without SCF the
 binding source is unregistered and the paragraph shows its static fallback
-text ("No summary."), a legitimate state for a theme; with SCF and a Zero app
-active it shows the row's `excerpt` (or nothing when the row has none, since
-SCF answers `""` rather than `null`), which the second half of §8 proves.
+text ("No summary."), a legitimate state for a theme. With SCF and a Zero app
+active, and a Zero row as the post being rendered, it shows that row's
+`excerpt` (or nothing when the row has none, since SCF answers `""` rather
+than `null`); a core post still shows the fallback, because a binding reads
+the current post and nothing else (§5). The second half of §8 proves both.
 It lives inside the package rather than in `examples/` because that directory
 is being reworked by the integration PR; moving it is a one-line change later.
 
@@ -569,7 +573,13 @@ is being reworked by the integration PR; moving it is a one-line change later.
    as appropriate, body carries the rendered site title from the header part
    and the post title inside the single template's markup, `<body>` has the
    `wp-site-blocks` wrapper. Assertions on rendered HTML responses, never on
-   the theme's files.
+   the theme's files. **Hierarchy:** build a disposable copy of the example
+   with `single-post.tsx`, `page-<slug>.tsx` and `image.tsx` added (each with
+   a marker block), install it as a second theme and activate it; `wp option
+   update wp_attachment_pages_enabled 1` (a fresh 7.1 site redirects
+   attachment pages away); upload an image with `wp media import`; fetch the
+   post, the page by that slug and the attachment page and assert each
+   marker appears only on its own URL. Then reactivate the example theme.
 6. **Style:** the front page's global-styles stylesheet declares
    `--wp--preset--color--primary` with the palette value, and a block the
    template gave `backgroundColor={theme.tokens.color.primary}` renders with
@@ -628,9 +638,8 @@ codegen scripts in check mode. Neither job is added to the existing ones.
 - Capsule frontends, islands, hydration, any browser JavaScript the package
   emits. Not "later": the WordPress Interactivity API would be the way to add
   behaviour to a block theme and would be a separate design.
-- `_pages` system pages, Tailwind/`zero.css`, the Spacefast runtime, and any
-  rendering of block markup outside WordPress (the earlier work's own block
-  renderer is not ported; WordPress's `render_block` is the only renderer).
+- `_pages` system pages, Tailwind/`zero.css`, the Spacefast runtime. The
+  package renders nothing; WordPress is the only renderer of its output.
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
 - Markdown (Zero's sync owns it), classic themes, child themes (a `parent`
   header field is trivial and may land when asked), `functions.php` or any

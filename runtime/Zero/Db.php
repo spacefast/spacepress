@@ -161,12 +161,9 @@ final class Db
         if ($viewer !== null) {
             array_push($guards, ...$this->readGuards($collection, $viewer));
         }
-        if ($partition !== null && $partition[1] === []) {
-            return [];
-        }
         $filterViewer ??= $viewer;
         // The one point before SQL: query options and access guards are plain arrays, except json()
-        // operands (`{}` and `[]` compare differently).
+        // operands (`{}` and `[]` compare differently). Validate even an empty partition.
         $sqlOpts = $this->plainQuery($collection, $opts);
         $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
         $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
@@ -174,6 +171,9 @@ final class Db
                 fn ($g) => $this->plainFilter($target, $g),
                 $this->readGuards($target, $filterViewer),
             ));
+        if ($partition !== null && $partition[1] === []) {
+            return [];
+        }
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),

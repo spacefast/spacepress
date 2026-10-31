@@ -40,6 +40,7 @@
   "scripts": {
     "prepare": "node scripts/bundle-wp.mjs",
     "build": "node scripts/bundle-wp.mjs && tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test tests/unit/*.test.ts",
     "check": "pnpm typecheck && pnpm test"

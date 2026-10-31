@@ -23,7 +23,7 @@ function parse(argv: readonly string[]): Options {
     const arg = argv[i]!;
     if (arg === "--out") {
       const value = argv[i + 1];
-      if (value === undefined) throw new Error("--out needs a path");
+      if (value === undefined || value.startsWith("-")) throw new Error("--out needs a path");
       options.out = value;
       i += 1;
     } else if (arg === "--json") options.json = true;

@@ -87,9 +87,17 @@ interface JsxSource {
   columnNumber: number;
 }
 
+declare global {
+  // Set by the compiler's bundler (see compiler/module.ts): the directory esbuild's relative fileNames are relative to.
+  // eslint-disable-next-line no-var
+  var __zeroBlocksSourceRoot: string | undefined;
+}
+
 function toLocation(source: JsxSource | undefined): SourceLocation | undefined {
   if (!source || typeof source.fileName !== "string") return undefined;
-  return { file: source.fileName, line: source.lineNumber, column: source.columnNumber };
+  const root = globalThis.__zeroBlocksSourceRoot;
+  const file = root !== undefined && !source.fileName.startsWith("/") ? `${root.replace(/\/$/, "")}/${source.fileName}` : source.fileName;
+  return { file, line: source.lineNumber, column: source.columnNumber };
 }
 
 function create(type: unknown, props: ElementProps | null | undefined, loc: SourceLocation | undefined): ContentNode {

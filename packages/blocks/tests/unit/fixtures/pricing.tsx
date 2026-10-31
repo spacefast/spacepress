@@ -32,6 +32,35 @@ export default function Pricing() {
         <img src="/hero.png" alt="Hero" />
         <figcaption>The hero</figcaption>
       </figure>
+      <ol>
+        <li>
+          First
+          <ul>
+            <li>Nested</li>
+          </ul>
+        </li>
+      </ol>
+      <blockquote>Quoted, loose.</blockquote>
+      <pre>
+        <code>{"const a = 1 < 2;"}</code>
+      </pre>
+      <table>
+        <thead>
+          <tr>
+            <th>Plan</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Free</td>
+          </tr>
+        </tbody>
+      </table>
+      <details>
+        <summary>More</summary>
+        <p>Hidden body.</p>
+      </details>
+      <hr />
       <Block name="acme/testimonials" attrs={{ count: 3 }} />
     </>
   );

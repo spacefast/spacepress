@@ -45,22 +45,64 @@ test("sectioning tags are groups that remember their tag; a bare div dissolves a
   assert.equal(blocks[3]?.attrs.tagName, undefined);
 });
 
-test("figure, quote, details, pre, table and hr map to their blocks", () => {
-  const { blocks, diagnostics } = map([
-    jsxs("figure", { children: [jsx("img", { src: "/a.png", alt: "A" }), jsx("figcaption", { children: "cap" })] }),
-    jsx("blockquote", { children: "loose" }),
-    jsxs("details", { children: [jsx("summary", { children: "More" }), jsx("p", { children: "body" })] }),
-    jsx("pre", { children: jsx("code", { children: "a < b" }) }),
-    jsxs("table", { children: [jsx("thead", { children: jsx("tr", { children: jsx("th", { children: "Plan" }) }) }), jsx("tbody", { children: jsx("tr", { children: jsx("td", { children: "Free" }) }) })] }),
-    jsx("hr", {}),
-  ]);
+test("a figure with an image and caption is one image block; a figure without an image is refused", () => {
+  const { blocks, diagnostics } = map(jsxs("figure", { children: [jsx("img", { src: "/a.png", alt: "A" }), jsx("figcaption", { children: ["cap ", jsx("em", { children: "x" })] })] }));
   assert.deepEqual(diagnostics, []);
-  assert.deepEqual(blocks[0], { kind: "block", blockName: "core/image", attrs: { url: "/a.png", alt: "A", caption: "cap" }, inner: [] });
-  assert.deepEqual([blocks[1]?.blockName, names(blocks[1]!.inner)], ["core/quote", ["core/paragraph"]]);
-  assert.deepEqual([blocks[2]?.attrs, names(blocks[2]!.inner)], [{ summary: "More" }, ["core/paragraph"]]);
-  assert.deepEqual(blocks[3], { kind: "block", blockName: "core/code", attrs: {}, inner: [text("a < b")] });
-  assert.deepEqual(blocks[4]?.attrs, { head: [{ cells: [{ content: "Plan", tag: "th" }] }], body: [{ cells: [{ content: "Free", tag: "td" }] }], foot: [] });
-  assert.equal(blocks[5]?.blockName, "core/separator");
+  assert.deepEqual(blocks, [{ kind: "block", blockName: "core/image", attrs: { url: "/a.png", alt: "A", caption: "cap <em>x</em>" }, inner: [] }]);
+  const empty = map(jsx("figure", { children: jsx("p", { children: "no image" }) }));
+  assert.deepEqual([empty.blocks, empty.diagnostics.map((d) => d.code)], [[], ["unmappable_element"]]);
+});
+
+test("a quote holds blocks, and loose text inside one becomes a paragraph", () => {
+  const { blocks } = map(jsx("blockquote", { children: "loose" }));
+  assert.deepEqual([blocks[0]?.blockName, names(blocks[0]!.inner)], ["core/quote", ["core/paragraph"]]);
+});
+
+test("details keeps its summary as an attribute and its body as blocks", () => {
+  const { blocks } = map(jsxs("details", { children: [jsx("summary", { children: "More" }), jsx("p", { children: "body" })] }));
+  assert.deepEqual([blocks[0]?.attrs, names(blocks[0]!.inner)], [{ summary: "More" }, ["core/paragraph"]]);
+});
+
+test("pre wrapping code is a code block holding the code's text; a bare pre is still code", () => {
+  assert.deepEqual(map(jsx("pre", { children: jsx("code", { children: "a < b" }) })).blocks, [{ kind: "block", blockName: "core/code", attrs: {}, inner: [text("a < b")] }]);
+  assert.deepEqual(map(jsx("pre", { children: "bare" })).blocks[0]?.inner, [text("bare")]);
+});
+
+test("a table becomes head, body and foot cell attributes, not inner blocks; rows without a tbody are body rows", () => {
+  const { blocks } = map(jsxs("table", { children: [jsx("thead", { children: jsx("tr", { children: jsx("th", { children: "Plan" }) }) }), jsx("tbody", { children: jsx("tr", { children: jsx("td", { children: "Free" }) }) })] }));
+  assert.deepEqual([blocks[0]?.attrs, blocks[0]?.inner], [{ head: [{ cells: [{ content: "Plan", tag: "th" }] }], body: [{ cells: [{ content: "Free", tag: "td" }] }], foot: [] }, []]);
+  const bare = map(jsx("table", { children: jsx("tr", { children: jsx("td", { children: "x" }) }) }));
+  assert.deepEqual(bare.blocks[0]?.attrs.body, [{ cells: [{ content: "x", tag: "td" }] }]);
+});
+
+test("a horizontal rule is a separator", () => {
+  assert.deepEqual(map(jsx("hr", {})).blocks, [{ kind: "block", blockName: "core/separator", attrs: {}, inner: [] }]);
+});
+
+test("every element in a tree is checked: a style prop or a block-level tag deep inside rich text is reported", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsx("p", { children: jsx("strong", { children: jsxDEV("em", { style: "x", children: "deep" }, undefined, false, at(1)) }) }),
+    jsx("figure", { children: jsxDEV("img", { src: "/a.png", style: "x" }, undefined, false, at(2)) }),
+    jsx("p", { children: jsxDEV("marquee", { children: "no" }, undefined, false, at(3)) }),
+    jsx("ul", { children: jsx("li", { children: jsxDEV("span", { style: "x", children: "item" }, undefined, false, at(4)) }) }),
+    jsx("table", { children: jsx("tr", { children: jsxDEV("td", { style: "x", children: "cell" }, undefined, false, at(5)) }) }),
+    jsx("details", { children: jsx("summary", { children: jsxDEV("b", { style: "x" }, undefined, false, at(6)) }) }),
+    { kind: "block", blockName: "core/cover", attrs: {}, inner: toContentNodes(jsxDEV("em", { style: "x", children: "cap" }, undefined, false, at(7))) },
+    jsx("pre", { children: jsx("code", { children: jsxDEV("i", { style: "x" }, undefined, false, at(8)) }) }),
+    jsxDEV("em", { style: "x", children: "block-level inline" }, undefined, false, at(9)),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [
+    ["style_prop_unsupported", 1],
+    ["style_prop_unsupported", 2],
+    ["unmappable_element", 3],
+    ["style_prop_unsupported", 4],
+    ["style_prop_unsupported", 5],
+    ["style_prop_unsupported", 6],
+    ["style_prop_unsupported", 7],
+    ["style_prop_unsupported", 8],
+    ["style_prop_unsupported", 9],
+  ]);
 });
 
 test("loose text at block level becomes a paragraph; whitespace-only runs vanish", () => {
@@ -85,9 +127,9 @@ test("a style prop and an unmappable tag are located errors, and mapping continu
     jsxDEV("p", { children: jsxDEV("em", { style: "color:red", children: "x" }, undefined, false, at(8, 9)) }, undefined, false, at(8, 5)),
   ]);
   assert.deepEqual(diagnostics.map(brief), [
-    { code: "style_prop_unsupported", severity: "error", file: "page.tsx", line: 4, column: 5 },
-    { code: "unmappable_element", severity: "error", file: "page.tsx", line: 5, column: 7 },
-    { code: "style_prop_unsupported", severity: "error", file: "page.tsx", line: 8, column: 9 },
+    { code: "style_prop_unsupported", severity: "error", file: "/t/page.tsx", line: 4, column: 5 },
+    { code: "unmappable_element", severity: "error", file: "/t/page.tsx", line: 5, column: 7 },
+    { code: "style_prop_unsupported", severity: "error", file: "/t/page.tsx", line: 8, column: 9 },
   ]);
   assert.match(diagnostics[0]!.hint ?? "", /class/);
   assert.match(diagnostics[1]!.hint ?? "", /Block name/);

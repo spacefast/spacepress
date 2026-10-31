@@ -1,5 +1,4 @@
 import { hasErrors, type Diagnostic } from "../diagnostics.ts";
-import { toContentNodes } from "../jsx-runtime.ts";
 import { mapToBlocks } from "../mapping.ts";
 import type { BlockNode } from "../nodes.ts";
 import { renderModule } from "./module.ts";
@@ -20,7 +19,7 @@ export interface ContentResult {
 export async function compileContent(file: string): Promise<ContentResult> {
   const executed = await renderModule(file);
   if (hasErrors(executed.diagnostics)) return { markup: "", blocks: [], diagnostics: executed.diagnostics };
-  const mapped = mapToBlocks(toContentNodes(executed.rendered));
+  const mapped = mapToBlocks(executed.nodes);
   if (hasErrors(mapped.diagnostics)) return { markup: "", blocks: mapped.blocks, diagnostics: mapped.diagnostics };
   const serialized = await serializeBlocks(mapped.blocks);
   return { markup: serialized.markup, blocks: mapped.blocks, diagnostics: [...mapped.diagnostics, ...serialized.diagnostics] };

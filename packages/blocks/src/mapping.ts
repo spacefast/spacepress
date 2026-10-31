@@ -151,7 +151,7 @@ class Mapper {
         continue;
       }
       if (isInlineTag(node.tag)) {
-        if (node.props.style !== undefined) this.styleProp(node);
+        this.checkInline([node]);
         run.push(node);
         continue;
       }
@@ -169,7 +169,9 @@ class Mapper {
    */
   private inner(nodes: readonly ContentNode[]): ContentNode[] {
     const hasBlockLevel = nodes.some((node) => node.kind === "block" || (isElement(node) && !isInlineTag(node.tag)));
-    return hasBlockLevel ? this.blocks(nodes) : [...nodes];
+    if (hasBlockLevel) return this.blocks(nodes);
+    this.checkInline(nodes);
+    return [...nodes];
   }
 
   private styleProp(node: ElementNode): void {
@@ -189,7 +191,7 @@ class Mapper {
 
   /** Map one block-level element. Returns a run, because a div can dissolve. */
   private element(node: ElementNode): BlockNode[] {
-    if (node.props.style !== undefined) this.styleProp(node);
+    if (node.props.style !== undefined && node.tag !== "img") this.styleProp(node);
     const attrs = commonAttributes(node.props);
 
     const heading = HEADING_TAG.exec(node.tag);
@@ -235,12 +237,30 @@ class Mapper {
     return this.unmappable(node, `<${node.tag}> has no block.`, 'Use one of the mapped tags, or name a block directly with <Block name="…">.');
   }
 
-  /** Children of a rich-text container, kept as inline nodes. */
+  /**
+   * Children of a rich-text container, kept as inline nodes. Every element in
+   * there is still checked: a `style` prop three spans deep and a block-level
+   * tag inside a paragraph are both mistakes the author needs to hear about.
+   */
   private rich(node: ElementNode): ContentNode[] {
-    for (const child of node.children) {
-      if (isElement(child) && child.props.style !== undefined) this.styleProp(child);
-    }
+    this.checkInline(node.children);
     return [...node.children];
+  }
+
+  private checkInline(nodes: readonly ContentNode[]): void {
+    for (const child of nodes) {
+      if (child.kind === "block") {
+        this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `${child.blockName} sits inside rich text, where a block cannot go.`, hint: "Put it on its own, as a direct child of the file or of a block.", loc: child.loc });
+        continue;
+      }
+      if (!isElement(child)) continue;
+      if (child.props.style !== undefined) this.styleProp(child);
+      if (!isInlineTag(child.tag)) {
+        this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${child.tag}> sits inside rich text, where only phrasing tags (a, strong, em, code, span, …) can go.`, hint: "Move it out of the paragraph, or use a phrasing tag.", loc: child.loc });
+        continue;
+      }
+      this.checkInline(child.children);
+    }
   }
 
   /** A list item's own text, then any list nested under it. */
@@ -248,19 +268,25 @@ class Mapper {
     const text: ContentNode[] = [];
     const nested: ContentNode[] = [];
     for (const child of node.children) {
-      if (isElement(child) && !isInlineTag(child.tag)) nested.push(...this.element(child));
+      if (child.kind === "block") nested.push(...this.blocks([child]));
+      else if (isElement(child) && !isInlineTag(child.tag)) nested.push(...this.element(child));
       else text.push(child);
     }
+    this.checkInline(text);
     return [...text, ...nested];
   }
 
   /** `<pre><code>` is the code block; a bare `<pre>` is still code. */
   private code(node: ElementNode): ContentNode[] {
     const [code] = elementChildren(node, "code");
-    return code ? [...code.children] : [...node.children];
+    if (code?.props.style !== undefined) this.styleProp(code);
+    const body = code ? code.children : node.children;
+    this.checkInline(body);
+    return [...body];
   }
 
   private image(node: ElementNode): BlockAttributes {
+    if (node.props.style !== undefined) this.styleProp(node);
     const attrs: BlockAttributes = {};
     const url = stringProp(node.props, "src");
     if (url !== null) attrs.url = url;
@@ -276,14 +302,17 @@ class Mapper {
     }
     const imageAttrs = { ...this.image(image), ...commonAttributes(image.props), ...attrs };
     const [caption] = elementChildren(node, "figcaption");
-    if (caption) imageAttrs.caption = renderRichTextHtml(caption.children);
+    if (caption) imageAttrs.caption = renderRichTextHtml(this.rich(caption));
+    for (const child of node.children) {
+      if (isElement(child) && child !== image && child !== caption) this.unmappable(child, `<${child.tag}> inside a <figure> has nowhere to go: a figure is one image block.`, "Keep only an <img> and an optional <figcaption> in the figure.");
+    }
     return [block("core/image", imageAttrs, [], node.loc)];
   }
 
   private details(node: ElementNode): BlockAttributes {
     const attrs: BlockAttributes = {};
     const [summary] = elementChildren(node, "summary");
-    if (summary) attrs.summary = renderRichTextHtml(summary.children);
+    if (summary) attrs.summary = renderRichTextHtml(this.rich(summary));
     return attrs;
   }
 
@@ -304,7 +333,10 @@ class Mapper {
       return rows.map((row) => ({
         cells: row.children
           .filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"))
-          .map((cell) => ({ content: renderRichTextHtml(cell.children), tag: cell.tag })),
+          .map((cell) => {
+            if (cell.props.style !== undefined) this.styleProp(cell);
+            return { content: renderRichTextHtml(this.rich(cell)), tag: cell.tag };
+          }),
       }));
     };
     return { head: rowsIn("thead"), body: rowsIn("tbody"), foot: rowsIn("tfoot") };

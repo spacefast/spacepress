@@ -7,7 +7,8 @@ import { pathToFileURL } from "node:url";
 import { build, type Plugin } from "esbuild";
 
 import { ContentError, type Diagnostic } from "../diagnostics.ts";
-import type { SourceLocation } from "../nodes.ts";
+import { toContentNodes } from "../jsx-runtime.ts";
+import type { ContentNode, SourceLocation } from "../nodes.ts";
 
 /**
  * Run an authored `.tsx` at build time and return what its default export
@@ -49,7 +50,8 @@ function runtimePlugin(): Plugin {
 }
 
 export interface ModuleResult {
-  rendered: unknown;
+  /** What the default export rendered, normalized to content nodes; empty on error. */
+  nodes: ContentNode[];
   diagnostics: Diagnostic[];
 }
 
@@ -106,6 +108,9 @@ export async function renderModule(file: string): Promise<ModuleResult> {
       jsxDev: true,
       jsxImportSource: "@spacefast/zero-blocks",
       tsconfigRaw: {},
+      // esbuild writes jsxDEV's fileName relative to absWorkingDir; the runtime resolves it
+      // against this, so every location is absolute whatever the caller's cwd is.
+      define: { "globalThis.__zeroBlocksSourceRoot": JSON.stringify(root) },
       outfile: bundlePath,
       sourcemap: "external",
       sourcesContent: false,
@@ -128,7 +133,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
           return d;
         })
       : [{ code: "module_failed", severity: "error", message: error instanceof Error ? error.message : String(error), loc: { file: entry, line: 1, column: 1 } }];
-    return { rendered: undefined, diagnostics };
+    return { nodes: [], diagnostics };
   }
 
   try {
@@ -137,18 +142,20 @@ export async function renderModule(file: string): Promise<ModuleResult> {
     try {
       namespace = (await import(pathToFileURL(bundlePath).href)) as { default?: unknown };
     } catch (error) {
-      return { rendered: undefined, diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
     }
     if (typeof namespace.default !== "function") {
       return {
-        rendered: undefined,
+        nodes: [],
         diagnostics: [{ code: "default_export_missing", severity: "error", message: `${path.basename(entry)} has no default export.`, hint: "Export a function component as the default export.", loc: { file: entry, line: 1, column: 1 } }],
       };
     }
     try {
-      return { rendered: (namespace.default as () => unknown)(), diagnostics: [] };
+      // Normalizing here keeps a non-content return value (`() => new Date()`) inside the
+      // same diagnostic boundary as a throw from inside the JSX.
+      return { nodes: toContentNodes((namespace.default as () => unknown)(), { file: entry, line: 1, column: 1 }), diagnostics: [] };
     } catch (error) {
-      return { rendered: undefined, diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
     }
   } finally {
     await rm(scratch, { recursive: true, force: true });

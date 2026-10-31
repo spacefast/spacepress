@@ -108,36 +108,74 @@ function patchNamedNodeMap(win: Record<string, unknown>): void {
   });
 }
 
+let dom: Record<string, unknown> | null = null;
+let domDepth = 0;
+let restoreDom: (() => void) | null = null;
+
 /**
- * The browser `@wordpress/*` expects, installed once for the process. The
- * globals stay: the bundle keeps references to `window` and `document` after
- * registration, and nothing else in this package touches them.
+ * Put the browser `@wordpress/*` expects onto `globalThis` for the length of
+ * one call, then put whatever was there before back. One happy-dom window is
+ * kept for the process (the block registry holds references into it), but
+ * the globals are present only while this package is working, so an authored
+ * module executed later sees the same environment as one executed first.
  */
-async function loadBundle(): Promise<WpBundle> {
-  const { Window } = await import("happy-dom");
-  const win = new Window({ url: "https://localhost/" }) as unknown as Record<string, unknown>;
-  patchNamedNodeMap(win);
-  for (const name of DOM_GLOBAL_NAMES) {
-    if (win[name] !== undefined && !(name in globalThis)) {
-      Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: win[name] });
+async function withDom<T>(use: () => Promise<T>): Promise<T> {
+  if (domDepth === 0) {
+    if (dom === null) {
+      const { Window } = await import("happy-dom");
+      dom = new Window({ url: "https://localhost/" }) as unknown as Record<string, unknown>;
+      patchNamedNodeMap(dom);
+    }
+    const previous = new Map<string, PropertyDescriptor | undefined>();
+    for (const name of DOM_GLOBAL_NAMES) {
+      if (dom[name] === undefined) continue;
+      previous.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+      Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: dom[name] });
+    }
+    restoreDom = () => {
+      for (const [name, before] of previous) {
+        if (before) Object.defineProperty(globalThis, name, before);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    };
+  }
+  domDepth += 1;
+  try {
+    return await use();
+  } finally {
+    domDepth -= 1;
+    if (domDepth === 0) {
+      restoreDom?.();
+      restoreDom = null;
     }
   }
+}
+
+async function loadBundle(): Promise<WpBundle> {
   const bundle = require("../../vendor/wp.cjs") as WpBundle;
   bundle.registerCoreBlocks();
   return bundle;
 }
 
-/** `@wordpress/blocks` with core blocks registered. Shared by the serializer, the codegen and tests. */
-export function blockApi(): Promise<BlockApi> {
-  loaded ??= loadBundle();
-  return loaded.then((bundle) => bundle.blocks);
+/**
+ * Run `use` with `@wordpress/blocks` loaded, core blocks registered and a DOM
+ * in place. Shared by the serializer, the codegen and tests: registration is
+ * the expensive part and happens once per process.
+ */
+export function withBlockApi<T>(use: (api: BlockApi) => T | Promise<T>): Promise<T> {
+  return withDom(async () => {
+    loaded ??= loadBundle();
+    return use((await loaded).blocks);
+  });
 }
 
 /**
  * The inner HTML an unregistered block carries. Declared with a `source` so it
- * rides in the markup and never in the block comment.
+ * rides in the markup and never in the block comment. The name has a
+ * character no author can write in JSX props or attrs objects by accident
+ * (a colon), and authored attrs are checked against it anyway.
  */
-const PASSTHROUGH_INNER_ATTRIBUTE = "__zeroInnerHtml";
+const PASSTHROUGH_INNER_ATTRIBUTE = "zero-blocks:inner-html";
 
 /** Blocks we registered ourselves, and the attribute names each has. */
 const passthroughBlocks = new Map<string, Set<string>>();
@@ -148,7 +186,8 @@ const passthroughBlocks = new Map<string, Set<string>>();
  * being dropped. Its markup is unverified, which `unverified_block` says.
  */
 async function registerPassthrough(blockName: string, attributeNames: Set<string>): Promise<void> {
-  const bundle = await (loaded ?? loadBundle());
+  loaded ??= loadBundle();
+  const bundle = await loaded;
   const known = passthroughBlocks.get(blockName);
   if (known !== undefined) {
     if ([...attributeNames].every((name) => known.has(name))) return;
@@ -193,17 +232,28 @@ const JSON_TYPE_CHECKS: Record<string, (value: unknown) => boolean> = {
   integer: (v) => typeof v === "number" && Number.isInteger(v),
   boolean: (v) => typeof v === "boolean",
   array: (v) => Array.isArray(v),
-  object: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
+  object: (v) => isPlainObject(v),
   null: (v) => v === null,
 };
 
-/** Whether a value fits a registered attribute's `type`/`enum`. */
+/** A JSON object literal: what a block attribute of type `object` can hold. Dates, Maps and class instances are not. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Whether a value fits a registered attribute. An `enum` of primitives is the
+ * whole set of allowed values (WordPress's parser drops anything else); the
+ * `type` applies otherwise, a `type` array being a union.
+ */
 export function fitsAttribute(schema: AttributeSchema, value: unknown): boolean {
   if (schema.enum && schema.enum.length > 0 && schema.enum.every((entry) => entry === null || typeof entry !== "object")) {
-    if (schema.enum.includes(value)) return true;
+    return schema.enum.includes(value);
   }
   const types = schema.type === undefined ? [] : Array.isArray(schema.type) ? schema.type : [schema.type];
-  if (types.length === 0) return schema.enum === undefined;
+  if (types.length === 0) return true;
   return types.some((type) => JSON_TYPE_CHECKS[type]?.(value) ?? true);
 }
 
@@ -242,7 +292,17 @@ class Serializer {
       this.error("unknown_block", `${node.blockName} is not a block WordPress 7.1 registers.`, candidate ? `Did you mean ${candidate}?` : undefined, node.loc);
       return false;
     }
+    // One body per block: `content` names the whole body for a paragraph, a heading, a Custom HTML
+    // block; children would be a second body and one of them would be lost.
+    if (Object.hasOwn(node.attrs, "content") && node.inner.length > 0) {
+      this.error("content_and_children", `${node.blockName} has both a content attribute and children.`, "Give it one body: children, or the content attribute.", node.loc);
+      return false;
+    }
     if (type === undefined || passthroughBlocks.has(node.blockName)) {
+      if (Object.hasOwn(node.attrs, PASSTHROUGH_INNER_ATTRIBUTE)) {
+        this.error("unknown_attribute", `"${PASSTHROUGH_INNER_ATTRIBUTE}" is reserved.`, "Pass the block's body as children.", node.loc);
+        return false;
+      }
       if (!this.unverified.has(node.blockName)) {
         this.unverified.add(node.blockName);
         const diagnostic: Diagnostic = {
@@ -257,13 +317,8 @@ class Serializer {
     }
     let ok = true;
     const attributes = type.attributes ?? {};
-    const { richText } = splitInner(node.inner);
-    if (node.blockName !== "core/html" && "content" in node.attrs && richText.length > 0) {
-      this.error("content_and_children", `${node.blockName} has both a content attribute and children.`, "Give it one body: children for rich text, or the content attribute.", node.loc);
-      ok = false;
-    }
     for (const [name, value] of Object.entries(node.attrs)) {
-      const schema = attributes[name];
+      const schema = Object.hasOwn(attributes, name) ? attributes[name] : undefined;
       if (schema === undefined) {
         const candidate = nearest(name, Object.keys(attributes));
         this.error("unknown_attribute", `${node.blockName} has no attribute "${name}".`, candidate ? `Did you mean "${candidate}"?` : undefined, node.loc);
@@ -309,8 +364,7 @@ class Serializer {
 
     if (passthroughBlocks.has(node.blockName)) {
       const inner = this.innerHtml(node);
-      if (inner !== "") attrs[PASSTHROUGH_INNER_ATTRIBUTE] = inner;
-      return this.api.createBlock(node.blockName, attrs, []);
+      return this.api.createBlock(node.blockName, inner === "" ? attrs : { ...attrs, [PASSTHROUGH_INNER_ATTRIBUTE]: inner }, []);
     }
 
     const type = this.api.getBlockType(node.blockName)!;
@@ -344,7 +398,7 @@ function collectUnregistered(api: BlockApi, nodes: readonly BlockNode[], into: M
   for (const node of nodes) {
     if (!node.blockName.startsWith("core/") && (passthroughBlocks.has(node.blockName) || api.getBlockType(node.blockName) === undefined)) {
       const names = into.get(node.blockName) ?? new Set<string>();
-      for (const key of Object.keys(node.attrs)) names.add(key);
+      for (const key of Object.keys(node.attrs)) if (key !== PASSTHROUGH_INNER_ATTRIBUTE) names.add(key);
       into.set(node.blockName, names);
     }
     collectUnregistered(api, node.inner.filter((child): child is BlockNode => child.kind === "block"), into);
@@ -361,18 +415,19 @@ export interface SerializeResult {
  * Serialize a tree to one document of comment-delimited blocks, or report
  * every reason it cannot be.
  */
-export async function serializeBlocks(blocks: readonly BlockNode[]): Promise<SerializeResult> {
-  const api = await blockApi();
-  const unregistered = new Map<string, Set<string>>();
-  collectUnregistered(api, blocks, unregistered);
-  for (const [name, attributeNames] of unregistered) await registerPassthrough(name, attributeNames);
+export function serializeBlocks(blocks: readonly BlockNode[]): Promise<SerializeResult> {
+  return withBlockApi(async (api) => {
+    const unregistered = new Map<string, Set<string>>();
+    collectUnregistered(api, blocks, unregistered);
+    for (const [name, attributeNames] of unregistered) await registerPassthrough(name, attributeNames);
 
-  const serializer = new Serializer(api);
-  const prepared: Prepared = { blocks: [], diagnostics: serializer.diagnostics };
-  for (const node of blocks) {
-    const built = serializer.build(node);
-    if (built !== null) prepared.blocks.push(built);
-  }
-  if (prepared.diagnostics.some((d) => d.severity === "error")) return { markup: "", diagnostics: prepared.diagnostics };
-  return { markup: prepared.blocks.length === 0 ? "" : api.serialize(prepared.blocks), diagnostics: prepared.diagnostics };
+    const serializer = new Serializer(api);
+    const prepared: Prepared = { blocks: [], diagnostics: serializer.diagnostics };
+    for (const node of blocks) {
+      const built = serializer.build(node);
+      if (built !== null) prepared.blocks.push(built);
+    }
+    if (prepared.diagnostics.some((d) => d.severity === "error")) return { markup: "", diagnostics: prepared.diagnostics };
+    return { markup: prepared.blocks.length === 0 ? "" : api.serialize(prepared.blocks), diagnostics: prepared.diagnostics };
+  });
 }

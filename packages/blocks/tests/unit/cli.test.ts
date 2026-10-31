@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,7 +24,7 @@ test("content writes markup to --out and exits 0; errors go to stderr as file:li
 
     const bad = await run(["content", fixture("styled.tsx"), "--out", path.join(dir, "styled.html")]);
     assert.equal(bad.code, 1);
-    assert.match(bad.stderr, /styled\.tsx:5:7 style_prop_unsupported: /);
+    assert.match(bad.stderr, /(^|\n)tests\/unit\/fixtures\/styled\.tsx:5:7 style_prop_unsupported: /);
     assert.throws(() => readFileSync(path.join(dir, "styled.html")));
 
     const json = await run(["content", fixture("styled.tsx"), "--json"]);
@@ -42,4 +42,17 @@ test("usage mistakes exit 2 with the usage text", async () => {
   const unknown = await run(["content", "x.tsx", "--nope"]);
   assert.equal(unknown.code, 2);
   assert.match(unknown.stderr, /unknown flag --nope/);
+  // `--out` followed by another flag has no path; it must not write a file named "--json".
+  const dir = mkdtempSync(path.join(tmpdir(), "zero-blocks-cli-"));
+  const cwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const missing = await run(["content", fixture("pricing.tsx"), "--out", "--json"]);
+    assert.equal(missing.code, 2);
+    assert.match(missing.stderr, /--out needs a path/);
+    assert.deepEqual(readdirSync(dir), []);
+  } finally {
+    process.chdir(cwd);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

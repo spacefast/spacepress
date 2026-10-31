@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under Zero's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { collection, id, integer, text } from "zero";
+import { collection, group, id, integer, text } from "zero";
 
 export const vault = collection("vault", { id: id(), title: text().notNull(), code: text() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -20,7 +20,24 @@ export const ledger = collection("ledger", { id: id(), title: text().notNull(), 
 export const payroll = collection("payroll", { id: id(), title: text().notNull(), salary: text().access({ read: "admin", update: "admin" }) },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-export const schema = { vault, ledger, payroll };
+// Rules that depend on the incoming data: anyone signed in may create or edit, but only an admin may
+// mark a row "locked"; the create rule refuses a call with no data at all.
+export const gated = collection("gated", {
+  id: id(),
+  title: text().notNull(),
+  level: text(),
+  notes: group({ fields: { open: text(), sealed: text().access({ read: "admin", update: "admin" }) } }),
+  ownerId: integer(),
+}, {
+  access: {
+    read: "anyone",
+    create: (ctx) => ctx.user !== null && ctx.data != null && (ctx.data.level !== "locked" || ctx.user.role === "admin"),
+    update: (ctx) => ctx.user !== null && (ctx.data == null || ctx.data.level !== "locked" || ctx.user.role === "admin"),
+    delete: "admin",
+  },
+});
+
+export const schema = { vault, ledger, payroll, gated };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};

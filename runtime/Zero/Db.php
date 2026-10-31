@@ -856,7 +856,8 @@ final class Db
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
     }
 
-    private function revisionRow(string $collection, int|string $pk, int $revisionId): array
+    /** The decoded row a revision (or autosave) holds, trusted: no access checks. */
+    public function revisionRow(string $collection, int|string $pk, int $revisionId): array
     {
         $rev = $this->store->revision($collection, $pk, $revisionId)
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");

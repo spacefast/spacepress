@@ -16,14 +16,17 @@ use Zero\Viewer;
  *
  * - capabilities: `map_meta_cap` answers every capability of a Zero post type from the collection's
  *   rules, for the user being asked about (role caps no longer decide). Per post: `read_post` = the
- *   read rule (+ draft visibility), `edit_post`/`publish_post` = update (create on an auto-draft, which
- *   is not a row yet), `delete_post` = delete. Type-wide caps (menus, create buttons, status changes)
- *   ask whether the rule could allow anything. Writes always need a signed-in, unsuspended user; a
- *   trashed post (not a Zero row) needs a rule that covers every row.
+ *   read rule (+ draft visibility), `edit_post`/`publish_post` = update, `delete_post` = delete; an
+ *   auto-draft (not a row yet) is its author's under the create rule; a trashed post (not a row)
+ *   needs a rule that covers every row. Type-wide caps (menus, create buttons) ask whether the rule
+ *   could allow anything. A function rule that depends on the incoming data counts as possibly
+ *   allowing here: {@see EditorSave} decides each save on its data before it commits.
  * - reads ({@see PostsController}): lists hold only rows the read rule covers, a rule that denies is
- *   401/403, a filtered-out item is 404, and every response drops the fields the viewer can't read.
- * - writes ({@see PostsController}): the supplied core columns and `acf` fields go through Zero's field
- *   write rules, then the create rule (or the update rule) sees the incoming data, as on `/zero/v1`.
+ *   401/403, a filtered-out item is 404, and every response (revisions and autosaves against their
+ *   own snapshot) drops the fields the viewer can't read, with their links; a search or slug query
+ *   can't probe a hidden column.
+ * - wp-admin: list screens hold only readable rows; the edit form doesn't render a field holding
+ *   anything the viewer can't read.
  */
 final class CoreAccess
 {
@@ -42,14 +45,20 @@ final class CoreAccess
         add_filter('rest_prepare_autosave', [self::class, 'prepareChild'], 10, 3);
         add_action('pre_get_posts', [self::class, 'adminList']);
         add_filter('acf/prepare_field', [self::class, 'formField'], 20);
-        add_filter('acf/pre_update_value', [self::class, 'formSave'], 5, 4);
-        // A save or delete changes what a rule covers; a user switch changes who asks.
-        add_action('clean_post_cache', static function (): void {
-            self::$keys = [];
+        // Anything that can change what a rule covers or who is asking drops the cached answers: a post
+        // or Zero row written, a user switched, a role or user meta changed.
+        foreach (['clean_post_cache', 'set_current_user', 'set_user_role', 'add_user_role', 'remove_user_role',
+            'added_user_meta', 'updated_user_meta', 'deleted_user_meta', 'profile_update'] as $hook) {
+            add_action($hook, [self::class, 'flush']);
+        }
+        \Zero\Extensions::onWritten(static function (): void {
+            self::flush();
         });
-        add_action('set_current_user', static function (): void {
-            self::$keys = [];
-        });
+    }
+
+    public static function flush(): void
+    {
+        self::$keys = [];
     }
 
     // ================================================================ capabilities
@@ -91,11 +100,12 @@ final class CoreAccess
             return false;
         }
         if ($post->post_status === 'auto-draft') {
-            return $cap !== 'read_post' && self::ruleMayAllow($collection, 'create', $viewer);
+            // "Add New" makes an auto-draft the editor loads and saves: its author's, under the create rule.
+            return $viewer->user !== null && (int) $post->post_author === $viewer->user['id'] && self::ruleMayAllow($collection, 'create', $viewer);
         }
         $op = ['read_post' => 'read', 'edit_post' => 'update', 'publish_post' => 'update', 'delete_post' => 'delete'][$cap];
         if ($post->post_status === 'trash') {
-            return self::keys($collection, $op === 'read' ? 'update' : $op, $viewer) === null;
+            return self::keys($collection, $op, $viewer) === null;
         }
 
         return self::covers($collection, $op, $post->ID, $viewer);
@@ -150,15 +160,15 @@ final class CoreAccess
         return [$allowed ? 'exist' : 'do_not_allow'];
     }
 
-    /** True unless the rule denies this viewer outright (a filter or a data-dependent rule may allow). */
+    /**
+     * True unless the rule denies this viewer outright. A filter may allow some rows, and a function
+     * rule may allow given the save's data, which EditorSave checks before commit.
+     */
     private static function ruleMayAllow(string $collection, string $op, Viewer $viewer): bool
     {
-        Plugin::instance()?->app(); // function rules live in the app's functions.php
-        try {
-            return Access::evaluate(Access::collectionRules(self::schema()->collection($collection))[$op], $viewer, $op, null) !== false;
-        } catch (\Throwable) {
-            return false;
-        }
+        $rule = Access::collectionRules(self::schema()->collection($collection))[$op];
+
+        return isset($rule['fn']) || Access::evaluate($rule, $viewer, $op, null) !== false;
     }
 
     /** Does the viewer's $op rule cover row $pk (as stored, without a write's data)? */
@@ -170,19 +180,21 @@ final class CoreAccess
     }
 
     /**
-     * Rows the viewer's read or update rule covers: null = every row, false = the rule denies,
-     * else their primary keys. Cached per request until a post changes.
+     * Rows the viewer's read, update or delete rule covers: null = every row, false = the rule denies,
+     * else their primary keys. Cached until something that could change the answer happens.
      *
      * @return ?list<int|string>|false
      */
     public static function keys(string $collection, string $op, Viewer $viewer): array|null|false
     {
-        $key = $collection . ' ' . $op . ' ' . ($viewer->user['id'] ?? 0);
+        $key = $collection . ' ' . $op . ' ' . ($viewer->user['id'] ?? 0) . ' ' . ($viewer->user['role'] ?? '');
         if (!array_key_exists($key, self::$keys)) {
             try {
                 self::$keys[$key] = Plugin::instance()?->db()->permittedKeys($collection, $op, $viewer);
             } catch (HttpError) {
-                self::$keys[$key] = false;
+                // An update rule that is a function may allow once it sees the save's data (EditorSave).
+                $fn = isset(Access::collectionRules(self::schema()->collection($collection))[$op]['fn']);
+                self::$keys[$key] = $op === 'update' && $fn && $viewer->user !== null ? null : false;
             }
         }
 
@@ -225,50 +237,92 @@ final class CoreAccess
         return null;
     }
 
-    /** Drop from a core response every field the viewer can't read on post $id. */
-    public static function strip(mixed $response, string $collection, int $id, ?Viewer $viewer): mixed
+    /**
+     * Drop from a core response every field the viewer can't read: judged on $stored (the row, or the
+     * snapshot a revision holds). Without one (a trashed post) every field that could be hidden from
+     * this viewer goes, decided by the rules alone.
+     */
+    public static function strip(mixed $response, string $collection, ?array $stored, ?Viewer $viewer): mixed
     {
         if (!$response instanceof \WP_REST_Response || !is_array($data = $response->get_data())) {
             return $response;
         }
-        $plugin = Plugin::instance();
-        $stored = $plugin?->db()->editorRow($collection, $id);
-        if ($stored === null) {
-            return $response;
-        }
         $spec = self::schema()->collection($collection);
-        $visible = $viewer === null ? [] : (FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+        $visible = $viewer === null || $stored === null ? null : (FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+        $dropped = false;
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
-            $hidden = array_key_exists($col, $stored) && !array_key_exists($col, $visible);
-            // A structured value with a hidden sub-field is dropped whole: core shows SCF's own shape.
-            if (!$hidden && in_array($def['type'], self::STRUCTURED, true) && array_key_exists($col, $stored)) {
-                $hidden = $visible[$col] !== $stored[$col];
+            if ($col === $spec['primaryKey'] || ($def['system'] ?? false) || $col === ($spec['title'] ?? null)) {
+                continue; // the title is always readable (§4.4)
             }
-            if (!$hidden || $col === $spec['primaryKey'] || ($def['system'] ?? false)) {
+            $hidden = $visible === null
+                ? $viewer === null || FieldAccess::mayHide($def, $viewer)
+                // A structured value with a hidden sub-field is dropped whole: core shows SCF's own shape.
+                : array_key_exists($col, $stored) && (!array_key_exists($col, $visible) || $visible[$col] !== $stored[$col]);
+            if (!$hidden) {
                 continue;
             }
+            $dropped = true;
             match ($col) {
                 $spec['content'] ?? null => self::unset($data, ['content', 'excerpt']),
-                $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template']),
-                $spec['title'] ?? null => null, // always readable (§4.4)
+                $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
                 default => is_array($data['acf'] ?? null) ? self::unset($data['acf'], [$spec['wp']['metaPrefix'] . $col, $spec['wp']['metaPrefix'] . $col . '_source']) : null,
             };
         }
         $response->set_data($data);
+        if ($dropped) {
+            // SCF links every referenced post (embeddable): a hidden reference must not survive as one.
+            foreach (array_keys($response->get_links()) as $rel) {
+                if (str_starts_with((string) $rel, 'acf:')) {
+                    $response->remove_link($rel);
+                }
+            }
+        }
 
         return $response;
     }
 
-    /** Revisions and autosaves of a Zero post are stripped by the live row's rules. */
+    /** Revisions and autosaves of a Zero post are stripped against their own snapshot. */
     public static function prepareChild(mixed $response, mixed $post, mixed $request): mixed
     {
         if (!$post instanceof \WP_Post || $post->post_parent <= 0) {
             return $response;
         }
         $collection = self::collection((string) get_post_type($post->post_parent));
+        if ($collection === null) {
+            return $response;
+        }
+        try {
+            $snapshot = Plugin::instance()?->db()->revisionRow($collection, $post->post_parent, $post->ID);
+        } catch (HttpError) {
+            $snapshot = null;
+        }
 
-        return $collection === null ? $response : self::strip($response, $collection, $post->post_parent, self::viewer());
+        return self::strip($response, $collection, $snapshot, self::viewer());
+    }
+
+    /** A list query naming a column the viewer may not read (search over content, slug) is refused. */
+    public static function queryDenial(string $collection, \WP_REST_Request $request, ?Viewer $viewer): ?\WP_Error
+    {
+        if ($viewer === null) {
+            return null;
+        }
+        $spec = self::schema()->collection($collection);
+        $hidden = static fn (?string $col): bool => $col !== null && FieldAccess::mayHide($spec['columns'][$col], $viewer);
+        $columns = (array) ($request['search_columns'] ?? []);
+        $probes = [
+            'search' => !empty($request['search']) && $hidden($spec['content'] ?? null)
+                && ($columns === [] || array_intersect($columns, ['post_content', 'post_excerpt']) !== []),
+            'slug' => !empty($request['slug']) && $hidden($spec['slug'] ?? null),
+            'orderby' => $request['orderby'] === 'slug' && $hidden($spec['slug'] ?? null),
+        ];
+        foreach ($probes as $param => $probe) {
+            if ($probe) {
+                return self::error(new HttpError(403, 'forbidden', "You can't filter, sort or search by a field hidden from you", '/' . $param));
+            }
+        }
+
+        return null;
     }
 
     private static function unset(array &$data, array $keys): void
@@ -294,132 +348,38 @@ final class CoreAccess
 
     // ================================================================ wp-admin form
 
-    /** The edit screen doesn't render a top-level field the viewer can't read on this post. */
+    /**
+     * The edit screen doesn't render a top-level field holding anything the viewer can't read on this
+     * post (a structured field with a hidden sub-field goes whole). Saves are EditorSave's to decide.
+     */
     public static function formField(mixed $field): mixed
     {
         if (!is_array($field) || empty($field['zero_top']) || !is_admin()) {
             return $field;
         }
-        $context = self::formContext((int) (acf_get_form_data('post_id') ?: 0), $field);
-
-        return $context !== null && !self::fieldAllows($context, 'read') ? false : $field;
-    }
-
-    /**
-     * A wp-admin form save skips a top-level field the viewer can't set (Zero's own writes, core REST
-     * and trusted code are decided elsewhere): the stored value stays.
-     */
-    public static function formSave(mixed $check, mixed $value, mixed $postId, mixed $field): mixed
-    {
-        if ($check !== null || Scf::$io > 0 || !is_array($field) || empty($field['zero_top'])
-            || (defined('REST_REQUEST') && REST_REQUEST) || !is_numeric($postId) || get_current_user_id() === 0) {
-            return $check;
-        }
-        $context = self::formContext((int) $postId, $field);
-        if ($context === null) {
-            return $check;
-        }
-        $op = $context[3] === null ? 'create' : 'update';
-
-        return self::fieldAllows($context, $op) && ($op === 'create' || self::fieldAllows($context, 'read')) ? $check : true;
-    }
-
-    /** @return ?array{array, string, Viewer, ?array} [column def, collection, viewer, stored row] */
-    private static function formContext(int $postId, array $field): ?array
-    {
+        $postId = (int) (acf_get_form_data('post_id') ?: 0);
         $collection = $postId > 0 ? self::collection((string) get_post_type($postId)) : null;
         $col = $field['zero']['name'] ?? null;
-        $viewer = self::viewer();
-        if ($collection === null || !is_string($col) || $viewer === null) {
-            return null;
-        }
-        $def = self::schema()->collection($collection)['columns'][$col] ?? null;
-        if ($def === null || !isset($def['access'])) {
-            return null;
-        }
-        $post = get_post($postId);
-        $stored = $post instanceof \WP_Post && $post->post_status !== 'auto-draft' ? Plugin::instance()?->db()->editorRow($collection, $postId) : null;
-
-        return [$def, $collection, $viewer, $stored];
-    }
-
-    private static function fieldAllows(array $context, string $op): bool
-    {
-        [$def, , $viewer, $stored] = $context;
-        $rule = $def['access'][$op] ?? null;
-        Plugin::instance()?->app();
-        try {
-            return $rule === null || Access::evaluate($rule, $viewer, $op, $stored ?? []) === true;
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    // ================================================================ writes
-
-    /**
-     * Zero's write checks for a core create (null $postId, or an auto-draft) or update: field write
-     * rules on the supplied values, then the collection's create rule, or update rule, with the data.
-     */
-    public static function checkWrite(string $collection, \WP_REST_Request $request, ?int $postId): ?\WP_Error
-    {
-        if (!in_array($request->get_method(), ['POST', 'PUT', 'PATCH'], true)) {
-            return null; // core asks while building a GET's Allow header: capabilities answered that
+        if ($collection === null || !is_string($col)) {
+            return $field;
         }
         $viewer = self::viewer();
-        if ($viewer === null || $viewer->user === null) {
-            return self::error($viewer === null ? new HttpError(403, 'suspended', 'This account is suspended') : Access::deny(null, "write $collection rows"));
-        }
-        $db = Plugin::instance()?->db();
-        $existing = $postId === null || $db === null ? null : $db->editorRow($collection, $postId);
-        $data = self::incoming($collection, $request);
-        $rules = Access::collectionRules(self::schema()->collection($collection));
-        try {
-            if ($existing === null) {
-                FieldAccess::checkWrite('create', $collection, $data, null, $viewer, $data);
-                Access::require($rules['create'], $viewer, 'create', $data, "create $collection rows");
-            } else {
-                FieldAccess::checkWrite('update', $collection, $data, $existing, $viewer, $data);
-                if (!$db->permits($collection, 'update', $postId, $viewer, $data)) {
-                    throw Access::deny($viewer->user, "update $collection rows");
-                }
-            }
-        } catch (HttpError $e) {
-            return self::error($e);
-        }
-
-        return null;
-    }
-
-    /** The Zero row a core request supplies (JS form): core columns and top-level `acf` fields. */
-    private static function incoming(string $collection, \WP_REST_Request $request): array
-    {
         $spec = self::schema()->collection($collection);
-        $data = [];
-        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
-            if ($col !== null && $request->has_param($param)) {
-                $v = $request->get_param($param);
-                $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;
-            }
+        $def = $spec['columns'][$col] ?? null;
+        if ($def === null || $viewer === null) {
+            return $viewer === null ? false : $field;
         }
-        if (($spec['drafts'] ?? false) && is_string($status = $request->get_param('status'))) {
-            $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? 'draft';
+        $stored = Plugin::instance()?->db()->editorRow($collection, $postId);
+        if ($stored === null) {
+            // A new post holds nothing to hide; a trashed one is judged by the rules alone.
+            return !FieldAccess::mayHide($def, $viewer) ? $field : false;
         }
-        $acf = $request->get_param('acf');
-        if (is_array($acf)) {
-            foreach ($spec['columns'] as $col => $def) {
-                $col = (string) $col;
-                $key = $spec['wp']['fieldKeyPrefix'] . $col;
-                foreach ([$spec['wp']['metaPrefix'] . $col, $key] as $name) {
-                    if (array_key_exists($name, $acf)) {
-                        $data[$col] = Scf::fromScf($def, $acf[$name], $key);
-                        break;
-                    }
-                }
-            }
-        }
+        $visible = FieldAccess::strip([$stored], $collection, $viewer)[0] ?? [];
+        // A structured field renders inputs for every sub-field, empty ones included: any sub-field
+        // that may be hidden from this viewer hides the whole field.
+        $nested = in_array($def['type'], self::STRUCTURED, true) && FieldAccess::mayHide(['access' => []] + $def, $viewer);
 
-        return $data;
+        return !$nested && array_key_exists($col, $visible) && $visible[$col] === $stored[$col] ? $field : false;
     }
 
     // ================================================================ helpers

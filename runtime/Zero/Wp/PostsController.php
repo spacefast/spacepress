@@ -9,10 +9,12 @@ namespace Zero\Wp;
  * rules ({@see CoreAccess}) on top of the capabilities it already checks.
  *
  * - Lists: a read rule that denies is 401/403; a filtering rule (or draft visibility) limits the
- *   query to the rows it covers, so pagination counts only those.
+ *   query to the rows it covers, so pagination counts only those. `search` and `slug` can't probe a
+ *   column hidden from the viewer.
  * - Items: a row the read rule filters out is 404, as on `/zero/v1`.
  * - Every response, in every context, drops the fields the viewer can't read.
- * - Creates and updates: Zero's field write rules and the create/update rule see the supplied data.
+ * - Creates and updates run in one transaction ({@see EditorSave}) that Zero's rules authorize on the
+ *   save's own data before it commits; a refusal is Zero's 401/403 and nothing is saved.
  */
 final class PostsController extends \WP_REST_Posts_Controller
 {
@@ -26,7 +28,9 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_items_permissions_check($request)
     {
-        return CoreAccess::readDenial($this->collection, CoreAccess::viewer()) ?? parent::get_items_permissions_check($request);
+        return CoreAccess::readDenial($this->collection, CoreAccess::viewer())
+            ?? CoreAccess::queryDenial($this->collection, $request, CoreAccess::viewer())
+            ?? parent::get_items_permissions_check($request);
     }
 
     public function get_items($request)
@@ -74,25 +78,21 @@ final class PostsController extends \WP_REST_Posts_Controller
     {
         $response = parent::prepare_item_for_response($item, $request);
 
-        return CoreAccess::strip($response, $this->collection, (int) $item->ID, CoreAccess::viewer());
+        $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
+
+        return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
-    public function create_item_permissions_check($request)
+    public function create_item($request)
     {
-        $allowed = parent::create_item_permissions_check($request);
-
-        return $allowed === true ? (CoreAccess::checkWrite($this->collection, $request, null) ?? true) : $allowed;
+        return EditorSave::rest($this->collection, null, fn () => parent::create_item($request));
     }
 
-    public function update_item_permissions_check($request)
+    public function update_item($request)
     {
-        $allowed = parent::update_item_permissions_check($request);
-        if ($allowed !== true) {
-            return $allowed;
-        }
         $post = $this->get_post($request['id']);
-        $postId = $post instanceof \WP_Post && $post->post_status !== 'auto-draft' ? $post->ID : null;
+        $postId = $post instanceof \WP_Post ? $post->ID : null;
 
-        return CoreAccess::checkWrite($this->collection, $request, $postId) ?? true;
+        return EditorSave::rest($this->collection, $postId, fn () => parent::update_item($request));
     }
 }

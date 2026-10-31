@@ -35,6 +35,8 @@ final class Plugin
     private array $deleting = [];
     /** @var array<int, true> posts WP cron is publishing right now (`publish_future_post`) */
     private array $promoting = [];
+    /** @var array<int, list<string>> post id → columns fillEditorDefaults generated in this save */
+    private array $filled = [];
 
     public function __construct(public readonly string $dir, string $mainFile)
     {
@@ -54,6 +56,7 @@ final class Plugin
             }
         });
         CoreAccess::register();
+        EditorSave::register();
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())
@@ -409,7 +412,12 @@ final class Plugin
         $previous = $this->editorPrevious($postId, $before);
         unset($this->before[$postId]);
         $app = $this->app();
-        $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+        try {
+            $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+        } catch (\Throwable $e) {
+            EditorSave::abort();
+            throw $e;
+        }
     }
 
     public function beforeEditorDelete(int $postId, ?\WP_Post $post = null): void
@@ -513,9 +521,16 @@ final class Plugin
                 $values[$col] = Schema::store($def, false);
             }
         }
+        $this->filled[$postId] = array_map('strval', array_keys($values));
         if ($values !== []) {
             $store->update($collection, $postId, $values);
         }
+    }
+
+    /** @return list<string> columns this request's editor save of $postId generated (trusted, not input) */
+    public function editorFilled(int $postId): array
+    {
+        return $this->filled[$postId] ?? [];
     }
 
     /**

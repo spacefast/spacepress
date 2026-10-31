@@ -196,8 +196,8 @@ terminal.
   to PHP. Anything outside the subset fails the build at `file:line:col` with a
   fix.
 - **Access rules** per collection, per action and per field, as roles or
-  functions that return a filter. `showIf` drives conditional fields in the
-  editor.
+  functions; a collection's read, update and delete rules can return a filter
+  instead of a boolean. `showIf` drives conditional fields in the editor.
 - **Authentication**: sign-in, sessions, roles, guests who keep their rows when
   they sign up, and MFA. WordPress users on WordPress; the app's own table
   standalone.
@@ -220,7 +220,8 @@ terminal.
 
 ## Alongside WordPress
 
-A Zero build for WordPress is three plugins, nothing else:
+A Zero build for WordPress is three Zero plugins, plus the pinned platform
+plugins it depends on:
 
 | Plugin | What it is |
 |---|---|
@@ -232,7 +233,8 @@ Each collection with an editor is a custom post type (`zero_<name>`) with a
 Secure Custom Fields group, so your content shows up in WordPress admin with
 revisions, and in the block editor when the collection has a `content` field,
 next to whatever the site already does.
-Collections with `editor: false` are plain tables. Core `/wp/v2` routes and
+Collections with `editor: false` are plain tables, and an `auth: true`
+collection's rows are WordPress users. Core `/wp/v2` routes and
 admin screens for Zero's post types follow Zero's access rules. Need other
 plugins at exact versions? [Declare them in the config](docs/wp-plugins.md)
 and the build pins and ships them too.

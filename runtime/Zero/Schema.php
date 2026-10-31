@@ -296,10 +296,8 @@ final class Schema
         $type = $col['type'];
         $bad = static fn (): HttpError => HttpError::invalidInput("$name must be " . self::expected($type), $pointer);
         $out = match ($type) {
-            // Safe integers only (|n| <= 2^53 - 1), whatever PHP type carried them: a JS client can't
-            // send a larger integer exactly, and storing one would do arithmetic JS can't.
             'integer', 'media', 'file' => match (true) {
-                is_int($v) && abs($v) <= 9007199254740991 => $v,
+                is_int($v) => $v,
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
                 default => throw $bad(),
             },
@@ -413,7 +411,7 @@ final class Schema
         }
         $out = [];
         foreach ($v as $i => $id) {
-            if (!((is_int($id) || (is_float($id) && Js::isInteger($id))) && abs($id) <= 9007199254740991)) {
+            if (!(is_int($id) || (is_float($id) && Js::isInteger($id)))) {
                 throw HttpError::invalidInput("$name items must be media ids", "$pointer/$i");
             }
             $out[] = (int) $id;
@@ -519,16 +517,6 @@ final class Schema
         return $mo >= 1 && $mo <= 12 && $d >= 1 && $d <= [31, $leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$mo - 1];
     }
 
-    /** Stored JSON text (written by this runtime, so valid; unreadable text decodes to null). */
-    private static function json(string $v): mixed
-    {
-        try {
-            return Js::decodeJson($v);
-        } catch (\JsonException) {
-            return null;
-        }
-    }
-
     /** Stored value → JS-facing value. */
     public static function decode(array $col, mixed $v): mixed
     {
@@ -537,21 +525,20 @@ final class Schema
         }
 
         return match ($col['type']) {
-            // Past 2^53 (written outside the runtime) the stored value reads as JS would parse it.
-            'integer', 'media', 'file' => Js::n(is_float($v) ? $v : (int) $v),
+            'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            'json', 'mediaList', 'select' => is_string($v) ? self::json($v) : $v,
-            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? self::json($v) : $v),
+            'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? json_decode($v, true) : $v),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),
-                (array) (is_string($v) ? self::json($v) : $v),
+                (array) (is_string($v) ? json_decode($v, true) : $v),
             ),
             'blocks' => array_map(
                 static fn ($item) => is_array($item) && isset($col['layouts'][$item['layout'] ?? ''])
                     ? ['layout' => $item['layout']] + self::fillFields($col['layouts'][$item['layout']], $item)
                     : $item,
-                (array) (is_string($v) ? self::json($v) : $v),
+                (array) (is_string($v) ? json_decode($v, true) : $v),
             ),
             default => (string) $v,
         };

@@ -345,7 +345,7 @@ final class Module
     private static function object(string $body): array
     {
         try {
-            $v = trim($body) === '' ? [] : \Zero\Js::decodeJson($body, 32);
+            $v = trim($body) === '' ? [] : json_decode($body, true, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }

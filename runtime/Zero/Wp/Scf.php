@@ -264,11 +264,9 @@ final class Scf
             return $value;
         }
         if ($def['type'] === 'json' && is_string($value)) {
-            try {
-                return wp_slash((string) Js::jsonStringify(Js::decodeJson(wp_unslash($value))));
-            } catch (\JsonException) {
-                return $value;
-            }
+            $decoded = json_decode(wp_unslash($value), true);
+
+            return json_last_error() === JSON_ERROR_NONE ? wp_slash((string) Js::jsonStringify($decoded)) : $value;
         }
         if ($def['type'] === 'timestamp' && is_string($value) && self::$io === 0) {
             return get_gmt_from_date($value, 'Y-m-d H:i:s'); // the picker posts site time; meta keeps UTC
@@ -375,7 +373,7 @@ final class Scf
         }
 
         return match ($type) {
-            'integer', 'media', 'file' => is_numeric($v) && (float) $v == (int) $v ? Js::n((int) $v) : $v,
+            'integer', 'media', 'file' => is_numeric($v) && (float) $v == (int) $v ? (int) $v : $v,
             'real' => is_numeric($v) ? (float) $v : $v,
             'boolean' => match (true) {
                 is_bool($v) => $v,
@@ -387,7 +385,7 @@ final class Scf
             'timestamp' => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $v) ? str_replace(' ', 'T', $v) . '.000Z' : $v,
             'json' => is_string($v) ? self::json($v, $strictJson) : $v,
             'select' => is_array($v) ? array_values(array_map('strval', $v)) : (is_string($v) && is_serialized($v) ? array_values((array) unserialize($v, ['allowed_classes' => false])) : [$v]),
-            'mediaList' => is_array($v) ? array_values(array_map(static fn ($id) => Js::n((int) $id), $v)) : $v,
+            'mediaList' => is_array($v) ? array_values(array_map('intval', $v)) : $v,
             'group' => is_array($v) ? self::jsFields($def['fields'] ?? [], $v, $key . '_') : $v,
             'repeater' => is_array($v) ? array_values(array_map(
                 static fn ($row) => is_array($row) ? self::jsFields($def['fields'] ?? [], $row, $key . '_') : $row,
@@ -437,7 +435,7 @@ final class Scf
     private static function json(string $s, bool $strict): mixed
     {
         try {
-            return Js::decodeJson($s);
+            return json_decode($s, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             if ($strict) {
                 throw $e;

@@ -356,7 +356,7 @@ final class Routes
     private static function input(string $body): array
     {
         try {
-            $in = trim($body) === '' ? [] : Js::decodeJson($body);
+            $in = trim($body) === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }

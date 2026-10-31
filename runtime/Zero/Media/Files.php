@@ -199,8 +199,8 @@ final class Files
         $query = http_build_query(['exp' => $exp, 'sig' => self::signer()->sign(self::message($row['bucket'], $row['id'], $exp))]);
 
         return [
-            'id' => Js::n($row['id']), 'bucket' => $row['bucket'], 'filename' => $row['filename'], 'mime' => $row['mime'],
-            'size' => Js::n($row['size']), 'ownerId' => $row['ownerId'] === null ? null : Js::n($row['ownerId']), 'createdAt' => $row['createdAt'],
+            'id' => $row['id'], 'bucket' => $row['bucket'], 'filename' => $row['filename'], 'mime' => $row['mime'],
+            'size' => $row['size'], 'ownerId' => $row['ownerId'], 'createdAt' => $row['createdAt'],
             'url' => self::storage()->apiUrl($route) . (str_contains(self::storage()->apiUrl($route), '?') ? '&' : '?') . $query,
         ];
     }

@@ -388,10 +388,10 @@ final class WpMedia implements Media
         }
 
         return [
-            'id' => \Zero\Js::n($id),
+            'id' => $id,
             'url' => (string) wp_get_attachment_url($id),
             'mime' => (string) $post?->post_mime_type,
-            'size' => \Zero\Js::n((int) ($meta['filesize'] ?? (is_file($file) ? filesize($file) : 0))),
+            'size' => (int) ($meta['filesize'] ?? (is_file($file) ? filesize($file) : 0)),
             'width' => isset($meta['width']) ? (int) $meta['width'] : null,
             'height' => isset($meta['height']) ? (int) $meta['height'] : null,
             'alt' => is_string($alt) && $alt !== '' ? $alt : null,

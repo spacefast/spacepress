@@ -61,6 +61,7 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         action_results = std::mem::take(&mut c.action_results);
         (std::mem::take(&mut c.output), slots)
     };
+    crate::unlanded::reject(&schema, &config, &ev, config_span)?; // TEMPORARY: see src/unlanded.rs
     for (slot, name) in slots {
         match slot {
             Slot::Hook { table, kind } => {

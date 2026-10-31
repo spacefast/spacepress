@@ -1,12 +1,12 @@
 # Zero Admin — design and provenance audit
 
-Status: approved for build (revision 9, 2026-10-31; six review rounds folded in; §9.1 and §9.2 ruled, §9.3 and §9.5 accepted by default). Extends `design-phase2.md`; where
+Status: approved for build (revision 10, 2026-10-31; six review rounds folded in; §9.1 and §9.2 ruled, §9.3 and §9.5 accepted by default; WordPress-only per the owner's ruling). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
 
 The ask: bring Spacefast's earlier WordPress admin work into Zero as an
-optional plugin that `zero build --target wp` can ship next to `zero-runtime`,
+optional plugin that `zero build` can ship next to `zero-runtime`,
 `zero-identity` and `zero-app-<name>`. It is an admin UI for Zero apps on
 WordPress. It is not a capsule frontend and it is not an embed for another
 dashboard.
@@ -27,7 +27,7 @@ build of it.
 
 | Area | Decision |
 |---|---|
-| Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build --target wp` only when `defineConfig({ admin: true })`. Standalone ignores the flag, like `plugins`. No admin by default. |
+| Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build` only when `defineConfig({ admin: true })`. No admin by default. |
 | Mount | Full-page app at `/zero-admin/` (rewrite rule, `auth_redirect()`), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
 | Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. It is public metadata (it always was: the typed client, `zero doctor` and MCP read it) and stays so. The admin derives list fields and edit forms from it; what a viewer may *see* is decided by the data endpoints, never by the schema (§5). |
 | Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for upload, delete, alt text and focal point; core `/wp/v2/media` only for reads and for the two attachment fields Zero has no column for, caption and title (§5.3). Image cropping is dropped. The admin plugin registers **no REST route that reads or writes Zero data**. |
@@ -251,16 +251,16 @@ export default defineConfig({ name: "blog", admin: true, /* … */ });
 ```
 
 `admin?: boolean` on `ConfigInput` (default `false`), key `'admin'` in
-schema.php v3, accepted by `src/extract.rs`'s config allowlist. `zero build
---target wp` emits `plugins/zero-admin` and lists it in `zero-manifest.json`
-only when the flag is true; a build that turns the flag off deletes the
-directory like any other `zero-*` output. Standalone builds accept the flag
-and ignore it (like `plugins`), so a config stays target-independent. There is
-no CLI flag: the artifact is a function of the config.
+schema.php v3, accepted by `src/extract.rs`'s config allowlist. `zero build`
+emits `plugins/zero-admin` and lists it in `zero-manifest.json` only when the
+flag is true; a build that turns the flag off deletes the directory like any
+other `zero-*` output. There is no CLI flag: the artifact is a function of the
+config. (Zero is WordPress-only; there is no other target for the flag to be
+ignored on.)
 
 Why opt-in and not always: the plugin is several megabytes of JS, it asks the
-site for pretty permalinks, and most Zero apps (headless, API-first) have no
-one to sit in it. Why a config key and not a separate command: §2.1 of
+site for pretty permalinks, and a headless, API-first Zero app has no one
+to sit in it. Why a config key and not a separate command: §2.1 of
 phase 2 makes the wp-content artifact one build with one manifest, and
 `zero doctor` can then check what the manifest promised.
 

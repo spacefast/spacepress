@@ -44,6 +44,8 @@ $files = [
                         'active' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
                         'meta' => ['type' => 'json'],
                         'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
+                        // A function default between the two `now` defaults that moves the clock.
+                        'tick' => ['type' => 'text', 'default' => ['fn' => 'locations__tick']],
                         'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now],
                     ],
                     'relations' => [
@@ -203,6 +205,15 @@ $files = [
         use function Zero\db;
 
         // Compiled from a hook that mutates its argument: by-reference, no return.
+        // Advances a pinned clock by a second while a row's defaults are being generated.
+        function locations__tick()
+        {
+            if (($pinned = getenv('ZERO_NOW')) !== false && $pinned !== '') {
+                putenv('ZERO_NOW=' . Js::iso(Js::now() + 1000));
+            }
+            return null;
+        }
+
         function locations__beforeCreate(array &$data)
         {
             $data['name'] = Js::trim($data['name'] ?? null);
@@ -316,6 +327,7 @@ $files = [
         	"active" integer DEFAULT 1 NOT NULL,
         	"meta" text,
         	"createdAt" text NOT NULL,
+        	"tick" text,
         	"updatedAt" text NOT NULL
         );
         --> statement-breakpoint
@@ -383,11 +395,12 @@ $rebuild = <<<'SQL'
     	"active" integer DEFAULT 1 NOT NULL,
     	"meta" text,
     	"createdAt" text NOT NULL,
+    	"tick" text,
     	"updatedAt" text NOT NULL,
     	"note" text
     );
     --> statement-breakpoint
-    INSERT INTO "__new_locations"("id", "name", "code", "kind", "active", "meta", "createdAt", "updatedAt") SELECT "id", "name", "code", "kind", "active", "meta", "createdAt", "updatedAt" FROM "locations";
+    INSERT INTO "__new_locations"("id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "updatedAt") SELECT "id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "updatedAt" FROM "locations";
     --> statement-breakpoint
     DROP TABLE "locations";
     --> statement-breakpoint
@@ -440,10 +453,12 @@ eq('second migrate is a no-op', $app->migrate(), []);
 // ================================================================ write pipeline: create
 
 $tsPattern = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/';
+putenv('ZERO_NOW=2026-01-01T00:00:00.000Z');
 $garage = $db->insert('locations', ['name' => '  Garage  ', 'meta' => ['floor' => 1, 'tags' => ['a/b', 'é']]], true)[0];
+putenv('ZERO_NOW');
 eq('by-ref beforeCreate mutation is kept (trim + fill)', [$garage['name'], $garage['code']], ['Garage', 'GAR']);
 eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['shelf', true]);
-check('default now: timestamps in ISO ms UTC', preg_match($tsPattern, $garage['createdAt']) === 1 && $garage['createdAt'] === $garage['updatedAt'], $garage);
+eq('default now: one instant per write, even when the clock moves between defaults', [$garage['createdAt'], $garage['updatedAt']], ['2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z']);
 eq('json column round-trips', $garage['meta'], ['floor' => 1, 'tags' => ['a/b', 'é']]);
 eq('json stored with unescaped slashes/unicode', $pdo->query('SELECT meta FROM locations')->fetchColumn(), '{"floor":1,"tags":["a/b","é"]}');
 
@@ -608,7 +623,7 @@ $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['i
 file_put_contents("$root/zero/app/migrations/0002_rebuild_locations.sql", $rebuild);
 eq('CLI migrate applies the rebuild', $cli('migrate'), [0, ['data' => ['applied' => ['0002_rebuild_locations']]]]);
 eq('child rows survive a parent rebuild (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[8] ?? null, 'note');
+eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[9] ?? null, 'note');
 problem('unique index recreated by the rebuild', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 
 file_put_contents("$root/zero/app/migrations/0003_orphan.sql", "DELETE FROM \"locations\" WHERE \"name\" = 'Garage';\n--> statement-breakpoint\nSELECT 1;");

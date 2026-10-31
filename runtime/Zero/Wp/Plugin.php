@@ -354,6 +354,7 @@ final class Plugin
         $spec = $this->schema->collection($collection);
         $store = CompositeStore::create($this->schema, $this->connection())->posts;
         $values = [];
+        $now = \Zero\Js::now();
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
             if (!$store->isMeta($spec, $col)) {
@@ -364,9 +365,9 @@ final class Plugin
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
             $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
-                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def['type']), $col);
+                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def['type'], $now), $col);
             } elseif (isset($def['default']) && $empty) {
-                $values[$col] = self::generated($def, Schema::generate($def['default'], $def['type']), $col);
+                $values[$col] = self::generated($def, Schema::generate($def['default'], $def['type'], $now), $col);
             } elseif ($def['type'] === 'boolean' && $raw === '') {
                 $values[$col] = Schema::store($def, false);
             }

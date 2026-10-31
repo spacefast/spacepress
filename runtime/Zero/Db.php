@@ -385,13 +385,14 @@ final class Db
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
+        $now = Js::now();
         foreach ($columns as $name => $col) {
             if (!array_key_exists($name, $data) && isset($col['default'])) {
-                $data[$name] = Schema::generate($col['default'], $col['type']);
+                $data[$name] = Schema::generate($col['default'], $col['type'], $now);
             }
         }
         if ($spec['drafts'] ?? false) {
-            $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
+            $data = $this->draftRules($data, $statusGiven ? null : 'published', null, $now);
         }
         Extensions::write('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
@@ -468,13 +469,14 @@ final class Db
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
+        $now = Js::now();
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
-                $patch[$name] = Schema::generate($col['onUpdate'], $col['type']);
+                $patch[$name] = Schema::generate($col['onUpdate'], $col['type'], $now);
             }
         }
         if (($spec['drafts'] ?? false) && (array_key_exists('status', $patch) || array_key_exists('publishedAt', $patch))) {
-            $patch = $this->draftRules($patch, null, $existing);
+            $patch = $this->draftRules($patch, null, $existing, $now);
         }
         $previous = $existing;
         Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
@@ -570,14 +572,14 @@ final class Db
      * §6.1 transitions. $defaultStatus: 'published' when status was absent on create. $existing: the
      * row being updated (null on create).
      */
-    private function draftRules(array $data, ?string $defaultStatus, ?array $existing): array
+    private function draftRules(array $data, ?string $defaultStatus, ?array $existing, int $nowMs): array
     {
         if ($defaultStatus !== null) {
             $data['status'] = $defaultStatus;
         }
         $status = array_key_exists('status', $data) ? $data['status'] : ($existing['status'] ?? null);
         $hasAt = array_key_exists('publishedAt', $data) && $data['publishedAt'] !== null;
-        $now = Js::iso(Js::now());
+        $now = Js::iso($nowMs);
         if ($status === 'published' && !$hasAt) {
             // Re-saving an already published row (publishedAt untouched) keeps its date.
             $keep = $existing !== null && !array_key_exists('publishedAt', $data) && $existing['status'] === 'published'

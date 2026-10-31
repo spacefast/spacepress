@@ -28,18 +28,20 @@ final class WpFiles implements FileStorage
     }
 
     /**
-     * Activation of any Zero plugin writes the deny rules, creates the secret and probes; admin_init
-     * re-probes daily without rewriting anything, so a removed `.htaccess` is noticed, not hidden.
+     * Activation of any Zero plugin, and the runtime's table install/upgrade, write the deny rules,
+     * create the secret and probe; admin_init re-probes daily without rewriting anything, so a
+     * removed `.htaccess` is noticed, not hidden.
      */
     public static function boot(): void
     {
-        add_action('activated_plugin', static function (string $plugin): void {
-            if (str_starts_with($plugin, 'zero-')) {
-                self::ensureSecret();
-                self::protect();
-                self::probe();
-            }
-        });
+        $install = static function (): void {
+            self::ensureSecret();
+            self::protect();
+            self::probe();
+        };
+        add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'zero-') ? $install() : null);
+        // Sites upgraded in place (no reactivation) install protection when the runtime adds the table.
+        add_action('zero_runtime_tables_installed', $install);
         add_action('admin_init', static function (): void {
             if ((int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
                 self::probe();

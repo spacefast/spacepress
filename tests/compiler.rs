@@ -633,6 +633,41 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// The generated client types private files and media updates, and keeps the built-in `PrivateFile`
+/// distinct from a collection whose type name would collide with it (phase-2 §7.2).
+#[test]
+fn generated_client_types_files_and_avoids_the_private_file_name() {
+    let tmp = std::env::temp_dir().join(format!("zero-private-files-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/private-files"), &tmp);
+    let out = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+            "--allowImportingTsExtensions",
+            "--lib",
+            "ES2022,DOM",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "generated client failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// Every static phase-2 rejection is target-independent (phase-2 §§4–7).
 #[test]
 fn rejects_phase2_static_contracts() {

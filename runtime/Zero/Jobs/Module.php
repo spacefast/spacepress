@@ -105,7 +105,7 @@ final class Module
         $rows = Storage::run('SELECT "id", "job", "input", "key", "state", "attempts", "runAt", "lastError", "createdAt", "doneAt" FROM {jobs}'
             . ($state === null ? '' : ' WHERE "state" = ?') . ' ORDER BY "createdAt", "id"', $state === null ? [] : [$state]);
 
-        return array_map(static fn (array $r): array => ['input' => json_decode((string) $r['input'], true, 512, JSON_THROW_ON_ERROR), 'attempts' => (int) $r['attempts']] + $r, $rows);
+        return array_map(static fn (array $r): array => ['input' => json_decode((string) $r['input'], true, 4096, JSON_THROW_ON_ERROR), 'attempts' => (int) $r['attempts']] + $r, $rows);
     }
 
     private static function retry(string $id): array

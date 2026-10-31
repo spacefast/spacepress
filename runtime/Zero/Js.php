@@ -275,8 +275,7 @@ final class Js
 
     /**
      * JSON text → Zero values (assoc arrays for objects), with integers past ±2^53 as the doubles a
-     * JS parser would produce. The one decoder for request bodies, query JSON, JSON.parse and stored
-     * JSON columns.
+     * JS parser would produce. Backs compiled `JSON.parse`; runtime storage and ids keep exact integers.
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {

@@ -101,9 +101,22 @@ $fresh = static function (string $name) use ($root): float {
     file_put_contents($file, $script);
     return (float) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($file) . ' ' . escapeshellarg($name));
 };
-$known = $fresh('maria');
-$unknown = $fresh('nobody-' . bin2hex(random_bytes(3)));
-check('in a fresh process, an unknown name costs about what a wrong password does (one verify each)', $unknown > $known / 2 && $unknown < $known * 2, ['known ms' => $known, 'unknown ms' => $unknown]);
+// One sample per side is at the mercy of a shared runner, so take the median of interleaved fresh
+// samples: drift hits both sides alike. A path that skipped its password check would cost about half
+// (each side is one dummy hash plus one verify), well outside the band.
+$known = $unknown = [];
+for ($i = 0; $i < 5; $i++) {
+    $known[] = $fresh('maria');
+    $unknown[] = $fresh('nobody-' . bin2hex(random_bytes(3)));
+}
+$median = static function (array $xs): float {
+    sort($xs);
+
+    return $xs[intdiv(count($xs), 2)];
+};
+$ratio = $median($unknown) / $median($known);
+check('in a fresh process, an unknown name costs about what a wrong password does (one verify each)', $ratio > 0.75 && $ratio < 1.33,
+    ['known ms' => $known, 'unknown ms' => $unknown, 'ratio' => $ratio]);
 
 // Failed attempts are throttled per account, counted in the database across requests.
 $target = 'throttle-' . bin2hex(random_bytes(3));

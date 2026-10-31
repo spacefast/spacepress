@@ -64,7 +64,9 @@ policy differs from Zero's absolute HTTP(S) URL field. Sanity URI fields are als
 refused: Zero's URL validator cannot preserve Sanity's scheme/credential and
 empty-value policy. Payload email fields keep Payload's own address pattern on
 top of Zero's `email()` check, so quoted local parts and `[127.0.0.1]` address
-literals stay rejected. Optional Payload email fields also carry a specific
+literals stay rejected. Zero's `email()` also applies PHP's address check, which
+rejects a local part over 64 characters or a label over 63 that Payload accepted;
+each Payload email field is reported for that review. Optional Payload email fields also carry a specific
 review entry because Zero rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 

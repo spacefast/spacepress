@@ -389,10 +389,13 @@ fn payload_email_keeps_payloads_address_rule() {
             json!([
                 ["contact", "user.name+alias@example.co.uk"],
                 ["contact", "\"quoted\"@example.com"],
-                ["contact", "user@[127.0.0.1]"]
+                ["contact", "user@[127.0.0.1]"],
+                ["contact", format!("{}@example.com", "a".repeat(64))],
+                ["contact", format!("{}@example.com", "a".repeat(65))]
             ])
         ),
-        json!([true, "/contact", "/contact"])
+        // A 65-character local part passes Payload's pattern but not PHP's check (reported for review).
+        json!([true, "/contact", "/contact", true, "/contact"])
     );
 }
 

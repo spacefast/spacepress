@@ -495,6 +495,9 @@ fn field(
     if matches!(source, Source::Payload) && kind == "date" {
         report.push(entry(at, "review", "Zero timestamps accept ISO 8601 dates and epoch milliseconds; Payload's Date.parse also accepted free-form dates such as \"Jan 1 2026\". Normalize such inputs before writing."));
     }
+    if matches!(source, Source::Payload) && kind == "email" {
+        report.push(entry(at, "review", "Zero's email() also applies PHP's address check, so addresses Payload accepted with a local part over 64 characters or a label over 63 are rejected."));
+    }
     if matches!(source, Source::Payload) && kind == "email" && !required {
         report.push(entry(at, "review", "Zero email validation rejects optional empty strings that Payload accepts; use null/absence or port the empty-value behavior before deployment."));
     }

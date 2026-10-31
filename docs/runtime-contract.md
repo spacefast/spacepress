@@ -431,7 +431,8 @@ JavaScript result exactly on the inputs its types allow.
 Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
 - `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits, exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
-- `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Integral results within PHP int range return int.
+- `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
+- `n(int|float $r): int|float` — an integer arithmetic result as a JS number: an int beyond ±2^53 becomes the nearest double. Compiled `+ - * **` and `++`/`--` (via `postStep(&$x, ±1)`, which returns the old value) go through it, so Zero ints never do exact arithmetic JS numbers can't.
 - `parseInt(string $s, int|float|null $radix = null): int|float`, `parseFloat(string $s): int|float` — exact JS semantics, NAN when nothing parses.
 - `truthy(mixed $v): bool` — null, false, 0, -0.0, NAN, `""` are falsy; every array (even empty) is truthy.
 - `typeOf(mixed $v): string` — `"object"` for null/arrays, `"number"`, `"string"`, `"boolean"`, `"function"` for Closure.

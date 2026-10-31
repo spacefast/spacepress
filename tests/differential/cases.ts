@@ -72,6 +72,15 @@ export default defineConfig({
   actions: {
     hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.target] }),
     numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
+    // JS numbers are doubles: integer arithmetic past ±2^53 rounds, where PHP ints would stay exact.
+    bigIntegers: run(() => {
+      let i = 2 ** 53 - 1;
+      const before = i++;
+      const after = ++i;
+      let j = -(2 ** 53) + 1;
+      j -= 2;
+      return [2 ** 53 + 1, 9007199254740993 + 0, 2 ** 53 * 3 + 1, before, after, i, j, Number("9007199254740993"), 7 - 10];
+    }),
     numberFormatting: run(() => [String(1e21), String(1e-7), String(123.456), String(-0), (1.005).toFixed(2), (2.5).toFixed(0)]),
     truthiness: run(() => ["", "0", 0, -0, null, [], {}].map((v) => (v ? "t" : "f")).join("")),
     stringLength: run(() => ["🙂".length, "héllo".length, "Ärtsoppa".length]),

@@ -2109,12 +2109,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Update { inc, prefix, target } => {
                 let t = self.place(target)?.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
-                let o = if *inc { "++" } else { "--" };
-                Out::new(
+                // Past ±2^53 the variable becomes a double, as in JS (`Js::n`). Postfix returns the old value.
+                let d = if *inc { "1" } else { "-1" };
+                Out::atom(
                     if *prefix {
-                        format!("{o}{}", t.php)
+                        format!("({} = \\Zero\\Js::n({} + {d}))", t.php, t.php)
                     } else {
-                        format!("{}{o}", t.php)
+                        format!("\\Zero\\Js::postStep({}, {d})", t.php)
                     },
                     Ty::Num,
                 )
@@ -2196,7 +2197,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match op {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
-                    Out::new(format!("{} + {}", a.wrapped(), b.wrapped()), Ty::Num)
+                    // Js::n: an integer result beyond ±2^53 rounds to a double, as JS numbers do.
+                    Out::atom(format!("\\Zero\\Js::n({} + {})", a.wrapped(), b.wrapped()), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
                     let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
                     Out::new(format!("{x} . {y}"), Ty::Str)
@@ -2221,7 +2223,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match op {
                     BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
-                    _ => Out::new(format!("{} {sym} {}", a.wrapped(), b.wrapped()), Ty::Num),
+                    _ => Out::atom(format!("\\Zero\\Js::n({} {sym} {})", a.wrapped(), b.wrapped()), Ty::Num),
                 }
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {

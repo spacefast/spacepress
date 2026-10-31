@@ -32,6 +32,9 @@ $cases = [
     ['String(5e-324)', fn () => Js::numStr(5e-324)],
     ['String(1.7976931348623157e308)', fn () => Js::numStr(1.7976931348623157e308)],
     ['String(2 ** 53 + 2)', fn () => Js::numStr(2 ** 53 + 2)],
+    // n(): an integer result past ±2^53 rounds to a double; postStep() steps through it.
+    ['[2 ** 53 + 1, -(2 ** 53) - 1, 2 ** 53 * 3 + 1, 2 ** 53 - 1, 1 + 2]', fn () => [Js::n(2 ** 53 + 1), Js::n(-(2 ** 53) - 1), Js::n(2 ** 53 * 3 + 1), Js::n(2 ** 53 - 1), Js::n(1 + 2)]],
+    ['(() => { let i = 2 ** 53; const old = i++; return [old, i, i + 1 === i]; })()', function () { $i = 2 ** 53; $old = Js::postStep($i, 1); return [$old, $i, Js::n($i + 1) === $i]; }],
     ['String(100 / 3)', fn () => Js::numStr(100 / 3)],
     ['String(NaN) + String(-Infinity)', fn () => Js::numStr(NAN) . Js::numStr(-INF)],
     ['String([1, [2, null], "a", true])', fn () => Js::str([1, [2, null], 'a', true])],
@@ -46,6 +49,7 @@ $cases = [
     ['[null, true, false, [], [7], [1, 2]].map(Number)', fn () => array_map(Js::toNumber(...), [null, true, false, [], [7], [1, 2]])],
     ['["08", "0x1F", "  -42px", "1e3", "", "-0", "9007199254740993", "123456789012345678901234567890", "+-1"].map(s => parseInt(s))',
         fn () => array_map(fn ($s) => Js::parseInt($s), ['08', '0x1F', '  -42px', '1e3', '', '-0', '9007199254740993', '123456789012345678901234567890', '+-1'])],
+    ['["9007199254740993", "-9007199254740993", "9007199254740992"].map(Number)', fn () => array_map(Js::toNumber(...), ['9007199254740993', '-9007199254740993', '9007199254740992'])],
     ['[parseInt("ff", 16), parseInt("0xff", 16), parseInt("0xff", 10), parseInt("102", 2), parseInt("z", 36), parseInt("1", 37), parseInt("10", 0), parseInt("10", 4.9), parseInt("10", -1)]',
         fn () => [Js::parseInt('ff', 16), Js::parseInt('0xff', 16), Js::parseInt('0xff', 10), Js::parseInt('102', 2), Js::parseInt('z', 36), Js::parseInt('1', 37), Js::parseInt('10', 0), Js::parseInt('10', 4.9), Js::parseInt('10', -1)]],
     ['["3.14abc", ".5", "-.5e-3x", "Infinityx", "-Infinity", "e5", "  1e400", "-0", "1.e2", "0x10"].map(parseFloat)',

@@ -207,14 +207,38 @@ final class Js
     }
 
     /** Integral finite floats within int range become ints (except -0). */
+    /**
+     * A float result as Zero's number: an int when it is a safe integer (|n| <= 2^53, not -0), else
+     * the float. Ints beyond 2^53 would do exact arithmetic JS numbers can't (see n()).
+     */
     private static function num(float $f): int|float
     {
-        if (is_finite($f) && floor($f) === $f && $f >= -9.2233720368547758E18 && $f < 9.2233720368547758E18
-            && !($f === 0.0 && fdiv(1, $f) < 0)) {
+        if (is_finite($f) && floor($f) === $f && abs($f) <= self::MAX_EXACT && !($f === 0.0 && fdiv(1, $f) < 0)) {
             return (int) $f;
         }
 
         return $f;
+    }
+
+    private const MAX_EXACT = 9007199254740992.0; // 2^53
+
+    /**
+     * An integer arithmetic result as a JS number: PHP ints are exact to 2^63, JS numbers are doubles,
+     * so an int beyond ±2^53 rounds to the nearest double, as `2 ** 53 + 1` does in JS. Compiled code
+     * wraps `+ - * **` and `++`/`--` in this.
+     */
+    public static function n(int|float $r): int|float
+    {
+        return is_int($r) && ($r > 9007199254740992 || $r < -9007199254740992) ? (float) $r : $r;
+    }
+
+    /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place through n() and returns the old value. */
+    public static function postStep(int|float &$x, int $step): int|float
+    {
+        $old = $x;
+        $x = self::n($x + $step);
+
+        return $old;
     }
 
     /** Truncate toward zero, keeping float type (and -0). */

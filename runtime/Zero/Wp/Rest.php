@@ -29,6 +29,24 @@ final class Rest
         ]);
     }
 
+    /** Registered instead of the app route while storage is behind the build: 503, retry shortly. */
+    public static function unavailable(string $detail): void
+    {
+        register_rest_route(self::NAMESPACE, '/(?P<path>.*)', [
+            'methods' => 'GET, POST, PATCH, DELETE, OPTIONS',
+            'permission_callback' => '__return_true',
+            'callback' => static function () use ($detail): \WP_REST_Response {
+                $response = new \WP_REST_Response(null, 503, ['Content-Type' => 'application/problem+json', 'Retry-After' => '5']);
+                self::$bodies[spl_object_id($response)] = (string) \Zero\Js::jsonStringify([
+                    'type' => 'about:blank', 'title' => 'Service unavailable', 'status' => 503, 'code' => 'unavailable', 'detail' => $detail,
+                ]);
+
+                return $response;
+            },
+            'args' => [],
+        ]);
+    }
+
     public static function boot(): void
     {
         add_filter('rest_pre_serve_request', [self::class, 'serve'], 10, 2);

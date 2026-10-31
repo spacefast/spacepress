@@ -1,0 +1,43 @@
+<?php
+// `wp eval` fixture for plugin.test.ts. Statement 1 of a migration committed (MySQL DDL can't roll
+// back) but its progress marker was lost. The migrator must keep failing on it rather than guess the
+// existing table is right, refuse to mark anything but the next pending step, and resume after the
+// operator marks it. Prints the outcome of each step as JSON, then cleans up.
+declare(strict_types=1);
+
+$plugin = \Zero\Wp\Runtime::plugin();
+$db = $plugin->connection();
+$dir = sys_get_temp_dir() . '/zero-resume-' . bin2hex(random_bytes(4));
+mkdir($dir);
+file_put_contents("$dir/9999_resume.sql", implode("\n--> statement-breakpoint\n", [
+    "CREATE TABLE `{prefix}resume_a` (\n\t`id` BIGINT NOT NULL,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+    'ALTER TABLE `{prefix}resume_a` ADD COLUMN `n` INT;',
+]));
+$migrator = new \Zero\Wp\Migrator($db, $dir, $plugin->schema);
+$attempt = static function (callable $fn): string {
+    try {
+        $fn();
+        return 'ok';
+    } catch (\RuntimeException|\Zero\HttpError $e) {
+        return $e->getMessage();
+    }
+};
+$out = [];
+try {
+    // The lost attempt: statement 1's table exists, no marker says so.
+    $db->run('CREATE TABLE wp_resume_a (`id` BIGINT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $out['retry'] = str_contains($attempt(fn () => $migrator->migrate()), 'failed at statement 1') ? 'still failing' : 'resumed on its own';
+    $out['markWrongStep'] = str_contains($attempt(fn () => $migrator->markApplied('9999_resume:2')), 'next pending statement of 9999_resume is 1 of 2') ? 'refused' : 'accepted';
+    $out['markOtherFile'] = str_contains($attempt(fn () => $migrator->markApplied('0001_nope:1')), 'not a pending migration') ? 'refused' : 'accepted';
+    $out['markPathAlias'] = str_contains($attempt(fn () => $migrator->markApplied('../' . basename($dir) . '/9999_resume:1')), 'not a pending migration') ? 'refused' : 'accepted';
+    $out['mark'] = $attempt(fn () => $migrator->markApplied('9999_resume:1'));
+    $out['resume'] = $attempt(fn () => $migrator->migrate());
+    $out['columns'] = array_column($db->run("SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_resume_a' ORDER BY ORDINAL_POSITION"), 'c');
+    $out['ledger'] = array_column($db->run("SELECT id FROM wp_zero__migrations WHERE id LIKE '9999%' ORDER BY id"), 'id');
+} finally {
+    $db->run("DELETE FROM wp_zero__migrations WHERE id LIKE '9999%'");
+    $db->run('DROP TABLE IF EXISTS wp_resume_a');
+    unlink("$dir/9999_resume.sql");
+    rmdir($dir);
+}
+echo wp_json_encode($out);

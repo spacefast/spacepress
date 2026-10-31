@@ -23,12 +23,18 @@ final class ActionSchedulerQueue implements Queue
     {
         Outbox::useQueue(new self());
         add_action(self::HOOK, static function (string $id): void {
-            if (Runtime::plugin()?->app() !== null) {
+            $plugin = Runtime::plugin();
+            if ($plugin !== null && $plugin->unavailable() !== null) {
+                // Storage is behind this build: run the job once it has caught up, not on the old schema.
+                (new self())->schedule($id, \Zero\Js::iso(\Zero\Js::now() + 60_000));
+            } elseif ($plugin?->app() !== null) {
                 Runner::run($id);
             }
         });
         add_action(self::MAINTAIN, static function (): void {
-            if (Runtime::plugin()?->app() !== null) {
+            // Maintenance mutates jobs, outbox and receipts: skip it while storage is behind; it recurs.
+            $plugin = Runtime::plugin();
+            if ($plugin !== null && $plugin->unavailable() === null && $plugin->app() !== null) {
                 Runner::maintain();
             }
         });

@@ -5,3 +5,6 @@ cache/*.zip
 .wp-content-legacy/
 .harness-legacy.json
 .legacy-site.json
+.wp-content-members/
+.harness-members.json
+.legacy-users.json

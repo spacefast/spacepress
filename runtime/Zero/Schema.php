@@ -478,9 +478,10 @@ final class Schema
         } elseif (is_string($v) && $v !== '') {
             $ms = Js::date($v);
             if (is_float($ms)) {
-                // Not in the JS date-time format: other ISO 8601 spellings (an hour-only offset,
-                // nanoseconds) go through the PHP parser. Free text such as "tomorrow" does not.
-                if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:[T ]|$)/D', $v)) {
+                // Not in the JS date-time format: other complete ISO 8601 spellings (an hour-only
+                // offset, nanoseconds) go through the PHP parser. Nothing else does, so free text
+                // ("tomorrow", "2026-01-01 +1 year") never reaches its relative-date grammar.
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?$/D', $v)) {
                     return null;
                 }
                 try {

@@ -18,6 +18,8 @@ interface Receipt {
   url: string;
   users: Record<Exclude<Role, "anonymous">, { id: number; appPassword: string }>;
 }
+/** The frontend the site owner registers with zero-identity (wp.test.ts registers it on install). */
+const frontend = { clientId: "app_site", redirectUri: "" };
 const receipt: Receipt = JSON.parse(readFileSync(join(repo, "tests/system/.harness.json"), "utf8"));
 const wpContent = join(repo, "tests/system/.wp-content");
 const api = `${receipt.url}/wp-json/zero/v1`;
@@ -27,7 +29,7 @@ const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "zero-runtime", "zero-identity", "zero-app-site"];
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "polylang", "zero-runtime", "zero-identity", "zero-app-site"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -85,6 +87,55 @@ function acf(p: EditorPost) {
   };
 }
 
+/**
+ * A reader signs in as the site's frontend would: the client's signIn() sends the browser to the
+ * zero-identity screens, the reader signs in with their password and approves, and the issuer sends
+ * the browser back, where the client's handleCallback() finishes. The browser here is the page's
+ * sessionStorage and location (only while signing in), and fetch with the identity session cookie
+ * for the screens.
+ */
+async function browserSignIn(email: string, password: string): Promise<Client> {
+  const store = new Map<string, string>();
+  let at = frontend.redirectUri;
+  const page = {
+    sessionStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) },
+    location: { get search() { return new URL(at).search; }, get href() { return at; }, assign: (url: string) => { at = url; } },
+  };
+  const globals = globalThis as unknown as Record<string, unknown>;
+  Object.assign(globals, page);
+  try {
+    // Tokens in memory: they outlive this simulated page. (sessionStorage holds the PKCE state across the redirect.)
+    const reader = createClient({ url: api, auth: { clientId: frontend.clientId, redirectUri: frontend.redirectUri } });
+    void reader.auth.signIn();
+    const deadline = Date.now() + 10_000;
+    while (!at.includes("/identity/authorize")) {
+      assert.ok(Date.now() < deadline, "signIn() never left the page");
+      await new Promise((r) => setImmediate(r));
+    }
+    const authorize = new URL(at);
+    const origin = receipt.url;
+    const signedIn = await fetch(`${origin}/wp-json/zero-identity/v1/sign-in/password`, {
+      method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ login: email, password }),
+    });
+    assert.equal(signedIn.status, 200, await signedIn.clone().text());
+    const cookie = signedIn.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
+    const consentPage = await fetch(authorize, { headers: { cookie }, redirect: "manual" });
+    const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(await consentPage.text())?.[1];
+    assert.ok(csrf, "the consent screen carries its CSRF token");
+    const approved = await fetch(`${origin}/identity/authorize`, {
+      method: "POST", redirect: "manual",
+      headers: { cookie, origin, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...Object.fromEntries(authorize.searchParams), csrf }),
+    });
+    at = approved.headers.get("location")!;
+    assert.ok(at.startsWith(frontend.redirectUri), `the issuer sent the browser back to the frontend, not ${at}`);
+    await reader.auth.handleCallback();
+    return reader;
+  } finally {
+    for (const k of Object.keys(page)) delete globals[k];
+  }
+}
+
 let authorId = 0;
 after(() => hook.close());
 const hookSecret = `whsec_${Date.now().toString(36)}`;
@@ -100,7 +151,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "zero-app-site"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Zero Runtime/s);
+  assert.match(wpFails("plugin", "activate", "zero-app-site"), /requires 5 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Zero Runtime/s);
   assert.match(wpFails("plugin", "activate", "zero-runtime"), /requires 3 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
@@ -145,6 +196,10 @@ test("installing the artifact: activation order, platform requirements, doctor",
   // The site owner points the comment webhook at the moderation tool (env() reads wp-config constants).
   wp("config", "set", "SITE_HOOK_URL", `http://host.docker.internal:${hook.port}/hook`, "--type=constant");
   wp("config", "set", "SITE_HOOK_SECRET", hookSecret, "--type=constant");
+
+  // The site's frontend signs readers in through zero-identity's screens: register it once.
+  frontend.redirectUri = `${receipt.url}/signed-in`;
+  wp("zero-identity", "app", "add", "--name=The Zero Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
 
   // The journey's author writes as an authors row the admin creates over the API.
   const userId = receipt.users.author.id;
@@ -199,6 +254,7 @@ test("the site journey on WordPress", async (t) => {
         wp("cache", "flush");
         assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0], "publish");
       },
+      signIn: browserSignIn,
       async upgrade() {
         upgrade(project);
         zero("build", project, "--target", "wp", "--out", artifact, "--quiet");
@@ -268,7 +324,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   const editor = client("editor");
   const admin = client("admin");
   const snapshot = async () => {
-    const posts = await editor.posts.list({ orderBy: { id: "asc" }, limit: 200 });
+    // Every locale's rows: a translation is content too.
+    const posts = await editor.posts.list({ locale: "*", orderBy: { id: "asc" }, limit: 200 });
     const media = await anon.media.list({ limit: 200 });
     return {
       posts,
@@ -279,6 +336,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
       comments: await editor.comments.list({ orderBy: { id: "asc" }, limit: 200 }),
       subscribers: await admin.subscribers.list({ orderBy: { id: "asc" }, limit: 200 }),
       announcements: await editor.announcements.list({ orderBy: { id: "asc" }, limit: 200 }),
+      // Members are WordPress users; nobody but each member reads them over the API, so read them as the site owner.
+      members: JSON.parse(wp("zero", "find", "members", JSON.stringify({ orderBy: { id: "asc" } }))).data,
       settings: await anon.globals.settings.get(),
       media,
       // Every original and generated size, by the bytes served.
@@ -295,7 +354,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
     };
   };
   const before = await snapshot();
-  for (const kind of ["posts", "authors", "comments", "subscribers", "announcements", "media", "manuscripts"] as const) assert.ok(before[kind].length > 0, `no ${kind} to preserve`);
+  for (const kind of ["posts", "authors", "comments", "subscribers", "announcements", "members", "media", "manuscripts"] as const) assert.ok(before[kind].length > 0, `no ${kind} to preserve`);
+  assert.ok(before.posts.some((p) => p.locale === "de"), "no translation to preserve");
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
 

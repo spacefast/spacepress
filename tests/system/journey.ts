@@ -19,6 +19,9 @@
 //                       standalone: a server with a later clock); may return the client to read with.
 //   upgrade()           rebuild the app with project.ts's additive `upgrade`, install it
 //                       the target's way, prove the migration ran, and return clients for the new build.
+//   signIn(email, pw)   a reader signs in the target's way and gets a client holding that session
+//                       (WP: the zero-identity screens' authorization-code flow, finished by the
+//                       client's own handleCallback(); standalone: the client's password login()).
 
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -60,6 +63,7 @@ export interface SiteJourneyEnv {
   sync(dir: string): { applied: number; conflicts: unknown[]; refused: string[] };
   deliveries(): Delivery[];
   upgrade(): Promise<(role: Role) => UpgradedClient>;
+  signIn(email: string, password: string): Promise<Client>;
 }
 
 interface Steps {
@@ -137,7 +141,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     const { cover: media, author: byline, comments: thread, updatedAt, publishedAt, uid, ...row } = read;
     assert.match(uid, /^zr_[0-9a-f]{20}$/, "synced posts carry a stable uid");
     const { cover: _, ...rest } = fields;
-    assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}` }, "readers see every public field");
+    assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}`, locale: "en", translations: { en: feature } }, "readers see every public field");
     assert.ok(publishedAt && updatedAt, "publishing stamps the dates");
     assert.deepEqual(media, await anon.media.get(cover));
     assert.deepEqual([media?.mime, media?.alt, byline?.id, thread], ["image/png", "A single pixel", env.authorId, []]);
@@ -326,6 +330,51 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     await env.runRetries();
     const sent = env.deliveries().filter((d) => d.event === "comments.created").map((d) => [d.data.row.id, d.verified]);
     assert.deepEqual(sent.sort(), [[pending.id, true], [spam.id, true], [staff.id, true]].sort());
+  });
+
+  await t.test("a reader signs in as a member, keeps their own profile, and signs out", async () => {
+    const email = `mia-${run}@example.test`;
+    const password = `mia-${run}-correct-horse`;
+    // Admins create members with a write-only password; it never comes back.
+    const created = await admin.members.create({ email, name: "Mia", password });
+    assert.deepEqual([created.role, created.plan, "password" in created], ["subscriber", "free", false]);
+    const mia = await env.signIn(email, password);
+    const me = await mia.auth.me();
+    assert.deepEqual([me?.id, me?.role, me?.member], [created.id, "subscriber", created], "the session is the member, with their row");
+    // A member reads and edits only their own row, and can't promote themselves.
+    assert.equal((await mia.members.update(created.id, { name: "Mia Reader", plan: "supporter" })).plan, "supporter");
+    await rejects(() => mia.members.update(created.id, { role: "editor" }), { status: 403, code: "forbidden", pointer: "/role" });
+    const other = await admin.members.create({ email: `other-${run}@example.test`, name: "Other", password });
+    assert.deepEqual((await mia.members.list()).map((m) => m.id), [created.id]);
+    await rejects(() => mia.members.get(other.id), { status: 404, code: "not_found" });
+    // A member is a reader: published posts and approved comments only, and their comments queue.
+    await rejects(() => mia.posts.create({ title: "x" }), { status: 403, code: "forbidden" });
+    const said = await mia.comments.create({ postId: feature, name: "Mia", body: "Signed in and saying hi", approved: true });
+    assert.equal(said.approved, false, "members can't approve themselves");
+    await rejects(() => mia.comments.get(said.id), { status: 404, code: "not_found" });
+    await editor.actions.moderateComment({ id: said.id, decision: "reject" });
+    await mia.auth.signOut();
+    assert.equal(await mia.auth.me(), null);
+    await rejects(() => mia.members.get(created.id), { status: 401, code: "unauthenticated" });
+  });
+
+  await t.test("a post is translated: German readers get the translation, others fall back", async () => {
+    const de = await editor.posts.create({ title: `Feature ${run} (DE)`, dek: "Warum ein Pixel reicht", locale: "de", translationOf: feature, status: "published" });
+    const shared = await anon.posts.get(feature);
+    // Translated fields are the translation's own; every other field is the group's.
+    assert.deepEqual([de.locale, de.title, de.dek, de.topics, de.featured, de.authorId, de.cover], ["de", `Feature ${run} (DE)`, "Warum ein Pixel reicht", shared.topics, shared.featured, shared.authorId, shared.cover]);
+    assert.deepEqual((await anon.posts.get(feature)).translations, { en: feature, de: de.id });
+    assert.equal((await anon.posts.get(feature, { locale: "de" })).title, `Feature ${run} (DE)`);
+    // A German reader of the list sees the translation in place of the original, and the
+    // untranslated posts in English.
+    const german = await anon.posts.list({ locale: "de", where: { title: { like: `%${run}%` } }, limit: 200 });
+    assert.ok(german.some((p) => p.id === de.id) && !german.some((p) => p.id === feature), "the translation replaces its original");
+    assert.ok(german.some((p) => p.locale === "en"), "untranslated posts fall back to English");
+    assert.ok((await anon.posts.list({ where: { title: { like: `%${run}%` } }, limit: 200 })).every((p) => p.locale === "en"), "the default locale stays English");
+    // Shared fields stay shared: a change on the translation reaches the original.
+    await editor.posts.update(de.id, { topics: ["science"] });
+    assert.deepEqual((await anon.posts.get(feature)).topics, ["science"]);
+    await editor.posts.update(feature, { topics: shared.topics });
   });
 
   await t.test("editors update the site settings; others can't", async () => {

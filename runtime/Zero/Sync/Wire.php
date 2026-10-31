@@ -71,6 +71,14 @@ final class Wire
                     default => $uids[$name][self::key($value)] ?? null,
                 };
             }
+            // Content the viewer can't read (field access) has no `body` key: absent means "leave it", so
+            // pushing the pulled record back can't clear it, and the digest is of what the viewer sees.
+            $content = $spec['content'] ?? null;
+            if ($content !== null && !array_key_exists($content, $row)) {
+                $record = self::record($row['uid'], $fields, null, false);
+                $out[] = ['uid' => $row['uid'], 'record' => $record, 'digest' => Canon::digest($record)];
+                continue;
+            }
             try {
                 $body = self::bodyOut($spec, $row);
             } catch (HttpError $e) {
@@ -91,9 +99,11 @@ final class Wire
      * A record in its one spelling. PHP decodes `{}` as an empty array; `fields` is always an object.
      * An empty body is null: WordPress can't store a null post_content, and a file has no other empty.
      */
-    public static function record(string $uid, mixed $fields, mixed $body): array
+    public static function record(string $uid, mixed $fields, mixed $body, bool $hasBody = true): array
     {
-        return ['uid' => $uid, 'fields' => $fields === [] ? new \stdClass() : $fields, 'body' => $body === '' ? null : $body];
+        $record = ['uid' => $uid, 'fields' => $fields === [] ? new \stdClass() : $fields];
+
+        return $hasBody ? $record + ['body' => $body === '' ? null : $body] : $record;
     }
 
     /**
@@ -103,7 +113,11 @@ final class Wire
      *
      * @param ?list<HttpError> $missing
      */
-    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null): array
+    /**
+     * @param ?array $current the stored row being updated: a body that reads back as the same text is
+     *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
+     */
+    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null): array
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
@@ -142,7 +156,11 @@ final class Wire
             if ($body !== null && !is_string($body)) {
                 throw HttpError::invalidInput('body must be a string or null', '/body');
             }
-            $data[$content] = $body === null ? null : self::bodyIn($spec, $body);
+            $same = $current !== null && array_key_exists($content, $current)
+                && ($body === '' ? null : $body) === self::bodyOrNull($spec, $current);
+            if (!$same) {
+                $data[$content] = $body === null ? null : self::bodyIn($spec, $body);
+            }
         }
 
         return $data;
@@ -179,6 +197,16 @@ final class Wire
         $body = self::markdown($spec) ? Markdown::fromBlocks((string) $row[$content]) : (string) $row[$content];
 
         return $body === '' ? null : $body;
+    }
+
+    /** The stored body as the wire spells it, or null when it can't be written in this format. */
+    private static function bodyOrNull(array $spec, array $row): ?string
+    {
+        try {
+            return self::bodyOut($spec, $row);
+        } catch (HttpError) {
+            return null;
+        }
     }
 
     private static function bodyIn(array $spec, string $body): string

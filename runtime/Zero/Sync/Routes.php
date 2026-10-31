@@ -113,7 +113,7 @@ final class Routes
         // Digest the record as sent, objects kept: PHP arrays can't tell `{}` from `[]`, so a value the
         // runtime stores differently comes back as `normalized` instead of a digest the client can't reach.
         $raw = json_decode($body, false)->record;
-        $sent = Wire::record($uid, $raw->fields ?? [], $raw->body ?? null);
+        $sent = Wire::record($uid, $raw->fields ?? [], $raw->body ?? null, property_exists($raw, 'body'));
         $pk = $spec['primaryKey'];
         $current = self::current($collection, $uid, $viewer);
         $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
@@ -124,7 +124,7 @@ final class Routes
         }
         // Reference lookups answer only after authorization, so they can't probe for uids either.
         $missing = [];
-        $data = Wire::decode($collection, $record, $current === null, $missing);
+        $data = Wire::decode($collection, $record, $current === null, $missing, $current['row'] ?? null);
         // Authorize with the values the pipeline will see, before answering anything about the row.
         // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {

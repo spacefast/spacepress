@@ -275,6 +275,23 @@ test("sync on WordPress", async (t) => {
     assert.deepEqual([row(guarded.id).review, row(guarded.id).internal, row(guarded.id).summary], ["approved", "admins only", "edited"]);
   });
 
+  await t.test("content behind field access survives an editor's title-only push", async () => {
+    const blocks = "<!-- wp:paragraph -->\n<p>Admins only.</p>\n<!-- /wp:paragraph -->";
+    for (const [collection, label] of [["briefs", "unreadable"], ["memos", "read-only"]] as const) {
+      const made = zero("insert", collection, JSON.stringify({ title: `${label} ${run}`, body: blocks }))[0];
+      const item = (await ok("GET", `/sync/${collection}` + qs({ after: String(made.id - 1), first: "1" }), { as: "editor" })).records[0];
+      if (collection === "briefs") {
+        assert.ok(!("body" in item.record), "an unreadable body is absent from the record, not null");
+      } else {
+        assert.equal(item.record.body, "Admins only.\n");
+      }
+      const pushed = await ok("POST", `/sync/${collection}`, { as: "editor", body: { record: { ...item.record, fields: { ...item.record.fields, title: `${label} renamed ${run}` } }, expect: item.digest } });
+      assert.equal(pushed.status, "applied", `${label}: a title-only push applies`);
+      const stored = zero("find", collection, JSON.stringify({ where: { id: made.id } }))[0];
+      assert.deepEqual([stored.title, stored.body], [`${label} renamed ${run}`, blocks], `${label}: the body is untouched`);
+    }
+  });
+
   await t.test("unknown reference uid", async () => {
     await problem("POST", "/sync/guides", { as: "editor", body: { record: { uid: uidOf(2), fields: { title: "Orphan", writerId: uidOf(3) }, body: null }, expect: "absent" } },
       { status: 422, code: "sync_missing_reference", pointer: "/fields/writerId" });

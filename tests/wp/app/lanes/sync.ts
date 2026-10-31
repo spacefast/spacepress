@@ -24,7 +24,20 @@ export const guides = collection("guides", {
   review: text().access({ update: "admin" }),
 }, { title: "title", content: "body", sync: "content/guides/*.md", access: { create: "author" } });
 
-export const schema = { writers, guides };
+// Content behind field access: `briefs` hides its body from everyone below admin; `memos` lets
+// editors read the body but only admins change it.
+export const briefs = collection("briefs", {
+  id: id(),
+  title: text().notNull(),
+  body: richText().access({ read: "admin" }),
+}, { title: "title", content: "body", sync: "content/briefs/*.md" });
+export const memos = collection("memos", {
+  id: id(),
+  title: text().notNull(),
+  body: richText().access({ update: "admin" }),
+}, { title: "title", content: "body", sync: "content/memos/*.md" });
+
+export const schema = { writers, guides, briefs, memos };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};

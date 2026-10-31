@@ -323,6 +323,8 @@ interface Send {
 interface Held extends Session {
   clientId?: string;
   idToken?: string;
+  /** One sign-in: random when tokens are first issued, kept by refreshes. Shared through storage. */
+  sid?: string;
 }
 
 /** Zero's own token responses (`/auth/token`, `/auth/guest`). */
@@ -393,14 +395,16 @@ export function createClient(options: ClientOptions = {}): Client {
       return null;
     }
   }
-  // Who is signed in changes only through sign-in, guest, callback and sign-out (a refresh keeps the
-  // same identity). Requests and refreshes remember the generation they started in: a 401 that
-  // arrives after the identity changed is never retried as the new user, and a late refresh result
-  // never overwrites the new session.
-  let generation = 0;
-  function switchTo(next: Held | null): void {
-    generation++;
-    hold(next);
+  // Who is signed in is the stored session's `sid`, shared by every client on the same storage. A
+  // sign-in, guest, callback or sign-out starts a new one; a refresh keeps it. Every request,
+  // refresh and sign-in remembers the sid it started from and acts only if it is still current:
+  // a 401 that arrives after the identity changed is never retried as the new user, and a late
+  // result never overwrites or clears a newer session.
+  const sidOf = (h: Held | null): string => h?.sid ?? (h ? h.accessToken : "");
+  function switchTo(next: Held | null, from: string): boolean {
+    if (sidOf(held()) !== from) return false;
+    hold(next === null ? null : { ...next, sid: randomString(12) });
+    return true;
   }
   function hold(next: Held | null): void {
     if (authOpts.storage !== "session") {
@@ -433,8 +437,8 @@ export function createClient(options: ClientOptions = {}): Client {
 
   async function request<T>(method: string, path: string, send: Send = {}, retried = false): Promise<T> {
     const headers: Record<string, string> = {};
-    const started = generation;
     const tokens = send.anonymous ? null : held();
+    const started = sidOf(tokens);
     const bearer = tokens?.accessToken ?? (send.anonymous ? undefined : staticToken);
     if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
     if (options.nonce !== undefined) headers["x-wp-nonce"] = options.nonce;
@@ -458,13 +462,14 @@ export function createClient(options: ClientOptions = {}): Client {
     if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
       // Only a 401 for the Bearer this client holds is ours to repair, and only for the identity
       // that sent it: after a sign-in or sign-out in between, the request fails as it was sent.
-      if (tokens && headers.authorization === `Bearer ${tokens.accessToken}` && started === generation) {
-        if ((await renew(tokens.accessToken)) && started === generation) return request<T>(method, path, send, true);
+      if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
+        // Refresh and retry only while the session that sent it is still the current one.
+        if (sidOf(held()) === started && (await renew(tokens)) && sidOf(held()) === started) return request<T>(method, path, send, true);
       } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
         // An anonymous write becomes a guest's: the one it starts, or the one a concurrent first
-        // write started since. Never a user who signed in meanwhile.
-        if (!held()) await startGuest();
-        if (guestOf === generation && guestFrom >= started) return request<T>(method, path, send, true);
+        // write started from the same anonymous state. Never a user who signed in meanwhile.
+        const guest = held() ? guestSid : await startGuest("").then(() => guestSid, () => "");
+        if (guest !== "" && sidOf(held()) === guest) return request<T>(method, path, send, true);
       }
     }
     throw error;
@@ -472,21 +477,22 @@ export function createClient(options: ClientOptions = {}): Client {
 
   // One refresh at a time: refresh tokens rotate, and presenting a used one revokes the whole family.
   let refreshing: Promise<boolean> | undefined;
-  function renew(sent: string): Promise<boolean> {
+  /** Refresh the session `sent` belongs to (the caller checked it is still the current one). */
+  function renew(sent: Held): Promise<boolean> {
     const current = held();
     if (!current) return Promise.resolve(false);
-    if (current.accessToken !== sent) return Promise.resolve(true);
+    if (current.accessToken !== sent.accessToken) return Promise.resolve(true); // already refreshed
     refreshing ??= refresh(current).finally(() => (refreshing = undefined));
     return refreshing;
   }
 
   /** True on a rotated pair. A rejected refresh forgets the tokens; a network failure keeps them for a later try. */
   async function refresh(current: Held): Promise<boolean> {
-    const started = generation;
-    // A rotated pair for an identity this client no longer holds is dropped, not stored.
+    const started = sidOf(current);
+    // A rotated pair for a session no longer held is dropped, not stored; the sid stays the same.
     const keep = (next: Held | null): boolean => {
-      if (started !== generation) return false;
-      hold(next);
+      if (sidOf(held()) !== started) return false;
+      hold(next === null ? null : { ...next, sid: started });
       return true;
     };
     try {
@@ -510,27 +516,27 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   }
 
-  function adopt(out: Issued): User {
-    switchTo({
+  /** Store a sign-in's tokens unless the session changed since `from` (then the newer one stays). */
+  function adopt(out: Issued, from: string): User {
+    const adopted = switchTo({
       accessToken: out.accessToken,
       refreshToken: out.refreshToken,
       expiresAt: expiresAt(out.expiresIn),
       ...(typeof out.clientId === "string" ? { clientId: out.clientId } : {}),
-    });
+    }, from);
+    if (!adopted) throw authError(409, "session_changed", "Another sign-in or sign-out happened first");
     return out.user;
   }
 
   // Concurrent first writes share one guest.
   let guesting: Promise<User> | undefined;
-  /** The generation of the guest session this client started (-1: none), and the anonymous generation it replaced. */
-  let guestOf = -1;
-  let guestFrom = -1;
-  function startGuest(): Promise<User> {
+  /** The sid of the guest session this client started ("" when none). */
+  let guestSid = "";
+  function startGuest(from: string): Promise<User> {
     guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
       .then((out) => {
-        guestFrom = generation;
-        const user = adopt(out);
-        guestOf = generation;
+        const user = adopt(out, from);
+        guestSid = sidOf(held());
         return user;
       })
       .finally(() => (guesting = undefined));
@@ -610,6 +616,7 @@ export function createClient(options: ClientOptions = {}): Client {
       const code = params.get("code");
       if (!code) throw authError(400, "invalid_input", "The sign-in response has no code");
       const clientId = authOpts.clientId ?? "";
+      const from = sidOf(held());
       const out = await issuerPost<OidcTokens>("/token", {
         grant_type: "authorization_code",
         code,
@@ -617,22 +624,23 @@ export function createClient(options: ClientOptions = {}): Client {
         client_id: clientId,
         code_verifier: pkce.verifier,
       });
-      switchTo({
+      if (!switchTo({
         accessToken: out.access_token,
         refreshToken: out.refresh_token,
         expiresAt: expiresAt(out.expires_in),
         clientId,
         ...(out.id_token !== undefined ? { idToken: out.id_token } : {}),
-      });
+      }, from)) throw authError(409, "session_changed", "Another sign-in or sign-out happened first");
       const user = await auth.me();
       if (!user) throw authError(401, "unauthenticated", "The issuer's tokens were not accepted");
       return user;
     },
     async login(name: string, password: string) {
       if (wp) throw notSupported("login()");
-      return adopt(await request<Issued>("POST", "/auth/token", { json: { grant_type: "password", name, password }, anonymous: true }));
+      const from = sidOf(held());
+      return adopt(await request<Issued>("POST", "/auth/token", { json: { grant_type: "password", name, password }, anonymous: true }), from);
     },
-    guest: () => startGuest(),
+    guest: () => startGuest(sidOf(held())),
     upgrade: (async (name?: string, password?: string) => {
       if (!wp) {
         if (name === undefined || password === undefined) throw notSupported("upgrade() without a name and password");
@@ -655,7 +663,7 @@ export function createClient(options: ClientOptions = {}): Client {
         // A session the server already ended is signed out; anything else is the caller's to see.
         if (!(e instanceof ZeroError && e.status === 401)) throw e;
       } finally {
-        switchTo(null);
+        switchTo(null, sidOf(current)); // only the session this sign-out began with
       }
       if (wp && opts.returnTo !== undefined && current.idToken !== undefined) {
         const params = new URLSearchParams({ id_token_hint: current.idToken, post_logout_redirect_uri: opts.returnTo });

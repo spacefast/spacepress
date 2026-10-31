@@ -13,6 +13,9 @@ export const members = collection("members", {
   tags: select({ options: ["early", "beta"], multiple: true }).notNull().default([]),
   handle: text().unique().max(40),
   joined: date().unique(),
+  // Shown only to pro members: a live rule on the plan field, settled on the saved row's name too.
+  perk: text().showIf({ plan: "pro" }),
+  badge: text().showIf({ name: "Cy Edited" }),
 }, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {

@@ -456,6 +456,78 @@ test("a 401 or refresh that outlives a sign-in never acts as the new user", asyn
   assert.equal(zero.auth.session(), null, "the late refresh was dropped");
 });
 
+test("two clients sharing sessionStorage: one's late 401, guest or sign-out never acts across the other's sign-in", async () => {
+  const browser = stubBrowser();
+  try {
+    const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+    const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+    const opts = { url: "http://x/api", fetch, auth: { storage: "session" as const, guests: true } };
+    const a = mod.createClient(opts);
+    const b = mod.createClient(opts);
+    const until = async (n: number) => {
+      for (let turn = 0; pending.length < n; turn++) {
+        if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+        await Promise.resolve();
+      }
+    };
+    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+    const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: n.length, name: n, role: "author" } } });
+    const settle = async (p: Promise<unknown>) => {
+      let out: unknown = "pending";
+      void p.then((v) => (out = v), (e) => (out = e));
+      for (let turn = 0; out === "pending" && turn < 10_000; turn++) await Promise.resolve();
+      return out;
+    };
+
+    // Alice signs in through A; A sends a write as Alice; Bob signs in through B (same storage).
+    const alice = a.auth.login("alice", "long password a");
+    await until(1);
+    pending[0].release(issued("alice"));
+    await alice;
+    const draft = a.posts.create({ title: "Alice's draft" });
+    await until(2);
+    const bob = b.auth.login("bob", "long password b");
+    await until(3);
+    pending[2].release(issued("bob"));
+    await bob;
+    pending[1].release(denied());
+    assert.equal(((await settle(draft)) as any).code, "unauthenticated");
+    assert.equal(pending.length, 3, "Alice's write was neither refreshed nor retried as Bob");
+    assert.equal(b.auth.session()?.accessToken, "za_bob");
+
+    // An automatic guest that completes after Carol signed in doesn't replace her.
+    const bobOut = b.auth.signOut();
+    await until(4);
+    pending[3].release(json(200, { data: true }));
+    await bobOut;
+    const write = a.posts.create({ title: "anon" });
+    await until(5);
+    pending[4].release(denied());                       // starts a guest
+    await until(6);
+    const carol = b.auth.login("carol", "long password c");
+    await until(7);
+    pending[6].release(issued("carol"));
+    await carol;
+    pending[5].release(issued("guest"));                // the guest answer arrives late
+    await settle(write);
+    assert.equal(a.auth.session()?.accessToken, "za_carol", "Carol's sign-in stands");
+
+    // A sign-out that started before Dave signed in doesn't clear Dave.
+    const out = a.auth.signOut();                        // request 7
+    await until(8);
+    const dave = b.auth.login("dave", "long password d"); // request 8
+    await until(9);
+    pending[8].release(issued("dave"));
+    await dave;
+    pending[7].release(json(200, { data: true }));
+    await settle(out);
+    assert.equal(b.auth.session()?.accessToken, "za_dave", "Dave stays signed in");
+  } finally {
+    browser.restore();
+  }
+});
+
 test("WP signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kept in sessionStorage", async () => {
   const browser = stubBrowser();
   try {
@@ -533,7 +605,7 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/zero/v1/me", "Bearer at_1"]);
     assert.equal(browser.store.has("zero.auth.pkce"), false);
     const kept = JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}");
-    assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s" });
+    assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
 
     seen = [];
     await zero.auth.signOut({ returnTo: "https://blog.test/" });

@@ -36,6 +36,30 @@ final class Identity implements Auth, Issuer
             ? ['table' => '"__zero_users"', 'login' => 'name', 'display' => 'name', 'collection' => null]
             : ['table' => '"' . $collection . '"', 'login' => 'email', 'display' => isset($columns['name']) ? 'name' : 'email', 'collection' => $collection];
         $this->sessions = new Sessions($store, (int) ($auth['accessTtl'] ?? 300), (int) ($auth['refreshTtl'] ?? 2592000));
+        $this->bindCredentials();
+    }
+
+    /**
+     * Credentials name a user by numeric id, so they belong to one user table. When the app's user
+     * table changes (an auth collection added, renamed or removed), ids may name different people:
+     * every CLI token and sign-in session from before is revoked, once, before any is resolved.
+     */
+    private function bindCredentials(): void
+    {
+        $source = $this->users['collection'] ?? '__zero_users';
+        $this->store->transaction(function () use ($source): void {
+            $this->store->run('CREATE TABLE IF NOT EXISTS "__zero_auth_source" ("id" integer PRIMARY KEY CHECK ("id" = 1), "source" text NOT NULL)');
+            $current = $this->store->run('SELECT "source" FROM "__zero_auth_source" WHERE "id" = 1')->fetchColumn();
+            if ($current === $source) {
+                return;
+            }
+            if ($current !== false) {
+                $at = Js::iso(Js::now());
+                $this->store->run('UPDATE "__zero_tokens" SET "revokedAt" = ? WHERE "revokedAt" IS NULL', [$at]);
+                $this->store->run('UPDATE "__zero_sessions" SET "revokedAt" = ? WHERE "revokedAt" IS NULL', [$at]);
+            }
+            $this->store->run('INSERT INTO "__zero_auth_source" ("id", "source") VALUES (1, ?) ON CONFLICT ("id") DO UPDATE SET "source" = excluded."source"', [$source]);
+        });
     }
 
     // ================================================================ Auth
@@ -95,9 +119,10 @@ final class Identity implements Auth, Issuer
         $address = (string) ($_SERVER['REMOTE_ADDR'] ?? 'cli');
         $throttle = new Auth\Throttle($this->store);
         $throttle->check($name, $address);
+        $dummy = self::dummyHash(); // made before the lookup: both outcomes then verify once
         $row = $this->row($this->q($this->users['login']) . ' = ?', [$name]);
         // Verify against a real hash even for unknown names, so timing doesn't tell which exist.
-        $hash = $row !== null && $row['passwordHash'] !== null ? (string) $row['passwordHash'] : self::dummyHash();
+        $hash = $row !== null && $row['passwordHash'] !== null ? (string) $row['passwordHash'] : $dummy;
         if (!password_verify($password, $hash) || $row === null || $row['passwordHash'] === null) {
             $throttle->fail($name, $address);
             throw new Auth\Failed(new HttpError(401, 'unauthenticated', 'Wrong name or password'));
@@ -343,11 +368,16 @@ final class Identity implements Auth, Issuer
         return $this->findUser($name) ?? throw HttpError::notFound("No user named '$name'");
     }
 
+    /**
+     * A hash of a random (NUL-free) password at this PHP's default cost, made once per process and
+     * before any user lookup (see password()), so a known and an unknown name both cost exactly
+     * one password_verify on the timed path. The cost tracks PHP's default, as real hashes do.
+     */
     private static function dummyHash(): string
     {
         static $hash = null;
 
-        return $hash ??= password_hash(random_bytes(16), PASSWORD_DEFAULT);
+        return $hash ??= password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
     }
 
     private static function rejected(): HttpError

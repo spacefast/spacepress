@@ -54,12 +54,9 @@ final class WpUserStore implements Store
                 || !in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true)) {
                 continue;
             }
-            // showIf is UI-only (§4.3) and its conditional logic resolves against post forms and saved
-            // posts; on a profile screen every member field stays visible.
-            $fields[] = ['conditional_logic' => 0] + array_diff_key(
-                Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, array_diff_key($def, ['showIf' => true]), $spec),
-                ['conditional_logic' => true, 'zero_logic' => true],
-            );
+            // showIf (§4.3) works as on posts: rules on watched fields live, rules on core user
+            // columns or unwatched types settled against the saved member when the profile renders.
+            $fields[] = Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, $def, $spec);
         }
         acf_add_local_field_group([
             'key' => 'group_zero_' . $collection,
@@ -107,6 +104,38 @@ final class WpUserStore implements Store
         };
     }
 
+    /**
+     * The ladder role as SQL over the serialized `wp_capabilities`, decided exactly as WpAuth::map
+     * decides it from capabilities: each step lists the WordPress roles (core or custom) that grant
+     * its capability, so filters, ordering and access agree with authentication.
+     */
+    private static function roleExpression(): string
+    {
+        $granting = static function (string ...$caps): array {
+            $out = [];
+            foreach (wp_roles()->roles as $name => $role) {
+                foreach ($caps as $cap) {
+                    if (!empty($role['capabilities'][$cap])) {
+                        $out[] = (string) $name;
+                        break;
+                    }
+                }
+            }
+            return $out;
+        };
+        $holds = static function (array $roles): string {
+            if ($roles === []) {
+                return '0 = 1';
+            }
+            return '(' . implode(' OR ', array_map(static fn (string $r) => "{j}.meta_value LIKE '%" . esc_sql(serialize($r)) . "%'", $roles)) . ')';
+        };
+
+        return 'CASE WHEN ' . $holds($granting('manage_options')) . " THEN 'admin'"
+            . ' WHEN ' . $holds($granting('edit_others_posts')) . " THEN 'editor'"
+            . ' WHEN ' . $holds($granting('publish_posts', 'edit_posts')) . " THEN 'author'"
+            . ' WHEN ' . $holds(['zero_guest']) . " THEN 'guest' ELSE 'subscriber' END";
+    }
+
     public static function wpRole(string $role): string
     {
         return self::ROLES[$role] ?? 'subscriber';
@@ -124,9 +153,7 @@ final class WpUserStore implements Store
         $meta = static fn (string $key) => "LEFT JOIN `{$wpdb->usermeta}` {j} ON {j}.user_id = {a}.ID AND {j}.meta_key = '" . addslashes($key) . "'";
         $v = "NULLIF({j}.meta_value, '')";
         $capabilities = $wpdb->get_blog_prefix() . 'capabilities';
-        // The highest role on the ladder the user holds; serialized caps look like a:1:{s:6:"editor";b:1;}.
-        $role = "CASE WHEN {j}.meta_value LIKE '%\"administrator\"%' THEN 'admin' WHEN {j}.meta_value LIKE '%\"editor\"%' THEN 'editor'"
-            . " WHEN {j}.meta_value LIKE '%\"author\"%' THEN 'author' WHEN {j}.meta_value LIKE '%\"zero_guest\"%' THEN 'guest' ELSE 'subscriber' END";
+        $role = self::roleExpression();
         $status = $wpdb->prefix . 'zero_identity_accounts';
         $refs = [];
         foreach ($spec['columns'] as $col => $def) {
@@ -170,16 +197,6 @@ final class WpUserStore implements Store
         $rows = $this->db->run($q['sql'], $q['params']);
         $spec = $this->schema->collection($collection);
         \Zero\Extensions::lookup($collection, array_column($rows, $spec['primaryKey']));
-        if (isset($spec['columns']['role'])) {
-            // The role a member has is the one Zero authenticates them with (capabilities, WpAuth::map).
-            foreach ($rows as &$row) {
-                $user = get_userdata((int) $row[$spec['primaryKey']]);
-                if ($user instanceof \WP_User) {
-                    $row['role'] = WpAuth::map($user)['role'];
-                }
-            }
-            unset($row);
-        }
         foreach ($spec['columns'] as $col => $def) {
             if ($def['type'] !== 'select') {
                 continue;

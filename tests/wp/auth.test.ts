@@ -192,6 +192,8 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   wp("user", "set-role", String(dupe.id), "contributor");
   const asContributor = await call("GET", "/me", { token: (await signIn(dupe.email, dupe.password)).json.access_token });
   assert.deepEqual([asContributor.json.data.role, asContributor.json.data.member.role], ["author", "author"]);
+  const byRole = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
+  assert.deepEqual(byRole.data.map((r: any) => r.id), [dupe.id], "filters on role decide it as authentication does");
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
@@ -229,6 +231,25 @@ test("a rolled-back member update leaves no usermeta in WordPress's cache", () =
     }); } catch (RuntimeException $e) {}
     echo get_user_meta($id, 'zero_points', true);`);
   assert.equal(out, "0");
+});
+
+test("member showIf on profile forms: live rules on member fields, core-column rules settled on the saved member", () => {
+  const id = wp("user", "create", `form-${run}`, `form-${run}@example.test`, "--porcelain", "--display_name=Plain");
+  // What SCF's profile form renders: each member field after acf/prepare_field, for that user.
+  const rendered = (user: string) => JSON.parse(wp("eval", [
+    `acf_set_form_data(['post_id' => 'user_${user}']);`,
+    "$out = [];",
+    "foreach (acf_get_fields('group_zero_members') as $f) {",
+    "  $p = apply_filters('acf/prepare_field', $f);",
+    "  $out[$f['name']] = $p === false ? 'hidden' : ($p['conditional_logic'] ?: 0);",
+    "}",
+    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge']]);",
+  ].join("\n")));
+  const plain = rendered(id);
+  assert.deepEqual(plain.perk, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
+  assert.equal(plain.badge, "hidden", "a rule on the core name column is settled against the saved member: not shown");
+  wp("user", "update", id, "--display_name=Cy Edited");
+  assert.equal(rendered(id).badge, 0, "once the saved name matches, the field shows unconditionally");
 });
 
 test("hidden columns never leave the runtime: list, get, with, write results, abilities", async () => {
@@ -283,7 +304,8 @@ test("identity work joins the Zero transaction: a rollback leaves no guest, toke
 });
 
 test("activation refuses user tables that can't roll back with Zero (auth rows live there)", () => {
-  // MyISAM wp_usermeta would keep member writes through a rollback: the storage gate reports it.
+  // MyISAM wp_usermeta would keep member or guest writes through a rollback: the storage gate
+  // reports it whether or not the app has an auth collection (guests are users either way).
   sql("ALTER TABLE wp_usermeta ENGINE=MyISAM");
   try {
     const bad = JSON.parse(wp("eval", `echo wp_json_encode(\\Zero\\Wp\\Runtime::plugin()->storageProblems());`));

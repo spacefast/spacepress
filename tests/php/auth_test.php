@@ -93,9 +93,17 @@ $time = static function (string $name) use ($login): float {
     $login(['name' => $name, 'password' => 'wrong guess']);
     return (hrtime(true) - $t) / 1e6;
 };
-$known = $time('maria');
-$unknown = $time('nobody-' . bin2hex(random_bytes(3)));
-check('an unknown name takes as long as a wrong password (a hash is verified either way)', $unknown > $known / 3, ['known ms' => $known, 'unknown ms' => $unknown]);
+// Each attempt in its own process, as real requests are: no hash warmed by an earlier call.
+$fresh = static function (string $name) use ($root): float {
+    $script = '<?php require ' . var_export("$root/zero/runtime/bootstrap.php", true) . '; $app = \Zero\App::boot(' . var_export($root, true) . ');'
+        . ' $t = hrtime(true); $app->handle("POST", "/auth/token", [], json_encode(["name" => $argv[1], "password" => "wrong guess"])); echo (hrtime(true) - $t) / 1e6;';
+    $file = "$root/time.php";
+    file_put_contents($file, $script);
+    return (float) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($file) . ' ' . escapeshellarg($name));
+};
+$known = $fresh('maria');
+$unknown = $fresh('nobody-' . bin2hex(random_bytes(3)));
+check('in a fresh process, an unknown name costs about what a wrong password does (one verify each)', $unknown > $known / 2 && $unknown < $known * 2, ['known ms' => $known, 'unknown ms' => $unknown]);
 
 // Failed attempts are throttled per account, counted in the database across requests.
 $target = 'throttle-' . bin2hex(random_bytes(3));
@@ -207,6 +215,16 @@ check('trusted reads (hooks, CLI) never carry the auth secrets either', !$leaks(
 $fresh = $call('POST', '/auth/token', ['name' => 'ana@example.test', 'password' => 'a brand new password'])[1]['data']['accessToken'];
 $revisions = $call('GET', '/notes/' . $note['data']['id'] . '/revisions/' . ($call('GET', '/notes/' . $note['data']['id'] . '/revisions', null, $fresh)[1]['data'][0]['id'] ?? 0), null, $fresh);
 check('revision reads never expose hidden columns', $revisions[0] === 200 && !$leaks($revisions), $revisions);
+// Credentials name users by id within one user table. If that table changes (an auth collection
+// added, renamed or removed), every older credential is revoked before any is resolved again.
+$beforeSwitch = cli2($club, 'token', 'create', 'bo@example.test')[1]['data']['token'];
+$clubApp->store->run('UPDATE "__zero_auth_source" SET "source" = ?', ['__zero_users']); // as if built before members existed
+$reboot = App::boot($club);
+[$s, , $body] = $reboot->handle('GET', '/me', [], '', ['Authorization' => "Bearer $beforeSwitch"]);
+eq('a CLI token from another user table resolves to nobody after the switch', [$s, json_decode($body, true)], [200, ['data' => null]]);
+eq('the switch is recorded once', $reboot->store->run('SELECT "source" FROM "__zero_auth_source"')->fetchColumn(), 'members');
+\Zero\Db::setInstance($clubApp->db);
+\Zero\Auth\Module::use($clubApp->auth);
 $describe = json_encode($call('GET', '/_schema')[1]);
 check('/_schema never names hidden columns', !str_contains($describe, 'passwordHash') && !str_contains($describe, 'suspendedAt'), $describe);
 [$s, $guest] = $call('POST', '/auth/guest', []);

@@ -7,7 +7,7 @@ namespace Zero;
 /** The one ordered list of runtime feature modules, registered once per process. */
 final class Features
 {
-    private const MODULES = [Media\Module::class];
+    private const MODULES = [Media\Module::class, Abilities\Module::class];
     private static bool $registered = false;
 
     public static function register(): void

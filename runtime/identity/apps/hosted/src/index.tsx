@@ -13,10 +13,13 @@ const root = document.getElementById("identity-root");
 if (!root?.dataset.api) throw new Error("Identity configuration missing");
 const site = root.dataset.site?.trim() || "Identity";
 const client = new IdentityClient(root.dataset.api);
+// The issuer's own URL, so a WordPress in a subdirectory (/blog/identity) works unchanged.
+const issuerUrl = root.dataset.issuer ?? new URL("/identity", location.origin).href;
+const issuerPath = new URL(issuerUrl).pathname.replace(/\/$/, "");
 function App() {
   const { state } = useIdentity();
   const [config, setConfig] = useState<{ providers: string[]; issuer: string }>(
-    { providers: [], issuer: new URL("/identity", location.origin).href },
+    { providers: [], issuer: issuerUrl },
   );
   const [upgradeRequested, setUpgradeRequested] = useState(() =>
     new URLSearchParams(location.search).has("upgrade"),
@@ -26,13 +29,20 @@ function App() {
   }, []);
   function finish() {
     const params = new URLSearchParams(location.search);
+    if (params.has("factor")) {
+      // The second factor is done; the consumed challenge must not keep the form on screen.
+      params.delete("factor");
+      const rest = params.toString();
+      history.replaceState(null, "", location.pathname + (rest ? "?" + rest : ""));
+      setFactorPending(false);
+    }
     if (params.has("reauth")) {
-      location.assign("/identity/authorize?resume=1");
+      location.assign(issuerPath + "/authorize?resume=1");
       return;
     }
     const target = params.get("return_to");
-    if (target?.startsWith("/identity/authorize?")) {
-      location.assign(target);
+    if (target?.startsWith("/authorize?")) {
+      location.assign(issuerPath + target);
       return;
     }
     if (params.has("upgrade")) {
@@ -44,14 +54,14 @@ function App() {
   }
   const reauth = new URLSearchParams(location.search).has("reauth");
   // A pending second factor (e.g. after an external provider) wins over any existing session.
-  const factor = new URLSearchParams(location.search).has("factor");
+  const [factor, setFactorPending] = useState(() => new URLSearchParams(location.search).has("factor"));
   const upgrade =
     upgradeRequested ||
     (state.kind === "signed_in" && state.data.account.guest);
   return (
     <>
       <header className="site-header">
-        <a className="brand" href="/identity">
+        <a className="brand" href={issuerPath}>
           <span>{site}</span>
           <span className="brand-sub">Identity</span>
         </a>

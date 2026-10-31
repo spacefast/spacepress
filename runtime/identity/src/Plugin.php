@@ -160,6 +160,26 @@ final class Plugin
                 $passwordChanged((int) $uid);
             }
         }, 10, 2);
+        // Guests can't plant WordPress credentials (password, application passwords) a former
+        // holder of the guest could keep after an upgrade: those belong to saved accounts.
+        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("zero_guest", (array) $user->roles, true)), 10, 2);
+        // Core's users controller ignores an error from rest_pre_insert_user on update, so stop
+        // the request before its callback runs.
+        add_filter("rest_request_before_callbacks", static function ($response, $handler, $request) {
+            if (!$request instanceof \WP_REST_Request || $request->get_param("password") === null
+                || !preg_match('#^/wp/v2/users/(me|\d+)$#', $request->get_route(), $m)) {
+                return $response;
+            }
+            $id = $m[1] === "me" ? get_current_user_id() : (int) $m[1];
+            return $id > 0 && Accounts::isGuest($id)
+                ? new \WP_Error("guest_account", "Add your email first to save this account.", ["status" => 403])
+                : $response;
+        }, 10, 3);
+        add_action("user_profile_update_errors", static function ($errors, $update, $user) {
+            if ($update && !empty($user->user_pass) && Accounts::isGuest((int) $user->ID)) {
+                $errors->add("guest_account", "Add your email first to save this account.");
+            }
+        }, 10, 3);
         // Access tokens on the REST API (`Authorization: Bearer`), after core's own resolvers.
         add_filter("determine_current_user", [Bearer::class, "resolve"], 20);
         add_filter("rest_authentication_errors", [Bearer::class, "errors"], 20);
@@ -261,6 +281,11 @@ final class Plugin
             \WP_CLI::add_command("zero-identity", new Cli());
             \WP_CLI::add_command("zero-identity app", new AppCli());
         }
+    }
+    /** The issuer's URL path (`/identity`, or `/blog/identity` under a subdirectory install). */
+    public static function path(): string
+    {
+        return untrailingslashit((string) wp_parse_url(home_url("/identity"), PHP_URL_PATH));
     }
     /** Echo CORS headers for an enabled application's registered origin (`applications.origins`). */
     private static function cors(bool $credentials): void
@@ -404,10 +429,10 @@ final class Plugin
                     "factor" => $result["kind"] === "mfa_required" ? $result["challenge_id"] : null,
                     "return_to" => $signedIn["return_to"] ?: null,
                     // A reauthentication resumes through its browser-bound cookie after the factor.
-                    "reauth" => $signedIn["return_to"] === "/identity/authorize?resume=1" ? "1" : null,
+                    "reauth" => $signedIn["return_to"] === "/authorize?resume=1" ? "1" : null,
                 ]);
                 if ($result["kind"] === "signed_in" && $signedIn["return_to"] !== "") {
-                    wp_safe_redirect(home_url($signedIn["return_to"]));
+                    wp_safe_redirect(home_url("/identity" . $signedIn["return_to"]));
                     exit();
                 }
                 wp_safe_redirect(home_url("/identity") . ($params ? "?" . http_build_query($params) : ""));
@@ -459,7 +484,7 @@ final class Plugin
                     wp_safe_redirect(
                         home_url(
                             "/identity?upgrade=1&return_to=" .
-                                rawurlencode("/identity/authorize?" . http_build_query($query)),
+                                rawurlencode("/authorize?" . http_build_query($query)),
                         ),
                     );
                     exit();
@@ -489,7 +514,7 @@ final class Plugin
                     );
                     setcookie("zi_reauth", $resumeId . "." . $binding, [
                         "expires" => time() + 300,
-                        "path" => "/identity",
+                        "path" => self::path(),
                         "secure" => is_ssl(),
                         "httponly" => true,
                         "samesite" => "Lax",
@@ -502,8 +527,7 @@ final class Plugin
                         home_url(
                             "/identity?return_to=" .
                                 rawurlencode(
-                                    "/identity/authorize?" .
-                                        http_build_query($query),
+                                    "/authorize?" . http_build_query($query),
                                 ),
                         ),
                     );
@@ -569,6 +593,8 @@ final class Plugin
                 esc_url(plugins_url("build/hosted.css", $file)) .
                 '"></head><body><div id="identity-root" data-api="' .
                 esc_url(rest_url("zero-identity/v1/")) .
+                '" data-issuer="' .
+                esc_url(OAuth::issuer()) .
                 '" data-site="' .
                 esc_attr(get_bloginfo("name")) .
                 '"></div><script type="module" src="' .

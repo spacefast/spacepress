@@ -21,10 +21,13 @@ final class Bearer
 
     public static function resolve(mixed $userId): mixed
     {
-        if ($userId) {
+        $raw = self::header();
+        // An application password (core, priority 20 before us) wins; a logged-in WordPress cookie
+        // doesn't: REST discards a cookie user without a nonce, and an explicit Bearer is the
+        // caller's chosen identity.
+        if ($userId && ($raw === null || self::appPassword())) {
             return $userId;
         }
-        $raw = self::header();
         if ($raw === null) {
             return $userId;
         }
@@ -42,9 +45,19 @@ final class Bearer
         return $token["uid"];
     }
 
+    private static function appPassword(): bool
+    {
+        return (bool) ($GLOBALS["wp_rest_application_password_status"] ?? false) && !is_wp_error($GLOBALS["wp_rest_application_password_status"]);
+    }
+
     /** rest_authentication_errors: a failed Bearer becomes an error unless a consumer handles it. */
     public static function errors(mixed $error): mixed
     {
+        if (self::$token !== null) {
+            // Authenticated by its Bearer: answering `true` keeps core's cookie-nonce check
+            // (priority 100) from logging out a request that also carried a WordPress cookie.
+            return $error ?? true;
+        }
         if ($error !== null || self::$failure === null) {
             return $error;
         }

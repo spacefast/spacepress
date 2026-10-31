@@ -91,7 +91,11 @@ A token response is `{ access_token, token_type: "Bearer", expires_in: 300, refr
 
 **Guest handoff.** A guest's app holds Bearer tokens but no identity cookie. `POST /identity/handoff` with the guest's Bearer token returns `{ handoff }` (single use, 60 s). Sending the browser to `/identity/authorize?…&handoff=<handoff>` signs it in as that guest and opens the hosted screen to add an email; consent then returns to the app as usual. A handoff is bound to the guest's session and token family: revoking either first voids it. Upgrading a guest revokes all of its earlier sessions and token families, so nobody who held the guest's credentials keeps the verified account; the browser that verified gets fresh ones through consent.
 
-**Shared connection.** Identity runs on WordPress's `$wpdb` connection. When a transaction is already open on it (the Zero runtime's, another plugin's), identity detects it and joins with savepoints instead of committing the host's work.
+**Shared connection.** Identity runs on WordPress's `$wpdb` connection. When a transaction is already open on it (the Zero runtime's, another plugin's), identity detects it and joins with savepoints instead of committing the host's work. Users whose WordPress rows identity changes are announced through `zero_identity_touched_user` so the host's rollback can clear their caches; identity clears them itself when its own savepoint or transaction rolls back.
+
+**Guests and WordPress credentials.** A guest can't set a WordPress password or create application passwords (core REST and profile screens refuse). The upgrade resets the WordPress password and deletes application passwords too.
+
+**Bearer and cookies.** An explicit `Authorization: Bearer` names the user even when the browser also sends a WordPress login cookie without a REST nonce. Application passwords still take precedence.
 
 PHP API for the Zero runtime: `Accounts::issueForUser(int $wpUserId, string $clientId)` mints a session and token pair without a browser (only after `zero_runtime_loaded`), and `Accounts::status(int $wpUserId)` returns `active`, `suspended`, `deletion_requested`, `deleted` or `none`.
 

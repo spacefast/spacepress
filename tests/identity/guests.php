@@ -111,3 +111,10 @@ try {
 remove_action('zero_identity_guest_upgraded', $boom);
 $after = get_userdata($rolled);
 check($after->roles === ['zero_guest'] && $after->user_email === '', 'a failed upgrade rolls back, cached user included');
+
+// The upgrade also resets core WordPress credentials a former holder could have created.
+$core = wp_insert_user(['user_login' => 'zg8_' . $tag, 'user_pass' => 'planted-password-123', 'role' => 'zero_guest']);
+WP_Application_Passwords::create_new_application_password($core, ['name' => 'planted']);
+Plugin::$accounts->verifiedSignIn('core-' . $tag . '@example.test', session_for($core)['session']);
+clean_user_cache($core);
+check(!wp_check_password('planted-password-123', get_userdata($core)->user_pass, $core) && WP_Application_Passwords::get_user_application_passwords($core) === [], 'the upgrade resets the WordPress password and deletes application passwords');

@@ -24,7 +24,7 @@ $expected = ['issuer' => 'provider_validation_failed', 'audience' => 'provider_v
     'at_hash' => 'provider_validation_failed', 'missing_nonce' => 'provider_validation_failed', 'signature' => 'provider_validation_failed',
     'userinfo_subject' => 'provider_validation_failed', 'invalid_state' => 'invalid_state', 'wrong_binding' => 'invalid_challenge'];
 foreach ([...array_keys($expected), 'valid'] as $fault) {
-    $url = $p->start('google', $session['session'], ['fault' => $fault], $fault === 'valid' ? '/identity/authorize?client_id=app_x' : 'https://evil.example/');
+    $url = $p->start('google', $session['session'], ['fault' => $fault], $fault === 'valid' ? '/authorize?client_id=app_x' : 'https://evil.example/');
     parse_str((string) parse_url($url, PHP_URL_QUERY), $request);
     $row = Plugin::$db->row('SELECT id FROM ' . Plugin::$db->prefix . "challenges WHERE purpose='oidc' AND payload LIKE %s", '%' . Plugin::$db->wp->esc_like($request['state']) . '%');
     // start() set the binding cookie on this "browser"; re-issue a known one for the callback.
@@ -38,10 +38,14 @@ foreach ([...array_keys($expected), 'valid'] as $fault) {
     try {
         $actual = $p->callback('google');
         check($fault === 'valid' && $actual['uid'] === $uid, 'a verified provider exchange links the immutable subject to the signed-in account');
-        check($actual['return_to'] === '/identity/authorize?client_id=app_x', 'the pending authorization survives the provider round trip');
+        check($actual['return_to'] === '/authorize?client_id=app_x', 'the pending authorization survives the provider round trip');
     } catch (Failure $e) {
         check($fault !== 'valid' && $e->kind === $expected[$fault], "the callback refuses $fault ({$e->kind})");
     }
 }
 rejects(fn () => $p->callback('google'), 'invalid_challenge', 'a provider callback cannot be replayed');
-check(Providers::continuation('https://evil.example/') === '' && Providers::continuation('/identity/authorize?x=1') === '/identity/authorize?x=1', 'only a pending authorization is a continuation');
+check(Providers::continuation('https://evil.example/') === '' && Providers::continuation('/authorize?x=1') === '/authorize?x=1', 'only a pending authorization is a continuation');
+
+// A WordPress in a subdirectory: cookie paths and continuations derive from the issuer's path.
+add_filter('home_url', static fn ($url, $path) => 'http://127.0.0.1:8814/blog/' . ltrim((string) $path, '/'), 10, 2);
+check(\Zero\Identity\Plugin::path() === '/blog/identity', 'the issuer path follows a subdirectory home URL');

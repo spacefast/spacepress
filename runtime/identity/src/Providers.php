@@ -44,10 +44,10 @@ final class Providers
             $config["discovery"] ?? null,
         );
     }
-    /** Where the hosted screen may continue after sign-in: a pending authorization, nothing else. */
+    /** Where the hosted screen may continue after sign-in (issuer-relative): a pending authorization, nothing else. */
     public static function continuation(mixed $target): string
     {
-        return is_string($target) && str_starts_with($target, "/identity/authorize?") && strlen($target) <= 4096
+        return is_string($target) && str_starts_with($target, "/authorize?") && strlen($target) <= 4096
             ? $target
             : "";
     }
@@ -68,7 +68,7 @@ final class Providers
         );
         setcookie("zi_oidc", $id . "." . $binding, [
             "expires" => time() + 300,
-            "path" => "/identity/provider/callback",
+            "path" => Plugin::path() . "/provider/callback",
             "secure" => is_ssl(),
             "httponly" => true,
             "samesite" => "Lax",

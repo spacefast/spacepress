@@ -149,3 +149,29 @@ test("MFA: a primary factor yields only a browser-bound challenge; completing it
   assert.deepEqual(done.json, { data: { kind: "signed_in" } });
   assert.match(done.cookie, /^zi_session=/, "the session cookie arrives only after the second factor");
 });
+
+test("a guest can't plant WordPress credentials, and the upgrade clears what exists", async () => {
+  const guest = JSON.parse(php("make-guest.php", ""));
+  const bearer = { authorization: `Bearer ${guest.access_token}` };
+  const password = await fetch(`${site}/wp-json/wp/v2/users/me`, { method: "POST", headers: { ...bearer, "content-type": "application/json" }, body: JSON.stringify({ password: "attacker-password-123" }) });
+  assert.equal(password.status, 403, "no password through core REST");
+  const appPassword = await fetch(`${site}/wp-json/wp/v2/users/me/application-passwords`, { method: "POST", headers: { ...bearer, "content-type": "application/json" }, body: JSON.stringify({ name: "planted" }) });
+  assert.ok(appPassword.status >= 400, "no application password either");
+});
+
+test("a Bearer request that also carries a WordPress login cookie without a nonce stays authenticated", async () => {
+  const email = `cookie-${Date.now().toString(36)}@example.test`;
+  const tokens = await authorize(await signIn(email));
+  const login = await fetch(`${site}/wp-login.php`, {
+    method: "POST", redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
+    body: new URLSearchParams({ log: "identity-admin", pwd: "disposable-admin-test", testcookie: "1" }),
+  });
+  const wpCookie = login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  assert.match(wpCookie, /wordpress_logged_in_/);
+  const res = await fetch(`${site}/wp-json/wp/v2/users/me?context=edit`, { headers: { cookie: wpCookie, authorization: `Bearer ${tokens.json.access_token}` } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).email, email, "the Bearer, not the cookie, names the user");
+  const cookieOnly = await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: { cookie: wpCookie } });
+  assert.equal(cookieOnly.status, 401, "a cookie without a nonce still isn't REST authentication");
+});

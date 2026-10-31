@@ -82,7 +82,7 @@ export function UserButton() {
         </span>
         {state.data.account.name}
       </summary>
-      <a href={`${new URL(client.baseUrl).origin}/identity/account`}>
+      <a href={`${document.getElementById("identity-root")?.dataset.issuer ?? new URL(client.baseUrl).origin + "/identity"}/account`}>
         Manage account
       </a>
       <button onClick={() => void client.signOut().then(refresh)}>
@@ -313,7 +313,7 @@ export { AccountProfile } from "./profile.js";
 function continuation(): Record<string, string> {
   const params = new URLSearchParams(window.location.search);
   const target = params.has("reauth")
-    ? "/identity/authorize?resume=1"
+    ? "/authorize?resume=1"
     : params.get("return_to");
-  return target?.startsWith("/identity/authorize?") ? { return_to: target } : {};
+  return target?.startsWith("/authorize?") ? { return_to: target } : {};
 }

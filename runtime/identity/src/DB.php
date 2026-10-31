@@ -65,11 +65,17 @@ final class DB
         $this->run(
             $level === 0 ? "START TRANSACTION" : "SAVEPOINT " . $savepoint,
         );
+        $joined = $level === 1 && $this->depth === 1;
         try {
             $value = $fn();
             $this->run(
                 $level === 0 ? "COMMIT" : "RELEASE SAVEPOINT " . $savepoint,
             );
+            if ($joined) {
+                // The host owns the commit and may still roll back. Leave nothing in WordPress's
+                // object cache that only the uncommitted rows justify: later reads hit the database.
+                $this->forget();
+            }
             return $value;
         } catch (\Throwable $e) {
             $this->run(
@@ -78,9 +84,7 @@ final class DB
                     : "ROLLBACK TO SAVEPOINT " . $savepoint,
             );
             // SQL rolled back; WordPress's object cache didn't. Forget what it learned meanwhile.
-            foreach (array_keys($this->touched) as $uid) {
-                clean_user_cache($uid);
-            }
+            $this->forget();
             throw $e;
         } finally {
             if (--$this->depth === 0) {
@@ -88,10 +92,23 @@ final class DB
             }
         }
     }
-    /** Record a user whose wp_users/usermeta rows change here, so a rollback clears their cache. */
+    private function forget(): void
+    {
+        foreach (array_keys($this->touched) as $uid) {
+            clean_user_cache($uid);
+            wp_cache_delete($uid, "user_meta");
+        }
+        $this->touched = [];
+    }
+    /**
+     * Record a user whose wp_users/usermeta rows change here, so a rollback clears their cache.
+     * Inside a host's transaction the host's rollback must clear it too: `zero_identity_touched_user`
+     * tells it which users (the Zero runtime registers the cleanup with its own rollback handler).
+     */
     public function touch(int $uid): void
     {
         $this->touched[$uid] = true;
+        do_action("zero_identity_touched_user", $uid);
     }
     /**
      * Whether this connection has an open transaction that identity didn't start. Outside a

@@ -403,6 +403,16 @@ final class Accounts
             $this->db->run("DELETE FROM {$this->db->prefix}mfa WHERE wp_user_id=%d", $guest);
             $this->db->run("DELETE FROM {$this->db->prefix}recovery_codes WHERE wp_user_id=%d", $guest);
             $this->db->run("DELETE FROM {$this->db->prefix}providers WHERE wp_user_id=%d", $guest);
+            // Core credentials too: a fresh random password and no application passwords.
+            $this->db->run(
+                "UPDATE {$this->db->wp->users} SET user_pass=%s, user_activation_key='' WHERE ID=%d",
+                wp_hash_password(Security::token(48)),
+                $guest,
+            );
+            $this->db->run(
+                "DELETE FROM {$this->db->wp->usermeta} WHERE user_id=%d AND meta_key IN ('_application_passwords','session_tokens')",
+                $guest,
+            );
             $this->db->touch($guest);
             $user = new \WP_User($guest);
             $user->set_role("subscriber");

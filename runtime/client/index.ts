@@ -101,6 +101,8 @@ export interface MediaClient {
   get(id: number): Promise<Media>;
   /** `multipart/form-data` with fields `file` and `alt`. */
   upload(file: Blob, opts?: { alt?: string; filename?: string }): Promise<Media>;
+  /** Editors only. A new `focal` point (0..1 from the top-left) regenerates every `cover` size. */
+  update(id: number, patch: { alt?: string | null; focal?: { x: number; y: number } | null }): Promise<Media>;
   delete(id: number): Promise<Media>;
 }
 
@@ -335,6 +337,7 @@ export function createClient(options: ClientOptions = {}): Client {
         if (opts.alt !== undefined) form.append("alt", opts.alt);
         return request("POST", "/media", { form });
       },
+      update: (id: number, patch: unknown) => request("PATCH", `/media/${seg(id)}`, { json: patch }),
       delete: (id: number) => request("DELETE", `/media/${seg(id)}`),
     },
     actions: Object.fromEntries(

@@ -234,7 +234,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     );
     s.push_str("export type Role = \"subscriber\" | \"author\" | \"editor\" | \"admin\";\n");
     s.push_str("export interface User { id: number; name: string; role: Role }\n");
-    s.push_str("export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string }\n");
+    s.push_str("export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null }\n");
     s.push_str(
         "export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }\n",
     );

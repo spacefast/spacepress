@@ -3,7 +3,7 @@
 
 export type Role = "subscriber" | "author" | "editor" | "admin";
 export interface User { id: number; name: string; role: Role }
-export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string }
+export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null }
 export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }
 export type Status = "draft" | "published" | "scheduled";
 

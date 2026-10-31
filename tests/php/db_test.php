@@ -1008,4 +1008,127 @@ eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$m
 $described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
 eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'diary' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
 
+// ================================================================ lane G: media sizes + focal (phase 2 §7.2)
+
+// A second app root whose schema configures sizes. Booting it replaces the Db singleton, so the
+// section restores the previous one for whatever sections follow.
+(static function () use ($root): void {
+    $previous = \Zero\db();
+    try {
+        $mediaRoot = "$root/media-app";
+        copyRuntime($mediaRoot);
+        @mkdir("$mediaRoot/zero/app/migrations", 0777, true);
+        file_put_contents("$mediaRoot/zero/app/schema.php", '<?php return ' . var_export([
+            'version' => 3, 'runtime' => '0.2', 'collections' => [],
+            'media' => ['sizes' => [
+                'thumb' => ['width' => 100, 'height' => 100, 'fit' => 'cover'],
+                'wide' => ['width' => 200, 'height' => null, 'fit' => 'inside'],
+                'huge' => ['width' => 4000, 'height' => null, 'fit' => 'inside'],
+            ]],
+        ], true) . ';');
+        $mediaApp = App::boot($mediaRoot);
+        $mediaApp->identity()->addUser('mediaEditor', 'editor', null);
+        $mediaApp->identity()->addUser('mediaAuthor', 'author', null);
+        $bearer = static fn (string $name) => ['authorization' => 'Bearer ' . $mediaApp->identity()->createToken($name, null)['token']];
+        $asEditor = $bearer('mediaEditor');
+        $asAuthor = $bearer('mediaAuthor');
+        $mediaReq = static function (string $method, string $path, array $headers, string $body = '', array $files = [], array $query = []) use ($mediaApp): array {
+            [$status, , $out] = $mediaApp->handle($method, $path, $query, $body, $headers, $files);
+            $json = json_decode($out, true);
+
+            return [$status, $status < 300 ? $json['data'] : $json];
+        };
+        $png = static function (int $w, int $h): string {
+            $file = tempnam(sys_get_temp_dir(), 'zimg');
+            $im = imagecreatetruecolor($w, $h);
+            imagefilledrectangle($im, 0, 0, intdiv($w, 2) - 1, $h - 1, imagecolorallocate($im, 255, 0, 0));
+            imagefilledrectangle($im, intdiv($w, 2), 0, $w - 1, $h - 1, imagecolorallocate($im, 0, 0, 255));
+            imagepng($im, $file);
+
+            return $file;
+        };
+        $post = static fn (string $file, string $name) => $mediaReq('POST', '/media', $asAuthor, '', ['file' => ['name' => $name, 'tmp_name' => $file, 'error' => UPLOAD_ERR_OK]]);
+
+        [$s, $img] = $post($png(400, 200), 'wide.png');
+        $base = substr($img['url'], 0, -4);
+        eq('upload returns every configured size; a size the original fits is the original', [$s, array_map(static fn ($z) => [$z['width'], $z['height']], $img['sizes']), $img['sizes']['huge']['url'], $img['focal']],
+            [201, ['thumb' => [100, 100], 'wide' => [200, 100], 'huge' => [400, 200]], $img['url'], null]);
+        check('size files sit next to the original as <uuid>-<size>-…', str_starts_with($img['sizes']['thumb']['url'], "$base-thumb-") && str_starts_with($img['sizes']['wide']['url'], "$base-wide-"));
+        $dims = static fn (string $url) => array_slice(getimagesize("$mediaRoot/public$url") ?: [], 0, 2);
+        eq('size files exist with their dimensions', [$dims($img['sizes']['thumb']['url']), $dims($img['sizes']['wide']['url'])], [[100, 100], [200, 100]]);
+        $thumbBytes = file_get_contents("$mediaRoot/public{$img['sizes']['thumb']['url']}");
+        $wideBytes = file_get_contents("$mediaRoot/public{$img['sizes']['wide']['url']}");
+
+        $focal = json_encode(['focal' => ['x' => 0, 'y' => 0.5], 'alt' => 'Left']);
+        check('PATCH /media needs editor', $mediaReq('PATCH', "/media/{$img['id']}", $asAuthor, $focal)[0] === 403);
+        [$s, $patched] = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, $focal);
+        eq('PATCH sets focal + alt; inside sizes keep their file', [$s, $patched['focal'], $patched['alt'], $patched['sizes']['wide']], [200, ['x' => 0, 'y' => 0.5], 'Left', $img['sizes']['wide']]);
+        check('changing focal regenerates the cover size (different bytes) and removes the old crop after commit',
+            file_get_contents("$mediaRoot/public{$patched['sizes']['thumb']['url']}") !== $thumbBytes
+            && !is_file("$mediaRoot/public{$img['sizes']['thumb']['url']}")
+            && file_get_contents("$mediaRoot/public{$img['sizes']['wide']['url']}") === $wideBytes);
+        $t = imagecreatefrompng("$mediaRoot/public{$patched['sizes']['thumb']['url']}");
+        $red = imagecolorsforindex($t, imagecolorat($t, 50, 50));
+        eq('the regenerated crop follows the focal point (left half is red)', [$red['red'], $red['blue']], [255, 0]);
+        eq('GET returns the stored focal', $mediaReq('GET', "/media/{$img['id']}", [])[1]['focal'], ['x' => 0, 'y' => 0.5]);
+        check('focal is validated with a pointer', ($mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":2,"y":0}}')[1]['pointer'] ?? null) === '/focal/x');
+        check('PATCH unknown media → 404', $mediaReq('PATCH', '/media/999999', $asEditor, '{"alt":"x"}')[0] === 404);
+
+        $txt = tempnam(sys_get_temp_dir(), 'ztxt');
+        file_put_contents($txt, 'plain text');
+        $doc = $post($txt, 'a.txt')[1];
+        check('a non-image has sizes: {} on the wire', str_contains($mediaApp->handle('GET', "/media/{$doc['id']}", [], '', [])[2], '"sizes":{}') && $doc['focal'] === null);
+
+        // Rows from before sizes existed get every size the first time their focal point is set.
+        $legacy = $post($png(300, 300), 'old.png')[1];
+        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = \'{}\' WHERE "id" = ?', [$legacy['id']]);
+        $upgraded = $mediaReq('PATCH', "/media/{$legacy['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
+        eq('a row uploaded before sizes were configured gets every size on its first focal change', array_keys($upgraded['sizes']), ['thumb', 'wide', 'huge']);
+        eq('internal media fields are not queryable at any depth', array_map(
+            static fn (string $w) => $mediaReq('GET', '/media', [], query: ['where' => $w])[0],
+            ['{"focal":null}', '{"OR":[{"sizes":{"isNull":true}}]}', '{"NOT":{"path":"x"}}'],
+        ), [400, 400, 400]);
+
+        // Focal A → B → A inside one transaction: rollback keeps the committed crop, commit the final one.
+        $sequence = static function (bool $rollback) use ($img, $mediaRoot, $base): array {
+            try {
+                \Zero\db()->transaction(static function () use ($img, $rollback): void {
+                    \Zero\db()->media()->update($img['id'], ['focal' => ['x' => 1, 'y' => 0.5]]);
+                    \Zero\db()->media()->update($img['id'], ['focal' => ['x' => 0, 'y' => 0.5]]);
+                    if ($rollback) {
+                        throw new \RuntimeException('roll back');
+                    }
+                });
+            } catch (\RuntimeException) {
+            }
+
+            return glob("$mediaRoot/public$base-thumb-*");
+        };
+        $committed = $mediaReq('GET', "/media/{$img['id']}", [])[1]['sizes']['thumb']['url'];
+        eq('A → B → A rolled back: only the committed crop remains', $sequence(true), ["$mediaRoot/public$committed"]);
+        $files = $sequence(false);
+        $final = $mediaReq('GET', "/media/{$img['id']}", [])[1]['sizes']['thumb']['url'];
+        eq('A → B → A committed: exactly the final crop remains, and the row points at it', $files, ["$mediaRoot/public$final"]);
+
+        // A size configured after the upload is filled in on the next focal change.
+        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = json_remove("sizes", \'$.wide\') WHERE "id" = ?', [$img['id']]);
+        $filled = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
+        eq('a size missing from the row is rendered on the next focal change', [$filled['sizes']['wide']['width'], $filled['sizes']['wide']['height']], [200, 100]);
+
+        // A size the original now fits (config changed) drops its old rendition: file and row entry.
+        $small = $post($png(80, 80), 'small.png')[1];
+        $staleRel = substr($small['url'], strlen('/uploads/'), -4) . '-thumb-stale.png';
+        copy("$mediaRoot/public{$small['url']}", "$mediaRoot/public/uploads/$staleRel");
+        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = json_set("sizes", \'$.thumb\', json(?)) WHERE "id" = ?', [json_encode(['file' => $staleRel, 'width' => 50, 'height' => 50]), $small['id']]);
+        $refit = $mediaReq('PATCH', "/media/{$small['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
+        eq('a size the original now fits is served by the original and its old file is gone', [$refit['sizes']['thumb']['url'], is_file("$mediaRoot/public/uploads/$staleRel")], [$small['url'], false]);
+
+        $final = $mediaReq('GET', "/media/{$img['id']}", [])[1];
+        $mediaReq('DELETE', "/media/{$img['id']}", $asEditor);
+        check('deleting media removes the size files after commit', !is_file("$mediaRoot/public{$final['sizes']['thumb']['url']}") && !is_file("$mediaRoot/public$base.png"));
+    } finally {
+        \Zero\Db::setInstance($previous);
+    }
+})();
+
 finish('db_test');

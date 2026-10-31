@@ -4,19 +4,29 @@ declare(strict_types=1);
 
 namespace Zero\Media;
 
+use Zero\Access;
 use Zero\App;
 use Zero\Extensions;
 use Zero\HttpError;
+use Zero\Store\SqliteMedia;
+use Zero\SystemTables;
 use Zero\Viewer;
 
 use function Zero\db;
 
-/** Phase-1 media routes, shared by both targets. */
+/** The media routes, shared by both targets (phase-1 §4.6 + phase-2 §7.2 `PATCH /media/{id}`). */
 final class Module
 {
+    /** Fixed like the rest of media: editors change alt text and focal points. */
+    private const UPDATE = ['role' => 'editor'];
+
     public static function register(): void
     {
         Extensions::route('media', self::dispatch(...));
+        SystemTables::register(SqliteMedia::TABLE, [SqliteMedia::upgrade(...)], []);
+        if (defined('ABSPATH') && function_exists('add_action')) {
+            \Zero\Wp\WpMedia::boot();
+        }
     }
 
     /** @return array{int, mixed} */
@@ -54,13 +64,39 @@ final class Module
         if ($n !== 2) {
             throw HttpError::notFound('No such media route');
         }
-        App::allow($method, ['GET', 'DELETE']);
+        App::allow($method, ['GET', 'PATCH', 'DELETE']);
         $id = preg_match('/^\d{1,18}$/D', $segments[1]) ? (int) $segments[1] : -1;
         $missing = static fn () => HttpError::notFound("No media with id {$segments[1]}");
 
-        return $method === 'GET'
-            ? [200, db()->mediaGet($id) ?? throw $missing()]
-            : [200, db()->mediaDelete($id, $viewer) ?? throw $missing()];
+        return match ($method) {
+            'GET' => [200, db()->mediaGet($id) ?? throw $missing()],
+            'PATCH' => [200, self::update($id, $body, $viewer) ?? throw $missing()],
+            'DELETE' => [200, db()->mediaDelete($id, $viewer) ?? throw $missing()],
+        };
+    }
+
+    /** `PATCH /media/{id}` `{ alt?, focal? }`. */
+    private static function update(int $id, string $body, Viewer $viewer): ?array
+    {
+        Access::require(self::UPDATE, $viewer, 'update', null, 'update media');
+        try {
+            $in = trim($body) === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
+        }
+        if (!is_array($in) || ($in !== [] && array_is_list($in))) {
+            throw HttpError::invalidInput('Body must be a JSON object', '');
+        }
+        $patch = [];
+        foreach ($in as $key => $value) {
+            $patch[$key] = match ($key) {
+                'alt' => $value === null || is_string($value) ? ($value === '' ? null : $value) : throw HttpError::invalidInput('alt must be a string or null', '/alt'),
+                'focal' => Images::focal($value),
+                default => throw HttpError::invalidInput("Unknown field '$key'", HttpError::seg((string) $key)),
+            };
+        }
+
+        return db()->media()->update($id, $patch);
     }
 
 }

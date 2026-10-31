@@ -32,6 +32,11 @@ final class Runtime
                 if (self::$plugin === null) {
                     \WP_CLI::error('No compatible Zero app is active.');
                 }
+                if (\Zero\Wp\Legacy\Module::handles($args)) {
+                    $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
+                    $code === 0 || \WP_CLI::halt($code);
+                    return;
+                }
                 self::$plugin->cli($args, $flags);
             });
         }

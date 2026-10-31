@@ -54,7 +54,7 @@ struct Args {
     json: bool,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
+const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -117,6 +117,9 @@ fn parse_args() -> Result<Args, String> {
 
 fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("migrate") {
+        if std::env::args().nth(2).as_deref() == Some("site") {
+            return commands::migrate_site(&std::env::args().skip(3).collect::<Vec<_>>());
+        }
         return config_migrate::cli();
     }
     match parse_args() {

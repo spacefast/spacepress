@@ -2,10 +2,12 @@ mod build;
 mod dev;
 mod doctor;
 mod jobs;
+mod migrate_site;
 mod sync;
 mod users;
 
 pub(crate) use build::validate_config;
+pub(crate) use migrate_site::cli as migrate_site;
 
 pub(crate) fn run(args: &crate::Args) -> std::process::ExitCode {
     match args.command.as_str() {

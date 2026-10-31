@@ -2,3 +2,6 @@ cache/*.zip
 .harness.json
 .harness-state
 .wp-content/
+.wp-content-legacy/
+.harness-legacy.json
+.legacy-site.json

@@ -1,4 +1,5 @@
 {
   "name": "zero",
+  "license": "MIT",
   "types": "index.d.ts"
 }

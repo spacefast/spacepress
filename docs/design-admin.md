@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 1, 2026-10-31). Extends `design-phase2.md`; where
+Status: proposed (revision 2, 2026-10-31; revision 1 reviewed, findings folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -11,10 +11,15 @@ optional plugin that `zero build --target wp` can ship next to `zero-runtime`,
 WordPress. It is not a capsule frontend and it is not an embed for another
 dashboard.
 
-Conventions: "the source" = the admin tree in Spacefast's monorepo (1,143
-files at the audited revision). "Kept" = imported and shipped. "Rewired" =
-imported, then pointed at Zero's schema and APIs. "Dropped" = not imported.
-Numbers below are from the audited revision and a throwaway build of it.
+Conventions: "the source" = Spacefast's earlier WordPress admin work, an
+admin tree of 1,143 files in a private repository. The exact source identity
+(repository, commit, subtree hash, per-file blob manifest, and the verbatim
+internal-reference inventory) is recorded in a **private evidence record**
+kept outside this repository; this public document carries only
+classifications, counts and dispositions. "Kept" = imported and shipped.
+"Rewired" = imported, then pointed at Zero's schema and APIs. "Dropped" =
+not imported. Numbers below are from the audited revision and a throwaway
+build of it.
 
 ---
 
@@ -24,14 +29,14 @@ Numbers below are from the audited revision and a throwaway build of it.
 |---|---|
 | Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build --target wp` only when `defineConfig({ admin: true })`. Standalone ignores the flag, like `plugins`. No admin by default. |
 | Mount | Full-page app at `/zero-admin/` (rewrite rule, `auth_redirect()`), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
-| Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. The admin derives its menu, list fields and edit forms from it. No admin-side copy of the schema. |
-| Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Everything else through `/zero/v1`. The admin plugin registers **no REST route that reads or writes Zero data**. |
+| Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. It is public metadata (it always was: the typed client, `zero doctor` and MCP read it) and stays so. The admin derives list fields and edit forms from it; what a viewer may *see* is decided by the data endpoints, never by the schema (§5). |
+| Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for every mutation and through core `/wp/v2/media` only for reads and attachment metadata edits (§5.3). The admin plugin registers **no REST route that reads or writes Zero data**. |
 | Scope | Collections, media, globals, the block editor, and a "classic admin" escape hatch. Users, themes, plugins, settings, design and taxonomy screens are dropped: they duplicate wp-admin with no Zero gain. |
 | Content frame | Out of scope. The host-embed contract (`native-*`) is Spacefast-dashboard-specific and is not imported. |
 | Where the JS lives | `runtime/admin/apps/` (a self-contained pnpm workspace), built into `runtime/admin/build/` which is **committed** with a source-hash manifest, exactly like `runtime/identity/{apps,build}`. The Rust binary embeds `runtime/admin/` minus `apps/`; Zero core never needs Node. |
 | Pins | One exact `@wordpress/*` snapshot in one catalog, no `next` dist-tag anywhere. The nightly snapshot stays through the rewire PR; then a dedicated PR moves to the stable releases that match WordPress 7.1's bundled packages, and from then on bumps ride the platform floor in `src/platform.rs`. |
 | Provenance | Upstream Gutenberg packages come from npm. Three vendored forks of Gutenberg packages are replaced by npm or kept as a renamed fork (§1.2). The rest is the internal framework the source was vendored from; it is imported only after the licence ruling in §9.1, with every internal name, link, telemetry seam and private endpoint removed (§1.3). |
-| Tests | Real WordPress through the existing harness (`tests/wp/admin.test.ts`), driven by HTTP and WP-CLI with the exact calls the screens make, per role. Pure JS logic (schema → DataViews fields, menu builder) at unit level in the workspace. No browser automation unless a behaviour can't be proven otherwise. |
+| Tests | Real WordPress through the existing harness (`tests/wp/admin.test.ts`), driven by HTTP and WP-CLI with the exact calls the screens make, per role, plus **one** browser acceptance run (Playwright) that boots the shipped modules, opens a collection, edits a field and reloads. Pure JS logic (schema → DataViews fields, menu builder) at unit level in the workspace. |
 
 ---
 
@@ -39,16 +44,21 @@ Numbers below are from the audited revision and a throwaway build of it.
 
 ### 1.1 What the source is
 
-The tree was vendored into the monorepo on 2026-09-06 in one commit, with the
-note "Vendored from a dead-upstream WordPress admin framework; there is no
-upstream tracking". The upstream was an Automattic-internal admin framework
-(its packages call it "CIAB Admin"). Git history before that commit is not
+The tree was vendored into Spacefast's repository on 2026-09-06 in one
+commit, with the note "Vendored from a dead-upstream WordPress admin
+framework; there is no upstream tracking". The upstream was an internal admin
+framework of the company Spacefast's founders previously worked with; this
+document does not name it (§9.1c). Git history before that commit is not
 preserved, so original authors and dates are not recoverable from the source
 tree. The `license: GPL-2.0-or-later` field in the root `package.json` was
 written by the vendoring commit, not inherited from the upstream. Only two of
 the twenty vendored packages carry a `license` field of their own
 (`telemetry`, which Spacefast wrote, and `wp-build`). No `LICENSE` file exists
 anywhere in the tree except a dashicons licence under `packages/boot`.
+
+The audited revision is identified in the private evidence record by
+repository, commit, subtree tree-hash and a per-file blob manifest, so every
+count below can be reproduced and the import subset checked file by file.
 
 Eleven commits touched the tree after import. All are Spacefast's own glue
 (the Content frame, kernel endpoints, media checkbox and excerpt fixes).
@@ -61,20 +71,22 @@ Three classes:
   `@wordpress/*`, GPL-2.0-or-later, repository `WordPress/gutenberg`. Safe to
   depend on from npm instead of vendoring.
 - **I — internal framework.** The upstream admin framework's own code,
-  named `@automattic/*` or `@ciab/*`, never published. Importable only under
-  the ruling in §9.1.
+  under two private npm scopes, never published. Importable only under the
+  ruling in §9.1. **Forks of class-U packages that add code of their own are
+  class I for the added code**, and go through the same ruling.
 - **S — Spacefast glue.** Written in the monorepo after import. Spacefast owns
   it; it is either kernel-specific (dropped) or generic (kept).
 
 | Path | Class | Files | What it is | Disposition |
 |---|---|---|---|---|
 | `@wordpress/*` (96 pinned nightlies in `pnpm-workspace.yaml` overrides) | U | n/a | Gutenberg packages, snapshot `v.202608281122` | npm, pinned (§3.3) |
-| `@automattic/grid@0.2.1` (npm) | U-like | n/a | Public npm package from `Automattic/wp-calypso`, GPL-2.0-or-later | dropped with the dashboard package |
+| one public npm grid-layout package under the framework's scope | U-like | n/a | Published on npm, GPL-2.0-or-later | dropped with the dashboard package |
 | `packages/image-cropper` | U fork | 8 | 5 of 8 files byte-identical to `@wordpress/image-cropper` at the same snapshot; the rest add a stylesheet and re-exports | **replace with npm** `@wordpress/image-cropper` |
 | `packages/global-styles-engine` | U fork | 25 | 7 of 23 source files identical to `@wordpress/global-styles-engine`; the rest are an older cut of the same files | **replace with npm** `@wordpress/global-styles-engine` |
-| `packages/views` | U fork | 13 | Same shape as `@wordpress/views` (use-view, load-view, preference keys) plus a `DataViews` wrapper, tab-filter merging and a stylesheet the routes depend on | keep as renamed fork `@zero-admin/views`; migrate to stable `@wordpress/views` in the pin PR (§3.3) |
+| `packages/views` | U fork + I additions | 13 | Same shape as `@wordpress/views` (use-view, load-view, preference keys) but no file identical; adds a `DataViews` wrapper, tab-filter merging and a stylesheet the routes depend on | keep as renamed fork `@zero-admin/views` **under the §9.1 ruling** (the additions are class I); migrate to stable `@wordpress/views` in the pin PR (§3.3) |
 | `packages/dataviews` | I | 3 | Re-exports `@wordpress/dataviews/wp` and its stylesheet | keep, rename `@zero-admin/dataviews` |
-| `packages/ciab-private-apis` | I | 3 | Wraps `__dangerousOptInToUnstableAPIsOnlyForCoreModules`, presenting itself as `@wordpress/edit-site` | keep, rename `@zero-admin/private-apis` (risk: §10) |
+| `packages/schema` | new | — | Not in the source: maps `/_schema` to DataViews fields and form panels (§4.4) | written fresh in PR 5 |
+| `packages/<scope>-private-apis` | I | 3 | Wraps `__dangerousOptInToUnstableAPIsOnlyForCoreModules`, presenting itself as `@wordpress/edit-site` | keep, rename `@zero-admin/private-apis` (risk: §10) |
 | `packages/theme` | I | 5 | Exposes `@wordpress/theme` private APIs as a `ThemeProvider` | keep, rename |
 | `packages/admin-toolkit` | I | 45 | `Page`, `RouterLink`, `unlock`, save-dirty-entities, experiments hook | keep, rename, drop the experiments hook |
 | `packages/boot` | I + S | 95 | The app shell: router, sidebar, editor host, media modal, stores. 18 of its files are Spacefast's Content-frame glue (`native*.ts`, `content-api.ts`, `host.ts`, `frame-navigation.ts`, `spacefast-skin.scss`, `use-content-sync.ts`, `content-deployment.tsx`, `use-spacefast-links.ts`, `content-icons.ts`, `native-media-blocks.tsx`, `abilities/navigate.ts`) | keep the shell, rename; delete the frame glue, the AI-agent slot and the `navigate` ability |
@@ -104,44 +116,54 @@ byte-identical across two builds. `node_modules` is 515 MB.
 
 ### 1.3 Internal references: inventory and disposition
 
-Counted over the tree excluding `pnpm-lock.yaml`:
+Counted over the tree excluding `pnpm-lock.yaml`. The verbatim strings,
+hosts and paths are in the private evidence record; here they are described
+by kind so this document can be public.
 
-| Reference | Where | Count | Disposition |
+| Reference kind | Where | Count | Disposition |
 |---|---|---|---|
-| `@automattic/<pkg>` workspace scopes | every `package.json` and import | ~640 | rename to `@zero-admin/<pkg>` (mechanical) |
-| `@automattic/grid` (npm) | dashboard | 10 | gone with the dashboard package |
-| `@automattic/agenttic-client`, `agenttic-ui` | ai-agent README | 3 | gone with ai-agent |
-| `@ciab/dataviews` | imports | 171 | rename to `@zero-admin/dataviews` |
-| `@ciab-next/telemetry` | 24 route/package imports | 24 | delete imports and call sites (all no-ops) |
-| "CIAB Admin", "CIAB", `ciab-admin` | PHP docblocks, READMEs, comments, the `ciab-admin/navigate` ability | ~180 | rewrite docblocks; delete the ability with the frame glue |
-| `big_sky_*` filters | `next-admin.php`, `lib/rest-api/class-next-admin-rest-editor-controller.php` | 3 | delete (they silence an internal plugin's agent) |
-| `wpOrchestratorAgent` | ai-agent | 4 | gone with ai-agent |
-| `github.a8c.com`, `teamcity.a8c.com`, `ciabp2.wordpress.com`, `linear.app/a8c` | READMEs, one SCSS comment | 6 | delete |
-| `public-api.wordpress.com/wpcom/v2/ai/agent/woo-ai` | ai-agent README | 1 | gone with ai-agent |
-| `/wp/v2/users/invite`, "Jetpack connection owner" | user-data, routes/user | 4 | gone with user-data and the user screens |
-| `/spacefast/v1/admin/{bootstrap,resolve,sync,sync/retry,settings}`, `/spacefast/v1/redirects` | boot `content-api.ts`, routes collection-*, content-*, redirects | 9 | gone with the kernel-bound screens (§4) |
-| `spacefast` (skin, frame, data attributes, canvas styles) | boot | ~60 | gone with the frame glue |
-| `.jetpack-logo` CSS hook | boot `legacy-admin-ui-bridge.scss` | 1 | delete the rule |
-| `next-admin` text domain, `next_admin_*` functions and filters, `Next_Admin_*` classes, `NEXT_ADMIN_*` constants | all PHP | hundreds | rename to `zero-admin` / `zero_admin_*` / `Zero_Admin_*` / `ZERO_ADMIN_*` |
+| The framework's private npm scope on its workspace packages | every `package.json` and import | ~640 | rename to `@zero-admin/<pkg>` (mechanical) |
+| One public npm package under that scope (a grid layout library) | dashboard | 10 | gone with the dashboard package |
+| Two packages of an internal AI-agent client library | ai-agent README | 3 | gone with ai-agent |
+| A second private scope on the DataViews wrapper | imports | 171 | rename to `@zero-admin/dataviews` |
+| The inert telemetry shim's scope | 24 route/package imports | 24 | delete imports and call sites (all no-ops) |
+| The framework's product name | PHP docblocks, READMEs, comments, one Abilities category + ability name | ~180 | rewrite docblocks; delete the ability with the frame glue |
+| Filters that silence an internal AI plugin's agent | plugin entry, editor REST controller | 3 | delete |
+| A `window` global exposed by that plugin | ai-agent | 4 | gone with ai-agent |
+| Internal hosts: a source forge, a CI server, an internal blog, an issue tracker | READMEs, one SCSS comment | 6 | delete |
+| One hosted-platform AI endpoint URL | ai-agent README | 1 | gone with ai-agent |
+| A hosted-platform user-invite endpoint and a comment naming its connection plugin | user-data, routes/user | 4 | gone with user-data and the user screens |
+| Spacefast's own kernel REST namespace (six routes) | boot `content-api.ts`, routes collection-*, content-*, redirects | 9 | gone with the kernel-bound screens (§4) |
+| Spacefast's host-skin and frame identifiers | boot | ~60 | gone with the frame glue |
+| One CSS hook for a hosted-platform plugin's logo | boot `legacy-admin-ui-bridge.scss` | 1 | delete the rule |
+| The framework's text domain, function/filter prefix, class prefix and constant prefix | all PHP | hundreds | rename to `zero-admin` / `zero_admin_*` / `Zero_Admin_*` / `ZERO_ADMIN_*` |
 | `window.__experimentalDataViewsMediaModal`, `GUTENBERG_VERSION` | `lib/pages/admin.php` | 2 | keep (public Gutenberg flags) |
+
+**Attribution is exempt from the scrub.** Copyright and licence notices that
+the §9.1 ruling requires (a `NOTICE` naming the copyright holder, the
+dashicons `LICENSE.md`, third-party headers in kept files) are kept verbatim;
+the scrub removes product names from prose and identifiers, not legal
+notices. If the ruling says the framework must be credited by name, that
+credit lives in `NOTICE` and nowhere else.
 
 Telemetry: there is no live transport anywhere in the tree. The only
 telemetry code is the inert shim, and the dashboard-widget "tracking" hooks
 that call it. Nothing phones home. After the cleanup there is no telemetry
 seam at all; if Zero ever wants product analytics it is a new decision.
 
-Private APIs: `packages/ciab-private-apis` and `admin-toolkit` unlock
+Private APIs: the private-apis package and `admin-toolkit` unlock
 Gutenberg's private APIs (`@wordpress/route`, `core-data`, `editor`,
 `global-styles-engine`, `theme`) by opting in as `@wordpress/edit-site`. 65
 files use `unlock(...)`. This is how the upstream framework worked and it is
 load-bearing for routing and DataViews. It is kept, renamed and pinned (§3.3,
 §10).
 
-A note on what is already in this repo: `runtime/identity/apps/admin/src/ciab/dataviews.ts`
-carries the header "Adapted from CIAB Admin … Copyright the CIAB Admin
-contributors." That file belongs to the identity lane and is outside this
-plan's files, but it needs the same rename before the repo goes public. Flagged
-in §9.
+A note on what is already in this repo: one file under
+`runtime/identity/apps/admin/src/` carries an attribution header naming the
+framework and its contributors as copyright holders. That file belongs to the
+identity lane and is outside this plan's files. It is an attribution notice,
+so it is **not** scrubbed; whether it stays as is, moves to a `NOTICE`, or is
+reworded follows the same §9.1 ruling. Flagged in §9.5.
 
 ### 1.4 Licensing
 
@@ -157,8 +179,11 @@ in §9.
   vendoring time. The source tree contains no licence grant from its upstream,
   no copyright holder, and no provenance for the declaration. Under the
   clean-room rule this is the one thing this plan cannot decide. Until the
-  owner rules (§9.1), nothing from class I is imported. Class U comes from npm
-  either way, and class S is Spacefast's own.
+  owner rules (§9.1), nothing from class I is imported, including the class-I
+  additions inside the `views` fork. Class U comes from npm either way, and
+  class S is Spacefast's own. The ruling, the grant it rests on and the
+  required notices are recorded in the private evidence record **before** the
+  import PR is opened, and the `NOTICE` file in PR 2 is derived from it.
 - **Third-party in the tree.** `routes/design-styles/.../lib/{lib-font,inflate,unbrotli}.js`
   (MIT, Pomax; zlib/brotli ports) are dropped with the design screens.
   `packages/boot/src/dashicons` (GPL-2.0-or-later, with its own LICENSE.md)
@@ -170,8 +195,8 @@ in §9.
 No credentials, no tokens, no internal hostnames in code paths (only in
 READMEs and one SCSS comment), no network calls to anything but the site's
 own REST root, and no PHP that talks to the monorepo kernel except through
-the `spacefast/v1` REST namespace listed above (whose server side lives in the
-monorepo and is not imported).
+Spacefast's own kernel REST namespace listed above (whose server side stays
+in Spacefast's repository and is not imported).
 
 ---
 
@@ -260,6 +285,16 @@ The wp-admin side keeps one top-level menu entry "Zero" (capability `read`)
 that redirects to `/zero-admin/`. The existing `/wp-admin/new` alias is not
 kept.
 
+Rewrite lifecycle: the rule is added on `init` every request (so it is in
+place for `wp rewrite flush` and for sites that regenerate rules), and it is
+persisted by `flush_rewrite_rules()` in the activation hook and in a one-shot
+`admin_init` check keyed on an option `zero_admin_rewrite` holding the plugin
+version (covers file-copy updates, the same pattern as the runtime's
+`zero_runtime_tables`). Deactivation flushes again so the rule disappears.
+The harness activates the plugin **after** `wp rewrite structure` has already
+generated rules, which is the ordering a real site has; the activation test
+asserts the route answers without a manual flush.
+
 ### 2.5 Harness
 
 `tests/wp/harness.sh up` activates `zero-admin` after `zero-app-<name>` when
@@ -338,6 +373,13 @@ Policy:
    The externals come from the running WordPress, so a pin that drifts from
    the floor is a type-level lie; keeping them in lockstep is the whole
    policy.
+3b. **Supported range is the floor's minor series.** The plugin header says
+   `Requires at least: 7.1` and `Tested up to: 7.1`; `zero doctor --site`
+   warns on a newer major/minor. The externals and private APIs are proven
+   only on the pinned floor (the harness image), so the honest claim is "runs
+   on 7.1.x"; a newer WordPress is supported when the floor moves to it. This
+   is tighter than the runtime's own floor policy on purpose: the runtime
+   calls public PHP APIs, the admin consumes unstable JS ones.
 4. **No floating ranges.** Non-WordPress dependencies (`react`, `clsx`,
    `dequal`, `esbuild`, `sass-embedded`, …) are exact in the catalog too.
 
@@ -347,15 +389,23 @@ A new `admin` job in `.github/workflows/ci.yml`, independent of the Rust and
 PHP jobs:
 
 ```
-setup-node 22 + pnpm (version from apps/package.json packageManager)
-cd runtime/admin/apps
-pnpm install --frozen-lockfile
-pnpm typecheck                 # tsc -b
-pnpm test                      # jest, @wordpress/jest-preset-default (the preset the source's tests were written for)
-pnpm build
+setup-node 22 + pnpm (version from runtime/admin/apps/package.json packageManager)
+pnpm --dir runtime/admin/apps install --frozen-lockfile
+pnpm --dir runtime/admin/apps typecheck      # tsc -b
+pnpm --dir runtime/admin/apps test           # jest, @wordpress/jest-preset-default (the preset the source's tests were written for)
+pnpm --dir runtime/admin/apps build
+# from the repository root, so the pathspecs mean what they say:
 git diff --exit-code -- runtime/admin/build
-git ls-files --others --exclude-standard -- runtime/admin/build   (must be empty)
+test -z "$(git ls-files --others --exclude-standard -- runtime/admin/build)"
 ```
+
+The build runs in the CI container and the diff check is the arbiter of
+"reproducible": `wp-build` uses native `sass-embedded` and `lightningcss`
+binaries, and the throwaway build only proved byte-identity on one Linux
+machine. Until a macOS rebuild has been shown identical, the rule is that
+`build/` is regenerated on Linux (CI or a container) and a PR whose
+`build/` differs from CI's is fixed by taking CI's output, not by relaxing the
+check.
 
 Plus one line in `tests/php/vendor_drift.php`: the admin build's
 `.manifest.json` `sources` must equal the digest of `runtime/admin/apps` (the
@@ -388,7 +438,7 @@ monorepo kernel, or is capsule/host-specific.
 | `collection-edit` | `/collections/$collection/$slug` | kernel resolve + sync + field editor | **rewire** | by id, not slug; the block editor for `content` collections with a "Fields" sidebar panel rendered from `/_schema` columns and written through the `acf` REST field; a plain form for collections without `content`; `showIf` evaluated client-side from the sibling values; `editor: false` rows use the plain form over `/zero/v1` |
 | `post-list` | `/types/$type/list/$slug` | core `/wp/v2/<type>` + field collections | **keep for `attachment` only** (the media library); the generic post-type list is not exposed for Zero types | its DataViews/actions/quick-edit code is the base the collection list is built on |
 | `post-list-redirect`, `post`, `post-edit`, `post-new` | `/types/$type[...]` | core | **keep** the editor host (`boot/components/editor`), **drop** the public `/types/*` routes | the editor is reached through `/collections/...` only |
-| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep**, re-path | Zero media columns reference attachments; crop/alt/caption editing is a real gain |
+| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep**, re-path, mutations rewired | reads and attachment-metadata edits (alt, caption, crop) stay on core `/wp/v2/media`; **upload and delete go through `/zero/v1/media`** so Zero's fixed media rules and reference cleanup apply (§5.3) |
 | `term-list`, `term-add`, `term-edit` | `/types/$type/taxonomies/$tax[...]` | core terms | **drop** | Zero has no taxonomies |
 | `user-list`, `user-add`, `user-profile`, `user`, `profile` | `/users[...]`, `/profile` | core users + WordPress.com invites | **drop** | duplicates wp-admin; the invite flow is WordPress.com-only; `/zero/v1/me` covers "who am I" |
 | `plugin-list`, `plugin` | `/plugins[...]` | core plugins + overrides | **drop** | duplicates wp-admin |
@@ -397,9 +447,9 @@ monorepo kernel, or is capsule/host-specific.
 | `design-navigation`, `-list`, `-edit` | `/design/navigation[...]` | `wp_navigation` posts | **drop** | duplicates the site editor |
 | `settings`, `settings-general`, `settings-reading` | `/settings[...]` | `root/site` | **drop** | duplicates wp-admin |
 | `settings-experiments` | `/settings/experiments` | preferences | **drop** | no experiments remain |
-| `content-activity`, `content-settings`, `redirects` | `/content/...`, `/redirects` | `spacefast/v1/*` | **drop** | monorepo kernel |
-| `legacy-admin` | `/legacy/$slug` | iframes a wp-admin page | **keep** | the escape hatch: menu entries for SCF options pages (globals, until PR 6), media settings and "Classic admin" open here; 3 files |
-| new: `globals` | `/globals/$name` | `/zero/v1/globals/<g>` | **new** (PR 6) | one form per global rendered from `/_schema` fields; `PATCH /zero/v1/globals/<g>` |
+| `content-activity`, `content-settings`, `redirects` | `/content/...`, `/redirects` | Spacefast's kernel REST namespace | **drop** | Spacefast's content kernel, which Zero v2 replaces |
+| `legacy-admin` | `/legacy/$slug` | iframes a wp-admin page | **keep** | the escape hatch: "Classic admin" and media settings open here; 3 files. **Not** used for globals (their SCF options pages are governed by WordPress capabilities, not Zero's global rules; §5.3) |
+| new: `globals` | `/globals/$name` | `/zero/v1/globals/<g>` | **new** (PR 5, not 6) | one form per global rendered from `/_schema` fields; `GET`/`PATCH /zero/v1/globals/<g>`; the menu lists a global only when `GET` succeeds for the viewer |
 | new: `actions` | `/actions` | `/zero/v1/_schema`, `POST /zero/v1/actions/<a>` | **new, optional** (PR 6 if small) | a form per action from its `input` columns; shows only actions whose access summary the viewer meets; the response is printed as JSON |
 
 ### 4.3 PHP (`lib/`)
@@ -417,7 +467,7 @@ monorepo kernel, or is capsule/host-specific.
 | `taxonomies.php`, `taxonomy-hierarchy.php` | drop | no taxonomies |
 | `i18n.php` | keep | translations for script modules (uses reflection on `WP_Script_Modules`; §10) |
 | `legacy-route.php` | keep | the iframe bridge |
-| `next-admin-menu.php` | rewrite as `menu.php` | the menu is: Collections (one entry per collection the viewer may read, from the schema), Media, Globals (one entry per global, legacy iframe until PR 6), Actions (if any), Classic admin |
+| the default-menu file | rewrite as `menu.php` | the menu is: Collections (one entry per collection the viewer may read, §5.1), Media, Globals (one per global the viewer may read), Actions (if any), Classic admin |
 | `site-preview.php` | drop | front-end preview |
 | `pages/admin.php` | keep, trim | the page template (§2.4) |
 
@@ -426,7 +476,7 @@ monorepo kernel, or is capsule/host-specific.
 Keep `core-media-fields` and `core-post-fields` (they extend DataViews for
 attachments and the editor's core columns). Drop user, theme, plugin, term and
 comment fields with their screens. Zero columns do not use the field-collection
-mechanism at all: they are derived client-side from `/_schema` by a new
+mechanism at all: they are derived client-side from `/_schema` by the new
 `@zero-admin/schema` package (column kind → DataViews field type, `enum` →
 elements, `media` → thumbnail, `access.read` summary → hidden-by-default, and
 `showIf` → the panel's visibility rule). That package is pure and unit-tested.
@@ -438,28 +488,65 @@ elements, `media` → thumbnail, `access.read` summary → hidden-by-default, an
 Rules, in order of where they are enforced:
 
 1. **Server-side menu and overview.** The page builds the menu from the
-   schema and asks `Db::permits('read', $collection)` (PR #38's seam) for the
-   current WordPress user. A collection the viewer can't read has no menu
-   entry, no tile, and no preloaded data. This is a courtesy, not the guard.
+   schema and, per collection, asks whether the viewer's `read` rule *may
+   allow anything*: `Access::evaluate(rule, viewer, 'read') !== false`, or
+   the rule is a function (which can only be answered per row). That is the
+   same "could the rule allow anything" test PR #38's `CoreAccess` uses for
+   type-wide capabilities; it is exposed by the runtime as one static method
+   (`CoreAccess::mayRead($collection, $viewer)`, a one-line public wrapper
+   over the existing private helper, added in PR 5 and the only runtime edit
+   this plan makes). A collection whose rule denies outright has no menu
+   entry and no tile; a filtered or function rule gets an entry, and the list
+   may then be empty. This is a courtesy for navigation, not the guard. The
+   schema itself stays public (§0): the boot payload carries the full
+   `/_schema` like every other client of it, and nothing in it is secret
+   (names, kinds and access *summaries*, not data).
 2. **The guard is the API.** Post-backed collections are read and written
    through core `/wp/v2/zero_<table>`, which PR #38 puts under Zero's
    collection and field rules (`CoreAccess::mapMetaCap`, `PostsController`,
-   `FieldAccess::checkWrite`). Tables, globals, actions, media and `_schema`
-   go through `/zero/v1`, which has always applied them. The admin plugin
-   registers no route of its own that touches Zero data, and its PHP never
-   calls `Db` except `permits()` for the menu.
-3. **Fields follow the response.** The edit panel renders the columns present
+   `FieldAccess::checkWrite`; SCF fields are exposed on that route through
+   SCF's `acf` REST field, which `show_in_rest` on the field groups already
+   enables, and refusals are core 401/403 responses carrying Zero's `code`
+   and `data.pointer`). Tables, globals, actions and media mutations go
+   through `/zero/v1`, which has always applied them. The admin plugin
+   registers no route of its own that touches Zero data, and its PHP calls
+   nothing in `Db`.
+3. **Where WordPress rules apply instead, say so.** Two surfaces are
+   governed by WordPress capabilities, not Zero rules, and the admin does not
+   pretend otherwise:
+   - **Attachment metadata** (alt, caption, title, crop) is edited through
+     core `/wp/v2/media`, whose `edit_post` capability on attachments is
+     WordPress's. Zero's media rules are fixed (`read: anyone`, `create:
+     author`, `delete: editor`) and concern existence, not metadata. Upload
+     and delete, the two operations Zero does govern, go through
+     `POST`/`DELETE /zero/v1/media` so the rules and the reference cleanup
+     (nulling `media` columns) apply. The media list reads core `/wp/v2/media`
+     (read is `anyone` in Zero too).
+   - **SCF options pages for globals** in wp-admin are governed by SCF's
+     `capability` (`edit_others_posts`). The admin does not link to them;
+     globals are edited through `/zero/v1/globals/<g>`, which applies the
+     global's `update` rule. A site that wants the SCF page restricted to
+     Zero's rule has the same gap it has today without the admin; that is a
+     runtime question outside this plan and is noted in §10.
+4. **Fields follow the response.** The edit panel renders the columns present
    in the record the API returned, not the columns in `/_schema`. A field the
    viewer can't read is absent from the response and therefore from the form;
    a field the viewer can't write produces a 403 with a pointer that the form
    shows inline. `/_schema`'s access summaries are used only to grey out
    buttons before the request ("create needs editor").
-4. **Nothing trusted on the client.** No `_fields` trick, no `context=edit`
+5. **Nothing trusted on the client.** No `_fields` trick, no `context=edit`
    assumption, no caching of a list across users. `wp.apiFetch` carries the
    REST nonce; application passwords work for the tests.
 
 Dependency: PR #38 must merge before the rewire PR (§8, PR 5). PRs 2–4 do not
-depend on it.
+depend on it; PR 4's page-load test asserts only activation, the redirect for
+anonymous viewers, and a 200 with the boot payload for signed-in roles. The
+readable-menu assertions are PR 5's.
+
+`editor: false` collections: `/zero/v1/<c>` lists take `where`, `orderBy`,
+`limit` (max 200) and `offset`, so DataViews pagination, sorting and
+per-field filters map onto them directly; free-text search maps onto `like`
+over the title column and is noted in the UI as such. No runtime change.
 
 ---
 
@@ -490,13 +577,20 @@ behaviour, one test, at the lowest level that can break it):
 | menu builder: readable collections only, globals, classic link | jest unit (pure function fed a schema and a permits map) | same workspace |
 | activation: plugin active, `/zero-admin/` redirects anonymous to login, returns 200 for an editor with the boot payload listing readable collections, 200 for a subscriber listing only `anyone`-readable ones | WP e2e, HTTP + WP-CLI | `tests/wp/admin.test.ts` |
 | list and edit through the guarded APIs as the screens call them: editor lists `zero_posts` with `context=edit`, creates, patches an `acf` field, sees it back | WP e2e | `tests/wp/admin.test.ts` |
-| refusals: author creating into an admin-only collection → 403 with Zero's code; subscriber patching `acf.zero_salary` → 403 pointer `/salary`; viewer's boot payload and `_schema` list show nothing of a collection they can't read; unreadable field absent from the list response the screen uses | WP e2e | `tests/wp/admin.test.ts` (asserts the admin's exact requests; the rule semantics themselves stay owned by `core-access.test.ts`) |
+| refusals: author creating into an admin-only collection → 403 with Zero's code; subscriber patching `acf.zero_salary` → 403 pointer `/salary`; the subscriber's boot payload lists no menu entry for an admin-only collection while `_schema` still describes it; unreadable field absent from the list response the screen uses | WP e2e | `tests/wp/admin.test.ts` (asserts the admin's exact requests; the rule semantics themselves stay owned by `core-access.test.ts`) |
+| media: upload and delete as the screen does them go through `/zero/v1/media`; a subscriber's upload is 403; deleting an attachment referenced by a `media` column nulls the column | WP e2e | `tests/wp/admin.test.ts` (one case; `media.test.ts` owns the rules) |
 | editor settings/assets endpoints answer for an editor and 403 for a subscriber | WP e2e | `tests/wp/admin.test.ts` |
+| rewrite: `/zero-admin/` answers after activation on a site whose rules were generated before the plugin existed; 404 after deactivation | WP e2e | `tests/wp/admin.test.ts` |
+| **the shipped admin runs**: a signed-in editor opens `/zero-admin/`, the boot module and its external imports load with no console error, the collections overview renders the test app's readable collections, opening one lists rows, editing a text field and saving persists it (asserted through `/zero/v1` after reload) | browser acceptance (Playwright, one spec, against the emitted assets in the harness) | `tests/wp/admin-browser.test.ts` |
 
-Browser automation is not planned. Every screen above is a thin view over
-calls that can be made with `fetch`; if the rewire reveals a behaviour that
-only a browser can prove (for example the editor panel's `showIf` toggling),
-that one case gets a Playwright test in the same file, and the doc is updated.
+The browser run is deliberately one journey, not a screen matrix: it exists
+to prove that the committed modules, the import map, the externals and the
+router actually execute on the pinned WordPress, which no HTTP test can. The
+per-role permission proofs stay at the HTTP level where they are cheap and
+precise. Playwright is a devDependency of the workspace; `tests/wp/run.sh`
+runs the spec when the browser is installed and fails loudly, not silently,
+when it is not. If the rewire reveals another browser-only behaviour (for
+example the editor panel's `showIf` toggling), it joins the same spec.
 
 ---
 
@@ -505,11 +599,11 @@ that one case gets a Playwright test in the same file, and the doc is updated.
 | # | Branch | Content | Gate |
 |---|---|---|---|
 | 1 | `p3/admin-design` | this document | Sol review of the doc; owner rulings §9 |
-| 2 | `p3/admin-import` | two commits: (a) verbatim import of the kept subset into `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib}`; (b) provenance cleanup: renames, deletions of §1.3, dropped routes/packages/PHP of §4, catalog pins, `LICENSE`, scrubbed READMEs. `pnpm install --frozen-lockfile` and `tsc -b` pass. No build output yet. | Sol reviews commit (b) and the PHP; the PR says the verbatim import commit is not reviewed line by line |
+| 2 | `p3/admin-import` | **one commit**: the kept subset, already pruned (§4) and scrubbed (§1.3), under `runtime/admin/apps` + `runtime/admin/{zero-admin.php,lib,LICENSE,NOTICE}`, with catalog pins and no `next` dist-tag. No verbatim pre-cleanup state is ever committed, so the public history never carries the stripped references. The scrub is verified by a grep over the commit for the private evidence record's term list (run locally; the list itself is not committed). `pnpm install --frozen-lockfile` and `tsc -b` pass. No build output yet. | Sol reviews the PHP, the package manifests, the catalog and a sample of the renamed modules; the PR says the bulk of the imported JS is reviewed for provenance (the grep) and licence, not line by line |
 | 3 | `p3/admin-build` | `build.mjs`-style manifest and licence file, committed `runtime/admin/build/`, the `admin` CI job, the drift line in `vendor_drift.php` | CI green |
 | 4 | `p3/admin-package` | `admin: true` (types, extract, schema, build.rs emission, manifest), harness activation, `tests/wp/admin.test.ts` activation + page-load cases, `tests/wp_plugins.rs` case | CI green, Sol clean |
-| 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media, menu builder, legacy entries for globals; deletes the last `/types/*` public routes | needs #38 merged; CI green, Sol clean |
-| 6 | `p3/admin-tests` | the refusal and viewer cases of §7, the globals form (and actions if it fits), `zero doctor` row if one line | CI green, Sol clean |
+| 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media mutations over `/zero/v1/media`, the globals form, the menu builder with `CoreAccess::mayRead`, the readable-menu test; deletes the last `/types/*` public routes | needs #38 merged; CI green, Sol clean |
+| 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, `zero doctor` row if one line | CI green, Sol clean |
 | 7 | `p3/admin-docs` | `docs/admin.md` (what it is, opt-in, URL, permalinks, what's in scope), README row, `config-api.md` entry; the pin move to stable releases (§3.3 step 2) if it is small enough, else its own PR | CI green |
 
 Each PR is reviewed with
@@ -527,13 +621,14 @@ Sol outcome.
    holds no upstream grant, copyright holder or author list. Please confirm
    (a) that Spacefast has the right to redistribute it under GPL-2.0-or-later
    in a public repository, (b) whose copyright line goes in
-   `runtime/admin/LICENSE` / a `NOTICE`, and (c) whether the original
-   framework should be credited by name at all (this plan assumes not: the
-   public text says "Spacefast's earlier WordPress admin work"). If (a) is
-   no, the fallback is to import only class U from npm and write the shell
-   (router, sidebar, page, editor host, collection screens) fresh on
-   `@wordpress/boot`, `route`, `dataviews`, `fields` and `ui`; that is a
-   different, larger plan.
+   `runtime/admin/LICENSE` / `NOTICE`, and (c) whether the original
+   framework must be credited by name (this plan assumes not: the public
+   text, including this document, says "Spacefast's earlier WordPress admin
+   work"; if yes, the name appears in `NOTICE` only). The `views` fork's
+   additions are part of this ruling. If (a) is no, the fallback is to import
+   only class U from npm and write the shell (router, sidebar, page, editor
+   host, collection screens) fresh on `@wordpress/boot`, `route`,
+   `dataviews`, `fields` and `ui`; that is a different, larger plan.
 2. **Zero's top-level licence.** There is none. Options: GPL-2.0-or-later for
    the whole repository (simplest, matches every emitted artifact), or
    MIT/Apache-2.0 for the Rust compiler with GPL-2.0-or-later for `runtime/`
@@ -549,9 +644,12 @@ Sol outcome.
    discourages. Accept (this plan's default), or make the stable-pin PR (§3.3)
    also replace every private-API use with public equivalents where they now
    exist (`@wordpress/boot`, `@wordpress/views`), which is larger.
-5. **The identity lane's attribution header.** `runtime/identity/apps/admin/src/ciab/dataviews.ts`
-   names the internal framework. Outside this plan's files; needs renaming
-   before publication.
+5. **The identity lane's attribution header.** One file under
+   `runtime/identity/apps/admin/src/` names the internal framework and its
+   contributors as copyright holders. Outside this plan's files. It is an
+   attribution notice, so it is not scrubbed by this plan; the §9.1 ruling
+   decides whether it stays, moves to `NOTICE`, or is reworded, and the
+   identity lane applies that before publication.
 
 ---
 
@@ -559,8 +657,13 @@ Sol outcome.
 
 - **Nightly pins.** Mitigated by §3.3; real until PR 7 lands.
 - **Private APIs.** §9.4. Also: `lib/i18n.php` reflects into
-  `WP_Script_Modules::get_import_map()`. Both are pinned to WP 7.1 and proven
-  by the harness; a floor bump re-proves them.
+  `WP_Script_Modules::get_import_map()`. Both are proven only on the pinned
+  floor (§3.3 step 3b); a newer WordPress may break them, which is why the
+  header's `Tested up to` and `zero doctor` say so instead of pretending.
+- **Globals' SCF options pages** are reachable in wp-admin under SCF's
+  capability, not the global's Zero `update` rule. Pre-existing, not widened
+  by the admin (which does not link there); a runtime fix would mirror PR
+  #38's approach for options pages and is out of this plan's scope.
 - **`design-system` is 294 files of deprecated UI.** Kept for now because
   nearly every screen uses it; migrating to `@wordpress/ui` is a separate,
   mechanical PR after PR 7, not before.

@@ -2112,11 +2112,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // Past ±2^53 the variable becomes a double, as in JS (`Js::n`). Postfix returns the old value.
                 let d = if *inc { "1" } else { "-1" };
                 Out::atom(
-                    if *prefix {
-                        format!("({} = \\Zero\\Js::n({} + {d}))", t.php, t.php)
-                    } else {
-                        format!("\\Zero\\Js::postStep({}, {d})", t.php)
-                    },
+                    format!(
+                        "\\Zero\\Js::{}({}, {d})",
+                        if *prefix { "preStep" } else { "postStep" },
+                        t.php
+                    ),
                     Ty::Num,
                 )
             }
@@ -2223,6 +2223,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match op {
                     BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Exp => Out::atom(format!("\\Zero\\Js::pow({}, {})", a.php, b.php), Ty::Num),
                     _ => Out::atom(format!("\\Zero\\Js::n({} {sym} {})", a.wrapped(), b.wrapped()), Ty::Num),
                 }
             }
@@ -3508,7 +3509,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "round" => format!("floor(({x}) + 0.5)"),
                     "sign" => format!("(({x}) <=> 0)"),
                     "pow" => format!(
-                        "({}) ** ({})",
+                        "\\Zero\\Js::pow({}, {})",
                         argv[0].php,
                         argv.get(1).map(|a| a.php.as_str()).unwrap_or("NAN")
                     ),

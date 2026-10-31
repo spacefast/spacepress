@@ -94,7 +94,10 @@ final class Js
 
     public static function toNumber(mixed $v): int|float
     {
-        if (is_int($v) || is_float($v)) {
+        if (is_int($v)) {
+            return self::n($v);
+        }
+        if (is_float($v)) {
             return $v;
         }
         if ($v === null) {
@@ -239,6 +242,56 @@ final class Js
         $x = self::n($x + $step);
 
         return $old;
+    }
+
+    /** Prefix `++x` / `--x`: the place is evaluated once (an index with side effects runs once). */
+    public static function preStep(int|float &$x, int $step): int|float
+    {
+        return $x = self::n($x + $step);
+    }
+
+    /**
+     * `a ** b` / `Math.pow`. An integer power is computed exactly, then rounded to the nearest double
+     * past ±2^53 (n()), so every result a double can hold exactly (2 ** 60) matches JS. ECMA-262 leaves
+     * inexact powers implementation-approximated: engines (and V8 vs this runtime) may differ in the last
+     * binary digit there, e.g. 3 ** 35.
+     */
+    public static function pow(int|float $a, int|float $b): int|float
+    {
+        if (is_int($a) && is_int($b) && $b >= 0) {
+            $p = $a ** $b;
+            if (is_int($p)) {
+                return self::n($p);
+            }
+        }
+
+        return self::num((float) $a ** (float) $b);
+    }
+
+    /**
+     * JSON text → Zero values (assoc arrays for objects), with integers past ±2^53 as the doubles a
+     * JS parser would produce. The one decoder for request bodies, query JSON, JSON.parse and stored
+     * JSON columns.
+     */
+    public static function decodeJson(string $s, int $depth = 512): mixed
+    {
+        return self::jsNumbers(json_decode($s, true, $depth, JSON_THROW_ON_ERROR));
+    }
+
+    private static function jsNumbers(mixed $v): mixed
+    {
+        if (is_int($v)) {
+            return self::n($v);
+        }
+        if (is_array($v)) {
+            foreach ($v as $k => $x) {
+                if (is_int($x) || is_array($x)) {
+                    $v[$k] = self::jsNumbers($x);
+                }
+            }
+        }
+
+        return $v;
     }
 
     /** Truncate toward zero, keeping float type (and -0). */
@@ -1185,7 +1238,7 @@ final class Js
     public static function jsonParse(string $s): mixed
     {
         try {
-            return json_decode($s, true, 4096, JSON_THROW_ON_ERROR);
+            return self::decodeJson($s, 4096);
         } catch (\JsonException $e) {
             throw new JsError('Unexpected token in JSON: ' . $e->getMessage(), 'SyntaxError');
         }

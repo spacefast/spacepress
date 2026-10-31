@@ -79,7 +79,16 @@ export default defineConfig({
       const after = ++i;
       let j = -(2 ** 53) + 1;
       j -= 2;
-      return [2 ** 53 + 1, 9007199254740993 + 0, 2 ** 53 * 3 + 1, before, after, i, j, Number("9007199254740993"), 7 - 10];
+      // Prefix/postfix on an index with a side effect evaluate the place once.
+      const a = [10, 20];
+      let k = 0;
+      const pre = ++a[k++]!;
+      // Integer powers past 2^53 are doubles; exactly representable ones (2 ** 60) agree to the bit.
+      let p = 2;
+      p **= 60;
+      const parsed = Number(JSON.parse("9007199254740993"));
+      return [2 ** 53 + 1, 9007199254740993 + 0, 2 ** 53 * 3 + 1, before, after, i, j, Number("9007199254740993"), 7 - 10,
+        pre, a, k, 2 ** 60 + 1, p, Math.pow(2, 60) - 1, 2 ** 0.5, 10 ** -2, parsed - 1];
     }),
     numberFormatting: run(() => [String(1e21), String(1e-7), String(123.456), String(-0), (1.005).toFixed(2), (2.5).toFixed(0)]),
     truthiness: run(() => ["", "0", 0, -0, null, [], {}].map((v) => (v ? "t" : "f")).join("")),

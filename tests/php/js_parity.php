@@ -34,7 +34,7 @@ $cases = [
     ['String(2 ** 53 + 2)', fn () => Js::numStr(2 ** 53 + 2)],
     // n(): an integer result past ±2^53 rounds to a double; postStep() steps through it.
     ['[2 ** 53 + 1, -(2 ** 53) - 1, 2 ** 53 * 3 + 1, 2 ** 53 - 1, 1 + 2]', fn () => [Js::n(2 ** 53 + 1), Js::n(-(2 ** 53) - 1), Js::n(2 ** 53 * 3 + 1), Js::n(2 ** 53 - 1), Js::n(1 + 2)]],
-    ['(() => { let i = 2 ** 53; const old = i++; return [old, i, i + 1 === i]; })()', function () { $i = 2 ** 53; $old = Js::postStep($i, 1); return [$old, $i, Js::n($i + 1) === $i]; }],
+    ['(() => { let i = 2 ** 53; const old = i++; const pre = ++i; return [old, pre, i, i + 1 === i]; })()', function () { $i = 2 ** 53; $old = Js::postStep($i, 1); $pre = Js::preStep($i, 1); return [$old, $pre, $i, Js::n($i + 1) === $i]; }],
     ['String(100 / 3)', fn () => Js::numStr(100 / 3)],
     ['String(NaN) + String(-Infinity)', fn () => Js::numStr(NAN) . Js::numStr(-INF)],
     ['String([1, [2, null], "a", true])', fn () => Js::str([1, [2, null], 'a', true])],
@@ -50,6 +50,9 @@ $cases = [
     ['["08", "0x1F", "  -42px", "1e3", "", "-0", "9007199254740993", "123456789012345678901234567890", "+-1"].map(s => parseInt(s))',
         fn () => array_map(fn ($s) => Js::parseInt($s), ['08', '0x1F', '  -42px', '1e3', '', '-0', '9007199254740993', '123456789012345678901234567890', '+-1'])],
     ['["9007199254740993", "-9007199254740993", "9007199254740992"].map(Number)', fn () => array_map(Js::toNumber(...), ['9007199254740993', '-9007199254740993', '9007199254740992'])],
+    ['(() => { const v = JSON.parse(\'{"n":9007199254740993,"l":[-9007199254740995,3]}\'); return [v.n - 1, v.l[0] + 1, v.l[1] + 1]; })()',
+        function () { $v = Js::jsonParse('{"n":9007199254740993,"l":[-9007199254740995,3]}'); return [Js::n($v['n'] - 1), Js::n($v['l'][0] + 1), Js::n($v['l'][1] + 1)]; }],
+    ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 10 ** -2, 2 ** 0.5]', fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(10, -2), Js::pow(2, 0.5)]],
     ['[parseInt("ff", 16), parseInt("0xff", 16), parseInt("0xff", 10), parseInt("102", 2), parseInt("z", 36), parseInt("1", 37), parseInt("10", 0), parseInt("10", 4.9), parseInt("10", -1)]',
         fn () => [Js::parseInt('ff', 16), Js::parseInt('0xff', 16), Js::parseInt('0xff', 10), Js::parseInt('102', 2), Js::parseInt('z', 36), Js::parseInt('1', 37), Js::parseInt('10', 0), Js::parseInt('10', 4.9), Js::parseInt('10', -1)]],
     ['["3.14abc", ".5", "-.5e-3x", "Infinityx", "-Infinity", "e5", "  1e400", "-0", "1.e2", "0x10"].map(parseFloat)',

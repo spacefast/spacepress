@@ -517,6 +517,16 @@ final class Schema
         return $mo >= 1 && $mo <= 12 && $d >= 1 && $d <= [31, $leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$mo - 1];
     }
 
+    /** Stored JSON text (written by this runtime, so valid; unreadable text decodes to null). */
+    private static function json(string $v): mixed
+    {
+        try {
+            return Js::decodeJson($v);
+        } catch (\JsonException) {
+            return null;
+        }
+    }
+
     /** Stored value → JS-facing value. */
     public static function decode(array $col, mixed $v): mixed
     {
@@ -528,17 +538,17 @@ final class Schema
             'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
-            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? json_decode($v, true) : $v),
+            'json', 'mediaList', 'select' => is_string($v) ? self::json($v) : $v,
+            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? self::json($v) : $v),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),
-                (array) (is_string($v) ? json_decode($v, true) : $v),
+                (array) (is_string($v) ? self::json($v) : $v),
             ),
             'blocks' => array_map(
                 static fn ($item) => is_array($item) && isset($col['layouts'][$item['layout'] ?? ''])
                     ? ['layout' => $item['layout']] + self::fillFields($col['layouts'][$item['layout']], $item)
                     : $item,
-                (array) (is_string($v) ? json_decode($v, true) : $v),
+                (array) (is_string($v) ? self::json($v) : $v),
             ),
             default => (string) $v,
         };

@@ -415,7 +415,7 @@ final class App
     private static function queryJson(mixed $value, string $ptr): mixed
     {
         try {
-            return json_decode(self::queryString($value, $ptr), true, 512, JSON_THROW_ON_ERROR);
+            return Js::decodeJson(self::queryString($value, $ptr));
         } catch (\JsonException $e) {
             throw HttpError::invalidQuery('Invalid JSON: ' . $e->getMessage(), $ptr);
         }
@@ -427,7 +427,7 @@ final class App
             return [];
         }
         try {
-            return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            return Js::decodeJson($body);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }

@@ -28,8 +28,9 @@ pub struct Report {
     pub notes: Vec<String>,
     /// A call was refused for lack of access (401/403): the run exits 4.
     pub denied: bool,
-    /// (collection, uid) pushes refused for a reference not on the site yet; retried after the first pass.
-    pub deferred: Vec<(String, String)>,
+    /// Pushes refused for a reference not on the site yet: (collection, uid, the planned record),
+    /// sent again after the first pass.
+    pub deferred: Vec<(String, String, serde_json::Value)>,
     pub second_pass: bool,
 }
 
@@ -80,8 +81,8 @@ impl Report {
         self.failures.push(what);
     }
 
-    pub fn defer(&mut self, collection: String, uid: String) {
-        self.deferred.push((collection, uid));
+    pub fn defer(&mut self, collection: String, uid: String, record: serde_json::Value) {
+        self.deferred.push((collection, uid, record));
     }
 
     /// A failed site call; auth refusals also mark the run as denied.

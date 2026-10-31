@@ -669,6 +669,13 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         eprintln!("error: couldn't write migrations or the client: {e}");
         return ExitCode::from(1);
     }
+    // A project that syncs commits its sync bases, and nothing else under .zero (design §5.4).
+    if built.schema.collections.values().any(|c| c.sync.is_some())
+        && let Err(e) = crate::sync::git::ignore_build_output(&project)
+    {
+        eprintln!("error: {e}");
+        return ExitCode::from(1);
+    }
     let (out, lint) = match built.schema.target {
         Target::Standalone => {
             let out = args.out.clone().unwrap_or_else(|| project.join(".zero").join("app"));

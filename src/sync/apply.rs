@@ -30,6 +30,8 @@ struct Collection {
     references: Vec<String>,
     /// Columns that reference another record (sent as uids).
     reference_columns: Vec<String>,
+    /// Reference column → target collection.
+    reference_targets: IndexMap<String, String>,
 }
 
 /// Collections that sync, targets of references first (a cycle keeps config order).
@@ -44,6 +46,13 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
             continue;
         }
         let content = spec["content"].as_str();
+        // A JSON file's `body` key is the content column; an ordinary column named `body` beside one
+        // would have no key of its own.
+        if sync["format"] == "json" && content.is_some_and(|c| c != "body") && spec["columns"].get("body").is_some() {
+            return Err(format!(
+                "{name}: syncs as JSON with a content column, so it can't also have a column named body; rename that column"
+            ));
+        }
         let pk = spec["primaryKey"].as_str().unwrap_or("id");
         let columns = spec["columns"].as_object().cloned().unwrap_or_default();
         let fields = columns
@@ -57,6 +66,14 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                     && (def["derived"] != true || (*c == "translations" && spec["localized"] == true))
             })
             .map(|(c, _)| c.clone())
+            .collect();
+        let reference_targets: IndexMap<String, String> = columns
+            .iter()
+            .filter_map(|(c, def)| {
+                def["references"]["collection"]
+                    .as_str()
+                    .map(|t| (c.clone(), t.to_string()))
+            })
             .collect();
         let reference_columns = columns
             .iter()
@@ -79,6 +96,7 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                 fields,
                 references,
                 reference_columns,
+                reference_targets,
             },
         );
     }
@@ -262,45 +280,86 @@ fn file_name(c: &Collection, record: &Value) -> String {
     )
 }
 
-/// The site's records of a collection, all pages.
+/// The site's records of a collection, all pages. Absence from this inventory means "deleted on the
+/// site", so every page and entry is validated before anything is concluded from it.
 fn pull(client: &Client, c: &Collection) -> Result<IndexMap<String, Remote>, Problem> {
+    let invalid = |why: String| Problem {
+        status: 200,
+        body: json!({"detail": format!("/sync/{}: {why}", c.name), "code": "invalid_response"}),
+    };
     let mut out = IndexMap::new();
     let mut after: i64 = 0;
     loop {
         let page = client.get(&format!("/sync/{}?after={after}&first=100", c.name))?;
-        // Absence from this list means "deleted on the site", so the page must really be a page.
-        let Some(records) = page["records"]
-            .as_array()
-            .filter(|_| page["next"].is_null() || page["next"].is_i64())
-        else {
-            return Err(Problem {
-                status: 200,
-                body: json!({"detail": format!("/sync/{} answered without a records page", c.name), "code": "invalid_response"}),
-            });
+        let (Some(records), Some(next)) = (page["records"].as_array(), page.get("next")) else {
+            return Err(invalid("the answer is not a records page".into()));
         };
-        for item in records {
-            let uid = item["uid"]
-                .as_str()
-                .or(item["record"]["uid"].as_str())
-                .unwrap_or_default()
-                .to_string();
-            let remote = if item["trashed"] == true {
-                Remote::Gone
-            } else if let Some(refused) = item["refused"].as_str() {
-                Remote::Refused(item["message"].as_str().unwrap_or(refused).to_string())
-            } else {
-                Remote::Live(Item {
-                    record: item["record"].clone(),
-                    digest: item["digest"].as_str().unwrap_or_default().into(),
-                })
-            };
-            out.insert(uid, remote);
+        let next = match next {
+            Value::Null => None,
+            n => match n.as_i64() {
+                Some(n) if n > after => Some(n),
+                _ => return Err(invalid(format!("the page cursor {n} does not advance past {after}"))),
+            },
+        };
+        if next.is_some() && records.is_empty() {
+            return Err(invalid("a page with more to come is empty".into()));
         }
-        match page["next"].as_i64() {
+        for item in records {
+            let (uid, remote) = entry(item).map_err(&invalid)?;
+            if out.insert(uid.clone(), remote).is_some() {
+                return Err(invalid(format!("{uid} is listed twice")));
+            }
+        }
+        match next {
             Some(n) => after = n,
             None => return Ok(out),
         }
     }
+}
+
+/// One entry of a records page: trashed, refused or a live record with its digest.
+fn entry(item: &Value) -> Result<(String, Remote), String> {
+    let digest_ok =
+        |d: &str| d.len() == 71 && d.starts_with("sha256:") && d[7..].bytes().all(|b| b.is_ascii_hexdigit());
+    if item["trashed"] == true {
+        let uid = item["uid"]
+            .as_str()
+            .filter(|u| valid_uid(u))
+            .ok_or("a trashed entry has no valid uid")?;
+        return Ok((uid.into(), Remote::Gone));
+    }
+    if item["trashed"] != false {
+        return Err(format!("an entry has no trashed flag: {item}"));
+    }
+    if let Some(refused) = item["refused"].as_str() {
+        let uid = item["uid"]
+            .as_str()
+            .filter(|u| valid_uid(u))
+            .ok_or("a refused entry has no valid uid")?;
+        return Ok((
+            uid.into(),
+            Remote::Refused(item["message"].as_str().unwrap_or(refused).to_string()),
+        ));
+    }
+    let record = &item["record"];
+    let uid = record["uid"]
+        .as_str()
+        .filter(|u| valid_uid(u))
+        .ok_or_else(|| format!("an entry has no valid record uid: {item}"))?;
+    let digest = item["digest"]
+        .as_str()
+        .filter(|d| digest_ok(d))
+        .ok_or_else(|| format!("{uid} has no valid digest"))?;
+    if !record["fields"].is_object() || !(record["body"].is_null() || record["body"].is_string()) {
+        return Err(format!("{uid} is not a record"));
+    }
+    Ok((
+        uid.into(),
+        Remote::Live(Item {
+            record: record.clone(),
+            digest: digest.into(),
+        }),
+    ))
 }
 
 pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Report) -> Result<(), String> {
@@ -326,13 +385,23 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
     let deferred = std::mem::take(&mut report.deferred);
     report.second_pass = true;
     for c in &all {
-        let uids: Vec<String> = deferred
+        let records: IndexMap<String, Value> = deferred
             .iter()
-            .filter(|(n, _)| *n == c.name)
-            .map(|(_, u)| u.clone())
+            .filter(|(n, ..)| *n == c.name)
+            .map(|(_, u, r)| (u.clone(), r.clone()))
             .collect();
-        if !uids.is_empty() {
-            collection(client, c, &site, label, known, &mut bases, options, report, Some(&uids))?;
+        if !records.is_empty() {
+            collection(
+                client,
+                c,
+                &site,
+                label,
+                known,
+                &mut bases,
+                options,
+                report,
+                Some(&records),
+            )?;
         }
     }
     if !options.check {
@@ -354,7 +423,8 @@ fn collection(
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
-    only: Option<&[String]>,
+    // Second pass: exactly these uids, each sent as the record planned in the first pass.
+    only: Option<&IndexMap<String, Value>>,
 ) -> Result<(), String> {
     let (files, clean) = read_files(c, report, options.check);
     let mut remote = pull(client, c).map_err(|p| report.problem(&c.name, &p))?;
@@ -366,7 +436,7 @@ fn collection(
         }
     }
     if let Some(only) = only {
-        uids.retain(|u| only.contains(u));
+        uids.retain(|u| only.contains_key(u));
     }
     // Bodies both sides changed are merged on the server, in batches.
     let mut merges: Vec<(String, plan::BodyMerge)> = Vec::new();
@@ -402,8 +472,9 @@ fn collection(
         let mut retried = false;
         loop {
             // Second pass: the file's record goes to the site whole, over its identity-only first push.
-            let forced = only.and(file).map(|f| Action::Push {
-                record: f.item.record.clone(),
+            // The record the first pass planned (merged, if it was) goes up over its identity-only push.
+            let forced = only.and_then(|o| o.get(uid)).map(|record| Action::Push {
+                record: record.clone(),
                 expect: match &r {
                     Remote::Live(item) => item.digest.clone(),
                     _ => "absent".into(),
@@ -542,7 +613,8 @@ fn perform(
                     // point at each other can all exist; the second pass sends the references. The base
                     // doesn't move until then.
                     if expect == "absent" {
-                        let mut identity = record_without(&record, &c.reference_columns);
+                        let mut identity =
+                            without_unresolved(client, &record, &c.reference_columns, &c.reference_targets);
                         identity["uid"] = json!(uid);
                         if let Err(p) = client.post(
                             &format!("/sync/{name}"),
@@ -553,7 +625,7 @@ fn perform(
                             return Ok(());
                         }
                     }
-                    report.defer(name.clone(), uid.to_string());
+                    report.defer(name.clone(), uid.to_string(), record.clone());
                 }
                 Err(p) => {
                     let message = report.problem(&format!("{name}/{uid}"), &p);
@@ -627,17 +699,43 @@ fn perform(
     Ok(())
 }
 
-/// The record with the given fields set to null.
-fn record_without(record: &Value, columns: &[String]) -> Value {
+/// The record with every reference whose target isn't on the site yet set to null. References that
+/// resolve stay, so a required reference to an existing record keeps validating.
+fn without_unresolved(
+    client: &Client,
+    record: &Value,
+    columns: &[String],
+    targets: &IndexMap<String, String>,
+) -> Value {
     let mut out = record.clone();
     if let Some(fields) = out["fields"].as_object_mut() {
         for c in columns {
-            if fields.contains_key(c) {
+            let Some(uid) = fields.get(c).and_then(Value::as_str).map(String::from) else {
+                continue;
+            };
+            let resolves = targets.get(c).is_some_and(|target| {
+                client
+                    .get(&format!(
+                        "/{target}?where={}&limit=1",
+                        url_encode(&json!({"uid": uid}).to_string())
+                    ))
+                    .is_ok_and(|rows| rows.as_array().is_some_and(|r| !r.is_empty()))
+            });
+            if !resolves {
                 fields.insert(c.clone(), Value::Null);
             }
         }
     }
     out
+}
+
+fn url_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 /// Write a record's file where it belongs, moving it when its slug changed. True when it landed.
@@ -663,9 +761,17 @@ fn write_record(c: &Collection, current: Option<&Path>, record: &Value, report: 
         return false;
     }
     report.written(&target);
-    if let Some(old) = current.filter(|old| *old != target.as_path())
-        && std::fs::remove_file(old).is_ok()
-    {
+    if let Some(old) = current.filter(|old| *old != target.as_path()) {
+        // Two files with one uid would make the next run read either: don't call this landed.
+        if let Err(e) = std::fs::remove_file(old) {
+            report.fail(format!(
+                "{}: moved to {} but couldn't remove the old file: {e}",
+                report.rel(old),
+                report.rel(&target)
+            ));
+            report.written(&target);
+            return false;
+        }
         report.written(old);
     }
     true
@@ -738,4 +844,30 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         return Ok(());
     }
     Err(format!("no synced record has uid {uid}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn records_page_entries_must_be_well_formed() {
+        let digest = format!("sha256:{}", "0".repeat(64));
+        let live = json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": null}, "digest": digest, "trashed": false});
+        assert!(matches!(entry(&live), Ok((_, Remote::Live(_)))));
+        assert!(matches!(
+            entry(&json!({"uid": "zr_00000000000000000000", "record": null, "digest": null, "trashed": true})),
+            Ok((_, Remote::Gone))
+        ));
+        for bad in [
+            json!({}),
+            json!({"trashed": false}),
+            json!({"record": {"uid": "nope", "fields": {}, "body": null}, "digest": digest, "trashed": false}),
+            json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": null}, "digest": "sha256:x", "trashed": false}),
+            json!({"record": {"uid": "zr_00000000000000000000", "fields": [], "body": null}, "digest": digest, "trashed": false}),
+            json!({"uid": "", "trashed": true}),
+        ] {
+            assert!(entry(&bad).is_err(), "{bad}");
+        }
+    }
 }

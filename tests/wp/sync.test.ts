@@ -356,6 +356,16 @@ test("zero sync against WordPress", async (t) => {
     assert.deepEqual([row().summary, row().level], ["Edited in WordPress", "advanced"]);
     assert.match(readFileSync(file, "utf8"), /summary: Edited in WordPress\nlevel: advanced\n/);
 
+    // Both edit the body, in different paragraphs: the site merges the lines and both edits survive.
+    const blocks = row().body.replace("First paragraph.", "First paragraph, edited in WordPress.");
+    const edited = await http("POST", `${core}/zero_guides/${created.id}`, { as: "editor", body: { content: blocks } });
+    assert.equal(edited.status, 200, JSON.stringify(edited.json));
+    writeFileSync(file, readFileSync(file, "utf8").replace("## A new heading", "## A new heading, from the file"));
+    const bodies = sync();
+    assert.equal(bodies.status, 0, bodies.stdout + bodies.stderr);
+    assert.match(row().body, /First paragraph, edited in WordPress\.[\s\S]*A new heading, from the file/);
+    assert.match(readFileSync(file, "utf8"), /First paragraph, edited in WordPress\.[\s\S]*## A new heading, from the file/);
+
     // Both change the title: a conflict file, and neither side is touched.
     const titled = await http("POST", `${core}/zero_guides/${created.id}`, { as: "editor", body: { title: "Title from WordPress" } });
     assert.equal(titled.status, 200);

@@ -104,8 +104,10 @@ fn block_body(out: &mut String, indent: usize, s: &str) {
 /// indentation), no carriage returns or tabs at line starts, and text before the trailing newlines.
 fn block_safe(s: &str) -> bool {
     let content = s.trim_end_matches('\n');
+    // The first non-blank line sets the block's indentation, so it can't start with a space.
+    let first = content.split('\n').find(|l| !l.is_empty());
     !content.is_empty()
-        && !content.starts_with([' ', '\t'])
+        && first.is_some_and(|l| !l.starts_with([' ', '\t']))
         && !s.contains('\r')
         && !content.split('\n').any(|l| l.starts_with('\t'))
         // A last line of only spaces would read back as a trailing blank line.

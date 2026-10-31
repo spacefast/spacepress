@@ -36,6 +36,7 @@ const teams = collection("teams", {
   id: id(),
   name: text().notNull(),
   leadId: integer().references((): any => players.id, { onDelete: "set null" }),
+  ownerId: integer().notNull().references(() => people.id),
 }, { editor: false, sync: "content/teams/*.json", access: { read: "anyone" } });
 const players = collection("players", {
   id: id(),
@@ -225,6 +226,11 @@ fn syncs_files_and_records_both_ways_against_a_standalone_app() {
 
     // First run: the file gets a uid and is pushed; the site's record becomes a file; one commit
     // holding only what sync wrote.
+    let ignore = read(&project, ".gitignore");
+    assert!(
+        ignore.contains(".zero/*\n!.zero/sync-base.json\n"),
+        "zero build ignores .zero except the bases:\n{ignore}"
+    );
     std::fs::write(project.join("unrelated.txt"), "not sync's").unwrap();
     let first = sync(&project, &site, &[]);
     assert_eq!(
@@ -539,9 +545,13 @@ fn records_that_reference_each_other_are_created_in_one_run() {
         std::fs::create_dir_all(project.join(dir)).unwrap();
     }
     let (team, player) = ("zr_aaaaaaaaaaaaaaaaaaa1", "zr_aaaaaaaaaaaaaaaaaaa2");
+    // A required reference to a record already on the site must survive the identity-only first push.
+    let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
+    assert_eq!(s, 201, "{owner}");
+    let owner = owner["data"]["uid"].as_str().unwrap().to_string();
     std::fs::write(
         project.join("content/teams/t.json"),
-        format!(r#"{{"uid": "{team}", "name": "Reds", "leadId": "{player}"}}"#),
+        format!(r#"{{"uid": "{team}", "name": "Reds", "leadId": "{player}", "ownerId": "{owner}"}}"#),
     )
     .unwrap();
     std::fs::write(
@@ -552,6 +562,10 @@ fn records_that_reference_each_other_are_created_in_one_run() {
     let out = sync(&project, &site, &["--only", "teams,players"]);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
     let teams = site.rows("teams");
+    assert_eq!(
+        teams[0]["ownerId"],
+        site.rows("people").iter().find(|p| p["uid"] == owner.as_str()).unwrap()["id"]
+    );
     let players = site.rows("players");
     assert_eq!(
         (teams[0]["leadId"].clone(), players[0]["teamId"].clone()),
@@ -597,5 +611,57 @@ fn access_refusals_exit_4_and_an_unreadable_directory_deletes_nothing() {
         1,
         "the record survives an unreadable directory"
     );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_deferred_push_keeps_what_the_merge_took_from_the_site() {
+    let (project, site) = setup();
+    for dir in ["content/teams", "content/players"] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
+    assert_eq!(s, 201);
+    let owner = owner["data"]["uid"].as_str().unwrap().to_string();
+    let team = "zr_bbbbbbbbbbbbbbbbbbb1";
+    std::fs::write(
+        project.join("content/teams/t.json"),
+        format!(r#"{{"uid": "{team}", "name": "Blues", "leadId": null, "ownerId": "{owner}"}}"#),
+    )
+    .unwrap();
+    assert_eq!(
+        sync(&project, &site, &["--only", "teams,players"]).status.code(),
+        Some(0)
+    );
+    // The site renames the team; the file points it at a player that only exists in the files so far.
+    let id = site.rows("teams")[0]["id"].as_i64().unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/teams/{id}"),
+        Some(serde_json::json!({"name": "Renamed on the site"})),
+    );
+    assert_eq!(s, 200);
+    let player = "zr_bbbbbbbbbbbbbbbbbbb2";
+    // Without a slug, the CLI names the file by its uid.
+    let team_file = project.join(format!("content/teams/{team}.json"));
+    let t = std::fs::read_to_string(&team_file).unwrap();
+    std::fs::write(
+        &team_file,
+        t.replace(r#""leadId": null"#, &format!(r#""leadId": "{player}""#)),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/players/p.json"),
+        format!(r#"{{"uid": "{player}", "name": "Ana", "teamId": "{team}"}}"#),
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "teams,players"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let row = site.rows("teams").into_iter().find(|r| r["id"] == id).unwrap();
+    assert_eq!(
+        row["name"], "Renamed on the site",
+        "the site's rename survives the deferred push: {row}"
+    );
+    assert_eq!(row["leadId"], site.rows("players")[0]["id"]);
     let _ = std::fs::remove_dir_all(&project);
 }

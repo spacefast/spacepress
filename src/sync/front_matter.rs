@@ -557,7 +557,7 @@ mod tests {
             "maps": [{"a": 1, "b": {"c": [true]}}, {}], "emptyList": [], "emptyMap": {}, "deep": {"x": {"y": null}},
             "quoted key: x": 1,
             "keepsTwo": "x\n\n", "keepsThree": "x\n\n\n", "spacesLine": "a\n  \nb\n", "lastSpaces": "a\n  ",
-            "huge": 1e20, "bigger": 1.5e300, "maxInt": 9223372036854775807i64, "minInt": -9223372036854775808i64
+            "leadingBlank": "\n  code\n  more\n", "blankThenText": "\n\nx\n", "huge": 1e20, "bigger": 1.5e300, "maxInt": 9223372036854775807i64, "minInt": -9223372036854775808i64
         });
         let rendered = yaml_out::markdown("zr_00000000000000000000", fields.as_object().unwrap(), None);
         let doc = parse_document(&rendered).unwrap_or_else(|e| panic!("line {}: {}\n{rendered}", e.line, e.message));

@@ -154,10 +154,7 @@ pub fn run(args: &[String]) -> ExitCode {
     };
     let mut commit = None;
     if result.is_ok() && !check && flags.commit && !report.written.is_empty() {
-        let mut paths = report.written.clone();
-        if git::ignore_build_output(&project) == Ok(true) {
-            paths.push(project.join(".gitignore"));
-        }
+        let paths = report.written.clone();
         let message = format!(
             "zero sync: {} applied, {} conflicts",
             report.applied,

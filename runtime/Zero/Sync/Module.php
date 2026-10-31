@@ -42,7 +42,15 @@ final class Module
     /** Rows written outside the API pipeline (wp-admin, core REST) get their uid here. */
     public static function onWritten(string $op, string $collection, array $row, ?array $previous): void
     {
-        if ($op !== 'delete' && ($row['uid'] ?? null) === null && (db()->schema()->collection($collection)['uid'] ?? false)) {
+        if ($op === 'delete' || !(db()->schema()->collection($collection)['uid'] ?? false)) {
+            return;
+        }
+        // A beforeUpdate hook can still change the patch after onWrite; the stored row is the last word,
+        // and throwing here rolls the write back.
+        if (($previous['uid'] ?? null) !== null && ($row['uid'] ?? null) !== $previous['uid']) {
+            throw HttpError::invalidInput('uid is immutable', '/uid');
+        }
+        if (($row['uid'] ?? null) === null) {
             self::ensureUids($collection, [$row]);
         }
     }

@@ -10,6 +10,7 @@ use Zero\Extensions;
 use Zero\HttpError;
 use Zero\Js;
 use Zero\Response;
+use Zero\Schema;
 use Zero\Viewer;
 
 use function Zero\db;
@@ -138,7 +139,7 @@ final class Routes
             Trash::restore($trashed);
             $current = self::current($collection, $uid, $viewer);
         } elseif ($current === null) {
-            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($spec, ['uid' => $uid] + $data), "create $collection rows");
             if ($expect !== 'absent') {
                 return self::stale($spec, $viewer, null, "$collection $uid is not on the site");
             }
@@ -285,6 +286,21 @@ final class Routes
         if (is_array($rule) && Module::find($collection, ['where' => ['AND' => [[$pk => $id], $rule]], 'limit' => 1]) === []) {
             throw HttpError::notFound("No such $collection row");
         }
+    }
+
+    /** A create's values as the pipeline's create rule sees them: column defaults and the default status filled. */
+    private static function createData(array $spec, array $data): array
+    {
+        foreach ($spec['columns'] as $name => $col) {
+            if (!array_key_exists($name, $data) && isset($col['default'])) {
+                $data[$name] = Schema::generate($col['default'], $col['type']);
+            }
+        }
+        if (($spec['drafts'] ?? false) && !array_key_exists('status', $data)) {
+            $data['status'] = 'published';
+        }
+
+        return $data;
     }
 
     /** @param list<HttpError> $missing */

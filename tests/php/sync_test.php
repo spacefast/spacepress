@@ -30,8 +30,8 @@ $schema = [
         ],
         'notes' => [
             'primaryKey' => 'id', 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
-            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['role' => 'author'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
-            'hooks' => ['beforeCreate' => 'notes__beforeCreate'],
+            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
+            'hooks' => ['beforeCreate' => 'notes__beforeCreate', 'beforeUpdate' => 'notes__beforeUpdate'],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'title' => ['type' => 'text', 'notNull' => true],
@@ -52,6 +52,11 @@ $functions = <<<'PHP'
     <?php
     declare(strict_types=1);
     namespace ZeroApp;
+    // Authors and up create; while the test flag is set, only published rows (status comes from its default).
+    function notes__create($ctx) {
+        $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx['user']['role'] ?? ''] ?? 0;
+        return $rank >= 1 && (empty($GLOBALS['zeroCreateNeedsPublished']) || ($ctx['data']['status'] ?? null) === 'published');
+    }
     // Editors may update every note; authors only notes credited to a person with their name (a filter).
     function notes__update($ctx) {
         return match ($ctx['user']['role'] ?? null) {
@@ -62,6 +67,8 @@ $functions = <<<'PHP'
     }
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
+    // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
+    function notes__beforeUpdate($patch, $existing) { return ($patch['title'] ?? null) === 'steal uid' ? $patch + ['uid' => 'zr_99999999999999999999'] : $patch; }
     PHP;
 $migration = <<<'SQL'
     CREATE TABLE "people" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "name" text NOT NULL, "uid" text);
@@ -143,6 +150,9 @@ foreach (glob(dirname(__DIR__) . '/fixtures/canon/*.json') as $file) {
 $ada = $db->insert('people', ['name' => 'Ada'], true)[0];
 check('uid minted on insert', preg_match('/^zr_[0-9a-f]{20}$/D', $ada['uid']) === 1, $ada);
 isProblem('uid is immutable', req('PATCH', "/people/{$ada['id']}", ['uid' => 'zr_00000000000000000000']), 422, 'invalid_input', '/uid');
+$hooked = $db->insert('notes', ['title' => 'Hooked'], true)[0];
+problem('a hook cannot change a uid either', fn () => $db->update('notes', ['title' => 'steal uid'], ['id' => $hooked['id']]), 422, 'invalid_input', '/uid');
+eq('and the row keeps its uid and title', [$db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['uid'], $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']], [$hooked['uid'], 'Hooked']);
 $given = $db->insert('people', ['name' => 'Grace', 'uid' => 'zr_11111111111111111111'], true)[0];
 eq('a writer may supply the uid', $given['uid'], 'zr_11111111111111111111');
 isProblem('uid is unique', req('POST', '/people', ['name' => 'Copy', 'uid' => 'zr_11111111111111111111']), 409, 'unique_violation', '/uid');
@@ -226,6 +236,12 @@ isProblem('collections without sync have no sync route', req('GET', '/sync/peopl
 // Writes are authorized row by row through the pipeline: an author may create and may update rows
 // their filter matches, but a stale write discloses nothing to a caller who can't pull.
 $au = $db->insert('people', ['name' => 'au'], true)[0];
+// A create rule reading defaulted values sees them on sync as on an ordinary create.
+$GLOBALS['zeroCreateNeedsPublished'] = true;
+$plain = req('POST', '/notes', ['title' => 'Plain', 'slug' => 'plain-create'], as: 'au');
+[$s] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_12121212121212121212', 'fields' => ['title' => 'Synced', 'slug' => 'synced-create'], 'body' => null], 'expect' => 'absent'], as: 'au');
+eq('a create rule sees defaults on sync as on an ordinary create', [$plain[0], $s], [201, 201]);
+unset($GLOBALS['zeroCreateNeedsPublished']);
 $own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slug' => 'mine', 'meta' => null, 'authorId' => $au['uid'], 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'au');
 eq('the create rule authorizes a new uid', [$s, $mine['status']], [201, 'applied']);

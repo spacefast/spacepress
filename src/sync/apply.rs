@@ -189,6 +189,14 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
             None if !check => {
                 let uid = uid_mint();
                 let text = render(c, &uid, &front, body.as_deref());
+                // Never write over an edit (or recreate a deletion) made since the file was read.
+                if !unchanged(&path, Some(&bytes)) {
+                    report.fail(format!(
+                        "{rel}: changed while zero sync ran; left as it is, run zero sync again"
+                    ));
+                    clean = false;
+                    continue;
+                }
                 if let Err(e) = write_atomic(&path, text.as_bytes()) {
                     report.fail(format!("{rel}: {e}"));
                     clean = false;
@@ -553,9 +561,11 @@ fn collection(
                         record: f.item.record.clone(),
                         expect: d.expect.clone(),
                     },
-                    None => Action::TrashRemote {
+                    // An unreadable file is skipped, never read as a deletion (§5.4 step 2).
+                    None if clean => Action::TrashRemote {
                         expect: d.expect.clone(),
                     },
+                    None => Action::Skip("its file can't be read; the record waits for it".into()),
                 },
                 _ => plan::plan(
                     file.map(|f| &f.item),
@@ -676,8 +686,11 @@ fn perform(
                         .unwrap_or_else(|| record.clone());
                     let digest = answer["digest"].as_str().unwrap_or_default().to_string();
                     // The file already holds the stored record unless the server reshaped it or its slug moved it.
-                    let in_place =
-                        file.is_some_and(|f| f.item.digest == digest && f.path == c.dir.join(file_name(c, &stored)));
+                    let in_place = file.is_some_and(|f| {
+                        f.item.digest == digest
+                            && f.path == c.dir.join(file_name(c, &stored))
+                            && unchanged(&f.path, Some(&f.bytes))
+                    });
                     let landed = in_place || write_record(c, file, &stored, report);
                     if landed {
                         bases.set(site, name, uid, &digest, &stored);
@@ -888,7 +901,9 @@ fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: 
 /// `zero sync resolve <uid>`: the edited conflict file becomes the record on both sides.
 pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) -> Result<(), String> {
     let path = project.join(".zero/conflicts").join(format!("{uid}.md"));
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", report.rel(&path)))?;
+    let raw = std::fs::read(&path).map_err(|e| format!("{}: {e}", report.rel(&path)))?;
+    let draft = bytes_digest(&raw);
+    let text = String::from_utf8(raw).map_err(|_| format!("{}: not UTF-8 text", report.rel(&path)))?;
     let (files_digest, site_digest) =
         conflict::digests(&text).ok_or("the conflict file's header is missing; rerun zero sync")?;
     let resolved = conflict::resolved(&text)?;
@@ -964,9 +979,16 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         if bases.save()? {
             report.written(bases.path());
         }
+        report.applied();
+        // The draft may have been edited while resolve ran: keep that edit rather than delete it.
+        if !unchanged(&path, Some(&draft)) {
+            return Err(format!(
+                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there",
+                report.rel(&path)
+            ));
+        }
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         report.written(&path);
-        report.applied();
         return Ok(());
     }
     Err(format!("no synced record has uid {uid}"))
@@ -975,6 +997,20 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_changed_since_it_was_read_is_not_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("n.md");
+        std::fs::write(&path, "read").unwrap();
+        let read = bytes_digest(b"read");
+        assert!(unchanged(&path, Some(&read)));
+        std::fs::write(&path, "edited").unwrap();
+        assert!(!unchanged(&path, Some(&read)), "an edit since the read");
+        std::fs::remove_file(&path).unwrap();
+        assert!(!unchanged(&path, Some(&read)), "a deletion since the read");
+        assert!(unchanged(&path, None), "still no file");
+    }
 
     #[test]
     fn records_page_entries_must_be_well_formed() {

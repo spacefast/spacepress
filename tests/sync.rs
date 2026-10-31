@@ -1471,6 +1471,188 @@ fn hidden_content_round_trips_through_conflicts_resolve_and_trash() {
     let out = sync(&project, &site, &["--only", "dossiers"]);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(data(&out)["conflicts"].as_array().unwrap().is_empty());
-    assert!(!project.join("content/dossiers/agreed.md").exists());
+    assert!(
+        !file.exists(),
+        "the unchanged bodyless file (its explicit slug kept it at secret.md) is deleted"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn an_unreadable_file_never_trashes_its_provisional_identity() {
+    let (project, site) = setup();
+    for dir in ["content/teams", "content/players"] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
+    assert_eq!(s, 201);
+    let owner = owner["data"]["uid"].as_str().unwrap().to_string();
+    let (team, player) = ("zr_cdcdcdcdcdcdcdcd0001", "zr_cdcdcdcdcdcdcdcd0002");
+    let team_file = project.join("content/teams/t.json");
+    std::fs::write(
+        &team_file,
+        format!(r#"{{"uid": "{team}", "name": "New", "leadId": "{player}", "ownerId": "{owner}"}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("content/players/p.json"),
+        format!(r#"{{"uid": "{player}", "name": "P", "teamId": "{team}"}}"#),
+    )
+    .unwrap();
+    // While the team's identity waits, its file becomes malformed: unreadable, not deleted.
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = team_file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/players",
+        move || std::fs::write(&path, "{ not json").unwrap(),
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "teams,players",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the unreadable file is reported: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        site.rows("teams").iter().any(|r| r["uid"] == team),
+        "its identity stays on the site"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
+    let (project, site) = setup();
+    // A plain (not normalized) push: the edit made while it is in flight is kept and reported.
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    let t = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, t.replace("level: null", "level: intro")).unwrap();
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes",
+        move || {
+            let t = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, t.replace("First.", "Typed during a plain push.")).unwrap();
+        },
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let base = std::fs::read_to_string(project.join(".zero/sync-base.json")).unwrap();
+    assert!(
+        !base.contains("\"intro\""),
+        "the base didn't move to the pushed record: {base}"
+    );
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("Typed during a plain push.")
+    );
+
+    // resolve: the conflict draft is edited while resolve's push is in flight. resolve applies the
+    // version it read, but keeps the newer draft instead of deleting it.
+    let t = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, t.replace("title: Note", "title: Local")).unwrap();
+    let id = site.rows("notes")[0]["id"].as_i64().unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Remote"})),
+    );
+    assert_eq!(s, 200);
+    let conflicted = sync(&project, &site, &["--only", "notes"]);
+    let uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
+    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    assert!(draft.exists(), "{}", String::from_utf8_lossy(&conflicted.stdout));
+    let conflict = std::fs::read_to_string(&draft).unwrap();
+    let header: String = conflict
+        .lines()
+        .take_while(|l| l.starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let theirs = conflict
+        .split("=======\n")
+        .nth(1)
+        .unwrap()
+        .split(">>>>>>>")
+        .next()
+        .unwrap();
+    std::fs::write(
+        &draft,
+        format!("{header}{}", theirs.replace("title: Remote", "title: Agreed")),
+    )
+    .unwrap();
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = draft.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes",
+        move || {
+            let t = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
+        },
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .args(["resolve", &uid])
+        .arg(&project)
+        .args(["--site", &proxy, "--token", &site.token, "--json"])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(&draft)
+            .unwrap()
+            .contains("Agreed, then reconsidered"),
+        "the newer draft is kept"
+    );
     let _ = std::fs::remove_dir_all(&project);
 }

@@ -232,10 +232,11 @@ final class FieldAccess
         if (!in_array($def['type'], self::STRUCTURED, true)) {
             return $value;
         }
-        // A container the viewer may not see, holding something it may not set: whatever happens inside
-        // it (unchanged children, list length, layouts) would be decided by hidden data, so any write to
-        // it is refused outright, decided by the rules alone.
-        if ($storedIn !== null && self::mayHideSelf($def, $viewer) && self::unwritable($op, ['access' => []] + $def, $viewer)) {
+        // A container the viewer may not see, holding something it may not read or set: whatever
+        // happens inside it (preserved children, unchanged items, list length, layouts) would be decided
+        // by hidden data, so any write to it is refused outright, decided by the rules alone.
+        if ($storedIn !== null && self::mayHideSelf($def, $viewer)
+            && (self::unwritable($op, ['access' => []] + $def, $viewer) || self::mayHide(['access' => []] + $def, $viewer))) {
             throw self::denied($viewer, $name, $ptr);
         }
         $resolved ??= self::resolveValue($op, $def, $value, $before, $merge, $viewer, $page);

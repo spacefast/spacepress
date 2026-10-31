@@ -151,6 +151,10 @@ $files = [
                         'locker' => ['type' => 'group', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
                             'pin' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
                         ]],
+                        'diary' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'label' => ['type' => 'text'],
+                            'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                        ]],
                         'entries' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
                             'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
                         ]],
@@ -359,6 +363,7 @@ $files = [
         	"seen" text,
         	"locker" text,
         	"entries" text,
+        	"diary" text,
         	"cleared" integer,
         	"meta" text,
         	"checks" text,
@@ -956,6 +961,10 @@ $faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$min
 $faProblem('emptying a hidden list that is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
 $db->update('profiles', ['entries' => [['v' => 'x']]], ['id' => $mine['id']]);
 $faProblem('… and one that is not', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
+// The same for a hidden list whose children are writable but include one hidden from the viewer.
+$db->update('profiles', ['diary' => [['label' => 'real', 'secret' => 's']]], ['id' => $mine['id']]);
+$faProblem('right guess of a label in a hidden list', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['diary' => [['label' => 'real']]]), 403, 'forbidden', '/diary');
+$faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['diary' => [['label' => 'nope']]]), 403, 'forbidden', '/diary');
 // Top-level rules see the incoming patch as sent, not a sibling group already merged with hidden values.
 $db->update('profiles', ['notes' => ['public' => 'p', 'flag' => false], 'cleared' => false], ['id' => $mine['id']]);
 $faProblem('a merged hidden value is not incoming data (group first)', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'n'], 'cleared' => true]), 403, 'forbidden', '/cleared');
@@ -997,6 +1006,6 @@ eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$m
 
 // /_schema reports per-column summaries (no function names).
 $described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
-eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
+eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'diary' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
 
 finish('db_test');

@@ -36,6 +36,7 @@ final class App
         'forbidden' => 'Forbidden',
         'payload_too_large' => 'Payload too large',
         'internal' => 'Internal error',
+        'unavailable' => 'Service unavailable',
     ];
 
     private function __construct(
@@ -500,7 +501,7 @@ final class App
         return match ($status) {
             400 => 'Bad request', 401 => 'Unauthorized', 403 => 'Forbidden', 404 => 'Not found',
             405 => 'Method not allowed', 409 => 'Conflict', 413 => 'Payload too large', 422 => 'Unprocessable content',
-            429 => 'Too many requests', 500 => 'Internal error', default => 'Error',
+            429 => 'Too many requests', 500 => 'Internal error', 503 => 'Service unavailable', default => 'Error',
         };
     }
 

@@ -16,6 +16,8 @@ use Zero\Schema;
 final class Plugin
 {
     public const MIN_WP = Platform::WORDPRESS;
+    /** What callers outside wp-admin's notices see while storage is behind; the detail is for admins. */
+    public const UNAVAILABLE = 'Storage is being upgraded; try again shortly';
     public const MIN_SCF = Platform::PLUGINS['secure-custom-fields']['version'];
     private const PRIMITIVE_CAPS = ['edit_%s', 'edit_others_%s', 'delete_%s', 'publish_%s', 'read_private_%s',
         'delete_private_%s', 'delete_published_%s', 'delete_others_%s', 'edit_private_%s', 'edit_published_%s'];
@@ -27,6 +29,8 @@ final class Plugin
     private ?App $app = null;
     private string $mainFile;
     private ?Connection $connection = null;
+    /** Why storage is behind this build (a failed or contended upgrade); Zero's REST refuses meanwhile. */
+    private ?string $unavailable = null;
     /** @var array<int, ?array> post id → row before an editor update (null = treat as create) */
     private array $before = [];
     /** @var array<int, array{string, array}> post id → [collection, row] captured before an editor delete */
@@ -51,11 +55,50 @@ final class Plugin
                 WpUserStore::fillDefaults($this->schema, $userId);
             }
         });
-        add_action('rest_api_init', fn () => Rest::register(fn () => $this->app()));
         IdentityBridge::hook($this->connection());
+        add_action('rest_api_init', fn () => $this->unavailable() === null
+            ? Rest::register(fn () => $this->app())
+            : Rest::unavailable(self::UNAVAILABLE));
+        // While storage is behind, Zero collections' posts can't be written by any path (core REST,
+        // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
+        // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
+        add_filter('wp_insert_post_empty_content', fn ($empty, $post) => $empty || ($this->unavailable() !== null && $this->touchesCollection($post)), PHP_INT_MAX, 2);
+        $refuseDelete = fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check;
+        add_filter('pre_delete_post', $refuseDelete, PHP_INT_MAX, 2);
+        add_filter('pre_trash_post', $refuseDelete, PHP_INT_MAX, 2);
+        // wp_untrash_post deletes the trash metadata before its update; refuse before that.
+        add_filter('pre_untrash_post', fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check, PHP_INT_MAX, 2);
+        add_filter('rest_pre_dispatch', [$this, 'refuseCoreWrites'], 10, 3);
+        // wp_delete_user deletes the user (and identity its credentials) whatever happens to their
+        // posts, so refuse deleting anyone who owns Zero posts before any of it starts.
+        add_action('delete_user', function (int $id): void {
+            if ($this->unavailable() !== null && $this->ownsCollectionPosts($id)) {
+                wp_die(esc_html(self::UNAVAILABLE), 'Zero', ['response' => 503, 'back_link' => true]);
+            }
+        }, PHP_INT_MIN);
+        // A scheduled Zero post that falls due while storage is behind publishes once it has caught
+        // up: put its cron event back a minute instead of letting core publish it now.
+        // Core's callback is unhooked for this one event and restored right after it, so other posts
+        // in the same cron run still publish.
+        add_action('publish_future_post', function (int $id): void {
+            if ($this->unavailable() !== null && $this->isCollectionType((string) get_post_type($id))) {
+                remove_action('publish_future_post', 'check_and_publish_future_post');
+                add_action('publish_future_post', static function (): void {
+                    add_action('publish_future_post', 'check_and_publish_future_post');
+                }, PHP_INT_MAX);
+                wp_schedule_single_event(time() + 60, 'publish_future_post', [$id]);
+            }
+        }, 0);
+        add_action('current_screen', function (\WP_Screen $screen): void {
+            if ($screen->base === 'post' && $this->unavailable() !== null && $this->isCollectionType((string) $screen->post_type)) {
+                wp_die(esc_html(self::UNAVAILABLE), 'Zero', ['response' => 503, 'back_link' => true]);
+            }
+        });
         Rest::boot();
         add_action('admin_menu', [$this, 'adminMenu'], 9);
-        add_action('admin_init', [$this, 'maybeMigrate']);
+        // A plugin updated by copying files in has no activation; the first request of any kind
+        // (REST, front end, cron, CLI, admin) applies its pending migrations before Zero serves it.
+        add_action('init', [$this, 'maybeMigrate'], 1);
 
         // Editor saves (wp-admin, core /wp/v2/<type>): hooks run after the post and its fields are saved.
         // Generated values are filled before core snapshots its revision (wp_after_insert_post, 9).
@@ -83,8 +126,17 @@ final class Plugin
         foreach ($assocArgs as $name => $value) {
             $args[] = '--' . $name . ($value === true ? '' : '=' . ($value === false ? 'false' : (string) $value));
         }
+        // (Runtime's `wp zero` dispatcher already refused everything but `migrate` while storage is behind.)
         if (($args[0] ?? '') === 'migrate') {
-            [$code, $out] = [0, \Zero\Js::jsonStringify(['data' => ['applied' => $this->migrator()->migrate()]])];
+            try {
+                $mark = $assocArgs['mark-applied'] ?? null;
+                if (is_string($mark)) {
+                    Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
+                }
+                [$code, $out] = [0, \Zero\Js::jsonStringify(['data' => ['applied' => $this->migrateLocked()]])];
+            } catch (\Throwable $e) {
+                [$code, $out] = [1, \Zero\Js::jsonStringify(['error' => \Zero\App::problem($e)])];
+            }
         } else {
             [$code, $out] = $this->app()->cli($args);
         }
@@ -92,6 +144,76 @@ final class Plugin
         if ($code !== 0) {
             \WP_CLI::halt($code);
         }
+    }
+
+    /** Null when storage matches this build; otherwise why Zero operations are refused for now. */
+    public function unavailable(): ?string
+    {
+        return Runtime::unavailable() ?? $this->unavailable;
+    }
+
+    /** rest_pre_dispatch: core /wp/v2 writes to a Zero collection get a 503 while storage is behind. */
+    public function refuseCoreWrites(mixed $result, \WP_REST_Server $server, \WP_REST_Request $request): mixed
+    {
+        if ($result !== null || $request->get_method() === 'GET' || $this->unavailable() === null) {
+            return $result;
+        }
+        foreach ($this->postBacked() as $spec) {
+            // WordPress matches routes case-insensitively, so this does too.
+            if (preg_match('#^/wp/v2/' . preg_quote($spec['wp']['postType'], '#') . '(/|$)#i', $request->get_route())) {
+                return new \WP_Error('zero_unavailable', self::UNAVAILABLE, ['status' => 503]);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * A write that touches a Zero collection: the incoming post is one (or a revision/autosave of one),
+     * or it updates a post that is one now (so changing its type can't move it out of the collection).
+     */
+    private function touchesCollection(array $post): bool
+    {
+        // The incoming post and, for an update, the post as stored: type and parent from both, so
+        // neither a new type nor a new parent can move a post or revision out of a collection.
+        $candidates = [[(string) ($post['post_type'] ?? ''), (int) ($post['post_parent'] ?? 0)]];
+        $stored = (int) ($post['ID'] ?? 0) > 0 ? get_post((int) $post['ID']) : null;
+        if ($stored instanceof \WP_Post) {
+            $candidates[] = [$stored->post_type, (int) $stored->post_parent];
+        }
+        foreach ($candidates as [$type, $parent]) {
+            if (in_array($type, ['revision'], true) && $parent > 0) {
+                $type = (string) get_post_type($parent);
+            }
+            if ($this->isCollectionType($type)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function ownsCollectionPosts(int $userId): bool
+    {
+        global $wpdb;
+        $types = array_map(static fn (array $spec): string => (string) $spec['wp']['postType'], $this->postBacked());
+        if ($types === []) {
+            return false;
+        }
+        $in = implode(', ', array_fill(0, count($types), '%s'));
+
+        return (bool) $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->posts} WHERE post_author = %d AND post_type IN ($in) LIMIT 1", $userId, ...$types));
+    }
+
+    private function isCollectionType(string $type): bool
+    {
+        foreach ($this->postBacked() as $spec) {
+            if ($spec['wp']['postType'] === $type) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function instance(): ?self
@@ -126,17 +248,14 @@ final class Plugin
         $migrator = $this->migrator();
         $bad = $migrator->nonInnoDb();
         if ($bad === []) {
-            $migrator->migrate();
+            $this->migrateLocked();
             $bad = $migrator->nonInnoDb();
         }
         if ($bad !== []) {
             deactivate_plugins(plugin_basename($this->mainFile));
             wp_die(esc_html('Zero needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad)), 'Zero', ['back_link' => true]);
         }
-        update_option($this->schemaOption(), $this->schemaHash(), false);
-        $this->grantCapabilities();
-        IdentityBridge::provision();
-        $this->backfillMembers();
+        // migrateLocked() already granted capabilities, provisioned identity and backfilled members.
     }
 
     /** Existing WordPress users are members too (§6.2): give them the member columns' defaults. */
@@ -153,13 +272,38 @@ final class Plugin
 
     public function maybeMigrate(): void
     {
-        if (get_option($this->schemaOption()) !== $this->schemaHash()) {
-            $this->migrator()->migrate();
-            $this->grantCapabilities();
-            IdentityBridge::provision();
-            $this->backfillMembers();
-            update_option($this->schemaOption(), $this->schemaHash(), false);
+        if ($this->current()) {
+            return;
         }
+        // Concurrent first requests queue on one lock; whoever gets it after the holder sees the
+        // new hash. A failure or timeout leaves the hash stale, so the next request retries.
+        $this->unavailable = Migrator::upgrade($this->connection(), $this->schemaOption(), fn () => $this->current(true), fn () => $this->migrateNow());
+    }
+
+    /** `wp zero migrate` and activation: the same locked path as the first request. */
+    private function migrateLocked(): array
+    {
+        return Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrateNow());
+    }
+
+    private function migrateNow(): array
+    {
+        $applied = $this->migrator()->migrate();
+        $this->grantCapabilities();
+        IdentityBridge::provision();
+        $this->backfillMembers();
+        update_option($this->schemaOption(), $this->schemaHash(), false);
+
+        return $applied;
+    }
+
+    private function current(bool $fresh = false): bool
+    {
+        if ($fresh) {
+            wp_cache_delete($this->schemaOption(), 'options');
+        }
+
+        return get_option($this->schemaOption()) === $this->schemaHash();
     }
 
     private function migrator(): Migrator
@@ -254,7 +398,7 @@ final class Plugin
     public function capturePrevious(int $postId): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || $this->connection()->busy()) {
+        if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null) {
             return;
         }
         $post = get_post($postId);
@@ -266,7 +410,7 @@ final class Plugin
     public function afterEditorSave(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;
         }
         $previous = $this->editorPrevious($postId, $before);
@@ -278,7 +422,7 @@ final class Plugin
     public function beforeEditorDelete(int $postId, ?\WP_Post $post = null): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || $this->connection()->busy()) {
+        if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null) {
             return;
         }
         $db = $this->app()->db;
@@ -352,7 +496,7 @@ final class Plugin
     private function fillEditorDefaultsAt(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;
         }
         $created = $this->editorPrevious($postId, $before) === null;

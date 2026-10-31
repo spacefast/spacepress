@@ -33,6 +33,11 @@ final class Invoke
     {
         [$rule, $ruleOp, $what] = $op['rule'];
         $plugin = Runtime::plugin();
+        // While storage is behind, every ability answers the same 503 before any access check
+        // boots the app (call() repeats this for abilities whose check is deferred).
+        if ($plugin !== null && $plugin->unavailable() !== null) {
+            return new \WP_Error('zero_unavailable', \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
+        }
         if (($op['defer'] ?? false) || $plugin === null || self::object($input) === null) {
             return true;
         }
@@ -56,8 +61,8 @@ final class Invoke
     public static function call(array $op, mixed $input): mixed
     {
         $plugin = Runtime::plugin();
-        if ($plugin === null) {
-            return new \WP_Error('zero_unavailable', 'No Zero app is active', ['status' => 503]);
+        if ($plugin === null || $plugin->unavailable() !== null) {
+            return new \WP_Error('zero_unavailable', $plugin === null ? 'No Zero app is active' : \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
         try {
             $input = self::object($input) ?? throw HttpError::invalidInput('Input must be a JSON object', '');

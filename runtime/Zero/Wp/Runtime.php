@@ -10,6 +10,8 @@ final class Runtime
     private static ?Plugin $plugin = null;
     private static ?string $appFile = null;
     private static bool $booted = false;
+    /** Why the shared system tables are behind this runtime (failed or contended upgrade), else null. */
+    private static ?string $unavailable = null;
 
     public static function boot(string $runtimeFile): void
     {
@@ -22,15 +24,29 @@ final class Runtime
         }
         self::$booted = true;
         register_activation_hook($runtimeFile, [self::class, 'activate']);
-        add_action('admin_init', static function (): void {
-            if (get_option('zero_runtime_tables') !== self::tablesVersion() && Platform::problems() === []) {
-                self::activate();
+        // As with app migrations: a runtime updated by copying files in sets up its tables on the
+        // first request of any kind, once, under a lock.
+        add_action('init', static function (): void {
+            if (get_option('zero_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+                return;
             }
-        });
+            global $wpdb;
+            $current = static function (): bool {
+                wp_cache_delete('zero_runtime_tables', 'options');
+                return get_option('zero_runtime_tables') === self::tablesVersion();
+            };
+            self::$unavailable = Migrator::upgrade(new Connection($wpdb), 'zero_runtime_tables', $current, [self::class, 'applySystemTables']);
+        }, 1);
         if (defined('WP_CLI') && WP_CLI) {
             \WP_CLI::add_command('zero', static function (array $args, array $flags): void {
                 if (self::$plugin === null) {
                     \WP_CLI::error('No compatible Zero app is active.');
+                }
+                // While storage is behind, only `migrate` runs; every other command (legacy migration
+                // included) would write against tables that don't match the build.
+                if (($args[0] ?? '') !== 'migrate' && self::$plugin->unavailable() !== null) {
+                    \WP_CLI::line((string) \Zero\Js::jsonStringify(['error' => \Zero\App::problem(new \Zero\HttpError(503, 'unavailable', (string) self::$plugin->unavailable()))]));
+                    \WP_CLI::halt(1);
                 }
                 if (\Zero\Wp\Legacy\Module::handles($args)) {
                     $code = \Zero\Wp\Legacy\Module::wpCli(self::$plugin, $args, $flags);
@@ -50,9 +66,15 @@ final class Runtime
             wp_die(esc_html('Zero: ' . implode('; ', $problems)), 'Zero', ['back_link' => true]);
         }
         global $wpdb;
-        $connection = new Connection($wpdb);
+        Migrator::locked(new Connection($wpdb), 'zero_runtime_tables', [self::class, 'applySystemTables']);
+    }
+
+    /** Shared system tables (jobs, outbox, receipts, …): idempotent DDL, recorded by tablesVersion(). */
+    public static function applySystemTables(): void
+    {
+        global $wpdb;
         $schema = new \Zero\Schema(['version' => 3, 'runtime' => self::SERIES]);
-        \Zero\SystemTables::apply(CompositeStore::create($schema, $connection));
+        \Zero\SystemTables::apply(CompositeStore::create($schema, new Connection($wpdb)));
         // Features finish their own install here (private files write their deny rules and probe).
         do_action('zero_runtime_tables_installed');
         update_option('zero_runtime_tables', self::tablesVersion(), false);
@@ -94,6 +116,11 @@ final class Runtime
             self::notice($error->getMessage());
             return null;
         }
+    }
+
+    public static function unavailable(): ?string
+    {
+        return self::$unavailable;
     }
 
     public static function plugin(): ?Plugin

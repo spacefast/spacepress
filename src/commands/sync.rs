@@ -86,6 +86,9 @@ fn parse(args: &[String]) -> Result<Flags, String> {
     if positional.next().is_some() {
         return Err("too many arguments".into());
     }
+    if flags.check && matches!(flags.mode, Mode::Resolve(_)) {
+        return Err("resolve writes both sides; it has no --check (zero sync --check shows the conflict)".into());
+    }
     flags.site = flags
         .site
         .or_else(|| std::env::var("ZERO_SITE").ok().filter(|s| !s.is_empty()));

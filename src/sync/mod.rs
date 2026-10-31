@@ -16,6 +16,19 @@ pub mod yaml_out;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+/// A push waiting for a reference to land.
+#[derive(Clone)]
+pub struct Deferred {
+    pub collection: String,
+    pub uid: String,
+    /// The record the plan produced (merged, if it was).
+    pub record: serde_json::Value,
+    /// The site digest the record was planned against, or the one its identity push created.
+    pub expect: String,
+    /// The digest of the file it was planned from (None: no file); a change means plan again.
+    pub local: Option<String>,
+}
+
 /// What a run did, for the summary, the exit code and the commit.
 pub struct Report {
     project: PathBuf,
@@ -28,9 +41,10 @@ pub struct Report {
     pub notes: Vec<String>,
     /// A call was refused for lack of access (401/403): the run exits 4.
     pub denied: bool,
-    /// Pushes refused for a reference not on the site yet: (collection, uid, the planned record, the
-    /// digest it expects), sent again in a later pass.
-    pub deferred: Vec<(String, String, serde_json::Value, String)>,
+    /// Pushes refused for a reference not on the site yet, sent again in a later pass.
+    pub deferred: Vec<Deferred>,
+    /// Identities created this pass: progress even when no record completes.
+    pub identities: usize,
 }
 
 impl Report {
@@ -46,6 +60,7 @@ impl Report {
             notes: Vec::new(),
             denied: false,
             deferred: Vec::new(),
+            identities: 0,
         }
     }
 
@@ -79,8 +94,8 @@ impl Report {
         self.failures.push(what);
     }
 
-    pub fn defer(&mut self, collection: String, uid: String, record: serde_json::Value, expect: String) {
-        self.deferred.push((collection, uid, record, expect));
+    pub fn defer(&mut self, deferred: Deferred) {
+        self.deferred.push(deferred);
     }
 
     /// A failed site call; auth refusals also mark the run as denied.

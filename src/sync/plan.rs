@@ -163,8 +163,16 @@ fn both_changed(l: &Item, r: &Item, base: Option<&Item>, merged_body: Option<Res
     if !pointers.is_empty() {
         return Action::Conflict(pointers);
     }
+    let mut record = json!({"uid": l.record["uid"], "fields": merged, "body": merged_body});
+    // A record whose content this user can't read carries no body either way: never send one.
+    if r.record.get("body").is_none() {
+        record
+            .as_object_mut()
+            .expect("a record is an object")
+            .shift_remove("body");
+    }
     Action::Push {
-        record: json!({"uid": l.record["uid"], "fields": merged, "body": merged_body}),
+        record,
         expect: r.digest.clone(),
     }
 }

@@ -6,7 +6,7 @@ use crate::sync::client::{Client, Problem};
 use crate::sync::conflict::{self, Side};
 use crate::sync::front_matter;
 use crate::sync::plan::{self, Action, Item, Remote};
-use crate::sync::{Report, uid_mint, write_atomic, yaml_out};
+use crate::sync::{Deferred, Report, uid_mint, write_atomic, yaml_out};
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
@@ -331,7 +331,8 @@ fn entry(item: &Value) -> Result<(String, Remote), String> {
         .as_str()
         .filter(|d| digest_ok(d))
         .ok_or_else(|| format!("{uid} has no valid digest"))?;
-    let body_ok = record.get("body").is_some_and(|b| b.is_null() || b.is_string());
+    // `body` is absent when this user can't read the content (field access); present, it's text or null.
+    let body_ok = record.get("body").is_none_or(|b| b.is_null() || b.is_string());
     if !record["fields"].is_object() || !body_ok {
         return Err(format!("{uid} is not a record"));
     }
@@ -374,12 +375,12 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         if deferred.is_empty() {
             break;
         }
-        let waiting = deferred.len();
+        report.identities = 0;
         for c in &all {
-            let records: IndexMap<String, (Value, String)> = deferred
+            let records: IndexMap<String, Deferred> = deferred
                 .iter()
-                .filter(|(n, ..)| *n == c.name)
-                .map(|(_, u, r, e)| (u.clone(), (r.clone(), e.clone())))
+                .filter(|d| d.collection == c.name)
+                .map(|d| (d.uid.clone(), d.clone()))
                 .collect();
             if !records.is_empty() {
                 collection(
@@ -395,9 +396,19 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
                 )?;
             }
         }
-        if report.deferred.len() >= waiting {
-            for (name, uid, ..) in std::mem::take(&mut report.deferred) {
-                report.fail(format!("{name}/{uid}: references a record that isn't on the site and can't be created first; sync it, or make one of the references nullable"));
+        // Progress is anything the site gained this pass: a record completing, or an identity created
+        // (the next pass may need it). The same records waiting on the same state means nothing can move.
+        let state = |ds: &[Deferred]| {
+            let mut s: Vec<(String, String, String)> = ds
+                .iter()
+                .map(|d| (d.collection.clone(), d.uid.clone(), d.expect.clone()))
+                .collect();
+            s.sort();
+            s
+        };
+        if report.identities == 0 && state(&report.deferred) == state(&deferred) {
+            for d in std::mem::take(&mut report.deferred) {
+                report.fail(format!("{}/{}: references a record that isn't on the site and can't be created first; sync it, or make one of the references nullable", d.collection, d.uid));
             }
             break;
         }
@@ -422,7 +433,7 @@ fn collection(
     options: &Options,
     report: &mut Report,
     // A later pass: exactly these uids, each with the record planned earlier and the digest it expects.
-    only: Option<&IndexMap<String, (Value, String)>>,
+    only: Option<&IndexMap<String, Deferred>>,
 ) -> Result<(), String> {
     let (files, clean) = read_files(c, report, options.check);
     let mut remote = pull(client, c).map_err(|p| report.problem(&c.name, &p))?;
@@ -464,20 +475,40 @@ fn collection(
         }
     }
     for uid in &uids {
-        let file = files.get(uid);
-        let base = base_of(uid);
         let mut r = remote.shift_remove(uid).unwrap_or(Remote::Gone);
+        // The site sends no body for content this user can't read (field access). The file can't
+        // carry what it never received: compare and push without one, so the stored body is untouched.
+        let hidden_body = matches!(&r, Remote::Live(item) if item.record.get("body").is_none());
+        let bodiless;
+        let file = match files.get(uid) {
+            Some(f) if hidden_body && f.item.record.get("body").is_some() => {
+                let mut record = f.item.record.clone();
+                record
+                    .as_object_mut()
+                    .expect("a record is an object")
+                    .shift_remove("body");
+                bodiless = File {
+                    path: f.path.clone(),
+                    item: Item::new(record),
+                };
+                Some(&bodiless)
+            }
+            other => other,
+        };
+        let base = base_of(uid);
         let mut retried = false;
         loop {
             // A later pass sends the record the first pass planned (merged, if it was), expecting exactly the
             // state it was planned against (or its identity push created). If the site changed since, the
             // push is stale and the record is planned again against what is there now.
+            // ...unless the file changed while it waited: then the edit is planned like any other.
             let forced = (!retried)
                 .then(|| only.and_then(|o| o.get(uid)))
                 .flatten()
-                .map(|(record, expect)| Action::Push {
-                    record: record.clone(),
-                    expect: expect.clone(),
+                .filter(|d| d.local == file.map(|f| f.item.digest.clone()))
+                .map(|d| Action::Push {
+                    record: d.record.clone(),
+                    expect: d.expect.clone(),
                 });
             let action = forced.unwrap_or_else(|| {
                 plan::plan(
@@ -617,9 +648,16 @@ fn perform(
                         // When its own required references aren't there yet either, it is retried after others land.
                         if let Ok(digest) = identity_push(client, name, &record, &p) {
                             expect_next = digest;
+                            report.identities += 1;
                         }
                     }
-                    report.defer(name.clone(), uid.to_string(), record.clone(), expect_next);
+                    report.defer(Deferred {
+                        collection: name.clone(),
+                        uid: uid.to_string(),
+                        record: record.clone(),
+                        expect: expect_next,
+                        local: file.map(|f| f.item.digest.clone()),
+                    });
                 }
                 Err(p) => {
                     let message = report.problem(&format!("{name}/{uid}"), &p);
@@ -843,6 +881,12 @@ mod tests {
         let record = json!({"uid": "zr_00000000000000000000", "fields": {}, "body": null});
         let live = json!({"record": record, "digest": crate::sync::canon::digest(&record), "trashed": false});
         assert!(matches!(entry(&live), Ok((_, Remote::Live(_)))));
+        // No body key: content this user can't read (field access), still a live record.
+        let hidden = json!({"uid": "zr_00000000000000000000", "fields": {}});
+        assert!(matches!(
+            entry(&json!({"record": hidden, "digest": crate::sync::canon::digest(&hidden), "trashed": false})),
+            Ok((_, Remote::Live(_)))
+        ));
         assert!(matches!(
             entry(&json!({"uid": "zr_00000000000000000000", "record": null, "digest": null, "trashed": true})),
             Ok((_, Remote::Gone))
@@ -853,7 +897,7 @@ mod tests {
             json!({"record": {"uid": "nope", "fields": {}, "body": null}, "digest": digest, "trashed": false}),
             json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": null}, "digest": "sha256:x", "trashed": false}),
             json!({"record": {"uid": "zr_00000000000000000000", "fields": [], "body": null}, "digest": digest, "trashed": false}),
-            json!({"record": {"uid": "zr_00000000000000000000", "fields": {}}, "digest": crate::sync::canon::digest(&json!({"uid": "zr_00000000000000000000", "fields": {}})), "trashed": false}),
+            json!({"record": {"uid": "zr_00000000000000000000", "fields": {}, "body": 7}, "digest": crate::sync::canon::digest(&json!({"uid": "zr_00000000000000000000", "fields": {}, "body": 7})), "trashed": false}),
             json!({"record": record, "digest": digest, "trashed": false}),
             json!({"uid": "", "trashed": true}),
         ] {

@@ -208,12 +208,13 @@ final class FieldAccess
             return;
         }
         $page = [];
+        $incoming = $data; // every top-level rule sees the same incoming data, whatever the key order
         foreach ($provided as $name => $_) {
             $def = $columns[$name] ?? null;
-            if ($def === null || !array_key_exists($name, $data)) {
+            if ($def === null || !array_key_exists($name, $incoming)) {
                 continue; // consumed virtual input; unknown keys are rejected by the pipeline
             }
-            $data[$name] = self::guard($op, $def, (string) $name, $data[$name], $data, $existing, $viewer, $page, HttpError::seg($name));
+            $data[$name] = self::guard($op, $def, (string) $name, $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name));
         }
     }
 

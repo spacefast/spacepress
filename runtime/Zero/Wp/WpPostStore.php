@@ -74,6 +74,7 @@ final class WpPostStore implements Store
             $type = $def['type'];
             $system = $def['system'] ?? false;
             $refs[$col] = match (true) {
+                $system && in_array($col, ['locale', 'translations'], true) => Polylang::ref($col, $this->db->prefix(), $this->schema->locales()['all'] ?? []),
                 $col === $spec['primaryKey'] => new ColumnRef('{a}.ID', '', '', 'scalar'),
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
@@ -95,6 +96,10 @@ final class WpPostStore implements Store
                 in_array($type, ['group', 'repeater', 'blocks'], true) => new ColumnRef('NULL', $m($col), "NULLIF(NULLIF({j}.meta_value, ''), '0')", 'json'),
                 default => new ColumnRef($v, $m($col), $v, 'scalar'),
             };
+        }
+
+        if ($spec['localized'] ?? false) {
+            $refs['translationGroup'] = Polylang::ref('translationGroup', $this->db->prefix(), []); // the group lives in Polylang
         }
 
         return new Source(
@@ -222,6 +227,10 @@ final class WpPostStore implements Store
         $id = (int) $id;
         $this->db->touchPost($id);
         $this->writeMeta($spec, $id, $values);
+        if (isset($values['locale']) && ($spec['localized'] ?? false)) {
+            $group = json_decode((string) ($values['translations'] ?? '{}'), true) ?: [];
+            $this->db->core(fn () => Polylang::assign($this->db, $id, (string) $values['locale'], $group));
+        }
         clean_post_cache($id);
 
         return $id;
@@ -452,6 +461,9 @@ final class WpPostStore implements Store
             $system += array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? [], $keys);
         }
         $row = array_replace($row, array_intersect_key($system, $keys));
+        if ($spec['localized'] ?? false) { // a revision post has no language: its group is the parent's
+            $row['translations'] = Js::jsonStringify(Polylang::group($pk, $this->schema->locales()['all'] ?? []) ?: new \stdClass());
+        }
         $row[$spec['primaryKey']] = $pk;
         $at = $post instanceof \WP_Post && $post->post_date_gmt !== '0000-00-00 00:00:00' ? $post->post_date_gmt : $post?->post_date;
 
@@ -492,6 +504,9 @@ final class WpPostStore implements Store
         }
         if (($spec['slug'] ?? null) !== null) {
             $keys[$spec['slug']] = true;
+        }
+        if ($spec['localized'] ?? false) {
+            $keys['locale'] = true; // immutable per row, so a revision's locale is its parent's
         }
 
         return $keys;

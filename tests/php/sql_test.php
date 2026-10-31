@@ -232,4 +232,64 @@ $q = Sql::select($schema, $lite, 'notes', ['where' => ['title' => ['ilike' => 'o
 check('SQLite like uses zero_like with the ci flag', str_ends_with($q['sql'], 'WHERE zero_like(t0."title", ?, 1)'), $q['sql']);
 check('SQLite offset without limit', str_ends_with(Sql::select($schema, $lite, 'logs', ['offset' => 3])['sql'], ' LIMIT -1 OFFSET 3'));
 
+// ================================================================ locale rule (§7.3)
+
+// The locale rule compiles the same on every store: a plain `locale`/`translationGroup` column pair,
+// or the post-backed Polylang term subqueries (WpPostStore's Source). The fallback subquery is
+// uncorrelated and carries the viewer's read guards, so a hidden translation never hides a fallback.
+$locSchema = new Schema(['version' => 3, 'runtime' => '0.2', 'locales' => ['default' => 'en', 'all' => ['en', 'de']], 'collections' => [
+    'docs' => ['primaryKey' => 'id', 'localized' => true, 'columns' => [
+        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'title' => ['type' => 'text', 'localized' => true],
+        'status' => $columns['status'],
+        'locale' => ['type' => 'text', 'enum' => ['en', 'de'], 'notNull' => true, 'system' => true],
+        'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
+        'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
+    ]],
+]]);
+$byLocale = static fn (?string $fallback, int|string|null $groupOf = null) => ['where' => ['locale' => new \Zero\Locale\Filter('de', $fallback, $groupOf)]];
+$published = static fn (string $c): array => [['status' => 'published']];
+$plainDocs = new CompileOnlyStore($mysql, ['docs' => Source::plain($mysql, '`wp_zero_docs`', $locSchema->collection('docs')['columns'])]);
+$whereOf = static fn (array $q): string => substr($q['sql'], strrpos($q['sql'], ' FROM `wp_zero_docs` t0 WHERE ') + 30);
+$q = Sql::select($locSchema, $plainDocs, 'docs', $byLocale('en'), guardsFor: $published);
+eq('plain table: the locale, else the default row of a group with no readable de row', [$whereOf($q), $q['params']], [
+    "(t0.`locale` = ? OR (t0.`locale` = ? AND (t0.`translationGroup` IS NULL OR t0.`translationGroup` NOT IN (SELECT t1.`translationGroup` FROM `wp_zero_docs` t1 WHERE t1.`locale` = ? AND t1.`translationGroup` IS NOT NULL AND (t1.`status` = ?)))))",
+    ['de', 'en', 'de', 'published'],
+]);
+check('translations: one literal-only aggregate over the group, no parameters', str_contains($q['sql'],
+    "CASE WHEN t0.`locale` IS NULL THEN NULL ELSE COALESCE((SELECT JSON_OBJECTAGG(t2.`locale`, t2.`id`) FROM `wp_zero_docs` t2 WHERE t2.`translationGroup` = t0.`translationGroup` AND t2.`locale` IS NOT NULL), JSON_OBJECT(t0.`locale`, t0.`id`)) END AS `translations`"), $q['sql']);
+eq('without fallback: just the locale', $whereOf(Sql::select($locSchema, $plainDocs, 'docs', $byLocale(null))), 't0.`locale` = ?');
+$q = Sql::select($locSchema, $plainDocs, 'docs', $byLocale(null, 7));
+eq('pinned to one row\'s group (item read with ?locale=)', [$whereOf($q), $q['params']], [
+    "(t0.`id` = ? OR t0.`translationGroup` IN (SELECT t1.`translationGroup` FROM `wp_zero_docs` t1 WHERE t1.`id` = ? AND t1.`translationGroup` IS NOT NULL)) AND t0.`locale` = ?",
+    [7, 7, 'de'],
+]);
+
+$postDocs = new CompileOnlyStore($mysql, ['docs' => new Source('`wp_posts`', "{a}.post_type = 'zero_docs'", [
+    'id' => new ColumnRef('{a}.ID', '', '', 'scalar'),
+    'title' => new ColumnRef('{a}.post_title', '', '', 'scalar'),
+    'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' ELSE 'draft' END", '', '', 'scalar'),
+] + array_map(static fn (string $col) => \Zero\Wp\Polylang::ref($col, 'wp_', ['en', 'de']),
+    ['locale' => 'locale', 'translations' => 'translations', 'translationGroup' => 'translationGroup']))]);
+$q = Sql::select($locSchema, $postDocs, 'docs', $byLocale('en'));
+$lang = static fn (string $a) => "CASE (SELECT {$a}_pll_n.slug FROM `wp_term_relationships` {$a}_pll_r JOIN `wp_term_taxonomy` {$a}_pll_t ON {$a}_pll_t.term_taxonomy_id = {$a}_pll_r.term_taxonomy_id JOIN `wp_terms` {$a}_pll_n ON {$a}_pll_n.term_id = {$a}_pll_t.term_id WHERE {$a}_pll_r.object_id = {$a}.ID AND {$a}_pll_t.taxonomy = 'language' LIMIT 1) WHEN 'en' THEN 'en' WHEN 'de' THEN 'de' END";
+$group = static fn (string $a) => "(SELECT {$a}_pll_t.term_taxonomy_id FROM `wp_term_relationships` {$a}_pll_r JOIN `wp_term_taxonomy` {$a}_pll_t ON {$a}_pll_t.term_taxonomy_id = {$a}_pll_r.term_taxonomy_id WHERE {$a}_pll_r.object_id = {$a}.ID AND {$a}_pll_t.taxonomy = 'post_translations' LIMIT 1)";
+eq('post-backed: the same rule over Polylang\'s language and post_translations terms', substr($q['sql'], strrpos($q['sql'], ' FROM `wp_posts` t0 WHERE ') + 26),
+    "t0.post_type = 'zero_docs' AND ({$lang('t0')} = ? OR ({$lang('t0')} = ? AND ({$group('t0')} IS NULL OR {$group('t0')} NOT IN (SELECT {$group('t1')} FROM `wp_posts` t1 WHERE t1.post_type = 'zero_docs' AND {$lang('t1')} = ? AND {$group('t1')} IS NOT NULL))))");
+
+// Executed on SQLite: groups 1 (en+de), 2 (en only), 3 (en + a draft de), and a row from before the
+// collection was localized (no group).
+$locPdo = SqliteStore::connect(':memory:');
+$locLite = new SqliteStore($locPdo, $locSchema);
+$locPdo->exec('CREATE TABLE "docs" ("id" integer PRIMARY KEY, "title" text, "status" text, "locale" text, "translationGroup" text)');
+$locPdo->exec("INSERT INTO docs VALUES (1, 'One', 'published', 'en', 'g1'), (2, 'Eins', 'published', 'de', 'g1'), (3, 'Two', 'published', 'en', 'g2'), (4, 'Three', 'published', 'en', 'g3'), (5, 'Drei', 'draft', 'de', 'g3'), (6, 'Legacy', 'published', 'en', NULL)");
+$locRows = static fn (array $opts, ?Closure $guards = null) => array_map(
+    static fn ($r) => [$r['id'], json_decode((string) $r['translations'], true)],
+    $locLite->select('docs', Sql::select($locSchema, $locLite, 'docs', $opts + ['orderBy' => ['id' => 'asc']], guards: $guards === null ? [] : $guards('docs'), guardsFor: $guards)),
+);
+eq('SQLite: fallback per group, legacy rows fall back too, translations per row', $locRows($byLocale('en')),
+    [[2, ['en' => 1, 'de' => 2]], [3, ['en' => 3]], [5, ['en' => 4, 'de' => 5]], [6, ['en' => 6]]]);
+eq('SQLite: a guarded viewer falls back past a hidden translation', array_column($locRows($byLocale('en'), $published), 0), [2, 3, 4, 6]);
+eq('SQLite: pinned to a group', array_column($locRows($byLocale('en', 4)), 0), [5]);
+
 finish('sql_test');

@@ -11,6 +11,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "localized": false,
       "relations": {
         "posts": {
           "kind": "many",
@@ -29,6 +30,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "localized": false,
       "relations": {
         "author": {
           "kind": "one",
@@ -52,6 +54,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "localized": false,
       "relations": {
         "post": {
           "kind": "one",

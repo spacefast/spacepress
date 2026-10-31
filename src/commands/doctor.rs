@@ -264,10 +264,8 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
             }),
         );
         if let Some(expected) = manifest["locales"]["all"].as_array() {
-            let mut expected = expected.clone();
-            expected.sort_by_key(|locale| locale.as_str().unwrap_or("").to_string());
-            let mut actual = runtime["languages"].as_array().cloned().unwrap_or_default();
-            actual.sort_by_key(|locale| locale.as_str().unwrap_or("").to_string());
+            let expected = language_slugs(expected);
+            let actual = language_slugs(runtime["languages"].as_array().map(Vec::as_slice).unwrap_or_default());
             check(
                 checks,
                 "Polylang languages",
@@ -308,4 +306,21 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
         );
     }
     Ok(())
+}
+
+/// Locales as Polylang stores them: lowercase slugs (`pt-BR` → `pt-br`), sorted for comparison.
+fn language_slugs(list: &[Value]) -> Vec<String> {
+    let mut out: Vec<String> = list.iter().map(|l| l.as_str().unwrap_or("").to_lowercase()).collect();
+    out.sort();
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn regional_locales_match_polylang_slugs() {
+        let configured = [serde_json::json!("pt-BR"), serde_json::json!("en")];
+        let polylang = [serde_json::json!("en"), serde_json::json!("pt-br")];
+        assert_eq!(super::language_slugs(&configured), super::language_slugs(&polylang));
+    }
 }

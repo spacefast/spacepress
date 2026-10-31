@@ -212,7 +212,7 @@ fn names(schema: &Schema) -> IndexMap<String, String> {
     let mut out = IndexMap::new();
     for c in schema.collections.values() {
         let mut n = type_name(&c.key);
-        if n == "Media" || n == "User" || n == "PrivateFile" || out.values().any(|x| *x == n) {
+        if n == "Media" || n == "User" || n == "PrivateFile" || n == "Locale" || out.values().any(|x| *x == n) {
             n.push_str("Row");
         }
         out.insert(c.table.clone(), n);
@@ -280,7 +280,8 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s.push_str(
         "export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }\n",
     );
-    s.push_str("export type Status = \"draft\" | \"published\" | \"scheduled\";\n\n");
+    s.push_str("export type Status = \"draft\" | \"published\" | \"scheduled\";\n");
+    let _ = writeln!(s, "export type Locale = {};\n", locale_ts(schema));
 
     for c in schema.collections.values() {
         collection_types(&mut s, c, &names, schema);
@@ -347,6 +348,28 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s
 }
 
+/// The TS type of a collection's primary key (row ids in `translations` and `translationOf`).
+fn pk_ts(c: &Collection) -> String {
+    c.primary_key()
+        .map(|p| value_ts(p, false))
+        .unwrap_or_else(|| "number".into())
+}
+
+/// The configured locales as a TS union (`never` without `locales`).
+fn locale_ts(schema: &Schema) -> String {
+    let all: Vec<String> = schema
+        .locales
+        .as_ref()
+        .and_then(|l| l["all"].as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).map(lit).collect())
+        .unwrap_or_default();
+    if all.is_empty() {
+        "never".into()
+    } else {
+        all.join(" | ")
+    }
+}
+
 fn upper_first(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
@@ -364,18 +387,22 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     // Hidden columns (auth's passwordHash, ...) never cross the API, so no client type names them.
     let columns = || c.columns.values().filter(|col| !col.hidden);
     let row: Vec<String> = columns()
-        .map(|col| {
-            format!(
+        .map(|col| match col.name.as_str() {
+            // §7.3: locale → id of every row in the translation group.
+            "translations" if c.localized && col.system => {
+                format!("translations: Partial<Record<{}, {}>>", locale_ts(schema), pk_ts(c))
+            }
+            _ => format!(
                 "{}{}: {}",
                 key(&col.name),
                 if may_hide(col) { "?" } else { "" },
                 col_ts(col, false)
-            )
+            ),
         })
         .collect();
     let _ = writeln!(s, "export interface {n} {{ {} }}", row.join("; "));
     let mut insert: Vec<String> = columns()
-        .filter(|col| !col.auto_increment)
+        .filter(|col| !col.auto_increment && !col.derived)
         .map(|col| {
             // Slugs derive from their source when omitted.
             let opt = col.optional_on_insert() || col.ty == ColType::Slug && col.source.is_some();
@@ -391,9 +418,31 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         // Write-only: accepted on create/update, never returned.
         insert.push("password?: string".into());
     }
-    let _ = writeln!(s, "export interface {n}Insert {{ {} }}", insert.join("; "));
+    if c.localized {
+        // §7.3: a new row, or a translation joining another row's group. A translation copies every
+        // synced (non-localized) column from its group, so those may be omitted there.
+        insert.push("translationOf?: undefined".into());
+        let _ = writeln!(s, "export interface {n}Fields {{ {} }}", insert.join("; "));
+        let synced: Vec<String> = columns()
+            .filter(|col| !col.translated() && !col.system && !col.primary_key && Some(&col.name) != c.slug.as_ref())
+            .map(|col| lit(&col.name))
+            .collect();
+        let synced = if synced.is_empty() {
+            "never".to_string()
+        } else {
+            synced.join(" | ")
+        };
+        let _ = writeln!(
+            s,
+            "export type {n}Insert = {n}Fields | (Omit<{n}Fields, {synced} | \"translationOf\"> & Partial<Pick<{n}Fields, {synced}>> & {{ translationOf: {} }});",
+            pk_ts(c)
+        );
+    } else {
+        let _ = writeln!(s, "export interface {n}Insert {{ {} }}", insert.join("; "));
+    }
+    // `locale` is fixed per row and `translationOf` only applies on create, so neither is patchable.
     let mut patch: Vec<String> = columns()
-        .filter(|col| !col.auto_increment)
+        .filter(|col| !(col.auto_increment || col.derived || c.localized && col.system && col.name == "locale"))
         .map(|col| format!("{}?: {}", key(&col.name), col_ts(col, Mode::Patch)))
         .collect();
     if c.auth {
@@ -420,6 +469,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let _ = writeln!(s, "export interface {n}With {{ {} }}", with.join("; "));
 
     let mut filter: Vec<String> = columns()
+        .filter(|col| !col.derived)
         .map(|col| format!("{}?: {}", key(&col.name), filter_ts(col)))
         .collect();
     for r in c.relations.values() {
@@ -518,6 +568,7 @@ pub fn schema_ts(schema: &Schema) -> String {
             "primaryKey": c.primary_key().map(|p| p.name.clone()).unwrap_or_else(|| "id".into()),
             "drafts": c.drafts,
             "revisions": c.revisions,
+            "localized": c.localized,
             "relations": rels,
             "media": media,
             "mediaList": media_multiple,

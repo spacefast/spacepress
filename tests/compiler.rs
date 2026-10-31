@@ -490,6 +490,37 @@ fn php_case(app: &Path, case: &str, args: serde_json::Value) -> std::process::Ou
         .unwrap()
 }
 
+/// §7.3: the generated client types localized collections; translation ids follow the primary key.
+#[test]
+fn localized_generated_client_types() {
+    let tmp = std::env::temp_dir().join(format!("zero-locales-client-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/locales-client"), &tmp);
+    let out = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "generated client contract failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// §9.1 golden: `zero build examples/blog` emits a schema.php equal, as data, to the frozen
 /// fixture the runtime and the WP stores code against; `--target wp` emits the §4.9 plugin.
 #[test]
@@ -768,8 +799,6 @@ fn rejects_phase2_static_contracts() {
             "reject-env-captured",
             "env() values can't be stored inside captured data",
         ),
-        // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
-        ("reject-unlanded-localized", "not implemented until lane H"),
         ("reject-auth-duplicate", "at most one auth: true collection"),
         (
             "reject-auth-email",
@@ -1125,14 +1154,9 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
+    let mut snapshots = Vec::new();
     for target in ["standalone", "wp"] {
-        // The v3 golden renders every key, including features no runtime enforces yet (src/unlanded.rs).
-        let out = zero()
-            .env("ZERO_ALLOW_UNLANDED_FEATURES", "1")
-            .args(["build", "--target", target])
-            .arg(&tmp)
-            .output()
-            .unwrap();
+        let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let schema_file = if target == "wp" {
             tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php")
@@ -1155,7 +1179,25 @@ fn phase2_schema_and_closures_match_the_contract() {
                 .remove("translationGroup");
         }
         assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
+        snapshots.push(std::fs::read_to_string(tmp.join("zero/migrations/snapshot.json")).unwrap());
     }
+    // §7.3: the migration snapshot is shared by both targets, so switching targets must plan no
+    // migration (a WP build must not drop the SQLite translation-group column).
+    assert_eq!(
+        snapshots[0], snapshots[1],
+        "the migration snapshot depends on the build target"
+    );
+    assert!(
+        !tmp.join("zero/migrations/sqlite/0002_update.sql").exists(),
+        "switching targets planned a SQLite migration"
+    );
+    // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
+    let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
+    assert_eq!(
+        std::fs::read_to_string(&wpml).expect("localized post types ship wpml-config.xml"),
+        std::fs::read_to_string(root().join("tests/fixtures/phase2.wpml-config.xml")).unwrap(),
+        "wpml-config.xml drifted"
+    );
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args([
             "--strict",

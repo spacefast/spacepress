@@ -179,6 +179,7 @@ test("search and slug can't probe a column hidden from the viewer", async () => 
   zero("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }));
   const search = await http("GET", `${core}/zero_dossier?search=codeword-${run}`);
   assert.deepEqual([search.status, search.json.code], [403, "forbidden"]);
+  assert.equal((await http("GET", `${core}/zero_dossier?search=0&search_columns=post_content`)).status, 403, `"0" is a search too`);
   assert.equal((await http("GET", `${core}/zero_dossier?search=Dossier%20${run}&search_columns=post_title`)).json.length, 1, "a title search is fine");
   assert.equal((await http("GET", `${core}/zero_dossier?slug=dossier-${run}`)).status, 403);
   assert.equal((await http("GET", `${core}/zero_dossier?search=codeword-${run}`, { as: "admin" })).json.length, 1);
@@ -213,7 +214,7 @@ test("wp-admin's Custom Fields box can't write a Zero column", async () => {
 });
 
 test("the classic editor neither shows nor erases content hidden from the editor", async () => {
-  const id = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run}</p>` }))[0].id;
+  const id = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run} C:\\notes</p>` }))[0].id;
   const editor = await adminSession("editor");
   const page = await editor.get(`post.php?post=${id}&action=edit&classic-editor`);
   assert.equal(page.status, 200);
@@ -223,7 +224,11 @@ test("the classic editor neither shows nor erases content hidden from the editor
   const saved = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "" });
   assert.equal(saved.status, 302);
   const row = zero("find", "dossier", JSON.stringify({ where: { id } }))[0];
-  assert.deepEqual([row.title, row.body], [`Native ${run} retitled`, `<p>classified-${run}</p>`], "the blank control left the stored content alone");
+  assert.deepEqual([row.title, row.body], [`Native ${run} retitled`, `<p>classified-${run} C:\\notes</p>`], "the blank control left the stored content alone, byte for byte");
+  // A non-blank value for the hidden content is a write: refused the same, right guess or wrong.
+  const right = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: `<p>classified-${run} C:\\notes</p>` });
+  const wrong = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "<p>guess</p>" });
+  assert.deepEqual([right.status, wrong.status], [403, 403]);
 });
 
 test("wp-admin's list search doesn't read content hidden from the viewer", async () => {

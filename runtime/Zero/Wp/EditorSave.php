@@ -290,7 +290,9 @@ final class EditorSave
         }
         foreach (['post_title' => 'title', 'content' => 'content', 'post_name' => 'slug'] as $param => $designation) {
             $col = $spec[$designation] ?? null;
-            if ($col !== null && isset($_POST[$param]) && !CoreAccess::nativeHiddenFor($collection, $col)) {
+            // A hidden column's control is rendered blank and kept (CoreAccess::keepHidden); anything else
+            // posted for it is a write, refused like any other whatever its value.
+            if ($col !== null && isset($_POST[$param]) && !($_POST[$param] === '' && CoreAccess::nativeHiddenFor($collection, $col))) {
                 $data[$col] = wp_unslash($_POST[$param]);
             }
         }

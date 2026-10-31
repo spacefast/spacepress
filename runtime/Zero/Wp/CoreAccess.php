@@ -328,9 +328,9 @@ final class CoreAccess
         $hidden = static fn (?string $col): bool => $col !== null && FieldAccess::mayHide($spec['columns'][$col], $viewer);
         $columns = (array) ($request['search_columns'] ?? []);
         $probes = [
-            'search' => !empty($request['search']) && $hidden($spec['content'] ?? null)
+            'search' => self::given($request['search']) && $hidden($spec['content'] ?? null)
                 && ($columns === [] || array_intersect($columns, ['post_content', 'post_excerpt']) !== []),
-            'slug' => !empty($request['slug']) && $hidden($spec['slug'] ?? null),
+            'slug' => self::given($request['slug']) && $hidden($spec['slug'] ?? null),
             'orderby' => $request['orderby'] === 'slug' && $hidden($spec['slug'] ?? null),
         ];
         foreach ($probes as $param => $probe) {
@@ -340,6 +340,12 @@ final class CoreAccess
         }
 
         return null;
+    }
+
+    /** A query value that was supplied ("0" counts; PHP's empty() would drop it). */
+    private static function given(mixed $v): bool
+    {
+        return is_array($v) ? $v !== [] : $v !== null && $v !== '' && $v !== false;
     }
 
     private static function unset(array &$data, array $keys): void
@@ -484,7 +490,7 @@ final class CoreAccess
         foreach (['content' => 'post_content', 'slug' => 'post_name'] as $designation => $field) {
             $col = $spec[$designation] ?? null;
             if ($col !== null && self::nativeHiddenFor($collection, $col, $stored) && ($data[$field] ?? '') === '') {
-                $data[$field] = $designation === 'content' ? (string) ($stored[$col] ?? '') : (string) ($stored[$col] ?? '');
+                $data[$field] = wp_slash((string) ($stored[$col] ?? '')); // core unslashes wp_insert_post_data's result
             }
         }
 

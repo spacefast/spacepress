@@ -38,7 +38,7 @@ export const dossier = collection("dossier", {
   id: id(),
   title: text().notNull(),
   slug: slug({ source: "title" }).access({ read: "admin" }),
-  body: richText().access({ read: "admin" }),
+  body: richText().access({ read: "admin", update: "admin" }),
 }, { title: "title", content: "body", access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 // An update rule that needs the data: without it nothing; with it, only rows the viewer owns.

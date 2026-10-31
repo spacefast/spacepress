@@ -121,7 +121,7 @@ that should be a default or inferred, **U** = no real use.
 | F21 | D | `drafts` and `revisions` default to `editor`, and `drafts: false` with `editor: true` is rejected, so the only independent setting is `drafts: true` on a table (1 non-rejection use). | `src/extract.rs:659-667`. |
 | F22 | D | `agents` defaults `true` everywhere except jobs (`false`); 9 uses, all in tests. It is a WordPress-only MCP visibility flag that most users will never touch. | `src/extract.rs:709,2523`. |
 | F23 | D | `label` is title-cased from the table name; every explicit `label` in the examples equals the derived one except `"Site settings"`. | `title_case` (`src/schema.rs:526`). |
-| F24 | D | `.notNull().default(x)` is what every defaulted column in the repo writes: `boolean().notNull().default(false)` 10 times, `.notNull().default([])` 5 times, and no column has `.default()` without `.notNull()`. Today a default only fills an *absent* value; an explicit `null` is still accepted unless `.notNull()` is there too (`Db.php:429`). So the two words are not redundant, but the combination users always want is one word long. | `src/eval.rs:1907,1952`; `RequiredInsertKeys` (`index.d.ts:322`) makes a defaulted column optional on insert. |
+| F24 | D | `.notNull().default(x)` is what nearly every defaulted column in the repo writes: `boolean().notNull().default(false)` 10 times, `.notNull().default([])` 5 times. The exceptions are global fields and sub-fields (`text().default("Hello")` in `phase2-surface`), where NOT NULL would need the default anyway. Today a default only fills an *absent* value; an explicit `null` is still accepted unless `.notNull()` is there too (`Db.php:429`). So the two words are not redundant, but the combination users almost always want is two words long. | `src/eval.rs:1907,1952`; `RequiredInsertKeys` (`index.d.ts:322`) makes a defaulted column optional on insert. |
 | F25 | D | `unique()` text needs `.max(191)` or the build fails; the number is a MySQL constant the user has to know (22 uses). | `MAX_UNIQUE_TEXT` (`src/extract.rs:82`). |
 | F26 | D | `target` in the config duplicates `zero build --target`; 3 uses, all in fixtures. A config should be target-independent (the Admin design says the same of `admin`). | `src/extract.rs:169`. |
 | F27 | U | `api: { list, get, create, update, delete }`: zero uses in the repo. Access rules cover every combination but one: `api: { list: false, get: true }` (rows fetchable by id but not enumerable) has no access-rule spelling, and a disabled op answers 405 rather than 403 (`App.php:328`). | `src/extract.rs:854`. |
@@ -150,7 +150,7 @@ classes, no npm).
 | Feature toggles that inject known fields: `auth: true`, `upload: true`, `versions.drafts`. `true` means defaults, an object refines. | Payload | Zero's `auth: true` already does this; `drafts`/`revisions` fold into one content toggle. |
 | Title designated by a pointer (`displayField`, `useAsTitle`, `titleField`, `slugField`), with a documented inference fallback (a string field named `title`). | Contentful, Payload, EmDash, Keystatic, Sanity's default preview | Zero already infers `title`; the proposal widens the fallback and keeps the pointer. A pointer is checkable at build time; a per-field `isTitle` flag (Tina) needs a "one per collection" runtime rule. |
 | The reverse side of a relation is inferred from the forward side (`r.many.posts()` with no config, `join` fields). | Drizzle 1.0, Payload | The extractor's `pending_many` already does this; the proposal makes the forward side inferred from the FK too. |
-| Reference as a typed column that names its target: `v.id("users")`, `relationTo: "users"`, `fields.relationship({ collection })`, `to: [{ type: "author" }]`. | Convex, Payload, Keystatic, Sanity | A `ref(() => authors)` column gives the compiler the target collection at build time; `references(() => authors.id)` makes the user name the PK, which is always `id`. |
+| Reference as a typed column that names its target: `v.id("users")`, `relationTo: "users"`, `fields.relationship({ collection })`, `to: [{ type: "author" }]`. | Convex, Payload, Keystatic, Sanity | A `ref("authors")` column names the target by its registered key, as `v.id("users")` does; `references(() => authors.id)` makes the user name the PK, which is always `id`. |
 | Access functions return `boolean \| Where`; field access is boolean only. | Payload | Exactly Zero's model; keep. |
 | A role check available on the context (`currentUser.roles.find(...)`) and the role ladder as a comparison. | Sanity conditional fields, Zero's own runtime | `ctx.is("editor")` compiles to `roleRank` which already exists in PHP (`Access.php:53`). |
 | Validation stays a chainable builder (`required().min().max().regex()`, `.custom((value, ctx) => true \| "message")`). | Sanity `Rule`, Payload `validate` | Zero's `.min/.max/.pattern/.validate` already match; keep. |
@@ -209,9 +209,9 @@ email(), url()
 slug(opts?)          // { source?: column } — source defaults to the title
 richText()
 media(opts?)         // { accept?: string | string[], multiple?: true }   MIME patterns, default any
-file(bucket)         // the bucket value, not its name
+file("bucket")       // the bucket's key under defineConfig.files
 select(options, opts?)   // select(["a","b"]) | select(["a","b"], { multiple: true })
-ref(() => target, opts?) // { onDelete?: "cascade" | "restrict" | "set null" }
+ref("target", opts?) // the target's key under defineConfig.collections; { onDelete?: "cascade" | "restrict" | "set null" }
 user()               // the viewer's account id (§4.8)
 group({ ...fields }), repeater({ ...fields }), blocks({ layout: { ...fields } })
 ```
@@ -226,21 +226,32 @@ What changed and why:
   `blocks({ hero: {...}, quote: {...} })` reads as "these layouts".
 - **`json<T>()`** replaces `json().$type<T>()`. The evaluator already reads
   call type arguments for `$type` (`src/eval.rs:891`); the same `type_args`
-  on `json` is one line. `$type` stays for narrowing scalars (a branded id)
-  and is rejected on `json` so there is one spelling.
-- **`ref(() => authors)`** replaces `integer().references(() => authors.id, …)`
-  (F6). The column takes the type of the target's primary key (integer for
-  the automatic `id`, text for a `.primaryKey()` text key) and is an FK to
-  it; the compiler already resolves lazy arrows at extraction
-  (`call_closure_public`, `src/extract.rs:1269`). It also declares the
-  relation (§4.3). References to non-key columns (one fixture, `a.name`) go;
-  a `.references()` escape hatch is not kept.
+  on `json` is one line. `$type` is rejected on `json` so there is one
+  spelling; it stays on other columns with today's capability (object and
+  array shapes; the lowerer merges object intersections only,
+  `src/lower.rs:944`, so a scalar brand like `number & { __brand }` is not
+  compilable today and is not promised, see open question 8).
+- **`ref("authors")`** replaces `integer().references(() => authors.id, …)`
+  (F6). The argument is the target's key under `defineConfig.collections`,
+  the same name `db.query.authors`, `hooks` and webhook events use. The
+  column takes the type of the target's primary key (integer for the
+  automatic `id`, text for a `.primaryKey()` text key) and is an FK to it;
+  the extractor resolves the key after every collection is registered, the
+  way it resolves `hooks.<key>` today (`src/extract.rs:367`), so forward and
+  self references need no lazy arrow. It also declares the relation (§4.3).
+  References to non-key columns (one fixture, `a.name`) go; a
+  `.references()` escape hatch is not kept. In the types the key is checked
+  against the registered collections (`Register`, as `db.query.<key>` is
+  today) rather than against a value, which is what lets `collection()` drop
+  its name argument (§4.2): a collection's identity is its key, not its
+  column set.
 - **`media({ accept })`** takes MIME patterns like buckets do (F14); both
   accept one pattern or a list. `"image"` is not a value; the error for it
   suggests `"image/*"`.
-- **`file(bucket)`** takes the bucket value (F7, F15): the bucket is a
-  module-level constant like a collection, so the column can point at it and
-  the compiler checks the pointer the way it checks `ref` targets.
+- **`file("manuscripts")`** takes the bucket's key under
+  `defineConfig.files` (F7, F15), resolved and type-checked exactly like a
+  `ref` target. Today's `{ bucket: "name" }` object becomes the one string
+  it carries.
 - **`id()` goes** (F3, see §4.9.1). A collection gets `id` automatically.
   `.primaryKey()` stays for the rare text key (`code: text().primaryKey()`),
   which suppresses the automatic `id` (F29).
@@ -273,7 +284,11 @@ Modifiers (15, down from 18):
   `.default(x).nullable()` are the same column: nullable, default `x` when
   absent). `.default(null)` is a build error ("a null default is the
   absence of one; drop it or use `.nullable()`"). `.notNull().default(x)`
-  stays valid and means the same as `.default(x)`.
+  stays valid and means the same as `.default(x)`. The explicit words never
+  resolve by order: `.nullable()` together with `.notNull()` or
+  `.primaryKey()` in one chain is a build error at the second of them
+  ("`x` is both nullable and NOT NULL"). Only the *implied* NOT NULL from
+  `.default()` yields to `.nullable()`.
 - **`.unique()` on text implies `.max(191)`** (F25). The constant moves into
   the compiler; an explicit larger `.max()` on a unique text column is the
   build error it is today.
@@ -286,8 +301,8 @@ Modifiers (15, down from 18):
 collection({ ...columns }, {
   // identity
   label?: string,            // default: title case of the key
-  title?: column,            // default: see §4.9.2
-  body?: column,             // default: the first richText column; false = none
+  title?: column,            // default: a column named title (§4.9.2)
+  body?: column | false,     // default: the only richText column; several need a choice (§4.9.5)
   // behaviour
   content?: boolean,         // default: inferred (§4.9.3). true = posts + drafts + revisions on WP; false = a plain table
   drafts?: true,             // on a table: add status/publishedAt and scheduling anyway
@@ -297,7 +312,7 @@ collection({ ...columns }, {
   // rules
   access?: { read?, write?, create?, update?, delete? },
   hooks?: { beforeCreate?, afterCreate?, beforeUpdate?, afterUpdate?, beforeDelete?, afterDelete? },
-  relations?: { name: many(() => other, "column") },   // only when inference is ambiguous (§4.3)
+  relations?: { name: many("other", "column") },   // only when inference is ambiguous (§4.3)
   // rarely
   timestamps?: false,        // drop createdAt/updatedAt
   agents?: false,            // keep out of MCP (WordPress)
@@ -350,8 +365,8 @@ automatically; remove it, or use `.primaryKey()` on your own key").
 Relations are inferred from `ref()` columns. `defineRelations` goes.
 
 ```ts
-export const posts = collection({ authorId: ref(() => authors) });
-export const comments = collection({ postId: ref(() => posts).notNull() });
+export const posts = collection({ authorId: ref("authors") });
+export const comments = collection({ postId: ref("posts").notNull() });
 ```
 
 expands to
@@ -380,13 +395,19 @@ Rules, all enforced at build time:
   (`authors.posts`). When two `ref` columns of one collection point at the
   same target (`posts.authorId` and `posts.editorId` both to `authors`) no
   reverse is inferred, the build says so, and the target names them:
-  `relations: { written: many(() => posts, "authorId"), edited: many(() => posts, "editorId") }`.
-  `many(() => t, "col")` joins `t.col` to this collection's primary key; it
+  `relations: { written: many("posts", "authorId"), edited: many("posts", "editorId") }`.
+  `many("t", "col")` joins `t.col` to this collection's primary key; it
   is the only explicit relation form. Today's `r.many.x({ from, to })` with
   arbitrary endpoints (`r.posts.id` to `r.subscribers.postId`) is exactly
   this case, since `from` is always the primary key in every use; joins
   between two non-key columns go with non-key `references()` targets.
-- `optional` goes (F30): the FK's `.notNull()` decides it.
+- `optional` goes (F30): the FK's `.notNull()` decides it, with one more
+  condition the old flag ignored. A `one` loaded with `with: { author: true }`
+  on a `.notNull()` FK types as the row; loaded with a nested `where`, or
+  from a target whose read rule can hide rows, the runtime returns `null`
+  for an excluded target (`Db.php:292`), so the type is `Row | null`
+  whenever the `with` entry is an object. Today's `optional: false` claimed
+  non-null in both cases.
 - `onDelete` defaults to `"set null"` for nullable refs and `"restrict"` for
   NOT NULL refs, the same rule the importer already applies
   (`docs/config-migration.md`, "Original Zero reference"); `cascade` is
@@ -459,14 +480,14 @@ export const manuscripts = bucket({ accept: ["application/pdf"], maxBytes: 1_000
 defineConfig({
   files: { manuscripts },
   media: { sizes: { card: { width, height?, fit? } } },
-  locales: ["en", "de"],              // first = default; or { default, all, fallback }
+  locales: ["en", "de"],              // first = default
+  localeFallback?: false,             // default true: read the default-locale row when a locale has no translation
   webhooks: [{ url, secret, events }],
 })
 ```
 
-- `files(name, …)` becomes `bucket({…})` (F7, F15): the key names it, the
-  value is what `file(bucket)` points at, and "bucket" is what the docs already
-  call it.
+- `files(name, …)` becomes `bucket({…})` (F7, F15): the key names it,
+  `file("key")` points at it, and "bucket" is what the docs already call it.
 - `locales` as an array (F19): the first entry is the default. `fallback`
   (no use in the repo) moves to a sibling key, `localeFallback: false`, so
   there is one spelling of the list and `default` is never repeated.
@@ -542,11 +563,13 @@ No content collection needs `content: true`.
 Every collection gets `createdAt: timestamp().default(() => new Date())` and
 `updatedAt: timestamp().default(() => new Date()).onUpdate(() => new Date())`
 as system columns, readable, filterable, orderable, never writable through the
-API. On WordPress content collections they are `post_date_gmt` and
-`post_modified_gmt` (the store already reads `post_date_gmt`,
-`WpPostStore.php:85`). Off: `timestamps: false`. Error: a user column of
-either name. Localized rows keep per-row timestamps (today's rule for
-`$onUpdate` columns).
+API. On WordPress content collections `updatedAt` is `post_modified_gmt`;
+`createdAt` is ordinary post meta like any other column, because
+`post_date_gmt` is the publication time (it already backs `publishedAt`,
+`WpPostStore.php:84`, and moves when a post is scheduled or re-dated,
+`:282`). On tables both are columns. Off: `timestamps: false`. Error: a
+user column of either name. Localized rows keep per-row timestamps (today's
+rule for `$onUpdate` columns).
 
 #### 4.9.5 `body` and `slug`
 
@@ -584,7 +607,7 @@ any explicit `access`.
 
 ```ts
 defineConfig({
-  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, webhooks?, plugins?, admin?,
+  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, localeFallback?, webhooks?, plugins?, admin?,
 })
 ```
 
@@ -672,12 +695,12 @@ export const posts = collection({
   dek: text({ multiline: true }).max(240).localized(),
   cover: media({ accept: "image/*" }),
   // The author's draft manuscript: a private file, readable by the desk.
-  manuscript: file(manuscripts),
+  manuscript: file("manuscripts"),
   topics: select(["culture", "science", "tech"], { multiple: true }).default([]),
   featured: boolean().default(false),
   // The desk's private notes: staff read and write them; readers' rows never carry the column.
   deskNotes: text({ multiline: true }).max(2000).access({ read: "author", write: "editor" }),
-  authorId: ref(() => authors),
+  authorId: ref("authors"),
   // The editor shows metaTitle only while the post is indexable (SCF conditional logic).
   seo: group({ noindex: boolean().default(false), metaTitle: text().max(70).showIf({ noindex: false }) }),
   related: repeater({ label: text().notNull().max(80), href: url().notNull() }).max(6),
@@ -716,7 +739,7 @@ export const posts = collection({
 });
 
 export const comments = collection({
-  postId: ref(() => posts, { onDelete: "cascade" }).notNull(),
+  postId: ref("posts", { onDelete: "cascade" }).notNull(),
   name: text().notNull().max(60),
   body: text({ multiline: true }).notNull().min(1).max(2000),
   approved: boolean().default(false),
@@ -739,12 +762,12 @@ export const comments = collection({
 // Newsletter sign-ups from a post. Anyone may sign up; only admins see who did.
 export const subscribers = collection({
   email: email().notNull().unique(),
-  postId: ref(() => posts),
+  postId: ref("posts"),
 }, { access: { read: "admin", write: "admin", create: "anyone" } });
 
 // One row per post announcement the notifyReaders job sent; staff can see what went out.
 export const announcements = collection({
-  postId: ref(() => posts, { onDelete: "cascade" }).notNull(),
+  postId: ref("posts", { onDelete: "cascade" }).notNull(),
   recipients: integer().notNull(),
   attempt: integer().notNull(),
 }, { access: { read: "editor", write: "admin" } });
@@ -815,7 +838,7 @@ What the inference does here, collection by collection: `authors` (explicit
 are content collections; `members` is a table because `auth` forces it, as
 today; `comments`, `subscribers` and `announcements` are tables (no title,
 no rich text). `posts.slug` derives from `title`; `posts.body` is the body.
-Relations, from the four `ref()` columns: `posts.author`/`authors.posts`,
+Relations, from the four `ref("…")` columns: `posts.author`/`authors.posts`,
 `comments.post`/`posts.comments`, `subscribers.post`/`posts.subscribers`,
 `announcements.post`/`posts.announcements`. The old config's `comments.post`
 was `optional: false` by hand; here `.notNull()` says it. `authors.userId`
@@ -844,7 +867,7 @@ export const items = collection(named({
   lowStockAt: integer().default(LOW_STOCK),
   expiresOn: date(),
   opened: boolean().default(false),
-  locationId: ref(() => locations),
+  locationId: ref("locations"),
   tags: json<string[]>().default([]),
 }), {
   hooks: {
@@ -859,7 +882,7 @@ export const items = collection(named({
 });
 
 export const shoppingList = collection({
-  itemId: ref(() => items, { onDelete: "cascade" }).unique(),
+  itemId: ref("items", { onDelete: "cascade" }).unique(),
   name: text().notNull(),
   done: boolean().default(false),
   notifiedAt: timestamp(),                // set by the notifyLowStock job
@@ -948,22 +971,22 @@ work from. "Where" names the compiler site that changes.
 | `select({ options, multiple })` | `select(options, { multiple })` | `src/eval.rs:1385` |
 | `group({ fields })`, `repeater({ fields })`, `blocks({ layouts })` | `group({...})`, `repeater({...})`, `blocks({...})` | `src/eval.rs:1386` |
 | `json().$type<T>()` | `json<T>()` (`$type` stays for other kinds) | `src/eval.rs:888` |
-| `integer().references(() => t.id, opts)` | `ref(() => t, opts)` | `src/eval.rs:1976` |
+| `integer().references(() => t.id, opts)` | `ref("t", opts)` | `src/eval.rs:1976` |
 | `references(..., { onUpdate })` | none | `src/eval.rs:2002` |
 | `$default`, `$defaultFn`, `defaultNow` | `.default(() => …)` | `src/eval.rs:1952-1975` |
 | `$onUpdate`, `$onUpdateFn` | `.onUpdate(() => …)` | same |
 | `media({ accept: "image" \| "any" })` | `media({ accept: "image/*" \| string[] })`; default any | `src/eval.rs:1462` |
-| `file({ bucket: "name" })` | `file(bucketValue)` | `src/eval.rs:1454` |
+| `file({ bucket: "name" })` | `file("name")` | `src/eval.rs:1454` |
 | `files(name, opts)` | `bucket(opts)` | `src/extract.rs:2135` |
 | `global(name, fields, opts)` | `global(fields, opts)` | `src/extract.rs:975` |
-| `collection(name, cols, opts)` | `collection(cols, opts)` | `src/eval.rs:1181`, `src/extract.rs:210` |
-| `editor`, `drafts` | `content` (inferred) | `src/extract.rs:658` |
+| `collection(name, cols, opts)` | `collection(cols, opts)`; `Collection<TName, …>` and `Column.table` lose the name, identity is the registered key | `src/eval.rs:1181`, `src/extract.rs:210`, `index.d.ts:426,436` |
+| `editor` | `content` (inferred); `drafts: true` on a table stays | `src/extract.rs:658` |
 | `content: "col"` | `body: "col"` | `src/extract.rs:748` |
 | `uid: true` | inferred from sync and references | `src/extract.rs:705,2490` |
 | `api: {...}` | access rules | `src/extract.rs:854` |
 | `defineConfig.target` | CLI only | `src/extract.rs:169` |
 | `defineConfig.schema` | `defineConfig.collections` | `src/extract.rs:196` |
-| `defineConfig.relations`, `defineRelations`, `r.one`, `r.many`, `optional` | inferred from `ref()`; `relations: { x: many(() => t, "col") }` on the target for the ambiguous case | `src/extract.rs:1677` |
+| `defineConfig.relations`, `defineRelations`, `r.one`, `r.many`, `optional` | inferred from `ref()`; `relations: { x: many("t", "col") }` on the target for the ambiguous case | `src/extract.rs:1677` |
 | `defineConfig.hooks` | `collection(..., { hooks })` | `src/extract.rs:360` |
 | `locales: { default, all, fallback }` | `locales: ["en", "de"]`, `localeFallback: false` | `src/extract.rs:2072` |
 | auth collection access defaults (anyone/editor) | `self`/`self`/`admin`/`admin` | `src/extract.rs:817` |
@@ -1008,10 +1031,11 @@ than destroy: a collection whose key differs from its old name argument is a
 table rename (`shopping_list` to `shoppingList` in the pantry); `ref()`
 columns keep their names, so nothing there; the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
-names drops its own (the system ones take over the data on WordPress
-content collections, where they are `post_date_gmt`/`post_modified_gmt`
-already). The examples' committed migrations and snapshots are regenerated in
-the PRs that change them.
+names drops its own (on WordPress content collections `updatedAt` reads
+`post_modified_gmt`, which every post already has; `createdAt` is new meta,
+backfilled from `post_date_gmt` once by the migration). The examples'
+committed migrations and snapshots are regenerated in the PRs that change
+them.
 
 ### 6.5 What else moves
 
@@ -1037,8 +1061,8 @@ the PRs that change them.
   mechanical (a codemod over `id: id()`, `editor: false`, `references`,
   `$onUpdate`, `defineRelations`), and the rejection fixtures for removed
   options become rejection fixtures for their replacements (an `id` column,
-  `drafts`, `api`, `uid`, `target`, `schema` each get a "did you mean"
-  error naming the new form).
+  `editor`, `api`, `uid`, `target`, `schema` each get a "did you mean"
+  error naming the new form; `drafts: true` on a table keeps its fixture).
 - **In-flight lanes** (what this simplifies for them; none of their files
   are edited here):
   - K1 (guest pruning, localized relations): localized `many` loads under
@@ -1047,8 +1071,8 @@ the PRs that change them.
     builder parameter is what §4.9.1 needs to know whether a user key exists;
     keep it, and `RowId<TCols>` simplifies because `id` is always present
     unless `TPrimary` says otherwise.
-  - S (compiler aliasing): untouched; `ref()` is one more lazy arrow of the
-    kind `references()` already resolves.
+  - S (compiler aliasing): untouched; `ref("key")` is a string the
+    extractor resolves, not an expression the compiler sees.
   - PR #50 (`examples/site`, `docs/config-api.md`): merges first; this
     proposal's §5 is written against its versions.
   - README (`p3/readme`): the tagline example should use §5.2's first
@@ -1072,11 +1096,11 @@ the PRs that change them.
 3. `ref()` and inferred relations; `many()`; `defineRelations` removed;
    `zero.gen.ts`, client and `.d.ts` relation typing.
 4. Collections: no name argument, `content` inferred, `body`, `hooks` in
-   `collection()`, `uid` inferred, `api`/`drafts`/`editor`/`target` removed,
+   `collection()`, `uid` inferred, `api`/`editor`/`target` removed,
    `collections` key.
 5. Access: `write`, `ctx.is()`, `user()`, `"self"` on `user()` columns,
    `"owner"` renamed.
-6. Names: `global(fields)`, `bucket()`, `file(bucket)`, `locales` array,
+6. Names: `global(fields)`, `bucket()`, `file("key")`, `locales` array,
    optional `input`, `Row`/`Insert`.
 7. Importers and docs: `zero migrate config`, `docs/config-api.md`,
    `docs/migrating-from-zero.md`, `zero build --explain`.
@@ -1094,15 +1118,11 @@ this is the human-readable form.
 
 ### 7.3 Where the subset grows
 
-Four places, all small:
+Three places, all small:
 
 - **Type arguments on a builder call** (`json<string[]>()`): the IR already
   carries `type_args` on every call (`src/ir.rs:280`); the evaluator reads
   them only for `$type` (`src/eval.rs:888`). `json` reads them the same way.
-- **A lazy arrow as a builder argument** (`ref(() => posts)`): the same
-  `call_closure_public` the extractor uses for `references()`
-  (`src/extract.rs:1269`), called at extraction time after every collection
-  value exists, so forward and self references work as today.
 - **A method on `ctx`** (`ctx.is("editor")`): access and hook closures are
   compiled, not evaluated; `ctx` is typed in `src/compile.rs:390` and the
   method lowers to a PHP call. No evaluator change.
@@ -1112,8 +1132,10 @@ Four places, all small:
 
 Nothing else is new to the evaluator: `select(array, opts)` is positional
 arguments it already handles; `collection(cols, opts)` drops an argument;
-`hooks` inside the options object are closures found in an object literal,
-as `access` functions are today.
+`ref("key")` and `file("key")` are strings the extractor resolves once every
+collection and bucket is registered, as `hooks.<key>` is today; `hooks`
+inside the options object are closures found in an object literal, as
+`access` functions are today.
 
 ### 7.4 Risks
 
@@ -1174,9 +1196,13 @@ as `access` functions are today.
 7. **`revisions` on tables.** Two fixtures turn revisions on for a
    non-content table. If that is a real need, `revisions: true` stays as
    proposed; if not, `revisions` can fold into `content` entirely and go.
-8. **Keep `.$type<T>()` at all?** With `json<T>()` the only remaining use is
-   branding a scalar (`integer().$type<UserId>()`). Drizzle users know it; it
-   is type-only and costs nothing in the compiler. The proposal keeps it.
+8. **Keep `.$type<T>()` at all?** With `json<T>()` its remaining use is
+   narrowing a non-JSON column, and the one Drizzle users reach for, a
+   branded scalar (`integer().$type<UserId>()`), does not compile today: the
+   lowerer only merges object intersections (`src/lower.rs:944`). Keeping it
+   means either growing the subset to accept `number & { __brand }` as
+   `number`, or documenting that `$type` narrows object and array shapes only.
+   The proposal keeps it with the documented limit; dropping it is simpler.
 9. **Hooks beside the columns, or a separate `hooks(items, {...})` call?**
    Beside the columns is where Payload and Strapi put them and it removes a
    `defineConfig` key, but a named hook helper can't be typed from the

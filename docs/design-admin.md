@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 6, 2026-10-31; five review rounds folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 7, 2026-10-31; six review rounds folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -104,7 +104,7 @@ Three classes:
 | `routes/*` (33) | I + S | 338 | Screens; see §4 | per §4 |
 | `fields/*` (7) | I | 144 | Server-registered DataViews fields for users, media, themes, posts, plugins, terms, comments | keep media + post; drop the rest |
 | `lib/**` (26 PHP files) | I + S | 26 | Registration APIs, REST controllers, menu, i18n, legacy iframe bridge | per §4.3 |
-| `next-admin.php` | I + S | 1 | Plugin entry | rewritten as `zero-admin.php` |
+| the source's plugin entry file | I + S | 1 | Plugin entry | rewritten as `zero-admin.php` |
 | `types/*.d.ts` | I | 9 | Ambient typings for private APIs | keep what kept code needs |
 | Spacefast-side `native-*.ts`, the mu-plugin loader and the build script | S | 7 | Content-frame contract, transport, mu-plugin loader, monorepo build | **not imported** |
 
@@ -283,7 +283,7 @@ the manifest lists `zero-admin`, prints one row:
 | key absent | ✗ "zero-admin is not active" |
 | `permalinks: false` | ✗ "plain permalinks: /zero-admin/ needs a permalink structure" |
 | `rewrite: false` | ✗ "rewrite rule not persisted: deactivate and reactivate zero-admin" |
-| site WordPress minor above the floor | ✗ "WordPress <version> is newer than the tested 7.1.x" (§3.3 step 3b) |
+| site WordPress minor above the floor | ✗ "WordPress <version> is newer than the tested 7.1.x" (§3.3 step 3b). `doctor` has no warning level: any ✗ makes `ok` false and exits 1, and this row is no exception; a site on a newer WordPress is outside the admin's supported range until the floor moves |
 | all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and `auth_redirect()` fired), anything else is ✗ with the status |
 
 That probe is the only new request `doctor` makes; it reuses the HTTP client
@@ -416,7 +416,7 @@ Policy:
    policy.
 3b. **Supported range is the floor's minor series.** The plugin header says
    `Requires at least: 7.1` and `Tested up to: 7.1`; `zero doctor --site`
-   warns on a newer major/minor. The externals and private APIs are proven
+   fails (✗, exit 1) on a newer major/minor (§2.3). The externals and private APIs are proven
    only on the pinned floor (the harness image), so the honest claim is "runs
    on 7.1.x"; a newer WordPress is supported when the floor moves to it. This
    is tighter than the runtime's own floor policy on purpose: the runtime
@@ -430,12 +430,13 @@ A new `admin` job in `.github/workflows/ci.yml`, independent of the Rust and
 PHP jobs:
 
 ```
-setup-node 22 + pnpm (version from runtime/admin/apps/package.json packageManager)
-pnpm --dir runtime/admin/apps install --frozen-lockfile
-pnpm --dir runtime/admin/apps typecheck      # tsc -b
-pnpm --dir runtime/admin/apps test           # jest, @wordpress/jest-preset-default (the preset the source's tests were written for)
-pnpm --dir runtime/admin/apps build
-# from the repository root, so the pathspecs mean what they say:
+setup-node 22; corepack enable                    # pnpm version from runtime/admin/apps/package.json packageManager
+# working-directory: runtime/admin/apps
+pnpm install --frozen-lockfile
+pnpm typecheck                                    # tsc -b
+pnpm test                                         # jest, @wordpress/jest-preset-default (the preset the source's tests were written for)
+pnpm build
+# working-directory: repository root, so the pathspecs mean what they say:
 git diff --exit-code -- runtime/admin/build
 test -z "$(git ls-files --others --exclude-standard -- runtime/admin/build)"
 ```
@@ -465,15 +466,21 @@ workflow today has no pnpm (identity's screens are prebuilt and committed),
 so both the `admin` job and the `wp` job enable it the same way:
 
 ```
-corepack enable                                              # Node 22 ships Corepack; the version comes from packageManager
-pnpm --dir runtime/admin/apps install --frozen-lockfile     # Playwright is a devDependency of the workspace
-pnpm --dir runtime/admin/apps exec playwright install --with-deps chromium
+corepack enable                                   # Node 22 ships Corepack; the version comes from packageManager
+# working-directory: runtime/admin/apps  (Corepack reads packageManager from the cwd, not from --dir)
+pnpm install --frozen-lockfile                    # Playwright is a devDependency of the workspace
+pnpm exec playwright install --with-deps chromium
+# working-directory: repository root
 tests/wp/run.sh
 ```
 
-`runtime/admin/apps/package.json` carries `"packageManager": "pnpm@<exact>"`
-so Corepack resolves the pinned version with no separate setup action; the
-identity workspace already does the same.
+Every pnpm invocation in CI runs with `working-directory: runtime/admin/apps`
+(the `admin` job's install, typecheck, test and build steps too; only the
+`git diff` checks and `run.sh` run from the root). `pnpm --dir` is not used:
+Corepack resolves the pinned version from the current directory's
+`package.json`, so a root-level invocation would pick an unpinned fallback.
+`runtime/admin/apps/package.json` carries `"packageManager": "pnpm@<exact>"`,
+as the identity workspace already does.
 
 Inside `run.sh`, the step is one command run from the repository root:
 

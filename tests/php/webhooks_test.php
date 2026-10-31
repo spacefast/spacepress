@@ -24,26 +24,39 @@ ini_set('error_log', "$root/error.log");
 // $inbox/status (200 unless told otherwise).
 $inbox = "$root/receiver";
 @mkdir($inbox);
-// The receiver listens on a socket this process opened, so it accepts connections from the moment it
-// exists: no readiness poll. (php -S can't take an fd, so a tiny stream-server receiver runs instead.)
+// This process binds the listening socket and hands it to the receiver as its stdin, so the port is
+// never free between choosing and listening (no other process can take it) and there is no readiness
+// poll. Other clients can still connect: the receiver records only complete POST requests, answers
+// anything else 400, and gives up on a connection that stalls or closes early (5 s read timeout).
 file_put_contents("$inbox/serve.php", <<<'PHP'
     <?php
-    [, $dir, $port] = $argv;
-    $server = stream_socket_server("tcp://127.0.0.1:$port");
-    fwrite(STDOUT, "ready\n");
+    [, $dir] = $argv;
+    $server = STDIN;
     while ($conn = stream_socket_accept($server, -1)) {
+        stream_set_timeout($conn, 5);
         $head = '';
         while (!str_contains($head, "\r\n\r\n") && ($chunk = fread($conn, 1)) !== false && $chunk !== '') {
             $head .= $chunk;
         }
+        $lines = explode("\r\n", trim($head));
+        if (!str_contains($head, "\r\n\r\n") || !preg_match('#^POST \S+ HTTP/1\.[01]$#', $lines[0])) {
+            fwrite($conn, "HTTP/1.1 400 X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            fclose($conn);
+            continue;
+        }
         $headers = [];
-        foreach (array_slice(explode("\r\n", trim($head)), 1) as $line) {
+        foreach (array_slice($lines, 1) as $line) {
             [$k, $v] = array_map('trim', explode(':', $line, 2));
             $headers[strtolower($k)] = $v;
         }
         $body = '';
-        while (strlen($body) < (int) ($headers['content-length'] ?? 0)) {
-            $body .= fread($conn, (int) $headers['content-length'] - strlen($body));
+        $length = (int) ($headers['content-length'] ?? 0);
+        while (strlen($body) < $length && ($chunk = fread($conn, $length - strlen($body))) !== false && $chunk !== '') {
+            $body .= $chunk;
+        }
+        if (strlen($body) < $length) {
+            fclose($conn); // closed early or timed out: not a delivery
+            continue;
         }
         file_put_contents("$dir/log", json_encode(['headers' => $headers, 'body' => $body]) . "\n", FILE_APPEND);
         // Read the file itself: is_file() would answer from this long-lived process's stat cache
@@ -53,23 +66,14 @@ file_put_contents("$inbox/serve.php", <<<'PHP'
         fclose($conn);
     }
     PHP);
-$port = (static function (): int {
-    $s = stream_socket_server('tcp://127.0.0.1:0');
-    $port = (int) substr(strrchr(stream_socket_get_name($s, false), ':'), 1);
-    fclose($s);
-
-    return $port;
-})();
-$server = proc_open([PHP_BINARY, "$inbox/serve.php", $inbox, (string) $port], [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+$listener = stream_socket_server('tcp://127.0.0.1:0');
+$port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
+$server = proc_open([PHP_BINARY, "$inbox/serve.php", $inbox], [0 => $listener, 2 => ['file', '/dev/null', 'w']], $pipes);
+fclose($listener); // the receiver holds the socket now
 register_shutdown_function(static function () use ($server, $root): void {
     proc_terminate($server);
     exec('rm -rf ' . escapeshellarg($root));
 });
-stream_set_timeout($pipes[1], 10);
-if (trim((string) fgets($pipes[1])) !== 'ready') {
-    fwrite(STDERR, "the webhook receiver did not start\n");
-    exit(1);
-}
 $received = static fn (): array => is_file("$inbox/log") ? array_map(static fn ($l) => json_decode($l, true), file("$inbox/log", FILE_IGNORE_NEW_LINES)) : [];
 
 putenv("ZERO_HOOK_URL=http://127.0.0.1:$port/");
@@ -115,7 +119,8 @@ try {
 eq('a rolled-back write sends nothing', count($jobs()), 1);
 $job = $jobs()[0];
 eq('delivery succeeds against the receiver', Runner::run($job['id'])['state'] ?? null, 'done');
-[$hit] = $received() + [null];
+// Deliveries are matched by event id, never by position in the log.
+$hit = array_values(array_filter($received(), static fn ($r) => ($r['headers']['zero-event-id'] ?? '') === $job['id']))[0] ?? null;
 $event = json_decode($hit['body'] ?? 'null', true);
 check('the event body is { id, event, collection, at, data: { row } }', $event === ['id' => $job['id'], 'event' => 'comments.created', 'collection' => 'comments',
     'at' => '2026-02-01T00:00:00.000Z', 'data' => ['row' => $comment]], $event);

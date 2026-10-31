@@ -163,9 +163,14 @@ final class Files
             foreach ($spec['columns'] as $col => $def) {
                 if ($def['type'] === 'file' && ($def['bucket'] ?? null) === $name) {
                     $db->update((string) $c, [$col => null], [$col => $id]);
+                    // A before-update hook may have put the id back; never leave a dangling reference.
+                    if ($db->findFirst((string) $c, ['where' => [$col => $id]]) !== null) {
+                        throw new HttpError(409, 'reference_violation', "Rows in $c still reference file $id", HttpError::seg((string) $col));
+                    }
                 }
             }
         }
+        self::refuseNested($name, $id);
         self::storage()->delete($row);
 
         return self::present($row);
@@ -292,22 +297,77 @@ final class Files
         if ($op === 'delete') {
             return;
         }
-        $ids = [];
-        foreach (self::fileColumns($collection) as $col => $bucket) {
-            $v = $row[$col] ?? null;
-            if (is_int($v) && $v !== ($previous[$col] ?? null)) {
-                $ids[$col] = [$v, $bucket];
+        $refs = [];
+        foreach (db()->schema()->collection($collection)['columns'] as $col => $def) {
+            if (($row[$col] ?? null) !== ($previous[$col] ?? null)) {
+                array_push($refs, ...self::refs($def, $row[$col] ?? null, HttpError::seg((string) $col)));
             }
         }
-        if ($ids === []) {
+        if ($refs === []) {
             return;
         }
-        $rows = self::storage()->getMany(array_map(static fn ($x) => $x[0], array_values($ids)));
-        foreach ($ids as $col => [$id, $bucket]) {
+        $rows = self::storage()->getMany(array_map(static fn ($r) => $r[0], $refs));
+        foreach ($refs as [$id, $bucket, $ptr]) {
             if (($rows[$id]['bucket'] ?? null) !== $bucket) {
-                throw HttpError::invalidInput("No file $id in $bucket", HttpError::seg($col));
+                throw HttpError::invalidInput("No file $id in $bucket", $ptr);
             }
         }
+    }
+
+    /**
+     * Top-level file columns are nulled on delete; nested ones (group/repeater/blocks) are not, so
+     * a delete is refused while one still holds the id. (file() is rejected in globals at build time.)
+     */
+    private static function refuseNested(string $bucket, int $id): void
+    {
+        $db = db();
+        $holds = static function (array $defs, array $row) use ($bucket, $id): bool {
+            foreach ($defs as $col => $def) {
+                foreach (self::refs($def, $row[$col] ?? null, '') as [$ref, $refBucket]) {
+                    if ($ref === $id && $refBucket === $bucket) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        };
+        foreach ($db->schema()->collections() as $c => $spec) {
+            $nested = array_filter($spec['columns'], static fn (array $d) => in_array($d['type'], ['group', 'repeater', 'blocks'], true));
+            foreach ($nested === [] ? [] : $db->findMany((string) $c, ['columns' => array_fill_keys(array_keys($nested), true)]) as $row) {
+                if ($holds($nested, $row)) {
+                    throw new HttpError(409, 'reference_violation', "Rows in $c still reference file $id in a nested field; clear it first");
+                }
+            }
+        }
+    }
+
+    /**
+     * File ids in a decoded value, at any group/repeater/blocks depth.
+     *
+     * @return list<array{int, string, string}> [id, bucket, pointer]
+     */
+    private static function refs(array $def, mixed $v, string $ptr): array
+    {
+        if ($v === null) {
+            return [];
+        }
+        $fields = static function (array $fields, mixed $obj, string $base): array {
+            $out = [];
+            foreach ($fields as $name => $f) {
+                array_push($out, ...self::refs($f, is_array($obj) ? ($obj[$name] ?? null) : null, $base . HttpError::seg((string) $name)));
+            }
+
+            return $out;
+        };
+
+        return match ($def['type']) {
+            'file' => is_int($v) ? [[$v, (string) $def['bucket'], $ptr]] : [],
+            'group' => $fields($def['fields'] ?? [], $v, $ptr),
+            'repeater' => is_array($v) ? array_merge([], ...array_map(static fn ($item, $i) => $fields($def['fields'] ?? [], $item, "$ptr/$i"), $v, array_keys($v))) : [],
+            'blocks' => is_array($v) ? array_merge([], ...array_map(static fn ($item, $i) => $fields($def['layouts'][$item['layout'] ?? ''] ?? [], $item, "$ptr/$i"), $v, array_keys($v))) : [],
+            default => [],
+        };
     }
 
     /** Null when file $id is in $bucket, else the message editor validation shows. */

@@ -35,9 +35,10 @@ file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export([
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
             'title' => ['type' => 'text', 'notNull' => true],
             'deck' => ['type' => 'file', 'bucket' => 'decks'],
+            'extra' => ['type' => 'group', 'fields' => ['handout' => ['type' => 'file', 'bucket' => 'decks']]],
         ],
         'relations' => [],
-        'hooks' => ['beforeCreate' => 'talks__beforeCreate'],
+        'hooks' => ['beforeCreate' => 'talks__beforeCreate', 'beforeUpdate' => 'talks__beforeUpdate'],
         'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['role' => 'author'], 'delete' => ['role' => 'author']],
         'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
         'revisions' => false,
@@ -51,8 +52,13 @@ file_put_contents("$root/zero/app/functions.php", <<<'PHP'
     {
         return ($data['title'] ?? '') === 'hooked' ? ['deck' => 999999] + $data : $data;
     }
+    /** A hook that pins the deck: deleting the file must not leave it dangling. */
+    function talks__beforeUpdate(array $patch, array $existing): array
+    {
+        return $existing['title'] === 'pinned' ? ['deck' => $existing['deck']] + $patch : $patch;
+    }
     PHP);
-file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer);');
+file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer, "extra" text);');
 
 require "$root/zero/runtime/bootstrap.php";
 $app = App::boot($root);
@@ -106,6 +112,7 @@ isProblem('unknown bucket', $upload('nope', 'x', 'a.txt', 'alice'), 404, 'not_fo
 eq('201 row: sniffed mime, owner = uploader, no storage path', [$s, $deck['bucket'], $deck['filename'], $deck['mime'], $deck['size'], $deck['ownerId'], array_key_exists('path', $deck)],
     [201, 'decks', 'é.txt', 'text/plain', 10, $app->identity()->listUsers()[0]['id'], false]);
 check('bytes live under <root>/private, never under public/', count(glob("$root/private/decks/*")) === 1 && glob("$root/public/**/*") === []);
+$deckFile = glob("$root/private/decks/*")[0];
 
 // ================================================================ signed downloads
 
@@ -145,7 +152,7 @@ check('with: { deck: true } populates for a reader the bucket admits, with a wor
 eq('with: { deck: true } keeps the id for a reader the owner rule refuses', [call('GET', "/talks/{$talk['id']}", 'bob', query: ['with' => 'deck'])[1]['deck'], call('GET', '/talks', query: ['with' => 'deck'])[1][0]['deck']], [$deck['id'], $deck['id']]);
 
 isProblem('a before-hook cannot slip in an unchecked file id', call('POST', '/talks', 'alice', ['title' => 'hooked']), 422, 'invalid_input', '/deck');
-eq('… and the rejected create left no row', array_column(call('GET', '/talks')[1], 'title'), ['Q3']);
+eq('… and the rejected create left no row', in_array('hooked', array_column(call('GET', '/talks')[1], 'title'), true), false);
 
 // Rollback: an upload inside a failing transaction leaves no row and no bytes; a failed delete keeps both.
 $before = glob("$root/private/decks/*");
@@ -169,9 +176,24 @@ try {
 eq('a rolled-back delete keeps the row, the reference and the bytes', [call('GET', "/files/decks/{$deck['id']}", 'alice')[0], call('GET', "/talks/{$talk['id']}")[1]['deck'], glob("$root/private/decks/*")],
     [200, $deck['id'], $before]);
 
+// Nested file fields: checked on write; a delete is refused while one still holds the id.
+isProblem('a nested file field is checked too', call('POST', '/talks', 'alice', ['title' => 'n', 'extra' => ['handout' => 999999]]), 422, 'invalid_input', '/extra/handout');
+[, $handout] = $upload('decks', 'handout', 'h.txt', 'alice');
+$nested = call('POST', '/talks', 'alice', ['title' => 'n', 'extra' => ['handout' => $handout['id']]])[1];
+isProblem('deleting a file a nested field holds is refused', call('DELETE', "/files/decks/{$handout['id']}", 'alice'), 409, 'reference_violation');
+call('PATCH', "/talks/{$nested['id']}", 'alice', ['extra' => ['handout' => null]]);
+eq('cleared, it deletes', call('DELETE', "/files/decks/{$handout['id']}", 'alice')[0], 200);
+
+// A before-update hook that pins the reference cannot leave a dangling id: the delete rolls back.
+[, $pinnedDeck] = $upload('decks', 'pinned', 'p.txt', 'alice');
+$pinned = call('POST', '/talks', 'alice', ['title' => 'pinned', 'deck' => $pinnedDeck['id']])[1];
+isProblem('a hook that keeps the reference blocks the delete', call('DELETE', "/files/decks/{$pinnedDeck['id']}", 'alice'), 409, 'reference_violation', '/deck');
+eq('… and the file and reference are intact', [call('GET', "/files/decks/{$pinnedDeck['id']}", 'alice')[0], call('GET', "/talks/{$pinned['id']}")[1]['deck']], [200, $pinnedDeck['id']]);
+call('DELETE', "/talks/{$pinned['id']}", 'alice');
+
 [$s, $gone] = call('DELETE', "/files/decks/{$deck['id']}", 'alice');
 eq('owner deletes; referencing columns are nulled', [$s, $gone['id'], call('GET', "/talks/{$talk['id']}")[1]['deck']], [200, $deck['id'], null]);
-check('bytes removed after commit', glob("$root/private/decks/*") === []);
+check('bytes removed after commit', !is_file($deckFile));
 [, $fresh] = $upload('decks', 'temp', 't.txt', 'alice');
 call('DELETE', "/files/decks/{$fresh['id']}", 'alice');
 [$s] = $download($fresh['url']);

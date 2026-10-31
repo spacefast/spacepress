@@ -86,6 +86,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "zero.config.ts:2:15",
     );
     rejects("reject-reserved-name", "\"media\" is reserved", "zero.config.ts:2:15");
+    rejects("reject-reserved-files", "\"files\" is reserved", "zero.config.ts:2:15");
     rejects(
         "reject-post-type-length",
         "WordPress post types are limited to 20 characters and Zero prefixes `zero_`",
@@ -779,6 +780,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-size-name", "invalid media size name"),
         ("reject-files-size-count", "media supports at most 12 sizes"),
         ("reject-files-bucket", "unknown file bucket"),
+        (
+            "reject-files-global",
+            "file() columns belong to collections, not globals",
+        ),
         ("reject-files-owner", "owner is only allowed in files access"),
         ("reject-files-accept", "accept entries must be type/subtype or type/*"),
         (

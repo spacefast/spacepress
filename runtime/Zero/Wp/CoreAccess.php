@@ -41,14 +41,21 @@ final class CoreAccess
     public static function register(): void
     {
         add_filter('map_meta_cap', [self::class, 'mapMetaCap'], 10, 4);
-        add_filter('rest_prepare_revision', [self::class, 'prepareChild'], 10, 3);
-        add_filter('rest_prepare_autosave', [self::class, 'prepareChild'], 10, 3);
+        // Last: SCF adds its field links on the same filters at 10, registered later in the request.
+        add_filter('rest_prepare_revision', [self::class, 'prepareChild'], PHP_INT_MAX, 3);
+        add_filter('rest_prepare_autosave', [self::class, 'prepareChild'], PHP_INT_MAX, 3);
         add_action('pre_get_posts', [self::class, 'adminList']);
         add_filter('acf/prepare_field', [self::class, 'formField'], 20);
+        // Zero's columns are written through Zero, SCF or core REST's `acf`, never wp-admin's generic
+        // Custom Fields box or its AJAX: protected meta is refused on every one of those paths.
+        add_filter('is_protected_meta', [self::class, 'protectedMeta'], 10, 3);
+        add_filter('edit_post_content', [self::class, 'adminContent'], 10, 2);
+        add_filter('editable_slug', [self::class, 'adminSlug'], 10, 2);
         // Anything that can change what a rule covers or who is asking drops the cached answers: a post
         // or Zero row written, a user switched, a role or user meta changed.
         foreach (['clean_post_cache', 'set_current_user', 'set_user_role', 'add_user_role', 'remove_user_role',
-            'added_user_meta', 'updated_user_meta', 'deleted_user_meta', 'profile_update'] as $hook) {
+            'added_user_meta', 'updated_user_meta', 'deleted_user_meta', 'profile_update',
+            'added_post_meta', 'updated_post_meta', 'deleted_post_meta', 'set_object_terms'] as $hook) {
             add_action($hook, [self::class, 'flush']);
         }
         \Zero\Extensions::onWritten(static function (): void {
@@ -192,9 +199,7 @@ final class CoreAccess
             try {
                 self::$keys[$key] = Plugin::instance()?->db()->permittedKeys($collection, $op, $viewer);
             } catch (HttpError) {
-                // An update rule that is a function may allow once it sees the save's data (EditorSave).
-                $fn = isset(Access::collectionRules(self::schema()->collection($collection))[$op]['fn']);
-                self::$keys[$key] = $op === 'update' && $fn && $viewer->user !== null ? null : false;
+                self::$keys[$key] = false;
             }
         }
 
@@ -332,7 +337,10 @@ final class CoreAccess
         }
     }
 
-    /** wp-admin lists of a Zero post type hold only the rows the viewer's read rule covers. */
+    /**
+     * wp-admin lists of a Zero post type hold only the rows the viewer's read rule covers, and a
+     * search there only reads the title when the content may be hidden from the viewer.
+     */
     public static function adminList(\WP_Query $query): void
     {
         if (!is_admin() || wp_doing_ajax() || !$query->is_main_query() || !is_string($type = $query->get('post_type'))
@@ -344,6 +352,54 @@ final class CoreAccess
         if (is_array($keys) || $keys === false) {
             $query->set('post__in', $keys === false || $keys === [] ? [0] : array_map('intval', $keys));
         }
+        $content = self::schema()->collection($collection)['content'] ?? null;
+        if ($query->get('s') !== '' && $content !== null && ($viewer === null || FieldAccess::mayHide(self::schema()->collection($collection)['columns'][$content], $viewer))) {
+            $query->set('search_columns', ['post_title']);
+        }
+    }
+
+    /** @param mixed $type the meta type (post, user, ...) */
+    public static function protectedMeta(mixed $protected, mixed $key, mixed $type): mixed
+    {
+        if ($protected || $type !== 'post' || !is_string($key)) {
+            return $protected;
+        }
+        foreach (self::postBacked() as $spec) {
+            if (str_starts_with($key, $spec['wp']['metaPrefix']) || str_starts_with($key, '_' . $spec['wp']['metaPrefix'])) {
+                return true;
+            }
+        }
+
+        return $protected;
+    }
+
+    /** The classic editor's textarea: empty when the designated content is hidden from the viewer. */
+    public static function adminContent(mixed $content, mixed $postId): mixed
+    {
+        return self::nativeHidden((int) $postId, 'content') ? '' : $content;
+    }
+
+    /** The slug box and quick edit: empty when the designated slug is hidden from the viewer. */
+    public static function adminSlug(mixed $slug, mixed $post): mixed
+    {
+        return $post instanceof \WP_Post && self::nativeHidden($post->ID, 'slug') ? '' : $slug;
+    }
+
+    /** Is a core-column designation ('content', 'slug') of a Zero post hidden from this viewer? */
+    private static function nativeHidden(int $postId, string $designation): bool
+    {
+        $collection = $postId > 0 ? self::collection((string) get_post_type($postId)) : null;
+        $col = $collection === null ? null : (self::schema()->collection($collection)[$designation] ?? null);
+        if ($col === null) {
+            return false;
+        }
+        $viewer = self::viewer();
+        $stored = Plugin::instance()?->db()->editorRow($collection, $postId);
+        if ($viewer === null || $stored === null) {
+            return $viewer === null || FieldAccess::mayHide(self::schema()->collection($collection)['columns'][$col], $viewer);
+        }
+
+        return !array_key_exists($col, FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
     }
 
     // ================================================================ wp-admin form
@@ -380,6 +436,55 @@ final class CoreAccess
         $nested = in_array($def['type'], self::STRUCTURED, true) && FieldAccess::mayHide(['access' => []] + $def, $viewer);
 
         return !$nested && array_key_exists($col, $visible) && $visible[$col] === $stored[$col] ? $field : false;
+    }
+
+    // ================================================================ writes
+
+    /** Does the update rule, given $data, cover row $pk as it is now? (Admission only; EditorSave decides.) */
+    public static function mayUpdateWith(string $collection, int $pk, array $data, Viewer $viewer): bool
+    {
+        if (!isset(Access::collectionRules(self::schema()->collection($collection))['update']['fn'])) {
+            return false;
+        }
+
+        return Plugin::instance()?->db()->permits($collection, 'update', $pk, $viewer, $data) ?? false;
+    }
+
+    /**
+     * What a core REST create/update declares: [row data (JS form), supplied columns]. Every selector
+     * SCF honours counts (meta name, field key, `_acf_field_key_map`), so no alias escapes the
+     * authorization of the saved value (EditorSave).
+     *
+     * @return array{array<string, mixed>, list<string>}
+     */
+    public static function incoming(string $collection, \WP_REST_Request $request): array
+    {
+        $spec = self::schema()->collection($collection);
+        $data = [];
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+            if ($col !== null && $request->has_param($param)) {
+                $v = $request->get_param($param);
+                $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;
+            }
+        }
+        if (($spec['drafts'] ?? false) && is_string($status = $request->get_param('status'))) {
+            $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? 'draft';
+        }
+        $acf = $request->get_param('acf');
+        if (is_array($acf)) {
+            $map = is_array($acf['_acf_field_key_map'] ?? null) ? $acf['_acf_field_key_map'] : [];
+            foreach ($acf as $name => $value) {
+                $name = (string) ($map[$name] ?? $name);
+                foreach ($spec['columns'] as $col => $def) {
+                    $key = $spec['wp']['fieldKeyPrefix'] . $col;
+                    if ($name === $key || $name === $spec['wp']['metaPrefix'] . $col) {
+                        $data[(string) $col] = Scf::fromScf($def, $value, $key);
+                    }
+                }
+            }
+        }
+
+        return [$data, array_map('strval', array_keys($data))];
     }
 
     // ================================================================ helpers

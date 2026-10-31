@@ -83,9 +83,31 @@ final class PostsController extends \WP_REST_Posts_Controller
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
+    /**
+     * An update rule that is a function may refuse without data and allow this request's data: core's
+     * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
+     * update is admitted when the rule, given the data it declares, may allow it. EditorSave then
+     * authorizes what was actually saved, against the row as it was.
+     */
+    public function update_item_permissions_check($request)
+    {
+        $allowed = parent::update_item_permissions_check($request);
+        if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
+            return $allowed;
+        }
+        $post = $this->get_post($request['id']);
+        $viewer = CoreAccess::viewer();
+        if (!$post instanceof \WP_Post || $viewer === null || $viewer->user === null || !in_array($post->post_status, ['publish', 'future', 'draft', 'pending', 'private'], true)
+            || !CoreAccess::mayUpdateWith($this->collection, $post->ID, CoreAccess::incoming($this->collection, $request)[0], $viewer)) {
+            return $allowed;
+        }
+
+        return true;
+    }
+
     public function create_item($request)
     {
-        return EditorSave::rest($this->collection, null, fn () => parent::create_item($request));
+        return EditorSave::rest($this->collection, null, $request, fn () => parent::create_item($request));
     }
 
     public function update_item($request)
@@ -93,6 +115,6 @@ final class PostsController extends \WP_REST_Posts_Controller
         $post = $this->get_post($request['id']);
         $postId = $post instanceof \WP_Post ? $post->ID : null;
 
-        return EditorSave::rest($this->collection, $postId, fn () => parent::update_item($request));
+        return EditorSave::rest($this->collection, $postId, $request, fn () => parent::update_item($request));
     }
 }

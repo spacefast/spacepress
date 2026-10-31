@@ -27,15 +27,20 @@ use Zero\HttpError;
  */
 final class EditorSave
 {
-    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covered: ?bool, checked: bool, claimed: bool} */
+    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covers: list<string>, supplied: list<string>, checked: bool, saved: bool, claimed: bool} */
     private static ?array $open = null;
     /** Inserts of the open save's collection started inside it (hooks): their ids come first. */
     private static int $nested = 0;
+    private static bool $died = false;
 
     public static function register(): void
     {
         add_filter('wp_insert_post_data', [self::class, 'begin'], PHP_INT_MAX, 4);
         add_action('wp_insert_post', [self::class, 'inserted'], 0, 1);
+        add_action('wp_insert_post', [self::class, 'saved'], PHP_INT_MAX, 1);
+        foreach (['wp_die_handler', 'wp_die_ajax_handler', 'wp_die_json_handler', 'wp_die_jsonp_handler', 'wp_die_xmlrpc_handler', 'wp_die_xml_handler'] as $filter) {
+            add_filter($filter, [self::class, 'dying'], PHP_INT_MAX);
+        }
         // After fillEditorDefaults (8) and core's revision (9), before Zero's after hooks (20).
         add_action('wp_after_insert_post', [self::class, 'check'], 9, 1);
         add_action('wp_after_insert_post', [self::class, 'end'], PHP_INT_MAX, 1);
@@ -44,14 +49,33 @@ final class EditorSave
         register_shutdown_function([self::class, 'shutdown']);
     }
 
-    /** Core REST create/update: the controller owns the transaction and answers a refusal itself. */
-    public static function rest(string $collection, ?int $postId, callable $save): mixed
+    /**
+     * Core REST create/update: the controller's save runs as one save, authorized before it commits;
+     * a refusal answers with Zero's problem. Inside an already open transaction (a REST call made by
+     * code running in one) the save is still authorized, and a refusal aborts the enclosing work.
+     */
+    public static function rest(string $collection, ?int $postId, \WP_REST_Request $request, callable $save): mixed
     {
         $plugin = Plugin::instance() ?? throw new \LogicException('No Zero app');
+        [$declared, $supplied] = CoreAccess::incoming($collection, $request);
+        $before = $postId === null ? null : $plugin->db()->editorRow($collection, $postId);
         if ($plugin->connection()->inTransaction()) {
-            return $save();
+            $outer = self::$open;
+            self::$open = self::scope('rest', $collection, $postId, $before, $declared, $supplied) + ['nested' => true];
+            try {
+                $result = $save();
+                if (!is_wp_error($result) && !self::$open['checked']) {
+                    self::authorize();
+                }
+
+                return $result;
+            } catch (Refused $e) {
+                throw $e->error;
+            } finally {
+                self::$open = $outer;
+            }
         }
-        self::open('rest', $collection, $postId, $postId === null ? null : $plugin->db()->editorRow($collection, $postId));
+        self::open('rest', $collection, $postId, $before, $declared, $supplied);
         try {
             $result = $save();
             if (!is_wp_error($result) && !self::$open['checked']) {
@@ -88,7 +112,7 @@ final class EditorSave
             return $data;
         }
         $id = $update && is_array($postarr) ? (int) ($postarr['ID'] ?? 0) : 0;
-        self::open('core', $collection, $id > 0 ? $id : null, $id > 0 ? $plugin->db()->editorRow($collection, $id) : null);
+        self::open('core', $collection, $id > 0 ? $id : null, $id > 0 ? $plugin->db()->editorRow($collection, $id) : null, null, self::formSupplied($collection));
         if ($id > 0 && get_post_status($id) === 'trash') {
             self::$open['checked'] = true; // untrash: delete_post on the trashed post decided it
         }
@@ -109,6 +133,14 @@ final class EditorSave
             return;
         }
         self::$open['postId'] = (int) $postId;
+    }
+
+    /** wp_insert_post (last): core has written the post and its meta; a save left open is complete. */
+    public static function saved(mixed $postId): void
+    {
+        if (self::$open !== null && !self::busy() && self::$open['postId'] === (int) $postId) {
+            self::$open['saved'] = true;
+        }
     }
 
     public static function check(mixed $post): void
@@ -139,7 +171,7 @@ final class EditorSave
         $revision = wp_get_post_revision((int) substr($action, strlen('restore-post_')));
         $collection = $revision instanceof \WP_Post ? CoreAccess::collection((string) get_post_type($revision->post_parent)) : null;
         if ($collection !== null) {
-            self::open('restore', $collection, $revision->post_parent, $plugin->db()->editorRow($collection, $revision->post_parent));
+            self::open('restore', $collection, $revision->post_parent, $plugin->db()->editorRow($collection, $revision->post_parent), null, []);
         }
     }
 
@@ -151,14 +183,18 @@ final class EditorSave
         }
     }
 
+    /**
+     * A save still open at shutdown commits only if core completed it (its `wp_insert_post` fired)
+     * and the request didn't die meanwhile (wp_die, a fatal error); anything else rolls back.
+     */
     public static function shutdown(): void
     {
         if (self::$open === null) {
             return;
         }
         $error = error_get_last();
-        $died = $error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true);
-        if ($died || self::$open['postId'] === null) {
+        $died = self::$died || ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true));
+        if ($died || !self::$open['saved'] || self::$open['owner'] !== 'core') {
             self::rollback();
 
             return;
@@ -172,6 +208,14 @@ final class EditorSave
             self::rollback();
             error_log('[zero] refused an editor save at shutdown: ' . $e->error->getMessage());
         }
+    }
+
+    /** wp_die handler filters: a request that dies leaves its open save uncommitted. */
+    public static function dying(mixed $handler): mixed
+    {
+        self::$died = true;
+
+        return $handler;
     }
 
     /** A Zero after hook threw inside an open save: nothing of it may commit. */
@@ -192,72 +236,120 @@ final class EditorSave
             if (self::$open['owner'] === 'rest') {
                 throw $e;
             }
+            if (self::$open['nested'] ?? false) {
+                throw $e->error;
+            }
             self::rollback();
             wp_die(esc_html($e->error->getMessage()), '', ['response' => $e->error->status, 'code' => $e->error->errorCode, 'back_link' => true]);
         }
     }
 
-    /** The save's change, as the signed-in user: field rules, then the create or update rule. */
+    /**
+     * The save as the signed-in user wrote it: the columns it supplied (form fields, `acf` selectors and
+     * aliases, core columns) and every column it changed, with their saved values. Field write rules
+     * run on those, as on `/zero/v1` (an unchanged hidden value is still refused, so no value can be
+     * probed), then the create rule, or the update rule with that data: a filter must match the row
+     * as it was before the save, as the API's update selector does.
+     */
     private static function authorize(): void
     {
-        ['collection' => $collection, 'postId' => $id, 'before' => $before] = self::$open;
-        $covered = self::$open['covered'];
+        $open = self::$open;
         self::$open['checked'] = true;
         $plugin = Plugin::instance();
-        if ($id === null || $plugin === null || get_current_user_id() === 0) {
+        if ($open['postId'] === null || $plugin === null || get_current_user_id() === 0) {
             return;
         }
+        ['collection' => $collection, 'postId' => $id, 'before' => $before] = $open;
         $viewer = CoreAccess::viewer() ?? throw new Refused(new HttpError(403, 'suspended', 'This account is suspended'));
-        $db = $plugin->db();
-        $after = $db->editorRow($collection, $id);
+        $after = $plugin->db()->editorRow($collection, $id);
         if ($after === null) {
             return; // not a row (an auto-draft, the trash): its capability decided
         }
         $spec = $plugin->schema->collection($collection);
-        $skip = array_flip([...$plugin->editorFilled($id), $spec['primaryKey']]); // generated values are trusted
+        $generated = array_flip([...$plugin->editorFilled($id), $spec['primaryKey']]); // trusted, not input
         $rules = Access::collectionRules($spec);
         try {
             if ($before === null) {
-                // Supplied = what differs from an empty row with its declared defaults (a form posts every field).
-                $provided = array_filter(array_diff_key($after, $skip), static fn ($v, $col) => $v !== null
-                    && !(isset($spec['columns'][$col]['default']['value']) && $v === $spec['columns'][$col]['default']['value']), ARRAY_FILTER_USE_BOTH);
+                // A form posts every field: supplied = named by the request, or not the column's default.
+                $cols = array_filter(array_diff_key($after, $generated), static fn ($v, $col) => in_array($col, $open['supplied'], true)
+                    || ($v !== null && !(isset($spec['columns'][$col]['default']['value']) && $v === $spec['columns'][$col]['default']['value'])), ARRAY_FILTER_USE_BOTH);
                 $data = $after;
-                FieldAccess::checkWrite('create', $collection, $data, null, $viewer, $provided);
+                FieldAccess::checkWrite('create', $collection, $data, null, $viewer, $cols);
                 Access::require($rules['create'], $viewer, 'create', $after, "create $collection rows");
-            } else {
-                $patch = array_filter(array_diff_key($after, $skip), static fn ($v, $col) => $v !== ($before[$col] ?? null), ARRAY_FILTER_USE_BOTH);
-                $data = $patch;
-                FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $patch);
-                $r = Access::evaluate($rules['update'], $viewer, 'update', $patch);
-                if ($r === false || (is_array($r) && ($covered === false || !$db->permits($collection, 'update', $id, $viewer, $patch)))) {
-                    throw Access::deny($viewer->user, "update $collection rows");
-                }
+
+                return;
+            }
+            $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => $v !== ($before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
+            $patch = array_intersect_key($after, array_flip([...$changed, ...$open['supplied']]));
+            $data = $patch;
+            FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $patch);
+            $r = Access::evaluate($rules['update'], $viewer, 'update', $patch);
+            if ($r === false || (is_array($r) && !in_array(serialize($r), $open['covers'], true))) {
+                throw Access::deny($viewer->user, "update $collection rows");
             }
         } catch (HttpError $e) {
             throw new Refused($e);
         }
     }
 
+    /** Top-level columns a wp-admin form or quick edit names (SCF field keys, core columns). */
+    private static function formSupplied(string $collection): array
+    {
+        if (!is_admin() && !wp_doing_ajax()) {
+            return [];
+        }
+        $spec = Plugin::instance()?->schema->collection($collection) ?? [];
+        $cols = [];
+        foreach (array_keys(is_array($_POST['acf'] ?? null) ? $_POST['acf'] : []) as $key) {
+            foreach ($spec['columns'] ?? [] as $col => $_) {
+                if ($key === $spec['wp']['fieldKeyPrefix'] . $col) {
+                    $cols[] = (string) $col;
+                }
+            }
+        }
+        foreach (['post_title' => 'title', 'content' => 'content', 'post_name' => 'slug'] as $param => $designation) {
+            if (isset($_POST[$param]) && ($spec[$designation] ?? null) !== null) {
+                $cols[] = $spec[$designation];
+            }
+        }
+
+        return $cols;
+    }
+
     // ================================================================ transaction
 
-    private static function open(string $owner, string $collection, ?int $postId, ?array $before): void
+    private static function open(string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied): void
+    {
+        $scope = self::scope($owner, $collection, $postId, $before, $declared, $supplied);
+        Plugin::instance()?->connection()->begin();
+        self::$nested = 0;
+        self::$died = false;
+        self::$open = $scope;
+    }
+
+    /**
+     * A save's state. `covers`: the update-rule filters (serialized) that match the row as it is
+     * before the save, for the rule evaluated without data and with the request's declared data.
+     */
+    private static function scope(string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied): array
     {
         $plugin = Plugin::instance() ?? throw new \LogicException('No Zero app');
-        // Whether the update rule covers the row as it is before the save: a filter must hold for the
-        // row as it was (no taking over another's row) and as saved. Null when the rule, without the
-        // save's data, denies: a data-dependent function rule is then judged on the saved row alone.
+        $covers = [];
         $viewer = $before === null || get_current_user_id() === 0 ? null : CoreAccess::viewer();
-        $covered = false;
         if ($viewer !== null && $postId !== null) {
             $plugin->app();
-            $r = Access::evaluate(Access::collectionRules($plugin->schema->collection($collection))['update'], $viewer, 'update', null);
-            $covered = $r === false ? null : ($r === true || $plugin->db()->permits($collection, 'update', $postId, $viewer));
+            $rule = Access::collectionRules($plugin->schema->collection($collection))['update'];
+            foreach ($declared === null ? [null] : [null, $declared] as $data) {
+                $r = Access::evaluate($rule, $viewer, 'update', $data);
+                if (is_array($r) && $plugin->db()->permits($collection, 'update', $postId, $viewer, $data)) {
+                    $covers[] = serialize($r);
+                }
+            }
         }
-        $plugin->connection()->begin();
-        self::$nested = 0;
+
         // A save opened by its own insert has claimed it; a REST create claims the first one it makes.
-        self::$open = ['owner' => $owner, 'collection' => $collection, 'postId' => $postId, 'before' => $before, 'covered' => $covered,
-            'checked' => false, 'claimed' => $owner === 'core'];
+        return ['owner' => $owner, 'collection' => $collection, 'postId' => $postId, 'before' => $before, 'covers' => $covers,
+            'supplied' => array_values(array_unique($supplied)), 'checked' => false, 'saved' => false, 'claimed' => $owner === 'core'];
     }
 
     private static function commit(): void

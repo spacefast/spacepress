@@ -146,10 +146,15 @@ final class Connection
         $this->depth = 1;
     }
 
-    /** Commit the outermost transaction, then run its afterCommit callbacks. */
+    /** Commit the outermost transaction, then run its afterCommit callbacks. A failed COMMIT rolls back. */
     public function commit(): void
     {
-        $this->query('COMMIT');
+        try {
+            $this->query('COMMIT');
+        } catch (\Throwable $e) {
+            $this->rollback();
+            throw $e;
+        }
         $this->depth = 0;
         $after = $this->afterCommit;
         $this->reset();
@@ -162,8 +167,11 @@ final class Connection
     public function rollback(): void
     {
         $this->depth = 0;
-        $this->query('ROLLBACK');
-        $this->cleanCaches();
+        try {
+            $this->query('ROLLBACK');
+        } finally {
+            $this->cleanCaches();
+        }
         $undo = $this->onRollback;
         $this->reset();
         foreach ($undo as $cb) {

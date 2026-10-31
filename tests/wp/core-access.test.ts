@@ -71,6 +71,7 @@ test("writes need Zero's create/update rules, not role capabilities", async () =
 
 /** A wp-admin session for $role: cookies, as the browser holds them after signing in. */
 async function adminSession(role: "editor" | "author") {
+  // post_type defaults to gated; callers may name another.
   const res = await fetch(`${harness.url}/wp-login.php`, {
     method: "POST", redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
@@ -140,16 +141,88 @@ test("Add New works for a user the create rule allows: the auto-draft opens and 
   assert.equal((await ok("GET", `/ledger/${draftId}`, { as: "author" })).title, `New ${run}`);
 });
 
-test("trash, revisions, links and queries don't reveal what the live row hides", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Trash ${run}`, salary: "77k", }))[0].id;
-  await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { title: `Trash ${run} v2` } });
-  const [rev] = (await http("GET", `${core}/zero_payroll/${id}/revisions`, { as: "editor" })).json;
-  assert.equal(rev?.acf?.zero_salary, undefined, "a revision is stripped by its own snapshot");
+test("a revision is stripped by its own snapshot, not by the live row", async () => {
+  // The bonus is visible to the row's owner. Owned by someone else when revision 1 was taken, by the
+  // author now: she may read today's bonus, not the one the earlier snapshot held.
+  const id = zero("insert", "ledger", JSON.stringify({ title: `Bonus ${run}`, ownerId: author + 1, bonus: "then" }))[0].id;
+  zero("update", "ledger", JSON.stringify({ id }), JSON.stringify({ ownerId: author, bonus: "now" }));
+  const revs = await http("GET", `${core}/zero_ledger/${id}/revisions`, { as: "author" });
+  assert.equal(revs.status, 200, JSON.stringify(revs.json));
+  const bonuses = revs.json.map((r: any) => r.acf?.zero_bonus ?? "hidden").sort();
+  assert.deepEqual(bonuses, ["hidden", "now"]);
+  const editor = (await http("GET", `${core}/zero_ledger/${id}/revisions`, { as: "editor" })).json.map((r: any) => r.acf.zero_bonus).sort();
+  assert.deepEqual(editor, ["now", "then"], "an editor reads both");
+});
+
+test("a trashed post fails closed: fields that may be hidden stay hidden", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Trash ${run}`, salary: "77k" }))[0].id;
   assert.equal((await http("DELETE", `${core}/zero_payroll/${id}`, { as: "editor" })).status, 200);
   const trashed = await http("GET", `${core}/zero_payroll/${id}?context=edit`, { as: "editor" });
-  assert.equal(trashed.json.acf?.zero_salary, undefined, "a trashed post keeps its hidden fields hidden");
-  const linked = await http("GET", `${core}/zero_payroll?search=${run}&context=edit`, { as: "editor" });
-  assert.equal(JSON.stringify(linked.json).includes("acf:post"), false);
-  const probe = await http("GET", `${core}/zero_field_staff?slug=x`);
-  assert.equal(probe.status, 200, "a column readable to everyone filters normally");
+  assert.equal(trashed.status, 200, JSON.stringify(trashed.json));
+  assert.deepEqual([trashed.json.title.raw, "zero_salary" in trashed.json.acf], [`Trash ${run}`, false]);
+});
+
+test("a hidden reference leaves no link to embed, on the row and on its revisions", async () => {
+  const target = zero("insert", "ledger", JSON.stringify({ title: `Target ${run}`, ownerId: author }))[0].id;
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Managed ${run}`, managerId: target }))[0].id;
+  await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { title: `Managed ${run} v2` } });
+  const links = async (path: string, as?: "editor" | "admin") => JSON.stringify((await http("GET", `${core}/${path}`, { as })).json);
+  assert.match(await links(`zero_payroll/${id}`, "admin"), /acf:post/, "the admin sees the reference's link");
+  assert.doesNotMatch(await links(`zero_payroll/${id}?_embed=1`), /acf:post|Target /);
+  assert.doesNotMatch(await links(`zero_payroll/${id}/revisions?_embed=1`, "editor"), /acf:post|Target /);
+});
+
+test("search and slug can't probe a column hidden from the viewer", async () => {
+  zero("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }));
+  const search = await http("GET", `${core}/zero_dossier?search=codeword-${run}`);
+  assert.deepEqual([search.status, search.json.code], [403, "forbidden"]);
+  assert.equal((await http("GET", `${core}/zero_dossier?search=Dossier%20${run}&search_columns=post_title`)).json.length, 1, "a title search is fine");
+  assert.equal((await http("GET", `${core}/zero_dossier?slug=dossier-${run}`)).status, 403);
+  assert.equal((await http("GET", `${core}/zero_dossier?search=codeword-${run}`, { as: "admin" })).json.length, 1);
+  const item = (await http("GET", `${core}/zero_dossier?search=Dossier%20${run}&search_columns=post_title`)).json[0];
+  assert.deepEqual(["content" in item, "slug" in item], [false, false], "content and slug are dropped from the item");
+});
+
+test("a field the viewer can't read refuses its unchanged value too, so no value can be probed", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Probe ${run}`, salary: "55k" }))[0].id;
+  const right = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "55k" } } });
+  const wrong = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "nope" } } });
+  assert.deepEqual([right.status, wrong.status, right.json.data?.pointer], [403, 403, "/salary"]);
+});
+
+test("a data-dependent update filter must match the row as it was: no taking over another's row", async () => {
+  const theirs = zero("insert", "claims", JSON.stringify({ title: `Claim ${run}`, ownerId: author + 1000 }))[0].id;
+  const mine = zero("insert", "claims", JSON.stringify({ title: `Mine ${run}`, ownerId: author }))[0].id;
+  const takeover = await http("POST", `${core}/zero_claims/${theirs}`, { as: "author", body: { acf: { zero_ownerId: author } } });
+  assert.equal(takeover.status, 403, JSON.stringify(takeover.json));
+  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: theirs } }))[0].ownerId, author + 1000);
+  const own = await http("POST", `${core}/zero_claims/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
+  assert.equal(own.status, 200, JSON.stringify(own.json));
+  assert.equal(wp("eval", `wp_set_current_user(${author}); var_export(current_user_can('edit_post', ${mine}));`), "false", "edit_post (revisions, wp-admin) stays strict");
+});
+
+test("wp-admin's Custom Fields box and native controls can't reach Zero's columns", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Meta ${run}`, salary: "1" }))[0].id;
+  assert.equal(wp("eval", `var_export(is_protected_meta('zero_salary', 'post'));`), "true");
+  const editor = await adminSession("editor");
+  const res = await editor.save(id, { post_title: `Meta ${run}`, "metakeyinput": "zero_salary", "metavalue": "999", post_type: "zero_payroll" });
+  assert.ok(res.status === 302 || res.status === 403, `status ${res.status}`);
+  assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1");
+  const dossier = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run}</p>` }))[0].id;
+  const form = await (await editor.get(`post.php?post=${dossier}&action=edit&classic-editor`)).text();
+  assert.equal(form.includes(`classified-${run}`), false, "the classic editor doesn't load hidden content");
+  const list = await (await editor.get(`edit.php?post_type=zero_dossier&s=classified-${run}`)).text();
+  assert.equal(list.includes(`Native ${run}`), false, "the list's search doesn't read hidden content");
+});
+
+test("a save interrupted before core completes it commits nothing", () => {
+  // A save_post callback throws and its caller catches it: wp_insert_post never finished the save.
+  const out = wp("eval", `
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    add_action('save_post_zero_payroll', static function () { throw new RuntimeException('interrupted'); });
+    try { wp_insert_post(['post_type' => 'zero_payroll', 'post_title' => 'Cut ${run}', 'post_status' => 'publish'], true); } catch (Throwable $e) {}
+    \\Zero\\Wp\\EditorSave::shutdown();
+    echo (int) (new WP_Query(['post_type' => 'zero_payroll', 'title' => 'Cut ${run}', 'post_status' => 'any', 'fields' => 'ids']))->found_posts;
+  `);
+  assert.equal(out, "0");
 });

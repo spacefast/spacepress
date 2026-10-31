@@ -167,13 +167,13 @@ final class Connection
     public function rollback(): void
     {
         $this->depth = 0;
+        $undo = $this->onRollback;
         try {
             $this->query('ROLLBACK');
         } finally {
             $this->cleanCaches();
+            $this->reset();
         }
-        $undo = $this->onRollback;
-        $this->reset();
         foreach ($undo as $cb) {
             $cb();
         }

@@ -22,25 +22,20 @@ use Zero\HttpError;
  *
  * Owners: `rest` (PostsController wraps create/update), `restore` (wp-admin's revision restore, whose
  * SCF meta is copied after the post update), `core` (everything else, ended at wp_after_insert_post).
- * A save still open at shutdown, which happens only when its caller never fired the after hooks, is
- * authorized and committed then, unless the request died, which rolls it back.
+ * A save still open at shutdown never completed (a callback threw and was caught, the request died)
+ * and rolls back.
  */
 final class EditorSave
 {
-    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covers: list<string>, supplied: list<string>, checked: bool, saved: bool, claimed: bool} */
+    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covers: list<string>, supplied: list<string>, checked: bool, claimed: bool} */
     private static ?array $open = null;
     /** Inserts of the open save's collection started inside it (hooks): their ids come first. */
     private static int $nested = 0;
-    private static bool $died = false;
 
     public static function register(): void
     {
         add_filter('wp_insert_post_data', [self::class, 'begin'], PHP_INT_MAX, 4);
         add_action('wp_insert_post', [self::class, 'inserted'], 0, 1);
-        add_action('wp_insert_post', [self::class, 'saved'], PHP_INT_MAX, 1);
-        foreach (['wp_die_handler', 'wp_die_ajax_handler', 'wp_die_json_handler', 'wp_die_jsonp_handler', 'wp_die_xmlrpc_handler', 'wp_die_xml_handler'] as $filter) {
-            add_filter($filter, [self::class, 'dying'], PHP_INT_MAX);
-        }
         // After fillEditorDefaults (8) and core's revision (9), before Zero's after hooks (20).
         add_action('wp_after_insert_post', [self::class, 'check'], 9, 1);
         add_action('wp_after_insert_post', [self::class, 'end'], PHP_INT_MAX, 1);
@@ -52,7 +47,8 @@ final class EditorSave
     /**
      * Core REST create/update: the controller's save runs as one save, authorized before it commits;
      * a refusal answers with Zero's problem. Inside an already open transaction (a REST call made by
-     * code running in one) the save is still authorized, and a refusal aborts the enclosing work.
+     * code running in one) the save is still authorized, and a refusal or any core error throws, so
+     * the enclosing transaction rolls back instead of committing a half-done save.
      */
     public static function rest(string $collection, ?int $postId, \WP_REST_Request $request, callable $save): mixed
     {
@@ -64,7 +60,12 @@ final class EditorSave
             self::$open = self::scope('rest', $collection, $postId, $before, $declared, $supplied) + ['nested' => true];
             try {
                 $result = $save();
-                if (!is_wp_error($result) && !self::$open['checked']) {
+                if (is_wp_error($result)) {
+                    // Core may fail after writing the post or some fields: the enclosing transaction is
+                    // the only rollback point, so its work is abandoned rather than half-committed.
+                    throw new HttpError((int) ($result->get_error_data()['status'] ?? 500), (string) $result->get_error_code(), $result->get_error_message());
+                }
+                if (!self::$open['checked']) {
                     self::authorize();
                 }
 
@@ -112,7 +113,12 @@ final class EditorSave
             return $data;
         }
         $id = $update && is_array($postarr) ? (int) ($postarr['ID'] ?? 0) : 0;
-        self::open('core', $collection, $id > 0 ? $id : null, $id > 0 ? $plugin->db()->editorRow($collection, $id) : null, null, self::formSupplied($collection));
+        $before = $id > 0 ? $plugin->db()->editorRow($collection, $id) : null;
+        if ($before !== null) {
+            $data = CoreAccess::keepHidden($collection, $before, $data); // controls the form left blank
+        }
+        [$declared, $supplied] = self::formData($collection);
+        self::open('core', $collection, $id > 0 ? $id : null, $before, $declared, $supplied);
         if ($id > 0 && get_post_status($id) === 'trash') {
             self::$open['checked'] = true; // untrash: delete_post on the trashed post decided it
         }
@@ -133,14 +139,6 @@ final class EditorSave
             return;
         }
         self::$open['postId'] = (int) $postId;
-    }
-
-    /** wp_insert_post (last): core has written the post and its meta; a save left open is complete. */
-    public static function saved(mixed $postId): void
-    {
-        if (self::$open !== null && !self::busy() && self::$open['postId'] === (int) $postId) {
-            self::$open['saved'] = true;
-        }
     }
 
     public static function check(mixed $post): void
@@ -184,38 +182,15 @@ final class EditorSave
     }
 
     /**
-     * A save still open at shutdown commits only if core completed it (its `wp_insert_post` fired)
-     * and the request didn't die meanwhile (wp_die, a fatal error); anything else rolls back.
+     * A save still open at shutdown never reached its explicit end (wp_after_insert_post's last callback,
+     * deleted_post, a restore's action, the REST controller's return): a callback threw and its caller
+     * caught it, or the request died. Zero's after hooks may not have run, so it rolls back.
      */
     public static function shutdown(): void
     {
-        if (self::$open === null) {
-            return;
-        }
-        $error = error_get_last();
-        $died = self::$died || ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true));
-        if ($died || !self::$open['saved'] || self::$open['owner'] !== 'core') {
+        if (self::$open !== null) {
             self::rollback();
-
-            return;
         }
-        try {
-            if (!self::$open['checked']) {
-                self::authorize();
-            }
-            self::commit();
-        } catch (Refused $e) {
-            self::rollback();
-            error_log('[zero] refused an editor save at shutdown: ' . $e->error->getMessage());
-        }
-    }
-
-    /** wp_die handler filters: a request that dies leaves its open save uncommitted. */
-    public static function dying(mixed $handler): mixed
-    {
-        self::$died = true;
-
-        return $handler;
     }
 
     /** A Zero after hook threw inside an open save: nothing of it may commit. */
@@ -292,28 +267,35 @@ final class EditorSave
         }
     }
 
-    /** Top-level columns a wp-admin form or quick edit names (SCF field keys, core columns). */
-    private static function formSupplied(string $collection): array
+    /**
+     * What a wp-admin form or quick edit posts: [declared data (JS form), columns it names]. SCF field
+     * keys and core columns; a core column hidden from the viewer is never counted (its control is
+     * blank and its stored value kept, CoreAccess::keepHidden).
+     *
+     * @return array{?array<string, mixed>, list<string>}
+     */
+    private static function formData(string $collection): array
     {
-        if (!is_admin() && !wp_doing_ajax()) {
-            return [];
+        if ((!is_admin() && !wp_doing_ajax()) || get_current_user_id() === 0) {
+            return [null, []];
         }
         $spec = Plugin::instance()?->schema->collection($collection) ?? [];
-        $cols = [];
-        foreach (array_keys(is_array($_POST['acf'] ?? null) ? $_POST['acf'] : []) as $key) {
-            foreach ($spec['columns'] ?? [] as $col => $_) {
+        $data = [];
+        foreach (is_array($_POST['acf'] ?? null) ? wp_unslash($_POST['acf']) : [] as $key => $value) {
+            foreach ($spec['columns'] ?? [] as $col => $def) {
                 if ($key === $spec['wp']['fieldKeyPrefix'] . $col) {
-                    $cols[] = (string) $col;
+                    $data[(string) $col] = Scf::fromScf($def, $value, (string) $key);
                 }
             }
         }
         foreach (['post_title' => 'title', 'content' => 'content', 'post_name' => 'slug'] as $param => $designation) {
-            if (isset($_POST[$param]) && ($spec[$designation] ?? null) !== null) {
-                $cols[] = $spec[$designation];
+            $col = $spec[$designation] ?? null;
+            if ($col !== null && isset($_POST[$param]) && !CoreAccess::nativeHiddenFor($collection, $col)) {
+                $data[$col] = wp_unslash($_POST[$param]);
             }
         }
 
-        return $cols;
+        return [$data === [] ? null : $data, array_map('strval', array_keys($data))];
     }
 
     // ================================================================ transaction
@@ -323,7 +305,6 @@ final class EditorSave
         $scope = self::scope($owner, $collection, $postId, $before, $declared, $supplied);
         Plugin::instance()?->connection()->begin();
         self::$nested = 0;
-        self::$died = false;
         self::$open = $scope;
     }
 
@@ -349,22 +330,38 @@ final class EditorSave
 
         // A save opened by its own insert has claimed it; a REST create claims the first one it makes.
         return ['owner' => $owner, 'collection' => $collection, 'postId' => $postId, 'before' => $before, 'covers' => $covers,
-            'supplied' => array_values(array_unique($supplied)), 'checked' => false, 'saved' => false, 'claimed' => $owner === 'core'];
+            'supplied' => array_values(array_unique($supplied)), 'checked' => false, 'claimed' => $owner === 'core'];
     }
 
+    /** Commit the save; a COMMIT that fails rolls back (Connection) and cleans the post's caches too. */
     private static function commit(): void
     {
+        $postId = self::$open['postId'] ?? null;
         self::$open = null;
-        Plugin::instance()?->connection()->commit();
+        try {
+            Plugin::instance()?->connection()->commit();
+        } catch (\Throwable $e) {
+            self::forget($postId);
+            throw $e;
+        }
     }
 
     private static function rollback(): void
     {
         $postId = self::$open['postId'] ?? null;
         self::$open = null;
-        Plugin::instance()?->connection()->rollback();
+        try {
+            Plugin::instance()?->connection()->rollback();
+        } finally {
+            self::forget($postId);
+        }
+    }
+
+    /** Core wrote the post outside Zero's store: no cache may keep a ghost of a rolled-back save. */
+    private static function forget(?int $postId): void
+    {
         if ($postId !== null) {
-            clean_post_cache($postId); // core wrote it outside Zero's store: no cache may keep a ghost
+            clean_post_cache($postId);
         }
         CoreAccess::flush();
     }

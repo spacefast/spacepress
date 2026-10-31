@@ -70,7 +70,7 @@ test("writes need Zero's create/update rules, not role capabilities", async () =
 // "locked"; `notes.sealed` is admin-only.
 
 /** A wp-admin session for $role: cookies, as the browser holds them after signing in. */
-async function adminSession(role: "editor" | "author") {
+async function adminSession(role: "editor" | "author" | "admin") {
   // post_type defaults to gated; callers may name another.
   const res = await fetch(`${harness.url}/wp-login.php`, {
     method: "POST", redirect: "manual",
@@ -79,6 +79,9 @@ async function adminSession(role: "editor" | "author") {
   });
   const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
   const get = (path: string) => fetch(`${harness.url}/wp-admin/${path}`, { headers: { cookie }, redirect: "manual" });
+  const post = (path: string, fields: Record<string, string>) => fetch(`${harness.url}/wp-admin/${path}`, {
+    method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields), redirect: "manual",
+  });
   /** Submit post.php's classic edit form for $id with these fields, as the browser posts it. */
   const save = async (id: number, fields: Record<string, string>) => {
     const html = await (await get(`post.php?post=${id}&action=edit&classic-editor`)).text();
@@ -89,7 +92,7 @@ async function adminSession(role: "editor" | "author") {
     });
     return fetch(`${harness.url}/wp-admin/post.php`, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body, redirect: "manual" });
   };
-  return { get, save };
+  return { get, post, save };
 }
 
 test("a data-dependent create rule decides on the request's data, not before it", async () => {
@@ -201,25 +204,86 @@ test("a data-dependent update filter must match the row as it was: no taking ove
   assert.equal(wp("eval", `wp_set_current_user(${author}); var_export(current_user_can('edit_post', ${mine}));`), "false", "edit_post (revisions, wp-admin) stays strict");
 });
 
-test("wp-admin's Custom Fields box and native controls can't reach Zero's columns", async () => {
+test("wp-admin's Custom Fields box can't write a Zero column", async () => {
   const id = zero("insert", "payroll", JSON.stringify({ title: `Meta ${run}`, salary: "1" }))[0].id;
-  assert.equal(wp("eval", `var_export(is_protected_meta('zero_salary', 'post'));`), "true");
   const editor = await adminSession("editor");
-  const res = await editor.save(id, { post_title: `Meta ${run}`, "metakeyinput": "zero_salary", "metavalue": "999", post_type: "zero_payroll" });
-  assert.ok(res.status === 302 || res.status === 403, `status ${res.status}`);
-  assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1");
-  const dossier = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run}</p>` }))[0].id;
-  const form = await (await editor.get(`post.php?post=${dossier}&action=edit&classic-editor`)).text();
-  assert.equal(form.includes(`classified-${run}`), false, "the classic editor doesn't load hidden content");
-  const list = await (await editor.get(`edit.php?post_type=zero_dossier&s=classified-${run}`)).text();
-  assert.equal(list.includes(`Native ${run}`), false, "the list's search doesn't read hidden content");
+  const res = await editor.save(id, { post_title: `Meta ${run}`, post_type: "zero_payroll", metakeyinput: "zero_salary", metavalue: "999" });
+  assert.equal(res.status, 302, "the rest of the save goes through");
+  assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1", "the protected meta key was ignored");
 });
 
-test("a save interrupted before core completes it commits nothing", () => {
-  // A save_post callback throws and its caller catches it: wp_insert_post never finished the save.
+test("the classic editor neither shows nor erases content hidden from the editor", async () => {
+  const id = zero("insert", "dossier", JSON.stringify({ title: `Native ${run}`, body: `<p>classified-${run}</p>` }))[0].id;
+  const editor = await adminSession("editor");
+  const page = await editor.get(`post.php?post=${id}&action=edit&classic-editor`);
+  assert.equal(page.status, 200);
+  const form = await page.text();
+  assert.ok(form.includes(`Native ${run}`), "the edit screen loaded the post");
+  assert.equal(form.includes(`classified-${run}`), false, "the hidden content isn't in the page");
+  const saved = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "" });
+  assert.equal(saved.status, 302);
+  const row = zero("find", "dossier", JSON.stringify({ where: { id } }))[0];
+  assert.deepEqual([row.title, row.body], [`Native ${run} retitled`, `<p>classified-${run}</p>`], "the blank control left the stored content alone");
+});
+
+test("wp-admin's list search doesn't read content hidden from the viewer", async () => {
+  zero("insert", "dossier", JSON.stringify({ title: `Listed ${run}`, body: `<p>listword-${run}</p>` }));
+  const editor = await adminSession("editor");
+  const byContent = await editor.get(`edit.php?post_type=zero_dossier&s=listword-${run}`);
+  assert.equal(byContent.status, 200);
+  assert.equal((await byContent.text()).includes(`Listed ${run}`), false);
+  assert.ok((await (await editor.get(`edit.php?post_type=zero_dossier&s=Listed%20${run}`)).text()).includes(`Listed ${run}`), "a title search still finds it");
+});
+
+test("wp-admin's revision diffs leave out fields hidden from the viewer", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Diff ${run}`, salary: "1k" }))[0].id;
+  zero("update", "payroll", JSON.stringify({ id }), JSON.stringify({ salary: "2k", title: `Diff ${run} v2` }));
+  const [older, newer] = JSON.parse(wp("eval", `echo wp_json_encode(array_keys(wp_get_post_revisions(${id}, ['order' => 'ASC'])));`));
+  // The revisions screen loads its diffs through admin-ajax, the request SCF adds its field rows to.
+  const diffs = async (role: "editor" | "admin") => {
+    const session = await adminSession(role);
+    const res = await session.post("admin-ajax.php", { action: "get-revision-diffs", post_id: String(id), "compare[]": `${older}:${newer}` });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true, JSON.stringify(body));
+    return body.data[0].fields.map((f: any) => f.id);
+  };
+  assert.ok((await diffs("admin")).includes("zero_salary"), "the admin's diff compares the salary");
+  const editor = await diffs("editor");
+  assert.ok(editor.includes("post_title"));
+  assert.deepEqual(editor.filter((f: string) => f.startsWith("zero_salary")), [], "the editor's doesn't");
+});
+
+test("autosaving one's own draft returns it without the fields hidden from the author of the save", async () => {
+  const created = await http("POST", `${core}/zero_dossier`, { as: "editor", body: { title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const autosaved = await http("POST", `${core}/zero_dossier/${created.json.id}/autosaves`, { as: "editor", body: { title: `Draft ${run} autosaved`, content: `<p>draftword-${run}</p>` } });
+  assert.equal(autosaved.status, 200, JSON.stringify(autosaved.json));
+  assert.equal(JSON.stringify(autosaved.json).includes(`draftword-${run}`), false);
+});
+
+test("a REST save inside an open transaction that fails after writing aborts the transaction", () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Nested ${run}` }))[0].id;
+  const out = JSON.parse(wp("eval", `
+    add_action('rest_api_init', static fn () => register_rest_field('zero_payroll', 'zfail', ['update_callback' => static fn () => new WP_Error('nope', 'refused late', ['status' => 400]), 'schema' => ['type' => 'string']]));
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    $request = new WP_REST_Request('POST', '/wp/v2/zero_payroll/${id}');
+    $request->set_body_params(['title' => 'Half done', 'zfail' => 'x']);
+    try {
+      \\Zero\\Wp\\Plugin::instance()->db()->transaction(static fn () => rest_do_request($request));
+      $caught = null;
+    } catch (Throwable $e) { $caught = $e->getMessage(); }
+    clean_post_cache(${id});
+    echo wp_json_encode([$caught, get_post(${id})->post_title]);
+  `));
+  assert.deepEqual(out, ["refused late", `Nested ${run}`]);
+});
+
+test("a save interrupted before Zero's after hooks run commits nothing", () => {
+  // A wp_after_insert_post callback before Zero's (priority 20) throws and its caller catches it.
   const out = wp("eval", `
     wp_set_current_user(get_user_by('login', 'editor')->ID);
-    add_action('save_post_zero_payroll', static function () { throw new RuntimeException('interrupted'); });
+    add_action('wp_after_insert_post', static function () { throw new RuntimeException('interrupted'); }, 10);
     try { wp_insert_post(['post_type' => 'zero_payroll', 'post_title' => 'Cut ${run}', 'post_status' => 'publish'], true); } catch (Throwable $e) {}
     \\Zero\\Wp\\EditorSave::shutdown();
     echo (int) (new WP_Query(['post_type' => 'zero_payroll', 'title' => 'Cut ${run}', 'post_status' => 'any', 'fields' => 'ids']))->found_posts;

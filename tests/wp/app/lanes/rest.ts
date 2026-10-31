@@ -32,13 +32,14 @@ export const payroll = collection("payroll", {
   managerId: integer().references(() => ledger.id).access({ read: "admin" }),
 }, { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-// Designated content and slug hidden below admin: core's own columns, not SCF fields.
+// Designated content and slug hidden below admin: core's own columns, not SCF fields. Editors may
+// still create and edit the rest of the row.
 export const dossier = collection("dossier", {
   id: id(),
   title: text().notNull(),
   slug: slug({ source: "title" }).access({ read: "admin" }),
   body: richText().access({ read: "admin" }),
-}, { title: "title", content: "body", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
+}, { title: "title", content: "body", access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 // An update rule that needs the data: without it nothing; with it, only rows the viewer owns.
 export const claims = collection("claims", { id: id(), title: text().notNull(), ownerId: integer() }, {

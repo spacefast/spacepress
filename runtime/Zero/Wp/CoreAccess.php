@@ -51,6 +51,8 @@ final class CoreAccess
         add_filter('is_protected_meta', [self::class, 'protectedMeta'], 10, 3);
         add_filter('edit_post_content', [self::class, 'adminContent'], 10, 2);
         add_filter('editable_slug', [self::class, 'adminSlug'], 10, 2);
+        // wp-admin's revision screen and its AJAX diffs: each side is judged by its own snapshot.
+        add_filter('wp_get_revision_ui_diff', [self::class, 'revisionDiff'], PHP_INT_MAX, 3);
         // Anything that can change what a rule covers or who is asking drops the cached answers: a post
         // or Zero row written, a user switched, a role or user meta changed.
         foreach (['clean_post_cache', 'set_current_user', 'set_user_role', 'add_user_role', 'remove_user_role',
@@ -131,11 +133,14 @@ final class CoreAccess
             return false;
         }
 
+        // `edit_`, `create_`, `delete_`: the rule may allow some row. The `others`/`published`/`private`
+        // variants speak for any row, so they need a rule that covers every row as stored.
         return match ($kind) {
             'create' => self::ruleMayAllow($collection, 'create', $viewer),
             'edit' => self::ruleMayAllow($collection, 'update', $viewer) || self::ruleMayAllow($collection, 'create', $viewer),
-            'update' => self::ruleMayAllow($collection, 'update', $viewer),
             'delete' => self::ruleMayAllow($collection, 'delete', $viewer),
+            'updateAll' => self::keys($collection, 'update', $viewer) === null,
+            'deleteAll' => self::keys($collection, 'delete', $viewer) === null,
         };
     }
 
@@ -150,9 +155,9 @@ final class CoreAccess
                     "create_$t" => [$name, 'create'],
                     "edit_$t" => [$name, 'edit'],
                     "publish_$t" => [$name, 'edit'],
-                    "edit_others_$t" => [$name, 'update'], "edit_published_$t" => [$name, 'update'], "edit_private_$t" => [$name, 'update'],
-                    "delete_$t" => [$name, 'delete'], "delete_others_$t" => [$name, 'delete'],
-                    "delete_published_$t" => [$name, 'delete'], "delete_private_$t" => [$name, 'delete'],
+                    "edit_others_$t" => [$name, 'updateAll'], "edit_published_$t" => [$name, 'updateAll'], "edit_private_$t" => [$name, 'updateAll'],
+                    "delete_$t" => [$name, 'delete'], "delete_others_$t" => [$name, 'deleteAll'],
+                    "delete_published_$t" => [$name, 'deleteAll'], "delete_private_$t" => [$name, 'deleteAll'],
                     "read_private_$t" => [$name, 'readAll'],
                 ];
             }
@@ -290,8 +295,15 @@ final class CoreAccess
     /** Revisions and autosaves of a Zero post are stripped against their own snapshot. */
     public static function prepareChild(mixed $response, mixed $post, mixed $request): mixed
     {
-        if (!$post instanceof \WP_Post || $post->post_parent <= 0) {
+        if (!$post instanceof \WP_Post) {
             return $response;
+        }
+        if ($post->post_parent <= 0) {
+            // Autosaving one's own draft updates the post itself, which core then prepares here.
+            $collection = self::collection($post->post_type);
+
+            return $collection === null ? $response
+                : self::strip($response, $collection, Plugin::instance()?->db()->editorRow($collection, $post->ID), self::viewer());
         }
         $collection = self::collection((string) get_post_type($post->post_parent));
         if ($collection === null) {
@@ -358,6 +370,78 @@ final class CoreAccess
         }
     }
 
+    /**
+     * Drop from a revision diff every row that compares a field hidden from the viewer on either side
+     * (SCF adds one per field; core adds content and the rest). A side's visibility comes from the
+     * snapshot it shows; without one, from the rules alone.
+     */
+    public static function revisionDiff(mixed $diff, mixed $from, mixed $to): mixed
+    {
+        if (!is_array($diff) || !$to instanceof \WP_Post) {
+            return $diff;
+        }
+        $parentId = $to->post_type === 'revision' ? $to->post_parent : $to->ID;
+        $collection = self::collection((string) get_post_type($parentId));
+        if ($collection === null) {
+            return $diff;
+        }
+        $spec = self::schema()->collection($collection);
+        $viewer = self::viewer();
+        $hidden = [];
+        foreach ([$from, $to] as $side) {
+            if (!$side instanceof \WP_Post) {
+                continue;
+            }
+            $row = null;
+            try {
+                $row = $side->ID === $parentId ? Plugin::instance()?->db()->editorRow($collection, $parentId)
+                    : Plugin::instance()?->db()->revisionRow($collection, $parentId, $side->ID);
+            } catch (HttpError) {
+            }
+            foreach ($spec['columns'] as $col => $def) {
+                $col = (string) $col;
+                if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || ($def['system'] ?? false)) {
+                    continue;
+                }
+                if ($viewer === null || $row === null
+                    ? $viewer === null || FieldAccess::mayHide($def, $viewer)
+                    : !self::fullyVisible($collection, $col, $row, $viewer)) {
+                    $hidden[$col] = true;
+                }
+            }
+        }
+        $ids = [];
+        foreach (array_keys($hidden) as $col) {
+            $ids[] = $spec['wp']['metaPrefix'] . $col;
+            if ($col === ($spec['content'] ?? null)) {
+                array_push($ids, 'post_content', 'post_excerpt');
+            }
+            if ($col === ($spec['slug'] ?? null)) {
+                $ids[] = 'post_name';
+            }
+        }
+        $prefixes = array_map(static fn (string $id): string => $id . '_', $ids); // nested SCF sub-field rows
+
+        return array_values(array_filter($diff, static function ($entry) use ($ids, $prefixes): bool {
+            $id = is_array($entry) ? (string) ($entry['id'] ?? '') : '';
+            foreach ($prefixes as $p) {
+                if (str_starts_with($id, $p)) {
+                    return false;
+                }
+            }
+
+            return !in_array($id, $ids, true);
+        }));
+    }
+
+    /** Is $col of $row readable in full (a structured value with a hidden sub-field is not)? */
+    private static function fullyVisible(string $collection, string $col, array $row, Viewer $viewer): bool
+    {
+        $visible = FieldAccess::strip([$row], $collection, $viewer)[0] ?? [];
+
+        return !array_key_exists($col, $row) || (array_key_exists($col, $visible) && $visible[$col] === $row[$col]);
+    }
+
     /** @param mixed $type the meta type (post, user, ...) */
     public static function protectedMeta(mixed $protected, mixed $key, mixed $type): mixed
     {
@@ -386,6 +470,38 @@ final class CoreAccess
     }
 
     /** Is a core-column designation ('content', 'slug') of a Zero post hidden from this viewer? */
+    /**
+     * A wp-admin save of a post whose content or slug is hidden from the viewer: the blank control the
+     * form posted doesn't overwrite the stored value (a forged non-blank one still reaches EditorSave,
+     * which refuses it as a write to a hidden column).
+     */
+    public static function keepHidden(string $collection, array $stored, array $data): array
+    {
+        if (!is_admin() || get_current_user_id() === 0) {
+            return $data;
+        }
+        $spec = self::schema()->collection($collection);
+        foreach (['content' => 'post_content', 'slug' => 'post_name'] as $designation => $field) {
+            $col = $spec[$designation] ?? null;
+            if ($col !== null && self::nativeHiddenFor($collection, $col, $stored) && ($data[$field] ?? '') === '') {
+                $data[$field] = $designation === 'content' ? (string) ($stored[$col] ?? '') : (string) ($stored[$col] ?? '');
+            }
+        }
+
+        return $data;
+    }
+
+    /** Is column $col of a Zero row hidden from this viewer (judged on $stored, or the rules alone)? */
+    public static function nativeHiddenFor(string $collection, string $col, ?array $stored = null): bool
+    {
+        $viewer = self::viewer();
+        if ($viewer === null || $stored === null) {
+            return $viewer === null || FieldAccess::mayHide(self::schema()->collection($collection)['columns'][$col], $viewer);
+        }
+
+        return !array_key_exists($col, FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+    }
+
     private static function nativeHidden(int $postId, string $designation): bool
     {
         $collection = $postId > 0 ? self::collection((string) get_post_type($postId)) : null;
@@ -393,13 +509,7 @@ final class CoreAccess
         if ($col === null) {
             return false;
         }
-        $viewer = self::viewer();
-        $stored = Plugin::instance()?->db()->editorRow($collection, $postId);
-        if ($viewer === null || $stored === null) {
-            return $viewer === null || FieldAccess::mayHide(self::schema()->collection($collection)['columns'][$col], $viewer);
-        }
-
-        return !array_key_exists($col, FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+        return self::nativeHiddenFor($collection, $col, Plugin::instance()?->db()->editorRow($collection, $postId));
     }
 
     // ================================================================ wp-admin form

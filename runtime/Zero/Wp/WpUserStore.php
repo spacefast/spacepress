@@ -304,20 +304,27 @@ final class WpUserStore implements Store
 
     public function delete(string $collection, int|string $pk): void
     {
+        $this->forgetOnRollback((int) $pk);
+        self::deleteUser($this->db, (int) $pk);
+    }
+
+    /**
+     * Delete a WordPress user inside Zero's transaction. Authored posts stay (reassigned to no one,
+     * like wp-admin's "attribute to"): their removal is for Zero's declared referential actions, not
+     * core's delete-everything default. zero-identity forgets the user through `delete_user`.
+     */
+    public static function deleteUser(Connection $db, int $id): void
+    {
         require_once ABSPATH . 'wp-admin/includes/user.php';
-        $id = (int) $pk;
-        $this->forgetOnRollback($id);
-        // Authored posts stay (reassigned to no one, like wp-admin's "attribute to"): their removal is
-        // for Zero's declared referential actions, not core's delete-everything default.
-        $posts = array_map('intval', array_column($this->db->run('SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_author = ?', [$id]), 'ID'));
+        $posts = array_map('intval', array_column($db->run('SELECT ID FROM `' . $db->wpdb()->posts . '` WHERE post_author = ?', [$id]), 'ID'));
         if ($posts !== []) {
-            $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = 0 WHERE post_author = ?', [$id]);
+            $db->run('UPDATE `' . $db->wpdb()->posts . '` SET post_author = 0 WHERE post_author = ?', [$id]);
             foreach ($posts as $post) {
-                $this->db->touchPost($post);
+                $db->touchPost($post);
                 clean_post_cache($post);
             }
         }
-        $this->db->core(static fn () => wp_delete_user($id));
+        $db->core(static fn () => wp_delete_user($id));
     }
 
     /**

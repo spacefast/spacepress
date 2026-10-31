@@ -95,17 +95,39 @@ final class Db
         return null;
     }
 
-    /** The group-sync key whose values row $pk is being written with right now, if it was handed any. */
-    public function handedFrom(string $collection, int|string $pk): ?string
+    /** The synced columns row $pk takes as its group's values in the bulk update writing it now, else []. */
+    public function receiving(string $collection, int|string $pk): array
     {
         $key = self::key($pk);
         foreach (array_reverse($this->bulk) as $bulk) {
             if ($bulk->collection === $collection && $bulk->current === $key) {
-                return $bulk->from[$key] ?? null;
+                return $bulk->receiving;
+            }
+        }
+
+        return [];
+    }
+
+    /** The outermost open bulk update on $collection: checks that need every row written run after it. */
+    public function outermostUpdate(string $collection): ?BulkUpdate
+    {
+        foreach ($this->bulk as $bulk) {
+            if ($bulk->collection === $collection) {
+                return $bulk;
             }
         }
 
         return null;
+    }
+
+    /** Does input $raw normalize to the decoded value $value? (Invalid input is never the same.) */
+    private function sameValue(array $col, mixed $raw, mixed $value): bool
+    {
+        try {
+            return Js::jsonStringify(Schema::normalize($col, $raw, '', '')) === Js::jsonStringify($value);
+        } catch (HttpError) {
+            return false;
+        }
     }
 
     /** The key BulkUpdate lists a primary key under. */
@@ -463,7 +485,7 @@ final class Db
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             $pk = $spec['primaryKey'];
-            $bulk = new BulkUpdate($collection, array_map(static fn (array $row) => self::key($row[$pk]), $rows), count($this->bulk));
+            $bulk = new BulkUpdate($collection, array_map(static fn (array $row) => self::key($row[$pk]), $rows));
             $this->bulk[] = $bulk;
             try {
                 foreach ($rows as $existing) {
@@ -471,11 +493,12 @@ final class Db
                     unset($bulk->pending[$key]);
                     $bulk->current = $key;
                     $handed = $bulk->handed[$key] ?? [];
-                    foreach (array_intersect_key($handed, $set) as $col => $v) {
-                        if (Js::jsonStringify($v) !== Js::jsonStringify($set[$col])) {
-                            // This update sets another value: it is the later write, so it wins and
-                            // propagates like any update (the row is no longer just receiving values).
-                            unset($bulk->from[$key]);
+                    // A handed column the patch also sets to the same value is still the group's value;
+                    // set to another value, the patch is the later write and propagates like any update.
+                    $bulk->receiving = [];
+                    foreach ($handed as $col => $v) {
+                        if (!array_key_exists($col, $set) || $this->sameValue($spec['columns'][$col], $set[$col], $v)) {
+                            $bulk->receiving[] = (string) $col;
                         }
                     }
                     $handed = array_diff_key($handed, $set);

@@ -1235,8 +1235,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                 throw new \Zero\JsError('de refuses 13');
             }
             if ($row['title'] === 'Kick' && $row['price'] === 31) {
-                // a nested bulk update over two translations whose group the outer update also covers
-                \Zero\db()->update('pages', ['price' => 31], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
+                // a nested bulk update over two translations whose group the outer update also covers,
+                // changing another synced column than the outer one
+                \Zero\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
             }
             if ($row['price'] === 21 && $row['locale'] === 'en' && ($other = \Zero\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
                 \Zero\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
@@ -1322,9 +1323,8 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $nestDe = $db->insert('pages', ['title' => 'Nest DE', 'locale' => 'de', 'translationOf' => $nest['id']], true)[0];
     $nestFr = $db->insert('pages', ['title' => 'Nest FR', 'locale' => 'fr', 'translationOf' => $nest['id']], true)[0];
     $db->update('pages', ['price' => 31], ['id' => ['in' => [$kick['id'], $nest['id']]]]);
-    $mineNotes = static fn (array $ids) => array_map(static fn ($n) => $n['pageId'], $db->findMany('notes', ['where' => ['id' => ['notIn' => $before], 'pageId' => ['in' => $ids]], 'orderBy' => ['pageId' => 'asc']]));
-    eq('… a nested bulk over the same group commits, each row\'s afterUpdate once', [array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$nest['id'], $nestDe['id'], $nestFr['id']]]]]), 'price'), $mineNotes([$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']])],
-        [[31, 31, 31], [$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']]]);
+    eq('… a nested bulk over the same group commits both changes to every row', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$nest['id'], $nestDe['id'], $nestFr['id']]]]])),
+        [[31, ['b']], [31, ['b']], [31, ['b']]]);
     $db->delete('pages', ['id' => ['in' => [$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']]]]);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
     // A row from before localization (no group yet): its old revisions show the group it has now.
@@ -1355,6 +1355,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $bumpDe = $db->insert('pages', ['title' => 'Bump DE', 'locale' => 'de', 'translationOf' => $bump['id']], true)[0];
     problem('a hook that diverges a synced column → 409, nothing committed', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $bump['id']])), 409, 'conflict', '/price');
     problem('… also when one bulk update covers both rows', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
+    problem('… also when the patch is input that normalizes to the handed values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2.0, 'box' => ['label' => 'x']], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
     eq('… both rows keep the group value', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]]), 'price'), [1, 1]);
     $db->delete('pages', ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]);
     $tag = $db->insert('pages', ['title' => 'Tag', 'price' => 1, 'tags' => ['a']], true)[0];

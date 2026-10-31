@@ -1416,11 +1416,12 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
 
 /// Validates a constant default against its column and returns it as JSON.
 /// True when a JSON object nested in `v` can't survive PHP: `json_decode(.., true)` turns an object
-/// into an array, and an empty one or one keyed `"0".."n-1"` in order then reads back as a list.
+/// into an array, and an empty one or one whose keys are exactly `"0".."n-1"` (in any order; the
+/// store sorts integer keys) then reads back as a list.
 pub(crate) fn has_list_shaped_object(v: &Json) -> bool {
     match v {
         Json::Object(o) => {
-            o.keys().enumerate().all(|(i, k)| *k == i.to_string()) || o.values().any(has_list_shaped_object)
+            (0..o.len()).all(|i| o.contains_key(&i.to_string())) || o.values().any(has_list_shaped_object)
         }
         Json::Array(a) => a.iter().any(has_list_shaped_object),
         _ => false,

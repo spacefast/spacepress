@@ -526,7 +526,7 @@ fn json_defaults_with_list_shaped_objects_are_refused_at_the_default() {
     let input = dir.path().join("emdash.json");
     std::fs::write(
         &input,
-        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{"0":"a","1":"b"}}}]}]}"#,
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{"1":"b","0":"a"}}}]}]}"#,
     )
     .unwrap();
     let out = migrate("emdash", &input, &dir.path().join("app/zero.config.ts"));

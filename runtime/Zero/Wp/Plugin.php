@@ -48,6 +48,8 @@ final class Plugin
         add_action('pre_post_update', [$this, 'capturePrevious'], 10, 1);
         add_action('wp_after_insert_post', [$this, 'fillEditorDefaults'], 8, 4);
         add_action('wp_after_insert_post', [$this, 'afterEditorSave'], 20, 4);
+        add_filter('wp_save_post_revision_post_has_changed', [$this, 'revisionHasChanged'], 10, 3);
+        add_action('_wp_put_post_revision', [$this, 'snapshotRevision'], 10, 2);
         add_action('before_delete_post', [$this, 'beforeEditorDelete'], 10, 2);
         add_action('deleted_post', [$this, 'afterEditorDelete'], 10, 2);
     }
@@ -260,6 +262,27 @@ final class Plugin
         [$collection, $row] = $this->deleting[$postId];
         unset($this->deleting[$postId]);
         $this->app()->db->afterEditorDelete($collection, $row, WpAuth::current());
+    }
+
+    /** Every revision of a Zero post, whoever saved it, carries the full row (§4.7). Autosaves keep their own meta. */
+    public function snapshotRevision(int $revisionId, int $postId): void
+    {
+        $collection = $this->collectionOf($postId);
+        if ($collection === null || wp_is_post_autosave($revisionId)) {
+            return;
+        }
+        CompositeStore::create($this->schema, $this->connection())->posts->snapshotRevision($collection, $revisionId, $postId);
+    }
+
+    /** Core only compares title/content/excerpt; a change to any other Zero column also earns a revision. */
+    public function revisionHasChanged(bool $changed, \WP_Post $latest, \WP_Post $post): bool
+    {
+        $collection = $this->collectionOf($post->ID);
+        if ($changed || $collection === null) {
+            return $changed;
+        }
+
+        return CompositeStore::create($this->schema, $this->connection())->posts->revisionDiffers($collection, $post->ID, $latest->ID);
     }
 
     /**

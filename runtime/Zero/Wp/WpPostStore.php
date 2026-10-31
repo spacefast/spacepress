@@ -396,8 +396,9 @@ final class WpPostStore implements Store
     }
 
     /**
-     * Zero-written revisions carry their system columns in `_zero_system` (a revision post's own
-     * status is `inherit`); editor-made ones fall back to the parent's current values.
+     * A revision post can't hold Zero's slug (core names it `<id>-revision-v1`) or status (`inherit`),
+     * so snapshotRevision keeps them in `_zero_system`; revisions saved before it existed fall back
+     * to the parent's current values.
      */
     private function revisionEntry(string $collection, int $pk, array $row): array
     {
@@ -405,11 +406,12 @@ final class WpPostStore implements Store
         $rid = (int) $row[$spec['primaryKey']];
         $post = get_post($rid);
         $system = json_decode((string) get_metadata('post', $rid, '_zero_system', true), true);
-        if (!is_array($system)) {
-            $parent = $this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? [];
-            $system = array_intersect_key($parent, ['status' => 1, 'publishedAt' => 1]);
+        $system = is_array($system) ? $system : [];
+        $keys = $this->snapshotKeys($spec);
+        if (array_diff_key($keys, $system) !== []) {
+            $system += array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? [], $keys);
         }
-        $row = array_replace($row, array_intersect_key($system, $row));
+        $row = array_replace($row, array_intersect_key($system, $keys));
         $row[$spec['primaryKey']] = $pk;
         $at = $post instanceof \WP_Post && $post->post_date_gmt !== '0000-00-00 00:00:00' ? $post->post_date_gmt : $post?->post_date;
 
@@ -421,7 +423,41 @@ final class WpPostStore implements Store
         ];
     }
 
-    /** A WP revision of the post as it is now, with its SCF meta copied (keep-all, §4.7). */
+    /** True when the post's row differs from the revision's, ignoring `onUpdate` columns. */
+    public function revisionDiffers(string $collection, int $pk, int $revisionId): bool
+    {
+        $spec = $this->schema->collection($collection);
+        $live = $this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? null;
+        $rev = $this->revision($collection, $pk, $revisionId)['row'] ?? null;
+        if ($live === null || $rev === null) {
+            return true;
+        }
+        foreach ($spec['columns'] as $col => $def) {
+            if (!isset($def['onUpdate']) && (string) ($live[$col] ?? '') !== (string) ($rev[$col] ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, true> the row columns a revision post doesn't carry itself */
+    private function snapshotKeys(array $spec): array
+    {
+        $keys = [];
+        foreach (['status', 'publishedAt'] as $col) {
+            if ($spec['columns'][$col]['system'] ?? false) {
+                $keys[$col] = true;
+            }
+        }
+        if (($spec['slug'] ?? null) !== null) {
+            $keys[$spec['slug']] = true;
+        }
+
+        return $keys;
+    }
+
+    /** A WP revision of the post as it is now (snapshotRevision fills in its fields, keep-all, §4.7). */
     public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
     {
         $id = (int) $pk;
@@ -434,9 +470,20 @@ final class WpPostStore implements Store
         if ($userId !== null) {
             $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = ? WHERE ID = ?', [$userId, $rid]);
         }
-        acf_copy_metadata($id, $rid);
-        update_metadata('post', $rid, '_zero_system', wp_slash(Js::jsonStringify(array_intersect_key($encodedRow, ['status' => 1, 'publishedAt' => 1]))));
         clean_post_cache($rid);
+    }
+
+    /**
+     * `_wp_put_post_revision`, on every save path (Zero's, core REST, wp-admin): copy the parent's SCF
+     * meta onto the new revision, plus the columns the revision post can't carry, so every revision
+     * reads back as the full row it was.
+     */
+    public function snapshotRevision(string $collection, int $revisionId, int $postId): void
+    {
+        $this->db->touchPost($revisionId);
+        acf_copy_metadata($postId, $revisionId);
+        $parent = array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$postId])[0] ?? [], $this->snapshotKeys($this->schema->collection($collection)));
+        update_metadata('post', $revisionId, '_zero_system', wp_slash(Js::jsonStringify($parent)));
     }
 
     /** WP cron publishes `future` posts (§6.3); reads see the new status through the CASE mapping. */

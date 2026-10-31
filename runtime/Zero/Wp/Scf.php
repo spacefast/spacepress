@@ -387,7 +387,7 @@ final class Scf
             'timestamp' => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $v) ? str_replace(' ', 'T', $v) . '.000Z' : $v,
             'json' => is_string($v) ? self::json($v, $strictJson) : $v,
             'select' => is_array($v) ? array_values(array_map('strval', $v)) : (is_string($v) && is_serialized($v) ? array_values((array) unserialize($v, ['allowed_classes' => false])) : [$v]),
-            'mediaList' => is_array($v) ? array_values(array_map('intval', $v)) : $v,
+            'mediaList' => is_array($v) ? array_values(array_map(static fn ($id) => Js::n((int) $id), $v)) : $v,
             'group' => is_array($v) ? self::jsFields($def['fields'] ?? [], $v, $key . '_') : $v,
             'repeater' => is_array($v) ? array_values(array_map(
                 static fn ($row) => is_array($row) ? self::jsFields($def['fields'] ?? [], $row, $key . '_') : $row,

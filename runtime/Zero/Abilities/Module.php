@@ -76,7 +76,7 @@ final class Module
         $input = null;
         if (isset($flags['input'])) {
             try {
-                $input = json_decode((string) $flags['input'], true, 512, JSON_THROW_ON_ERROR);
+                $input = \Zero\Js::decodeJson((string) $flags['input']);
             } catch (\JsonException $e) {
                 throw new HttpError(400, 'invalid_json', '--input is not valid JSON: ' . $e->getMessage(), '/input');
             }

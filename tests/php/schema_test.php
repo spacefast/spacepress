@@ -109,6 +109,7 @@ problem('select multiple needs a list', fn () => Schema::encode($posts['tags'], 
 $photos = ['type' => 'mediaList', 'rules' => ['max' => 2]];
 eq('mediaList round-trips', Schema::decode($photos, Schema::encode($photos, [1, 2.0], 'photos', '/photos')), [1, 2]);
 problem('mediaList count max', fn () => $write($photos, [1, 2, 3], 'photos'), 422, 'invalid_input', '/photos');
+problem('mediaList items are safe integers', fn () => Schema::encode($photos, [1, 9007199254740992], 'photos', '/photos'), 422, 'invalid_input', '/photos/1');
 
 // ---------------------------------------------------------------- group / repeater / blocks
 

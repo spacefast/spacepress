@@ -413,7 +413,7 @@ final class Schema
         }
         $out = [];
         foreach ($v as $i => $id) {
-            if (!(is_int($id) || (is_float($id) && Js::isInteger($id)))) {
+            if (!((is_int($id) || (is_float($id) && Js::isInteger($id))) && abs($id) <= 9007199254740991)) {
                 throw HttpError::invalidInput("$name items must be media ids", "$pointer/$i");
             }
             $out[] = (int) $id;

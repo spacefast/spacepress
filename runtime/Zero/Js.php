@@ -123,7 +123,7 @@ final class Js
             $radix = ['x' => 16, 'o' => 8, 'b' => 2][strtolower($m[1])];
             [$value, $used] = self::parseDigits($m[2], $radix);
 
-            return $used === strlen($m[2]) ? $value : NAN;
+            return $used === strlen($m[2]) ? self::num((float) $value) : NAN;
         }
 
         return match ($t) {

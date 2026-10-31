@@ -18,6 +18,7 @@ final class Db
     private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with'];
 
     private static ?self $instance = null;
+    private static ?self $current = null;
 
     private int $depth = 0;
     private ?array $actor = null;
@@ -35,9 +36,26 @@ final class Db
         self::$instance = $db;
     }
 
+    /**
+     * The Db that `db()` names: the one running the current operation, else the app's. Extensions
+     * (field access, sync, locales, files…) read the schema and query through `db()`, so a second Db
+     * (another app, a test fixture) gets its own schema and store, never the booted app's.
+     */
     public static function instance(): self
     {
-        return self::$instance ?? throw new \LogicException('Zero\Db is not initialised; call App::boot() first');
+        return self::$current ?? self::$instance ?? throw new \LogicException('Zero\Db is not initialised; call App::boot() first');
+    }
+
+    /** Run $fn with this Db as `db()`; the previous one is restored after, even on a throw. */
+    private function current(callable $fn): mixed
+    {
+        $previous = self::$current;
+        self::$current = $this;
+        try {
+            return $fn();
+        } finally {
+            self::$current = $previous;
+        }
     }
 
     public function store(): Store
@@ -80,7 +98,7 @@ final class Db
     /** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
     public function transaction(callable $fn): mixed
     {
-        return $this->store->transaction($fn);
+        return $this->current(fn () => $this->store->transaction($fn));
     }
 
     /**
@@ -109,9 +127,11 @@ final class Db
     /** @return list<array> */
     public function findMany(string $collection, array $opts = [], ?Viewer $viewer = null): array
     {
-        $rows = $this->fetch($collection, $opts, '', $viewer);
+        return $this->current(function () use ($collection, $opts, $viewer): array {
+            $rows = $this->fetch($collection, $opts, '', $viewer);
 
-        return $this->project($rows, $collection, $opts, '');
+            return $this->project($rows, $collection, $opts, '');
+        });
     }
 
     public function findFirst(string $collection, array $opts = [], ?Viewer $viewer = null): ?array
@@ -772,7 +792,7 @@ final class Db
         }
         $this->depth++;
         try {
-            return $this->store->transaction($fn);
+            return $this->current(fn () => $this->store->transaction($fn));
         } finally {
             $this->depth--;
         }
@@ -849,6 +869,11 @@ final class Db
 
     /** The full decoded row at a revision. */
     public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    {
+        return $this->current(fn (): array => $this->revisionAt($collection, $pk, $revisionId, $viewer));
+    }
+
+    private function revisionAt(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
 

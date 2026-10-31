@@ -17,7 +17,8 @@ namespace Zero;
  *   otherwise reveal values the strip removes.
  * - write: a supplied key whose create/update rule is false is refused with 403 (401 when anonymous,
  *   as phase 1 §1.6) at `/<col>`; a value the viewer can't read is refused whatever it is, so updates
- *   can't probe hidden values. Defaults and hook-written values are trusted. An update may resend a
+ *   can't probe or overwrite hidden values (a top-level column without its own update rule is
+ *   refused outright; one that declares an allowing update rule is write-only). Defaults and hook-written values are trusted. An update may resend a
  *   value it can fully read unchanged, so read-modify-write and revision restore keep working.
  * - structured values: the stored value is resolved first (supplied values; in a group, omitted
  *   sub-fields the viewer can't read or set keep their stored values; defaults, generated once, fill
@@ -214,6 +215,13 @@ final class FieldAccess
             if ($def === null || !array_key_exists($name, $incoming)) {
                 continue; // consumed virtual input; unknown keys are rejected by the pipeline
             }
+            // An update may not overwrite a column whose stored value the viewer can't read, whatever
+            // it sends, unless the column's own update rule lets it (a declared write-only field).
+            // Inherited collection rules don't: a hidden value is set only by those who can see it.
+            if ($existing !== null && $op === 'update' && !isset($def['access']['update'])
+                && !array_key_exists($name, self::stripItem([$name => $def], $existing, $viewer, $page))) {
+                throw self::denied($viewer, (string) $name, HttpError::seg($name));
+            }
             $data[$name] = self::guard($op, $def, (string) $name, $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name));
         }
     }
@@ -229,6 +237,7 @@ final class FieldAccess
         if ($rule !== null && !self::allows($rule, $viewer, $op, $ctx) && !self::unchangedVisible($def, $name, $value, $storedIn, $viewer, $page)) {
             throw self::denied($viewer, $name, $ptr);
         }
+
         if (!in_array($def['type'], self::STRUCTURED, true)) {
             return $value;
         }

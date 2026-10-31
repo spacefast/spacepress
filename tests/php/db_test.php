@@ -423,6 +423,12 @@ putenv('ZERO_AUTO_MIGRATE');
 ini_set('error_log', "$root/error.log"); // 5xx problems are logged by design; keep test output clean
 
 register_shutdown_function(static function () use ($root): void {
+    // A fatal error or an uncaught throwable ends the suite here: say so before the log goes with the
+    // temp dir, and fail the run (a bare exit 255 with no output says nothing).
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
+        fwrite(STDERR, "db_test died: {$error['message']} at {$error['file']}:{$error['line']}\n");
+    }
     stopServer();
     exec('rm -rf ' . escapeshellarg($root));
 });
@@ -1014,13 +1020,20 @@ $faProblem('switching a block\'s layout would erase its protected value', $as('f
 eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
 $faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
 
+// A column hidden from the viewer can't be overwritten either, whatever is sent: a write is only for
+// those who can see the value (review: field-write-hidden). A declared update rule makes it write-only.
+$faProblem('an author can\'t overwrite a value she can\'t read', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'mine@x.test']), 403, 'forbidden', '/email');
+eq('… and nothing changed', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['email'], 'alice@example.test');
+eq('an editor, who reads it, may', $as('fa_ed', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'alice@example.test'])[0], 200);
+
 // Revisions are read through the same strip.
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
 $revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
 eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
 // Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
 // value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
-$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/notes/flag');
+// (email, hidden from her too, is the first column the replay would overwrite)
+$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/email');
 eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
 
 // /_schema reports per-column summaries (no function names).
@@ -1465,6 +1478,26 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         putenv('ZERO_NOW');
     }
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
+})();
+
+// ================================================================ a second Db keeps its own rules
+
+// Extensions (field access, sync, locales, files…) reach the schema through db(): that must be the
+// Db running the operation, not the booted app's, or a second Db silently loses its field rules.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+        'people' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'anyone']],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
+    ]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text)');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'standalone'))), false);
+    eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
+    eq('the booted app\'s db() is back afterwards', \Zero\db()->schema()->hasCollection('profiles'), true);
 })();
 
 finish('db_test');

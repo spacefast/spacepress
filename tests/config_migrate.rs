@@ -151,25 +151,33 @@ fn run_php(app: &Path, body: &str, arg: &Value) -> Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
-#[test]
-fn payload_defaults_survive_the_import() {
+/// The row the Payload app stores for the minimal valid input.
+fn payload_default_row() -> Value {
     let (_dir, app, base) = payload_app();
-    let row = run_php(
+    run_php(
         &app,
         "echo json_encode($app->db->insert('notes', $arg, true)[0]);",
         &base,
-    );
-    // Declared defaults, a required checkbox's implicit false, and an optional checkbox's absence.
+    )
+}
+
+#[test]
+fn payload_declared_defaults_survive_the_import() {
+    let row = payload_default_row();
     assert_eq!(
-        [
-            &row["priority"],
-            &row["stage"],
-            &row["done"],
-            &row["archived"],
-            &row["details"]
-        ],
-        [&json!(2), &json!("todo"), &json!(false), &Value::Null, &json!([])]
+        [&row["priority"], &row["stage"], &row["details"]],
+        [&json!(2), &json!("todo"), &json!([])]
     );
+}
+
+#[test]
+fn payload_required_checkboxes_default_to_false() {
+    assert_eq!(payload_default_row()["done"], false);
+}
+
+#[test]
+fn payload_optional_checkboxes_stay_absent() {
+    assert_eq!(payload_default_row()["archived"], Value::Null);
 }
 
 #[test]
@@ -206,12 +214,18 @@ fn payload_number_bounds_are_carried() {
 }
 
 #[test]
-fn payload_required_text_and_lists_reject_empty_values() {
+fn payload_required_text_rejects_empty_strings() {
     let (_dir, app, base) = payload_app();
     assert_eq!(
-        accepts(&app, base, json!([["title", ""], ["body", ""], ["tags", []]])),
-        json!(["/title", "/body", "/tags"])
+        accepts(&app, base, json!([["title", ""], ["body", ""]])),
+        json!(["/title", "/body"])
     );
+}
+
+#[test]
+fn payload_required_multi_selects_reject_empty_lists() {
+    let (_dir, app, base) = payload_app();
+    assert_eq!(accepts(&app, base, json!([["tags", []]])), json!(["/tags"]));
 }
 
 #[test]

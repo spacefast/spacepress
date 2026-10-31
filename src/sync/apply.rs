@@ -745,21 +745,38 @@ fn perform(
                 pending(report, "trash on the site (its file was deleted)");
                 return Ok(());
             }
-            // The file was read as missing before the site was pulled: if it came back meanwhile,
-            // trash nothing (the next run sees the file).
-            if let Some(back) = reappeared(c, uid) {
-                report.fail(format!(
-                    "{}: reappeared while zero sync ran; nothing was trashed, run zero sync again",
-                    report.rel(&back)
-                ));
-                return Ok(());
+            // The file was read as missing before the site was pulled: if it came back meanwhile, or
+            // the directory can't be told apart from that now, trash nothing (the next run sees it).
+            match reappeared(c, uid) {
+                Ok(None) => {}
+                Ok(Some(back)) => {
+                    report.fail(format!(
+                        "{}: reappeared while zero sync ran; nothing was trashed, run zero sync again",
+                        report.rel(&back)
+                    ));
+                    return Ok(());
+                }
+                Err(e) => {
+                    report.fail(format!("{e}; can't confirm the file is gone, so nothing was trashed"));
+                    return Ok(());
+                }
             }
             match client.post(&format!("/sync/{name}/trash"), &json!({"uid": uid, "expect": expect})) {
                 Ok(_) => {
-                    if reappeared(c, uid).is_none() {
-                        bases.remove(site, name, uid);
+                    // The record is in the site's trash. Whether or not the file came back during the
+                    // request, the base goes: a returned file then reads as new and is pushed again
+                    // (which restores it from the trash), instead of matching the base and being deleted.
+                    bases.remove(site, name, uid);
+                    match reappeared(c, uid) {
+                        Ok(None) => report.applied(),
+                        Ok(Some(back)) => report.fail(format!(
+                            "{}: came back while its record was being trashed; the next zero sync pushes it again",
+                            report.rel(&back)
+                        )),
+                        Err(e) => report.fail(format!(
+                            "{e}; the record was trashed, check the file and run zero sync again"
+                        )),
                     }
-                    report.applied();
                 }
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
                 Err(p) => {
@@ -831,13 +848,32 @@ fn perform(
 }
 
 /// A file in the collection's directory holding this uid (a deletion that was undone), if any.
-fn reappeared(c: &Collection, uid: &str) -> Option<PathBuf> {
-    let needle = uid.as_bytes();
-    std::fs::read_dir(&c.dir)
-        .ok()?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some(c.format.as_str()))
-        .find(|p| std::fs::read(p).is_ok_and(|b| b.windows(needle.len()).any(|w| w == needle)))
+/// Whether a record file holding this uid (top-level `uid`) is in the collection's directory now.
+/// `Err` when that can't be told (a directory or file that can't be read or parsed): never treat
+/// that as absence.
+fn reappeared(c: &Collection, uid: &str) -> Result<Option<PathBuf>, String> {
+    let entries = match std::fs::read_dir(&c.dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{}: {e}", c.dir.display())),
+    };
+    for entry in entries {
+        let path = entry.map_err(|e| format!("{}: {e}", c.dir.display()))?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some(c.format.as_str()) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let parsed = if c.format == "json" {
+            json_record(&text, c.content)
+        } else {
+            md_record(&text)
+        };
+        let (front, _) = parsed.map_err(|(line, m)| format!("{}:{line}: {m}", path.display()))?;
+        if front.get("uid").and_then(Value::as_str) == Some(uid) {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
 }
 
 fn remote_digest(r: &Remote) -> Option<&str> {

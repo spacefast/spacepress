@@ -1841,3 +1841,125 @@ fn a_slug_changed_alike_on_both_sides_moves_the_file_in_the_same_run() {
     );
     let _ = std::fs::remove_dir_all(&project);
 }
+
+#[test]
+fn a_file_restored_during_the_trash_request_comes_back_on_the_next_run() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    let kept = std::fs::read_to_string(&file).unwrap();
+    std::fs::remove_file(&file).unwrap();
+    // The file comes back while its trash request is in flight.
+    let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes/trash",
+        move || std::fs::write(&path, &kept).unwrap(),
+        restored.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the run reports the file that came back: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    // The next run keeps the file and puts the record back.
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    assert!(file.exists(), "the restored file is not deleted");
+    assert_eq!(site.rows("notes").len(), 1, "its record is back on the site");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn an_unreadable_file_restored_mid_run_blocks_the_trash() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    std::fs::remove_file(&file).unwrap();
+    // While the site is read, a file appears that can't be parsed: it might be the same record.
+    let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "GET /api/sync/notes",
+        move || std::fs::write(&path, "---\ntitle: &broken\n---\n").unwrap(),
+        restored.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        site.rows("notes").len(),
+        1,
+        "nothing is trashed while the directory can't be read with certainty"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_record_whose_uid_another_file_mentions_can_still_be_deleted() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/a.md"),
+        "---\ntitle: A\nslug: a\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let a_uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
+    // Another note's body names A's uid; that is not A coming back.
+    std::fs::write(
+        project.join("content/notes/b.md"),
+        format!("---\ntitle: B\nslug: b\nlevel: null\nauthorId: null\n---\nSee {a_uid}.\n"),
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    std::fs::remove_file(project.join("content/notes/a.md")).unwrap();
+    let out = sync(&project, &site, &["--only", "notes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        !site.rows("notes").iter().any(|r| r["uid"] == a_uid.as_str()),
+        "A is trashed"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}

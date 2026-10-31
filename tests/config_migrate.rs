@@ -139,23 +139,26 @@ fn payload_app() -> (tempfile::TempDir, PathBuf, Value) {
     (dir, app, json!({"title": "Title", "body": "Body", "tags": ["one"]}))
 }
 
-#[test]
-fn payload_defaults_survive_the_import() {
-    let (dir, app, base) = payload_app();
-    let notes = &schema(&build_fixture(dir.path(), "wp").join("plugins/zero-app-imported/zero/app/schema.php"))["collections"]
-        ["notes"];
-    assert_eq!(notes["columns"]["updatedAt"]["onUpdate"]["now"], true);
+/// Run PHP against the generated app with `$app` booted; returns its JSON output.
+fn run_php(app: &Path, body: &str, arg: &Value) -> Value {
     let out = Command::new("php")
-        .args([
-            "-r",
-            "require $argv[1] . '/zero/runtime/bootstrap.php'; echo json_encode(\\Zero\\App::boot($argv[1])->db->insert('notes', json_decode($argv[2], true), true)[0]);",
-        ])
-        .arg(&app)
-        .arg(base.to_string())
+        .args(["-r", &format!("require $argv[1] . '/zero/runtime/bootstrap.php'; $app = \\Zero\\App::boot($argv[1]); $arg = json_decode($argv[2], true); {body}")])
+        .arg(app)
+        .arg(arg.to_string())
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let row: Value = serde_json::from_slice(&out.stdout).unwrap();
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+#[test]
+fn payload_defaults_survive_the_import() {
+    let (_dir, app, base) = payload_app();
+    let row = run_php(
+        &app,
+        "echo json_encode($app->db->insert('notes', $arg, true)[0]);",
+        &base,
+    );
     // Declared defaults, a required checkbox's implicit false, and an optional checkbox's absence.
     assert_eq!(
         [
@@ -167,6 +170,19 @@ fn payload_defaults_survive_the_import() {
         ],
         [&json!(2), &json!("todo"), &json!(false), &Value::Null, &json!([])]
     );
+}
+
+#[test]
+fn payload_updated_at_moves_on_update() {
+    let (_dir, app, base) = payload_app();
+    let rows = run_php(
+        &app,
+        "$row = $app->db->insert('notes', $arg + ['updatedAt' => '2000-01-01T00:00:00.000Z'], true)[0];
+         $next = $app->db->update('notes', ['priority' => 3], ['id' => $row['id']], true)[0];
+         echo json_encode([$row['updatedAt'], $next['updatedAt'] > '2001']);",
+        &base,
+    );
+    assert_eq!(rows, json!(["2000-01-01T00:00:00.000Z", true]));
 }
 
 #[test]
@@ -190,15 +206,24 @@ fn payload_number_bounds_are_carried() {
 }
 
 #[test]
-fn payload_required_values_reject_payloads_empty_forms() {
+fn payload_required_text_and_lists_reject_empty_values() {
+    let (_dir, app, base) = payload_app();
+    assert_eq!(
+        accepts(&app, base, json!([["title", ""], ["body", ""], ["tags", []]])),
+        json!(["/title", "/body", "/tags"])
+    );
+}
+
+#[test]
+fn payload_required_json_must_be_truthy() {
     let (_dir, app, base) = payload_app();
     assert_eq!(
         accepts(
             &app,
             base,
-            json!([["title", ""], ["body", ""], ["tags", []], ["details", false]])
+            json!([["details", false], ["details", 0], ["details", ""], ["details", []], ["details", {"a": 1}]])
         ),
-        json!(["/title", "/body", "/tags", "/details"])
+        json!(["/details", "/details", "/details", true, true])
     );
 }
 
@@ -230,7 +255,7 @@ fn payload_default_max_text_length_bounds_unbounded_text() {
 }
 
 #[test]
-fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
+fn refuses_unsupported_constructs_at_their_pointer_without_output() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("source.ts");
     let out = dir.path().join("migrated/zero.config.ts");
@@ -315,54 +340,64 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
         assert!(!out.exists());
         assert!(!out.parent().unwrap().exists());
     }
-    std::fs::write(
-        &input,
-        "export default {collections:[{slug:'notes',fields:[{name:'done',type:'checkbox',defaultValue:'invalid'}]}]};",
-    )
-    .unwrap();
-    let invalid = migrate("payload", &input, &out);
-    assert_eq!(invalid.status.code(), Some(1));
-    let report: Value = serde_json::from_slice(&invalid.stdout).unwrap();
-    assert!(
-        report["errors"][0]["reason"]
-            .as_str()
-            .unwrap()
-            .contains("cannot compile")
-    );
-    assert!(!out.exists());
-    let json_input = dir.path().join("duplicate.json");
-    // A nested validation error points into the validation object, not at the field.
-    std::fs::write(
-        &json_input,
-        r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string","validation":{"required":"yes"}}]}]}}"#,
-    )
-    .unwrap();
-    let nested = migrate("sanity", &json_input, &out);
-    assert_eq!(nested.status.code(), Some(1));
-    let report: Value = serde_json::from_slice(&nested.stdout).unwrap();
+}
+
+/// Migrate `source` (written to `file`); expects a refusal and no output. Returns the first error.
+fn refused(from: &str, file: &str, source: &str) -> Value {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join(file);
+    std::fs::write(&input, source).unwrap();
+    let out = dir.path().join("migrated/zero.config.ts");
+    let result = migrate(from, &input, &out);
     assert_eq!(
-        report["errors"][0]["pointer"],
-        "/schema/types/0/fields/0/validation/required"
+        result.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&result.stdout)
     );
-    assert!(!out.exists());
-    std::fs::write(&json_input, r#"{"collections":[],"collections":[]}"#).unwrap();
-    let duplicate = migrate("payload", &json_input, &out);
-    assert_eq!(duplicate.status.code(), Some(1));
-    let report: Value = serde_json::from_slice(&duplicate.stdout).unwrap();
-    assert!(
-        report["errors"][0]["reason"]
-            .as_str()
-            .unwrap()
-            .contains("duplicate key")
+    assert!(!out.parent().unwrap().exists());
+    serde_json::from_slice::<Value>(&result.stdout).unwrap()["errors"][0].clone()
+}
+
+#[test]
+fn a_config_the_compiler_rejects_is_never_published() {
+    let error = refused(
+        "payload",
+        "source.ts",
+        "export default {collections:[{slug:'notes',fields:[{name:'done',type:'checkbox',defaultValue:'invalid'}]}]};",
     );
-    assert!(!out.exists());
-    // An arbitrary source call must not execute, even before the default export.
+    assert!(error["reason"].as_str().unwrap().contains("cannot compile"));
+}
+
+#[test]
+fn nested_validation_errors_point_into_the_validation_object() {
+    let error = refused(
+        "sanity",
+        "source.json",
+        r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string","validation":{"required":"yes"}}]}]}}"#,
+    );
+    assert_eq!(error["pointer"], "/schema/types/0/fields/0/validation/required");
+}
+
+#[test]
+fn json_exports_with_duplicate_keys_are_refused() {
+    let error = refused("payload", "source.json", r#"{"collections":[],"collections":[]}"#);
+    assert!(error["reason"].as_str().unwrap().contains("duplicate key"));
+}
+
+#[test]
+fn source_code_is_never_executed() {
+    let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("executed");
-    std::fs::write(&input, format!("import {{writeFileSync}} from 'node:fs'; writeFileSync({},'executed'); export default {{ collections: [] }};", serde_json::to_string(&marker.to_string_lossy()).unwrap())).unwrap();
-    let result = migrate("payload", &input, &out);
-    assert_eq!(result.status.code(), Some(1));
+    refused(
+        "payload",
+        "source.ts",
+        &format!(
+            "import {{writeFileSync}} from 'node:fs'; writeFileSync({},'executed'); export default {{ collections: [] }};",
+            serde_json::to_string(&marker.to_string_lossy()).unwrap()
+        ),
+    );
     assert!(!marker.exists());
-    assert!(!out.exists());
 }
 
 /// Migrate one inline source and build it for standalone; returns the app directory.
@@ -383,7 +418,8 @@ fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, Pat
     (dir, app)
 }
 
-/// Insert each `{field: value}` case into `notes` (with `base` filled in); `true` = accepted.
+/// Insert each `{field: value}` case into `notes` (with `base` filled in), each in its own rolled-back
+/// transaction so cases never see each other's rows; `true` = accepted, else the error pointer.
 fn accepts(app: &Path, base: Value, cases: Value) -> Value {
     let out = Command::new("php")
         .args([
@@ -394,8 +430,14 @@ fn accepts(app: &Path, base: Value, cases: Value) -> Value {
             $base = json_decode($argv[2], true);
             $out = [];
             foreach (json_decode($argv[3], true) as [$field, $value]) {
-                try { $app->db->insert('notes', [$field => $value] + $base); $out[] = true; }
-                catch (\Zero\HttpError $e) { $out[] = $e->pointer; }
+                try {
+                    $app->db->transaction(static function () use ($app, $field, $value, $base) {
+                        $app->db->insert('notes', [$field => $value] + $base);
+                        throw new \RuntimeException('accepted');
+                    });
+                } catch (\Zero\HttpError $e) { $out[] = $e->pointer; continue; }
+                catch (\RuntimeException $e) { if ($e->getMessage() !== 'accepted') throw $e; }
+                $out[] = true;
             }
             echo json_encode($out);
         "#,

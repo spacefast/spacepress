@@ -1,0 +1,30 @@
+@use "@wordpress/base-styles/variables";
+
+.zero-admin-dataviews__view-actions {
+	border-bottom: 1px solid var( --wpds-color-stroke-surface-neutral );
+	padding-inline: variables.$grid-unit * 2.5;
+	overflow-x: auto;
+	width: 100%;
+	box-sizing: border-box;
+	display: flex;
+	container-type: inline-size;
+	flex-shrink: 0;
+
+	// On small stacks, switch to column stacking
+	flex-direction: row;
+	@container (width < 500px) {
+		& {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+	}
+
+	> div:not( :empty ) {
+		min-height: 48px;
+	}
+}
+
+.zero-admin-dataviews-filters__container:not( :empty ) {
+	padding-inline: variables.$grid-unit * 2.5;
+	padding-block: variables.$grid-unit * 1.5;
+}

@@ -1,0 +1,31 @@
+{
+	"extends": "./tsconfig.base.json",
+	"composite": true,
+	"compilerOptions": {
+		"outDir": ".tsout",
+		"rootDir": ".",
+		"baseUrl": "."
+	},
+	"include": [
+		"**/*.ts",
+		"**/*.tsx",
+		"**/*.js",
+		"**/*.jsx"
+	],
+	"exclude": [
+		"**/build",
+		"**/node_modules",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.spec.ts",
+		"**/test/**",
+		"**/*.stories.tsx",
+		"**/stories/**",
+		"**/*.mdx"
+	],
+	"references": [
+		{
+			"path": "./packages/theme"
+		}
+	]
+}

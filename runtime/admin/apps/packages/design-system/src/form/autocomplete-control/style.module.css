@@ -1,0 +1,9 @@
+@layer wp-ui-utilities, wp-ui-components, wp-ui-compositions, wp-ui-overrides;
+
+@layer wp-ui-compositions {
+	.popup {
+		&.hide-when-empty[data-empty] {
+			display: none;
+		}
+	}
+}

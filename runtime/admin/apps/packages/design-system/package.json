@@ -1,0 +1,35 @@
+{
+	"name": "@zero-admin/design-system",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@base-ui/react": "catalog:",
+		"@wordpress/a11y": "catalog:",
+		"@wordpress/compose": "catalog:",
+		"@wordpress/dom": "catalog:",
+		"@wordpress/element": "catalog:",
+		"@wordpress/keycodes": "catalog:",
+		"@wordpress/html-entities": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/icons": "catalog:",
+		"@wordpress/primitives": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@zero-admin/theme": "workspace:*",
+		"clsx": "catalog:",
+		"dequal": "catalog:"
+	},
+	"peerDependencies": {
+		"react": "catalog:",
+		"react-dom": "catalog:"
+	},
+	"devDependencies": {
+		"@testing-library/react": "catalog:",
+		"@testing-library/user-event": "catalog:"
+	},
+	"sideEffects": false,
+	"license": "GPL-2.0-or-later"
+}

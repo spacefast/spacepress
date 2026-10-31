@@ -1,0 +1,24 @@
+@use "@wordpress/base-styles/variables";
+
+.zero-admin-site-icon-back-button__icon {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: variables.$header-height;
+	height: variables.$header-height;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: hsla( 0, 0%, 80% );
+	pointer-events: none;
+
+	svg {
+		fill: currentColor;
+	}
+
+	&.has-site-icon {
+		background-color: hsla( 0, 0%, 100%, 0.6 );
+		-webkit-backdrop-filter: saturate( 180% ) blur( 15px );
+		backdrop-filter: saturate( 180% ) blur( 15px );
+	}
+}

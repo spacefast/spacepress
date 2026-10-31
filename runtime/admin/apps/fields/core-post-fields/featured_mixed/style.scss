@@ -1,0 +1,30 @@
+// Should be fixed upstream: the media field should never have anchor styles.
+.dataviews-view-grid__media--clickable {
+	text-decoration: none;
+	color: inherit;
+}
+
+.dataviews-media-field__featured-mixed {
+	display: flex;
+	height: calc( 100% - 60px );
+	margin: 30px;
+	overflow: hidden;
+
+	p {
+		margin: 0;
+		font-size: 1.5vw;
+		position: relative;
+
+		/* stylelint-disable color-named */
+		// mask-image uses black (opaque) to transparent (transparent) values to control visibility, not color.
+		mask-image: linear-gradient(
+			to bottom,
+			black 0%,
+			black 60%,
+			rgba( 0, 0, 0, 0.2 ) 80%,
+			transparent 100%
+		);
+
+		/* stylelint-enable color-named */
+	}
+}

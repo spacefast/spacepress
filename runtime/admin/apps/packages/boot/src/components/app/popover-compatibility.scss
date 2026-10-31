@@ -1,0 +1,13 @@
+@use "@wordpress/base-styles/z-index" as z;
+
+// Maintains the z-index-based stacking behavior of the legacy popovers (e.g. tooltips, dialogs, dropdowns)
+// in the new popover components, until we start migrating everything to a z-index-free system.
+
+:root {
+	--wp-ui-autocomplete-z-index: #{z.z-index( ".components-popover" )};
+	--wp-ui-combobox-z-index: #{z.z-index( ".components-popover" )};
+	--wp-ui-dialog-z-index: #{z.z-index( ".components-modal__screen-overlay" )};
+	--wp-ui-select-z-index: #{z.z-index( ".components-popover" )};
+	--wp-ui-tree-select-z-index: #{z.z-index( ".components-popover" )};
+	--wp-ui-tooltip-z-index: #{z.z-index( ".components-tooltip" )};
+}

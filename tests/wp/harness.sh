@@ -5,6 +5,9 @@
 #                                    create admin/editor/author/subscriber with application passwords;
 #                                    prints ONE JSON line (url, versions, users, container)
 #   harness.sh up ... --env          print shell exports instead of JSON
+#   harness.sh up --wp-content <dir> --path blog
+#                                    install WordPress below the origin root (http://host/blog/),
+#                                    the layout a shared host gives it; the receipt's url includes the path
 #   harness.sh up --wp-content <dir> --bare
 #                                    a fresh WordPress with users only: no plugin is installed or
 #                                    activated, so the caller installs an artifact as a site owner would
@@ -33,12 +36,13 @@ wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
 
 up() {
-  local content="${ZERO_WP_CONTENT}" env=0 bare=0
+  local content="${ZERO_WP_CONTENT}" env=0 bare=0 subdir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --wp-content) content="$2"; shift 2 ;;
       --env) env=1; shift ;;
       --bare) bare=1; shift ;;
+      --path) subdir="${2#/}"; subdir="${subdir%/}"; shift 2 ;;
       *) echo "unknown argument $1; use --wp-content <dir>" >&2; exit 2 ;;
     esac
   done
@@ -73,6 +77,17 @@ PINS
 
   local url="http://127.0.0.1:${ZERO_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
+  if [[ -n $subdir ]]; then
+    [[ $subdir =~ ^[a-z0-9-]+$ ]] || { echo '--path must be one lowercase path segment' >&2; exit 2; }
+    # A real subdirectory install: the document root is a directory above WordPress holding only
+    # the <subdir> link, so the site answers at /<subdir>/ and nothing answers at /. The image's
+    # static .htaccess assumes the root; point its rewrite base and front controller at the sub-path.
+    compose exec -T wordpress sh -c "mkdir -p /var/www/root && ln -sfn /var/www/html /var/www/root/$subdir \
+      && sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/root#' /etc/apache2/sites-enabled/000-default.conf \
+      && sed -i 's#^RewriteBase /\$#RewriteBase /$subdir/#; s#^RewriteRule \. /index\.php#RewriteRule . /$subdir/index.php#' /var/www/html/.htaccess \
+      && apache2ctl -k graceful" >/dev/null
+    url="$url/$subdir"
+  fi
   if ! wp core is-installed >/dev/null 2>&1; then
     wp core install --url="$url" --title="Zero Test" --admin_user=admin --admin_password=zero-test-admin \
       --admin_email=admin@example.test --skip-email >/dev/null
@@ -107,7 +122,8 @@ ACTIVATE
   local identity=null
   if wp cli has-command 'zero-identity app add' >/dev/null 2>&1; then
     local application client_id
-    application=$(wp zero-identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$url" --id=app_zero_dev)
+    origin="${url%%/[^/]*}"; [[ $url == */* ]] && origin="$(printf %s "$url" | sed -E 's#^(https?://[^/]+).*#\1#')"
+    application=$(wp zero-identity app add --name='Zero development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
     client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$application")
     identity=$(python3 -c 'import json,sys; print(json.dumps({"clientId":sys.argv[1]}))' "$client_id")
     [[ $env == 0 ]] || printf 'export ZERO_IDENTITY_CLIENT_ID=%q\n' "$client_id"

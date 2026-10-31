@@ -1,0 +1,12 @@
+@use "@wordpress/media-utils/build-style/style.css" as media-utils;
+
+// Temporary fix - see https://github.com/WordPress/gutenberg/issues/70611
+// The modal component has an inner div that is assumes its content's height.
+// When a modal uses the 'fill' size, there's no way to set modal content to 100% height.
+// This is usually not an issue at other sizes, the modal is the height of the content.
+// This needs to be fixed in the core modal component.
+.zero-admin-media-modal
+	.components-modal__content
+	> div:not( .components-modal__header ) {
+	height: 100%;
+}

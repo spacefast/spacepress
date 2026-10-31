@@ -645,6 +645,8 @@ unlink("$root/zero/app/migrations/0003_orphan.sql");
 eq('CLI find', [$code, $out], [0, ['data' => [['name' => 'Hammer']]]]);
 [$code, $out] = $cli('insert', 'items', '{"name":"cli","qty":"x"}');
 eq('CLI error envelope + exit 1', [$code, $out['error']['code'] ?? null, $out['error']['pointer'] ?? null], [1, 'invalid_input', '/qty']);
+[$code, $out] = $cli('insert', 'items', '{}');
+eq('CLI insert {} is one row with no fields (it reaches the pipeline)', [$code, $out['error']['pointer'] ?? null], [1, '/name']);
 [$code, $out] = $cli('update', 'items', '{"name":"Hammer"}', '{"qty":-3}');
 eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->findFirst('items', ['where' => ['name' => 'Hammer']])['qty']], [1, 'rejected', 5]);
 [$code, $out] = $cli('action', 'restock', json_encode(['itemId' => $hammer['id'], 'amount' => 2]));
@@ -1521,6 +1523,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $kids = $db->findFirst('marked', \Zero\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
         $byInfo = $db->findMany('marked', \Zero\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
         $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'standalone'));
+        eq('permission checks run a rule filter holding {} like reads do', [
+            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null, 'standalone')),
+            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null, 'standalone')) ?? []),
+        ], [true, 4]);
         eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
             array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']), $kids),
             array_map(static fn ($r) => \Zero\Js::jsonStringify($r['info']['extra']), $byInfo),

@@ -222,6 +222,8 @@ final class Db
     private function keysMatching(string $collection, ?array $where, array $guards): array
     {
         $pk = $this->schema->collection($collection)['primaryKey'];
+        $where = $where === null ? null : $this->plainFilter($collection, $where);
+        $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
         $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
 
         return array_column($this->store->select($collection, $q), $pk);

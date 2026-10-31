@@ -643,6 +643,8 @@ final class App
 
     private static function rows(mixed $v): array
     {
+        $v = $v instanceof JsObject ? [] : $v; // a top-level `{}` row; nested json() values keep theirs
+
         return is_array($v) ? $v : throw HttpError::invalidInput('Expected a JSON object or array of objects');
     }
 }

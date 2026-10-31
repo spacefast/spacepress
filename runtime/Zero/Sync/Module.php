@@ -24,6 +24,29 @@ final class Module
         Extensions::onWritten(self::onWritten(...));
         Extensions::schemaDescribe(self::describe(...));
         Extensions::route('sync', Routes::dispatch(...));
+        if (function_exists('add_action')) {
+            // Before the editor-save pipeline (Plugin, priority 20), so its hooks and every onWritten
+            // observer (webhooks included) see the post's uid.
+            add_action('wp_after_insert_post', self::editorUid(...), 15, 2);
+        }
+    }
+
+    /** Give a post saved in wp-admin or core REST its uid, written as meta outside the pipeline. */
+    public static function editorUid(int $postId, \WP_Post $post): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin === null || $plugin->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+            return;
+        }
+        foreach ($plugin->schema->collections() as $name => $spec) {
+            if (($spec['uid'] ?? false) && ($spec['wp']['postType'] ?? null) === $post->post_type && ($spec['editor'] ?? true)) {
+                if (get_post_meta($postId, \Zero\Wp\WpPostStore::UID_META, true) === '') {
+                    $plugin->app()->db->transaction(static fn () => self::ensureUids((string) $name, [[$spec['primaryKey'] => $postId, 'uid' => null]]));
+                }
+
+                return;
+            }
+        }
     }
 
     /** Mint a uid on create when the writer gave none; refuse to change one. */

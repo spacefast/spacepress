@@ -99,11 +99,21 @@ test("sync on WordPress", async (t) => {
     assert.equal(created.record.body, "Plain again.\n");
   });
 
-  await t.test("a post created in wp-admin gains a uid", async () => {
-    const id = Number(wp("post", "create", "--post_type=zero_guides", `--post_title=Admin ${run}`, "--post_status=publish", "--user=editor", "--porcelain"));
-    const [meta] = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${id} AND meta_key = '_zero_uid'`);
-    assert.match(meta.meta_value, /^zr_[0-9a-f]{20}$/);
-    assert.equal((await pull("guides")).get(meta.meta_value).record.fields.title, `Admin ${run}`);
+  await t.test("a post created in wp-admin gains a uid before any write observer sees it", async () => {
+    // A post created the way wp-admin does, in one PHP process with an onWritten observer (webhooks
+    // and other features use this seam) recording the uid it receives.
+    const seen = JSON.parse(wp("eval", `
+      $seen = 'not called';
+      \\Zero\\Wp\\Plugin::instance()->app();
+      \\Zero\\Extensions::onWritten(function (string $op, string $c, array $row) use (&$seen) { if ($c === 'guides') { $seen = $row['uid']; } });
+      wp_set_current_user(get_user_by('login', 'editor')->ID);
+      $id = wp_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Admin ${run}', 'post_status' => 'publish'], true);
+      echo wp_json_encode([$id, $seen, get_post_meta($id, '_zero_uid', true)]);
+    `));
+    const [id, observed, stored] = seen;
+    assert.match(stored, /^zr_[0-9a-f]{20}$/);
+    assert.equal(observed, stored, `onWritten saw the uid for post ${id}`);
+    assert.equal((await pull("guides")).get(stored).record.fields.title, `Admin ${run}`);
   });
 
   await t.test("trash moves the post to the WordPress trash; pushing it again restores it", async () => {

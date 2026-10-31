@@ -2471,6 +2471,16 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         field_conditions(&out.schema.collections[&b.table].columns, &b.columns, false)?;
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
+        // Sync pages records by an increasing integer key and creates rows without one (§5.3).
+        if let Some(pk) = c.primary_key()
+            && !(pk.ty == ColType::Integer && pk.auto_increment)
+        {
+            return Err(Diag::new(
+                out.collections.iter().find(|b| b.table == c.table).unwrap().columns[&pk.name].span,
+                format!("\"{}\" syncs with files, so its primary key must be id()", c.table),
+            )
+            .help("use `id: id()`; the uid is the record's identity across sites and files"));
+        }
         for col in c.columns.values() {
             if let Some(r) = &col.references
                 && !out.schema.collections[&r.collection].uid

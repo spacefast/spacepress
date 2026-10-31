@@ -502,8 +502,8 @@ generator and the PHP drift checker do, so the two implementations agree);
 it produces nothing under `build/` because `wp-build` only builds
 `packages/`, `routes/` and `fields/`, and `build.rs` never embeds `apps/`
 anyway. `run.sh` runs the step when the workspace's Playwright binary
-exists and otherwise prints "browser journey skipped: run `pnpm --dir
-runtime/admin/apps install`" and exits non-zero, so a local run without the
+exists and otherwise prints "browser journey skipped: run `cd runtime/admin/apps &&
+pnpm install --frozen-lockfile`" and exits non-zero, so a local run without the
 workspace is an explicit failure, never a silent pass;
 `ZERO_WP_SKIP_BROWSER=1` turns that into a skip for people iterating on PHP
 only.

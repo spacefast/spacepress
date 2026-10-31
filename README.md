@@ -87,7 +87,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions for standalone -> .zero/app (
 | SQLite and MySQL migrations, diffed against the last build | `zero/migrations/{sqlite,wp}/0001_init.sql` |
 | A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/client/` |
 | Editor types, so `db` in your hooks knows your schema | `zero.gen.ts` |
-| REST endpoints for every collection, relation, global and action | `/api/...` standalone, `/wp-json/zero/v1/...` on WordPress |
+| REST endpoints for every collection, global and action, with relations loaded through `with` | `/api/...` standalone, `/wp-json/zero/v1/...` on WordPress |
 | Sign-in, sessions, roles, guests and MFA | the `zero-identity` plugin on WordPress; passwords and CLI tokens standalone |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | `zero build --target wp` |
 | Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `.zero/wp-content/plugins/` |
@@ -198,9 +198,9 @@ terminal.
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Authentication**: sign-in, sessions, roles, guests who keep their rows when
-  they sign up, and MFA. WordPress users on WordPress; the app's own table
-  standalone.
+- **Authentication**: sign-in, sessions, roles, and guests who keep their rows
+  when they sign up; passkeys and MFA through `zero-identity` on WordPress.
+  WordPress users on WordPress; the app's own table standalone.
 - **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
   commits, retry with backoff. Action Scheduler on WordPress, `zero jobs work`
   standalone.

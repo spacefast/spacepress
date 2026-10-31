@@ -108,7 +108,13 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "global fields that are notNull need a default (`title`)",
         "zero.config.ts:3:38",
     );
-    // PHP decodes {} and "0".."n" keyed objects as lists; group defaults are normalized and stay valid.
+    // PHP decodes {} and "0".."n" keyed objects as lists, in a json() column or a json sub-field;
+    // group defaults are normalized against their fields and stay valid.
+    rejects(
+        "reject-json-list-shaped-default",
+        "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
+        "zero.config.ts:2:",
+    );
     rejects(
         "reject-json-list-shaped-object",
         "`meta` defaults to a JSON object that the PHP runtime reads back as an array",

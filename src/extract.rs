@@ -1427,11 +1427,38 @@ pub(crate) fn has_list_shaped_object(v: &Json) -> bool {
     }
 }
 
+/// True when a json() value inside this column's default (the column, or a json sub-field of a
+/// group/repeater/blocks item) is list-shaped and would read back as an array.
+fn json_leaves_lossy(b: &ColBuilder, v: &Json) -> bool {
+    let fields = |fields: &IndexMap<String, Rc<ColBuilder>>, item: &Json| {
+        fields
+            .iter()
+            .any(|(name, f)| item.get(name).is_some_and(|x| json_leaves_lossy(f, x)))
+    };
+    match (b.ty, v) {
+        (ColType::Json, v) => has_list_shaped_object(v),
+        (ColType::Group, item) => b.fields.as_ref().is_some_and(|f| fields(f, item)),
+        (ColType::Repeater, Json::Array(items)) => {
+            b.fields.as_ref().is_some_and(|f| items.iter().any(|i| fields(f, i)))
+        }
+        (ColType::Blocks, Json::Array(items)) => b.layouts.as_ref().is_some_and(|layouts| {
+            items.iter().any(|i| {
+                i.get("layout")
+                    .and_then(Json::as_str)
+                    .and_then(|l| layouts.get(l))
+                    .is_some_and(|f| fields(f, i))
+            })
+        }),
+        _ => false,
+    }
+}
+
 fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     let span = b.span_of("default");
     let json = plain_json(v, span, "default")?;
-    // group/repeater/blocks defaults are normalized against their fields; an opaque json value is not.
-    if b.ty == ColType::Json && has_list_shaped_object(&json) {
+    // group/repeater/blocks defaults are normalized against their fields; an opaque json value
+    // (the column itself or a json sub-field) is stored as given.
+    if json_leaves_lossy(b, &json) {
         return Err(Diag::new(
             span,
             format!("`{name}` defaults to a JSON object that the PHP runtime reads back as an array"),

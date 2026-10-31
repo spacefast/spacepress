@@ -124,6 +124,22 @@ test("a refused link of three posts leaves none of them linked or changed", asyn
   assert.deepEqual(await log([de.id]), [], "the rolled-back adoption ran no committed hook effects");
 });
 
+test("a refused link that extends a group keeps the group it had", async () => {
+  const { en, fr } = await pair("Extend");
+  const out = JSON.parse(wp("eval", `
+    $de = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
+    try {
+      pll_save_post_translations(['en' => ${en.id}, 'fr' => ${fr.id}, 'de' => $de]);
+      $result = 'linked';
+    } catch (\\Zero\\HttpError $e) {
+      $result = $e->status . ' ' . $e->errorCode;
+    }
+    echo wp_json_encode([$result, $de]);`));
+  assert.equal(out[0], "409 conflict");
+  assert.deepEqual([polylang(en.id)[1], polylang(fr.id)[1], polylang(out[1])[1]], [{ en: en.id, fr: fr.id }, { en: en.id, fr: fr.id }, { de: out[1] }]);
+  assert.deepEqual((await ok("GET", `/guides/${fr.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
+});
+
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
   const out = JSON.parse(wp("eval", `
     $db = \\Zero\\Wp\\Plugin::instance()->db();

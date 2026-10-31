@@ -1255,6 +1255,14 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'afterUpdate de:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
     ]);
     eq('each synced row keeps its own revision', count($db->revisions('pages', $tee['id'])), 2);
+    // A row from before localization (no group yet): its old revisions show the group it has now.
+    $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
+    $db->store()->update('pages', $legacy['id'], ['translationGroup' => null]);
+    $db->update('pages', ['title' => 'Legacy v2'], ['id' => $legacy['id']]);
+    $legacyRevision = array_reverse($db->revisions('pages', $legacy['id']))[0]['id'];
+    $legacyDe = $db->insert('pages', ['title' => 'Alt', 'locale' => 'de', 'translationOf' => $legacy['id']], true)[0];
+    eq('a revision taken before the row had a group shows its current group', $db->revision('pages', $legacy['id'], $legacyRevision)['translations'], ['en' => $legacy['id'], 'de' => $legacyDe['id']]);
+    $db->delete('pages', ['id' => ['in' => [$legacy['id'], $legacyDe['id']]]]);
     $firstRevision = array_reverse($db->revisions('pages', $tea['id']))[0]['id'];
     eq('a revision shows the group as it is now, not as it was', $db->revision('pages', $tea['id'], $firstRevision)['translations'], ['en' => $tea['id'], 'de' => $tee['id'], 'fr' => $the['id']]);
     $notesBefore = count($db->findMany('notes'));

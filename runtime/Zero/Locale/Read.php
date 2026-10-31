@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Zero\Locale;
 
 use Zero\HttpError;
+use Zero\Js;
 use Zero\Viewer;
 
 use function Zero\db;
@@ -82,10 +83,9 @@ final class Read
             if (!array_key_exists('locale', $row)) {
                 continue;
             }
-            // Current membership for every row, revision snapshots included (§7.3: one query per page).
-            $members = $current === null || ($row['translationGroup'] ?? null) === null
-                ? Module::members($row, $pk)
-                : ($current[$row['translationGroup']] ?? [$row['locale'] => $row[$pk]]);
+            // Current membership for every row, revision snapshots included (§7.3: one query per page),
+            // resolved through the row's primary key, so a snapshot taken before its row had a group counts.
+            $members = $current === null ? Module::members($row, $pk) : ($current[Js::str($row[$pk])] ?? [$row['locale'] => $row[$pk]]);
             uksort($members, static fn ($a, $b) => ($order[$a] ?? PHP_INT_MAX) <=> ($order[$b] ?? PHP_INT_MAX));
             $row['translations'] = $members;
             if ($viewer !== null) {
@@ -98,20 +98,33 @@ final class Read
     }
 
     /**
-     * group => [locale => pk] for the groups of $rows, from one query on the store.
+     * pk => [locale => pk] of each row's current group (the row's stored group, not a snapshot's),
+     * from two queries on the store.
      *
      * @return array<string, array<string, int|string>>
      */
     private static function groups(string $collection, array $rows, string $pk): array
     {
-        $groups = array_values(array_unique(array_filter(array_column($rows, 'translationGroup'), static fn ($g) => $g !== null)));
-        if ($groups === []) {
+        $ids = array_values(array_unique(array_column($rows, $pk)));
+        if ($ids === []) {
             return [];
         }
-        $q = \Zero\Sql::select(db()->schema(), db()->store(), $collection, ['where' => ['translationGroup' => ['in' => $groups]]]);
+        $select = static fn (array $where) => db()->store()->select($collection, \Zero\Sql::select(db()->schema(), db()->store(), $collection, ['where' => $where]));
+        $key = static fn (mixed $v) => is_numeric($v) && !is_string($v) ? $v : (is_numeric($v) ? (int) $v : $v);
+        $groupOf = [];
+        foreach ($select([$pk => ['in' => $ids]]) as $raw) {
+            $groupOf[Js::str($key($raw[$pk]))] = $raw['translationGroup'];
+        }
+        $byGroup = [];
+        $groups = array_values(array_unique(array_filter($groupOf, static fn ($g) => $g !== null)));
+        foreach ($groups === [] ? [] : $select(['translationGroup' => ['in' => $groups]]) as $raw) {
+            $byGroup[(string) $raw['translationGroup']][(string) $raw['locale']] = $key($raw[$pk]);
+        }
         $out = [];
-        foreach (db()->store()->select($collection, $q) as $raw) {
-            $out[(string) $raw['translationGroup']][(string) $raw['locale']] = is_numeric($raw[$pk]) ? (int) $raw[$pk] : $raw[$pk];
+        foreach ($groupOf as $id => $group) {
+            if ($group !== null && isset($byGroup[$group])) {
+                $out[$id] = $byGroup[$group];
+            }
         }
 
         return $out;

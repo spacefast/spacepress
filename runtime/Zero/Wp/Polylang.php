@@ -46,11 +46,12 @@ final class Polylang
             return array_values(array_filter($metas, static fn ($key) => !str_starts_with((string) $key, 'zero_') && !str_starts_with((string) $key, '_zero_')));
         }, 100, 3);
         // A group linked outside Zero's API (wp-admin "+", pll_save_post_translations): adopt synced columns.
-        add_action('set_object_terms', static function (int $objectId, mixed $terms, mixed $ttIds, string $taxonomy): void {
+        add_action('set_object_terms', static function (int $objectId, mixed $terms, mixed $ttIds, string $taxonomy, mixed $append = false, mixed $oldTtIds = []): void {
             if ($taxonomy === 'post_translations' && !self::$busy && !self::zeroWriting() && ($ttIds = (array) $ttIds) !== []) {
-                self::adopt($objectId, (int) reset($ttIds));
+                $group = (int) reset($ttIds);
+                self::adopt($objectId, $group, in_array($group, array_map('intval', (array) $oldTtIds), true));
             }
-        }, 10, 4);
+        }, 10, 6);
         add_action('activated_plugin', static function (): void {
             self::ensureLanguages();
         });
@@ -256,7 +257,7 @@ final class Polylang
      * already linked is taken back out of the group through Polylang (the link was written before
      * Zero learned of it) and the error propagates, so Polylang links no further posts.
      */
-    private static function adopt(int $postId, int $groupTt): void
+    private static function adopt(int $postId, int $groupTt, bool $wasMember): void
     {
         $plugin = Runtime::plugin();
         $type = get_post_type($postId);
@@ -270,6 +271,16 @@ final class Polylang
             return;
         }
         self::$adopted[$key] = true;
+        // The group as it was before this link. $postId is the first post Polylang links now (its
+        // old terms tell whether it was a member); the others aren't linked yet, so their current
+        // relationship is their prior one.
+        $before = [];
+        foreach ($intended as $member) {
+            $was = $member === $postId ? $wasMember : in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true);
+            if ($was) {
+                $before[(string) pll_get_post_language($member)] = $member;
+            }
+        }
         foreach ($plugin->schema->collections() as $name => $spec) {
             if (($spec['wp']['postType'] ?? null) !== $type) {
                 continue;
@@ -286,12 +297,17 @@ final class Polylang
                     GroupSync::adoptAll((string) $name, $rows);
                 });
             } catch (\Throwable $e) {
+                // Undo the link: posts new to the group leave it; the group it had before is restored.
                 foreach ($intended as $member) {
-                    if (in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true)) {
+                    if (!in_array($member, $before, true) && in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true)) {
                         self::busy(static fn () => PLL()->model->post->delete_translation($member));
                     }
                     clean_object_term_cache($member, (string) get_post_type($member));
                 }
+                if (count($before) >= 2) {
+                    self::busy(static fn () => pll_save_post_translations($before));
+                }
+                clean_term_cache($groupTt, 'post_translations');
                 throw $e;
             }
 

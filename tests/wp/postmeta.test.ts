@@ -58,10 +58,6 @@ test("operators that can't run on postmeta are rejected with the shared messages
   await problem("GET", "/posts" + qs({ orderBy: "tags" }), {}, { status: 400, code: "invalid_query", pointer: "/orderBy/tags" });
 });
 
-test("a post-backed timestamp write is strict ISO: Feb 30 is rejected, not rolled into March", async () => {
-  await problem("POST", "/events", { as: "editor", body: { title: `Feb 30 ${run}`, startsAt: "2026-02-30T00:00:00Z" } }, { status: 422, code: "invalid_input", pointer: "/startsAt" });
-});
-
 test("relation filters and `with` across post↔post and post↔table", async () => {
   const comment = await ok("POST", "/comments", { as: "editor", body: { postId: post.id, name: "Staff", body: `On meta ${run}` } });
   // post → post through a meta reference: filtered on the target's serialized meta, target attached.

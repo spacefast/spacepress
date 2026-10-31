@@ -1462,7 +1462,14 @@ fn bad_date_leaf(b: &ColBuilder, v: &Json) -> Option<String> {
             let x = item.get(name)?;
             match (f.ty, x) {
                 (ColType::Timestamp, Json::String(s)) if is_iso_timestamp(s) => None,
-                (ColType::Timestamp, Json::Number(n)) if n.as_f64().is_some_and(|n| n.fract() == 0.0) => None,
+                // Epoch ms whose ISO form keeps a four-digit year (0000-01-01 .. 9999-12-31), as the runtime.
+                (ColType::Timestamp, Json::Number(n))
+                    if n.as_f64().is_some_and(|n| {
+                        n.fract() == 0.0 && (-62_167_219_200_000.0..=253_402_300_799_999.0).contains(&n)
+                    }) =>
+                {
+                    None
+                }
                 (ColType::Date, Json::String(s)) if is_date(s) => None,
                 (ColType::Timestamp | ColType::Date, Json::Null) => None,
                 (ColType::Timestamp | ColType::Date, _) => Some(name.clone()),
@@ -1637,11 +1644,12 @@ fn is_iso_timestamp(s: &str) -> bool {
     let parts: Vec<&str> = hms.split(':').collect();
     let limits = [23, 59, 59];
     // Like the runtime codec: the UTC-normalized value must keep a four-digit year.
-    let shifts_out = match zone.as_bytes().first() {
-        Some(b'+') => date.starts_with("0000-01-01") && clock < &zone[1..],
-        Some(b'-') => date.starts_with("9999-12-31") && *clock >= *rev_offset(&zone[1..]),
-        _ => false,
-    };
+    let shifts_out = zone_ok
+        && match zone.as_bytes().first() {
+            Some(b'+') => date.starts_with("0000-01-01") && clock < &zone[1..],
+            Some(b'-') => date.starts_with("9999-12-31") && *clock >= *rev_offset(&zone[1..]),
+            _ => false,
+        };
     zone_ok
         && !shifts_out
         && (2..=3).contains(&parts.len())
@@ -2677,6 +2685,8 @@ mod tests {
             "2026-01-01T00:00Z00:00",
             "9999-12-31T23:59:59-00:30",
             "0000-01-01T00:00:00+00:30",
+            "9999-12-31T00:00-",
+            "2026-01-01T00:00+05",
         ] {
             assert!(!is_iso_timestamp(bad), "{bad}");
         }

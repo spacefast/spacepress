@@ -4,10 +4,11 @@ WordPress. Everything else is MIT.
 
 GPL-2.0-or-later (full text in LICENSE-GPL)
 
-  runtime/Zero/          the PHP runtime; shipped as the zero-runtime plugin
+  runtime/Zero/          the PHP runtime, shipped as the zero-runtime plugin
   runtime/identity/      the zero-identity plugin and its screens
   runtime/wp-plugin/     the zero-runtime and zero-app plugin templates
-  runtime/bin/           the runtime's CLI entry point
+  runtime/bin/           the runtime's command-line entry point, shipped
+                         inside zero-runtime
 
   and every plugin that `zero build --target wp` emits from them.
 
@@ -20,13 +21,14 @@ MIT (full text in LICENSE-MIT)
   everything else not listed above
 
 How the two meet. The compiler binary embeds the GPL runtime files as opaque
-bytes and writes them out unchanged as separate files; it never links against
-or derives from them, and when a command needs the runtime it runs it as a
-separate PHP process. The runtime is to the
-compiler what an installer's payload is to the installer: distributed
-together, but separate works. The compiler stays MIT; the files it writes under
-.zero/wp-content/plugins/zero-runtime, zero-identity and zero-app-<name>
-remain GPL-2.0-or-later. Files the compiler
+bytes and writes them out unchanged into the plugins it emits; it never links
+against, calls into or derives from them. The runtime is to the compiler what
+an installer's payload is to the installer: distributed together, but
+separate works. The compiler's sources stay MIT, and because the packaged
+crate carries the embedded runtime, Cargo.toml declares the package as
+MIT AND GPL-2.0-or-later. The plugins written under
+.zero/wp-content/plugins (zero-runtime, zero-identity, zero-app-<name>) are
+GPL-2.0-or-later and each carries the license text. Files the compiler
 generates from your zero.config.ts (schema.php, functions.php, migrations,
 zero.gen.ts, zero/client/types.ts and schema.ts) are yours. The client's
 index.ts and README.md are copied from runtime/client/ and stay MIT; the

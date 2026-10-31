@@ -2,18 +2,15 @@
 
 This is the developer's view of the repo: how the compiler works, how to run
 the suites, and where things live. The [README](README.md) is the front page.
-
-Zero is WordPress-only. The compiler and runtime still carry a standalone
-target (PHP over SQLite, `zero dev` without `--wp`, `zero users` and `zero
-tokens`) that was never released; it is being removed, so don't build on it
-and don't document it on the front page.
+Zero is WordPress-only; document and test only what runs there.
 
 ## Toolchain
 
-Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
-`gd` and `curl`, Node 22.18+, TypeScript 5.9 (`npm install --global
-typescript@5.9.3`), and for the WordPress suites Docker plus `curl`, `rsync`
-and `python3` on the host. `cargo build --release` produces
+Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `mbstring`, `gd`,
+`fileinfo` and `curl` for the PHP suites and `zero build`'s lint, Node 22.18+,
+TypeScript 5.9 (`npm install --global typescript@5.9.3`), and for anything
+that boots WordPress: Docker with Compose, plus `bash` 4+, `python3`, `curl`,
+`sha256sum` and `rsync` on the host. `cargo build --release` produces
 `target/release/zero`.
 
 ## How it works
@@ -22,8 +19,7 @@ and `python3` on the host. `cargo build --release` produces
    files it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
    supported subset (classes, `this`, `==` other than `== null`, `var`, npm
-   imports, ...) fails the
-   build with `file:line:col` and a suggested fix.
+   imports, ...) fails the build with `file:line:col` and a suggested fix.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and
    shared field sets. The result is the schema as plain data.
@@ -31,44 +27,41 @@ and `python3` on the host. `cargo build --release` produces
    type-checked against the schema and compiled to PHP: native operators where
    the types make it safe, `Zero\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
-5. **Emit.** The output is SQLite and MySQL migrations (diffed against one
-   committed snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types
-   `db` in your editor), the typed client, and the PHP runtime: the database,
-   the REST API, the hook pipeline, and the JS-semantics helpers.
+5. **Emit.** The output is MySQL migrations (diffed against one committed
+   snapshot), `schema.php`, `functions.php`, `zero.gen.ts` (types `db` in your
+   editor), the typed client, and the PHP runtime: the database layer, the
+   REST API, the hook pipeline, and the JS-semantics helpers.
 
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
-written out by `zero build`: into `.zero/app/zero/runtime` for standalone, and
-into the `zero-runtime`, `zero-identity` and `zero-app-<name>` plugins for
-WordPress. `zero build` decides which files go where; new files under
-`runtime/` are picked up without code changes.
+written out by `zero build` into the `zero-runtime`, `zero-identity` and
+`zero-app-<name>` plugins. `zero build` decides which files go where; new
+files under `runtime/` are picked up without code changes.
 
 ## The commands
 
 ```
-zero build [dir] [--target standalone|wp] [--out <dir>] [--quiet]
-zero check [dir]                      compile for both targets; write nothing
-zero dev [dir] [--port <n>]           build, then serve with `php -S` and a jobs worker
-zero dev [dir] --wp [--port <n>]      build the plugins and boot them in a Docker WordPress (tests/wp)
-zero doctor [dir] [--wp] [--site <url> --token <t>]   checks a build; --wp when no wp-content artifact is present
-zero users|tokens <args...> [--dir d] the standalone user and token CLI
-zero jobs <list|run|retry|cancel|work> [--dir d]
+zero build [dir] --target wp [--out <dir>] [--quiet]   write the plugins to .zero/wp-content
+zero check [dir]                                        compile; write nothing
+zero dev [dir] --wp [--port <n>]                        build, then boot the plugins in a Docker WordPress
+zero doctor [dir] --wp [--site <url> --token <t>]       check a build, and a running site
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
 zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>
 zero migrate site <content-model.php> [--dry-run]
 ```
 
-`zero build` writes new migrations to `zero/migrations/{sqlite,wp}/`, the
-typed client to `zero/client/`, `zero.gen.ts`, and the app to `.zero/app`
-(standalone) or `.zero/wp-content` (WordPress: plugin folders, ZIPs, pinned
-dependencies and one `zero-manifest.json`). `zero dev --wp` boots that
-artifact with `tests/wp/harness.sh`; set `ZERO_WP_PROJECT` and `--port` to run
-several stacks side by side, and stop one with `tests/wp/harness.sh down`.
+`zero build` writes new migrations to `zero/migrations/wp/`, the typed client
+to `zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all
+committed), and the artifact to `.zero/wp-content`: plugin folders, ZIPs,
+pinned dependencies and one `zero-manifest.json`. `zero dev --wp` boots that
+artifact with the harness from `tests/wp`, which an installed binary carries
+embedded; set `ZERO_WP_PROJECT` and `--port` to run several stacks side by
+side, and stop one with the `harness.sh down` command it prints.
 
 ## The blog tour
 
 `examples/blog` is the full tour: field access, sync, members, media, jobs,
-webhooks and translations, with a browser page. How to build and run it on
-each target is in [`docs/examples.md`](docs/examples.md).
+webhooks and translations, with a browser page. How to build and run it is in
+[`docs/examples.md`](docs/examples.md).
 
 ## Tests
 
@@ -77,7 +70,7 @@ cargo test                       # rejections, goldens, HTTP, Node↔PHP differe
 tests/php/run.sh                 # runtime: JS parity (checked against node) + DB/HTTP suites
 tsc -p types/zero/tests          # the "zero" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)
-tests/system/run.sh              # examples/site end to end on WordPress and standalone
+tests/system/run.sh              # examples/site end to end on WordPress
 ```
 
 CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
@@ -95,13 +88,13 @@ prefixed PHP dependencies regenerate byte-for-byte (see
 | `src/eval.rs`, `src/value.rs` | the build-time evaluator |
 | `src/extract.rs` | evaluated config → schema + functions to compile |
 | `src/compile.rs`, `src/types.rs` | typed TS → PHP compiler |
-| `src/migrate.rs` | snapshots and SQLite/MySQL migration planning |
+| `src/migrate.rs` | snapshots and migration planning |
 | `src/schema_php.rs` | `schema.php` and `zero.gen.ts` |
 | `src/client.rs` | `zero/client/types.ts` and `schema.ts` |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `zero sync` CLI |
 | `src/config_migrate/` | `zero migrate config` importers |
-| `runtime/Zero/` | the PHP runtime (both targets; `Wp/` only on WordPress) |
+| `runtime/Zero/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `zero-identity` plugin and its screens |
 | `runtime/wp-plugin/` | the `zero-runtime` and `zero-app` plugin templates |
 | `runtime/client/` | the handwritten half of the typed client |

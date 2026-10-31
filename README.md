@@ -111,9 +111,10 @@ Composer.
 ## Quick start
 
 There's no binary release or npm package yet. Build the compiler from source
-with Rust 1.96 (the checkout pins it). With Docker running, this builds the
-pantry example and boots it in a throwaway WordPress with every plugin
-activated:
+with Rust 1.96 (the checkout pins it). Booting the throwaway WordPress needs
+Docker with Compose, plus `bash`, `python3`, `curl`, `sha256sum` and a PHP 8.2
+CLI on the host. Then this builds the pantry example and boots it with every
+plugin activated:
 
 ```sh
 git clone https://github.com/spacefast/zero && cd zero
@@ -247,7 +248,7 @@ and the build pins and ships them too.
 Zero apps can be deployed to [Spacefast](https://spacefast.com) natively.
 
 Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
-or copy like any plugin, and `zero-manifest.json` next to them records the
+or copy like any plugin, and `.zero/wp-content/zero-manifest.json` records the
 versions and the activation order. Jobs run through Action Scheduler, so make
 sure WP-Cron or a real cron reaches the site.
 

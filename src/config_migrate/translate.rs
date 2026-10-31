@@ -487,6 +487,9 @@ fn field(
     } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
         builder.push_str(".default(false)");
     }
+    if matches!(source, Source::Payload) && kind == "date" {
+        report.push(entry(at, "review", "Zero timestamps accept ISO 8601 dates and epoch milliseconds; Payload's Date.parse also accepted free-form dates such as \"Jan 1 2026\". Normalize such inputs before writing."));
+    }
     if matches!(source, Source::Payload) && kind == "email" && !required {
         report.push(entry(at, "review", "Zero email validation rejects optional empty strings that Payload accepts; use null/absence or port the empty-value behavior before deployment."));
     }

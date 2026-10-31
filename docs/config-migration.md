@@ -68,6 +68,10 @@ literals stay rejected. Optional Payload email fields also carry a specific
 review entry because Zero rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 
+Payload `date` fields become `timestamp()`, which accepts ISO 8601 text and
+epoch milliseconds. Payload's `Date.parse` check also accepted free-form dates
+such as `Jan 1 2026`; the report flags each date field so clients can send ISO.
+
 EmDash `datetime` fields become text validated by EmDash's own ISO 8601 rule:
 a calendar-valid date (no February 30), a time, and `Z` or an offset. The value
 is stored as given, like EmDash does. Zero's `timestamp()` would accept free-form

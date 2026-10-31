@@ -397,6 +397,27 @@ fn payload_email_keeps_payloads_address_rule() {
 }
 
 #[test]
+fn payload_dates_reject_free_text() {
+    let (_dir, app) = migrated_app(
+        "payload",
+        "payload.ts",
+        "export default {collections:[{slug:'notes',timestamps:false,fields:[{name:'title',type:'text',required:true},{name:'due',type:'date'}]}]};",
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([
+                ["due", "2026-01-01T10:00:00.000Z"],
+                ["due", "2026-01-01"],
+                ["due", "tomorrow"]
+            ])
+        ),
+        json!([true, true, "/due"])
+    );
+}
+
+#[test]
 fn emdash_datetime_keeps_its_iso_format_and_calendar() {
     let (_dir, app) = migrated_app(
         "emdash",

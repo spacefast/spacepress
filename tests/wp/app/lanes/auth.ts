@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, email, group, id, integer, repeater, select, text, timestamp } from "zero";
+import { blocks, boolean, collection, date, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks } from "zero";
 
 export const members = collection("members", {
   id: id(),
@@ -25,6 +25,7 @@ export const members = collection("members", {
   links: repeater({ fields: { label: text().notNull(), at: timestamp() } }).max(3),
   sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text() } } }).showIf({ plan: "pro" }),
   notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
+  addressBy: integer(),
 }, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {
@@ -47,6 +48,16 @@ export const relations = (r: any) => ({
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {};
+export const hooks = {
+  members: {
+    // Who last saved the address, as the hook saw ctx.user; a "Throw" city rolls the save back.
+    beforeUpdate(patch, _existing, ctx) {
+      if (patch.address !== undefined) {
+        if (patch.address?.city === "Throw") throw new HttpError(409, "conflict", "address hook refused");
+        patch.addressBy = ctx.user?.id ?? 0;
+      }
+    },
+  },
+} satisfies Hooks<{ members: typeof members }>;
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
 export const config = {};

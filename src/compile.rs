@@ -4470,11 +4470,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let is_list = col.ty.is_list_kind();
         // `{ tags: ["a"] }` / `{ seo: {...} }`: a whole value, compared with `eq`.
         let whole_value = match &e.kind {
+            // `{}` on a json() column is the empty object to compare with, not an empty operator map.
             ExprKind::Object(props) => {
                 is_json
-                    && !props
-                        .iter()
-                        .all(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))
+                    && (props.is_empty()
+                        || !props
+                            .iter()
+                            .all(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str()))))
             }
             ExprKind::Array(_) => is_list || is_json,
             _ => true,

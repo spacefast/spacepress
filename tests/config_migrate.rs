@@ -514,50 +514,144 @@ fn payload_dates_accept_what_date_parse_accepts() {
     );
 }
 
-#[test]
-fn emdash_datetime_keeps_its_iso_format_and_calendar() {
-    let (_dir, app) = migrated_app(
-        "emdash",
-        "emdash.json",
-        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"at","type":"datetime"}]}]}"#,
-    );
-    assert_eq!(
-        accepts(
-            &app,
-            json!({"title": "t"}),
-            json!([
-                ["at", "2024-02-29T10:00:00.5+02:00"],
-                ["at", "2026-01-01T00:00Z"],
-                ["at", "2026-02-30T00:00:00Z"],
-                ["at", "tomorrow"],
-                ["at", 1700000000000u64],
-                ["at", "2026-01-01T00:00:00"]
-            ])
-        ),
-        json!([true, true, "/at", "/at", "/at", "/at"])
-    );
+const EMDASH_DATETIME_SOURCE: &str = r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"at","type":"datetime"}]}]}"#;
+const SANITY_DATETIME_SOURCE: &str = r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string"},{"name":"at","type":"datetime"}]}]}}"#;
+
+/// The review text reported for a migrated field.
+fn field_review(from: &str, file: &str, source: &str, field_pointer: &str) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join(file);
+    std::fs::write(&input, source).unwrap();
+    let out = migrate(from, &input, &dir.path().join("app/zero.config.ts"));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    report["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["pointer"] == field_pointer && e["outcome"] == "review")
+        .map(|e| e["reason"].as_str().unwrap().to_string())
+        .collect()
 }
 
 #[test]
-fn sanity_datetime_keeps_sanitys_iso_rule_and_rejects_numbers() {
-    let (_dir, app) = migrated_app(
+fn imported_datetimes_are_timestamp_columns_on_both_targets() {
+    for (from, file, source) in [
+        ("emdash", "emdash.json", EMDASH_DATETIME_SOURCE),
+        ("sanity", "sanity.json", SANITY_DATETIME_SOURCE),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join(file);
+        std::fs::write(&input, source).unwrap();
+        assert!(
+            migrate(from, &input, &dir.path().join("app/zero.config.ts"))
+                .status
+                .success()
+        );
+        for (target, schema_php) in [
+            ("wp", "plugins/zero-app-imported/zero/app/schema.php"),
+            ("standalone", "zero/app/schema.php"),
+        ] {
+            let built = dir.path().join(target);
+            let build = zero()
+                .args(["build", "--target", target, "--out"])
+                .arg(&built)
+                .arg(dir.path().join("app"))
+                .output()
+                .unwrap();
+            assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
+            assert_eq!(
+                schema(&built.join(schema_php))["collections"]["notes"]["columns"]["at"]["type"],
+                "timestamp",
+                "{from}/{target}"
+            );
+        }
+    }
+}
+
+#[test]
+fn imported_datetime_reports_state_zeros_grammar_and_storage() {
+    for (from, file, source, pointer) in [
+        (
+            "emdash",
+            "emdash.json",
+            EMDASH_DATETIME_SOURCE,
+            "/collections/0/fields/1",
+        ),
+        (
+            "sanity",
+            "sanity.json",
+            SANITY_DATETIME_SOURCE,
+            "/schema/types/0/fields/1",
+        ),
+    ] {
+        let reason = field_review(from, file, source, pointer);
+        for disclosed in [
+            "accept exactly YYYY-MM-DD",
+            "epoch milliseconds",
+            "0000-9999",
+            "millisecond precision",
+            "whole seconds",
+        ] {
+            assert!(reason.contains(disclosed), "{from} {disclosed}: {reason}");
+        }
+    }
+}
+
+#[test]
+fn emdash_datetime_report_names_what_emdash_refused() {
+    let reason = field_review(
+        "emdash",
+        "emdash.json",
+        EMDASH_DATETIME_SOURCE,
+        "/collections/0/fields/1",
+    );
+    assert!(reason.contains("a date alone"), "{reason}");
+}
+
+#[test]
+fn sanity_datetime_report_names_the_forms_now_refused() {
+    let reason = field_review(
         "sanity",
         "sanity.json",
-        r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string"},{"name":"at","type":"datetime"}]}]}}"#,
+        SANITY_DATETIME_SOURCE,
+        "/schema/types/0/fields/1",
     );
-    assert_eq!(
-        accepts(
-            &app,
-            json!({"title": "t"}),
-            json!([
-                ["at", "2026-01-01T10:00:00+02:00"],
-                ["at", "2026-W05-3"],
-                ["at", 1700000000000u64],
-                ["at", "tomorrow"]
-            ])
-        ),
-        json!([true, true, "/at", "/at"])
+    assert!(reason.contains("all now refused"), "{reason}");
+}
+
+/// The codec's grammar is held by tests/php/schema_test.php; these prove the imported column uses it.
+#[test]
+fn imported_datetimes_refuse_bad_dates_through_the_generated_app() {
+    for (from, file, source) in [
+        ("emdash", "emdash.json", EMDASH_DATETIME_SOURCE),
+        ("sanity", "sanity.json", SANITY_DATETIME_SOURCE),
+    ] {
+        let (_dir, app) = migrated_app(from, file, source);
+        assert_eq!(
+            accepts(
+                &app,
+                json!({"title": "t"}),
+                json!([
+                    ["at", "2026-01-01T10:00:00Z"],
+                    ["at", "2026-02-30T00:00:00Z"],
+                    ["at", "2026-W05-3"]
+                ])
+            ),
+            json!([true, "/at", "/at"]),
+            "{from}"
+        );
+    }
+}
+
+#[test]
+fn imported_datetimes_store_utc_milliseconds() {
+    let (_dir, app) = migrated_app("emdash", "emdash.json", EMDASH_DATETIME_SOURCE);
+    let stored = run_php(
+        &app,
+        "echo json_encode($app->db->insert('notes', $arg, true)[0]['at']);",
+        &json!({"title": "t", "at": "2024-02-29T10:00:00.123456+02:00"}),
     );
+    assert_eq!(stored, "2024-02-29T08:00:00.123Z");
 }
 
 #[test]

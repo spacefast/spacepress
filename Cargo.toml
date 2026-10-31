@@ -2,6 +2,9 @@
 name = "zero"
 version = "0.2.0"
 edition = "2024"
+license = "MIT"
+description = "Compiles zero.config.ts into a PHP backend: migrations, REST, auth, a typed client and WordPress plugins"
+repository = "https://github.com/spacefast/zero"
 
 [dependencies]
 indexmap = "2.14.2"

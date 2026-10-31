@@ -127,6 +127,11 @@ final class IdentityBridge implements Issuer
         (new \Zero\Identity\OAuth(\Zero\Identity\Plugin::$db, \Zero\Identity\Plugin::$accounts))->endFamily($token['family']);
     }
 
+    public function verifiesEmail(): bool
+    {
+        return true;
+    }
+
     /** zero-identity forgets a deleted user itself (its `delete_user` hook, run by wp_delete_user). */
     public function forget(int $userId): void
     {

@@ -567,6 +567,48 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
   }
 });
 
+test("a refresh still in flight for an earlier sign-in never stands in for the current session's", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "author" } } });
+
+  const a = zero.auth.login("a", "long password a");
+  await until(1);
+  pending[0].release(issued("a"));
+  await a;
+  const wa = zero.posts.create({ title: "a" });             // 1
+  await until(2);
+  pending[1].release(denied());
+  await until(3);                                           // 2: A's refresh, left pending
+  const b = zero.auth.login("b", "long password b");        // 3
+  await until(4);
+  pending[3].release(issued("b"));
+  await b;
+  const wb = zero.posts.create({ title: "b" });             // 4
+  await until(5);
+  pending[4].release(denied());
+  await until(6);
+  assert.equal(pending[5].url, "http://x/api/auth/token", "B refreshes its own session");
+  assert.equal(JSON.parse(String(pending[5].init.body)).refreshToken, "zr_b");
+  pending[5].release(issued("b2"));
+  await until(7);
+  assert.equal((pending[6].init.headers as Record<string, string>).authorization, "Bearer za_b2");
+  pending[6].release(json(201, { data: { id: 2 } }));
+  assert.deepEqual(await wb, { id: 2 });
+  pending[2].release(issued("a2"));                         // A's late refresh: dropped
+  await wa.catch(() => undefined);
+  assert.equal(zero.auth.session()?.accessToken, "za_b2");
+});
+
 test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));

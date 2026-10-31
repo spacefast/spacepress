@@ -206,6 +206,11 @@ final class Identity implements Auth, Issuer
         }
     }
 
+    public function verifiesEmail(): bool
+    {
+        return false; // standalone sign-in is email + password; the email is the login name
+    }
+
     /** A member row is gone: its credentials go with it, so a later row with the same id inherits none. */
     public function forget(int $userId): void
     {

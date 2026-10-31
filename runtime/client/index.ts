@@ -498,15 +498,17 @@ export function createClient(options: ClientOptions = {}): Client {
     const current = held();
     if (!current) return Promise.resolve(false);
     if (current.accessToken !== sent.accessToken) return Promise.resolve(true); // already refreshed
-    const key = authOpts.storage === "session" ? storageKey : null;
-    const shared = key === null ? localRefresh : refreshes.get(key);
+    // Keyed by the session too: a refresh of an earlier sign-in never stands in for this one's.
+    const key = `${authOpts.storage === "session" ? storageKey : clientKey}#${currentSid()}`;
+    const shared = refreshes.get(key);
     if (shared) return shared;
-    const started = refresh(current).finally(() => (key === null ? (localRefresh = undefined) : refreshes.delete(key)));
-    if (key === null) localRefresh = started;
-    else refreshes.set(key, started);
+    const started = refresh(current).finally(() => {
+      if (refreshes.get(key) === started) refreshes.delete(key);
+    });
+    refreshes.set(key, started);
     return started;
   }
-  let localRefresh: Promise<boolean> | undefined;
+  const clientKey = `memory:${randomString(9)}`;
 
   /** True on a rotated pair. A rejected refresh forgets the tokens; a network failure keeps them for a later try. */
   async function refresh(current: Held): Promise<boolean> {

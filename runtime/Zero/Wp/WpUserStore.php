@@ -205,6 +205,18 @@ final class WpUserStore implements Store
         $rows = $this->db->run($q['sql'], $q['params']);
         $spec = $this->schema->collection($collection);
         \Zero\Extensions::lookup($collection, array_column($rows, $spec['primaryKey']));
+        if (isset($spec['columns']['role'])) {
+            // Rows carry exactly the role Zero authenticates the user with (WP_User::has_cap, ordered
+            // role merge included). The SQL expression decides filters and ordering and agrees with
+            // it except for users holding several roles that grant and deny the same capability.
+            foreach ($rows as &$row) {
+                $user = get_userdata((int) $row[$spec['primaryKey']]);
+                if ($user instanceof \WP_User) {
+                    $row['role'] = WpAuth::map($user)['role'];
+                }
+            }
+            unset($row);
+        }
         foreach ($spec['columns'] as $col => $def) {
             if ($def['type'] !== 'select') {
                 continue;
@@ -283,6 +295,16 @@ final class WpUserStore implements Store
         require_once ABSPATH . 'wp-admin/includes/user.php';
         $id = (int) $pk;
         $this->forgetOnRollback($id);
+        // Authored posts stay (reassigned to no one, like wp-admin's "attribute to"): their removal is
+        // for Zero's declared referential actions, not core's delete-everything default.
+        $posts = array_map('intval', array_column($this->db->run('SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_author = ?', [$id]), 'ID'));
+        if ($posts !== []) {
+            $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = 0 WHERE post_author = ?', [$id]);
+            foreach ($posts as $post) {
+                $this->db->touchPost($post);
+                clean_post_cache($post);
+            }
+        }
         $this->db->core(static fn () => wp_delete_user($id));
     }
 

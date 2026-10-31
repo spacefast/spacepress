@@ -209,6 +209,11 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   assert.deepEqual(contributorDenied.data.map((r: any) => r.role), ["subscriber"], "a contributor denied edit_posts holds no author capability: a subscriber");
   const authRole = wp("eval", `echo \\Zero\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
   assert.equal(authRole, "subscriber", "the same answer authentication gives");
+  // Several roles, one granting and a later one denying manage_options: rows follow WordPress's merge.
+  wp("eval", `add_role('zero_test_deny', 'Deny', ['manage_options' => false]); $u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->add_role('zero_test_deny');`);
+  const merged = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id } })));
+  assert.equal(merged.data[0].role, wp("eval", `echo \\Zero\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`), "the row's role is the authenticated role");
+  wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_role('zero_test_deny'); $u->set_role('subscriber'); remove_role('zero_test_deny');`);
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
@@ -352,6 +357,23 @@ test("deleting a member through Zero deletes its identity: tokens dead, the emai
   const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
   assert.equal(reuse.status, 400, "its refresh token is dead");
   assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_zero_identity_emails WHERE normalized = '${gy.email}'`), [{ n: "0" }], "its verified email is released");
+});
+
+test("a member can't set their own email where identity verifies emails; trusted writes can", async () => {
+  const hy = await member("hy");
+  const asSelf = { token: (await signIn(hy.email, hy.password)).json.access_token };
+  const claim = await call("PATCH", `/members/${hy.id}`, { ...asSelf, body: { email: `victim-${run}@example.test` } });
+  assert.deepEqual([claim.status, claim.json.code, claim.json.pointer], [403, "forbidden", "/email"]);
+  // Trusted writes (admin tooling, imports: `wp zero update`) still set it directly.
+  const updated = JSON.parse(wp("zero", "update", "members", JSON.stringify({ id: hy.id }), JSON.stringify({ email: `hy-new-${run}@example.test` })));
+  assert.equal(updated.data[0].email, `hy-new-${run}@example.test`);
+});
+
+test("deleting a member keeps the posts they authored", async () => {
+  const iy = await member("iy");
+  const post = wp("post", "create", "--post_type=zero_posts", "--post_title=Authored", "--post_status=publish", `--post_author=${iy.id}`, "--porcelain");
+  await http("DELETE", `${api}/members/${iy.id}`, { as: "admin" });
+  assert.deepEqual(sql(`SELECT post_status, post_author FROM wp_posts WHERE ID = ${post}`), [{ post_status: "publish", post_author: "0" }]);
 });
 
 test("application passwords still authenticate /zero/v1 as before", async () => {

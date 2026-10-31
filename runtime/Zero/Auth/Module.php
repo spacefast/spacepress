@@ -298,11 +298,18 @@ final class Module
                 throw HttpError::invalidInput("Unknown field '$col'", HttpError::seg($col));
             }
         }
+        $admin = $viewer->user !== null && Schema::roleRank($viewer->user['role']) >= Schema::roleRank('admin');
         if (array_key_exists('role', $provided)) {
-            $admin = $viewer->user !== null && Schema::roleRank($viewer->user['role']) >= Schema::roleRank('admin');
             if (!$admin && !($op === 'update' && $existing !== null && $provided['role'] === $existing['role'])) {
                 throw new HttpError(403, 'forbidden', 'Only admins can change role', '/role');
             }
+        }
+        // Where an identity issuer verifies emails (WordPress + zero-identity), a member's email is
+        // what identity verified: only admins (imports, support) set it directly. Otherwise someone
+        // could claim another person's address and inherit their account when they verify it.
+        if ($op === 'update' && !$admin && array_key_exists('email', $provided) && $existing !== null
+            && $provided['email'] !== $existing['email'] && (self::$issuer?->verifiesEmail() ?? false)) {
+            throw new HttpError(403, 'forbidden', 'Change your email on the account screen, where it is verified', '/email');
         }
     }
 

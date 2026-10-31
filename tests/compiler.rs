@@ -143,6 +143,38 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "`in` isn't supported on list columns; use `has`",
         "zero.config.ts:5:",
     );
+    // db.globals is typed from the global's fields, like db.query from a collection's.
+    rejects(
+        "reject-db-globals-key",
+        "`db.globals.setings` doesn't match a global in `globals`",
+        "zero.config.ts:4:",
+    );
+    rejects(
+        "reject-db-globals-patch",
+        "`stats` must be { visits: number } | null, not number",
+        "zero.config.ts:4:",
+    );
+}
+
+/// `db.globals.<key>` in compiled code: never-written defaults, then a typed JSON field round-trips.
+#[test]
+fn db_globals_read_defaults_and_write_typed_fields() {
+    let tmp = std::env::temp_dir().join(format!("zero-db-globals-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/db-globals"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let visit = || {
+        let out = Command::new("php")
+            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+            .args(["action", "visit"])
+            .output()
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", null, 1] }));
+    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", { "visits": 1 }, 2] }));
+    let _ = std::fs::remove_dir_all(tmp);
 }
 
 /// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
@@ -1114,7 +1146,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "optional": null, "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested:Hello!"}]])
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

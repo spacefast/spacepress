@@ -4473,7 +4473,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
-        let row = types::global_row(&self.schema.globals[name]);
+        // Typed like collection rows: `json().$type<T>()` fields read and write as T.
+        let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
             ("get", []) => format!("\\Zero\\db()->globalGet({})", php_str(name)),
             ("update", [ArrEl::Item(patch)]) => {

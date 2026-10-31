@@ -554,20 +554,27 @@ export function createClient(options: ClientOptions = {}): Client {
   }
 
   // Concurrent first writes share one guest.
-  let guesting: Promise<User> | undefined;
   /** The sid of the guest session this client started ("" when none), and the anonymous sid it replaced. */
   let guestSid = "";
   let guestFromSid = "";
+  // Shared only between calls starting from the same session state; an older completion never
+  // clears a newer request.
+  const guestings = new Map<string, Promise<User>>();
   function startGuest(from: string): Promise<User> {
-    guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
+    const existing = guestings.get(from);
+    if (existing) return existing;
+    const started: Promise<User> = request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
       .then((out) => {
         const user = adopt(out, from);
         guestFromSid = from;
         guestSid = currentSid();
         return user;
       })
-      .finally(() => (guesting = undefined));
-    return guesting;
+      .finally(() => {
+        if (guestings.get(from) === started) guestings.delete(from);
+      });
+    guestings.set(from, started);
+    return started;
   }
 
   let issuerUrl: string | undefined = authOpts.issuer?.replace(/\/+$/, "");

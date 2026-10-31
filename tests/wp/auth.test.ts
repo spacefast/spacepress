@@ -364,6 +364,15 @@ test("a member can't set their own email where identity verifies emails; trusted
   const asSelf = { token: (await signIn(hy.email, hy.password)).json.access_token };
   const claim = await call("PATCH", `/members/${hy.id}`, { ...asSelf, body: { email: `victim-${run}@example.test` } });
   assert.deepEqual([claim.status, claim.json.code, claim.json.pointer], [403, "forbidden", "/email"]);
+  // Nor can anyone (even with a public create rule) plant a member on an unverified address.
+  const planted = wp("eval", `
+    \\Zero\\Wp\\Runtime::plugin()->app();
+    try {
+      \\Zero\\db()->insert('members', ['email' => 'planted-${run}@example.test', 'name' => 'x', 'password' => 'a long password 1'], true, new \\Zero\\Viewer(null, 'wp'));
+      echo 'created';
+    } catch (\\Zero\\HttpError $e) { echo $e->status, ' ', $e->errorCode, ' ', $e->pointer, ' ', $e->getMessage(); }`);
+  // The verified-email guard runs before the collection's create rule, so a public rule changes nothing.
+  assert.equal(planted, "403 forbidden /email Members sign up on the account screen, where emails are verified");
   // Trusted writes (admin tooling, imports: `wp zero update`) still set it directly.
   const updated = JSON.parse(wp("zero", "update", "members", JSON.stringify({ id: hy.id }), JSON.stringify({ email: `hy-new-${run}@example.test` })));
   assert.equal(updated.data[0].email, `hy-new-${run}@example.test`);

@@ -609,6 +609,24 @@ test("a refresh still in flight for an earlier sign-in never stands in for the c
   assert.equal(zero.auth.session()?.accessToken, "za_b2");
 });
 
+test("guest(), signOut(), guest(): the second call starts its own guest", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
+  const g1 = zero.auth.guest();
+  await zero.auth.signOut();
+  const g2 = zero.auth.guest();
+  for (let turn = 0; pending.length < 2 && turn < 10_000; turn++) await Promise.resolve();
+  assert.equal(pending.length, 2, "two guest requests");
+  pending[0].release(issued("g1"));
+  pending[1].release(issued("g2"));
+  await g1.catch(() => undefined);
+  assert.equal((await g2).name, "g2");
+  assert.equal(zero.auth.session()?.accessToken, "za_g2");
+});
+
 test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));

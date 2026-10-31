@@ -305,11 +305,16 @@ final class Module
             }
         }
         // Where an identity issuer verifies emails (WordPress + zero-identity), a member's email is
-        // what identity verified: only admins (imports, support) set it directly. Otherwise someone
-        // could claim another person's address and inherit their account when they verify it.
-        if ($op === 'update' && !$admin && array_key_exists('email', $provided) && $existing !== null
-            && $provided['email'] !== $existing['email'] && (self::$issuer?->verifiesEmail() ?? false)) {
-            throw new HttpError(403, 'forbidden', 'Change your email on the account screen, where it is verified', '/email');
+        // what identity verified: only admins (imports, support) set it directly, on create or
+        // update. Otherwise someone could plant an account on another person's address (with a
+        // password they know) and keep access when that person later verifies it.
+        if (!$admin && (self::$issuer?->verifiesEmail() ?? false)) {
+            if ($op === 'create') {
+                throw new HttpError(403, 'forbidden', 'Members sign up on the account screen, where emails are verified', '/email');
+            }
+            if (array_key_exists('email', $provided) && $existing !== null && $provided['email'] !== $existing['email']) {
+                throw new HttpError(403, 'forbidden', 'Change your email on the account screen, where it is verified', '/email');
+            }
         }
     }
 

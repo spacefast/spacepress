@@ -589,6 +589,34 @@ fn emdash_integers_stay_within_zods_safe_integer_range() {
 }
 
 #[test]
+fn emdash_booleans_report_that_numeric_flags_are_refused() {
+    let source = r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"done","type":"boolean"}]}]}"#;
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("emdash.json");
+    std::fs::write(&input, source).unwrap();
+    let out = migrate("emdash", &input, &dir.path().join("report/zero.config.ts"));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/collections/0/fields/1"
+                && e["outcome"] == "review"
+                && e["reason"].as_str().unwrap().contains("0/1"))
+    );
+    let (_dir, app) = migrated_app("emdash", "emdash.json", source);
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([["done", true], ["done", 1], ["done", 0]])
+        ),
+        json!([true, "/done", "/done"])
+    );
+}
+
+#[test]
 fn emdash_required_json_rejects_only_the_empty_string() {
     let (_dir, app) = migrated_app(
         "emdash",

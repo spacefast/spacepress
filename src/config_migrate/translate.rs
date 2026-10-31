@@ -513,6 +513,9 @@ fn field(
     } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
         builder.push_str(".default(false)");
     }
+    if matches!(source, Source::Emdash) && kind == "boolean" {
+        report.push(entry(at, "review", "EmDash stores booleans as 0/1 and accepts 0/1 back; Zero's boolean() accepts only true/false. Send booleans from clients that round-tripped EmDash's stored values."));
+    }
     if matches!(source, Source::Payload) && kind == "date" {
         report.push(entry(at, "review", "Zero timestamps accept ISO 8601 dates and epoch milliseconds; Payload's Date.parse also accepted free-form dates such as \"Jan 1 2026\". Normalize such inputs before writing."));
     }

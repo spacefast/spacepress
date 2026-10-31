@@ -43,7 +43,9 @@ the loss of a distinct singular label is reported. Sanity's project/dataset
 metadata and EmDash's seed metadata are identified in the report, not deployed.
 
 EmDash integers keep Zod's safe-integer range (±9007199254740991) on top of any
-declared bounds.
+declared bounds. EmDash booleans become `boolean()`, which accepts only
+`true`/`false`; EmDash also accepted its stored `0`/`1`, so each boolean field is
+reported for client review.
 
 Required Payload checkboxes without an explicit default receive `false`, matching
 Payload's sanitizer. Optional checkboxes keep their declared default or absence.

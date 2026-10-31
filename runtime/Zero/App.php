@@ -63,7 +63,7 @@ final class App
         if ($store === null) {
             Secret::load($appRoot);
             $store = new SqliteStore(SqliteStore::connect(getenv('ZERO_DB_PATH') ?: $appRoot . '/data/zero.sqlite'), $schema);
-            $auth ??= new Identity($store);
+            $auth ??= new Identity($store, $schema);
             $media ??= new SqliteMedia($store, $appRoot . '/public');
             if ($migrate ?? getenv('ZERO_AUTO_MIGRATE') !== '0') {
                 $store->migrate($appRoot . '/zero/app/migrations');
@@ -74,6 +74,9 @@ final class App
         }
         $db = new Db($store, $schema, $media, $schema->target());
         Db::setInstance($db);
+        if ($auth instanceof Identity) {
+            Auth\Module::use($auth);
+        }
 
         return new self($appRoot, $schema, $db, $store, $auth);
     }
@@ -222,15 +225,7 @@ final class App
             case $name === 'me' && $n === 1:
                 self::allow($method, ['GET']);
 
-                return [200, $viewer->user];
-            case $name === 'auth' && $n === 2 && $segments[1] === 'token':
-                self::allow($method, ['POST']);
-                $in = self::object(self::parseBody($body));
-                if (!is_string($in['name'] ?? null) || !is_string($in['password'] ?? null)) {
-                    throw HttpError::invalidInput('name and password are required', is_string($in['name'] ?? null) ? '/password' : '/name');
-                }
-
-                return [200, $this->auth->login($in['name'], $in['password'])];
+                return [200, Auth\Module::me($viewer->user)];
             case $name === 'actions' && $n === 2:
                 self::allow($method, ['POST']);
 
@@ -530,7 +525,7 @@ final class App
 
     private const USAGE = 'Usage: zero.php migrate | publish-due | action <name> [json] | find <collection> [opts]'
         . ' | insert <collection> <json> | update <collection> <where> <set> | delete <collection> <where>'
-        . ' | user add <name> --role <role> [--password [value]] | user list | user role <name> <role> | user remove <name>'
+        . ' | user add <name> --role <role> [--password [value]] | user list | user role <name> <role> | user remove <name> | user suspend|reactivate <name>'
         . ' | token create <user> [--name <label>] | token list [user] | token revoke <id>';
 
     private function cliCommand(array $args): mixed
@@ -566,6 +561,8 @@ final class App
                     'list' => $id->listUsers(),
                     'role' => $id->setRole($pos[2] ?? throw $usage(), $pos[3] ?? throw $usage()),
                     'remove' => $id->removeUser($pos[2] ?? throw $usage()),
+                    'suspend' => $id->suspend($pos[2] ?? throw $usage(), true),
+                    'reactivate' => $id->suspend($pos[2] ?? throw $usage(), false),
                     default => throw $usage(),
                 };
             }

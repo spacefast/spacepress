@@ -41,7 +41,18 @@ final class Plugin
         $this->mainFile = $mainFile;
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
+        add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
+        if (($this->schema->auth()['collection'] ?? null) !== null) {
+            WpUserStore::trackRoles();
+        }
+        // Users created outside Zero (identity's hosted sign-up, wp-admin) become members with defaults.
+        add_action('user_register', function (int $userId): void {
+            if (!$this->connection()->busy()) {
+                WpUserStore::fillDefaults($this->schema, $userId);
+            }
+        });
         add_action('rest_api_init', fn () => Rest::register(fn () => $this->app()));
+        IdentityBridge::hook($this->connection());
         Rest::boot();
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         add_action('admin_init', [$this, 'maybeMigrate']);
@@ -101,6 +112,7 @@ final class Plugin
             $db = $this->connection();
             $store = CompositeStore::create($this->schema, $db);
             $this->app = App::boot($this->dir, $store, new WpAuth(), new WpMedia($db, $store->dialect()));
+            \Zero\Auth\Module::use(IdentityBridge::available() ? new IdentityBridge($db) : null);
         }
 
         return $this->app;
@@ -123,6 +135,20 @@ final class Plugin
         }
         update_option($this->schemaOption(), $this->schemaHash(), false);
         $this->grantCapabilities();
+        IdentityBridge::provision();
+        $this->backfillMembers();
+    }
+
+    /** Existing WordPress users are members too (§6.2): give them the member columns' defaults. */
+    private function backfillMembers(): void
+    {
+        if (($this->schema->auth()['collection'] ?? null) === null) {
+            return;
+        }
+        foreach (get_users(['fields' => 'ID', 'number' => -1]) as $id) {
+            WpUserStore::fillDefaults($this->schema, (int) $id);
+            WpUserStore::syncRole((int) $id);
+        }
     }
 
     public function maybeMigrate(): void
@@ -130,6 +156,8 @@ final class Plugin
         if (get_option($this->schemaOption()) !== $this->schemaHash()) {
             $this->migrator()->migrate();
             $this->grantCapabilities();
+            IdentityBridge::provision();
+            $this->backfillMembers();
             update_option($this->schemaOption(), $this->schemaHash(), false);
         }
     }

@@ -96,10 +96,17 @@ final class ConditionalLogic
         return $field;
     }
 
-    /** The decoded saved row of the post whose form is rendering, or [] for a new post. */
+    /** The decoded saved row of the post (or member, `user_<id>`) whose form is rendering, or [] for a new one. */
     private static function editedRow(): array
     {
-        $postId = function_exists('acf_get_form_data') ? acf_get_form_data('post_id') : null;
+        $formId = function_exists('acf_get_form_data') ? acf_get_form_data('post_id') : null;
+        if (is_string($formId) && preg_match('/^user_(\d+)$/D', $formId, $m)) {
+            $plugin = Plugin::instance();
+            $members = $plugin?->schema->auth()['collection'] ?? null;
+
+            return $members === null ? [] : ($plugin->db()->editorRow($members, (int) $m[1]) ?? []);
+        }
+        $postId = $formId;
         $postId = is_numeric($postId) ? (int) $postId : (int) get_the_ID();
         $plugin = Plugin::instance();
         if ($postId <= 0 || $plugin === null) {
@@ -137,9 +144,12 @@ final class ConditionalLogic
         return ($target['editor'] ?? true) && ($target['wp'] ?? null) !== null;
     }
 
-    /** Columns rendered as SCF fields (Scf::register skips the core post columns). */
+    /** Columns rendered as SCF fields (Scf::register skips the core post columns; user forms skip the core user columns). */
     private static function editorFields(array $spec): array
     {
+        if ($spec['auth'] ?? false) {
+            return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => \Zero\Wp\WpUserStore::onProfile((string) $col, $def), ARRAY_FILTER_USE_BOTH));
+        }
         $core = [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null];
 
         return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => !in_array($col, $core, true) && !($def['system'] ?? false), ARRAY_FILTER_USE_BOTH));

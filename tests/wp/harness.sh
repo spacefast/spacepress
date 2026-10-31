@@ -89,6 +89,8 @@ print('zero-app-'+manifest['app'])
 ACTIVATE
   )
   for slug in "${activation[@]}"; do wp plugin activate "$slug" >/dev/null; done
+  # Test-only must-use plugins (outgoing mail kept on disk for sign-in codes).
+  wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/zero-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/zero-harness-" . basename($f)); }' >/dev/null
 
   local identity=null
   if wp cli has-command 'zero-identity app add' >/dev/null 2>&1; then

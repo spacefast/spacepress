@@ -505,11 +505,11 @@ eq('CLI extension runs through the canonical envelope', [$code, json_decode($out
 $app->cli(['seam', 'discarded', '--fail']);
 eq('CLI extension effects join the command transaction', $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn(), 'saved');
 
-\Zero\Extensions::route('auth', static function (string $method, array $segments, array $query, string $body): array {
-    App::allow($method, ['POST']);
-
-    return [200, ['grant' => json_decode($body, true)['grant_type'], 'path' => $segments]];
-});
-eq('auth module can replace token dispatch while unregistered routes retain built-in behavior', req('POST', '/auth/token', ['grant_type' => 'refresh_token']), [200, ['grant' => 'refresh_token', 'path' => ['auth', 'token']]]);
+try {
+    \Zero\Extensions::route('auth', static fn (): array => [200, null]);
+    check('a second owner for an extension route is refused', false);
+} catch (\LogicException) {
+    check('a second owner for an extension route is refused', true);
+}
 
 finish('blog_test');

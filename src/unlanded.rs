@@ -21,14 +21,12 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Feature {
-    Auth,
     Localized,
 }
 
 /// (feature, owning lane, what, fix until then). One row per lane; delete yours when it lands.
 #[rustfmt::skip]
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
-    (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
     (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
 ];
 
@@ -74,13 +72,10 @@ fn declared(schema: &Schema) -> Vec<Feature> {
             .chain(schema.jobs.values().map(|j| &j.input))
             .any(|c| any_column(c, test))
     };
-    [
-        (schema.collections.values().any(|c| c.auth), Feature::Auth),
-        (
-            schema.locales.is_some() || columns(&|c| c.localized),
-            Feature::Localized,
-        ),
-    ]
+    [(
+        schema.locales.is_some() || columns(&|c| c.localized),
+        Feature::Localized,
+    )]
     .into_iter()
     .filter_map(|(on, feature)| on.then_some(feature))
     .collect()
@@ -142,9 +137,6 @@ impl Walk<'_, '_> {
                 }
             }
             Value::Collection(c) if self.first_visit(c) => {
-                if let Some(options) = &c.options {
-                    self.option(options, "auth", Feature::Auth);
-                }
                 for b in c.columns.values() {
                     self.column(b);
                 }

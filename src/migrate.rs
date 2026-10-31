@@ -76,7 +76,12 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     for col in c.columns.values() {
         cols.insert(col.name.clone(), column_snapshot(col, schema));
     }
-    json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols })
+    let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
+    if c.auth {
+        // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
+        table["auth"] = true.into();
+    }
+    table
 }
 
 fn column_snapshot(col: &Column, schema: &Schema) -> Json {
@@ -164,7 +169,7 @@ fn dialect_tables(snap: &Json, d: Dialect) -> Map {
     let empty = Map::new();
     let tables = snap["tables"].as_object().unwrap_or(&empty);
     for (t, def) in tables {
-        if d == Dialect::Mysql && def["editor"].as_bool() != Some(false) {
+        if d == Dialect::Mysql && (def["editor"].as_bool() != Some(false) || def["auth"].as_bool() == Some(true)) {
             continue;
         }
         out.insert(t.clone(), def.clone());
@@ -548,9 +553,15 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
                         out.push(format!("drops column \"{t}\".\"{k}\""));
                     }
                 }
-                if def["editor"].as_bool() == Some(false) && n["editor"].as_bool() != Some(false) {
+                let wp_table = |d: &Json| d["editor"].as_bool() == Some(false) && d["auth"].as_bool() != Some(true);
+                if wp_table(def) && !wp_table(n) {
+                    let to = if n["auth"].as_bool() == Some(true) {
+                        "WordPress users"
+                    } else {
+                        "post-backed"
+                    };
                     out.push(format!(
-                        "drops the WordPress table for \"{t}\" (it becomes post-backed; existing rows aren't moved)"
+                        "drops the WordPress table for \"{t}\" (it becomes {to}; existing rows aren't moved)"
                     ));
                 }
             }
@@ -626,5 +637,29 @@ mod tests {
         );
         assert!(plan(&v3, &v3, Dialect::Sqlite).is_empty());
         assert!(plan(&v3, &v3, Dialect::Mysql).is_empty());
+    }
+
+    #[test]
+    fn warns_when_a_wordpress_table_stops_holding_the_rows() {
+        let table = json!({ "editor": false, "drafts": false, "columns": { "id": col("integer") } });
+        let v1 = snap(json!({ "members": table }));
+        assert!(destructive(&v1, &v1).is_empty());
+        // Becoming an auth collection moves the rows to wp_users: the custom table is dropped.
+        let mut users = v1.clone();
+        users["tables"]["members"]["auth"] = json!(true);
+        assert_eq!(
+            destructive(&v1, &users),
+            vec!["drops the WordPress table for \"members\" (it becomes WordPress users; existing rows aren't moved)"]
+        );
+        assert!(
+            destructive(&users, &users).is_empty(),
+            "an auth collection never had a table to drop"
+        );
+        let mut posts = v1.clone();
+        posts["tables"]["members"]["editor"] = json!(true);
+        assert_eq!(
+            destructive(&v1, &posts)[0],
+            "drops the WordPress table for \"members\" (it becomes post-backed; existing rows aren't moved)"
+        );
     }
 }

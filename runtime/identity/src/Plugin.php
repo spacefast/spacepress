@@ -162,6 +162,8 @@ final class Plugin
                 });
             }, 1, 4);
         }
+        // A deleted WordPress user takes its identity (credentials, emails, account) with it.
+        add_action("delete_user", static fn ($uid) => self::$accounts->forgetUser((int) $uid));
         // A password set anywhere (profile, reset, wp_set_password) ends every identity sign-in.
         $passwordChanged = static function ($user): void {
             $uid = $user instanceof \WP_User ? (int) $user->ID : (int) $user;

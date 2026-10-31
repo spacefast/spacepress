@@ -734,6 +734,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-showif-nested-sibling", "showIf names non-sibling"),
         ("reject-showif-title", "title is always readable"),
         ("reject-sync-auth", "auth collections cannot sync"),
+        ("reject-auth-primary-key", "auth: true needs the primary key id: id()"),
         ("reject-sync-directory", "two collections sync into the same directory"),
         ("reject-sync-outside", "sync directory must stay inside the project"),
         ("reject-sync-content", "Markdown sync needs a content designation"),
@@ -768,7 +769,6 @@ fn rejects_phase2_static_contracts() {
             "env() values can't be stored inside captured data",
         ),
         // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
-        ("reject-unlanded-auth", "not implemented until lane E"),
         ("reject-unlanded-localized", "not implemented until lane H"),
         ("reject-auth-duplicate", "at most one auth: true collection"),
         (
@@ -1283,5 +1283,63 @@ fn compiled_jobs_run_through_the_zero_jobs_cli() {
         serde_json::json!([{ "id": 1, "itemId": 1, "note": "Milk is low (attempt 1)" }])
     );
     assert_eq!(jobs(&["list", "--state", "done"]).as_array().unwrap().len(), 1);
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// The auth-collection fixture the PHP suites run on is exactly what the compiler emits for it.
+#[test]
+fn auth_fixture_matches_the_compiler() {
+    let tmp = std::env::temp_dir().join(format!("zero-auth-fixture-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let fixture = root().join("tests/fixtures/auth");
+    std::fs::copy(fixture.join("zero.config.ts"), tmp.join("zero.config.ts")).unwrap();
+    let out = zero()
+        .args(["build", "--target", "standalone"])
+        .arg(&tmp)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(tmp.join(".zero/app/zero/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let golden: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.join("schema.json")).unwrap()).unwrap();
+    assert_eq!(
+        actual, golden,
+        "tests/fixtures/auth/schema.json drifted from the compiler"
+    );
+    assert_eq!(
+        std::fs::read_to_string(tmp.join("zero/migrations/sqlite/0001_init.sql")).unwrap(),
+        std::fs::read_to_string(fixture.join("0001_init.sql")).unwrap(),
+        "tests/fixtures/auth/0001_init.sql drifted from the compiler"
+    );
+    // The generated client types the auth collection as §6.2 says (tests/fixtures/auth/client.ts).
+    std::fs::copy(fixture.join("client.ts"), tmp.join("client.ts")).unwrap();
+    let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+            "--allowImportingTsExtensions",
+        ])
+        .arg(tmp.join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        out.status.success(),
+        "auth client contract failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
     let _ = std::fs::remove_dir_all(&tmp);
 }

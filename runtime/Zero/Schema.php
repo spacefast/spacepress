@@ -19,7 +19,8 @@ final class Schema
 {
     public const SERIES = '0.2';
 
-    public const ROLES = ['subscriber', 'author', 'editor', 'admin'];
+    /** The role ladder, lowest first; guests (§6.2) sit below subscribers. */
+    public const ROLES = ['guest', 'subscriber', 'author', 'editor', 'admin'];
     private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
     private const STRING_TYPES = ['text', 'email', 'url', 'slug', 'richText'];
     private const LIST_TYPES = ['mediaList', 'select', 'repeater', 'blocks'];

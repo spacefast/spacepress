@@ -37,7 +37,11 @@ final class Invoke
             return true;
         }
         $plugin->app(); // rule functions live in the app's functions.php
-        $viewer = self::viewer();
+        try {
+            $viewer = self::viewer();
+        } catch (HttpError $e) {
+            return self::error($e); // a suspended account (§6.2)
+        }
         try {
             $data = isset($op['data']) ? ($op['data'])(self::object($input)) : null;
             $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data) !== false;

@@ -344,6 +344,20 @@ final class Accounts
             return $uid;
         });
     }
+    /**
+     * A WordPress user is being deleted: everything identity knows about it goes with it, in the
+     * caller's transaction (sessions and tokens, verified emails, providers, passkeys, factors,
+     * memberships, pending challenges and codes, the account). A later user given the same id, or
+     * someone re-registering the email, starts with nothing of it.
+     */
+    public function forgetUser(int $uid): void
+    {
+        $this->db->transaction(function () use ($uid): void {
+            foreach (["sessions", "tokens", "codes", "challenges", "emails", "providers", "passkeys", "mfa", "recovery_codes", "members", "accounts"] as $table) {
+                $this->db->run("DELETE FROM {$this->db->prefix}{$table} WHERE wp_user_id=%d", $uid);
+            }
+        });
+    }
     /** The account state the Zero runtime enforces on every channel (§3.5). */
     public function status(int $uid): string
     {

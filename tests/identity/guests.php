@@ -118,3 +118,15 @@ WP_Application_Passwords::create_new_application_password($core, ['name' => 'pla
 Plugin::$accounts->verifiedSignIn('core-' . $tag . '@example.test', session_for($core)['session']);
 clean_user_cache($core);
 check(!wp_check_password('planted-password-123', get_userdata($core)->user_pass, $core) && WP_Application_Passwords::get_user_application_passwords($core) === [], 'the upgrade resets the WordPress password and deletes application passwords');
+
+// Deleting a WordPress user deletes its identity: credentials, emails, account. A new user with the
+// same email starts clean, and nothing of the old one signs anyone in.
+require_once ABSPATH . 'wp-admin/includes/user.php';
+$doomed = Plugin::$accounts->emailLogin("doomed-$tag@example.test");
+$doomedTokens = Plugin::$accounts->issueForUser($doomed, 'app_guests_' . $tag);
+wp_delete_user($doomed);
+rejects(fn () => $oauth->userinfo($doomedTokens['access_token']), 'invalid_token', 'a deleted user\'s access token is dead');
+rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => 'app_guests_' . $tag, 'refresh_token' => $doomedTokens['refresh_token']]), 'invalid_grant', 'and its refresh token');
+check(Plugin::$accounts->owner("doomed-$tag@example.test") === 0 && Plugin::$accounts->status($doomed) === 'none', 'its verified email and account are gone');
+$reborn = Plugin::$accounts->emailLogin("doomed-$tag@example.test");
+check($reborn !== $doomed && Plugin::$accounts->owner("doomed-$tag@example.test") === $reborn, 'the email signs a fresh account in, not the deleted one');

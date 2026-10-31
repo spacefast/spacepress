@@ -6,14 +6,15 @@ namespace Zero;
 
 /*
  * CHANGED vs design §5 (additive): besides resolve(), user($id) names revision authors in
- * GET /{c}/{id}/revisions and login() backs POST /auth/token (WP: throw 404 not_found).
+ * GET /{c}/{id}/revisions. Sign-in itself belongs to Auth\Issuer (§6.2).
  */
 
 /** Resolves a request to a User (§5). Standalone: Identity (bearer tokens). WP: Wp\WpAuth. */
 interface Auth
 {
     /**
-     * The user making this request, or null when anonymous.
+     * The user making this request, or null when anonymous. A suspended user's credentials throw
+     * HttpError 403 `suspended` (§6.2) instead of resolving.
      *
      * @param array<string, string> $headers lower-cased header names
      * @return ?array{id: int, name: string, role: string}
@@ -26,10 +27,4 @@ interface Auth
      * @return ?array{id: int, name: string, role: string}
      */
     public function user(int $id): ?array;
-
-    /**
-     * `POST /auth/token` (§5.2). Returns ['token' => string, 'user' => User]. Throws HttpError 401
-     * `unauthenticated` on a mismatch; targets without password login (WP) throw 404 `not_found`.
-     */
-    public function login(string $name, string $password): array;
 }

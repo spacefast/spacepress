@@ -11,6 +11,7 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 
 const SCHEMA_TS = `export const SCHEMA = {
   name: "blog", target: "standalone", basePath: "/api",
@@ -34,17 +35,26 @@ interface Seen { method: string; path: string; query: URLSearchParams; headers: 
 let seen: Seen[] = [];
 let reply: (s: Seen) => { status: number; type?: string; body: string } = () => ({ status: 200, body: '{"data":null}' });
 let server: Server;
+let origin = "";
 let url = "";
-let dir = "";
+const dirs: string[] = [];
 // The runtime's public surface, loosely typed: the test drives it the way generated types would.
 let mod: any;
+// The same runtime built for WordPress (`SCHEMA.target === "wp"`).
+let wpMod: any;
+
+async function load(schemaTs: string): Promise<unknown> {
+  const dir = mkdtempSync(join(tmpdir(), "zero-client-"));
+  dirs.push(dir);
+  copyFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), join(dir, "index.ts"));
+  writeFileSync(join(dir, "schema.ts"), schemaTs);
+  writeFileSync(join(dir, "types.ts"), TYPES_TS);
+  return import(pathToFileURL(join(dir, "index.ts")).href);
+}
 
 before(async () => {
-  dir = mkdtempSync(join(tmpdir(), "zero-client-"));
-  copyFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), join(dir, "index.ts"));
-  writeFileSync(join(dir, "schema.ts"), SCHEMA_TS);
-  writeFileSync(join(dir, "types.ts"), TYPES_TS);
-  mod = await import(pathToFileURL(join(dir, "index.ts")).href);
+  mod = await load(SCHEMA_TS);
+  wpMod = await load(SCHEMA_TS.replace('target: "standalone", basePath: "/api"', 'target: "wp", basePath: "/wp-json/zero/v1"'));
 
   server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -56,16 +66,54 @@ before(async () => {
     res.writeHead(r.status, { "content-type": r.type ?? "application/json" }).end(r.body);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api`;
+  origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  url = `${origin}/api`;
 });
 
 after(() => {
   server.close();
-  rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
 const ok = (data: unknown) => () => ({ status: 200, body: JSON.stringify({ data }) });
 const last = () => seen[seen.length - 1];
+const problem = (status: number, code: string) => ({
+  status,
+  type: "application/problem+json",
+  body: JSON.stringify({ type: "about:blank", title: code, status, code, detail: code }),
+});
+const tokens = (n: number, user: unknown, extra: Record<string, unknown> = {}) =>
+  ok({ accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 900, user, ...extra })();
+/** Each request as one line; form and JSON bodies verbatim. */
+const lines = () => seen.map((s) => `${s.method} ${s.path} ${s.headers.authorization ?? "-"} ${s.body.toString()}`.trim());
+const form = (s: Seen) => Object.fromEntries(new URLSearchParams(s.body.toString()));
+
+/**
+ * Minimal browser globals for redirect sign-in: `sessionStorage` over a Map and a `location` whose
+ * `assign` resolves `navigated`. Restored by `restore()`.
+ */
+function stubBrowser(search = "") {
+  const saved = (["sessionStorage", "location"] as const).map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)] as const);
+  const store = new Map<string, string>();
+  let navigate: (to: string) => void = () => {};
+  const navigated = new Promise<string>((resolve) => (navigate = resolve));
+  const visits: string[] = [];
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) },
+  });
+  Object.defineProperty(globalThis, "location", { configurable: true, value: { search, href: `https://blog.test/callback${search}`, assign: (to: string) => (visits.push(to), navigate(to)) } });
+  return {
+    store,
+    navigated,
+    visits,
+    restore() {
+      for (const [k, d] of saved) d ? Object.defineProperty(globalThis, k, d) : Reflect.deleteProperty(globalThis, k);
+    },
+  };
+}
+
+const sha256url = (v: string) => createHash("sha256").update(v).digest("base64url");
 
 test("list encodes where/orderBy/limit/offset/status; with is a comma list or JSON", async () => {
   seen = [];
@@ -133,22 +181,31 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   assert.equal(seen[0].headers["content-type"], "application/json");
 });
 
-test("auth headers: standalone bearer (and login adopts the token), WP nonce, custom headers win", async () => {
+test("auth headers: standalone bearer, login keeps session tokens until signOut, WP nonce, custom headers win", async () => {
   seen = [];
-  reply = (s) => (s.path === "/api/auth/token" ? ok({ token: "zt_new", user: { id: 2, name: "alice", role: "author" } })() : ok(null)());
+  const alice = { id: 2, name: "alice", role: "author" };
+  reply = (s) => (s.path === "/api/auth/token" ? tokens(1, alice) : s.path === "/api/auth/session" ? ok(true)() : ok(null)());
 
   const standalone = mod.createClient({ url, token: "zt_abc" });
   await standalone.auth.me();
   assert.equal(last().headers.authorization, "Bearer zt_abc");
   assert.equal(last().headers["x-wp-nonce"], undefined);
 
+  // Standalone password sign-in returns the user and keeps the pair; signOut ends the session server-side first.
   const anon = mod.createClient({ url });
   await anon.auth.me();
   assert.equal(last().headers.authorization, undefined);
-  const { token } = await anon.auth.login("alice", "pw");
-  assert.deepEqual(JSON.parse(last().body.toString()), { name: "alice", password: "pw" });
+  assert.deepEqual(await anon.auth.login("alice", "pw"), alice);
+  assert.deepEqual(JSON.parse(last().body.toString()), { grant_type: "password", name: "alice", password: "pw" });
+  assert.deepEqual({ ...anon.auth.session(), expiresAt: typeof anon.auth.session()?.expiresAt }, { accessToken: "za_1", refreshToken: "zr_1", expiresAt: "number" });
   await anon.auth.me();
-  assert.equal(last().headers.authorization, `Bearer ${token}`);
+  await anon.auth.signOut();
+  await anon.auth.me();
+  assert.deepEqual(lines().slice(-3), ["GET /api/me Bearer za_1", "DELETE /api/auth/session Bearer za_1", "GET /api/me -"]);
+  assert.equal(anon.auth.session(), null);
+  // Redirect sign-in is WordPress's; password sign-in is standalone's.
+  assert.equal((await anon.auth.signIn().catch((e: unknown) => e)).code, "not_supported");
+  assert.equal((await wpMod.createClient({ url }).auth.login("alice", "pw").catch((e: unknown) => e)).code, "not_supported");
 
   // WP cookie auth: nonce header + same-origin credentials (observed through a fetch wrapper).
   let credentials: RequestCredentials | undefined;
@@ -249,4 +306,527 @@ test("default base URL is the build's prefix", async () => {
   const zero = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
   await zero.auth.me();
   assert.equal(requested, "/api/me");
+});
+
+test("a 401 unauthenticated refreshes once and retries once; a refused refresh forgets the session and surfaces the 401", async () => {
+  const zero = mod.createClient({ url });
+  reply = () => tokens(1, { id: 2, name: "alice", role: "author" });
+  await zero.auth.login("alice", "a long password");
+
+  // za_1 has expired: the server takes only za_2, which the rotated refresh hands out.
+  seen = [];
+  reply = (s) =>
+    s.path === "/api/auth/token" ? tokens(2, { id: 2, name: "alice", role: "author" }) : s.headers.authorization === "Bearer za_2" ? ok([{ id: 1 }])() : problem(401, "unauthenticated");
+  assert.deepEqual(await zero.posts.list(), [{ id: 1 }]);
+  await zero.posts.list();
+  assert.deepEqual(lines(), [
+    "GET /api/posts Bearer za_1",
+    'POST /api/auth/token - {"grant_type":"refresh_token","refreshToken":"zr_1"}',
+    "GET /api/posts Bearer za_2",
+    "GET /api/posts Bearer za_2",
+  ]);
+  assert.equal(zero.auth.session()?.refreshToken, "zr_2");
+
+  // The server now refuses every access token and rotates the refresh token only once. The first write
+  // refreshes and retries once, then surfaces the 401; the next one finds the refresh token dead, gets the
+  // request's own 401, and the session is gone.
+  seen = [];
+  let rotations = 0;
+  reply = (s) => (s.path === "/api/auth/token" ? (rotations++ === 0 ? tokens(3, null) : problem(401, "invalid_grant")) : problem(401, "unauthenticated"));
+  for (const title of ["x", "y"]) {
+    const err = await zero.posts.create({ title }).catch((e: unknown) => e);
+    assert.deepEqual([err instanceof mod.ZeroError, err.status, err.code], [true, 401, "unauthenticated"]);
+  }
+  assert.deepEqual(lines(), [
+    'POST /api/posts Bearer za_2 {"title":"x"}',
+    'POST /api/auth/token - {"grant_type":"refresh_token","refreshToken":"zr_2"}',
+    'POST /api/posts Bearer za_3 {"title":"x"}',
+    'POST /api/posts Bearer za_3 {"title":"y"}',
+    'POST /api/auth/token - {"grant_type":"refresh_token","refreshToken":"zr_3"}',
+  ]);
+  assert.equal(zero.auth.session(), null);
+});
+
+test("guests: the first unauthenticated write starts a guest session and retries; reads don't; upgrade keeps the session", async () => {
+  const guest = { id: 7, name: "Guest", role: "guest" };
+  reply = (s) => {
+    if (s.path === "/api/auth/guest") return tokens(1, guest);
+    if (s.path === "/api/auth/guest/upgrade") return ok({ user: { ...guest, name: "gina", role: "subscriber" } })();
+    return s.headers.authorization ? ok({ id: 1 })() : problem(401, "unauthenticated");
+  };
+  const zero = mod.createClient({ url, auth: { guests: true } });
+
+  seen = [];
+  assert.equal((await zero.posts.list().catch((e: unknown) => e)).code, "unauthenticated");
+  assert.deepEqual(await zero.posts.create({ title: "Hi" }), { id: 1 });
+  assert.deepEqual(await zero.auth.upgrade("gina", "a long password"), { id: 7, name: "gina", role: "subscriber" });
+  await zero.posts.create({ title: "Again" });
+  assert.deepEqual(lines(), [
+    "GET /api/posts -",
+    'POST /api/posts - {"title":"Hi"}',
+    "POST /api/auth/guest - {}",
+    'POST /api/posts Bearer za_1 {"title":"Hi"}',
+    'POST /api/auth/guest/upgrade Bearer za_1 {"name":"gina","password":"a long password"}',
+    'POST /api/posts Bearer za_1 {"title":"Again"}',
+  ]);
+
+  // Without `guests`, the same write just fails.
+  seen = [];
+  assert.equal((await mod.createClient({ url }).posts.create({ title: "Hi" }).catch((e: unknown) => e)).code, "unauthenticated");
+  assert.equal(seen.length, 1);
+});
+
+test("guests: two first writes in flight share one guest, even when one 401 lands after the guest exists", async () => {
+  // A fetch stub with manual control: each request waits until the test releases it.
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch, auth: { guests: true } });
+  // Microtask turns only (no timers); a bounded count so a regression fails instead of hanging.
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+
+  const a = zero.posts.create({ title: "a" });
+  const b = zero.posts.create({ title: "b" });
+  await until(2);
+  pending[0].release(denied());                       // a's 401 starts the guest
+  await until(3);
+  assert.equal(pending[2].url, "http://x/api/auth/guest");
+  pending[2].release(json(201, { data: { accessToken: "za_g", refreshToken: "zr_g", expiresIn: 300, user: { id: 9, name: "Guest", role: "guest" } } }));
+  await until(4);                                      // a retries with the guest
+  pending[1].release(denied());                        // b's 401 arrives after the guest exists
+  await until(5);
+  assert.equal(pending[4].url, "http://x/api/posts", "b retries with the existing guest instead of starting another");
+  pending[3].release(json(201, { data: { id: 1 } }));
+  pending[4].release(json(201, { data: { id: 2 } }));
+  assert.deepEqual([await a, await b], [{ id: 1 }, { id: 2 }]);
+  assert.equal(pending.filter((p) => p.url.endsWith("/auth/guest")).length, 1, "one guest");
+  assert.deepEqual([pending[3], pending[4]].map((p) => (p.init.headers as Record<string, string>).authorization), ["Bearer za_g", "Bearer za_g"]);
+});
+
+test("a 401 or refresh that outlives a sign-in never acts as the new user", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: n.length, name: n, role: "author" } } });
+  const auth = (i: number) => (pending[i].init.headers as Record<string, string>).authorization;
+
+  const loginA = zero.auth.login("a", "pw-a-long-enough");
+  await until(1);
+  pending[0].release(issued("a"));
+  await loginA;
+  const draft = zero.posts.create({ title: "A's private draft" }); // sent as A
+  await until(2);
+  assert.equal(auth(1), "Bearer za_a");
+  const loginB = zero.auth.login("b", "pw-b-long-enough");     // B signs in on the same client
+  await until(3);
+  pending[2].release(issued("b"));
+  await loginB;
+  pending[1].release(denied());                                   // A's 401 lands late
+  // Settle the draft, or see what it sent instead (a retry or refresh would be a 4th request).
+  let failed: any;
+  void draft.then(() => (failed = "resolved"), (e: unknown) => (failed = e));
+  for (let turn = 0; failed === undefined && pending.length === 3 && turn < 10_000; turn++) await Promise.resolve();
+  assert.equal(pending.length, 3, `nothing was retried or refreshed as B (saw ${pending.slice(3).map((p) => `${p.url} ${auth(pending.indexOf(p))}`).join(", ")})`);
+  assert.equal(failed?.code, "unauthenticated", "A's request fails as it was sent");
+
+  // A refresh started as B, finishing after a sign-out, doesn't bring B back.
+  const other = zero.posts.create({ title: "x" });
+  await until(4);
+  pending[3].release(denied());
+  await until(5);
+  assert.equal(pending[4].url, "http://x/api/auth/token");
+  const out = zero.auth.signOut();
+  await until(6);
+  pending[5].release(json(200, { data: true }));
+  await out;
+  pending[4].release(issued("b2"));
+  await other.catch(() => undefined);
+  assert.equal(zero.auth.session(), null, "the late refresh was dropped");
+});
+
+test("two clients sharing sessionStorage: one's late 401, guest or sign-out never acts across the other's sign-in", async () => {
+  const browser = stubBrowser();
+  try {
+    const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+    const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+    const opts = { url: "http://x/api", fetch, auth: { storage: "session" as const, guests: true } };
+    const a = mod.createClient(opts);
+    const b = mod.createClient(opts);
+    const until = async (n: number) => {
+      for (let turn = 0; pending.length < n; turn++) {
+        if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+        await Promise.resolve();
+      }
+    };
+    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+    const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: n.length, name: n, role: "author" } } });
+    const settle = async (p: Promise<unknown>) => {
+      let out: unknown = "pending";
+      void p.then((v) => (out = v), (e) => (out = e));
+      for (let turn = 0; out === "pending" && turn < 10_000; turn++) await Promise.resolve();
+      return out;
+    };
+
+    // Alice signs in through A; A sends a write as Alice; Bob signs in through B (same storage).
+    const alice = a.auth.login("alice", "long password a");
+    await until(1);
+    pending[0].release(issued("alice"));
+    await alice;
+    const draft = a.posts.create({ title: "Alice's draft" });
+    await until(2);
+    const bob = b.auth.login("bob", "long password b");
+    await until(3);
+    pending[2].release(issued("bob"));
+    await bob;
+    pending[1].release(denied());
+    assert.equal(((await settle(draft)) as any).code, "unauthenticated");
+    assert.equal(pending.length, 3, "Alice's write was neither refreshed nor retried as Bob");
+    assert.equal(b.auth.session()?.accessToken, "za_bob");
+
+    // An automatic guest that completes after Carol signed in doesn't replace her.
+    const bobOut = b.auth.signOut();
+    await until(4);
+    pending[3].release(json(200, { data: true }));
+    await bobOut;
+    const write = a.posts.create({ title: "anon" });
+    await until(5);
+    pending[4].release(denied());                       // starts a guest
+    await until(6);
+    const carol = b.auth.login("carol", "long password c");
+    await until(7);
+    pending[6].release(issued("carol"));
+    await carol;
+    pending[5].release(issued("guest"));                // the guest answer arrives late
+    await settle(write);
+    assert.equal(a.auth.session()?.accessToken, "za_carol", "Carol's sign-in stands");
+
+    // A sign-out that started before Dave signed in doesn't clear Dave.
+    const out = a.auth.signOut();                        // request 7
+    await until(8);
+    const dave = b.auth.login("dave", "long password d"); // request 8
+    await until(9);
+    pending[8].release(issued("dave"));
+    await dave;
+    pending[7].release(json(200, { data: true }));
+    await settle(out);
+    assert.equal(b.auth.session()?.accessToken, "za_dave", "Dave stays signed in");
+
+    // Both clients get a 401 for Dave at once: only one refresh token is ever presented.
+    const n = pending.length;
+    const fromA = a.posts.create({ title: "a" });
+    const fromB = b.posts.create({ title: "b" });
+    await until(n + 2);
+    pending[n].release(denied());
+    pending[n + 1].release(denied());
+    await until(n + 3);
+    assert.equal(pending[n + 2].url, "http://x/api/auth/token");
+    pending[n + 2].release(issued("dave2"));             // one client rotates; the other picks it up
+    await until(n + 5);
+    const retries = pending.slice(n + 3, n + 5).map((p) => (p.init.headers as Record<string, string>).authorization);
+    assert.deepEqual(retries, ["Bearer za_dave2", "Bearer za_dave2"], "both retried with the one rotated pair");
+    assert.equal(pending.slice(n).filter((p) => p.url.endsWith("/auth/token")).length, 1, "exactly one refresh for the shared session");
+    pending[n + 3].release(json(201, { data: { id: 1 } }));
+    pending[n + 4].release(json(201, { data: { id: 2 } }));
+    await Promise.all([fromA, fromB]);
+
+    // A guest started while signed out doesn't come back after a later sign-in and sign-out.
+    const daveOut = a.auth.signOut();
+    await until(n + 6);
+    pending[n + 5].release(json(200, { data: true }));
+    await daveOut;
+    const anon = a.posts.create({ title: "anon again" });
+    await until(n + 7);
+    pending[n + 6].release(denied());                    // starts a guest (pending)
+    await until(n + 8);
+    const erin = b.auth.login("erin", "long password e");
+    await until(n + 9);
+    pending[n + 8].release(issued("erin"));
+    await erin;
+    const erinOut = b.auth.signOut();
+    await until(n + 10);
+    pending[n + 9].release(json(200, { data: true }));
+    await erinOut;
+    pending[n + 7].release(issued("late-guest"));        // the old guest answer arrives last
+    await settle(anon);
+    assert.equal(a.auth.session(), null, "signed out stays signed out");
+  } finally {
+    browser.restore();
+  }
+});
+
+test("a refresh still in flight for an earlier sign-in never stands in for the current session's", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "author" } } });
+
+  const a = zero.auth.login("a", "long password a");
+  await until(1);
+  pending[0].release(issued("a"));
+  await a;
+  const wa = zero.posts.create({ title: "a" });             // 1
+  await until(2);
+  pending[1].release(denied());
+  await until(3);                                           // 2: A's refresh, left pending
+  const b = zero.auth.login("b", "long password b");        // 3
+  await until(4);
+  pending[3].release(issued("b"));
+  await b;
+  const wb = zero.posts.create({ title: "b" });             // 4
+  await until(5);
+  pending[4].release(denied());
+  await until(6);
+  assert.equal(pending[5].url, "http://x/api/auth/token", "B refreshes its own session");
+  assert.equal(JSON.parse(String(pending[5].init.body)).refreshToken, "zr_b");
+  pending[5].release(issued("b2"));
+  await until(7);
+  assert.equal((pending[6].init.headers as Record<string, string>).authorization, "Bearer za_b2");
+  pending[6].release(json(201, { data: { id: 2 } }));
+  assert.deepEqual(await wb, { id: 2 });
+  pending[2].release(issued("a2"));                         // A's late refresh: dropped
+  await wa.catch(() => undefined);
+  assert.equal(zero.auth.session()?.accessToken, "za_b2");
+});
+
+test("guest(), signOut(), guest(): the second call starts its own guest", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
+  const g1 = zero.auth.guest();
+  await zero.auth.signOut();
+  const g2 = zero.auth.guest();
+  for (let turn = 0; pending.length < 2 && turn < 10_000; turn++) await Promise.resolve();
+  assert.equal(pending.length, 2, "two guest requests");
+  pending[0].release(issued("g1"));
+  pending[1].release(issued("g2"));
+  await g1.catch(() => undefined);
+  assert.equal((await g2).name, "g2");
+  assert.equal(zero.auth.session()?.accessToken, "za_g2");
+});
+
+test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch, auth: { guests: true } });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
+  const settle = async (p: Promise<unknown>) => {
+    let out: unknown = "pending";
+    void p.then((v) => (out = v), (e) => (out = e));
+    for (let turn = 0; out === "pending" && turn < 10_000; turn++) await Promise.resolve();
+    return out;
+  };
+
+  // guest() and login() in flight, then signOut() while still anonymous: neither may sign in later.
+  const guest = zero.auth.guest();
+  const login = zero.auth.login("late", "long password l");
+  await until(2);
+  await zero.auth.signOut();
+  pending[0].release(issued("late-guest"));
+  pending[1].release(issued("late-login"));
+  await settle(guest);
+  await settle(login);
+  assert.equal(zero.auth.session(), null, "still signed out");
+
+  // An anonymous write from before a sign-in/sign-out doesn't retry as the guest that came after.
+  const old = zero.posts.create({ title: "old" });          // request 2, anonymous
+  await until(3);
+  const fresh = zero.auth.guest();                          // request 3: a guest from a later generation
+  await until(4);
+  pending[3].release(issued("guest-a"));
+  await fresh;
+  const out = zero.auth.signOut();                          // request 4: revoke guest-a
+  await until(5);
+  pending[4].release(json(200, { data: true }));
+  await out;
+  const newer = zero.auth.guest();                          // request 5: yet another guest
+  await until(6);
+  pending[5].release(issued("guest-b"));
+  await newer;
+  pending[2].release(denied());                             // the old write's 401 lands now
+  const failed: any = await settle(old);
+  assert.equal(failed.code, "unauthenticated", "the old write fails as sent");
+  assert.equal(pending.length, 6, "it was not retried as a later guest");
+});
+
+test("WP signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kept in sessionStorage", async () => {
+  const browser = stubBrowser();
+  try {
+    seen = [];
+    reply = (s) => (s.path === "/wp-json/zero/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
+    const zero = wpMod.createClient({ url: `${origin}/wp-json/zero/v1`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
+    void zero.auth.signIn({ returnTo: "/drafts" });
+    const to = new URL(await browser.navigated);
+
+    // No issuer option: it comes from /auth/config.
+    assert.deepEqual(lines(), ["GET /wp-json/zero/v1/auth/config -"]);
+    assert.equal(`${to.origin}${to.pathname}`, `${origin}/identity/authorize`);
+    const pkce = JSON.parse(browser.store.get("zero.auth.pkce") ?? "{}");
+    assert.deepEqual(Object.fromEntries(to.searchParams), {
+      response_type: "code",
+      client_id: "app_blog",
+      redirect_uri: "https://blog.test/callback",
+      scope: "openid profile email",
+      state: pkce.state,
+      nonce: pkce.nonce,
+      code_challenge: sha256url(pkce.verifier),
+      code_challenge_method: "S256",
+    });
+    // 64 / 32 / 32 random bytes, base64url.
+    assert.deepEqual(
+      [pkce.verifier, pkce.state, pkce.nonce].map((v: string) => /^[A-Za-z0-9_-]+$/.test(v) && v.length),
+      [86, 43, 43],
+    );
+    assert.equal(pkce.returnTo, "/drafts");
+
+    const missing = await wpMod.createClient({ url, auth: { issuer: `${origin}/identity` } }).auth.signIn().catch((e: unknown) => e);
+    assert.deepEqual([missing.status, missing.code], [400, "invalid_input"]);
+  } finally {
+    browser.restore();
+  }
+});
+
+test("WP handleCallback refuses a foreign state, exchanges the code with the verifier, and signOut revokes then logs out", async () => {
+  const issuer = `${origin}/identity`;
+  const auth = { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage: "session" };
+  const base = `${origin}/wp-json/zero/v1`;
+  const pkce = JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo: "/drafts" });
+  const member = { id: 3, name: "ann", role: "subscriber", member: { id: 3, email: "ann@x.test" } };
+  reply = (s) => {
+    if (s.path === "/identity/token") return { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, id_token: "h.p.s", token_type: "Bearer" }) };
+    if (s.path === "/identity/revoke") return { status: 200, body: "{}" };
+    return ok(member)();
+  };
+
+  const forged = stubBrowser("?code=c0de&state=other");
+  try {
+    forged.store.set("zero.auth.pkce", pkce);
+    seen = [];
+    const err = await wpMod.createClient({ url: base, auth }).auth.handleCallback().catch((e: unknown) => e);
+    assert.deepEqual([err instanceof wpMod.ZeroError, err.code], [true, "invalid_state"]);
+    assert.deepEqual(seen, []);
+  } finally {
+    forged.restore();
+  }
+
+  const browser = stubBrowser(`?code=c0de&state=${"s".repeat(43)}`);
+  try {
+    browser.store.set("zero.auth.pkce", pkce);
+    const zero = wpMod.createClient({ url: base, auth });
+    seen = [];
+    assert.deepEqual(await zero.auth.handleCallback(), member);
+    assert.equal(await browser.navigated, "https://blog.test/drafts", "back to signIn's returnTo");
+    assert.deepEqual([seen[0].path, seen[0].headers["content-type"], seen[0].headers.authorization], ["/identity/token", "application/x-www-form-urlencoded", undefined]);
+    assert.deepEqual(form(seen[0]), {
+      grant_type: "authorization_code",
+      code: "c0de",
+      redirect_uri: "https://blog.test/callback",
+      client_id: "app_blog",
+      code_verifier: "v".repeat(86),
+    });
+    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/zero/v1/me", "Bearer at_1"]);
+    assert.equal(browser.store.has("zero.auth.pkce"), false);
+    const kept = JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}");
+    assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
+
+    seen = [];
+    await zero.auth.signOut({ returnTo: "https://blog.test/" });
+    assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
+    // Signed out, the record keeps only the session generation (no tokens).
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}")), ["sid"]);
+    const logout = new URL(browser.visits.at(-1) ?? "");
+    assert.deepEqual(
+      [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
+      [`${issuer}/logout`, { id_token_hint: "h.p.s", post_logout_redirect_uri: "https://blog.test/" }],
+    );
+  } finally {
+    browser.restore();
+  }
+});
+
+test("WP handleCallback returns only to its own origin, and only when tokens survive the page load", async () => {
+  const issuer = `${origin}/identity`;
+  const base = `${origin}/wp-json/zero/v1`;
+  const member = { id: 3, name: "ann", role: "subscriber" };
+  reply = (s) => (s.path === "/identity/token"
+    ? { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, token_type: "Bearer" }) }
+    : ok(member)());
+  for (const [returnTo, storage, expected] of [
+    ["/\\evil.test/", "session", []],             // resolves to another origin: refused
+    ["/\tevil.test/", "session", ["https://blog.test/evil.test/"]], // tab stripped by URL parsing: same origin
+    ["https://evil.test/x", "session", []],
+    ["/drafts", "memory", []],                     // memory tokens wouldn't survive the load
+  ] as const) {
+    const browser = stubBrowser(`?code=c&state=${"s".repeat(43)}`);
+    try {
+      browser.store.set("zero.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
+      await wpMod.createClient({ url: base, auth: { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage } }).auth.handleCallback();
+      assert.deepEqual(browser.visits, expected, `returnTo ${JSON.stringify(returnTo)} with ${storage} storage`);
+    } finally {
+      browser.restore();
+    }
+  }
+});
+
+test("WP guests refresh at <issuer>/token with the clientId they were issued, and upgrade hands off to the issuer", async () => {
+  const browser = stubBrowser();
+  try {
+    const base = `${origin}/wp-json/zero/v1`;
+    const zero = wpMod.createClient({ url: base, auth: { issuer: `${origin}/identity`, clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
+    reply = (s) => {
+      if (s.path === "/wp-json/zero/v1/auth/guest") return tokens(1, { id: 9, name: "Guest", role: "guest" }, { clientId: "app_zero_guest" });
+      if (s.path === "/identity/token") return { status: 200, body: JSON.stringify({ access_token: "at_2", refresh_token: "rt_2", expires_in: 3600 }) };
+      if (s.path === "/identity/handoff") return { status: 200, body: JSON.stringify({ handoff: "h1.secret" }) };
+      return s.headers.authorization === "Bearer at_2" ? ok({ id: 1 })() : problem(401, "unauthenticated");
+    };
+    assert.equal((await zero.auth.guest()).role, "guest");
+
+    seen = [];
+    await zero.posts.create({ title: "Hi" });
+    assert.deepEqual(
+      seen.map((s) => [s.path, s.headers.authorization ?? "-"]),
+      [["/wp-json/zero/v1/posts", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/zero/v1/posts", "Bearer at_2"]],
+    );
+    assert.deepEqual(form(seen[1]), { grant_type: "refresh_token", refresh_token: "zr_1", client_id: "app_zero_guest" });
+
+    seen = [];
+    void zero.auth.upgrade();
+    const to = new URL(await browser.navigated);
+    assert.deepEqual([seen[0].path, seen[0].headers.authorization], ["/identity/handoff", "Bearer at_2"]);
+    assert.deepEqual([to.pathname, to.searchParams.get("handoff"), to.searchParams.get("code_challenge_method")], ["/identity/authorize", "h1.secret", "S256"]);
+  } finally {
+    browser.restore();
+  }
 });

@@ -21,14 +21,16 @@ final class CompositeStore implements Store
         public readonly Connection $db,
         public readonly WpPostStore $posts,
         public readonly WpTableStore $tables,
+        public readonly ?WpUserStore $users = null,
     ) {
     }
 
     public static function create(Schema $schema, Connection $db): self
     {
         $dialect = Dialect::mysql($db->ciCollation());
+        $tables = new WpTableStore($db, $schema, $dialect);
 
-        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), new WpTableStore($db, $schema, $dialect));
+        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, new WpUserStore($db, $schema, $dialect, $tables));
     }
 
     public function isPostBacked(string $collection): bool
@@ -40,6 +42,11 @@ final class CompositeStore implements Store
 
     private function for(string $collection): Store
     {
+        // The auth collection's rows are WordPress users (§6.2).
+        if ($this->users !== null && $collection === ($this->schema->auth()['collection'] ?? null)) {
+            return $this->users;
+        }
+
         return $this->isPostBacked($collection) ? $this->posts : $this->tables;
     }
 

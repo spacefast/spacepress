@@ -54,9 +54,15 @@ test("wp zero abilities lists every operation of the app with schemas from schem
 });
 
 test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and annotations", async () => {
-  const r = await http("GET", `${abilities}/abilities?category=blog&per_page=100`, { as: "subscriber" });
-  assert.equal(r.status, 200, JSON.stringify(r.json));
-  const byName = Object.fromEntries(r.json.map((a: any) => [a.name, a]));
+  // Every page: lanes keep adding collections to the shared test app, past one page of 100.
+  const listed: any[] = [];
+  for (let page = 1; ; page++) {
+    const r = await http("GET", `${abilities}/abilities?category=blog&per_page=100&page=${page}`, { as: "subscriber" });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    listed.push(...r.json);
+    if (r.json.length < 100) break;
+  }
+  const byName = Object.fromEntries(listed.map((a: any) => [a.name, a]));
   const golden = JSON.parse(readFileSync(join(here, "fixtures/abilities.json"), "utf8"));
   assert.deepEqual(Object.keys(byName).filter((n) => golden.some((a: any) => a.name === n)).sort(),
     golden.filter((a: any) => a.meta.show_in_rest).map((a: any) => a.name).sort());

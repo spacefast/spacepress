@@ -21,7 +21,7 @@ final class SqliteStore implements Store
 {
     private const SYSTEM_DDL = [
         'CREATE TABLE IF NOT EXISTS "__zero_users" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "name" text NOT NULL UNIQUE, "role" text NOT NULL, "passwordHash" text, "createdAt" text NOT NULL)',
-        'CREATE TABLE IF NOT EXISTS "__zero_tokens" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "userId" integer NOT NULL REFERENCES "__zero_users"("id") ON DELETE CASCADE, "name" text NOT NULL, "role" text NOT NULL, "hash" text NOT NULL UNIQUE, "createdAt" text NOT NULL, "lastUsedAt" text, "revokedAt" text)',
+        'CREATE TABLE IF NOT EXISTS "__zero_tokens" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "userId" integer NOT NULL, "name" text NOT NULL, "role" text NOT NULL, "hash" text NOT NULL UNIQUE, "createdAt" text NOT NULL, "lastUsedAt" text, "revokedAt" text)',
         'CREATE TABLE IF NOT EXISTS "__zero_revisions" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "collection" text NOT NULL, "pk" text NOT NULL, "at" text NOT NULL, "userId" integer, "row" text NOT NULL)',
         'CREATE INDEX IF NOT EXISTS "__zero_revisions_row" ON "__zero_revisions" ("collection", "pk")',
         'CREATE TABLE IF NOT EXISTS "__zero_globals" ("name" text PRIMARY KEY NOT NULL, "data" text NOT NULL, "updatedAt" text NOT NULL)',

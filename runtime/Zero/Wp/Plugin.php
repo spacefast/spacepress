@@ -6,6 +6,7 @@ namespace Zero\Wp;
 
 use Zero\App;
 use Zero\Db;
+use Zero\HttpError;
 use Zero\Schema;
 
 /**
@@ -335,15 +336,29 @@ final class Plugin
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
             $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
-                $values[$col] = Schema::store($def, Schema::generate($def['onUpdate'], $def['type']));
+                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def['type']), $col);
             } elseif (isset($def['default']) && $empty) {
-                $values[$col] = Schema::store($def, Schema::generate($def['default'], $def['type']));
+                $values[$col] = self::generated($def, Schema::generate($def['default'], $def['type']), $col);
             } elseif ($def['type'] === 'boolean' && $raw === '') {
                 $values[$col] = Schema::store($def, false);
             }
         }
         if ($values !== []) {
             $store->update($collection, $postId, $values);
+        }
+    }
+
+    /**
+     * A generated default/onUpdate value in storage form, through the same codec as API writes (a
+     * bare-date timestamp default becomes full ISO). The post is already saved when this runs, so a
+     * value the codec refuses is stored raw as before rather than turning the editor save into a 500.
+     */
+    private static function generated(array $def, mixed $v, string $col): int|float|string|null
+    {
+        try {
+            return Schema::encode($def, $v, $col, HttpError::seg($col));
+        } catch (HttpError) {
+            return Schema::store($def, $v);
         }
     }
 

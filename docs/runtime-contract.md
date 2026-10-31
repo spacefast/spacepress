@@ -179,7 +179,7 @@ Every HTTP request and every CLI command runs in one transaction
 | real | int or float (not NaN/Inf) | REAL |
 | text | string | TEXT |
 | boolean | bool | INTEGER 0/1 |
-| timestamp | ISO-8601 string in the JS date-time format (`Date.parse`'s grammar: `YYYY-MM-DD`, optional time, `Z` or `±HH:MM`), or int ms; free text such as `tomorrow` is rejected | TEXT `Y-m-d\TH:i:s.v\Z` (UTC) |
+| timestamp | int ms, or ISO 8601 `YYYY-MM-DD` (UTC midnight) / `YYYY-MM-DDTHH:mm[:ss[.fff]]` + `Z` or `±HH:MM`, every component a real calendar/clock value (no `now`, `10/30/2026`, zone-less date-times or `02-30`) | TEXT `Y-m-d\TH:i:s.v\Z` (UTC) |
 | date | string `YYYY-MM-DD` that is a real calendar date | TEXT |
 | json | any JSON value | TEXT (json_encode, unescaped slashes/unicode) |
 
@@ -489,7 +489,7 @@ JSON:
 - `jsonParse(string $s): mixed` — assoc arrays; invalid → `JsError` named `SyntaxError`.
 
 Misc:
-- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
+- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; unlike V8 it has no legacy fallback (`10/30/2026` → NAN). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
 - `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.

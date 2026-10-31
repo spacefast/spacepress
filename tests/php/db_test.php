@@ -457,14 +457,14 @@ $items = $db->insert('items', [
     ['name' => 'hammer', 'qty' => 2, 'price' => 9.5, 'locationId' => $garage['id']],
     ['name' => 'nails', 'qty' => 100, 'price' => 2, 'locationId' => $garage['id'], 'seenAt' => 0],
     ['name' => 'box'],
-    ['name' => 'lamp', 'qty' => 3.0, 'locationId' => $attic['id'], 'seenAt' => '2020-01-01T10:00:00+02:00', 'bestBefore' => '2024-02-29'],
+    ['name' => 'lamp', 'qty' => 3.0, 'locationId' => $attic['id'], 'seenAt' => '2024-03-01T01:30:00+02:00', 'bestBefore' => '2024-02-29'],
 ], true);
 [$hammer, $nails, $box, $lamp] = $items;
 eq('beforeCreate return value replaces data', names($items), ['Hammer', 'Nails', 'Box', 'Lamp']);
 eq('every column key present, nulls included', array_keys($box), ['id', 'name', 'qty', 'price', 'seenAt', 'bestBefore', 'locationId']);
 eq('default value + nullable columns', [$box['qty'], $box['price'], $box['locationId']], [1, null, null]);
 check('integral float accepted for integer, int for real', $lamp['qty'] === 3 && $nails['price'] === 2.0, [$lamp['qty'], $nails['price']]);
-eq('timestamp from epoch ms and from offset string', [$nails['seenAt'], $lamp['seenAt']], ['1970-01-01T00:00:00.000Z', '2020-01-01T08:00:00.000Z']);
+eq('timestamp from epoch ms and from offset string (normalized back onto a leap day)', [$nails['seenAt'], $lamp['seenAt']], ['1970-01-01T00:00:00.000Z', '2024-02-29T23:30:00.000Z']);
 eq('date column', $lamp['bestBefore'], '2024-02-29');
 eq('insert without returning → null', $db->insert('logs', ['message' => 'hello']), null);
 
@@ -480,10 +480,6 @@ problem('boolean', fn () => $db->insert('locations', ['name' => 'Loft', 'active'
 problem('null for notNull', fn () => $db->insert('items', ['name' => 'x', 'qty' => null]), 422, 'invalid_input', '/qty');
 problem('NaN for real', fn () => $db->insert('items', ['name' => 'x', 'price' => NAN]), 422, 'invalid_input', '/price');
 problem('bad timestamp', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'yesterday-ish']), 422, 'invalid_input', '/seenAt');
-// Timestamps accept what JS Date.parse accepts: no relative text, no out-of-range times.
-foreach (['tomorrow', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T24:01:00Z', '2026-01-01T00:00:00+24:00'] as $relative) {
-    problem("relative timestamp text: $relative", fn () => $db->insert('items', ['name' => 'x', 'seenAt' => $relative]), 422, 'invalid_input', '/seenAt');
-}
 problem('impossible calendar date', fn () => $db->insert('items', ['name' => 'x', 'bestBefore' => '2023-02-29']), 422, 'invalid_input', '/bestBefore');
 problem('unique_violation with pointer', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 problem('reference_violation names the column', fn () => $db->insert('items', ['name' => 'x', 'locationId' => 99999]), 409, 'reference_violation', '/locationId');

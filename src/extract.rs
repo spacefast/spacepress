@@ -1454,9 +1454,54 @@ fn json_leaves_lossy(b: &ColBuilder, v: &Json) -> bool {
     }
 }
 
+/// A timestamp/date sub-field inside a group/repeater/blocks default that the runtime codec would
+/// reject when the default is applied. Returns the sub-field's name.
+fn bad_date_leaf(b: &ColBuilder, v: &Json) -> Option<String> {
+    let fields = |fields: &IndexMap<String, Rc<ColBuilder>>, item: &Json| {
+        fields.iter().find_map(|(name, f)| {
+            let x = item.get(name)?;
+            match (f.ty, x) {
+                (ColType::Timestamp, Json::String(s)) if is_iso_timestamp(s) => None,
+                // Epoch ms whose ISO form keeps a four-digit year (0000-01-01 .. 9999-12-31), as the runtime.
+                (ColType::Timestamp, Json::Number(n))
+                    if n.as_f64().is_some_and(|n| {
+                        n.fract() == 0.0 && (-62_167_219_200_000.0..=253_402_300_799_999.0).contains(&n)
+                    }) =>
+                {
+                    None
+                }
+                (ColType::Date, Json::String(s)) if is_date(s) => None,
+                (ColType::Timestamp | ColType::Date, Json::Null) => None,
+                (ColType::Timestamp | ColType::Date, _) => Some(name.clone()),
+                _ => bad_date_leaf(f, x),
+            }
+        })
+    };
+    match (b.ty, v) {
+        (ColType::Group, item) => b.fields.as_ref().and_then(|f| fields(f, item)),
+        (ColType::Repeater, Json::Array(items)) => {
+            b.fields.as_ref().and_then(|f| items.iter().find_map(|i| fields(f, i)))
+        }
+        (ColType::Blocks, Json::Array(items)) => b.layouts.as_ref().and_then(|layouts| {
+            items.iter().find_map(|i| {
+                let f = layouts.get(i.get("layout")?.as_str()?)?;
+                fields(f, i)
+            })
+        }),
+        _ => None,
+    }
+}
+
 fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     let span = b.span_of("default");
     let json = plain_json(v, span, "default")?;
+    if let Some(field) = bad_date_leaf(b, &json) {
+        return Err(Diag::new(
+            span,
+            format!("`{name}` defaults to a `{field}` value that isn't a real ISO 8601 date or timestamp"),
+        )
+        .help("use \"YYYY-MM-DD\" for dates and an ISO string like \"2026-01-31T09:00:00Z\" for timestamps"));
+    }
     // group/repeater/blocks defaults are normalized against their fields; an opaque json value
     // (the column itself or a json sub-field) is stored as given.
     if json_leaves_lossy(b, &json) {
@@ -1503,8 +1548,10 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
         }
         (ColType::Date, Value::Str(s)) if is_date(s) => {}
         (ColType::Date, _) => return bad("a date column (use \"YYYY-MM-DD\" or .defaultNow())"),
-        (ColType::Timestamp, Value::Str(_)) => {}
-        (ColType::Timestamp, _) => return bad("a timestamp column (use an ISO string or .defaultNow())"),
+        (ColType::Timestamp, Value::Str(s)) if is_iso_timestamp(s) => {}
+        (ColType::Timestamp, _) => {
+            return bad("a timestamp column (use an ISO string like \"2026-01-31T09:00:00Z\" or .defaultNow())");
+        }
         (ColType::Json, _) => {}
         (ColType::Media, _) => return bad("a media column"),
         (ColType::File, Value::Num(n)) if n.fract() == 0.0 && n.is_finite() => {}
@@ -1550,14 +1597,81 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     })
 }
 
+/// `YYYY-MM-DD` naming a real calendar day (the runtime's date codec).
 fn is_date(s: &str) -> bool {
     let b = s.as_bytes();
-    b.len() == 10
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && s.chars()
-            .enumerate()
-            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+    if !s.is_ascii() || b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let (Some(y), Some(m), Some(d)) = (digits(&s[0..4]), digits(&s[5..7]), digits(&s[8..10])) else {
+        return false;
+    };
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => 0,
+    };
+    (1..=days).contains(&d)
+}
+
+/// The runtime's timestamp codec for strings: a date, or a date-time with `Z`/`±HH:MM`,
+/// every component in range (`YYYY-MM-DD[THH:mm[:ss[.fff]](Z|±HH:MM)]`).
+fn is_iso_timestamp(s: &str) -> bool {
+    if !s.is_ascii() || s.len() < 10 {
+        return false;
+    }
+    let (date, rest) = s.split_at(10);
+    if !is_date(date) {
+        return false;
+    }
+    let Some(time) = rest.strip_prefix('T') else {
+        return rest.is_empty();
+    };
+    let (clock, zone) = match time.find(['Z', '+', '-']) {
+        Some(i) => time.split_at(i),
+        None => return false,
+    };
+    let zone_ok = zone == "Z"
+        || (zone.len() == 6
+            && (zone.starts_with('+') || zone.starts_with('-'))
+            && &zone[3..4] == ":"
+            && digits(&zone[1..3]).is_some_and(|h| h <= 23)
+            && digits(&zone[4..6]).is_some_and(|m| m <= 59));
+    let (hms, frac) = clock.split_once('.').map_or((clock, None), |(a, b)| (a, Some(b)));
+    let parts: Vec<&str> = hms.split(':').collect();
+    let limits = [23, 59, 59];
+    // Like the runtime codec: the UTC-normalized value must keep a four-digit year.
+    let shifts_out = zone_ok
+        && match zone.as_bytes().first() {
+            Some(b'+') => date.starts_with("0000-01-01") && clock < &zone[1..],
+            Some(b'-') => date.starts_with("9999-12-31") && *clock >= *rev_offset(&zone[1..]),
+            _ => false,
+        };
+    zone_ok
+        && !shifts_out
+        && (2..=3).contains(&parts.len())
+        && frac.is_none_or(|f| parts.len() == 3 && !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
+        && parts
+            .iter()
+            .zip(limits)
+            .all(|(p, max)| p.len() == 2 && digits(p).is_some_and(|n| n <= max))
+}
+
+/// The earliest local time on 9999-12-31 that a negative offset `HH:MM` pushes into year 10000.
+fn rev_offset(offset: &str) -> String {
+    let (h, m) = (digits(&offset[0..2]).unwrap_or(0), digits(&offset[3..5]).unwrap_or(0));
+    let minutes = 24 * 60 - (h * 60 + m);
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+}
+
+fn digits(s: &str) -> Option<u32> {
+    if s.is_empty() || !s.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
 }
 
 fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {
@@ -2539,4 +2653,42 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
         add(format!("media-{op}"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_date, is_iso_timestamp};
+
+    #[test]
+    fn literal_dates_and_timestamps_follow_the_runtime_codec() {
+        assert!(is_date("2024-02-29"));
+        assert!(!is_date("2023-02-29"));
+        for ok in [
+            "2024-02-29T23:59:59.123456789012Z",
+            "2026-01-31T09:00+05:30",
+            "2026-01-31",
+            "0000-02-29T00:00:00Z",
+            "2026-01-31T09:00:00-00:30",
+            "9999-12-31T23:29:59-00:30",
+            "0000-01-01T00:30:00+00:30",
+        ] {
+            assert!(is_iso_timestamp(ok), "{ok}");
+        }
+        for bad in [
+            "now",
+            "+1 week",
+            "10/30/2026",
+            "2026-02-30T00:00:00Z",
+            "2026-01-01T24:00:00Z",
+            "2026-01-01T10:00:00",
+            "2026-01-01T10:00:00+0100",
+            "2026-01-01T00:00Z00:00",
+            "9999-12-31T23:59:59-00:30",
+            "0000-01-01T00:00:00+00:30",
+            "9999-12-31T00:00-",
+            "2026-01-01T00:00+05",
+        ] {
+            assert!(!is_iso_timestamp(bad), "{bad}");
+        }
+    }
 }

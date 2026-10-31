@@ -32,7 +32,8 @@ final class Files
     {
         Extensions::route('files', FileRoutes::dispatch(...));
         \Zero\SystemTables::register('__zero_files', [SqliteFiles::DDL], [
-            'CREATE TABLE IF NOT EXISTS `{prefix}zero__files` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `bucket` TEXT NOT NULL, `filename` TEXT NOT NULL, `mime` TEXT NOT NULL, `size` BIGINT NOT NULL, `path` TEXT NOT NULL, `ownerId` BIGINT UNSIGNED NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+            'CREATE TABLE IF NOT EXISTS `{prefix}zero__files` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `app` VARCHAR(191) NOT NULL DEFAULT \'\', `bucket` TEXT NOT NULL, `filename` TEXT NOT NULL, `mime` TEXT NOT NULL, `size` BIGINT NOT NULL, `path` TEXT NOT NULL, `ownerId` BIGINT UNSIGNED NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`), KEY `app` (`app`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+            static fn (\Zero\Store $store) => \Zero\Wp\WpFiles::upgrade($store),
         ]);
         // `file({ bucket })` columns: existence + bucket on write, populate with `with`, null on delete.
         // After before-hooks and persistence, still inside the transaction: hooks can't slip an unchecked id in.

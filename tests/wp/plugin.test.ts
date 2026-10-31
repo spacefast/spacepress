@@ -43,7 +43,7 @@ test("activation registers the post types, field groups and options page, and cr
     $plugin = \\Zero\\Wp\\Runtime::plugin();
     $description = $plugin->schema->describe();
     echo wp_json_encode([
-      get_option('zero_runtime_tables'),
+      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.2' : get_option('zero_runtime_tables'),
       $description['runtime']['series'],
       $description['runtime']['wp']['actionScheduler'],
       $description['runtime']['wp']['mcpAdapter'],

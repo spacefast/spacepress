@@ -1868,7 +1868,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "this async call isn't awaited",
                 "add `await`; Zero runs async calls in order",
             ),
-            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) => {
+            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
                 err(span, "`db` can't be stored in a variable; call it directly")
             }
             Ty::Collection(_) => err_help(
@@ -2855,6 +2855,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let o = self.expr(obj)?;
         match &o.ty {
             Ty::Db if prop == "query" => return Ok(Out::atom("\\Zero\\db()", Ty::DbQuery)),
+            Ty::Db if prop == "globals" => return Ok(Out::atom("\\Zero\\db()", Ty::DbGlobals)),
+            Ty::DbGlobals => {
+                return if self.schema.globals.contains_key(prop) {
+                    Ok(Out::atom("\\Zero\\db()", Ty::DbGlobal(prop.to_string())))
+                } else {
+                    let mut d = Diag::new(
+                        prop_span,
+                        format!("`db.globals.{prop}` doesn't match a global in `globals`"),
+                    );
+                    if let Some(s) = suggest(prop, self.schema.globals.keys().map(String::as_str)) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Err(d)
+                };
+            }
             Ty::DbQuery => {
                 return match self.schema.by_key(prop) {
                     Some(c) => Ok(Out::atom("\\Zero\\db()", Ty::QueryColl(c.table.clone()))),
@@ -3584,6 +3599,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Db => return self.db_call(m, args, span, m_span),
             Ty::Builder(b) => return self.builder_call(*b, m, args, span, m_span),
             Ty::DbQuery => return err(m_span, format!("use `db.query.<collection>.{m}(...)`")),
+            Ty::DbGlobals => return err(m_span, format!("use `db.globals.<global>.{m}(...)`")),
+            Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
             _ => {}
         }
         let recv = self.finish_value(recv, recv_span)?;
@@ -4454,6 +4471,55 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
+    fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
+        // Typed like collection rows: `json().$type<T>()` fields read and write as T.
+        let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
+        let php = match (m, args) {
+            ("get", []) => format!("\\Zero\\db()->globalGet({})", php_str(name)),
+            ("update", [ArrEl::Item(patch)]) => {
+                let v = self.expr(patch)?;
+                let v = self.finish_value(v, patch.span)?;
+                let want = types::partial(row.clone());
+                if !assignable(&v.ty, &want) {
+                    if let (Ty::Obj(have), Ty::Obj(need)) = (&v.ty, &want) {
+                        for (k, (t, _)) in have {
+                            match need.get(k) {
+                                None => return Err(self.no_field(&want, k, patch.span)),
+                                Some((nt, _)) if !assignable(t, nt) => {
+                                    return err(
+                                        patch.span,
+                                        format!("`{k}` must be {}, not {}", nt.describe(), t.describe()),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    return err(
+                        patch.span,
+                        format!(
+                            "{} doesn't fit global \"{name}\" ({})",
+                            v.ty.describe(),
+                            want.describe()
+                        ),
+                    );
+                }
+                format!("\\Zero\\db()->globalUpdate({}, {})", php_str(name), v.php)
+            }
+            ("get", _) => return err(m_span, "`get()` takes no arguments"),
+            ("update", _) => return err(m_span, "`update()` takes one patch object"),
+            _ => {
+                return err_help(
+                    m_span,
+                    format!("`db.globals.{name}` has no method `{m}`"),
+                    "use get() or update(patch)",
+                );
+            }
+        };
+        Ok(Out::new(php, Ty::Promise(Box::new(row))))
+    }
+
     fn db_call(&mut self, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
         let kind = match m {
             "insert" => BuilderKind::Insert,
@@ -4700,6 +4766,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Db
         | Ty::DbQuery
         | Ty::QueryColl(_)
+        | Ty::DbGlobals
+        | Ty::DbGlobal(_)
         | Ty::Builder(_) => {
             if truthy {
                 t.clone()
@@ -4827,6 +4895,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Db
         | Ty::DbQuery
         | Ty::QueryColl(_)
+        | Ty::DbGlobals
+        | Ty::DbGlobal(_)
         | Ty::Builder(_) => t.clone(),
     }
 }

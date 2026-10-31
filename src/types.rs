@@ -44,6 +44,9 @@ pub enum Ty {
     Db,
     DbQuery,
     QueryColl(String),
+    /// `db.globals` and `db.globals.<key>`.
+    DbGlobals,
+    DbGlobal(String),
     Builder(Box<Builder>),
 }
 
@@ -221,6 +224,8 @@ impl Ty {
             Ty::Db => "db".into(),
             Ty::DbQuery => "db.query".into(),
             Ty::QueryColl(t) => format!("db.query for \"{t}\""),
+            Ty::DbGlobals => "db.globals".into(),
+            Ty::DbGlobal(g) => format!("db.globals.{g}"),
             Ty::Builder(b) => format!("an unfinished db.{:?} for \"{}\"", b.kind, b.table).to_lowercase(),
         }
     }

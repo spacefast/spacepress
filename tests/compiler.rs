@@ -143,6 +143,38 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "`in` isn't supported on list columns; use `has`",
         "zero.config.ts:5:",
     );
+    // db.globals is typed from the global's fields, like db.query from a collection's.
+    rejects(
+        "reject-db-globals-key",
+        "`db.globals.setings` doesn't match a global in `globals`",
+        "zero.config.ts:4:",
+    );
+    rejects(
+        "reject-db-globals-patch",
+        "`stats` must be { visits: number } | null, not number",
+        "zero.config.ts:4:",
+    );
+}
+
+/// `db.globals.<key>` in compiled code: never-written defaults, then a typed JSON field round-trips.
+#[test]
+fn db_globals_read_defaults_and_write_typed_fields() {
+    let tmp = std::env::temp_dir().join(format!("zero-db-globals-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/db-globals"), &tmp);
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let visit = || {
+        let out = Command::new("php")
+            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+            .args(["action", "visit"])
+            .output()
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", null, 1] }));
+    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", { "visits": 1 }, 2] }));
+    let _ = std::fs::remove_dir_all(tmp);
 }
 
 /// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.

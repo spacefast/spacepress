@@ -1,6 +1,7 @@
 // `editor: false` custom tables (§4.2): rows live in wp_zero_<table> in the §3.4 storage form, the
 // cross-kind reference (comments.postId → a post) is checked and cascaded by the pipeline, and a
-// MySQL UNIQUE violation maps to the same 409 the standalone target returns.
+// MySQL UNIQUE violation maps to the same 409 the standalone target returns. Also: db.globals from
+// compiled code.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ok, problem, run, sql, wpTry, zero } from "./env.ts";
@@ -24,4 +25,10 @@ test("unique() maps to 409 with a pointer: the meta check on posts, SQL UNIQUE o
   // signups (tests/wp/app) is an editor:false table with a real UNIQUE index: MySQL error 1062, mapped.
   await ok("POST", "/signups", { body: { email: `s-${run}@example.test` } });
   await problem("POST", "/signups", { body: { email: `s-${run}@example.test` } }, { status: 409, code: "unique_violation", pointer: "/email" });
+});
+
+test("db.globals in compiled code reads and writes the WordPress-stored global", async () => {
+  const start = (await ok("GET", "/globals/settings")).postsPerPage;
+  assert.deepEqual(await ok("POST", "/actions/bumpPostsPerPage", { as: "editor", body: {} }), [start, start + 1]);
+  assert.equal((await ok("GET", "/globals/settings")).postsPerPage, start + 1);
 });

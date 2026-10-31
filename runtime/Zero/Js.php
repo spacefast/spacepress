@@ -1229,8 +1229,10 @@ final class Js
         $mi = (int) ($m[5] ?? 0);
         $sec = (int) ($m[6] ?? 0);
         $ms = ($m[7] ?? '') === '' ? 0 : (int) substr($m[7] . '00', 0, 3);
+        // Hour 24 is only midnight: every digit of the fraction counts, not the 3 kept for ms.
+        $fraction = $m[7] ?? '';
         if ($mo < 1 || $mo > 12 || $d < 1 || $d > 31 || $mi > 59 || $sec > 59
-            || $h > 24 || ($h === 24 && ($mi + $sec + $ms) > 0)) {
+            || $h > 24 || ($h === 24 && ($mi + $sec > 0 || trim($fraction, '0') !== ''))) {
             return NAN;
         }
         $offset = 0;

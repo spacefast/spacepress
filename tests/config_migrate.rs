@@ -492,10 +492,11 @@ fn payload_dates_accept_what_date_parse_accepts() {
                 ["due", "tomorrow"],
                 // Date.parse rejects out-of-range times that PHP's parser would roll over.
                 ["due", "2026-01-01T24:01:00Z"],
-                ["due", "2026-01-01T00:00:00+24:00"]
+                ["due", "2026-01-01T00:00:00+24:00"],
+                ["due", "2026-01-01T24:00:00.0001Z"]
             ])
         ),
-        json!([true, true, "/due", "/due", "/due"])
+        json!([true, true, "/due", "/due", "/due", "/due"])
     );
 }
 

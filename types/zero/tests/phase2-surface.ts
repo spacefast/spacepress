@@ -38,6 +38,12 @@ const priced = collection("priced", { id: id(), title: text().notNull().localize
 const skus = collection("skus", { code: text().primaryKey(), title: text().notNull().localized(), price: integer().notNull() }, { editor: false });
 expectType<Equal<(typeof skus.$inferSelect)["translations"], Partial<Record<Locale, string>>>>();
 
+// Primary-key builders still fit annotations and generic helpers written without the flag.
+const annotated: import("zero").ColumnBuilder<"id", number, true, true> = id();
+const acceptBuilder = <T extends import("zero").ColumnBuilder>(c: T) => c;
+acceptBuilder(text().primaryKey());
+void annotated;
+
 const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
 const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });
 const roleInsert: typeof roles.$inferInsert = { role: "item", password: null };

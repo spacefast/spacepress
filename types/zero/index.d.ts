@@ -117,7 +117,7 @@ export interface ColumnBuilder<
   TNotNull extends boolean = boolean,
   THasDefault extends boolean = boolean,
   TLocalized extends boolean = false,
-  TPrimary extends boolean = false,
+  TPrimary extends boolean = boolean,
 > {
   readonly [columnBrand]: {
     kind: TKind;

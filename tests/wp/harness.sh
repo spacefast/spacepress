@@ -13,6 +13,7 @@
 # compose project, so several worktrees can each run their own stack at once. Credentials here are
 # throwaway values for this local container only and are tracked intentionally.
 set -euo pipefail
+caller="$PWD"   # relative --wp-content paths are the caller's, not this directory's
 cd "$(dirname "$0")"
 export ZERO_WP_PORT="${ZERO_WP_PORT:-8790}"
 export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-wp-test}"
@@ -37,6 +38,7 @@ up() {
       *) echo "unknown argument $1; use --wp-content <dir>" >&2; exit 2 ;;
     esac
   done
+  [[ $content == /* ]] || content="$caller/$content"
   ZERO_WP_CONTENT="$(cd "$content" && pwd)"
   export ZERO_WP_CONTENT
   [[ -f $ZERO_WP_CONTENT/zero-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }

@@ -4,3 +4,8 @@
 **/vendor/
 /scripts/.tools/
 runtime/identity/apps/node_modules/
+
+# The system suite's generated state (tests/system/run.sh)
+/tests/system/.work/
+/tests/system/.wp-content/
+/tests/system/.harness.json

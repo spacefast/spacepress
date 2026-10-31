@@ -19,7 +19,8 @@ rsync -a --delete tests/wp/app/.zero/wp-content/ tests/wp/.wp-content/
 cleanup() { [[ ${ZERO_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down; }
 trap cleanup EXIT
 "$here/harness.sh" down
-"$here/harness.sh" up --wp-content "$here/.wp-content" > "$here/.harness.json"
+# Relative to the repo root (run.sh's working directory): harness.sh resolves it against the caller.
+"$here/harness.sh" up --wp-content tests/wp/.wp-content > "$here/.harness.json"
 cat "$here/.harness.json"
 
 node --test --test-concurrency=1 "$here"/*.test.ts

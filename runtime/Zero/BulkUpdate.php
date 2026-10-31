@@ -18,7 +18,7 @@ final class BulkUpdate
     public array $handed = [];
     /** @var list<string> synced columns the row being written now takes as handed values (not its own change) */
     public array $receiving = [];
-    /** @var list<callable(): void> run after every row is written, inside the update's transaction */
+    /** @var array<string, callable(): void> run after every row is written, inside the update's transaction (one per key) */
     public array $after = [];
     /** The row being written right now, by Db::rowKey(). */
     public ?string $current = null;

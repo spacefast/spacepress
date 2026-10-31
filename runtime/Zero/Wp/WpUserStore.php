@@ -112,21 +112,15 @@ final class WpUserStore implements Store
     private static function roleExpression(): string
     {
         $like = static fn (string $needle): string => "{j}.meta_value LIKE '%" . esc_sql(addcslashes($needle, '_%\\')) . "%'";
+        // Each capability on its own: granted directly, or by a role that grants *that* capability
+        // while the user isn't denied it directly. A step holds when any of its capabilities does.
         $has = static function (string ...$caps) use ($like): string {
-            $roles = [];
-            foreach (wp_roles()->roles as $name => $role) {
-                foreach ($caps as $cap) {
-                    if (!empty($role['capabilities'][$cap])) {
-                        $roles[] = (string) $name;
-                        break;
-                    }
-                }
-            }
             $parts = [];
             foreach ($caps as $cap) {
+                $roles = array_keys(array_filter(wp_roles()->roles, static fn (array $role) => !empty($role['capabilities'][$cap])));
                 $parts[] = $like(serialize($cap) . 'b:1;');
                 if ($roles !== []) {
-                    $parts[] = '((' . implode(' OR ', array_map(static fn (string $r) => $like(serialize($r) . 'b:1;'), $roles)) . ') AND NOT ' . $like(serialize($cap) . 'b:0;') . ')';
+                    $parts[] = '((' . implode(' OR ', array_map(static fn ($r) => $like(serialize((string) $r) . 'b:1;'), $roles)) . ') AND NOT ' . $like(serialize($cap) . 'b:0;') . ')';
                 }
             }
 

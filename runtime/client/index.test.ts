@@ -567,6 +567,58 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
   }
 });
 
+test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch, auth: { guests: true } });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
+  const settle = async (p: Promise<unknown>) => {
+    let out: unknown = "pending";
+    void p.then((v) => (out = v), (e) => (out = e));
+    for (let turn = 0; out === "pending" && turn < 10_000; turn++) await Promise.resolve();
+    return out;
+  };
+
+  // guest() and login() in flight, then signOut() while still anonymous: neither may sign in later.
+  const guest = zero.auth.guest();
+  const login = zero.auth.login("late", "long password l");
+  await until(2);
+  await zero.auth.signOut();
+  pending[0].release(issued("late-guest"));
+  pending[1].release(issued("late-login"));
+  await settle(guest);
+  await settle(login);
+  assert.equal(zero.auth.session(), null, "still signed out");
+
+  // An anonymous write from before a sign-in/sign-out doesn't retry as the guest that came after.
+  const old = zero.posts.create({ title: "old" });          // request 2, anonymous
+  await until(3);
+  const fresh = zero.auth.guest();                          // request 3: a guest from a later generation
+  await until(4);
+  pending[3].release(issued("guest-a"));
+  await fresh;
+  const out = zero.auth.signOut();                          // request 4: revoke guest-a
+  await until(5);
+  pending[4].release(json(200, { data: true }));
+  await out;
+  const newer = zero.auth.guest();                          // request 5: yet another guest
+  await until(6);
+  pending[5].release(issued("guest-b"));
+  await newer;
+  pending[2].release(denied());                             // the old write's 401 lands now
+  const failed: any = await settle(old);
+  assert.equal(failed.code, "unauthenticated", "the old write fails as sent");
+  assert.equal(pending.length, 6, "it was not retried as a later guest");
+});
+
 test("WP signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kept in sessionStorage", async () => {
   const browser = stubBrowser();
   try {

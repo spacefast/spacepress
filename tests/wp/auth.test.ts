@@ -204,6 +204,11 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   wp("eval", `$u = new WP_User(${dupe.id}); $u->add_cap('edit_others_posts', false);`);
   const denied = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
   assert.deepEqual(denied.data.map((r: any) => r.role), ["author"], "an editor denied edit_others_posts is an author, in filters too");
+  wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_cap('edit_others_posts'); $u->set_role('contributor'); $u->add_cap('edit_posts', false);`);
+  const contributorDenied = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } })));
+  assert.deepEqual(contributorDenied.data.map((r: any) => r.role), ["subscriber"], "a contributor denied edit_posts holds no author capability: a subscriber");
+  const authRole = wp("eval", `echo \\Zero\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
+  assert.equal(authRole, "subscriber", "the same answer authentication gives");
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
@@ -336,6 +341,17 @@ test("without zero-identity, a member's password still goes through wp_set_passw
     $id = $db->insert('members', ['email' => 'noid-${run}@example.test', 'name' => 'noid', 'password' => 'a long password 1'], true)[0]['id'];
     echo wp_check_password('a long password 1', get_userdata($id)->user_pass, $id) ? 'set' : 'unset';`);
   assert.equal(out, "set");
+});
+
+test("deleting a member through Zero deletes its identity: tokens dead, the email signs up afresh", async () => {
+  const gy = await member("gy");
+  const tokens = await signIn(gy.email, gy.password);
+  const del = await http("DELETE", `${api}/members/${gy.id}`, { as: "admin" });
+  assert.equal(del.status, 200, JSON.stringify(del.json));
+  assert.equal((await call("GET", "/me", { token: tokens.json.access_token })).status, 401, "its Bearer is dead");
+  const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
+  assert.equal(reuse.status, 400, "its refresh token is dead");
+  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_zero_identity_emails WHERE normalized = '${gy.email}'`), [{ n: "0" }], "its verified email is released");
 });
 
 test("application passwords still authenticate /zero/v1 as before", async () => {

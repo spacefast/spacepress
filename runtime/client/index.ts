@@ -481,8 +481,10 @@ export function createClient(options: ClientOptions = {}): Client {
       } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
         // An anonymous write becomes a guest's: the one it starts, or the one a concurrent first
         // write started from the same anonymous state. Never a user who signed in meanwhile.
-        const guest = held() ? guestSid : await startGuest(started).then(() => guestSid, () => "");
-        if (guest !== "" && currentSid() === guest) return request<T>(method, path, send, true);
+        // Only the guest started from this request's own anonymous generation: one begun later
+        // (after a sign-in and sign-out) belongs to someone else's anonymous state.
+        if (!held()) await startGuest(started).catch(() => undefined);
+        if (guestSid !== "" && currentSid() === guestSid && guestFromSid === started) return request<T>(method, path, send, true);
       }
     }
     throw error;
@@ -551,12 +553,14 @@ export function createClient(options: ClientOptions = {}): Client {
 
   // Concurrent first writes share one guest.
   let guesting: Promise<User> | undefined;
-  /** The sid of the guest session this client started ("" when none). */
+  /** The sid of the guest session this client started ("" when none), and the anonymous sid it replaced. */
   let guestSid = "";
+  let guestFromSid = "";
   function startGuest(from: string): Promise<User> {
     guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
       .then((out) => {
         const user = adopt(out, from);
+        guestFromSid = from;
         guestSid = currentSid();
         return user;
       })
@@ -676,8 +680,13 @@ export function createClient(options: ClientOptions = {}): Client {
     me: () => request<User | null>("GET", "/me"),
     async signOut(opts = {}) {
       const current = held();
-      if (!current) return;
       const from = currentSid();
+      if (!current) {
+        // Already signed out: still a new generation, so a sign-in or guest started before this
+        // call can't complete into a session afterwards.
+        switchTo(null, from);
+        return;
+      }
       try {
         if (wp) await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
         else await request("DELETE", "/auth/session");

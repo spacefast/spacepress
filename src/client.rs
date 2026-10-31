@@ -134,11 +134,12 @@ fn col_ts(c: &Column, mode: impl Into<Mode>) -> String {
 
 /// A create answers with the stored row unless a shorthand read rule other than "anyone" may deny
 /// the creator outright; then with the values it sent (`Db::blind`). Function rules are decided per
-/// row at run time and still answer with the row.
+/// row at run time and still answer with the row; `self` (auth) creates are the creator's own account.
 fn creates_read_back(c: &Collection) -> bool {
-    c.access
-        .get("read")
-        .is_none_or(|r| matches!(r, Access::Allow(true) | Access::Fn(_)) || matches!(r, Access::Role(role) if role == "anyone"))
+    c.access.get("read").is_none_or(|r| {
+        matches!(r, Access::Allow(true) | Access::Fn(_) | Access::Self_)
+            || matches!(r, Access::Role(role) if role == "anyone")
+    })
 }
 
 /// A read rule other than "anyone" can hide the column from a viewer, and hidden keys are removed
@@ -340,7 +341,11 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
         // A create answers with the stored row unless the creator may be denied reading it; then with
         // the values it supplied (no id, no generated or hook-written values), so the answer is the
         // same whether or not a row it can't read already held a unique value.
-        let created = if creates_read_back(c) { n.to_string() } else { format!("Partial<{n}Insert>") };
+        let created = if creates_read_back(c) {
+            n.to_string()
+        } else {
+            format!("Partial<{n}Insert>")
+        };
         let _ = writeln!(
             s,
             "  {}: {{ row: {n}; insert: {n}Insert; created: {created}; patch: {n}Patch; with: {n}With; filter: {n}Filter; order: {n}Order }};",

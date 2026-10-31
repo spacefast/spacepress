@@ -167,9 +167,10 @@ final class Routes
             self::raiseMissing($missing);
         }
         // The pipeline authorizes the write itself again.
-        $current === null
+        // References arrive as uids the sender presented (Wire::resolve), so they are checked for existence only.
+        db()->withResolvedReferences(fn () => $current === null
             ? db()->insert($collection, ['uid' => $uid] + $data, false, $viewer)
-            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer)[0] ?? throw HttpError::notFound("No such $collection row"));
+            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer)[0] ?? throw HttpError::notFound("No such $collection row")));
         // The answer is what a pull by this viewer returns: same read transforms, same digest.
         $stored = self::current($collection, $uid, $viewer) ?? throw new \RuntimeException("$collection $uid vanished after write");
         if (!isset($stored['record'])) {

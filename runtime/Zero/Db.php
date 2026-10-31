@@ -21,6 +21,7 @@ final class Db
     private static ?self $current = null;
 
     private int $depth = 0;
+    private bool $resolvedReferences = false;
     private ?array $actor = null;
 
     public function __construct(
@@ -760,7 +761,7 @@ final class Db
             }
             $missing = new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
             $guards = [];
-            if ($viewer !== null && array_key_exists($name, $supplied)) {
+            if ($viewer !== null && array_key_exists($name, $supplied) && !$this->resolvedReferences) {
                 try {
                     $guards = $this->readGuards($ref['collection'], $viewer);
                 } catch (HttpError) {
@@ -775,6 +776,22 @@ final class Db
     }
 
     /**
+     * Run a write whose reference values were resolved from unguessable uids the caller presented
+     * (sync, §5.3): knowing the uid is the caller's proof, so those references are checked for
+     * existence only, as sync resolves targets the syncing user may not list.
+     */
+    public function withResolvedReferences(callable $fn): mixed
+    {
+        $was = $this->resolvedReferences;
+        $this->resolvedReferences = true;
+        try {
+            return $fn();
+        } finally {
+            $this->resolvedReferences = $was;
+        }
+    }
+
+    /**
      * True when the read rule may deny $viewer the row it creates (a shorthand role it doesn't hold,
      * or `false`): its creates answer with the values it sent. Must match the generated client's
      * `created` type (src/client.rs `creates_read_back`).
@@ -782,6 +799,11 @@ final class Db
     private function blind(array $spec, Viewer $viewer): bool
     {
         $rule = Access::collectionRules($spec)['read'];
+        // `self` (auth collections, §6.2): the row created is the creator's own account, which it
+        // reads back; signing up is the auth flow's to guard.
+        if (($rule['self'] ?? false) === true) {
+            return false;
+        }
 
         return Access::isShorthand($rule) && Access::evaluate($rule, $viewer, 'read') !== true;
     }

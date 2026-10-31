@@ -1144,7 +1144,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $api = ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true];
         return ['version' => 3, 'runtime' => '0.2', 'locales' => ['default' => 'en', 'all' => ['en', 'de', 'fr'], 'fallback' => true], 'collections' => [
             'pages' => ['primaryKey' => 'id', 'localized' => true, 'drafts' => true, 'revisions' => true, 'slug' => 'slug', 'access' => $open, 'api' => $api,
-                'hooks' => ['afterUpdate' => 'pages__afterUpdate'],
+                'hooks' => ['beforeUpdate' => 'pages__beforeUpdate', 'afterUpdate' => 'pages__afterUpdate'],
                 'relations' => ['notes' => ['kind' => 'many', 'collection' => 'notes', 'from' => 'id', 'to' => 'pageId'], 'parent' => ['kind' => 'one', 'collection' => 'pages', 'from' => 'parentId', 'to' => 'id', 'optional' => true]],
                 'columns' => [
                     'id' => $id,
@@ -1168,6 +1168,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         <?php
         namespace ZeroApp;
         // Records every afterUpdate as "<locale>:<price>", so per-row hooks during group sync are observable.
+        // Rewrites a synced value on one translation: group sync must refuse rather than split the group.
+        function pages__beforeUpdate($patch, $existing) {
+            if ($existing['title'] === 'Bump DE' && isset($patch['price'])) {
+                $patch['price']++;
+            }
+            return $patch;
+        }
         function pages__afterUpdate($row, $previous) {
             if ($row['price'] === 13 && $row['locale'] === 'de') {
                 throw new \Zero\JsError('de refuses 13');
@@ -1246,6 +1253,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $db->update('pages', ['seo' => ['heading' => 'Hi', 'noindex' => false]], ['id' => $seo['id']]);
     eq('a group with a localized sub-field stays per row', [$seoDe['seo']['heading'], $db->findFirst('pages', ['where' => ['id' => $seoDe['id']]])['seo']], ['Hallo', ['heading' => 'Hallo', 'noindex' => true]]);
     $db->delete('pages', ['id' => ['in' => [$seo['id'], $seoDe['id']]]]);
+    // A sibling's hook that rewrites a synced value can't split the group: the whole write is refused.
+    $bump = $db->insert('pages', ['title' => 'Bump', 'price' => 1], true)[0];
+    $bumpDe = $db->insert('pages', ['title' => 'Bump DE', 'locale' => 'de', 'translationOf' => $bump['id']], true)[0];
+    problem('a hook that diverges a synced column → 409, nothing committed', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $bump['id']])), 409, 'conflict', '/price');
+    eq('… both rows keep the group value', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]]), 'price'), [1, 1]);
+    $db->delete('pages', ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]);
+
     // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
     $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];
     $kaffee = $db->insert('pages', ['title' => 'Kaffee', 'locale' => 'de', 'translationOf' => $coffee['id']], true)[0];
@@ -1297,6 +1311,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
     });
     $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];
+    $hidePrice = false;
+    $hidePrice = true;
+    $guess = static fn (int $price) => fn () => $db->insert('pages', ['title' => 'Thé encore', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => $price], true, $editor);
+    problem('a hidden synced value is refused whatever it is (right guess)', $guess(4), 422, 'invalid_input', '/price');
+    problem('… exactly like a wrong guess', $guess(5), 422, 'invalid_input', '/price');
     $hidePrice = false;
     eq('a hidden synced column is copied at create (no repair update, one revision)', [$db->findFirst('pages', ['where' => ['id' => $de['id']]])['price'], count($db->revisions('pages', $de['id']))], [4, 1]);
 

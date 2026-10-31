@@ -79,16 +79,20 @@ final class GroupSync
             throw HttpError::invalidInput('translationOf must be the id of an existing row', '/translationOf');
         }
         $find = static fn (?Viewer $v) => db()->findFirst($collection, ['where' => [$pk => $of], 'locale' => '*'], $v);
-        // The caller must be able to read the source; its values are copied from storage, not from
-        // the caller's (possibly field-filtered) view of it.
-        if (($viewer !== null && $find($viewer) === null) || ($source = $find(null)) === null) {
+        // The caller must be able to read the source. Values are copied from storage, not from the
+        // caller's (possibly field-filtered) view; but a supplied synced value is compared only with
+        // what the caller can see, so the check never reveals a hidden value.
+        $visible = $viewer === null ? null : $find($viewer);
+        if (($viewer !== null && $visible === null) || ($source = $find(null)) === null) {
             throw HttpError::invalidInput("No $collection row with $pk " . Js::str($of), '/translationOf');
         }
+        $visible ??= $source;
         Lock::members($collection, $source, Module::members($source, $pk)); // holds the group: joins serialize
         Lock::unchanged($collection, $source[$pk]); // and the values about to be copied are current
         foreach (Module::synced($spec) as $col) {
             if (array_key_exists($col, $provided)
-                && !Module::same(Schema::normalize($spec['columns'][$col], $provided[$col], $col, HttpError::seg($col)), $source[$col])) {
+                && (!array_key_exists($col, $visible)
+                    || !Module::same(Schema::normalize($spec['columns'][$col], $provided[$col], $col, HttpError::seg($col)), $visible[$col]))) {
                 throw HttpError::invalidInput("$col is synced across translations; change it on any row to change all", HttpError::seg($col));
             }
             $data[$col] = $source[$col];
@@ -131,10 +135,19 @@ final class GroupSync
         $members = Lock::members($collection, $row, Module::members($row, $pk));
         $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
         self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
-            foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
+            $find = static fn () => $siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']);
+            foreach ($find() as $sibling) {
                 $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
                 if ($patch !== []) {
                     db()->update($collection, $patch, [$pk => $sibling[$pk]]);
+                }
+            }
+            // Sibling hooks run per row; one that rewrites a synced value would split the group.
+            foreach ($find() as $sibling) {
+                foreach ($changed as $col => $v) {
+                    if (!Module::same($sibling[$col], $v)) {
+                        throw new HttpError(409, 'conflict', "A hook changed $col on a translation; synced columns must stay equal across the group", HttpError::seg($col));
+                    }
                 }
             }
         });

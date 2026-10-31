@@ -287,6 +287,7 @@ export default defineConfig({
       throw new Error("expected failure");
     }),
     ...laneDActions(),
+    ...laneSActions(),
   },
   jobs: laneDJobs(),
 });
@@ -319,6 +320,32 @@ function laneDActions() {
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
     envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+  };
+}
+
+// ---- lane S: sharing and string units. JS shares objects by reference and counts strings in UTF-16
+// code units; compiled PHP copies arrays and stores UTF-8. What compiles must agree with Node.
+function laneSActions() {
+  return {
+    loopClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let i = 0; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    // The allowed side of the alias rule: writes through a for...of element of a local array, and
+    // replacing (not mutating) a member of a spread copy.
+    forOfWrites: run(() => {
+      const list = [{ x: 1 }, { x: 2 }];
+      for (const e of list) e.x = e.x * 10;
+      const fresh = { a: [1] };
+      const copy = { ...fresh };
+      copy.a = [...fresh.a, 2];
+      return [list.map((e) => e.x), fresh.a, copy.a];
+    }),
+    utf16Units: run(() => {
+      const s = "\u{1F600}a\u00e9";
+      return [s.length, s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
   };
 }
 

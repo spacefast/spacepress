@@ -640,3 +640,15 @@ impl Walk {
         })
     }
 }
+
+/// `list[i] = v` past the end leaves holes JS fills with `undefined` but a PHP array turns into a
+/// keyed map (`[1, , , 2]` vs `{"0":1,"3":2}`). A plain `=` into an array by index is refused;
+/// changing an existing element (`list[i]++`, `list[i] += 1`, `list[i].x = ...`) is not a write past
+/// the end and stays.
+pub(super) fn index_write(span: Span) -> Result<()> {
+    err_help(
+        span,
+        "assigning to an array index can leave holes, which compiled PHP turns into an object",
+        "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
+    )
+}

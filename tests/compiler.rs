@@ -1170,6 +1170,39 @@ fn rejects_phase2_static_contracts() {
             "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
             "function expects",
         ),
+        (
+            "const a = { x: 1 }; const b = a; b.x = 2; return a.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [1]; const b = a; b.push(2); return a.length === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const o = { inner: { x: 1 } }; const { inner } = o; inner.x = 2; return o.inner.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const list = [{ x: 1 }]; const f = list.find((e) => e.x === 1); if (f) f.x = 5; return list[0]?.x === 5;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const same = (v: { x: number }) => v; const a = { x: 1 }; const b = same(a); b.x = 2; return a.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { inner: { x: 1 } }; const b = { ...a }; b.inner.x = 2; return a.inner.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const list = [{ x: 1 }]; list.forEach((e) => { e.x = 9; }); return list[0]?.x === 9;",
+            "passes each element to the callback as a copy",
+        ),
+        (
+            "const a: number[] = []; a[2] = 5; return a.length === 3;",
+            "assigning to an array index can leave holes",
+        ),
+        ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (
             "function accept(value: { count: 0 | 1 }) { return true; } const map: Record<string, { count: 0 | 1 }> = {}; return accept(map['missing']);",

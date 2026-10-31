@@ -157,6 +157,8 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
+    /// `list[i]`: a plain `=` here could write past the end (see `aliasing::index_write`).
+    array_index: bool,
 }
 
 impl Out {
@@ -2726,7 +2728,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             read: t,
             constraint,
             path,
+            array_index,
         } = self.place(target)?;
+        if op.is_none() && array_index {
+            aliasing::index_write(span)?;
+        }
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
@@ -2894,6 +2900,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         l.ty
                     };
                     Ok(AssignmentPlace {
+                        array_index: false,
                         constraint: l.constraint,
                         path: Some((l.php.clone(), Vec::new())),
                         read: Out {
@@ -2919,6 +2926,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
@@ -2937,6 +2945,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
+                    array_index: false,
                     constraint,
                     path,
                     read: Out {
@@ -2953,11 +2962,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
+                let array_index = matches!(o.ty.non_null(), Ty::Array(_));
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
@@ -2984,6 +2995,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
+                    array_index,
                     constraint,
                     path,
                     read: Out {
@@ -3921,6 +3933,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toLowerCase" => Out::atom(format!("mb_strtolower({})", s.php), Ty::Str),
             "toUpperCase" => Out::atom(format!("mb_strtoupper({})", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
+            "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
+                return err_help(
+                    span,
+                    format!("`{m}()` with a position isn't supported"),
+                    "slice the string first, for example `s.slice(start).startsWith(x)`",
+                );
+            }
             "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "endsWith" => Out::atom(format!("str_ends_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),

@@ -5,6 +5,9 @@
 #                                    create admin/editor/author/subscriber with application passwords;
 #                                    prints ONE JSON line (url, versions, users, container)
 #   harness.sh up ... --env          print shell exports instead of JSON
+#   harness.sh up --wp-content <dir> --bare
+#                                    a fresh WordPress with users only: no plugin is installed or
+#                                    activated, so the caller installs an artifact as a site owner would
 #   harness.sh wp <args...>          WP-CLI inside the stack
 #   harness.sh sql "<query>"         run SQL in MariaDB; tab-separated rows with a header line
 #   harness.sh down                  remove containers and volumes
@@ -30,23 +33,24 @@ wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
 
 up() {
-  local content="${ZERO_WP_CONTENT}" env=0
+  local content="${ZERO_WP_CONTENT}" env=0 bare=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --wp-content) content="$2"; shift 2 ;;
       --env) env=1; shift ;;
+      --bare) bare=1; shift ;;
       *) echo "unknown argument $1; use --wp-content <dir>" >&2; exit 2 ;;
     esac
   done
   [[ $content == /* ]] || content="$caller/$content"
   ZERO_WP_CONTENT="$(cd "$content" && pwd)"
   export ZERO_WP_CONTENT
-  [[ -f $ZERO_WP_CONTENT/zero-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
+  [[ $bare == 1 || -f $ZERO_WP_CONTENT/zero-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
   printf 'export ZERO_WP_CONTENT=%q\n' "$ZERO_WP_CONTENT" > "$STATE"
   mkdir -p cache
   local slug version sha zip
-  local -a pins
-  mapfile -t pins < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" ../fixtures/platform.json <<'PINS'
+  local -a pins=()
+  [[ $bare == 1 ]] || mapfile -t pins < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" ../fixtures/platform.json <<'PINS'
 import json,sys
 manifest=json.load(open(sys.argv[1])); platform=json.load(open(sys.argv[2]))
 for slug,spec in platform['plugins'].items():
@@ -78,10 +82,10 @@ PINS
     installed=$(wp plugin get "$slug" --field=version)
     php -r 'exit(version_compare($argv[1],$argv[2],">=") ? 0 : 1);' "$installed" "$version" || { echo "$slug $version+ required" >&2; exit 1; }
   done
-  local app
-  app=$(python3 -c 'import json,sys; print("zero-app-"+json.load(open(sys.argv[1]))["app"])' "$ZERO_WP_CONTENT/zero-manifest.json")
-  local -a activation
-  mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" <<'ACTIVATE'
+  local app=null
+  [[ $bare == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("zero-app-"+json.load(open(sys.argv[1]))["app"]))' "$ZERO_WP_CONTENT/zero-manifest.json")
+  local -a activation=()
+  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$ZERO_WP_CONTENT/zero-manifest.json" <<'ACTIVATE'
 import json,sys,os
 manifest=json.load(open(sys.argv[1]))
 for dependency in manifest['dependencies']: print(dependency['slug'])
@@ -119,7 +123,7 @@ ACTIVATE
   if [[ $env == 1 ]]; then
     printf 'export ZERO_WP_URL=%q\nexport ZERO_WP_VERSION=%q\n' "$url" "$version"
   else
-    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":"%s","identity":%s,"users":{%s},"container":"zero-wp-%s"}\n' \
+    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":%s,"identity":%s,"users":{%s},"container":"zero-wp-%s"}\n' \
       "$url" "$version" "$app" "$identity" "$users" "${container:0:12}"
   fi
 }
@@ -134,5 +138,5 @@ case "$cmd" in
     compose down -v --remove-orphans >/dev/null 2>&1
     rm -f "$STATE"
     ;;
-  *) sed -n '2,12p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,15p' "$0" >&2; exit 2 ;;
 esac

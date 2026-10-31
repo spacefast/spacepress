@@ -90,8 +90,10 @@ final class Sql
             $over = 'PARTITION BY ' . $this->cmpRef($collection, $partition[0], $alias) . ' ORDER BY ' . implode(', ', $window);
         }
         $select = [];
-        foreach ($src->columns as $name => $_) {
-            $select[] = $this->ref($collection, (string) $name, $alias, false) . ' AS ' . $this->d->quote((string) $name);
+        // Schema columns only: a Source may carry helper expressions (the post-backed translation group).
+        foreach ($spec['columns'] as $name => $col) {
+            $expr = ($col['derived'] ?? false) ? $this->translations($collection, $alias) : $this->ref($collection, (string) $name, $alias, false);
+            $select[] = $expr . ' AS ' . $this->d->quote((string) $name);
         }
         // Joins last: every expression above has marked the columns it needs.
         $from = ' FROM ' . $src->table . ' ' . $alias . $this->joins($collection, $alias)
@@ -263,6 +265,12 @@ final class Sql
 
     private function fieldFilter(string $collection, string $name, mixed $value, string $alias, string $ptr): string
     {
+        if ($value instanceof Locale\Filter) {
+            return $this->localeRule($collection, $value, $alias);
+        }
+        if ($this->schema->collection($collection)['columns'][$name]['derived'] ?? false) {
+            throw HttpError::invalidQuery("`$name` is derived and can't be filtered", $ptr);
+        }
         $kind = $this->source($collection)->columns[$name]->kind;
         if ($value === null) {
             return $this->nullTest($collection, $name, $alias, true);
@@ -486,6 +494,85 @@ final class Sql
         } finally {
             $this->trusted = $was;
         }
+    }
+
+    /** The viewer's read guards for $collection (none when trusted), cached per compile. */
+    private function readGuards(string $collection): array
+    {
+        return $this->trusted || $this->guardsFor === null ? [] : ($this->relationGuards[$collection] ??= ($this->guardsFor)($collection));
+    }
+
+    /**
+     * The locale rule (§7.3): rows in $f->locale or, with a fallback, the fallback-locale row of every
+     * translation group without a row in $f->locale that the viewer may read (the subquery carries
+     * the same per-target read guards as relation filters, so a hidden translation never suppresses
+     * its group's fallback). $f->groupOf narrows to one row's group. Both subqueries are
+     * uncorrelated; every localized Source exposes `locale` and a `translationGroup` expression.
+     */
+    private function localeRule(string $collection, Locale\Filter $f, string $alias): string
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $locale = $this->cmpRef($collection, 'locale', $alias);
+        $group = $this->cmpRef($collection, 'translationGroup', $alias);
+        $parts = [];
+        if ($f->groupOf !== null) {
+            $this->params[] = $f->groupOf;
+            $parts[] = '(' . $this->cmpRef($collection, $pk, $alias) . " = ? OR $group IN " . $this->groups($collection, $pk, $f->groupOf) . ')';
+        }
+        $this->params[] = $f->locale;
+        $rule = "$locale = ?";
+        if ($f->fallback !== null && $f->fallback !== $f->locale) {
+            $this->params[] = $f->fallback;
+            $rule = "($rule OR ($locale = ? AND ($group IS NULL OR $group NOT IN " . $this->groups($collection, 'locale', $f->locale) . ')))';
+        }
+        $parts[] = $rule;
+
+        return implode(' AND ', $parts);
+    }
+
+    /** `(SELECT translationGroup FROM <collection> WHERE <$col> = ?)` over rows the viewer may read; NULL groups excluded. */
+    private function groups(string $collection, string $col, int|string $value): string
+    {
+        $src = $this->source($collection);
+        $inner = $this->alias();
+        $group = $this->cmpRef($collection, 'translationGroup', $inner);
+        $conds = $src->baseWhere === '' ? [] : [$this->sub($src->baseWhere, $inner, '')];
+        $conds[] = $this->cmpRef($collection, $col, $inner) . ' = ?';
+        $this->params[] = $value;
+        $conds[] = "$group IS NOT NULL";
+        foreach ($this->readGuards($collection) as $g) {
+            $conds[] = $this->guard($collection, $g, $inner);
+        }
+
+        return "(SELECT $group FROM " . $src->table . ' ' . $inner . $this->joins($collection, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
+    }
+
+    /**
+     * `translations` (§7.3): locale → primary key of every row in this row's translation group, as JSON
+     * text; just `{locale: pk}` for a row without a group. Literal-only SQL, so it can sit in the
+     * select list ahead of the WHERE's parameters.
+     */
+    private function translations(string $collection, string $alias): string
+    {
+        $src = $this->source($collection);
+        if (!isset($src->columns['locale'], $src->columns['translationGroup'])) {
+            return 'NULL';
+        }
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $inner = $this->alias();
+        $conds = $src->baseWhere === '' ? [] : [$this->sub($src->baseWhere, $inner, '')];
+        $conds[] = $this->cmpRef($collection, 'translationGroup', $inner) . ' = ' . $this->cmpRef($collection, 'translationGroup', $alias);
+        $innerLocale = $this->ref($collection, 'locale', $inner, false);
+        $conds[] = "$innerLocale IS NOT NULL";
+        [$agg, $one] = $this->d->name === 'mysql' ? ['JSON_OBJECTAGG', 'JSON_OBJECT'] : ['json_group_object', 'json_object'];
+        $members = "(SELECT $agg($innerLocale, " . $this->ref($collection, $pk, $inner, false) . ') FROM ' . $src->table . ' ' . $inner
+            . $this->joins($collection, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
+        if ($this->d->name !== 'mysql') {
+            $members = "NULLIF($members, '{}')"; // SQLite aggregates an empty group to '{}', MySQL to NULL
+        }
+        $locale = $this->ref($collection, 'locale', $alias, false);
+
+        return "CASE WHEN $locale IS NULL THEN NULL ELSE COALESCE($members, $one($locale, " . $this->ref($collection, $pk, $alias, false) . ')) END';
     }
 
     // ================================================================ values

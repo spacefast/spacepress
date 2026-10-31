@@ -38,3 +38,25 @@ const avatar: import("./zero/client/types").Media | null | undefined = withAvata
 const alwaysAvatar: import("./zero/client/types").Media | null = withAvatar.avatar;
 void [avatar, alwaysAvatar];
 
+// §7.3: the generated client types localized collections (posts) and keeps others (audit) plain.
+import type { Locale as ClientLocale, PostInsert, PostPatch, PostFilter } from "./zero/client/types";
+const locales: ClientLocale[] = ["en", "de"];
+// @ts-expect-error a locale outside the config
+const badLocale: ClientLocale = "fr";
+declare const post: Post;
+const translations: Partial<Record<"en" | "de", number>> = post.translations;
+const postLocale: "en" | "de" = post.locale;
+// @ts-expect-error the group id is hidden
+post.translationGroup;
+const translation: PostInsert = { title: "Hallo", locale: "de", translationOf: 1, slug: null };
+// A translation copies synced columns, so they may be omitted; a fresh row needs its required ones.
+type Required<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+type FreshRequired = Required<Extract<PostInsert, { translationOf?: undefined }>>;
+const freshNeedsTitle: "title" extends FreshRequired ? true : false = true;
+// @ts-expect-error translations are derived
+const derived: PostInsert = { title: "x", translations: {} };
+// @ts-expect-error locale is fixed per row
+const moved: PostPatch = { locale: "de" };
+// @ts-expect-error translations can't be filtered
+const byGroup: PostFilter = { translations: null };
+void [locales, badLocale, translations, postLocale, translation, freshNeedsTitle, derived, moved, byGroup];

@@ -196,6 +196,19 @@ impl Column {
         }
     }
 
+    /// §7.3: translated per locale when it or any sub-field is `.localized()`; otherwise synced.
+    pub fn translated(&self) -> bool {
+        self.localized
+            || self
+                .fields
+                .as_ref()
+                .is_some_and(|fs| fs.values().any(Column::translated))
+            || self
+                .layouts
+                .as_ref()
+                .is_some_and(|ls| ls.values().any(|fs| fs.values().any(Column::translated)))
+    }
+
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         !self.not_null || self.default.is_some() || self.auto_increment

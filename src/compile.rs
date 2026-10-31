@@ -4091,9 +4091,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     with_rels = rels;
                     php
                 }
+                // §7.3: a locale of the config or "*" (checked again at runtime).
+                "locale" if self.schema.collections[table].localized => {
+                    let l = self.expr(v)?;
+                    if !assignable(&l.ty, &Ty::Str) {
+                        return err(v.span, "`locale` must be a configured locale or \"*\"");
+                    }
+                    l.wrapped()
+                }
                 other => {
                     let mut d = Diag::new(v.span, format!("query options have no `{other}`"));
-                    if let Some(s) = suggest(other, ["where", "orderBy", "limit", "offset", "columns", "with"]) {
+                    if let Some(s) = suggest(
+                        other,
+                        ["where", "orderBy", "limit", "offset", "columns", "with", "locale"],
+                    ) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
                     return Err(d);

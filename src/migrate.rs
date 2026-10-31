@@ -73,13 +73,29 @@ pub fn snapshot(schema: &Schema) -> Json {
 
 fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     let mut cols = serde_json::Map::new();
-    for col in c.columns.values() {
+    // Derived columns (a localized collection's `translations`) are computed on read, never stored.
+    for col in c
+        .columns
+        .values()
+        .filter(|col| !(col.derived || col.system && col.name == "translationGroup"))
+    {
         cols.insert(col.name.clone(), column_snapshot(col, schema));
     }
     let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
         table["auth"] = true.into();
+    }
+    if c.localized {
+        // §7.3: the SQLite table (and a MySQL `editor: false` table) links a translation group with
+        // this column. The snapshot is shared by both targets' builds, so it never depends on which
+        // target extracted the schema (post-backed WP groups live in Polylang, not in this column).
+        let mut group = crate::schema::Column::new("translationGroup", crate::schema::ColType::Text);
+        group.system = true;
+        let mut snap = column_snapshot(&group, schema);
+        snap["max"] = json!(36); // a UUID; MySQL needs a bounded VARCHAR for the unique pair
+        cols_insert(&mut table, "translationGroup", snap);
+        table["localized"] = json!(true);
     }
     table
 }
@@ -115,6 +131,12 @@ fn sql_default(col: &Column) -> Json {
     match &col.default {
         Some(DefaultKind::Value(v)) if !v.is_null() => v.clone(),
         _ => Json::Null,
+    }
+}
+
+fn cols_insert(table: &mut Json, name: &str, col: Json) {
+    if let Some(cols) = table["columns"].as_object_mut() {
+        cols.insert(name.into(), col);
     }
 }
 
@@ -323,6 +345,15 @@ fn indexes(t: &str, def: &Json, d: Dialect) -> Vec<(String, bool, Vec<String>)> 
             format!("{prefix}status_publishedAt"),
             false,
             vec!["status".into(), "publishedAt".into()],
+        ));
+    }
+    // §7.3: one row per locale in a translation group.
+    if def["localized"].as_bool() == Some(true) && cols.contains_key("translationGroup") && cols.contains_key("locale")
+    {
+        out.push((
+            format!("{prefix}translationGroup_locale"),
+            true,
+            vec!["translationGroup".into(), "locale".into()],
         ));
     }
     if def["system"].as_bool() == Some(true) && t == REVISIONS {
@@ -660,6 +691,40 @@ mod tests {
         assert_eq!(
             destructive(&v1, &posts)[0],
             "drops the WordPress table for \"members\" (it becomes post-backed; existing rows aren't moved)"
+        );
+    }
+
+    #[test]
+    fn localizing_a_table_adds_locale_and_group_with_a_unique_pair() {
+        let id = json!({ "type": "integer", "notNull": true, "primaryKey": true, "autoIncrement": true, "unique": false, "max": null, "default": null, "references": null });
+        let v1 = snap(
+            json!({ "pages": { "editor": false, "drafts": false, "columns": { "id": id, "title": col("text") } } }),
+        );
+        let mut locale = col("text");
+        locale["notNull"] = json!(true);
+        locale["enum"] = json!(["en", "de"]);
+        locale["default"] = json!("en");
+        let mut v2 = v1.clone();
+        v2["tables"]["pages"]["localized"] = json!(true);
+        v2["tables"]["pages"]["columns"]["locale"] = locale;
+        let mut group = col("text");
+        group["max"] = json!(36);
+        v2["tables"]["pages"]["columns"]["translationGroup"] = group;
+        assert_eq!(
+            plan(&v1, &v2, Dialect::Sqlite),
+            vec![
+                "ALTER TABLE \"pages\" ADD COLUMN \"locale\" text DEFAULT 'en' NOT NULL;".to_string(),
+                "ALTER TABLE \"pages\" ADD COLUMN \"translationGroup\" text;".to_string(),
+                "CREATE UNIQUE INDEX \"pages_translationGroup_locale\" ON \"pages\" (\"translationGroup\", \"locale\");".to_string(),
+            ]
+        );
+        assert_eq!(
+            plan(&v1, &v2, Dialect::Mysql),
+            vec![
+                "ALTER TABLE `{prefix}zero_pages` ADD COLUMN `locale` VARCHAR(191) DEFAULT 'en' NOT NULL;".to_string(),
+                "ALTER TABLE `{prefix}zero_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
+                "ALTER TABLE `{prefix}zero_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
+            ]
         );
     }
 }

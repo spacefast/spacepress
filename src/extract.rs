@@ -2220,11 +2220,7 @@ fn sync_config(pattern: &str, span: Span) -> Result<Json> {
 }
 
 fn has_localized(c: &Column) -> bool {
-    c.localized
-        || c.fields.as_ref().is_some_and(|fs| fs.values().any(has_localized))
-        || c.layouts
-            .as_ref()
-            .is_some_and(|ls| ls.values().any(|fs| fs.values().any(has_localized)))
+    c.translated()
 }
 
 /// `nested`: a sub-field or global condition, which only SCF's browser-side evaluation can settle; SCF has no

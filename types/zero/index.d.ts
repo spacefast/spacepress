@@ -430,7 +430,7 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: InsertShape<Omit<TCols, "translations">> & ("locale" extends keyof TCols ? { translationOf?: number } : {}) & (TAuth extends true ? { password?: string } : {});
+  readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -463,16 +463,34 @@ type HasLocalized<TCols> = true extends (TCols extends unknown ? {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: infer L } } ? L : false;
 }[keyof TCols] : never) ? true : false;
 
-type LocaleColumns = {
+/** Keys of columns translated per locale (`.localized()`); every other column is synced across a group. */
+type LocalizedKeys<TCols> = {
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: true } } ? K : never;
+}[keyof TCols];
+/** Per-row columns a translation doesn't copy: slugs. (A text `.primaryKey()` is per row too, but the builder type doesn't record it; the runtime refuses its omission.) */
+type PerRowKeys<TCols> = {
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { kind: "slug" } } ? K : never;
+}[keyof TCols];
+/** A localized insert: a new row, or a translation (`translationOf`) that copies every synced column, so those may be omitted. */
+type TranslationInsert<TCols> =
+  | (InsertShape<Omit<TCols, "translations">> & { translationOf?: undefined })
+  | Simplify<
+      InsertShape<Pick<TCols, (LocalizedKeys<TCols> | "locale") & keyof TCols>> &
+        InsertShape<Pick<TCols, PerRowKeys<TCols>>> &
+        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: RowId<TCols> }
+    >;
+/** The row id type of a collection: its `id()` column's (a number), else its `id` column's. */
+type RowId<TCols> = "id" extends keyof TCols ? NonNullable<SelectValue<TCols["id"]>> : number;
+type LocaleColumns<TCols> = {
   locale: ColumnBuilder<"text", Locale, true, true>;
-  translations: ColumnBuilder<"json", Partial<Record<Locale, number>>, true, true>;
+  translations: ColumnBuilder<"json", Partial<Record<Locale, RowId<TCols>>>, true, true>;
 };
 type AuthColumns = { role: ColumnBuilder<"text", Role, true, true> };
 type IdentityOptions<TUid extends boolean, TSync extends string | undefined> = { uid?: TUid; sync?: TSync };
 type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = TUid extends true
   ? { uid: ColumnBuilder<"text", string, true, true> }
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
-type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns : {};
+type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
 export declare function collection<
   const TName extends string, TCols extends ColumnsConfig,

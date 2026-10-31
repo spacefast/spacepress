@@ -334,8 +334,21 @@ pub fn json_ty(c: &Column) -> Ty {
     })
 }
 
+/// The type of a collection's primary key: row ids in `translations` and `translationOf` (§7.3).
+fn pk_ty(c: &Collection) -> Ty {
+    c.primary_key().map(|p| col_base(p, &json_ty, false)).unwrap_or(Ty::Num)
+}
+
 pub fn row_of(c: &Collection) -> Ty {
-    columns_row(&c.columns, &json_ty)
+    let mut row = columns_row(&c.columns, &json_ty);
+    if c.localized
+        && let Ty::Obj(fields) = &mut row
+        && let Some(t) = fields.get_mut("translations")
+    {
+        // §7.3: derived locale → id of every row in the translation group.
+        t.0 = Ty::Map(Box::new(pk_ty(c)));
+    }
+    row
 }
 
 pub fn columns_row(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -353,7 +366,27 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     let c = &schema.collections[table];
-    columns_insert(&c.columns, &json_ty)
+    let mut t = columns_insert(&c.columns, &json_ty);
+    if c.localized
+        && let Ty::Obj(fields) = &mut t
+    {
+        // §7.3: system columns aren't written; `translationOf` joins another row's group on create.
+        fields.shift_remove("translations");
+        fields.shift_remove("translationGroup");
+        fields.insert("translationOf".into(), (pk_ty(c).nullable(), true));
+        // A translation copies synced columns from its group, so hooks may omit them; a fresh row
+        // missing a required one is still refused by the pipeline (422 at the column).
+        for col in c
+            .columns
+            .values()
+            .filter(|col| !col.translated() && !col.system && !col.primary_key)
+        {
+            if let Some(f) = fields.get_mut(&col.name) {
+                f.1 = true;
+            }
+        }
+    }
+    t
 }
 
 pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {

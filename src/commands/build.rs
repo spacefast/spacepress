@@ -65,7 +65,6 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         action_results = std::mem::take(&mut c.action_results);
         (std::mem::take(&mut c.output), slots)
     };
-    crate::unlanded::reject(&schema, &config, &ev, config_span)?; // TEMPORARY: see src/unlanded.rs
     for (slot, name) in slots {
         match slot {
             Slot::Hook { table, kind } => {
@@ -362,6 +361,9 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
             }
         } else {
             write(&directory.join("zero/app/schema.php"), &schema_php)?;
+            if let Some(wpml) = crate::wpml_config::render(&built.schema) {
+                write(&directory.join("wpml-config.xml"), wpml)?;
+            }
             write(&directory.join("zero/app/functions.php"), &built.functions_php)?;
             copy_sql(
                 &migrations_dir(project).join("wp"),

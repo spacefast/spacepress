@@ -205,6 +205,9 @@ final class WpTableStore implements Store
     /** Index names emitted by the compiler: `<col>_unique`, or the column itself. */
     private static function uniqueColumn(string $key): ?string
     {
+        if ($key === 'translationGroup_locale') { // §7.3: one row per locale per group
+            return 'locale';
+        }
         if (preg_match('/^(?:.*__)?([A-Za-z0-9]+)_unique$/', $key, $m)) {
             return $m[1];
         }

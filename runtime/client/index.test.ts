@@ -27,7 +27,7 @@ const SCHEMA_TS = `export const SCHEMA = {
 } as const;
 `;
 const TYPES_TS = `export interface User { id: number; name: string; role: string }
-export type Media = Record<string, unknown>; export type PrivateFile = Record<string, unknown>; export type RevisionSummary = unknown; export type Status = string;
+export type Media = Record<string, unknown>; export type PrivateFile = Record<string, unknown>; export type RevisionSummary = unknown; export type Status = string; export type Locale = string;
 export type Collections = Record<string, any>; export type Globals = Record<string, any>; export type Actions = Record<string, any>;
 `;
 
@@ -115,7 +115,7 @@ function stubBrowser(search = "") {
 
 const sha256url = (v: string) => createHash("sha256").update(v).digest("base64url");
 
-test("list encodes where/orderBy/limit/offset/status; with is a comma list or JSON", async () => {
+test("list encodes where/orderBy/limit/offset/status/locale; with is a comma list or JSON", async () => {
   seen = [];
   reply = ok([{ id: 1 }]);
   const zero = mod.createClient({ url: url + "/" });
@@ -125,9 +125,11 @@ test("list encodes where/orderBy/limit/offset/status; with is a comma list or JS
     limit: 10,
     offset: 20,
     status: "draft",
+    locale: "de",
     with: { author: true, cover: true },
   });
   assert.deepEqual(rows, [{ id: 1 }]);
+  assert.equal(last().query.get("locale"), "de");
   const q = last().query;
   assert.equal(last().method, "GET");
   assert.equal(last().path, "/api/posts");
@@ -135,8 +137,9 @@ test("list encodes where/orderBy/limit/offset/status; with is a comma list or JS
   assert.deepEqual([q.get("orderBy"), q.get("limit"), q.get("offset"), q.get("status"), q.get("with")], ["-createdAt,title", "10", "20", "draft", "author,cover"]);
 
   // Any entry with options switches `with` to JSON; nested orderBy strings travel as objects.
-  await zero.posts.get(7, { with: { author: { with: { posts: true }, orderBy: "-id", limit: 2 } } });
+  await zero.posts.get(7, { with: { author: { with: { posts: true }, orderBy: "-id", limit: 2 } }, locale: "*" });
   assert.equal(last().path, "/api/posts/7");
+  assert.equal(last().query.get("locale"), "*");
   assert.deepEqual(JSON.parse(last().query.get("with") ?? ""), { author: { with: { posts: true }, orderBy: { id: "desc" }, limit: 2 } });
 
   // The collection key is not the path: shoppingList lives at /shopping_list.

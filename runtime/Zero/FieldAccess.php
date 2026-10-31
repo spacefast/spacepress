@@ -438,8 +438,14 @@ final class FieldAccess
     {
         return match ($def['type']) {
             'group', 'repeater' => $def['fields'] ?? [],
-            'blocks' => $def['layouts'][$item['layout'] ?? ''] ?? [],
+            'blocks' => $def['layouts'][self::layout($item)] ?? [],
         };
+    }
+
+    /** A malformed layout matches no fields here; the pipeline's validator reports it. */
+    private static function layout(array $item): string
+    {
+        return is_string($item['layout'] ?? null) ? $item['layout'] : '';
     }
 
     private static function denied(Viewer $viewer, string $name, string $ptr): HttpError
@@ -533,7 +539,7 @@ final class FieldAccess
         }
         foreach ($value as $i => $item) {
             if (is_array($item)) {
-                $fields = $def['type'] === 'repeater' ? ($def['fields'] ?? []) : ($def['layouts'][$item['layout'] ?? ''] ?? []);
+                $fields = $def['type'] === 'repeater' ? ($def['fields'] ?? []) : ($def['layouts'][self::layout($item)] ?? []);
                 $value[$i] = $fn($fields, $item);
             }
         }

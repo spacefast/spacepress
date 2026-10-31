@@ -974,6 +974,7 @@ $faProblem('a null group is refused even when the hidden sub-field is empty', $a
 $faProblem('an unchanged group resend can\'t confirm a hidden value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']]), 403, 'forbidden', '/notes/flag');
 $faProblem('switching a block\'s layout would erase its protected value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'link', 'href' => 'x']]]), 403, 'forbidden', '/blocks/0');
 eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
+$faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
 
 // Revisions are read through the same strip.
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];

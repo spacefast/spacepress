@@ -121,6 +121,7 @@ final class Wire
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
+        $fields = $fields instanceof \Zero\JsObject ? [] : $fields; // `fields: {}`; nested json() values keep theirs
         if (!is_array($fields) || ($fields !== [] && array_is_list($fields))) {
             throw HttpError::invalidInput('fields must be an object', '/fields');
         }

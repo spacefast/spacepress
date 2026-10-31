@@ -252,10 +252,18 @@ export default defineConfig({
       filled.k = 1;
       const copy = { ...o };
       const parsed = JSON.parse('{"x":{},"y":[]}');
-      // The right side runs before the write: it still sees the empty object.
+      // Target keys, then the right side, then the write: the right side still sees the empty object.
       const self: Record<string, string> = {};
       self.x = JSON.stringify(self);
-      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self];
+      const keyed: Record<string, number> = {};
+      let i = 0;
+      keyed["k" + i++] = i;
+      const lazy: Record<string, string> = {};
+      lazy.x ??= JSON.stringify(lazy);
+      const deep: { a: Record<string, number> } = { a: {} };
+      deep.a.b = 5;
+      deep.a.b += 2;
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep];
     }),
     errors: run(() => {
       try {

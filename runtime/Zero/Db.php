@@ -361,8 +361,9 @@ final class Db
      */
     public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
-        $values = $values instanceof JsObject ? [] : array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values);
-        $rows = $values !== [] && array_is_list($values) ? $values : [$values];
+        // Only the row containers unwrap here: a json() value inside a row keeps its `{}`.
+        $values = $values instanceof JsObject ? [] : $values;
+        $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values) : [$values];
 
         return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
@@ -473,8 +474,8 @@ final class Db
         if (isset($spec['hooks']['beforeCreate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
             $r = $fn($data, $ctx);
-            if (is_array($r)) {
-                $data = $r;
+            if (is_array($r) || $r instanceof JsObject) {
+                $data = self::plainOutsideJson($columns, $r instanceof JsObject ? [] : $r);
             }
             $this->rejectUnknown($columns, $data);
         }
@@ -540,8 +541,8 @@ final class Db
         if (isset($spec['hooks']['beforeUpdate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeUpdate'];
             $r = $fn($patch, $existing, $ctx);
-            if (is_array($r)) {
-                $patch = $r;
+            if (is_array($r) || $r instanceof JsObject) {
+                $patch = self::plainOutsideJson($columns, $r instanceof JsObject ? [] : $r);
             }
             $this->checkPatch($spec, $previous, $patch);
         }

@@ -1082,17 +1082,36 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
-    /**
-     * An object-typed place, ready to write into: the empty-object marker becomes a plain array (a
-     * non-empty object is always one). Compiled writes through object/Record places go through this.
-     */
-    public static function &own(mixed &$place): mixed
+    /** Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). */
+    public static function at(mixed $root, array $path): mixed
     {
-        if ($place instanceof JsObject) {
-            $place = [];
+        foreach ($path as $k) {
+            if (!is_array($root) || !array_key_exists($k, $root)) {
+                return null;
+            }
+            $root = $root[$k];
         }
 
-        return $place;
+        return $root;
+    }
+
+    /**
+     * Compiled `root.k1[k2]... = value` through objects/Records: the keys and the value were already
+     * evaluated (JS order), and each container on the way that is the empty-object marker becomes a
+     * plain array only now, as it is written into. Returns the value, like a JS assignment.
+     */
+    public static function write(mixed &$root, array $path, mixed $value): mixed
+    {
+        $ref = &$root;
+        foreach ($path as $k) {
+            if ($ref instanceof JsObject || $ref === null) {
+                $ref = [];
+            }
+            $ref = &$ref[$k];
+        }
+        $ref = $value;
+
+        return $value;
     }
 
     /** A JS object value: an empty array that stands for `{}` becomes the marker; anything else as is. */

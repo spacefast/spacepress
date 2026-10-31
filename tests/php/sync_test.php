@@ -74,7 +74,8 @@ $functions = <<<'PHP'
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
-    function notes__beforeUpdate($patch, $existing) { return ($patch['title'] ?? null) === 'steal uid' ? $patch + ['uid' => 'zr_99999999999999999999'] : $patch; }
+    // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
+    function notes__beforeUpdate($patch, $existing) { return match ($patch['title'] ?? null) { 'steal uid' => $patch + ['uid' => 'zr_99999999999999999999'], 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
 $migration = <<<'SQL'
     CREATE TABLE "people" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "name" text NOT NULL, "uid" text);
@@ -158,6 +159,9 @@ check('uid minted on insert', preg_match('/^zr_[0-9a-f]{20}$/D', $ada['uid']) ==
 isProblem('uid is immutable', req('PATCH', "/people/{$ada['id']}", ['uid' => 'zr_00000000000000000000']), 422, 'invalid_input', '/uid');
 $hooked = $db->insert('notes', ['title' => 'Hooked'], true)[0];
 problem('a hook cannot change a uid either', fn () => $db->update('notes', ['title' => 'steal uid'], ['id' => $hooked['id']]), 422, 'invalid_input', '/uid');
+$before = $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'];
+$db->update('notes', ['title' => 'drop it'], ['id' => $hooked['id']]);
+eq('a beforeUpdate returning {} replaces the patch with nothing', $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'], $before);
 eq('and the row keeps its uid and title', [$db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['uid'], $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']], [$hooked['uid'], 'Hooked']);
 $given = $db->insert('people', ['name' => 'Grace', 'uid' => 'zr_11111111111111111111'], true)[0];
 eq('a writer may supply the uid', $given['uid'], 'zr_11111111111111111111');
@@ -188,6 +192,9 @@ check('pull includes drafts', $pulled[$noteUid]['record']['fields']['status'] ==
 
 eq('same record again is unchanged', req('POST', '/sync/notes', ['record' => $record, 'expect' => $created['digest']])[1]['status'], 'unchanged');
 isProblem('expect absent on an existing uid is stale', req('POST', '/sync/notes', ['record' => $record, 'expect' => 'absent']), 409, 'sync_stale');
+// `fields: {}` (an object on the wire, the marker once decoded) is an empty field set, not a type error.
+[$s, $empty] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_0e0e0e0e0e0e0e0e0e0e', 'fields' => new stdClass(), 'body' => null], 'expect' => 'absent']);
+check('a push with fields: {} is accepted as an object (then the required title is what is missing)', $s === 422 && ($empty['pointer'] ?? null) === '/title', $empty);
 $stale = req('POST', '/sync/notes', ['record' => ['fields' => ['title' => 'Later']] + $record, 'expect' => 'sha256:' . str_repeat('0', 64)]);
 isProblem('wrong expected digest is stale', $stale, 409, 'sync_stale');
 eq('stale carries the current record and digest', [$stale[1]['current']['digest'], $stale[1]['current']['record']], [$created['digest'], $record]);

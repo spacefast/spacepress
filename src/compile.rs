@@ -152,6 +152,9 @@ struct Out {
 struct AssignmentPlace {
     read: Out,
     constraint: Ty,
+    /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
+    /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
+    path: Option<(String, Vec<String>)>,
 }
 
 impl Out {
@@ -2692,9 +2695,74 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn assign(&mut self, op: Option<AssignOp>, target: &Expr, value: &Expr, span: Span) -> Result<Out> {
-        let AssignmentPlace { read: t, constraint } = self.place(target)?;
+        let AssignmentPlace {
+            read: t,
+            constraint,
+            path,
+        } = self.place(target)?;
+        // A place inside an object/Record (a path of keys under a root variable): the keys are
+        // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
+        // while the object still reads as it was, and Js::write unwraps empty-object markers only as
+        // it writes. `o["k" + i++] = i` and `o.x = JSON.stringify(o)` behave as in JS.
+        let object_path = path.filter(|(_, keys)| !keys.is_empty() && Self::writes_into_object(&t, keys));
+        let keys_php = object_path.as_ref().map(|(root, keys)| {
+            let mut pre = Vec::new();
+            let mut ks = Vec::new();
+            for k in keys {
+                if k.starts_with('\'') || k.chars().all(|c| c.is_ascii_digit()) {
+                    ks.push(k.clone());
+                } else {
+                    let tmp = self.tmp_var();
+                    pre.push(format!("{tmp} = {k}"));
+                    ks.push(tmp);
+                }
+            }
+            (root.clone(), pre, ks)
+        });
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
+        if let Some((root, pre, ks)) = keys_php {
+            if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
+                return err(
+                    span,
+                    format!(
+                        "can't assign {} to something of type {}",
+                        v.ty.describe(),
+                        constraint.describe()
+                    ),
+                );
+            }
+            let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
+            let new = match op {
+                None => v.php.clone(),
+                Some(AssignOp::Bin(b)) => {
+                    let r = self.binary(b, Out::atom(read.clone(), t.ty.clone()), v.clone(), span)?;
+                    r.php
+                }
+                Some(AssignOp::Log(LogOp::Nullish)) => format!("{read} ?? {}", v.wrapped()),
+                Some(AssignOp::Log(l)) => {
+                    let cond = self.truthy(&Out::atom(read.clone(), t.ty.clone()));
+                    let keep = if l == LogOp::Or {
+                        cond
+                    } else {
+                        format!("!{}", paren(&cond))
+                    };
+                    format!("{} ? {read} : {}", paren(&keep), v.wrapped())
+                }
+            };
+            let ty = match op {
+                None => v.ty.clone(),
+                Some(AssignOp::Log(l)) => logical_result_type(l, &t.ty, &v.ty),
+                Some(AssignOp::Bin(_)) => Ty::Num,
+            };
+            let write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
+            let php = if pre.is_empty() {
+                write
+            } else {
+                format!("[{}, {write}][{}]", pre.join(", "), pre.len())
+            };
+            return Ok(Out::new(php, ty));
+        }
         if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
             return err(
                 span,
@@ -2706,14 +2774,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         match op {
-            // JS evaluates the right side before writing: `o.x = JSON.stringify(o)` must see `o` as it
-            // was, so the right side runs before Js::own unwraps an empty-object marker.
-            None if t.php.contains("\\Zero\\Js::own(") => {
-                // PHP binds a by-reference place (creating the key) before evaluating the value, so the
-                // value goes through a temporary first.
-                let tmp = self.tmp_var();
-                Ok(Out::new(format!("[{tmp} = {}, {} = {tmp}][1]", v.php, t.php), v.ty))
-            }
             None => Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty)),
             Some(AssignOp::Bin(b)) => {
                 let r = self.binary(b, t.clone(), v, span)?;
@@ -2750,6 +2810,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// True when some step of this write path goes through an object/Record value (which may be the
+    /// empty-object marker); array-only paths keep plain PHP writes.
+    fn writes_into_object(_t: &Out, keys: &[String]) -> bool {
+        keys.iter().any(|k| !k.starts_with("(int) "))
+    }
+
     /// An assignable PHP place.
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
         self.place_inner(target, true)
@@ -2778,6 +2844,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     Ok(AssignmentPlace {
                         constraint: l.constraint,
+                        path: Some((l.php.clone(), Vec::new())),
                         read: Out {
                             php: l.php.clone(),
                             ty,
@@ -2797,22 +2864,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let AssignmentPlace {
+                    read: o,
+                    constraint,
+                    path,
+                } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
                 };
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
-                // Writing into an object unwraps the empty-object marker first (Js::own).
-                let php = format!("\\Zero\\Js::own({})[{}]", o.php, php_str(prop));
+                let php = format!("{}[{}]", o.php, php_str(prop));
                 let constraint = constraint
                     .non_null()
                     .field(prop)
                     .map(|(t, _)| t)
                     .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
+                let path = path.map(|(root, mut keys)| {
+                    keys.push(php_str(prop));
+                    (root, keys)
+                });
                 Ok(AssignmentPlace {
                     constraint,
+                    path,
                     read: Out {
                         php: php.clone(),
                         ty: if optional { ft.nullable() } else { ft },
@@ -2823,14 +2898,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 })
             }
             ExprKind::Index { obj, index, .. } => {
-                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let AssignmentPlace {
+                    read: o,
+                    constraint,
+                    path,
+                } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
-                    Ty::Map(t) if i.ty.is_str() => (format!("\\Zero\\Js::own({})[{}]", o.php, i.php), t.nullable()),
+                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
                             target.span,
@@ -2838,12 +2917,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                 };
+                let path = match (path, o.ty.non_null()) {
+                    (Some((root, mut keys)), Ty::Map(_)) => {
+                        keys.push(i.php.clone());
+                        Some((root, keys))
+                    }
+                    (Some((root, mut keys)), Ty::Array(_)) => {
+                        keys.push(format!("(int) {}", i.wrapped()));
+                        Some((root, keys))
+                    }
+                    _ => None,
+                };
                 let constraint = match constraint.non_null() {
                     Ty::Array(t) | Ty::Map(t) => *t,
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
                     constraint,
+                    path,
                     read: Out {
                         php: php.clone(),
                         ty,

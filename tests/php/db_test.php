@@ -762,6 +762,8 @@ $isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage
 $r = http('POST', '/api/locations', raw: '{"name":"Empty","meta":{"a":{},"b":[]}}');
 eq('a json column keeps {} apart from [] through storage and the API', [$r['status'], str_contains($r['body'], '"meta":{"a":{},"b":[]}'),
     str_contains(http('GET', '/api/locations/' . ($r['json']['data']['id'] ?? 0))['body'], '"meta":{"a":{},"b":[]}')], [201, true, true]);
+$r = http('POST', '/api/locations', raw: '{"name":"Bare","meta":{}}');
+eq('… a json value that is {} itself, too', [$r['status'], str_contains($r['body'], '"meta":{}')], [201, true]);
 $isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
 
 $r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => 7]);

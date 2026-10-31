@@ -5,7 +5,7 @@
 // The SQL text is pinned in tests/php/sql_test.php; this suite proves MariaDB agrees with it.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { ok, problem, qs, run, sql } from "./env.ts";
+import { ok, problem, qs, run, sql, wp } from "./env.ts";
 
 const ids: Record<string, number> = {};
 let post: any;
@@ -73,6 +73,9 @@ test("a post-backed timestamp keeps whole UTC seconds", async () => {
 test("a json() meta value keeps {} apart from [] on WordPress", async () => {
   const e = await ok("POST", "/events", { as: "editor", body: { title: `Json ${run}`, extra: { a: {}, b: [] } } });
   assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { a: {}, b: [] });
+  const patch = { id: e.id, patch: { extra: { c: {} } } };
+  wp("zero", "run", "blog/events-update", `--input=${JSON.stringify(patch)}`, "--user=editor");
+  assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { c: {} });
 });
 
 test("relation filters and `with` across post↔post and post↔table", async () => {

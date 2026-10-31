@@ -1176,6 +1176,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($existing['title'] === 'Tag DE' && isset($patch['price'])) {
                 $patch['tags'] = ['b']; // a different synced column than the one propagated
             }
+            if ($existing['title'] === 'Move DE') {
+                $patch['locale'] = 'fr';
+            }
+            if ($existing['title'] === 'Spawn DE' && isset($patch['price'])) {
+                // creates a French translation while the group still holds its old values
+                \Zero\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing['id']]);
+            }
             return $patch;
         }
         function pages__afterUpdate($row, $previous) {
@@ -1208,8 +1215,8 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $db = $locale->db;
     $anon = new \Zero\Viewer(null, 'standalone');
     $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
-    $rest = static function (string $method, string $path, array $query = [], mixed $body = null) use ($locale): array {
-        [$status, , $payload] = $locale->handle($method, $path, $query, $body === null ? '' : json_encode($body));
+    $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($locale): array {
+        [$status, , $payload] = $locale->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
         $json = json_decode($payload, true);
 
         return [$status, $json['data'] ?? $json];
@@ -1267,6 +1274,24 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('… also when the hook changes another synced column', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $tag['id']])), 409, 'conflict', '/tags');
     eq('… nothing committed', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$tag['id'], $tagDe['id']]]], 'orderBy' => ['id' => 'asc']])), [[1, ['a']], [1, ['a']]]);
     $db->delete('pages', ['id' => ['in' => [$tag['id'], $tagDe['id']]]]);
+    $spawn = $db->insert('pages', ['title' => 'Spawn', 'price' => 1], true)[0];
+    $spawnDe = $db->insert('pages', ['title' => 'Spawn DE', 'locale' => 'de', 'translationOf' => $spawn['id']], true)[0];
+    problem('… also when a hook adds a translation with the old values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $spawn['id']])), 409, 'conflict', '/price');
+    eq('… nothing committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['like' => 'Spawn%']]])), 2);
+    $db->delete('pages', ['id' => ['in' => [$spawn['id'], $spawnDe['id']]]]);
+    $move = $db->insert('pages', ['title' => 'Move', 'price' => 1], true)[0];
+    $moveDe = $db->insert('pages', ['title' => 'Move DE', 'locale' => 'de', 'translationOf' => $move['id']], true)[0];
+    problem('a hook can\'t move a row to another locale either', fn () => $db->update('pages', ['title' => 'Move DE'], ['id' => $moveDe['id']]), 422, 'invalid_input', '/locale');
+    $db->delete('pages', ['id' => ['in' => [$move['id'], $moveDe['id']]]]);
+
+    // An idempotent translation create replays its receipt even after the group's values moved on.
+    $idem = $db->insert('pages', ['title' => 'Idem', 'price' => 3], true)[0];
+    $request = ['title' => 'Idem FR', 'locale' => 'fr', 'translationOf' => $idem['id'], 'price' => 3];
+    $first = $rest('POST', '/pages', [], $request, ['idempotency-key' => 'idem-fr']);
+    $db->update('pages', ['price' => 4], ['id' => $idem['id']]);
+    $again = $rest('POST', '/pages', [], $request, ['idempotency-key' => 'idem-fr']);
+    eq('… the replay returns the original 201', [$first[0], $again[0], $again[1]['id'] ?? null], [201, 201, $first[1]['id']]);
+    $db->delete('pages', ['id' => ['in' => [$idem['id'], $first[1]['id']]]]);
 
     // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
     $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];

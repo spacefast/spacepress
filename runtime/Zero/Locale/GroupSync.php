@@ -24,6 +24,8 @@ final class GroupSync
 {
     /** @var array<string, true> translation groups whose synced values are being propagated right now */
     private static array $active = [];
+    /** @var list<array{string, string, int|string, list<string>}> [collection, locale, source pk, supplied synced columns] of API translation creates awaiting persistence */
+    private static array $joining = [];
 
     public static function normalize(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
@@ -87,16 +89,34 @@ final class GroupSync
             throw HttpError::invalidInput("No $collection row with $pk " . Js::str($of), '/translationOf');
         }
         $visible ??= $source;
-        Lock::members($collection, $source, Module::members($source, $pk)); // holds the group: joins serialize
-        Lock::unchanged($collection, $source[$pk]); // and the values about to be copied are current
+        // Copy every synced column the caller left out. A supplied one is kept and compared with the
+        // group once persisted (the persistence continuation, after any idempotent replay), except a
+        // column the caller can't read: that is refused here, whatever its value, so nothing leaks.
+        $supplied = [];
         foreach (Module::synced($spec) as $col) {
-            if (array_key_exists($col, $provided)
-                && (!array_key_exists($col, $visible)
-                    || !Module::same(Schema::normalize($spec['columns'][$col], $provided[$col], $col, HttpError::seg($col)), $visible[$col]))) {
-                throw HttpError::invalidInput("$col is synced across translations; change it on any row to change all", HttpError::seg($col));
+            if (!array_key_exists($col, $provided)) {
+                $data[$col] = $source[$col];
+            } elseif (!array_key_exists($col, $visible)) {
+                throw self::synced($col);
+            } else {
+                $supplied[] = $col;
             }
-            $data[$col] = $source[$col];
         }
+        if (self::$joining === []) {
+            // Entries live for one transaction: a create that replays a receipt never persists, so
+            // its entry must not survive to match a later create.
+            db()->store()->afterCommit(static function (): void {
+                self::$joining = [];
+            });
+            $store = db()->store();
+            $rollback = $store instanceof \Zero\Wp\CompositeStore ? [$store->db, 'onRollback'] : (method_exists($store, 'onRollback') ? [$store, 'onRollback'] : null);
+            if ($rollback !== null) {
+                $rollback(static function (): void {
+                    self::$joining = [];
+                });
+            }
+        }
+        self::$joining[] = [$collection, $data['locale'], $source[$pk], $supplied];
         if (Module::polylang($collection)) {
             $data['translations'] = Module::members($source, $pk); // the group WpPostStore::insert joins
         } else {
@@ -115,8 +135,11 @@ final class GroupSync
         }
         $spec = db()->schema()->collection($collection);
         $pk = $spec['primaryKey'];
+        if ($previous !== null && $row['locale'] !== $previous['locale']) { // also after hooks, also inside group writes
+            throw HttpError::invalidInput('locale cannot be changed; create a translation instead', '/locale');
+        }
         if (isset(self::$active[self::key($collection, $row, $pk)])) {
-            return; // this row is being given its group's values
+            return; // this row is being given its group's values; the outer write checks the group
         }
         $changed = [];
         foreach ($previous === null ? [] : Module::synced($spec) as $col) {
@@ -124,36 +147,85 @@ final class GroupSync
                 $changed[$col] = $row[$col];
             }
         }
-        if ($changed === []) {
-            if ($previous === null) {
-                self::adopt($collection, $row); // a row that joined a group outside the API (wp-admin "+")
-            }
-
-            return;
-        }
-        // Every member as currently committed, locked: a translation created concurrently can't be missed.
-        $members = Lock::members($collection, $row, Module::members($row, $pk));
-        $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
-        $synced = Module::synced($spec);
-        self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $row, $siblings, $changed, $synced): void {
-            $find = static fn (array $ids) => $ids === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'locale' => '*']);
-            foreach ($find($siblings) as $sibling) {
-                $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
-                if ($patch !== []) {
-                    db()->update($collection, $patch, [$pk => $sibling[$pk]]);
+        if ($previous === null) {
+            $members = Module::members($row, $pk);
+            $join = null;
+            foreach (array_reverse(self::$joining, true) as $i => $j) {
+                if ($j[0] === $collection && $j[1] === $row['locale'] && in_array($j[2], $members, true)) {
+                    $join = $j;
+                    array_splice(self::$joining, $i, 1);
+                    break;
                 }
             }
-            // Hooks run per row and may write any column; the group must still agree on every
-            // synced column, the initiating row included, or the whole write is refused.
-            $members = $find([$row[$pk], ...$siblings]);
-            foreach ($synced as $col) {
-                foreach ($members as $member) {
-                    if (!Module::same($member[$col], $members[0][$col])) {
-                        throw new HttpError(409, 'conflict', "A hook changed $col on one translation; synced columns must stay equal across the group", HttpError::seg($col));
+            $join === null
+                ? self::adopt($collection, $row) // a row that joined a group outside the API (wp-admin "+")
+                : self::joined($collection, $row, $join[2], $join[3]);
+        } elseif ($changed !== []) {
+            // Every member as currently committed, locked: a translation created concurrently can't be missed.
+            $members = Lock::members($collection, $row, Module::members($row, $pk));
+            $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
+            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
+                foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
+                    $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
+                    if ($patch !== []) {
+                        db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                     }
                 }
+            });
+        }
+        self::agrees($collection, $row[$pk]);
+    }
+
+    /**
+     * An API translation, now stored: the group is locked (joins serialize), the source must still
+     * be the committed version, and every synced value must equal the source's (422 for a value the
+     * caller supplied, 409 when the copied one went stale).
+     *
+     * @param list<string> $supplied
+     */
+    private static function joined(string $collection, array $row, int|string $source, array $supplied): void
+    {
+        $pk = db()->schema()->collection($collection)['primaryKey'];
+        Lock::members($collection, $row, Module::members($row, $pk));
+        Lock::unchanged($collection, $source);
+        $current = db()->findFirst($collection, ['where' => [$pk => $source], 'locale' => '*']);
+        foreach (Module::synced(db()->schema()->collection($collection)) as $col) {
+            if ($current !== null && !Module::same($row[$col], $current[$col])) {
+                throw in_array($col, $supplied, true)
+                    ? self::synced($col)
+                    : new HttpError(409, 'conflict', 'The translation group changed while this request ran; retry it');
             }
-        });
+        }
+    }
+
+    private static function synced(string $col): HttpError
+    {
+        return HttpError::invalidInput("$col is synced across translations; change it on any row to change all", HttpError::seg($col));
+    }
+
+    /**
+     * The group invariant, checked after every write to a localized row once its group writes are
+     * done: every current member (re-read now, so members that hooks created count) agrees on every
+     * synced column. Hooks run per row and may write anything; a divergent group fails the whole
+     * write with 409 conflict.
+     */
+    private static function agrees(string $collection, int|string $id): void
+    {
+        $spec = db()->schema()->collection($collection);
+        $pk = $spec['primaryKey'];
+        $row = db()->findFirst($collection, ['where' => [$pk => $id], 'locale' => '*']);
+        $ids = $row === null ? [] : array_values(Module::members($row, $pk));
+        if (count($ids) < 2) {
+            return;
+        }
+        $members = db()->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'locale' => '*']);
+        foreach (Module::synced($spec) as $col) {
+            foreach ($members as $member) {
+                if (!Module::same($member[$col], $members[0][$col])) {
+                    throw new HttpError(409, 'conflict', "A hook changed $col on one translation; synced columns must stay equal across the group", HttpError::seg($col));
+                }
+            }
+        }
     }
 
     /** Give $row (decoded, `translations` filled) the synced values of its group's oldest row, unless it is that row. */

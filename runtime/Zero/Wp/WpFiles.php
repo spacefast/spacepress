@@ -188,11 +188,25 @@ final class WpFiles implements FileStorage
         $this->db->onRollback(static fn () => @unlink($dest));
     }
 
+    /** Guarded upgrade for tables created before rows carried their app. */
+    public static function upgrade(\Zero\Store $store): void
+    {
+        $db = $store instanceof CompositeStore ? $store->db : null;
+        if ($db === null) {
+            return;
+        }
+        $table = $db->prefix() . 'zero__files';
+        $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, 'app']);
+        if ($have === []) {
+            $store->applySystemStatements(["ALTER TABLE `{prefix}zero__files` ADD COLUMN `app` VARCHAR(191) NOT NULL DEFAULT '' AFTER `id`, ADD KEY `app` (`app`)"]);
+        }
+    }
+
     public function insert(array $row): int
     {
         $this->db->run(
-            'INSERT INTO `' . $this->table() . '` (`bucket`, `filename`, `mime`, `size`, `path`, `ownerId`, `createdAt`) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$row['bucket'], $row['filename'], $row['mime'], $row['size'], $row['path'], $row['ownerId'], $row['createdAt']],
+            'INSERT INTO `' . $this->table() . '` (`app`, `bucket`, `filename`, `mime`, `size`, `path`, `ownerId`, `createdAt`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [$this->app, $row['bucket'], $row['filename'], $row['mime'], $row['size'], $row['path'], $row['ownerId'], $row['createdAt']],
         );
 
         return $this->db->insertId();
@@ -205,7 +219,8 @@ final class WpFiles implements FileStorage
             return [];
         }
         $out = [];
-        foreach ($this->db->run('SELECT * FROM `' . $this->table() . '` WHERE `id` IN (' . implode(', ', array_fill(0, count($ids), '?')) . ')', $ids) as $r) {
+        // Rows belong to one app: another app on the same site (or a replaced one) never resolves them.
+        foreach ($this->db->run('SELECT * FROM `' . $this->table() . '` WHERE `app` = ? AND `id` IN (' . implode(', ', array_fill(0, count($ids), '?')) . ')', [$this->app, ...$ids]) as $r) {
             $out[(int) $r['id']] = Files::normalizeRow($r);
         }
 
@@ -214,7 +229,7 @@ final class WpFiles implements FileStorage
 
     public function delete(array $row): void
     {
-        $this->db->run('DELETE FROM `' . $this->table() . '` WHERE `id` = ?', [$row['id']]);
+        $this->db->run('DELETE FROM `' . $this->table() . '` WHERE `app` = ? AND `id` = ?', [$this->app, $row['id']]);
         $file = $this->absolute($row['path']);
         $this->db->afterCommit(static fn () => @unlink($file));
     }

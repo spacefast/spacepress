@@ -23,7 +23,7 @@ final class Runtime
         self::$booted = true;
         register_activation_hook($runtimeFile, [self::class, 'activate']);
         add_action('admin_init', static function (): void {
-            if (get_option('zero_runtime_tables') !== self::SERIES && Platform::problems() === []) {
+            if (get_option('zero_runtime_tables') !== self::tablesVersion() && Platform::problems() === []) {
                 self::activate();
             }
         });
@@ -48,7 +48,13 @@ final class Runtime
         $connection = new Connection($wpdb);
         $schema = new \Zero\Schema(['version' => 3, 'runtime' => self::SERIES]);
         \Zero\SystemTables::apply(CompositeStore::create($schema, $connection));
-        update_option('zero_runtime_tables', self::SERIES, false);
+        update_option('zero_runtime_tables', self::tablesVersion(), false);
+    }
+
+    /** `<series>+<fingerprint>`: a runtime that registers another system table or step upgrades sites. */
+    public static function tablesVersion(): string
+    {
+        return self::SERIES . '+' . \Zero\SystemTables::fingerprint();
     }
 
     public static function app(string $dir, string $mainFile): ?Plugin

@@ -299,6 +299,37 @@ test("activation writes the deny rules and reports a passing probe", async () =>
   assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, true);
 });
 
+test("a site already on runtime tables 0.2 gains the files table on its next admin_init", () => {
+  // What a site that ran the runtime before private files existed looks like.
+  sql("DROP TABLE wp_zero__files");
+  wp("option", "update", "zero_runtime_tables", "0.2");
+  wp("eval", "do_action('admin_init');");
+  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_zero\\_\\_files'").length, 1, "the table exists again");
+  assert.equal(wp("option", "get", "zero_runtime_tables"), wp("eval", "echo \\Zero\\Wp\\Runtime::tablesVersion();"));
+});
+
+test("a files table from before rows carried their app gains the column on upgrade", () => {
+  sql("ALTER TABLE wp_zero__files DROP KEY app, DROP COLUMN app");
+  wp("option", "update", "zero_runtime_tables", "0.2");
+  wp("eval", "do_action('admin_init');");
+  assert.equal(sql("SHOW COLUMNS FROM wp_zero__files LIKE 'app'").length, 1);
+});
+
+test("file rows belong to their app: another app's ids don't resolve", async () => {
+  probe();
+  const row = await deck("mine");
+  // Re-label the row as another app's (what a replaced or second app leaves behind).
+  sql(`UPDATE wp_zero__files SET app = 'other' WHERE id = ${row.id}`);
+  try {
+    await problem("GET", `/files/decks/${row.id}`, { as: "author" }, { status: 404, code: "not_found", pointer: undefined });
+    assert.equal((await fetch(row.url)).status, 404);
+    await problem("POST", "/talks", { as: "author", body: { title: "Foreign", deck: row.id } }, { status: 422, code: "invalid_input", pointer: "/deck" });
+  } finally {
+    sql(`UPDATE wp_zero__files SET app = 'blog' WHERE id = ${row.id}`);
+  }
+  assert.equal((await ok("GET", `/files/decks/${row.id}`, { as: "author" })).id, row.id);
+});
+
 test("a signed URL streams the file through the REST route with the security headers", async () => {
   probe();
   const row = await deck("slide one");

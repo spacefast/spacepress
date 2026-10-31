@@ -420,8 +420,8 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
-`int|float`; `string` = PHP `string` (UTF-8, indexes count Unicode code
-points); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+`int|float`; `string` = PHP `string` (UTF-8; `length` and every index count UTF-16
+code units as in JS, and a lone surrogate becomes U+FFFD); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are PHP lists; plain objects are PHP assoc arrays; functions are
 `callable`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers

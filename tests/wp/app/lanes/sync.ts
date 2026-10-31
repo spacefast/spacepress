@@ -19,7 +19,7 @@ export const guides = collection("guides", {
   summary: text({ multiline: true }),
   level: select({ options: ["intro", "advanced"] }),
   writerId: integer().references(() => writers.id, { onDelete: "set null" }),
-}, { title: "title", content: "body", sync: "content/guides/*.md" });
+}, { title: "title", content: "body", sync: "content/guides/*.md", access: { create: "author" } });
 
 export const schema = { writers, guides };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */

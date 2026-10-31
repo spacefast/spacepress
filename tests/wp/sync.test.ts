@@ -141,6 +141,7 @@ test("sync on WordPress", async (t) => {
     const { digest: parkedDigest } = (await push(parked, "absent")).json.data;
     await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: parked.uid, expect: parkedDigest } });
     await problem("POST", "/guides", { as: "editor", body: { title: `Thief ${run}`, uid: parked.uid } }, { status: 409, code: "unique_violation", pointer: "/uid" });
+
   });
 
   await t.test("concurrent writers: a change committed after this request's snapshot is stale, and a uid is never replaced", () => {
@@ -183,6 +184,17 @@ test("sync on WordPress", async (t) => {
       });
       clean_post_cache($id);
       $statusAfter = get_post_status($id);
+      // An author may create but not update guides: the restore is refused before WordPress untrashes
+      // anything (its actions run outside the transaction's reach).
+      $untrashed = 0;
+      add_action('untrash_post', function () use (&$untrashed) { $untrashed++; });
+      $author = new \\Zero\\Viewer(\\Zero\\Wp\\WpAuth::map(get_user_by('login', 'author')), 'wp');
+      try {
+        $db->transaction(fn () => $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => 'absent']), $author));
+        $refused = 'allowed';
+      } catch (\\Zero\\HttpError $e) {
+        $refused = $e->status;
+      }
       wp_untrash_post($id);
 
       delete_post_meta($id, '_zero_uid');
@@ -190,10 +202,10 @@ test("sync on WordPress", async (t) => {
       $assigned = 'zr_' . str_repeat('e', 20);
       $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_zero_uid', '$assigned')");
       $kept = $db->transaction(fn () => \\Zero\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
-      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $kept, get_post_meta($id, '_zero_uid')]);
+      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $refused, $untrashed, $kept, get_post_meta($id, '_zero_uid')]);
     `));
-    assert.deepEqual(result, [409, false, "Theirs", 409, false, 409, "trash", "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]],
-      "stale without an outdated current (also for a mismatched expect), their title kept, the stale restore left in the trash, their uid kept");
+    assert.deepEqual(result, [409, false, "Theirs", 409, false, 409, "trash", 403, 0, "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]],
+      "stale without an outdated current (also for a mismatched expect), their title kept, the stale restore left in the trash, an unauthorized restore refused before WordPress untrashes, their uid kept");
   });
 
   await t.test("conversion and merge run on the server", async () => {

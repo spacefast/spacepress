@@ -183,6 +183,16 @@ eq('a hook that reshapes the write reports normalized with the stored record',
     [$s, $normalized['status'], $normalized['record']['fields']['title']], [201, 'normalized', 'Spaced']);
 eq('normalized digest is the stored record', $normalized['digest'], Canon::digest($normalized['record']));
 
+
+// `{}` and `[]` are different JSON; a store that can't keep the difference answers `normalized`,
+// so the digest a client holds is always one a pull reproduces.
+$shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []], 'authorId' => null, 'status' => 'draft', 'publishedAt' => null], 'body' => null];
+[, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
+eq('a reshaped value reports normalized with the stored shape', [$shaped['status'], $shaped['record']['fields']['meta']], ['normalized', ['nested' => [], 'list' => []]]);
+eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
+$repush = req('POST', '/sync/notes', ['record' => pull('notes')['zr_ffffffffffffffffffff']['record'], 'expect' => $shaped['digest']]);
+eq('and pushing the pulled record is a no-op', $repush[1]['status'] ?? $repush, 'unchanged');
+
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.
 \Zero\Extensions::onRead(static fn (array $rows, string $c, ?\Zero\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
@@ -192,18 +202,11 @@ $hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden 
 check('a normalized answer carries only what the viewer reads', !array_key_exists('meta', $answer['record']['fields']), $answer['record']);
 eq('and the digest a pull by that viewer returns', $answer['digest'], pull('notes')['zr_eeeeeeeeeeeeeeeeeeee']['digest']);
 
-// `{}` and `[]` are different JSON; a store that can't keep the difference answers `normalized`,
-// so the digest a client holds is always one a pull reproduces.
-$shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []]], 'body' => null];
-[, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
-eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
-$repush = req('POST', '/sync/notes', ['record' => pull('notes')['zr_ffffffffffffffffffff']['record'], 'expect' => $shaped['digest']]);
-eq('and pushing the pulled record is a no-op', $repush[1]['status'] ?? $repush, 'unchanged');
-
 // ================================================================ references and validation
 
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];
 isProblem('unknown reference uid', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent']), 422, 'sync_missing_reference', '/fields/authorId');
+isProblem('references are not resolved for a caller who may not write', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent'], as: null), 401, 'unauthenticated');
 isProblem('generated columns are not writable', req('POST', '/sync/notes', ['record' => ['fields' => ['updatedAt' => '2000-01-01T00:00:00Z']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/fields/updatedAt');
 isProblem('validation runs through the pipeline', req('POST', '/sync/notes', ['record' => ['fields' => ['status' => 'bogus', 'title' => 'x']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/status');
 

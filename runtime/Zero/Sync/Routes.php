@@ -115,36 +115,46 @@ final class Routes
         $sent = Wire::record($uid, $raw->fields ?? [], $raw->body ?? null);
         $pk = $spec['primaryKey'];
         $current = self::current($collection, $uid, $viewer);
-        // Every stale answer comes before the first write: a returned 409 still commits the request.
         $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
+        $op = $current === null && $trashed === null ? 'create' : 'update';
+        // A rule that refuses this viewer whatever the values refuses before anything is looked up.
+        if (Access::isShorthand(Access::collectionRules($spec)[$op]) && Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op) === false) {
+            throw Access::deny($viewer->user, "$op $collection rows");
+        }
+        // Reference lookups answer only after authorization, so they can't probe for uids either.
+        $missing = [];
+        $data = Wire::decode($collection, $record, $current === null, $missing);
+        // Authorize with the values the pipeline will see, before answering anything about the row.
+        // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {
+            // A trashed post is outside every filter, so restoring it needs an update rule that allows every row.
+            if (Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data) !== true) {
+                throw Access::deny($viewer->user, "restore $collection rows");
+            }
+            self::raiseMissing($missing);
             if (!Lock::fresh($collection, $trashed)) {
                 return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
             }
             Trash::restore($trashed);
             $current = self::current($collection, $uid, $viewer);
-        }
-        $data = Wire::decode($collection, $record, $current === null);
-        // Authorize with the values the pipeline will see, before answering anything about the row.
-        if ($current === null) {
+        } elseif ($current === null) {
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
             if ($expect !== 'absent') {
-                Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
-
                 return self::stale($spec, $viewer, null, "$collection $uid is not on the site");
             }
+            self::raiseMissing($missing);
         } else {
             self::authorizeRow($collection, $spec, 'update', $viewer, $current['row'][$pk], $data);
-            if ($trashed === null) {
-                if (!Lock::fresh($collection, $current['row'][$pk])) {
-                    return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
-                }
-                if ($expect !== self::digestOf($current)) {
-                    return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
-                }
-                if (Canon::digest($sent) === $current['digest']) {
-                    return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
-                }
+            if (!Lock::fresh($collection, $current['row'][$pk])) {
+                return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
             }
+            if ($expect !== self::digestOf($current)) {
+                return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+            }
+            if (Canon::digest($sent) === $current['digest']) {
+                return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
+            }
+            self::raiseMissing($missing);
         }
         // The pipeline authorizes the write itself again.
         $current === null
@@ -274,6 +284,14 @@ final class Routes
         $pk = $spec['primaryKey'];
         if (is_array($rule) && Module::find($collection, ['where' => ['AND' => [[$pk => $id], $rule]], 'limit' => 1]) === []) {
             throw HttpError::notFound("No such $collection row");
+        }
+    }
+
+    /** @param list<HttpError> $missing */
+    private static function raiseMissing(array $missing): void
+    {
+        if ($missing !== []) {
+            throw $missing[0];
         }
     }
 

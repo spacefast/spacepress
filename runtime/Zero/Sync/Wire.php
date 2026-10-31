@@ -96,9 +96,12 @@ final class Wire
 
     /**
      * A record as a write: the column values it sets (references resolved to ids, body converted to the
-     * stored form). Only the keys present in `fields` are set.
+     * stored form). Only the keys present in `fields` are set. With $missing, an unresolvable reference
+     * is collected there (its value null) instead of thrown, so the caller can authorize first.
+     *
+     * @param ?list<HttpError> $missing
      */
-    public static function decode(string $collection, array $record, bool $create = false): array
+    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null): array
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
@@ -121,7 +124,15 @@ final class Wire
                 continue;
             }
             $ref = $spec['columns'][$name]['references'] ?? null;
-            $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value);
+            try {
+                $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value);
+            } catch (HttpError $e) {
+                if ($missing === null || $e->errorCode !== 'sync_missing_reference') {
+                    throw $e;
+                }
+                $missing[] = $e;
+                $data[$name] = null;
+            }
         }
         $content = $spec['content'] ?? null;
         if ($content !== null && array_key_exists('body', $record)) {

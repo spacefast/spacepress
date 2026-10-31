@@ -1042,7 +1042,12 @@ fn proxy_acting_on_first(
                 }
             }
             let head = String::from_utf8_lossy(&request).to_string();
-            if head.starts_with(&format!("POST {trigger} ")) && !done.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            // `trigger` is a path (matched on POST), or "GET <path prefix>".
+            let hit = match trigger.strip_prefix("GET ") {
+                Some(prefix) => head.starts_with(&format!("GET {prefix}")),
+                None => head.starts_with(&format!("POST {trigger} ")),
+            };
+            if hit && !done.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 act();
             }
             // Forward as one write with Connection: close, and relay the answer.
@@ -1653,6 +1658,186 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
             .unwrap()
             .contains("Agreed, then reconsidered"),
         "the newer draft is kept"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    let id = site.rows("notes")[0]["id"].as_i64().unwrap();
+    let uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
+    std::fs::write(
+        &file,
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .replace("title: Note", "title: Local"),
+    )
+    .unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Remote"})),
+    );
+    assert_eq!(s, 200);
+    sync(&project, &site, &["--only", "notes"]);
+    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    let conflict = std::fs::read_to_string(&draft).unwrap();
+    let header: String = conflict
+        .lines()
+        .take_while(|l| l.starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let theirs = conflict
+        .split("=======\n")
+        .nth(1)
+        .unwrap()
+        .split(">>>>>>>")
+        .next()
+        .unwrap();
+    // The user starts resolving; another plain sync must not throw that work away.
+    let resolution = format!("{header}{}", theirs.replace("title: Remote", "title: Agreed"));
+    std::fs::write(&draft, &resolution).unwrap();
+    sync(&project, &site, &["--only", "notes"]);
+    assert_eq!(
+        std::fs::read_to_string(&draft).unwrap(),
+        resolution,
+        "a rerun keeps the draft as the user left it"
+    );
+
+    // resolve runs while the user edits the draft again: the earlier version applies, the newer draft
+    // is kept, and it resolves in turn.
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = draft.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes",
+        move || {
+            let t = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
+        },
+        edited.clone(),
+    );
+    let first = zero()
+        .arg("sync")
+        .args(["resolve", &uid])
+        .arg(&project)
+        .args(["--site", &proxy, "--token", &site.token])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        first.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert_eq!(site.rows("notes")[0]["title"], "Agreed");
+    let second = sync(&project, &site, &["resolve", &uid]);
+    assert_eq!(
+        second.status.code(),
+        Some(0),
+        "the kept draft resolves: {}{}",
+        String::from_utf8_lossy(&second.stdout),
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(site.rows("notes")[0]["title"], "Agreed, then reconsidered");
+    assert!(!draft.exists());
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_file_restored_while_the_site_is_read_is_not_trashed() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    let kept = std::fs::read_to_string(&file).unwrap();
+    std::fs::remove_file(&file).unwrap();
+    // The run reads the directory (file missing), then pulls the site; the file comes back meanwhile.
+    let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "GET /api/sync/notes",
+        move || std::fs::write(&path, &kept).unwrap(),
+        restored.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(restored.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(
+        site.rows("notes").len(),
+        1,
+        "the record is not trashed: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(out.status.code(), Some(1), "and the run says why");
+    assert_eq!(
+        data(&sync(&project, &site, &["--only", "notes"]))["applied"].as_u64(),
+        Some(0),
+        "the next run sees agreement"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_slug_changed_alike_on_both_sides_moves_the_file_in_the_same_run() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/old.md"),
+        "---\ntitle: Note\nslug: old\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let id = site.rows("notes")[0]["id"].as_i64().unwrap();
+    let file = project.join("content/notes/old.md");
+    std::fs::write(
+        &file,
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .replace("slug: old", "slug: new"),
+    )
+    .unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"slug": "new"})),
+    );
+    assert_eq!(s, 200);
+    assert_eq!(
+        sync(&project, &site, &["--only", "notes", "--check"]).status.code(),
+        Some(2),
+        "--check reports the pending move"
+    );
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    assert!(
+        project.join("content/notes/new.md").exists() && !file.exists(),
+        "moved in this run"
     );
     let _ = std::fs::remove_dir_all(&project);
 }

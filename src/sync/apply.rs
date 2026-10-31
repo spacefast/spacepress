@@ -644,16 +644,25 @@ fn perform(
     match action {
         // Both sides agree; a file whose slug changed on both sides alike still moves.
         Action::Nothing => {
-            if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record)))
-                && !options.check
-            {
-                write_record(c, Some(f), &f.item.record, report);
+            if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record))) {
+                if options.check {
+                    pending(report, "move the file to its slug");
+                } else {
+                    write_record(c, Some(f), &f.item.record, report);
+                }
             }
         }
         Action::Skip(why) => report.note(format!("{name}/{uid}: {why}")),
         Action::Refused(message) => report.refused(message),
         Action::Adopt(item) => {
-            if !options.check {
+            // Both sides already agree; a slug both changed alike still moves the file, and the base
+            // moves once the file is where it belongs.
+            let misplaced = file.filter(|f| f.path != c.dir.join(file_name(c, &item.record)));
+            if options.check {
+                if misplaced.is_some() {
+                    pending(report, "move the file to its slug");
+                }
+            } else if misplaced.is_none() || write_record(c, misplaced, &item.record, report) {
                 bases.set(site, name, uid, &item.digest, &item.record);
             }
         }
@@ -736,9 +745,20 @@ fn perform(
                 pending(report, "trash on the site (its file was deleted)");
                 return Ok(());
             }
+            // The file was read as missing before the site was pulled: if it came back meanwhile,
+            // trash nothing (the next run sees the file).
+            if let Some(back) = reappeared(c, uid) {
+                report.fail(format!(
+                    "{}: reappeared while zero sync ran; nothing was trashed, run zero sync again",
+                    report.rel(&back)
+                ));
+                return Ok(());
+            }
             match client.post(&format!("/sync/{name}/trash"), &json!({"uid": uid, "expect": expect})) {
                 Ok(_) => {
-                    bases.remove(site, name, uid);
+                    if reappeared(c, uid).is_none() {
+                        bases.remove(site, name, uid);
+                    }
                     report.applied();
                 }
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
@@ -794,7 +814,12 @@ fn perform(
                     },
                     site: label,
                 });
-                if let Err(e) = write_atomic(&path, text.as_bytes()) {
+                // An existing draft is the user's, edited or not: never rewrite it. If either side
+                // moved since it was written, `resolve` says so (its header digests no longer match),
+                // and deleting the draft makes the next run write a fresh one.
+                if !path.exists()
+                    && let Err(e) = write_atomic(&path, text.as_bytes())
+                {
                     report.fail(format!("{}: {e}", report.rel(&path)));
                     return Ok(());
                 }
@@ -803,6 +828,16 @@ fn perform(
         }
     }
     Ok(())
+}
+
+/// A file in the collection's directory holding this uid (a deletion that was undone), if any.
+fn reappeared(c: &Collection, uid: &str) -> Option<PathBuf> {
+    let needle = uid.as_bytes();
+    std::fs::read_dir(&c.dir)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some(c.format.as_str()))
+        .find(|p| std::fs::read(p).is_ok_and(|b| b.windows(needle.len()).any(|w| w == needle)))
 }
 
 fn remote_digest(r: &Remote) -> Option<&str> {
@@ -940,7 +975,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         };
         if local_now != files_digest || remote_now != site_digest {
             return Err(format!(
-                "{uid} changed since the conflict was written; run zero sync again to refresh it"
+                "{uid} changed since the conflict was written; delete .zero/conflicts/{uid}.md and run zero sync to write a fresh one"
             ));
         }
         let (mut front, body) =
@@ -982,8 +1017,17 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         report.applied();
         // The draft may have been edited while resolve ran: keep that edit rather than delete it.
         if !unchanged(&path, Some(&draft)) {
+            // Point the kept draft at the state just applied, so `resolve` can apply it in turn.
+            let now = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let local = if hidden_body {
+                without_body(&Item::new(stored.clone())).digest
+            } else {
+                Item::new(stored.clone()).digest
+            };
+            let site_digest = answer["digest"].as_str().unwrap_or_default();
+            write_atomic(&path, conflict::with_digests(&now, &local, site_digest).as_bytes())?;
             return Err(format!(
-                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there",
+                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there (run zero sync resolve again to apply it)",
                 report.rel(&path)
             ));
         }

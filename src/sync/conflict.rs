@@ -40,6 +40,24 @@ pub fn render(c: Conflict) -> String {
     out
 }
 
+/// The conflict file with its header's digests replaced: a draft kept by `resolve` (edited while
+/// resolve applied the earlier version) becomes resolvable against the state that version left.
+pub fn with_digests(text: &str, files: &str, site: &str) -> String {
+    let mut out = String::new();
+    let mut header = true;
+    for line in text.split_inclusive('\n') {
+        if header && line.starts_with("# Files: ") {
+            out.push_str(&format!("# Files: {files}\n"));
+        } else if header && line.starts_with("# Site: ") {
+            out.push_str(&format!("# Site: {site}\n"));
+        } else {
+            header &= line.starts_with('#');
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 fn rendered(uid: &str, record: Option<&Value>) -> String {
     match record {
         None => "(deleted)\n".into(),

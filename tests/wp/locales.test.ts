@@ -140,6 +140,25 @@ test("a refused link that extends a group keeps the group it had", async () => {
   assert.deepEqual((await ok("GET", `/guides/${fr.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
 });
 
+test("a refused link that replaces a member keeps the group it had, also when repeated", async () => {
+  const { en, fr } = await pair("Replace");
+  const out = JSON.parse(wp("eval", `
+    $bump = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump FR ${run}', 'post_status' => 'publish'], 'fr');
+    $results = [];
+    foreach ([1, 2] as $attempt) { // the same refused link twice in one request: both are refused
+      try {
+        pll_save_post_translations(['en' => ${en.id}, 'fr' => $bump]);
+        $results[] = 'linked';
+      } catch (\\Zero\\HttpError $e) {
+        $results[] = $e->status . ' ' . $e->errorCode;
+      }
+    }
+    echo wp_json_encode([$results, $bump]);`));
+  assert.deepEqual(out[0], ["409 conflict", "409 conflict"]);
+  assert.deepEqual([polylang(en.id)[1], polylang(fr.id)[1], polylang(out[1])[1]], [{ en: en.id, fr: fr.id }, { en: en.id, fr: fr.id }, { fr: out[1] }]);
+  assert.deepEqual((await ok("GET", `/guides/${en.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
+});
+
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
   const out = JSON.parse(wp("eval", `
     $db = \\Zero\\Wp\\Plugin::instance()->db();

@@ -46,10 +46,33 @@ final class Polylang
             return array_values(array_filter($metas, static fn ($key) => !str_starts_with((string) $key, 'zero_') && !str_starts_with((string) $key, '_zero_')));
         }, 100, 3);
         // A group linked outside Zero's API (wp-admin "+", pll_save_post_translations): adopt synced columns.
+        // Before Polylang changes a group term (each change runs these core hooks before writing),
+        // remember the group's membership as it was, so a refused link can put it back exactly.
+        $remember = static function (int $ttId): void {
+            if (!self::$busy && !self::zeroWriting() && !isset(self::$priorGroups[$ttId])) {
+                self::$priorGroups[$ttId] = self::membersOf($ttId);
+            }
+        };
+        add_action('edit_term_taxonomy', static function (mixed $ttId, mixed $taxonomy) use ($remember): void {
+            if ($taxonomy === 'post_translations') {
+                $remember((int) $ttId);
+            }
+        }, 10, 2);
+        add_action('pre_delete_term', static function (mixed $term, mixed $taxonomy) use ($remember): void {
+            if ($taxonomy === 'post_translations' && ($t = get_term((int) $term, 'post_translations')) instanceof \WP_Term) {
+                $remember((int) $t->term_taxonomy_id);
+            }
+        }, 10, 2);
+        add_action('delete_term_relationships', static function (mixed $objectId, mixed $ttIds, mixed $taxonomy) use ($remember): void {
+            if ($taxonomy === 'post_translations') {
+                foreach ((array) $ttIds as $ttId) {
+                    $remember((int) $ttId);
+                }
+            }
+        }, 10, 3);
         add_action('set_object_terms', static function (int $objectId, mixed $terms, mixed $ttIds, string $taxonomy, mixed $append = false, mixed $oldTtIds = []): void {
             if ($taxonomy === 'post_translations' && !self::$busy && !self::zeroWriting() && ($ttIds = (array) $ttIds) !== []) {
-                $group = (int) reset($ttIds);
-                self::adopt($objectId, $group, in_array($group, array_map('intval', (array) $oldTtIds), true));
+                self::adopt($objectId, (int) reset($ttIds));
             }
         }, 10, 6);
         add_action('activated_plugin', static function (): void {
@@ -247,17 +270,32 @@ final class Polylang
         return $out;
     }
 
-    /** @var array<string, true> group links (term + membership) already adopted in this request */
+    /** @var array<string, true> intended groups (term + members) adopted successfully in this request */
     private static array $adopted = [];
+    /** @var array<int, array<string, int>> group term → its membership before Polylang changed it in this request */
+    private static array $priorGroups = [];
+
+    /** language slug => post id of a post_translations term's current members (from term relationships). */
+    private static function membersOf(int $ttId): array
+    {
+        $out = [];
+        foreach (get_objects_in_term(get_term_by('term_taxonomy_id', $ttId, 'post_translations')?->term_id ?? 0, 'post_translations') ?: [] as $id) {
+            if (($lang = pll_get_post_language((int) $id)) !== false && $lang !== null) {
+                $out[(string) $lang] = (int) $id;
+            }
+        }
+
+        return $out;
+    }
 
     /**
      * A group linked outside Zero's API. Polylang writes the group's full membership into the group
      * term, then links its posts one at a time; on the first link, every intended member adopts the
-     * group's synced values in one transaction, checked as a whole. If that fails, every member
-     * already linked is taken back out of the group through Polylang (the link was written before
-     * Zero learned of it) and the error propagates, so Polylang links no further posts.
+     * group's synced values in one transaction, checked as a whole. If that fails, every group this
+     * link touched is put back as it was before Polylang changed it (remembered by the term hooks
+     * in boot()), and the error propagates, so Polylang links no further posts.
      */
-    private static function adopt(int $postId, int $groupTt, bool $wasMember): void
+    private static function adopt(int $postId, int $groupTt): void
     {
         $plugin = Runtime::plugin();
         $type = get_post_type($postId);
@@ -269,17 +307,6 @@ final class Polylang
         $key = $groupTt . ':' . implode(',', $intended);
         if (isset(self::$adopted[$key]) || count($intended) < 2) {
             return;
-        }
-        self::$adopted[$key] = true;
-        // The group as it was before this link. $postId is the first post Polylang links now (its
-        // old terms tell whether it was a member); the others aren't linked yet, so their current
-        // relationship is their prior one.
-        $before = [];
-        foreach ($intended as $member) {
-            $was = $member === $postId ? $wasMember : in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true);
-            if ($was) {
-                $before[(string) pll_get_post_language($member)] = $member;
-            }
         }
         foreach ($plugin->schema->collections() as $name => $spec) {
             if (($spec['wp']['postType'] ?? null) !== $type) {
@@ -297,22 +324,42 @@ final class Polylang
                     GroupSync::adoptAll((string) $name, $rows);
                 });
             } catch (\Throwable $e) {
-                // Undo the link: posts new to the group leave it; the group it had before is restored.
-                foreach ($intended as $member) {
-                    if (!in_array($member, $before, true) && in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true)) {
-                        self::busy(static fn () => PLL()->model->post->delete_translation($member));
-                    }
-                    clean_object_term_cache($member, (string) get_post_type($member));
-                }
-                if (count($before) >= 2) {
-                    self::busy(static fn () => pll_save_post_translations($before));
-                }
-                clean_term_cache($groupTt, 'post_translations');
+                self::restore($intended);
                 throw $e;
             }
+            self::$adopted[$key] = true;
+            self::$priorGroups = []; // committed: nothing to put back any more
 
             return;
         }
+    }
+
+    /**
+     * Put every group this request's link touched back as it was: each post leaves its current
+     * group, then each remembered group is saved again with its prior members.
+     *
+     * @param list<int> $intended
+     */
+    private static function restore(array $intended): void
+    {
+        $prior = self::$priorGroups;
+        self::$priorGroups = [];
+        $posts = $intended;
+        foreach ($prior as $members) {
+            array_push($posts, ...array_values($members));
+        }
+        self::busy(static function () use ($posts, $prior): void {
+            foreach (array_unique($posts) as $post) {
+                PLL()->model->post->delete_translation($post);
+                clean_object_term_cache($post, (string) get_post_type($post));
+            }
+            foreach ($prior as $ttId => $members) {
+                if (count($members) >= 2) {
+                    pll_save_post_translations($members);
+                }
+                clean_term_cache($ttId, 'post_translations');
+            }
+        });
     }
 
     private static function zeroWriting(): bool

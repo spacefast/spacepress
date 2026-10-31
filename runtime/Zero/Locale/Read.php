@@ -110,7 +110,8 @@ final class Read
             return [];
         }
         $select = static fn (array $where) => db()->store()->select($collection, \Zero\Sql::select(db()->schema(), db()->store(), $collection, ['where' => $where]));
-        $key = static fn (mixed $v) => is_numeric($v) && !is_string($v) ? $v : (is_numeric($v) ? (int) $v : $v);
+        $pkCol = db()->schema()->collection($collection)['columns'][$pk];
+        $key = static fn (mixed $v) => \Zero\Schema::decode($pkCol, $v); // the column's own type: text ids stay text
         $groupOf = [];
         foreach ($select([$pk => ['in' => $ids]]) as $raw) {
             $groupOf[Js::str($key($raw[$pk]))] = $raw['translationGroup'];

@@ -64,7 +64,7 @@ final class Lock
             $current = [];
             if (($row['translationGroup'] ?? null) !== null) {
                 foreach ($store->db->run('SELECT `' . $pk . '` AS pk, `locale` FROM `' . $store->tables->table($collection) . '` WHERE `translationGroup` = ? FOR UPDATE', [$row['translationGroup']]) as $r) {
-                    $current[(string) $r['locale']] = is_numeric($r['pk']) ? (int) $r['pk'] : $r['pk'];
+                    $current[(string) $r['locale']] = \Zero\Schema::decode(db()->schema()->collection($collection)['columns'][$pk], $r['pk']);
                 }
             }
             $current += $seen;

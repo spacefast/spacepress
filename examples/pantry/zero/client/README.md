@@ -34,8 +34,9 @@ await wp.auth.signIn();                  // leaves the page
 const user = await wp.auth.handleCallback(); // on /callback
 
 // Both: anonymous visitors write as guests, and keep their rows when they sign up.
+// Needs an `auth: true` collection and a collection whose create rule admits guests.
 const app = createClient({ auth: { guests: true } });
-await app.posts.create({ title: "Draft" }); // starts a guest session on first write
+await app.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // starts a guest session on first write
 await app.auth.upgrade("alice", "correct horse battery"); // standalone; WordPress: upgrade() redirects
 
 await zero.auth.signOut();

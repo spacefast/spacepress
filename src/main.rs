@@ -5,7 +5,7 @@
 //! zero build [dir] [--target standalone|wp] [--out <dir>] [--quiet]
 //! zero check [dir]                      compile for both targets; write nothing
 //! zero dev [dir] [--port <n>]           build, then serve with `php -S`
-//! zero dev [dir] --wp [--port <n>]      build the plugin and boot it in docker WordPress
+//! zero dev [dir] --wp [--port <n>]      build the plugin and boot it in docker WordPress (embedded harness)
 //! zero users|tokens <args...> [--dir d] the standalone CLI (zero/bin/zero.php user/token ...)
 //! zero jobs <list|run|retry|cancel|work> [--dir d]   the standalone job queue (§6.1)
 //! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)

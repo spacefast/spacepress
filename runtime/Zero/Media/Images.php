@@ -158,20 +158,22 @@ final class Images
     {
         $w = imagesx($img);
         $h = imagesy($img);
-        $mask = [];
+        $mask = str_repeat("\0", $w * $h); // one byte per pixel
+        $any = false;
         for ($y = 0; $y < $h; $y++) {
             for ($x = 0; $x < $w; $x++) {
                 if (((imagecolorat($img, $x, $y) >> 24) & 0x7F) >= 64) {
-                    $mask[] = [$x, $y];
+                    $mask[$y * $w + $x] = "\1";
+                    $any = true;
                 }
             }
         }
         imagetruecolortopalette($img, false, 255);
-        if ($mask !== []) {
+        if ($any) {
             $key = imagecolorallocate($img, 255, 0, 255);
             imagecolortransparent($img, $key);
-            foreach ($mask as [$x, $y]) {
-                imagesetpixel($img, $x, $y, $key);
+            for ($i = strpos($mask, "\1"); $i !== false; $i = strpos($mask, "\1", $i + 1)) {
+                imagesetpixel($img, $i % $w, intdiv($i, $w), $key);
             }
         }
 

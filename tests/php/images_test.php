@@ -87,6 +87,16 @@ $small = imagecreatefromgif("$dir/clear-small.gif");
 $corner = imagecolorat($small, 0, 0);
 eq('resized GIF keeps a transparent background and an opaque centre', [$corner === imagecolortransparent($small), imagecolorsforindex($small, imagecolorat($small, 10, 10))['red'] > 240], [true, true]);
 
+// A large, mostly transparent GIF resizes within a 128 MB request.
+$big = imagecreate(1000, 1000);
+imagecolortransparent($big, imagecolorallocate($big, 0, 255, 0));
+imagegif($big, "$dir/big.gif");
+$limit = ini_get('memory_limit');
+ini_set('memory_limit', '128M');
+Images::render("$dir/big.gif", 'image/gif', Images::dimensions(1000, 1000, 800, 800, true), "$dir/big-small.gif");
+ini_set('memory_limit', $limit);
+eq('a large transparent GIF resizes under 128 MB', getimagesize("$dir/big-small.gif")[0], 800);
+
 // The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
 require dirname(__DIR__, 2) . '/runtime/Zero/Wp/Media/ImageCdn.php';
 eq('CDN cover args carry the focal crop rectangle; inside args fit', [

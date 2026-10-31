@@ -517,7 +517,8 @@ final class Db
     }
 
     /** Only json() values keep the empty-object marker; field access, rules and hooks see plain arrays. */
-    private static function plainOutsideJson(array $columns, array $data): array
+    /** The marker → plain arrays in every value but a json() column's (writes and permission checks). */
+    public static function plainOutsideJson(array $columns, array $data): array
     {
         foreach ($data as $name => $v) {
             $data[$name] = isset($columns[$name]) ? Schema::plainOutsideJson($columns[$name], $v) : Js::plain($v);

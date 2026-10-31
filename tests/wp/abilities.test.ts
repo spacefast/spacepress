@@ -30,10 +30,12 @@ async function runAbility(name: string, input: unknown, who: Who, method: "GET" 
 const outcome = (r: { status: number; json: any }) => ({ status: r.status, code: r.status < 300 ? null : String(r.json.code).replace(/^zero_/, "") });
 
 let postId = 0;
+let eventId = 0;
 before(() => {
   // A post the author doesn't own (authors.userId is someone else), so author update is filtered out.
   const [row] = zero("insert", "posts", JSON.stringify({ title: `Ability post ${run}`, status: "published" }));
   postId = row.id;
+  eventId = zero("insert", "events", JSON.stringify({ title: `Ability event ${run}`, extra: { k: 1 } }))[0].id;
 });
 
 // The golden pins this lane's slice of the shared WP test app (the blog's entities plus
@@ -89,6 +91,10 @@ test("executing an ability answers each user exactly as REST does", async () => 
     ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `rest ${run}` },
       async () => assert.equal((await ok("GET", "/globals/settings")).tagline, `agents ${run}`)],
     ["blog/approve-comment", { id: 999999999 }, "POST", "POST", "/actions/approveComment", { id: 999999999 }],
+    // Non-editors may only reset a json() value to {}: the ability's check sees `{}` as REST does, and
+    // the run stores `{}`, not `[]`.
+    ["blog/events-update", { id: eventId, patch: { extra: {} } }, "POST", "PATCH", `/events/${eventId}`, { extra: {} },
+      async () => assert.deepEqual((await ok("GET", `/events/${eventId}`)).extra, {})],
   ];
   const seen: Record<string, Record<Who, { status: number; code: string | null }>> = {};
   for (const [name, input, method, restMethod, restPath, restBody, effect] of cases) {
@@ -110,6 +116,7 @@ test("executing an ability answers each user exactly as REST does", async () => 
   assert.deepEqual(seen["blog/signups-list"].author, { status: 403, code: "forbidden" });
   assert.deepEqual(seen["blog/global-settings-update"].editor, { status: 200, code: null });
   assert.deepEqual(seen["blog/approve-comment"].editor, { status: 404, code: "not_found" });
+  assert.deepEqual(seen["blog/events-update"].author, { status: 200, code: null });
 });
 
 test("list input typed by core over GET reaches Zero typed inside AND/OR/NOT", async () => {

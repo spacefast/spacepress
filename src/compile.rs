@@ -2740,6 +2740,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
             let mut bin_ty = None;
+            let mut logical_keep = None;
             let new = match op {
                 None => v.php.clone(),
                 Some(AssignOp::Bin(b)) => {
@@ -2760,15 +2761,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     bin_ty = Some(r.ty.clone());
                     r.php
                 }
-                Some(AssignOp::Log(LogOp::Nullish)) => format!("{read} ?? {}", v.wrapped()),
+                // Logical assignment writes only when it assigns (JS leaves the place untouched).
                 Some(AssignOp::Log(l)) => {
-                    let cond = self.truthy(&Out::atom(read.clone(), t.ty.clone()));
-                    let keep = if l == LogOp::Or {
-                        cond
-                    } else {
-                        format!("!{}", paren(&cond))
+                    let keep = match l {
+                        LogOp::Nullish => format!("{read} !== null"),
+                        LogOp::Or => self.truthy(&Out::atom(read.clone(), t.ty.clone())),
+                        LogOp::And => format!("!{}", paren(&self.truthy(&Out::atom(read.clone(), t.ty.clone())))),
                     };
-                    format!("{} ? {read} : {}", paren(&keep), v.wrapped())
+                    logical_keep = Some(keep);
+                    v.php.clone()
                 }
             };
             let ty = match op {
@@ -2776,7 +2777,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Some(AssignOp::Log(l)) => logical_result_type(l, &t.ty, &v.ty),
                 Some(AssignOp::Bin(_)) => bin_ty.expect("binary result type"),
             };
-            let write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
+            let mut write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
+            if let Some(keep) = logical_keep {
+                write = format!("({} ? {read} : {write})", paren(&keep));
+            }
             let php = if pre.is_empty() {
                 write
             } else {
@@ -2824,7 +2828,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("!{}", paren(&cond))
                 };
                 Ok(Out::new(
-                    format!("{} = {} ? {} : {}", t.php, paren(&keep), t.php, v.wrapped()),
+                    format!("({} ? {} : ({} = {}))", paren(&keep), t.php, t.php, v.php),
                     logical_result_type(l, &t.ty, &v.ty),
                 ))
             }

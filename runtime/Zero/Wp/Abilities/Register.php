@@ -28,6 +28,8 @@ final class Register
     private static ?string $sanitizing = null;
     private static ?string $method = null;
     private static ?string $untyped = null;
+    /** The REST run endpoint's JSON `input`, decoded with `{}` kept: [ability name, input]. */
+    private static ?array $raw = null;
 
     public static function categories(): void
     {
@@ -115,10 +117,36 @@ final class Register
             if ($on) {
                 self::$method = self::$sanitizing;
                 self::$untyped = null;
+                self::$raw = $request instanceof \WP_REST_Request ? self::rawInput($request) : null;
             }
 
             return $passthrough;
         };
+    }
+
+    /**
+     * Core decodes a POSTed run body associatively, so `{}` in a json() value reaches the ability as
+     * `[]`. Zero declares its JSON input invalid during sanitizing, so core passes the body through
+     * as sent: the same input, decoded again with `{}` kept, is what the ability runs on.
+     */
+    private static function rawInput(\WP_REST_Request $request): ?array
+    {
+        if ($request->get_method() !== 'POST' || !preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
+            return null;
+        }
+        try {
+            $body = \Zero\Js::decodeJson((string) $request->get_body());
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return is_array($body) && array_key_exists('input', $body) ? [urldecode($m[1]), $body['input']] : null;
+    }
+
+    /** The executing ability's input as sent, when the REST run endpoint carried it. */
+    public static function sentInput(string $name, mixed $input): mixed
+    {
+        return self::$raw !== null && self::$raw[0] === $name ? self::$raw[1] : $input;
     }
 
     /** rest_post_dispatch: the request that carried the input is over. */
@@ -126,6 +154,7 @@ final class Register
     {
         self::$method = null;
         self::$untyped = null;
+        self::$raw = null;
 
         return $response;
     }
@@ -251,7 +280,7 @@ final class Register
                 'name' => "$app/$k-update", 'op' => 'update',
                 'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay.",
                 'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']),
-                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'),
+                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => \Zero\Db::plainOutsideJson($spec['columns'], Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch')),
                 'call' => static fn (array $in): array => ['PATCH', $item()($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ];
         }
@@ -340,7 +369,7 @@ final class Register
                 'name' => "$app/global-$k-update", 'op' => 'update', 'label' => "Update $label",
                 'description' => "Change some $label values of the $appLabel app; the input is the patch.",
                 'input' => JsonSchema::input($patch), 'output' => $values, 'annotations' => [],
-                'rule' => [$rules['update'], 'update', "update $name"], 'data' => static fn (array $in): array => $in,
+                'rule' => [$rules['update'], 'update', "update $name"], 'data' => static fn (array $in): array => \Zero\Db::plainOutsideJson($global['fields'], $in),
                 'call' => static fn (array $in): array => ['PATCH', '/globals/' . rawurlencode($name), [], $in],
             ],
         ];

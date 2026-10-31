@@ -269,7 +269,12 @@ export default defineConfig({
       const text: { s: string } = { s: "a" };
       const joined = (text.s += "b") + 1;
       const indexed = ({} as Record<string, number>)["x"] ?? -1;
-      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep, once, j, joined, text, indexed];
+      // A short-circuited logical assignment leaves the place untouched (no key appears).
+      const skipped: { x?: string; y?: string; z?: string } = {};
+      skipped.x &&= "a";
+      skipped.y ||= "b";
+      skipped.y ||= "c";
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep, once, j, joined, text, indexed, JSON.stringify(skipped)];
     }),
     errors: run(() => {
       try {

@@ -35,7 +35,14 @@ export const events = collection("events", {
   kinds: select({ options: ["talk", "workshop", "social"], multiple: true }).notNull().default([]),
   postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
   extra: json(), // a json() meta column: `{}` must stay an object through postmeta
-}, { access: { read: "anyone", create: "editor" } });
+}, {
+  access: {
+    read: "anyone",
+    create: "editor",
+    // Other signed-in users may only reset `extra` to the empty object: the rule must see `{}`, not `[]`.
+    update: (ctx) => ctx.user?.role === "editor" || ctx.user?.role === "admin" || (ctx.user !== null && JSON.stringify(ctx.data?.extra) === "{}"),
+  },
+});
 
 const appSchema = merge("collection", [schema, { signups, events }, ...lanes.map((l) => l.schema)]);
 // The blog's relations, plus events → posts and posts → signups (an editor-only relation target).

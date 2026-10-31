@@ -38,6 +38,7 @@ final class Invoke
         if ($plugin !== null && $plugin->unavailable() !== null) {
             return new \WP_Error('zero_unavailable', \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
+        $input = Register::sentInput($op['name'], $input);
         if (($op['defer'] ?? false) || $plugin === null || self::object($input) === null) {
             return true;
         }
@@ -48,7 +49,7 @@ final class Invoke
             return self::error($e); // a suspended account (§6.2)
         }
         try {
-            $data = isset($op['data']) ? \Zero\Js::plain(($op['data'])(self::object($input))) : null;
+            $data = isset($op['data']) ? ($op['data'])(self::object($input)) : null;
             $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data) !== false;
         } catch (\Throwable) {
             return true;
@@ -65,7 +66,7 @@ final class Invoke
             return new \WP_Error('zero_unavailable', $plugin === null ? 'No Zero app is active' : \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
         try {
-            $input = self::object($input) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
+            $input = self::object(Register::sentInput($op['name'], $input)) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
             if (isset($op['run'])) {
                 return ($op['run'])($input);
             }

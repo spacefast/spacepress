@@ -68,6 +68,13 @@ final class Polylang
             // Until every language exists a localized write would store no language, so a failure
             // (lock timeout, Polylang refusing) refuses Zero like lagging storage; the next request retries.
             $problem = Migrator::upgrade($plugin->connection(), 'zero_polylang_languages', static fn (): bool => self::provisioned($locales, true), self::ensureLanguages(...));
+            // Whoever provisioned, this request may hold the language list it loaded before: reload
+            // it, and refuse if a configured language is still missing.
+            self::reload();
+            $missing = array_diff(array_map(self::slug(...), $locales['all']), array_map('strval', (array) pll_languages_list(['fields' => 'slug'])));
+            if ($problem === null && $missing !== []) {
+                $problem = 'Polylang is missing the languages ' . implode(', ', $missing);
+            }
             if ($problem !== null) {
                 $plugin->refuse($problem);
             }
@@ -205,7 +212,7 @@ final class Polylang
         if ($locales === null || !function_exists('PLL') || !function_exists('pll_languages_list')) {
             return;
         }
-        PLL()->model->clean_languages_cache(); // another request may have added some since this one loaded them
+        self::reload(); // another request may have added some since this one loaded them
         $have = array_map('strval', (array) pll_languages_list(['fields' => 'slug']));
         $ordered = array_values(array_unique([$locales['default'], ...$locales['all']]));
         foreach ($ordered as $i => $locale) {
@@ -234,6 +241,13 @@ final class Polylang
             }
         }
         update_option('zero_polylang_languages', self::state($locales), false);
+    }
+
+    /** Polylang's language list as committed now: its own cache, and WordPress's term-query cache it reads through. */
+    private static function reload(): void
+    {
+        wp_cache_set_terms_last_changed();
+        PLL()->model->clean_languages_cache();
     }
 
     private static function provisioned(array $locales, bool $fresh = false): bool

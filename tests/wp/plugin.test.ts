@@ -140,7 +140,7 @@ async function until(what: string, ok: () => boolean) {
   }
 }
 
-test("concurrent first requests create each Polylang language once", async () => {
+test("concurrent first requests create each Polylang language once, and each stores its language", async () => {
   const configured = languages();
   // Another WordPress process takes the provisioning lock, then leaves the site with no languages and
   // no marker (a first install), and holds the lock while requests arrive and queue on it.
@@ -157,13 +157,18 @@ test("concurrent first requests create each Polylang language once", async () =>
     await until("the holder", () => out.includes("held"));
     assert.deepEqual(languages(), []);
     const waiting = () => Number(sql("SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE 'SELECT GET_LOCK%'")[0].n);
-    const queued = [1, 2, 3].map(() => fetch(`${api}/tours?limit=1`).then((r) => r.status));
-    await until("three requests waiting on the provisioning lock", () => waiting() >= 3);
+    // Localized creates, each in its own language: a request that waited holds the language list it
+    // loaded before provisioning, and must still store its post's language.
+    const queued = configured.map((locale: string) => http("POST", `${api}/tours`, { as: "editor", body: { title: `Queued ${locale} ${run}`, locale } }));
+    await until("every create waiting on the provisioning lock", () => waiting() >= configured.length);
     assert.deepEqual(languages(), [], "nothing was created while the lock was held");
     holder.stdin.end("go\n");
     await exited;
-    assert.deepEqual(await Promise.all(queued), [200, 200, 200], "no request saw a provisioning failure");
+    const created = await Promise.all(queued);
+    assert.deepEqual(created.map((r) => r.status), configured.map(() => 201), JSON.stringify(created.map((r) => r.json)));
     assert.deepEqual(languages(), configured, "each language exists once");
+    const stored = JSON.parse(wp("eval", `echo wp_json_encode(array_map('pll_get_post_language', ${JSON.stringify(created.map((r) => r.json.data.id))}));`));
+    assert.deepEqual(stored, configured, "every post stored its language");
   } finally {
     holder.kill();
   }

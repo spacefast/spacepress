@@ -4,7 +4,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { api, core, http, ok, problem, qs, run, sql, wp, wpTry, zero } from "./env.ts";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { api, core, harness, http, ok, problem, qs, run, sql, wp, wpTry, zero } from "./env.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+/** The binary run.sh built; honours CARGO_TARGET_DIR. */
+const zeroBinary = () => `${process.env.CARGO_TARGET_DIR ?? join(here, "../../target")}/debug/zero`;
 
 const canon = (v: unknown): string => {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -304,4 +313,109 @@ test("sync on WordPress", async (t) => {
     await problem("POST", "/sync/guides", { as: "editor", body: { record: { uid: uidOf(2), fields: { title: "Orphan", writerId: uidOf(3) }, body: null }, expect: "absent" } },
       { status: 422, code: "sync_missing_reference", pointer: "/fields/writerId" });
   });
+});
+
+// The `zero sync` CLI against this WordPress (design §5.8): pull posts into Markdown files, push a local
+// edit, let an editor edit in WordPress, then merge a non-conflicting edit and write a conflict file for
+// a conflicting one. A wp-admin trash removes the file on the next run.
+// Only `guides` is synced into this project: other lanes' fragments may add synced collections too.
+test("zero sync against WordPress", async (t) => {
+  const project = mkdtempSync(join(tmpdir(), "zero-wp-sync-"));
+  // The sync directories come from the site's /_schema; the project is just a directory of files.
+  const writer = zero("insert", "writers", JSON.stringify({ name: `CLI writer ${run}` }))[0];
+  const slug = `cli-${run}`;
+  const created = zero("insert", "guides", JSON.stringify({ title: `CLI ${run}`, slug, summary: "From WordPress", level: "intro", writerId: writer.id,
+    body: "<!-- wp:paragraph -->\n<p>First paragraph.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Second paragraph.</p>\n<!-- /wp:paragraph -->" }))[0];
+  const sync = (...args: string[]) => spawnSync(zeroBinary(), ["sync", ...args, project, "--only", "guides", "--site", harness.url, "--app-password", `editor:${harness.users.editor.appPassword}`, "--no-commit", "--json"], { encoding: "utf8" });
+  const file = join(project, `content/guides/${slug}.md`);
+  const row = () => zero("find", "guides", JSON.stringify({ where: { id: created.id } }))[0];
+
+  await t.test("1. pull: WordPress posts become Markdown files", () => {
+    const out = sync();
+    assert.equal(out.status, 0, out.stdout + out.stderr);
+    const text = readFileSync(file, "utf8");
+    assert.match(text, new RegExp(`^---\\nuid: ${created.uid}\\ntitle: CLI ${run}\\nslug: ${slug}\\nsummary: From WordPress\\nlevel: intro\\nwriterId: ${writer.uid}\\nreview: null\\nstatus: published\\n`));
+    assert.ok(text.endsWith("---\nFirst paragraph.\n\nSecond paragraph.\n"), text);
+    assert.equal(JSON.parse(sync().stdout).data.applied, 0, "a second run is a no-op");
+  });
+
+  await t.test("2. push: a file edit lands in WordPress as blocks", () => {
+    writeFileSync(file, readFileSync(file, "utf8").replace("Second paragraph.", "Second paragraph, from the file.\n\n## A new heading"));
+    const out = sync();
+    assert.equal(out.status, 0, out.stdout + out.stderr);
+    assert.match(row().body, /Second paragraph, from the file\.<\/p>[\s\S]*<!-- wp:heading -->\n<h2 class="wp-block-heading">A new heading<\/h2>/);
+  });
+
+  await t.test("3 + 4. an editor edits the post: other fields merge, the same field conflicts", async () => {
+    // The editor changes the summary in WordPress; the file changes the level. Different fields merge.
+    const saved = await http("POST", `${core}/zero_guides/${created.id}`, { as: "editor", body: { acf: { zero_summary: "Edited in WordPress" } } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.json));
+    writeFileSync(file, readFileSync(file, "utf8").replace("level: intro", "level: advanced"));
+    const merged = sync();
+    assert.equal(merged.status, 0, merged.stdout + merged.stderr);
+    assert.deepEqual([row().summary, row().level], ["Edited in WordPress", "advanced"]);
+    assert.match(readFileSync(file, "utf8"), /summary: Edited in WordPress\nlevel: advanced\n/);
+
+    // Both edit the body, in different paragraphs: the site merges the lines and both edits survive.
+    const blocks = row().body.replace("First paragraph.", "First paragraph, edited in WordPress.");
+    const edited = await http("POST", `${core}/zero_guides/${created.id}`, { as: "editor", body: { content: blocks } });
+    assert.equal(edited.status, 200, JSON.stringify(edited.json));
+    writeFileSync(file, readFileSync(file, "utf8").replace("## A new heading", "## A new heading, from the file"));
+    const bodies = sync();
+    assert.equal(bodies.status, 0, bodies.stdout + bodies.stderr);
+    assert.match(row().body, /First paragraph, edited in WordPress\.[\s\S]*A new heading, from the file/);
+    assert.match(readFileSync(file, "utf8"), /First paragraph, edited in WordPress\.[\s\S]*## A new heading, from the file/);
+
+    // Both change the title: a conflict file, and neither side is touched.
+    const titled = await http("POST", `${core}/zero_guides/${created.id}`, { as: "editor", body: { title: "Title from WordPress" } });
+    assert.equal(titled.status, 200);
+    writeFileSync(file, readFileSync(file, "utf8").replace(`title: CLI ${run}`, "title: Title from the file"));
+    const conflicted = sync();
+    assert.equal(conflicted.status, 0, conflicted.stdout + conflicted.stderr);
+    assert.equal(JSON.parse(conflicted.stdout).data.conflicts.length, 1);
+    const conflict = readFileSync(join(project, `.zero/conflicts/${created.uid}.md`), "utf8");
+    assert.match(conflict, /# Fields: \/fields\/title\n[\s\S]*<<<<<<< files\n[\s\S]*title: Title from the file[\s\S]*\|\|\|\|\|\|\| base\n[\s\S]*=======\n[\s\S]*title: Title from WordPress[\s\S]*>>>>>>> wordpress\n/);
+    assert.equal(row().title, "Title from WordPress");
+    assert.match(readFileSync(file, "utf8"), /title: Title from the file/);
+    assert.equal(sync("--check").status, 2, "a pending conflict is exit 2 under --check");
+  });
+
+  await t.test("resolve applies the edited conflict file to WordPress and the file", () => {
+    const path = join(project, `.zero/conflicts/${created.uid}.md`);
+    const conflict = readFileSync(path, "utf8");
+    const header = conflict.split("\n").filter((l) => l.startsWith("#")).join("\n") + "\n";
+    const theirs = conflict.split("=======\n")[1].split(">>>>>>> wordpress")[0].replace("title: Title from WordPress", "title: Agreed title");
+    writeFileSync(path, header + theirs);
+    const out = sync("resolve", created.uid);
+    assert.equal(out.status, 0, out.stdout + out.stderr);
+    assert.equal(row().title, "Agreed title");
+    assert.match(readFileSync(file, "utf8"), /title: Agreed title/);
+    assert.ok(!existsSync(path));
+    assert.equal(JSON.parse(sync().stdout).data.applied, 0, "both sides agree after resolving");
+  });
+
+  await t.test("a slug renamed in the file moves the file and the post's slug", () => {
+    writeFileSync(file, readFileSync(file, "utf8").replace(`slug: ${slug}`, `slug: ${slug}-moved`));
+    assert.equal(sync().status, 0);
+    assert.equal(row().slug, `${slug}-moved`);
+    assert.ok(existsSync(join(project, `content/guides/${slug}-moved.md`)) && !existsSync(file));
+  });
+
+  await t.test("deleting the file moves the post to the WordPress trash", () => {
+    rmSync(join(project, `content/guides/${slug}-moved.md`));
+    assert.equal(sync().status, 0);
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${created.id}`)[0].post_status, "trash");
+  });
+
+  await t.test("a post trashed in wp-admin deletes its file", () => {
+    const other = zero("insert", "guides", JSON.stringify({ title: `Doomed ${run}`, slug: `doomed-${run}` }))[0];
+    assert.equal(sync().status, 0);
+    assert.ok(existsSync(join(project, `content/guides/doomed-${run}.md`)));
+    // What wp-admin's "Move to Trash" calls (WP-CLI's `post delete` won't trash a non-public type).
+    wp("eval", `wp_set_current_user(get_user_by('login', 'editor')->ID); echo wp_trash_post(${other.id}) ? 'ok' : 'no';`);
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${other.id}`)[0].post_status, "trash");
+    assert.equal(sync().status, 0);
+    assert.ok(!existsSync(join(project, `content/guides/doomed-${run}.md`)));
+  });
+  rmSync(project, { recursive: true, force: true });
 });

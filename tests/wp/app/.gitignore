@@ -1,3 +1,4 @@
-.zero/
 zero/
 zero.gen.ts
+.zero/*
+!.zero/sync-base.json

@@ -34,6 +34,10 @@ expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translatio
 // A required synced column (price): translations may omit it, fresh rows may not.
 const priced = collection("priced", { id: id(), title: text().notNull().localized(), price: integer().notNull(), handle: slug().notNull() }, { editor: false });
 
+// A text primary key not named `id`: translation ids are that key's type, and a translation gives its own key.
+const skus = collection("skus", { code: text().primaryKey(), title: text().notNull().localized(), price: integer().notNull() }, { editor: false });
+expectType<Equal<(typeof skus.$inferSelect)["translations"], Partial<Record<Locale, string>>>>();
+
 const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
 const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });
 const roleInsert: typeof roles.$inferInsert = { role: "item", password: null };
@@ -58,6 +62,11 @@ async function surface() {
   await db.insert(priced).values({ title: "Price", handle: "price" });
   // @ts-expect-error a slug is per row: a translation must give its own
   await db.insert(priced).values({ title: "Prix", locale: "de", translationOf: 1 });
+  await db.insert(skus).values({ code: "sku-de", title: "Preis", locale: "de", translationOf: "sku-en" });
+  // @ts-expect-error translationOf is the text key, not a number
+  await db.insert(skus).values({ code: "sku-de", title: "Preis", locale: "de", translationOf: 1 });
+  // @ts-expect-error the primary key is per row: a translation must give its own
+  await db.insert(skus).values({ title: "Preis", locale: "de", translationOf: "sku-en" });
   expectType<Equal<typeof row.locale, Locale>>();
   expectType<Equal<typeof row.translations, LocalizedColumns["translations"]>>();
   expectType<Equal<typeof row.uid, string>>();

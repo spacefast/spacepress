@@ -109,6 +109,7 @@ export interface ValidateCtx {
  * - `TData`       — the TS value type (enum union, `$type<T>()`, sub-field shapes, ...)
  * - `TNotNull`    — `.notNull()` / `.primaryKey()` / `id()`
  * - `THasDefault` — any default (`.default`, `.defaultNow`, `$default`, `$onUpdate`, `id()`)
+ * - `TPrimary`    — `.primaryKey()` / `id()`: row ids (`translationOf`, `translations`) take its type
  */
 export interface ColumnBuilder<
   TKind extends ColumnKind = ColumnKind,
@@ -116,6 +117,7 @@ export interface ColumnBuilder<
   TNotNull extends boolean = boolean,
   THasDefault extends boolean = boolean,
   TLocalized extends boolean = false,
+  TPrimary extends boolean = false,
 > {
   readonly [columnBrand]: {
     kind: TKind;
@@ -123,82 +125,84 @@ export interface ColumnBuilder<
     notNull: TNotNull;
     hasDefault: THasDefault;
     localized: TLocalized;
+    primaryKey: TPrimary;
   };
 
   /** Per-viewer field rules; omitted operations inherit collection access. */
   access(
-    this: ColumnBuilder<Exclude<ColumnKind, "id">, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<Exclude<ColumnKind, "id">, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     rules: { read?: FieldRule; create?: FieldRule; update?: FieldRule },
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Editor visibility only; the compiler checks scalar siblings and operators. */
   showIf(
-    this: ColumnBuilder<Exclude<ColumnKind, "id">, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<Exclude<ColumnKind, "id">, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     condition: SiblingFilter,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Translate this field per locale; other fields sync across the translation group. */
   localized(
-    this: ColumnBuilder<"text" | "richText" | "json" | "select" | "group" | "repeater" | "blocks", TData, TNotNull, THasDefault, TLocalized>,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, true>;
+    this: ColumnBuilder<"text" | "richText" | "json" | "select" | "group" | "repeater" | "blocks", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, true, TPrimary>;
 
   /** On a sub-field: required in every item. */
-  notNull(): ColumnBuilder<TKind, TData, true, THasDefault, TLocalized>;
+  notNull(): ColumnBuilder<TKind, TData, true, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
   default(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     value: TData,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Current time (timestamp) or today (date) as the SQL default. */
   defaultNow(
-    this: ColumnBuilder<"timestamp" | "date", TData, TNotNull, THasDefault, TLocalized>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+    this: ColumnBuilder<"timestamp" | "date", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Computed in PHP on insert. */
   $default(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Alias of `$default`. */
   $defaultFn(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
    * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
    */
   $onUpdate(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Alias of `$onUpdate`. */
   $onUpdateFn(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
-  unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Primary key: implies NOT NULL; an integer primary key is auto-assigned. */
   primaryKey(): ColumnBuilder<
     TKind,
     TData,
     true,
     TKind extends "integer" | "id" ? true : THasDefault,
-    TLocalized
+    TLocalized,
+    true
   >;
   /** Foreign key. The target column's type must match this column's type. */
   references(
-    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized>,
+    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     ref: () => Column<ColumnKind, NonNullable<TData>>,
     options?: ReferenceOptions,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Narrows the TS type only (no runtime effect), e.g. `json().$type<string[]>()`. */
-  $type<T>(): ColumnBuilder<TKind, T, TNotNull, THasDefault, TLocalized>;
+  $type<T>(): ColumnBuilder<TKind, T, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
-  min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Numbers: inclusive upper bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
-  max(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  max(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Strings only. A RegExp literal; compiled to PCRE at build time. */
-  pattern(this: ColumnBuilder<PatternKind, TData, TNotNull, THasDefault, TLocalized>, re: RegExp): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  pattern(this: ColumnBuilder<PatternKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, re: RegExp): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /**
    * Custom validation, compiled to PHP, run after type coercion on every write (REST, db, CLI, wp-admin).
    * Return `true`/nothing to accept, or a string to reject with that message (422 invalid_input, pointer /<col>).
@@ -206,10 +210,10 @@ export interface ColumnBuilder<
    */
   validate(
     fn: (value: NonNullable<TData>, ctx: ValidateCtx) => true | string | void,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized>;
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 }
 
-export type AnyColumnBuilder = ColumnBuilder<ColumnKind, unknown, boolean, boolean, boolean>;
+export type AnyColumnBuilder = ColumnBuilder<ColumnKind, unknown, boolean, boolean, boolean, boolean>;
 
 /**
  * A column of a defined collection, e.g. `locations.id`.
@@ -239,7 +243,7 @@ export interface Column<
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
 /** INTEGER PRIMARY KEY AUTOINCREMENT. */
-export declare function id(): ColumnBuilder<"id", number, true, true>;
+export declare function id(): ColumnBuilder<"id", number, true, true, false, true>;
 export declare function integer(): ColumnBuilder<"integer", number, false, false>;
 export declare function real(): ColumnBuilder<"real", number, false, false>;
 /** Single line by default; `multiline: true` is a textarea in editors. */
@@ -439,6 +443,7 @@ type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
     infer TData,
     infer TNotNull,
     infer THasDefault,
+    boolean,
     boolean
   >
     ? Column<TKind, TData, TNotNull, THasDefault, TName, K>
@@ -467,9 +472,9 @@ type HasLocalized<TCols> = true extends (TCols extends unknown ? {
 type LocalizedKeys<TCols> = {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: true } } ? K : never;
 }[keyof TCols];
-/** Per-row columns a translation doesn't copy: slugs. (A text `.primaryKey()` is per row too, but the builder type doesn't record it; the runtime refuses its omission.) */
+/** Per-row columns a translation doesn't copy: slugs and the primary key. */
 type PerRowKeys<TCols> = {
-  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { kind: "slug" } } ? K : never;
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { kind: "slug" } | { primaryKey: true } } ? K : never;
 }[keyof TCols];
 /** A localized insert: a new row, or a translation (`translationOf`) that copies every synced column, so those may be omitted. */
 type TranslationInsert<TCols> =
@@ -479,8 +484,14 @@ type TranslationInsert<TCols> =
         InsertShape<Pick<TCols, PerRowKeys<TCols>>> &
         Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: RowId<TCols> }
     >;
-/** The row id type of a collection: its `id()` column's (a number), else its `id` column's. */
-type RowId<TCols> = "id" extends keyof TCols ? NonNullable<SelectValue<TCols["id"]>> : number;
+/** The primary key column of `TCols` (`id()` or `.primaryKey()`, whatever its name). */
+type PrimaryKeyOf<TCols> = {
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { primaryKey: true } } ? K : never;
+}[keyof TCols];
+/** The row id type of a collection: its primary key's (a number for `id()`); `unknown` for an unknown collection. */
+type RowId<TCols> = string extends keyof TCols
+  ? unknown
+  : [PrimaryKeyOf<TCols>] extends [never] ? number : NonNullable<SelectValue<TCols[PrimaryKeyOf<TCols>]>>;
 type LocaleColumns<TCols> = {
   locale: ColumnBuilder<"text", Locale, true, true>;
   translations: ColumnBuilder<"json", Partial<Record<Locale, RowId<TCols>>>, true, true>;

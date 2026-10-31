@@ -442,6 +442,28 @@ fn emdash_datetime_keeps_its_iso_format_and_calendar() {
 }
 
 #[test]
+fn sanity_datetime_keeps_sanitys_iso_rule_and_rejects_numbers() {
+    let (_dir, app) = migrated_app(
+        "sanity",
+        "sanity.json",
+        r#"{"schema":{"types":[{"name":"notes","type":"document","fields":[{"name":"title","type":"string"},{"name":"at","type":"datetime"}]}]}}"#,
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([
+                ["at", "2026-01-01T10:00:00+02:00"],
+                ["at", "2026-W05-3"],
+                ["at", 1700000000000u64],
+                ["at", "tomorrow"]
+            ])
+        ),
+        json!([true, true, "/at", "/at"])
+    );
+}
+
+#[test]
 fn emdash_required_json_rejects_only_the_empty_string() {
     let (_dir, app) = migrated_app(
         "emdash",

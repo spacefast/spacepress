@@ -11,6 +11,10 @@ const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
 /// variant: calendar-valid dates, a time, and `Z` or an offset, stored as the given string.
 /// Zero's timestamp() accepts free-form dates and numbers and rolls 2026-02-30 to March 2.
 const EMDASH_DATETIME: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/";
+/// Sanity's datetime type check (`@sanity/validation` dateValidator `isoDate`, pinned commit in
+/// docs/zero-compatibility.md): a string in one of the ISO 8601 date/date-time forms. Sanity stores
+/// the string as given and, like this pattern, doesn't check calendar days.
+const SANITY_DATETIME: &str = r"/^(?:[-+]\d{2})?(?:\d{4}(?!\d{2}\b))(?:(-?)(?:(?:0[1-9]|1[0-2])(?:\1(?:[12]\d|0[1-9]|3[01]))?|W(?:[0-4]\d|5[0-2])(?:-?[1-7])?|(?:00[1-9]|0[1-9]\d|[12]\d{2}|3(?:[0-5]\d|6[1-6])))(?![T]$|[T][\d]+Z$)(?:[T\s](?:(?:(?:[01]\d|2[0-3])(?:(:?)[0-5]\d)?|24:?00)(?:[.,]\d+(?!:))?)(?:\2[0-5]\d(?:[.,]\d+)?)?(?:[Z]|(?:[+-])(?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?)?$/";
 /// Payload's email validator (`fields/validations.ts`, pinned commit in docs/zero-compatibility.md).
 /// Zero's email() accepts quoted local parts and address literals that Payload rejects.
 const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
@@ -368,8 +372,9 @@ fn field(
             if kind == "integer" { "integer()" } else { "real()" }.into()
         }
         "boolean" | "checkbox" => "boolean()".into(),
-        // EmDash stores the validated string (TEXT); timestamp() would normalize and widen it.
+        // EmDash and Sanity store the validated string; timestamp() would normalize and widen it.
         "datetime" if matches!(source, Source::Emdash) => format!("text().pattern({EMDASH_DATETIME})"),
+        "datetime" if matches!(source, Source::Sanity) => format!("text().pattern({SANITY_DATETIME})"),
         "datetime" | "date" => "timestamp()".into(),
         "email" if matches!(source, Source::Payload) => format!("email().pattern({PAYLOAD_EMAIL})"),
         "email" => "email()".into(),

@@ -73,9 +73,11 @@ epoch milliseconds. Payload's `Date.parse` check also accepted free-form dates
 such as `Jan 1 2026`; the report flags each date field so clients can send ISO.
 
 EmDash `datetime` fields become text validated by EmDash's own ISO 8601 rule:
-a calendar-valid date (no February 30), a time, and `Z` or an offset. The value
-is stored as given, like EmDash does. Zero's `timestamp()` would accept free-form
-dates and numbers and normalize them, so it is not used.
+a calendar-valid date (no February 30), a time, and `Z` or an offset. Sanity
+`datetime` fields become text validated by Sanity's own ISO 8601 pattern (date,
+week and ordinal forms; like Sanity, no calendar-day check). Both store the
+value as given, as the source does; Zero's `timestamp()` would accept numbers
+and normalize the text, so it is not used.
 
 Zero's PHP runtime has no empty JSON object: `{}`, and an object keyed `"0"`,
 `"1"`, ... in order, read back as arrays. A JSON default that is or contains

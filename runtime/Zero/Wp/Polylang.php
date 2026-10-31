@@ -277,13 +277,20 @@ final class Polylang
             }
             $db = $plugin->db();
             $pk = $spec['primaryKey'];
-            $db->transaction(static function () use ($db, $name, $pk, $members): void {
-                $rows = $db->findMany((string) $name, ['where' => [$pk => ['in' => $members]], 'locale' => '*']);
-                if (count($rows) >= 2) {
-                    usort($rows, static fn ($x, $y) => $x[$pk] <=> $y[$pk]);
-                    GroupSync::adoptAll((string) $name, $rows);
-                }
-            });
+            // Hooks see the user who made the link, as on editor saves; revisions are theirs.
+            $previous = $db->actor();
+            $db->setActor(WpAuth::current());
+            try {
+                $db->transaction(static function () use ($db, $name, $pk, $members): void {
+                    $rows = $db->findMany((string) $name, ['where' => [$pk => ['in' => $members]], 'locale' => '*']);
+                    if (count($rows) >= 2) {
+                        usort($rows, static fn ($x, $y) => $x[$pk] <=> $y[$pk]);
+                        GroupSync::adoptAll((string) $name, $rows);
+                    }
+                });
+            } finally {
+                $db->setActor($previous);
+            }
 
             return;
         }

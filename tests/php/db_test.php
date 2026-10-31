@@ -1190,6 +1190,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($existing['title'] === 'Adopt DE' && isset($patch['price'])) {
                 $patch['price']++; // rewrites the value it is adopting
             }
+            if ($existing['title'] === 'Spawn on adopt' && isset($patch['price'])) {
+                \Zero\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing['id']]);
+            }
             if ($existing['title'] === 'Move DE') {
                 $patch['locale'] = 'fr';
             }
@@ -1340,6 +1343,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         \Zero\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
     }), 409, 'conflict', '/price');
     eq('… no Adopt DE row was committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => 'Adopt DE']])), 0);
+    problem('… and a hook that adds a translation during a group adoption is checked too', fn () => $db->transaction(function () use ($db, $adopt) {
+        $de = $db->insert('pages', ['title' => 'Spawn on adopt', 'locale' => 'de', 'price' => 1], true)[0];
+        $db->store()->update('pages', $de['id'], ['translationGroup' => $db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup']]);
+        $rows = $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$adopt['id'], $de['id']]]], 'orderBy' => ['id' => 'asc']]);
+        \Zero\Locale\GroupSync::adoptAll('pages', $rows);
+    }), 409, 'conflict', '/price');
+    eq('… nothing of it committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['in' => ['Spawn on adopt', 'Spawned FR']]]])), 0);
     $db->delete('pages', ['id' => $adopt['id']]);
 
     // An idempotent translation create replays its receipt even after the group's values moved on.

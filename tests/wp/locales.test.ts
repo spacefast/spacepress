@@ -42,7 +42,7 @@ test("a synced column change through the API reaches the translation's postmeta,
   const both = await ok("GET", "/guides" + qs({ locale: "*", where: { id: { in: [en.id, fr.id] } }, orderBy: "id" }), { as: "editor" });
   assert.deepEqual(both.map((r: any) => [r.locale, r.price, r.summary]), [["en", 4, "Hot leaves"], ["fr", 4, "Feuilles chaudes"]]);
   assert.equal(wp("eval", `echo get_post_meta(${en.id}, 'zero_price', true);`), "4");
-  assert.deepEqual(await log([en.id, fr.id]), [`${fr.id}=fr:4`, `${en.id}=en:4`]);
+  assert.deepEqual(await log([en.id, fr.id]), [`${fr.id}=fr:4 by Editor`, `${en.id}=en:4 by Editor`]);
 });
 
 test("a synced column change saved in the editor (core REST) runs the sibling's pipeline too", async () => {
@@ -50,7 +50,7 @@ test("a synced column change saved in the editor (core REST) runs the sibling's 
   const saved = await http("POST", `${core}/zero_guides/${en.id}`, { as: "editor", body: { acf: { zero_price: 6 } } });
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
   assert.equal(wp("eval", `echo get_post_meta(${fr.id}, 'zero_price', true);`), "6");
-  assert.deepEqual(await log([en.id, fr.id]), [`${en.id}=en:6`, `${fr.id}=fr:6`]);
+  assert.deepEqual(await log([en.id, fr.id]), [`${en.id}=en:6 by Editor`, `${fr.id}=fr:6 by Editor`]);
   const revisions = await ok("GET", `/guides/${fr.id}/revisions`, { as: "editor" });
   assert.equal(revisions.length, 2);
   const revision = await ok("GET", `/guides/${fr.id}/revisions/${revisions[0].id}`, { as: "editor" });
@@ -81,11 +81,16 @@ test("delete removes one post; Polylang's group shrinks", async () => {
 test("a translation linked outside the API (Polylang's +) adopts the group's synced columns", async () => {
   const en = await ok("POST", "/guides", { as: "editor", body: { title: `Admin ${run}`, price: 7, tags: ["coffee"] } });
   const de = Number(wp("eval", `
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
     $id = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Admin DE ${run}', 'post_status' => 'publish'], 'de');
     pll_save_post_translations(['en' => ${en.id}, 'de' => $id]);
     echo $id;`));
   const row = await ok("GET", `/guides/${de}`, { as: "editor" });
   assert.deepEqual([row.locale, row.price, row.tags, row.translations], ["de", 7, ["coffee"], { en: en.id, de }]);
+  // Adoption runs as the user who made the link, like an editor save: hooks and revisions see them.
+  assert.deepEqual(await log([de]), [`${de}=de:7 by Editor`]);
+  const revisions = await ok("GET", `/guides/${de}/revisions`, { as: "editor" });
+  assert.equal(revisions[0].user?.name, "Editor");
 });
 
 test("a link made outside the API: adoption a hook would split is rolled back; the link stands, as for editor saves", async () => {

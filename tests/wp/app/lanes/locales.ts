@@ -36,8 +36,8 @@ export const hooks = {
       const price = patch.price;
       if (existing.title.startsWith("Bump") && price != null) patch.price = price + 1;
     },
-    async afterUpdate(row) {
-      await db.insert(guideLog).values({ guideId: row.id, entry: `${row.locale}:${row.price}` });
+    async afterUpdate(row, previous, ctx) {
+      await db.insert(guideLog).values({ guideId: row.id, entry: `${row.locale}:${row.price}${ctx.user ? " by " + ctx.user.name : ""}` });
     },
   },
 };

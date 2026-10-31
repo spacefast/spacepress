@@ -252,14 +252,7 @@ final class GroupSync
                 self::quietly(self::key($collection, $row, $pk), static fn () => db()->update($collection, $patch, [$pk => $row[$pk]]));
             }
         }
-        $now = db()->findMany($collection, ['where' => [$pk => ['in' => array_column($rows, $pk)]], 'locale' => '*']);
-        foreach ($synced as $col) {
-            foreach ($now as $row) {
-                if (!Module::same($row[$col], $now[0][$col])) {
-                    throw new HttpError(409, 'conflict', "A hook changed $col on one translation; synced columns must stay equal across the group", HttpError::seg($col));
-                }
-            }
-        }
+        self::agrees($collection, $source[$pk]); // the group as it is now, members hooks created included
     }
 
     /** Give $row (decoded, `translations` filled) the synced values of its group's oldest row, unless it is that row. */

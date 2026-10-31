@@ -48,6 +48,8 @@ final class Runtime
         $connection = new Connection($wpdb);
         $schema = new \Zero\Schema(['version' => 3, 'runtime' => self::SERIES]);
         \Zero\SystemTables::apply(CompositeStore::create($schema, $connection));
+        // Features finish their own install here (private files write their deny rules and probe).
+        do_action('zero_runtime_tables_installed');
         update_option('zero_runtime_tables', self::tablesVersion(), false);
     }
 

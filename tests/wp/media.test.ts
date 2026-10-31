@@ -299,13 +299,21 @@ test("activation writes the deny rules and reports a passing probe", async () =>
   assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, true);
 });
 
-test("a site already on runtime tables 0.2 gains the files table on its next admin_init", () => {
-  // What a site that ran the runtime before private files existed looks like.
+test("a site already on runtime tables 0.2 gains the files table and working protection on its next admin_init", async () => {
+  // What a site that ran the runtime before private files existed looks like: no table, no private
+  // directory, no secret, no probe verdict, and no reactivation.
+  probe(); // routes the probe to the in-network host (harness only)
   sql("DROP TABLE wp_zero__files");
+  wp("eval", `
+    array_map('unlink', glob(\\Zero\\Wp\\WpFiles::root() . '/{,.}*', GLOB_BRACE) ?: []);
+    foreach (['zero_runtime_private_ok', 'zero_runtime_private_checked', 'zero_runtime_secret'] as $o) delete_option($o);
+  `);
   wp("option", "update", "zero_runtime_tables", "0.2");
   wp("eval", "do_action('admin_init');");
   assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_zero\\_\\_files'").length, 1, "the table exists again");
   assert.equal(wp("option", "get", "zero_runtime_tables"), wp("eval", "echo \\Zero\\Wp\\Runtime::tablesVersion();"));
+  assert.equal(wp("option", "get", "zero_runtime_private_ok"), "1", "the deny rules were written and probed");
+  assert.equal((await uploadDeck(pdf("after upgrade"))).status, 201, "uploads work without reactivating anything");
 });
 
 test("a files table from before rows carried their app gains the column on upgrade", () => {

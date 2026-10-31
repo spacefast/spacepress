@@ -215,6 +215,10 @@ req('PATCH', "/posts/{$mine['id']}", ['cover' => $img['id']], 'alice');
 eq('without with: the id', req('GET', "/posts/{$mine['id']}", as: 'alice')[1]['cover'], $img['id']);
 eq('with: { cover: true } populates in place', req('GET', "/posts/{$mine['id']}", as: 'alice', query: ['with' => '{"cover":true}'])[1]['cover'], $img);
 eq('GET /media/{id} and list', [req('GET', "/media/{$img['id']}")[1], array_column(req('GET', '/media', query: ['where' => '{"mime":"image/png"}'])[1], 'id')], [$img, [$img['id']]]);
+// A media size past 2^53 reaches compiled code as the JS number (here through the trusted media API).
+$db->store()->run('UPDATE "__zero_media" SET "size" = 9007199254740993 WHERE "id" = ?', [$img['id']]);
+eq('a media size past 2^53 is the JS number', $db->media()->get($img['id'])['size'] - 1 === 9007199254740991.0, true);
+$db->store()->run('UPDATE "__zero_media" SET "size" = ? WHERE "id" = ?', [$img['size'], $img['id']]);
 isProblem('media delete needs editor', req('DELETE', "/media/{$img['id']}", as: 'alice'), 403, 'forbidden');
 $revs = count($db->revisions('posts', $mine['id']));
 eq('editor deletes', req('DELETE', "/media/{$img['id']}", as: 'ed')[1]['id'] ?? null, $img['id']);

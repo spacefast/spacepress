@@ -52,6 +52,7 @@ $pdo = $app->store->pdo();
 eq('hashed at rest (sha256 hex)', $pdo->query('SELECT "hash" FROM "__zero_tokens"')->fetchColumn(), hash('sha256', $token));
 check('password hashed at rest', password_verify('s3cret pass', (string) $pdo->query('SELECT "passwordHash" FROM "__zero_users" WHERE "name" = \'maria\'')->fetchColumn()));
 
+
 /** [status, problem code] of GET /me with this Authorization header. */
 $meStatus = static function (string $auth) use ($app): array {
     [$status, , $body] = $app->handle('GET', '/me', [], '', ['Authorization' => $auth]);
@@ -253,5 +254,11 @@ check('a guest is a member row with role guest', $s === 201 && $guest['data']['u
 check('a guest member upgrades in place: same id, email set, subscriber', $s === 200 && $up['data']['user']['id'] === $guest['data']['user']['id']
     && $up['data']['user']['member']['email'] === 'gina@example.test' && $up['data']['user']['role'] === 'subscriber', $up);
 eq('upgrading onto a taken email is a unique violation on /name', $call('POST', '/auth/guest/upgrade', ['name' => 'bo@example.test', 'password' => 'guest no more 1'], $call('POST', '/auth/guest', [])[1]['data']['accessToken'])[1]['pointer'] ?? null, '/name');
+
+// A user id past 2^53 (written outside Zero) reaches compiled code as the JS number, so `ctx.user.id - 1`
+// agrees with Node; the identity itself still resolves by the stored row. Last: it moves the id sequence.
+$pdo->exec('INSERT INTO "__zero_users" ("id", "name", "role", "createdAt") VALUES (9007199254740993, \'huge\', \'subscriber\', \'2026-01-01T00:00:00.000Z\')');
+$huge = $app->identity()->user(9007199254740993);
+eq('a user id past 2^53 is the JS number in the user shape', [$huge['name'], $huge['id'] - 1 === 9007199254740991.0], ['huge', true]);
 
 finish('auth_test');

@@ -65,6 +65,6 @@ final class WpAuth implements Auth
             default => 'subscriber',
         };
 
-        return ['id' => (int) $user->ID, 'name' => (string) $user->display_name, 'role' => $role];
+        return ['id' => \Zero\Js::n((int) $user->ID), 'name' => (string) $user->display_name, 'role' => $role];
     }
 }

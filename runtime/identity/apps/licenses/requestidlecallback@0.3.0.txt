@@ -1,8 +1,29 @@
-requestidlecallback 0.3.0, by Alexander Farkas <info@corrupt-system.de>.
+requestidlecallback 0.3.0
+Copyright (c) Alexander Farkas <info@corrupt-system.de>
 
 The author declares the MIT license in the package's package.json and in the
-npm registry record for this version, but has published no license text: the
-npm package and the upstream repository (https://github.com/aFarkas/requestIdleCallback)
-contain only index.js, README.md, package.json and tests. This entry records
-that declaration and attribution; no license text exists upstream to reproduce.
-It reaches this bundle through @wordpress/priority-queue.
+npm registry record for this version, but publishes no license file: the npm
+package and the repository (https://github.com/aFarkas/requestIdleCallback)
+contain only index.js, README.md, package.json and tests. The standard MIT
+text the declaration refers to is reproduced here. The package reaches this
+bundle through @wordpress/priority-queue.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

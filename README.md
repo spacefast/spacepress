@@ -2,9 +2,9 @@
 
 **Zero is a TypeScript framework for building backends, fast.**
 
-You write one `zero.config.ts`. `zero build` turns it into database
-migrations, REST endpoints, user authentication, a dashboard and a fully typed
-client library. Zero is frontend agnostic: the client is plain `fetch`, so it
+You write one `zero.config.ts`. `zero build --target wp` turns it into
+database migrations, REST endpoints, user authentication, a dashboard and a
+fully typed client library. Zero is frontend agnostic: the client is plain `fetch`, so it
 works with Next.js, Astro, TanStack Start, or anything else that can call
 `fetch`.
 

@@ -26,6 +26,9 @@ async function pull(collection: string): Promise<Map<string, any>> {
   }
 }
 
+/** The stored guide, trusted (WP-CLI `wp zero find`). */
+const row = (id: number) => zero("find", "guides", JSON.stringify({ where: { id } }))[0];
+
 const push = (record: unknown, expect: string) => http("POST", `${api}/sync/guides`, { as: "editor", body: { record, expect } });
 
 test("sync on WordPress", async (t) => {
@@ -33,7 +36,7 @@ test("sync on WordPress", async (t) => {
   const guideUid = uidOf(1);
   const record = {
     uid: guideUid,
-    fields: { title: `Guide ${run}`, slug: `guide-${run}`, summary: null, level: "intro", writerId: writer.uid, status: "draft", publishedAt: null },
+    fields: { title: `Guide ${run}`, slug: `guide-${run}`, summary: null, level: "intro", writerId: writer.uid, review: null, status: "draft", publishedAt: null },
     body: `# Getting started\n\nInstall **Zero** and run [the CLI](https://example.test/cli).\n\n- build\n- sync\n`,
   };
 
@@ -243,6 +246,33 @@ test("sync on WordPress", async (t) => {
     assert.deepEqual(read.records, [(await pull("guides")).get(guideUid)]);
     const denied = JSON.parse(wpTry("zero", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
     assert.ok("error" in denied, JSON.stringify(denied));
+  });
+
+  await t.test("field access applies to sync: hidden fields aren't exported, protected ones can't be pushed", async () => {
+    const guarded = zero("insert", "guides", JSON.stringify({ title: `Guarded ${run}`, slug: `guarded-${run}`, internal: "admins only", review: "approved" }))[0];
+    const ID = guarded.id;
+    const page = await ok("GET", "/sync/guides" + qs({ after: String(ID - 1), first: "1" }), { as: "editor" });
+    const item = page.records[0];
+    assert.equal(item.record.uid, guarded.uid);
+    assert.ok(!("internal" in item.record.fields), "a field the editor can't read is not exported");
+    assert.equal(item.record.fields.review, "approved", "a readable field is exported");
+    const asAdmin = (await ok("GET", "/sync/guides" + qs({ after: String(ID - 1), first: "1" }), { as: "admin" })).records[0];
+    assert.equal(asAdmin.record.fields.internal, "admins only");
+    assert.notEqual(asAdmin.digest, item.digest, "each viewer's digest is of the record it sees");
+
+    // Pushing back what the editor pulled, with an edit, leaves the hidden field alone.
+    const pushed = await ok("POST", "/sync/guides", { as: "editor", body: { record: { ...item.record, fields: { ...item.record.fields, summary: "edited" } }, expect: item.digest } });
+    assert.equal(pushed.status, "applied");
+    assert.deepEqual([row(guarded.id).summary, row(guarded.id).internal], ["edited", "admins only"]);
+
+    // Changing a field the editor may read but not set is refused at its pointer, and nothing is written.
+    const current = (await ok("GET", "/sync/guides" + qs({ after: String(ID - 1), first: "1" }), { as: "editor" })).records[0];
+    await problem("POST", "/sync/guides", { as: "editor", body: { record: { ...current.record, fields: { ...current.record.fields, review: "rejected", summary: "again" } }, expect: current.digest } },
+      { status: 403, code: "forbidden", pointer: "/review" });
+    // Naming a field the editor can't read is refused the same way.
+    await problem("POST", "/sync/guides", { as: "editor", body: { record: { ...current.record, fields: { ...current.record.fields, internal: "leaked?" } }, expect: current.digest } },
+      { status: 403, code: "forbidden", pointer: "/internal" });
+    assert.deepEqual([row(guarded.id).review, row(guarded.id).internal, row(guarded.id).summary], ["approved", "admins only", "edited"]);
   });
 
   await t.test("unknown reference uid", async () => {

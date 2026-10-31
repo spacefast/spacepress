@@ -19,6 +19,9 @@ export const guides = collection("guides", {
   summary: text({ multiline: true }),
   level: select({ options: ["intro", "advanced"] }),
   writerId: integer().references(() => writers.id, { onDelete: "set null" }),
+  // Field access (lane B) applies to sync: editors never see `internal`, and may read but not change `review`.
+  internal: text().access({ read: "admin", update: "admin" }),
+  review: text().access({ update: "admin" }),
 }, { title: "title", content: "body", sync: "content/guides/*.md", access: { create: "author" } });
 
 export const schema = { writers, guides };

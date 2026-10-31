@@ -511,14 +511,20 @@ test("a runtime update whose system tables fail refuses Zero until they apply", 
   assert.equal(wp("option", "get", "zero_runtime_tables"), tablesVersion());
 });
 
-test("activation grants collection capabilities: editors all, authors their own, subscribers none", () => {
-  const caps = (role: string) => JSON.parse(wp("eval", `echo wp_json_encode(array_keys(array_filter(get_role('${role}')->capabilities)));`)).filter((c: string) => c.endsWith("zero_posts"));
-  assert.deepEqual(caps("editor").sort(), [
-    "delete_others_zero_posts", "delete_private_zero_posts", "delete_published_zero_posts", "delete_zero_posts", "edit_others_zero_posts",
-    "edit_private_zero_posts", "edit_published_zero_posts", "edit_zero_posts", "publish_zero_posts", "read_private_zero_posts",
-  ]);
-  assert.deepEqual(caps("author").sort(), ["delete_published_zero_posts", "delete_zero_posts", "edit_published_zero_posts", "edit_zero_posts", "publish_zero_posts"]);
-  assert.deepEqual(caps("subscriber"), []);
+test("collection capabilities come from the access rules, not from roles", () => {
+  // posts: create "author", update editor-or-own, delete "editor"; vault (lane R fixture): admin only.
+  const can = JSON.parse(wp("eval", `echo wp_json_encode(array_map(fn ($u) => [
+    user_can($u, 'create_zero_posts'), user_can($u, 'edit_zero_posts'), user_can($u, 'delete_others_zero_posts'),
+    user_can($u, 'create_zero_vault'), user_can($u, 'edit_zero_vault'),
+  ], ['admin' => get_user_by('login', 'admin'), 'editor' => get_user_by('login', 'editor'), 'author' => get_user_by('login', 'author'), 'subscriber' => get_user_by('login', 'subscriber')]));`));
+  assert.deepEqual(can, {
+    admin: [true, true, true, true, true],
+    editor: [true, true, true, false, false],
+    author: [true, true, false, false, false],
+    subscriber: [false, true, false, false, false],
+  });
+  const roleCaps = JSON.parse(wp("eval", `echo wp_json_encode(array_values(array_filter(array_keys(get_role('author')->capabilities), fn ($c) => str_ends_with($c, 'zero_posts'))));`));
+  assert.deepEqual(roleCaps, [], "no role carries a Zero capability");
 });
 
 test("runtime registrations extend system tables and every generated SCF field", () => {

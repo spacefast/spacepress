@@ -12,8 +12,9 @@ import * as auth from "./lanes/auth.ts";
 import * as abilities from "./lanes/abilities.ts";
 import * as media from "./lanes/media.ts";
 import * as locales from "./lanes/locales.ts";
+import * as rest from "./lanes/rest.ts";
 import { merge, mergeHooks } from "./compose.ts";
-const lanes = [fields, sync, jobs, auth, abilities, media, locales];
+const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest];
 
 // An `editor: false` table with a real SQL UNIQUE index (the blog has none).
 export const signups = collection("signups", {

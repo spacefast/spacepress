@@ -19,9 +19,6 @@ final class Plugin
     /** What callers outside wp-admin's notices see while storage is behind; the detail is for admins. */
     public const UNAVAILABLE = 'Storage is being upgraded; try again shortly';
     public const MIN_SCF = Platform::PLUGINS['secure-custom-fields']['version'];
-    private const PRIMITIVE_CAPS = ['edit_%s', 'edit_others_%s', 'delete_%s', 'publish_%s', 'read_private_%s',
-        'delete_private_%s', 'delete_published_%s', 'delete_others_%s', 'edit_private_%s', 'edit_published_%s'];
-    private const AUTHOR_CAPS = ['edit_%s', 'publish_%s', 'delete_%s', 'edit_published_%s', 'delete_published_%s'];
 
     private static ?self $instance = null;
     private static ?bool $keyed = null;
@@ -56,6 +53,7 @@ final class Plugin
                 WpUserStore::fillDefaults($this->schema, $userId);
             }
         });
+        CoreAccess::register();
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())
@@ -256,7 +254,7 @@ final class Plugin
             deactivate_plugins(plugin_basename($this->mainFile));
             wp_die(esc_html('Zero needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad)), 'Zero', ['back_link' => true]);
         }
-        // migrateLocked() already granted capabilities, provisioned identity and backfilled members.
+        // migrateLocked() already provisioned identity and backfilled members.
     }
 
     /** Existing WordPress users are members too (§6.2): give them the member columns' defaults. */
@@ -290,7 +288,6 @@ final class Plugin
     private function migrateNow(): array
     {
         $applied = $this->migrator()->migrate();
-        $this->grantCapabilities();
         IdentityBridge::provision();
         $this->backfillMembers();
         update_option($this->schemaOption(), $this->schemaHash(), false);
@@ -341,23 +338,6 @@ final class Plugin
         return hash_file('sha256', $this->dir . '/zero/app/schema.php');
     }
 
-    /** §4.1/§5.1: administrator + editor get every collection cap; author edits/publishes/deletes own. */
-    private function grantCapabilities(): void
-    {
-        foreach ($this->postBacked() as $spec) {
-            $plural = $spec['wp']['postType'];
-            foreach (['administrator', 'editor', 'author'] as $roleName) {
-                $role = get_role($roleName);
-                if ($role === null) {
-                    continue;
-                }
-                foreach ($roleName === 'author' ? self::AUTHOR_CAPS : self::PRIMITIVE_CAPS as $cap) {
-                    $role->add_cap(sprintf($cap, $plural));
-                }
-            }
-        }
-    }
-
     // ================================================================ registration
 
     public function registerPostTypes(): void
@@ -375,9 +355,12 @@ final class Plugin
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
                 'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, 'author', 'custom-fields'])),
-                // Singular differs from plural so `edit_<type>` stays a primitive cap (see report).
+                // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
+                // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],
+                'capabilities' => ['create_posts' => 'create_' . $type],
                 'map_meta_cap' => true,
+                'rest_controller_class' => PostsController::class,
                 'hierarchical' => false,
                 'has_archive' => false,
                 'rewrite' => false,

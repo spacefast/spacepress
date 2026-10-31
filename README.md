@@ -112,8 +112,8 @@ Composer.
 
 There's no binary release or npm package yet. Build the compiler from source
 with Rust 1.96 (the checkout pins it). Booting the throwaway WordPress needs
-Docker with Compose, plus `bash`, `python3`, `curl`, `sha256sum` and a PHP 8.2
-CLI on the host. Then this builds the pantry example and boots it with every
+Docker with Compose, plus `bash` 4+, `python3`, `curl`, `sha256sum` and a PHP
+8.2 CLI on the host. Then this builds the pantry example and boots it with every
 plugin activated:
 
 ```sh

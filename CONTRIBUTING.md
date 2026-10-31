@@ -6,8 +6,9 @@ Zero is WordPress-only; document and test only what runs there.
 
 ## Toolchain
 
-Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `mbstring`, `gd`,
-`fileinfo` and `curl` for the PHP suites and `zero build`'s lint, Node 22.18+,
+Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
+`gd`, `fileinfo` and `curl` (the PHP suites run the runtime over SQLite on the
+host, and `zero build` lints with `php -l`), Node 22.18+,
 TypeScript 5.9 (`npm install --global typescript@5.9.3`), and for anything
 that boots WordPress: Docker with Compose, plus `bash` 4+, `python3`, `curl`,
 `sha256sum` and `rsync` on the host. `cargo build --release` produces

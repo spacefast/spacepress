@@ -3,7 +3,8 @@
 //! schema.php v3 carries these keys, but until the owning lane lands nothing reads them: a column
 //! `.access()` would hide nothing, and an `auth: true` collection would serve its password hashes.
 //! A config that relies on one must not build "ok". When a lane lands its feature, it deletes its
-//! row in `UNLANDED` and its fixture rows in `tests/compiler.rs`. The last lane deletes this file,
+//! `Feature` variant (the compiler then points at every line that names it, including its row in
+//! `UNLANDED`) and its fixture row in `tests/compiler.rs`. The last lane deletes this file,
 //! its call in `commands::build` and the `ZERO_ALLOW_UNLANDED_FEATURES` opt-in in `tests/compiler.rs`.
 //!
 //! The decision is made on the extracted schema, which is exactly what schema.php will carry, so
@@ -22,7 +23,6 @@ use std::rc::Rc;
 enum Feature {
     FieldAccess,
     Sync,
-    Jobs,
     Auth,
     Files,
     Localized,
@@ -33,7 +33,6 @@ enum Feature {
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
     (Feature::FieldAccess, 'B', "field access (`.access()` on a column)", "remove .access(); gate the whole collection with its access rule, or move the field to a stricter collection"),
     (Feature::Sync, 'C', "content sync (`sync`)", "remove sync"),
-    (Feature::Jobs, 'D', "webhooks, signed and idempotent actions", "remove webhooks, and signature/idempotent from actions"),
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
     (Feature::Files, 'G', "private files (`files` and `file()`)", "remove the file bucket; use media() for public uploads"),
     (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
@@ -84,10 +83,6 @@ fn declared(schema: &Schema) -> Vec<Feature> {
     [
         (columns(&|c| !c.access.is_empty()), Feature::FieldAccess),
         (schema.collections.values().any(|c| c.sync.is_some()), Feature::Sync),
-        (
-            !schema.webhooks.is_empty() || schema.actions.values().any(|a| a.signature.is_some() || a.idempotent),
-            Feature::Jobs,
-        ),
         (schema.collections.values().any(|c| c.auth), Feature::Auth),
         (
             !schema.files.is_empty() || columns(&|c| c.ty == ColType::File),
@@ -110,11 +105,7 @@ fn locate(feature: Feature, config: &Value, ev: &Evaluator<'_>) -> Option<Span> 
         seen: HashSet::new(),
         found: Vec::new(),
     };
-    for (key, f) in [
-        ("webhooks", Feature::Jobs),
-        ("locales", Feature::Localized),
-        ("files", Feature::Files),
-    ] {
+    for (key, f) in [("locales", Feature::Localized), ("files", Feature::Files)] {
         walk.option(config, key, f);
     }
     walk.value(config);
@@ -179,8 +170,6 @@ impl Walk<'_, '_> {
                 }
             }
             Value::Action(a) | Value::Job(a) if self.first_visit(a) => {
-                self.option(&a.config, "signature", Feature::Jobs);
-                self.option(&a.config, "idempotent", Feature::Jobs);
                 self.value(&a.config);
             }
             Value::Column(b) => self.column(b),

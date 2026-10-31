@@ -548,11 +548,13 @@ fn sanity_datetime_keeps_sanitys_iso_rule_and_rejects_numbers() {
 
 #[test]
 fn emdash_integers_stay_within_zods_safe_integer_range() {
+    // `n` declares nothing, `wide` declares bounds past the safe range, `tight` declares a narrower one.
     let (_dir, app) = migrated_app(
         "emdash",
         "emdash.json",
-        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"n","type":"integer"}]}]}"#,
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"n","type":"integer"},{"slug":"wide","type":"integer","min":-1e20,"max":1e20},{"slug":"tight","type":"integer","min":0,"max":10}]}]}"#,
     );
+    let over = 9007199254740992u64;
     assert_eq!(
         accepts(
             &app,
@@ -560,11 +562,15 @@ fn emdash_integers_stay_within_zods_safe_integer_range() {
             json!([
                 ["n", 9007199254740991u64],
                 ["n", -9007199254740991i64],
-                ["n", 9007199254740992u64],
-                ["n", -9007199254740992i64]
+                ["n", over],
+                ["n", -9007199254740992i64],
+                ["wide", 9007199254740991u64],
+                ["wide", over],
+                ["tight", 10],
+                ["tight", 11]
             ])
         ),
-        json!([true, true, "/n", "/n"])
+        json!([true, true, "/n", "/n", true, "/wide", true, "/tight"])
     );
 }
 

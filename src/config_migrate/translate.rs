@@ -452,11 +452,26 @@ fn field(
             format!("Payload defaultMaxTextLength ({PAYLOAD_DEFAULT_MAX_TEXT_LENGTH}) applies without maxLength"),
         ));
     }
-    // Zod's int() (EmDash integers) admits only safe integers; Zero's integer() admits any PHP int.
-    if matches!(source, Source::Emdash) && kind == "integer" {
-        builder.push_str(&format!(".min(-{MAX_SAFE_INTEGER}).max({MAX_SAFE_INTEGER})"));
-    }
+    // Zod's int() (EmDash integers) admits only safe integers, whatever bounds are declared; Zero's
+    // integer() admits any PHP int. A later .min()/.max() replaces an earlier one, so each bound is
+    // emitted once, as the intersection.
+    let safe = matches!(source, Source::Emdash) && kind == "integer";
     for key in ["maxLength", "min", "max"] {
+        if safe && key != "maxLength" {
+            let limit = MAX_SAFE_INTEGER as f64;
+            let declared = match o.get(key) {
+                Some(n) => n.as_f64().ok_or_else(|| fail(&pointer(at, key), "expected a number"))?,
+                None if key == "min" => -limit,
+                None => limit,
+            };
+            let bound = if key == "min" {
+                declared.max(-limit)
+            } else {
+                declared.min(limit)
+            };
+            builder.push_str(&format!(".{key}({})", json!(bound)));
+            continue;
+        }
         if let Some(n) = o.get(key).or(implicit.as_ref().filter(|_| key == "maxLength")) {
             if !n.is_number() {
                 return Err(fail(&pointer(at, key), "expected a number"));

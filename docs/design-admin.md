@@ -74,7 +74,7 @@ Three classes:
   under two private npm scopes, never published. Importable only under the
   ruling in §9.1. **Forks of class-U packages that add code of their own are
   class I for the added code**, and go through the same ruling.
-- **S — Spacefast glue.** Written in the monorepo after import. Spacefast owns
+- **S — Spacefast glue.** Written by Spacefast after vendoring. Spacefast owns
   it; it is either kernel-specific (dropped) or generic (kept).
 
 | Path | Class | Files | What it is | Disposition |
@@ -106,7 +106,7 @@ Three classes:
 | `lib/**` (26 PHP files) | I + S | 26 | Registration APIs, REST controllers, menu, i18n, legacy iframe bridge | per §4.3 |
 | `next-admin.php` | I + S | 1 | Plugin entry | rewritten as `zero-admin.php` |
 | `types/*.d.ts` | I | 9 | Ambient typings for private APIs | keep what kept code needs |
-| Monorepo `zero/native-*.ts`, `zero/php/zero-dashboard.php`, `zero/scripts/*` | S | 7 | Content-frame contract, transport, mu-plugin loader, monorepo build | **not imported** |
+| Spacefast-side `native-*.ts`, the mu-plugin loader and the build script | S | 7 | Content-frame contract, transport, mu-plugin loader, monorepo build | **not imported** |
 
 Size, from a throwaway build of the full tree: 83 JS modules, 7.2 MB before
 compression (2.1 MB of it is the bundled `@wordpress/dataviews`, 0.6 MB the
@@ -194,7 +194,7 @@ reworded follows the same §9.1 ruling. Flagged in §9.5.
 
 No credentials, no tokens, no internal hostnames in code paths (only in
 READMEs and one SCSS comment), no network calls to anything but the site's
-own REST root, and no PHP that talks to the monorepo kernel except through
+own REST root, and no PHP that talks to the content kernel except through
 Spacefast's own kernel REST namespace listed above (whose server side stays
 in Spacefast's repository and is not imported).
 
@@ -425,7 +425,7 @@ Node is a dev dependency of this repository already (`runtime/identity/apps`,
 Keep if it (a) works on Zero's model (CPT + SCF, `/_schema`, `/zero/v1`) or
 can be rewired to it, and (b) adds something plain wp-admin does not have for
 a Zero app. Drop if it duplicates wp-admin with no Zero gain, depends on the
-monorepo kernel, or is capsule/host-specific.
+the content kernel Zero v2 replaces, or is capsule/host-specific.
 
 ### 4.2 Routes
 
@@ -552,7 +552,7 @@ over the title column and is noted in the UI as such. No runtime change.
 
 ## 6. The Content frame
 
-The monorepo embeds the admin in a same-origin frame of the Spacefast
+Spacefast embeds the admin in a same-origin frame of its own
 dashboard through a `NativeContentHost` contract (REST proxying, host theme
 tokens, host history). That contract, its transport, the skin and the
 `spacefast:native-modules` virtual module are Spacefast-dashboard-specific.
@@ -565,7 +565,7 @@ dependency, not the reverse.
 
 ## 7. Tests
 
-Following the monorepo's two rules (never assert on source text; one
+Following Spacefast's two testing rules (never assert on source text; one
 behaviour, one test, at the lowest level that can break it):
 
 | Behaviour | Level | File |

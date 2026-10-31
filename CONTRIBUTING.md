@@ -44,7 +44,7 @@ zero build [dir] [--target standalone|wp] [--out <dir>] [--quiet]
 zero check [dir]                      compile for both targets; write nothing
 zero dev [dir] [--port <n>]           build, then serve with `php -S` and a jobs worker
 zero dev [dir] --wp [--port <n>]      build the plugins and boot them in a Docker WordPress (tests/wp)
-zero doctor [dir] [--site <url> --token <t>]
+zero doctor [dir] [--wp] [--site <url> --token <t>]   checks a build; --wp when no wp-content artifact is present
 zero users|tokens <args...> [--dir d] the standalone user and token CLI
 zero jobs <list|run|retry|cancel|work> [--dir d]
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>

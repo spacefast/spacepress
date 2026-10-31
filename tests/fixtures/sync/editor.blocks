@@ -1,0 +1,12 @@
+<!-- wp:heading -->
+<h2 class="wp-block-heading" id="saved-by-the-editor">Saved by the editor</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Editors write <strong>strong</strong> and <em>em</em>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code {"className":"language-js"} -->
+<pre class="wp-block-code language-js"><code>let a = 1;
+</code></pre>
+<!-- /wp:code -->

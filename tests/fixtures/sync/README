@@ -1,0 +1,5 @@
+Sync body conversion contract (design §5.2), read by tests/php/sync_test.php.
+<name>.md alone: Markdown that must be a fixed point (md -> blocks -> md is unchanged).
+<name>.blocks + <name>.md: stored blocks that pull as exactly that Markdown.
+<name>.blocks + <name>.html: stored blocks that pull as exactly that HTML.
+<name>.blocks alone: refused as not_representable for Markdown (and for HTML when named dynamic).

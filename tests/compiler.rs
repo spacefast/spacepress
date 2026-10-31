@@ -738,6 +738,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-sync-outside", "sync directory must stay inside the project"),
         ("reject-sync-content", "Markdown sync needs a content designation"),
         ("reject-sync-uid", "uid: false cannot be combined with sync"),
+        (
+            "reject-sync-primary-key",
+            "syncs with files, so its primary key must be id()",
+        ),
         ("reject-sync-reference", "sync references need uid: true on a"),
         (
             "reject-job-reference",
@@ -764,7 +768,6 @@ fn rejects_phase2_static_contracts() {
             "env() values can't be stored inside captured data",
         ),
         // TEMPORARY (src/unlanded.rs): a lane deletes its row when its feature lands.
-        ("reject-unlanded-sync", "not implemented until lane C"),
         ("reject-unlanded-auth", "not implemented until lane E"),
         ("reject-unlanded-localized", "not implemented until lane H"),
         ("reject-auth-duplicate", "at most one auth: true collection"),

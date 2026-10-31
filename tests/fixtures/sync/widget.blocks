@@ -1,0 +1,5 @@
+<!-- wp:paragraph -->
+<p>Before</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:acme/widget {"size":2} /-->

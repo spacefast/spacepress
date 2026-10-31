@@ -1,10 +1,11 @@
 {
   "name": "spacefast/zero-runtime",
-  "description": "Bundled Markdown and block merge for Zero sync",
+  "description": "Bundled Markdown, block parsing and merge for Zero sync",
   "type": "library",
   "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=8.2",
+    "wp-php-toolkit/blockparser": "^0.10",
     "wp-php-toolkit/markdown": "^0.10",
     "wp-php-toolkit/merge": "^0.10"
   },
@@ -37,6 +38,14 @@
         ]
       },
       "override_autoload": {
+        "wp-php-toolkit/blockparser": {
+          "classmap": [
+            "."
+          ],
+          "exclude-from-classmap": [
+            "/Tests/"
+          ]
+        },
         "wp-php-toolkit/bytestream": {
           "classmap": [
             "."

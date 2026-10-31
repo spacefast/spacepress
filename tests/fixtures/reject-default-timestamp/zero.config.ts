@@ -1,4 +1,5 @@
 import { collection, id, timestamp, group, defineConfig } from "zero";
-// The default is applied by the runtime's strict ISO codec, so a Feb 30 inside a group can't build.
-const n = collection("n", { id: id(), when: group({ fields: { at: timestamp() } }).default({ at: "2026-02-30T00:00:00Z" }) }, { editor: false });
+// Defaults go through the runtime codec, so a non-timestamp inside a group fails the build (a Feb 30
+// string does too; see the extract.rs unit test for the string rules).
+const n = collection("n", { id: id(), when: group({ fields: { at: timestamp() } }).default({ at: false }) }, { editor: false });
 export default defineConfig({ schema: { n } });

@@ -6,6 +6,7 @@ namespace Zero\Wp;
 
 use Zero\App;
 use Zero\Db;
+use Zero\HttpError;
 use Zero\Schema;
 
 /**
@@ -325,6 +326,8 @@ final class Plugin
         $spec = $this->schema->collection($collection);
         $store = CompositeStore::create($this->schema, $this->connection())->posts;
         $values = [];
+        // Generated values go through the same codec as API writes (a bare-date timestamp default
+        // becomes full ISO; a generator returning non-ISO text fails like it would over the API).
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
             if (!$store->isMeta($spec, $col)) {
@@ -335,9 +338,9 @@ final class Plugin
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
             $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
-                $values[$col] = Schema::store($def, Schema::generate($def['onUpdate'], $def['type']));
+                $values[$col] = Schema::encode($def, Schema::generate($def['onUpdate'], $def['type']), $col, HttpError::seg($col));
             } elseif (isset($def['default']) && $empty) {
-                $values[$col] = Schema::store($def, Schema::generate($def['default'], $def['type']));
+                $values[$col] = Schema::encode($def, Schema::generate($def['default'], $def['type']), $col, HttpError::seg($col));
             } elseif ($def['type'] === 'boolean' && $raw === '') {
                 $values[$col] = Schema::store($def, false);
             }

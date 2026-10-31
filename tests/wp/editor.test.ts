@@ -31,7 +31,7 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
   const event = await http("POST", core + "/zero_events", { as: "editor", body: { title: `Defaults ${run}`, status: "publish" } });
   assert.equal(event.status, 201, JSON.stringify(event.json));
   const defaults = await ok("GET", `/events/${event.json.id}`, { as: "editor" });
-  assert.deepEqual([defaults.open, defaults.kinds], [false, []]);
+  assert.deepEqual([defaults.open, defaults.kinds, defaults.startsAt], [false, [], "2030-01-01T00:00:00.000Z"]);
   await http("POST", `${core}/zero_events/${event.json.id}`, { as: "editor", body: { acf: { zero_open: true } } });
   assert.equal((await ok("GET", `/events/${event.json.id}`, { as: "editor" })).open, true);
   await http("POST", `${core}/zero_events/${event.json.id}`, { as: "editor", body: { acf: { zero_open: false } } });

@@ -1461,8 +1461,11 @@ fn bad_date_leaf(b: &ColBuilder, v: &Json) -> Option<String> {
         fields.iter().find_map(|(name, f)| {
             let x = item.get(name)?;
             match (f.ty, x) {
-                (ColType::Timestamp, Json::String(s)) if !is_iso_timestamp(s) => Some(name.clone()),
-                (ColType::Date, Json::String(s)) if !is_date(s) => Some(name.clone()),
+                (ColType::Timestamp, Json::String(s)) if is_iso_timestamp(s) => None,
+                (ColType::Timestamp, Json::Number(n)) if n.as_f64().is_some_and(|n| n.fract() == 0.0) => None,
+                (ColType::Date, Json::String(s)) if is_date(s) => None,
+                (ColType::Timestamp | ColType::Date, Json::Null) => None,
+                (ColType::Timestamp | ColType::Date, _) => Some(name.clone()),
                 _ => bad_date_leaf(f, x),
             }
         })

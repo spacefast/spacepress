@@ -123,7 +123,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-default-timestamp",
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
-        "zero.config.ts:3:",
+        "zero.config.ts:4:",
     );
 }
 

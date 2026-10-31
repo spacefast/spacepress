@@ -30,7 +30,7 @@ export const events = collection("events", {
   price: real(),
   open: boolean().notNull().default(false),
   day: date(),
-  startsAt: timestamp(),
+  startsAt: timestamp().default("2030-01-01"), // a bare-date default: editor saves store it as full ISO
   kinds: select({ options: ["talk", "workshop", "social"], multiple: true }).notNull().default([]),
   postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
 }, { access: { read: "anyone", create: "editor" } });

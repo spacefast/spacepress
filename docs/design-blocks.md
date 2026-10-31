@@ -234,11 +234,16 @@ restored after, as before) and, for each block node:
    ordinary inputs: `core/image.url`, `core/button.url`/`text`,
    `core/heading.content` are all registered attributes that `createBlock`
    accepts and `save()` writes into the markup rather than the comment, so
-   they are allowed like any other. The one rule about `content`: when a
-   block has both children and a `content` prop, that is two bodies for one
-   block (`content_and_children`). `createBlock` would drop an unknown
-   attribute silently, which is exactly the failure this package exists to
-   prevent.
+   they are allowed like any other. Attributes registered with
+   `role: "local"` (`core/image.blob`, `core/html.content` is the one
+   exception the serializer handles itself) are editor-session state that
+   WordPress deliberately never serializes; setting one is
+   `local_attribute`, with the hint that it cannot reach the saved markup,
+   and the codegen omits them from the generated props. The one rule about
+   `content`: when a block has both children and a `content` prop, that is
+   two bodies for one block (`content_and_children`). `createBlock` would
+   drop an unknown or local attribute silently, which is exactly the failure
+   this package exists to prevent.
 
    Value typing follows the registry's vocabulary, not raw JSON types:
    `string` and `rich-text` accept a string (`rich-text` is what `createBlock`
@@ -407,7 +412,10 @@ plus any `<type>-<subtype>` whose type is one of those). Any other name must
 export `meta = defineTemplate({ title, postTypes? })`, which puts it in
 `customTemplates`; otherwise `unknown_template` with both options as the hint.
 The proof suite checks one representative of each derived form resolves on
-real WordPress (a `single-post`, a `page-<slug>`, an `image` attachment).
+real WordPress (a `single-post`, a `page-<slug>`, an `image` attachment; the
+last after `wp option update wp_attachment_pages_enabled 1`, since a fresh
+7.1 site redirects attachment pages away), each by a marker block only that
+template renders.
 `templates/index.tsx` is required (`index_template_missing`).
 
 Template vocabulary (hand-written components over the generated set, all
@@ -512,7 +520,7 @@ the collection's content column into a page with `zero-blocks content`.
 | Code | Severity | Where |
 |---|---|---|
 | `style_prop_unsupported`, `unmappable_element` | error | mapper, node loc |
-| `unknown_block`, `unknown_attribute`, `attribute_type`, `content_and_children`, `save_failed` | error | serializer, node loc |
+| `unknown_block`, `unknown_attribute`, `attribute_type`, `local_attribute`, `content_and_children`, `save_failed` | error | serializer, node loc |
 | `unverified_block` | info (`--verbose`) | serializer, first use |
 | `module_failed` (bundle or execution error), `default_export_missing`, `not_content` (a component returned something that is not JSX, text or a number) | error | module, mapped through the source map |
 | `index_template_missing`, `unknown_template`, `unknown_template_part`, `unknown_pattern`, `query_mode_required`, `unknown_preset`, `theme_json_invalid`, `declared_file_missing`, `duplicate_slug` | error | theme compiler |
@@ -531,7 +539,8 @@ top-level blocks so the editor's pattern expansion is exercised. A
 `bind.field("excerpt")` under the post content. On a site without SCF the
 binding source is unregistered and the paragraph shows its static fallback
 text ("No summary."), a legitimate state for a theme; with SCF and a Zero app
-active it shows the row's `excerpt`, which the second half of §8 proves.
+active it shows the row's `excerpt` (or nothing when the row has none, since
+SCF answers `""` rather than `null`), which the second half of §8 proves.
 It lives inside the package rather than in `examples/` because that directory
 is being reworked by the integration PR; moving it is a one-line change later.
 
@@ -560,8 +569,9 @@ is being reworked by the integration PR; moving it is a one-line change later.
    `has-primary-background-color`. `wp theme` reports the variation `Dark`
    through `GET /wp/v2/global-styles/themes/zero-starter/variations`.
 7. **Validate in the Site Editor:** Playwright (Chromium) logs in as admin and,
-   for every template and part the REST API lists for the theme
-   (`/wp/v2/templates?wp_theme=…`, `/wp/v2/template-parts?…`), opens
+   for every template and part the REST API lists for the active theme
+   (`/wp/v2/templates` and `/wp/v2/template-parts`, keeping the records whose
+   `theme` is the slug; the endpoint has no theme filter parameter), opens
    `site-editor.php?postType=<type>&postId=zero-starter//<slug>&canvas=edit`,
    waits (Playwright `waitForFunction`, no sleeps) until the edited entity
    record for that id is loaded, `getBlocks()` is non-empty, no
@@ -577,23 +587,28 @@ is being reworked by the integration PR; moving it is a one-line change later.
    is what "opens cleanly in the Site Editor" means and the only level that
    can prove it; the unit suite already proves the pinned parser agrees per
    construct, so the two are not redundant.
-8. **Binding sugar on a real app** (same stack): `zero build examples/blog
-   --target wp`; install the pinned platform plugins the artifact's
-   manifest declares (`secure-custom-fields`, `action-scheduler`,
-   `mcp-adapter`, from the same checksum-verified `tests/wp/cache/` zips
-   the harness uses) and the built `zero-runtime` + `zero-app-blog` into
-   the site's `plugins/` through the harness's mounted `wp-content`, then
+8. **Binding sugar on a real app** (same stack). Before this step, with SCF
+   absent, the single template's bound paragraph on a core post shows its
+   static text ("No summary."), which proves the theme degrades to a plain
+   paragraph when the binding source is unregistered. Then: `zero build
+   examples/blog --target wp`, whose artifact already contains the resolved,
+   checksum-verified dependency plugins (`secure-custom-fields`,
+   `action-scheduler`, `mcp-adapter`) beside `zero-runtime` and
+   `zero-app-blog`; copy all of `plugins/` from the artifact into the site's
+   `plugins/` through the harness's mounted `wp-content` and
    `wp plugin activate` in dependency order exactly as
-   `tests/system/wp.test.ts` does; create a post through
-   `/wp-json/zero/v1/posts` with an `excerpt`; because Zero's post type is
-   not viewable on the front end (§5), the bound paragraph is checked where
-   SCF resolves it: `wp eval` renders the single template's markup with
-   `do_blocks()` inside a `WP_Query` loop for that post (`setup_postdata`),
-   and the test asserts the `excerpt` text appears where the bound paragraph
-   is, and does not appear for a post with no excerpt (static fallback
-   instead). This proves `bind.field()` emits a binding SCF 6.9.7 resolves
-   from Zero's meta key, on the real pinned plugins. It adds a `cargo build`
-   to the job.
+   `tests/system/wp.test.ts` does (no separate download; `--bare` does not
+   fetch the platform zips); create two posts through
+   `/wp-json/zero/v1/posts`, one with an `excerpt` and one without. Because
+   Zero's post type is not viewable on the front end (§5), the bound
+   paragraph is checked where SCF resolves it: `wp eval` renders the single
+   template's markup with `do_blocks()` inside a `WP_Query` loop for each
+   post (`setup_postdata`). The test asserts the `excerpt` text appears
+   inside the bound paragraph for the first post, and that the paragraph is
+   empty for the second (SCF returns `""` for an unset field, and WordPress
+   keeps the static fallback only for `null`). This proves `bind.field()`
+   emits a binding SCF 6.9.7 resolves from Zero's meta key, on the real
+   pinned plugins. It adds a `cargo build` to the job.
 9. Teardown unless `ZERO_WP_KEEP=1`.
 
 CI job `blocks-wp` runs it on `ubuntu-24.04` (Docker preinstalled) with
@@ -626,7 +641,7 @@ existing job plus the package's:
 | PR | Branch | Contents | Proof |
 |---|---|---|---|
 | 0 | `p3/blocks-design` | this document | review |
-| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
 | 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts` | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
 | 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; double build byte-equal |
 | 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key |

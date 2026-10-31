@@ -111,8 +111,8 @@ packages/blocks/
   schemas/theme-7.1.json  the official schema, fetched once, committed
   examples/starter/       the example theme (§7)
   tests/
-    *.test.ts             unit: jsx-runtime, mapping, serialize (reparse isValid), theme build goldens, diagnostics
-    wp/run.sh, wp/*.test.ts   the Docker proof (§8)
+    unit/*.test.ts        jsx-runtime, mapping, serialize (reparse isValid), theme build goldens, diagnostics
+    wp/run.sh, wp/*.test.ts   the Docker proof (§8); never picked up by the unit run
 ```
 
 Exports:
@@ -666,9 +666,11 @@ proof reads from the rest of the repo (`tests/wp/harness.sh`,
 `tests/wp/compose.yml`, `tests/wp/apache/**`, `tests/wp/php/**`,
 `tests/wp/mu-plugins/**`, `tests/fixtures/platform.json`,
 `examples/blog/**`). Job `blocks-wp` runs on `ubuntu-24.04` (Docker
-preinstalled) with `npx playwright install --with-deps chromium`; job
-`blocks` runs `pnpm install --frozen-lockfile`, `tsc --noEmit`, `node
---test`, and both codegen scripts in check mode. `ci.yml` is not edited; a
+preinstalled) with `npx playwright install --with-deps chromium` and runs
+`tests/wp/run.sh`, which selects `tests/wp/*.test.ts` itself; job `blocks`
+runs `pnpm install --frozen-lockfile`, `tsc --noEmit`, `node --test
+tests/unit/*.test.ts` (an explicit glob, so Node's recursive discovery never
+reaches the WordPress suite), and both codegen scripts in check mode. `ci.yml` is not edited; a
 core PR outside the listed contract paths never runs either job.
 
 ## 9. Out of scope, and non-goals
@@ -697,7 +699,7 @@ the package's workflow (and on the existing jobs, which it must not disturb):
 | PR | Contents | Proof |
 |---|---|---|
 | 0 | this document | review |
-| 1 | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 1 | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test tests/unit/*.test.ts`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
 | 2 | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts`; the `blocks` job gains both codegen check-mode steps | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
 | 3 | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
 | 4 | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |

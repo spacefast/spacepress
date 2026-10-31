@@ -45,7 +45,10 @@ final class Sql
      * $guardsFor(collection) returns the viewer's read guards for a relation filter's target (or
      * throws the read denial); null means a trusted read.
      *
-     * @param ?array{string, list<int|float|string|null>} $partition
+     * $partition[2], when given, names each value's window (parallel to the values): values with
+     * the same name share one limit/offset window (a translation group's rows, Db::attach).
+     *
+     * @param ?array{0: string, 1: list<int|float|string|null>, 2?: list<string>} $partition
      * @param list<array> $guards
      * @return array{sql: string, params: list<int|float|string|null>}
      */
@@ -87,7 +90,18 @@ final class Sql
         $windowed = $partition !== null && ($limit !== null || $offset !== null);
         if ($windowed) {
             $window = $order !== [] ? $order : [$this->cmpRef($collection, $spec['primaryKey'], $alias) . ' ASC'];
-            $over = 'PARTITION BY ' . $this->cmpRef($collection, $partition[0], $alias) . ' ORDER BY ' . implode(', ', $window);
+            $by = $this->cmpRef($collection, $partition[0], $alias);
+            if (isset($partition[2])) {
+                // The select list binds nothing, so the window's parameters go first.
+                $cases = [];
+                foreach ($partition[1] as $i => $v) {
+                    $cases[] = $this->metaParam($spec['columns'][$partition[0]], $src->columns[$partition[0]], $v);
+                    $cases[] = $partition[2][$i];
+                }
+                $this->params = [...$cases, ...$this->params];
+                $by = "CASE $by" . str_repeat(' WHEN ? THEN ?', count($partition[1])) . ' END';
+            }
+            $over = "PARTITION BY $by ORDER BY " . implode(', ', $window);
         }
         $select = [];
         // Schema columns only: a Source may carry helper expressions (the post-backed translation group).

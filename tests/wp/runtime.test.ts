@@ -17,6 +17,9 @@ test("with: a localized `many` resolves to each parent row's locale through Poly
     [`en:Legs ${run}`, ["en:Harbour", "en:Castle"]],
     [`fr:Legs FR ${run}`, ["fr:Port", "en:Castle"]],
   ]);
+  // limit/offset window per translation group, in SQL (MariaDB), whichever row of the group asks.
+  const paged = await ok("GET", "/tours" + qs({ locale: "*", where: { id: { in: [en.id, fr.id] } }, orderBy: "id", with: { legs: { orderBy: { id: "asc" }, limit: 1, offset: 1 } } }));
+  assert.deepEqual(tree(paged), [[`en:Legs ${run}`, ["en:Castle"]], [`fr:Legs FR ${run}`, ["en:Castle"]]]);
   // No German tour: the en row stands in, and so do its en legs.
   const de = await ok("GET", "/tours" + qs({ locale: "de", where: { id: { in: [en.id, fr.id] } }, with: "legs" }));
   assert.deepEqual(tree(de), [[`en:Legs ${run}`, ["en:Harbour", "en:Castle"]]]);

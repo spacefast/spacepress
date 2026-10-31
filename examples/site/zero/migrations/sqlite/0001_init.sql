@@ -31,9 +31,7 @@ CREATE TABLE "posts" (
 	"updatedAt" text NOT NULL,
 	"status" text DEFAULT 'published' NOT NULL,
 	"publishedAt" text,
-	"uid" text,
-	"locale" text DEFAULT 'en' NOT NULL,
-	"translationGroup" text
+	"uid" text
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX "posts_slug_unique" ON "posts" ("slug");
@@ -41,8 +39,6 @@ CREATE UNIQUE INDEX "posts_slug_unique" ON "posts" ("slug");
 CREATE UNIQUE INDEX "posts_uid_unique" ON "posts" ("uid");
 --> statement-breakpoint
 CREATE INDEX "posts_status_publishedAt" ON "posts" ("status", "publishedAt");
---> statement-breakpoint
-CREATE UNIQUE INDEX "posts_translationGroup_locale" ON "posts" ("translationGroup", "locale");
 --> statement-breakpoint
 CREATE TABLE "comments" (
 	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -68,16 +64,3 @@ CREATE TABLE "announcements" (
 	"recipients" integer NOT NULL,
 	"attempt" integer NOT NULL
 );
---> statement-breakpoint
-CREATE TABLE "members" (
-	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	"email" text NOT NULL,
-	"name" text NOT NULL,
-	"plan" text DEFAULT 'free' NOT NULL,
-	"role" text DEFAULT 'subscriber' NOT NULL,
-	"passwordHash" text,
-	"suspendedAt" text,
-	"guest" integer
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX "members_email_unique" ON "members" ("email");

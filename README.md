@@ -33,9 +33,16 @@ Writes need a user: `zero users add me --role editor` then `zero tokens create
 me`, and send `Authorization: Bearer <token>`. `zero dev` also runs the job
 worker.
 
-`examples/blog` is the full tour: open `zero dev examples/blog` in a browser
-after `node examples/blog/build-client.mjs`, sign in, comment, and sync its
-posts with `zero sync`.
+`examples/blog` is the full tour. Build it for the target you'll run, turn its
+client into browser JS, then serve it:
+
+```sh
+./target/release/zero build examples/blog --target standalone
+node examples/blog/build-client.mjs
+./target/release/zero dev examples/blog       # open http://127.0.0.1:8787/
+```
+
+Sign in, switch to German, comment, and sync its posts with `zero sync`.
 
 `zero check` compiles for both targets without writing anything. `zero build`
 writes new migrations to `zero/migrations/{sqlite,wp}/` and the typed client to

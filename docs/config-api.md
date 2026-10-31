@@ -304,7 +304,8 @@ files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_0
 and a `file({ bucket: "decks" })` column holds one by id. Files never get a
 public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
 valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
-`accept` or `maxBytes` are refused (422 at `/file`).
+`accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
+`payload_too_large`.
 
 ## Locales
 
@@ -313,9 +314,11 @@ locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
 ```
 
 A collection with a `.localized()` field stores one row per locale. Every
-other field is shared by a post's translations and kept equal across them;
-`status`, `publishedAt`, `slug` and `uid` stay per row, so each translation
-publishes on its own. Create a translation with
+other field is shared by a post's translations and kept equal across them,
+except what each row generates for itself: `status`, `publishedAt`, `slug`,
+`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
+(so `createdAt`/`updatedAt` are per translation). Each translation publishes
+on its own. Create a translation with
 `{ locale: "de", translationOf: <id> }`; rows carry `locale` and
 `translations` (locale → id). Reads take `?locale=de`, which returns German
 rows and, with `fallback`, the default-locale row of any group without one;
@@ -395,8 +398,11 @@ What the design specifies and this build doesn't do yet:
 
 - Guests are never pruned: the design's `zero.prune-guests` cleanup of guest
   users with no rows after 30 days isn't implemented.
-- WordPress profile screens don't show an auth collection's own fields
-  (`plan`, say); edit them through the API.
+- WordPress profile screens show an auth collection's scalar fields (`plan`,
+  say) but not its structured or list fields (json, group, repeater, blocks,
+  media lists); edit those through the API.
+- Adding an auth collection to an existing standalone app doesn't move the
+  users `zero users add` created before it: recreate them as members.
 - Under a localized parent, a `many` relation loaded with `with` returns its
   rows in every locale rather than in each parent's locale (one page loads
   for all parents).

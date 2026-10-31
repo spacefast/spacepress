@@ -20,7 +20,8 @@ export const authors = collection("authors", {
 
 export const posts = collection("posts", {
   id: id(),
-  // Translated per locale; every other field is shared by a post's translations.
+  // Translated per locale. The other fields are shared by a post's translations, except each
+  // row's own slug, status and dates.
   title: text().notNull().min(1).max(120).localized(),
   slug: slug({ source: "title" }),
   body: richText().localized(),

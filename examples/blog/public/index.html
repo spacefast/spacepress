@@ -15,7 +15,10 @@
 </head>
 <body>
   <header>
-    <span class="who"><span id="me"></span> <button id="auth">Sign in</button></span>
+    <span class="who">
+      <select id="lang" aria-label="Language"><option value="en">English</option><option value="de">Deutsch</option></select>
+      <span id="me"></span> <button id="auth">Sign in</button>
+    </span>
     <h1 id="title">Blog</h1><p class="tagline" id="tagline"></p>
   </header>
   <!-- Standalone signs in with a password here; WordPress sends readers to its /identity screens. -->
@@ -70,13 +73,22 @@
       }
     });
 
+    // German readers get German posts; a post without a translation falls back to English.
+    $("lang").value = sessionStorage.getItem("blog.lang") ?? "en";
+    $("lang").addEventListener("change", () => {
+      sessionStorage.setItem("blog.lang", $("lang").value);
+      render();
+    });
+
     async function render() {
+      const locale = $("lang").value;
+      document.documentElement.lang = locale;
       const settings = await zero.globals.settings.get();
       document.title = $("title").textContent = settings.siteTitle;
       $("tagline").textContent = settings.tagline ?? "";
-      const posts = await zero.posts.list({ orderBy: { publishedAt: "desc" }, limit: settings.postsPerPage, with: { author: true, comments: true, cover: true } });
+      const posts = await zero.posts.list({ orderBy: { publishedAt: "desc" }, limit: settings.postsPerPage, locale, with: { author: true, comments: true, cover: true } });
       $("posts").innerHTML = posts.length === 0 ? "<p>No posts yet.</p>" : posts.map((p) => `
-        <article>
+        <article lang="${esc(p.locale)}">
           ${p.cover ? `<img src="${esc(p.cover.sizes.card?.url ?? p.cover.url)}" alt="${esc(p.cover.alt)}" width="600" height="400">` : ""}
           <h2>${esc(p.title)}</h2>
           <p class="meta">${esc(p.author?.name ?? "Anonymous")} · ${new Date(p.publishedAt).toLocaleDateString()} · ${p.tags.map(esc).join(", ")}</p>

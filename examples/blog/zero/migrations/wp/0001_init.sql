@@ -4,7 +4,6 @@ CREATE TABLE `{prefix}zero_comments` (
 	`name` VARCHAR(60) NOT NULL,
 	`body` LONGTEXT NOT NULL,
 	`approved` TINYINT(1) DEFAULT 0 NOT NULL,
-	`notifiedAt` CHAR(24),
 	`createdAt` CHAR(24) NOT NULL,
 	PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

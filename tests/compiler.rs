@@ -700,6 +700,50 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{raw}"
     );
     assert_eq!(server.send("GET", "/api/auth/config", None).0, 200);
+    // §5.8: the example's committed posts against a fresh site: --check reports them (exit 2), a
+    // sync creates them, and a second sync changes nothing.
+    let php = |args: &[&str]| -> serde_json::Value {
+        let out = Command::new("php")
+            .arg(standalone.join("zero/bin/zero.php"))
+            .args(args)
+            .output()
+            .unwrap();
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)))
+    };
+    php(&["user", "add", "ed@example.test", "--role", "editor"]);
+    let token = php(&["token", "create", "ed@example.test"])["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let site = format!("http://127.0.0.1:{}", server.port);
+    let sync = |extra: &[&str]| {
+        zero()
+            .arg("sync")
+            .arg(&project)
+            .args(["--site", &site, "--token", &token, "--no-commit", "--json"])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    assert_eq!(sync(&["--check"]).status.code(), Some(2));
+    let first = sync(&[]);
+    assert_eq!(
+        first.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&first.stdout)
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&first.stdout).unwrap()["data"]["applied"],
+        2
+    );
+    let again = sync(&[]);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&again.stdout).unwrap()["data"]["applied"],
+        0
+    );
+    let (_, posts) = server.send("GET", "/api/posts?orderBy=id", None);
+    assert_eq!(posts["data"][0]["title"], "Hello, Zero", "{posts}");
     drop(server);
     // A migrated default database must not conceal an unmigrated configured database.
     let (code, report) = diagnose_standalone(Some(&tmp.join("unmigrated.sqlite")));

@@ -24,9 +24,9 @@ nothing is written. "WP" = WordPress 7.1, the pinned platform (`docs/design-phas
 | Theme output | A real block theme: `style.css` (header), `theme.json` (v3), `templates/*.html`, `parts/*.html`, `patterns/*.php`, `styles/*.json`, copied `assets/`, plus `<slug>.zip`. Installable with `wp theme install`, no PHP of ours in it. |
 | Theme source | `theme.config.ts` (`defineTheme`: header + typed `theme.json`), `templates/<slug>.tsx`, `parts/<slug>.tsx`, `patterns/<name>.tsx`, `styles/<name>.ts`, `assets/`. File names are the template hierarchy. |
 | Validation | Unknown core block, unknown or mistyped attribute, a `save()` that throws, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
-| Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `collection("posts")` → the post type Zero registers (`zero_posts`) for query loops, and `bind.field("dek")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_dek" } }`. Pure markup; no runtime dependency on Zero. |
+| Zero collections | Optional sugar in `@spacefast/zero-blocks/zero`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "zero_excerpt" } }` for the meta key Zero writes. Pure markup; no runtime dependency on Zero. Query loops over Zero collections are **not** offered: `core/query` ignores non-viewable post types and Zero's are private (§5). |
 | Not in scope | Capsule frontends, islands, the `zero/component` dynamic block, `_pages` system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. |
-| Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the blog example's Zero artifact is installed into the same site and the Zero sugar is proven on a real collection row and a real SCF field. |
+| Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's Zero artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
 | CI | Two jobs in `.github/workflows/ci.yml`: `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof). Zero core's jobs are untouched. |
 
 ## 1. Why, and what changes from the earlier work
@@ -83,7 +83,7 @@ packages/blocks/
       hierarchy.ts        WordPress template slugs and their patterns
       index.ts            `@spacefast/zero-blocks/compiler`
     zero/
-      index.ts            `@spacefast/zero-blocks/zero`: collection(), bind.*
+      index.ts            `@spacefast/zero-blocks/zero`: bind.*
     cli.ts                zero-blocks build | check | content
   scripts/
     codegen-blocks.ts     --write regenerates blocks.generated.ts; no flags = parity check
@@ -103,7 +103,7 @@ Exports:
 | `@spacefast/zero-blocks/jsx-runtime`, `/jsx-dev-runtime` | the TSX transform | `jsx`, `jsxs`, `jsxDEV`, `Fragment` |
 | `@spacefast/zero-blocks/theme` | theme authors | `defineTheme`, `defineTemplate`, `definePattern`, `defineStyleVariation`, `preset`, `TemplatePart`, `Pattern`, `QueryLoop`, … |
 | `@spacefast/zero-blocks/compiler` | tools, tests | `compileContent`, `buildTheme`, `Diagnostic` |
-| `@spacefast/zero-blocks/zero` | Zero app authors | `collection`, `bind` |
+| `@spacefast/zero-blocks/zero` | Zero app authors | `bind` |
 | bin `zero-blocks` | everyone | `build`, `check`, `content` |
 
 Dependencies, all pinned exactly: `esbuild` (bundle + execute authored TSX),
@@ -293,7 +293,6 @@ my-theme/
   templates/
     index.tsx            required
     single.tsx  page.tsx  archive.tsx  404.tsx  search.tsx  front-page.tsx
-    single-zero_posts.tsx
     landing.tsx          custom: export const meta = defineTemplate({ title: "Landing", postTypes: ["page"] })
   parts/
     header.tsx  footer.tsx  sidebar.tsx
@@ -475,38 +474,38 @@ them as `{ code, message, hint, file, line, column }` for tools.
 
 ## 5. Zero collections (optional sugar)
 
-`@spacefast/zero-blocks/zero` knows two Zero conventions and nothing else:
+`@spacefast/zero-blocks/zero` knows one Zero convention and nothing else:
 
-- `collection("posts")` → `"zero_posts"`, the post type Zero's WordPress
-  target registers for a post-backed collection, for `<QueryLoop
-  postType={collection("posts")}>` and for naming templates
-  (`single-zero_posts.tsx`). It is a string helper with one precondition the
-  author owns: the collection is post-backed (not `editor: false`, not `auth:
-  true`). The generated `zero/client/schema.ts` does not say which
-  collections are post-backed, and this package will not ask Zero's codegen
-  to grow a field for it; so there is no "checked" variant. The README states
-  the precondition and the proof suite exercises the helper against a real
-  Zero app.
-- `bind.field("dek")` → `{ source: "acf/field", args: { key: "zero_dek" } }`,
+- `bind.field("excerpt")` → `{ source: "acf/field", args: { key: "zero_excerpt" } }`,
   the Secure Custom Fields block-binding source (SCF 6.9.7 reads
   `$source_attrs['key']` as the field name or key) for the meta key Zero
   writes (`zero_<column>`), usable as
-  `<Paragraph bindings={{ content: bind.field("dek") }}>` which lands in the
-  block's `metadata.bindings`. SCF resolves it at render time; nothing of
-  ours runs. Only field types SCF allows in bindings resolve (text, textarea,
-  number, email, url, select, …); a `richText` column is a WYSIWYG field and
-  SCF refuses it, which is documented, not detected.
+  `<Paragraph bindings={{ content: bind.field("excerpt") }}>` which lands in
+  the block's `metadata.bindings`. SCF resolves it at render time against the
+  post being rendered; nothing of ours runs. Only field types SCF allows in
+  bindings resolve (text, textarea, number, email, url, select, …); a
+  `richText` column is a WYSIWYG field and SCF refuses it, which is
+  documented, not detected.
 
-Both emit plain block markup. A theme built with them works on any site with
-SCF and the Zero app plugin active, and the package has no import of Zero.
+It emits plain block markup. A theme built with it works on any site with
+SCF and a Zero app plugin active, and the package has no import of Zero.
 
-Limit to state plainly: Zero today registers its post types `public: false`,
-`rewrite: false`, `has_archive: false`. A query loop over `zero_posts` renders
-(WP_Query takes an explicit post type regardless), but `single-zero_posts`
-templates have no front-end URL to resolve to until a collection can opt into
-public permalinks. That is a Zero-core decision (a collection option, phase 3
-of the core design), not this package's; the example theme loops over a Zero
-collection and uses core `post`/`page` for single views.
+**What is deliberately not offered, and why.** A `collection("posts")`
+helper that names Zero's post type (`zero_posts`) for `<QueryLoop postType>`
+or `single-zero_posts` templates was in the first draft and is withdrawn.
+WordPress 7.1's `build_query_vars_from_query_block()` honours a
+`query.postType` only when `is_post_type_viewable()` is true; Zero registers
+its collections `public: false`, `publicly_queryable` unset, `rewrite:
+false`, so a loop over `zero_posts` silently falls back to core `post`, and
+an unregistered type does the same. A helper whose output looks right and
+quietly shows the wrong posts is worse than none. The same registration
+means `single-zero_posts` has no front-end URL to resolve to. Both become
+possible the day a Zero collection can opt into being publicly viewable
+(a collection option in Zero core, outside this design); this package would
+then add `collection()` as a one-line helper. Until then the README says:
+Zero collection rows reach a block theme through bindings on the post that
+embeds them, through the Zero REST API from a plugin, or through rendering
+the collection's content column into a page with `zero-blocks content`.
 
 ## 6. Diagnostics (complete list)
 
@@ -527,13 +526,14 @@ page, archive, search, 404, front-page; `parts/` header (site title +
 navigation), footer; `patterns/` hero and a call to action; `styles/dark.ts`.
 The front page uses `<QueryLoop inherit>`; the hero pattern has several
 top-level blocks so the editor's pattern expansion is exercised. A
-`latest.tsx` custom template loops over `collection("posts")` and binds a
-paragraph to `bind.field("dek")`; it renders empty on a site without the blog
-app (a `core/query` over an unregistered post type matches nothing, an
-unresolved binding shows its static text), which is a legitimate state for a
-theme and what the second half of §8 proves otherwise. It lives inside the
-package rather than in `examples/` because that directory is being reworked by
-the integration PR; moving it is a one-line change later.
+`single-zero_posts.tsx`-style template is *not* included (§5); instead the
+`single.tsx` template carries one paragraph bound with
+`bind.field("excerpt")` under the post content. On a site without SCF the
+binding source is unregistered and the paragraph shows its static fallback
+text ("No summary."), a legitimate state for a theme; with SCF and a Zero app
+active it shows the row's `excerpt`, which the second half of §8 proves.
+It lives inside the package rather than in `examples/` because that directory
+is being reworked by the integration PR; moving it is a one-line change later.
 
 ## 8. Proof on real WordPress
 
@@ -563,31 +563,37 @@ the integration PR; moving it is a one-line change later.
    for every template and part the REST API lists for the theme
    (`/wp/v2/templates?wp_theme=…`, `/wp/v2/template-parts?…`), opens
    `site-editor.php?postType=<type>&postId=zero-starter//<slug>&canvas=edit`,
-   waits (condition-based, no sleeps) until the edited entity record for that
-   id is loaded and `getBlocks()` is non-empty, then reads
-   `wp.data.select("core/block-editor").getBlocks()` flattened (patterns
-   expand to their blocks in the editor, so counts are not compared); asserts
-   no block has `isValid === false`, none is `core/missing`, and that the
+   waits (Playwright `waitForFunction`, no sleeps) until the edited entity
+   record for that id is loaded, `getBlocks()` is non-empty, no
+   `core/pattern` block remains in the flattened tree (the editor replaces
+   each reference with the pattern's blocks asynchronously), and the
    template's distinguishing block is present (the header part's
-   `core/site-title`, the single template's `core/post-content`, the hero
-   pattern's blocks on the front page). This is the editor's own validation,
+   `core/site-title`, the single template's `core/post-content`, a block
+   from the hero pattern on the front page); then reads the flattened tree
+   and asserts no block has `isValid === false` and none is `core/missing`.
+   Counts are not compared, since pattern expansion changes them. This is
+   the editor's own validation,
    in the editor, against the site's real theme.json and block registry. It
    is what "opens cleanly in the Site Editor" means and the only level that
    can prove it; the unit suite already proves the pinned parser agrees per
    construct, so the two are not redundant.
-8. **Zero sugar on a real app** (same stack): `zero build examples/blog
-   --target wp`, install SCF and the built `zero-runtime` + `zero-app-blog`
-   plugins into the site's `plugins/` directory through the harness's
-   mounted `wp-content` and `wp plugin activate` them (the harness's
-   `--bare` mode exists for exactly this, as `tests/system/wp.test.ts` does);
-   create a post through `/wp-json/zero/v1/posts` with a `dek`; create a page
-   assigned the `latest` custom template (`wp post create --post_type=page
-   --meta_input='{"_wp_page_template":"latest"}'`); fetch it and assert the
-   Zero post's title appears inside the query loop's markup and the `dek`
-   text appears where the bound paragraph is. This proves `collection()` names
-   the post type Zero registers and `bind.field()` resolves through SCF, on
-   the real pinned plugins. It adds a `cargo build` to the job; the plugin
-   zips come from the same checksum cache the other Docker jobs use.
+8. **Binding sugar on a real app** (same stack): `zero build examples/blog
+   --target wp`; install the pinned platform plugins the artifact's
+   manifest declares (`secure-custom-fields`, `action-scheduler`,
+   `mcp-adapter`, from the same checksum-verified `tests/wp/cache/` zips
+   the harness uses) and the built `zero-runtime` + `zero-app-blog` into
+   the site's `plugins/` through the harness's mounted `wp-content`, then
+   `wp plugin activate` in dependency order exactly as
+   `tests/system/wp.test.ts` does; create a post through
+   `/wp-json/zero/v1/posts` with an `excerpt`; because Zero's post type is
+   not viewable on the front end (§5), the bound paragraph is checked where
+   SCF resolves it: `wp eval` renders the single template's markup with
+   `do_blocks()` inside a `WP_Query` loop for that post (`setup_postdata`),
+   and the test asserts the `excerpt` text appears where the bound paragraph
+   is, and does not appear for a post with no excerpt (static fallback
+   instead). This proves `bind.field()` emits a binding SCF 6.9.7 resolves
+   from Zero's meta key, on the real pinned plugins. It adds a `cargo build`
+   to the job.
 9. Teardown unless `ZERO_WP_KEEP=1`.
 
 CI job `blocks-wp` runs it on `ubuntu-24.04` (Docker preinstalled) with
@@ -623,7 +629,7 @@ existing job plus the package's:
 | 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
 | 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts` | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
 | 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; double build byte-equal |
-| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`collection`, `bind`) used by the example | §8 on real WordPress, both halves |
+| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key |
 | 5 | `p3/blocks-docs` | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits Zero), a pointer section in the root README | docs render; links resolve |
 
 Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
@@ -636,9 +642,11 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    hand-written serializer was rejected: it would be right for `core/post-*`
    (no save) and wrong for `core/group` the day core changes a class name.
 2. **Attribute validation against the registry** is new and strict: a prop a
-   block does not register is an error, not a warning. It can be relaxed per
-   block with `<Block name="core/x" attrs>` (passthrough semantics) if a real
-   case appears.
+   core block does not register is an error, not a warning, and there is no
+   opt-out for `core/*` (passthrough semantics are for other namespaces
+   only). If a real case appears where WordPress accepts an attribute the
+   pinned registry does not list, the fix is a registry pin bump, not an
+   escape hatch.
 3. **Site Editor validation via Playwright** adds Chromium to one CI job. The
    REST-plus-pinned-parser alternative proves less than the ask requires
    ("opens cleanly in the Site Editor"), so Playwright stays, in the WP job
@@ -648,18 +656,17 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
 5. **`@spacefast/zero-blocks`** as the npm name (free; mirrors how
    Spacefast scoped its earlier packages). The bare `zero-blocks` name is
    taken on npm.
-6. **No Zero-core seam in this phase.** The one real gap (public permalinks
-   for collections, §5) is reported upward rather than patched here. The
-   `collection()` helper stays unchecked for the same reason: checking it
-   would need the generated client schema to say which collections are
-   post-backed.
+6. **No Zero-core seam in this phase.** The one real gap (publicly viewable
+   collections, §5, which would unlock query loops and single templates over
+   Zero post types) is reported upward rather than patched here, and the
+   helper that depended on it is withdrawn rather than shipped half-working.
 7. **Trusted execution of authored TSX** (§3.3), as every JS build tool does.
    Zero core evaluates `zero.config.ts` in a pure Rust evaluator; this
    package does not, because themes are the site owner's own code and the
    block library it must run is itself a large untrusted-by-that-standard
    JavaScript dependency.
-8. **The proof installs the blog example's Zero artifact** into the same
-   WordPress to exercise the sugar (§8 step 8). It makes the `blocks-wp` job
-   build the Rust binary, which doubles its runtime; the alternative, not
-   proving `collection()`/`bind.field()` at all, would leave the one
-   Zero-specific feature untested.
+8. **The proof installs the platform plugins and the blog example's Zero
+   artifact** into the same WordPress to exercise the binding sugar (§8 step
+   8). It makes the `blocks-wp` job build the Rust binary, which roughly
+   doubles its runtime; the alternative, not proving `bind.field()` at all,
+   would leave the one Zero-specific feature untested.

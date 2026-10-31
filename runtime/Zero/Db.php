@@ -80,15 +80,28 @@ final class Db
     }
 
     /**
-     * The innermost open bulk update on $collection that has yet to write row $pk, else null. A write
-     * extension that would also write that row (group sync) hands it the values instead (BulkUpdate),
-     * so the row's own update applies them and its hooks run once.
+     * The open bulk update on $collection that has yet to write row $pk, else null. A write extension
+     * that would also write that row (group sync) hands it the values instead (BulkUpdate), so the
+     * row's own update applies them and its hooks run once.
      */
     public function pendingUpdate(string $collection, int|string $pk): ?BulkUpdate
     {
         foreach (array_reverse($this->bulk) as $bulk) {
             if ($bulk->collection === $collection && isset($bulk->pending[self::key($pk)])) {
                 return $bulk;
+            }
+        }
+
+        return null;
+    }
+
+    /** The group-sync key whose values row $pk is being written with right now, if it was handed any. */
+    public function handedFrom(string $collection, int|string $pk): ?string
+    {
+        $key = self::key($pk);
+        foreach (array_reverse($this->bulk) as $bulk) {
+            if ($bulk->collection === $collection && $bulk->current === $key) {
+                return $bulk->from[$key] ?? null;
             }
         }
 
@@ -465,13 +478,22 @@ final class Db
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             $pk = $spec['primaryKey'];
-            $bulk = new BulkUpdate($collection, array_map(static fn (array $row) => self::key($row[$pk]), $rows));
+            $bulk = new BulkUpdate($collection, array_map(static fn (array $row) => self::key($row[$pk]), $rows), count($this->bulk));
             $this->bulk[] = $bulk;
             try {
                 foreach ($rows as $existing) {
                     $key = self::key($existing[$pk]);
                     unset($bulk->pending[$key]);
+                    $bulk->current = $key;
                     $handed = $bulk->handed[$key] ?? [];
+                    foreach (array_intersect_key($handed, $set) as $col => $v) {
+                        if (Js::jsonStringify($v) !== Js::jsonStringify($set[$col])) {
+                            // This update sets another value: it is the later write, so it wins and
+                            // propagates like any update (the row is no longer just receiving values).
+                            unset($bulk->from[$key]);
+                        }
+                    }
+                    $handed = array_diff_key($handed, $set);
                     $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer, $handed));
                 }
             } finally {
@@ -688,7 +710,7 @@ final class Db
         return $row;
     }
 
-    /** @param array $handed trusted values an extension handed this row during a bulk update (BulkUpdate); they win over $patch */
+    /** @param array $handed trusted values an extension handed this row during a bulk update (BulkUpdate), for columns $patch leaves out */
     private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $handed = []): array
     {
         $columns = $spec['columns'];

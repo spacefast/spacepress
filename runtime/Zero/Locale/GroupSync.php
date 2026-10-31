@@ -142,6 +142,9 @@ final class GroupSync
         if (isset(self::$active[self::key($collection, $row, $pk)])) {
             return; // this row is being given its group's values; the outer write checks the group
         }
+        if ($previous !== null && db()->handedFrom($collection, $row[$pk]) !== null) {
+            return; // given its group's values through a bulk update: that propagation checks the group
+        }
         $changed = [];
         foreach ($previous === null ? [] : Module::synced($spec) as $col) {
             if (!Module::same($row[$col], $previous[$col])) {
@@ -166,18 +169,22 @@ final class GroupSync
             $members = Lock::members($collection, $row, Module::members($row, $pk));
             $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
             $deferred = null;
-            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed, &$deferred): void {
+            $group = self::key($collection, $row, $pk);
+            self::quietly($group, static function () use ($collection, $pk, $siblings, $changed, $group, &$deferred): void {
                 foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
                     $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
                     if ($patch === []) {
                         continue;
                     }
-                    // A sibling the same bulk update will write next gets the values with its own
-                    // update, so its hooks and revision happen once; the group is checked after it.
+                    // A sibling an open bulk update will write later gets the values with its own
+                    // update, so its hooks and revision happen once. The group is checked once the
+                    // outermost such update has written every row.
                     $bulk = db()->pendingUpdate($collection, $sibling[$pk]);
                     if ($bulk !== null) {
-                        $bulk->hand($sibling[$pk], $patch);
-                        $deferred = $bulk;
+                        $bulk->hand($sibling[$pk], $patch, $group);
+                        if ($deferred === null || $bulk->depth < $deferred->depth) {
+                            $deferred = $bulk;
+                        }
                     } else {
                         db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                     }

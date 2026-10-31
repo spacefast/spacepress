@@ -20,18 +20,27 @@ use function Zero\db;
  */
 final class Lock
 {
-    /** The row's stored values must still be the latest committed ones. */
+    /**
+     * The row as this request sees it must still be the latest committed version: compares a plain
+     * read (the request's snapshot) with a locking read of every place the row is stored (the
+     * wp_posts row and its Zero postmeta, or the table row), and holds the lock.
+     */
     public static function unchanged(string $collection, int|string $pk): void
     {
         $store = db()->store();
         if (!$store instanceof CompositeStore) {
             return;
         }
-        [$sql, $params] = $store->isPostBacked($collection)
-            ? ['SELECT meta_key, meta_value FROM `' . $store->db->wpdb()->postmeta . "` WHERE post_id = ? AND meta_key LIKE 'zero\\_%' ORDER BY meta_id", [(int) $pk]]
-            : ['SELECT * FROM `' . $store->tables->table($collection) . '` WHERE `' . db()->schema()->collection($collection)['primaryKey'] . '` = ?', [$pk]];
-        if (Js::jsonStringify($store->db->run($sql, $params)) !== Js::jsonStringify($store->db->run($sql . ' FOR UPDATE', $params))) {
-            throw self::conflict();
+        $queries = $store->isPostBacked($collection)
+            ? [
+                ['SELECT * FROM `' . $store->db->wpdb()->posts . '` WHERE ID = ?', [(int) $pk]],
+                ['SELECT meta_id, meta_key, meta_value FROM `' . $store->db->wpdb()->postmeta . "` WHERE post_id = ? AND (meta_key LIKE 'zero\\_%' OR meta_key LIKE '\\_zero\\_%') ORDER BY meta_id", [(int) $pk]],
+            ]
+            : [['SELECT * FROM `' . $store->tables->table($collection) . '` WHERE `' . db()->schema()->collection($collection)['primaryKey'] . '` = ?', [$pk]]];
+        foreach ($queries as [$sql, $params]) {
+            if (Js::jsonStringify($store->db->run($sql, $params)) !== Js::jsonStringify($store->db->run($sql . ' FOR UPDATE', $params))) {
+                throw self::conflict();
+            }
         }
     }
 

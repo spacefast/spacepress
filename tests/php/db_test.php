@@ -1152,6 +1152,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                     'slug' => ['type' => 'slug', 'unique' => true, 'source' => 'title'],
                     'price' => ['type' => 'integer'],
                     'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['a', 'b'], 'notNull' => true, 'default' => ['value' => []]],
+                    'seo' => ['type' => 'group', 'fields' => ['heading' => ['type' => 'text', 'localized' => true], 'noindex' => ['type' => 'boolean']]],
                     'parentId' => ['type' => 'integer', 'references' => ['collection' => 'pages', 'column' => 'id', 'onDelete' => 'set null']],
                     'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
                     'publishedAt' => ['type' => 'timestamp', 'system' => true],
@@ -1180,7 +1181,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         }
         PHP;
     $migration = <<<'SQL'
-        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
+        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
         --> statement-breakpoint
         CREATE UNIQUE INDEX "pages_slug_unique" ON "pages" ("slug");
         --> statement-breakpoint
@@ -1239,6 +1240,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         array_column($db->findMany('pages', ['locale' => '*']), 'price'), count($db->findMany('notes')), count($db->revisions('pages', $tea['id'])),
     ], [[4, 4, 4], $notesBefore, $revisionsBefore]);
 
+    // A group holding a localized sub-field is translated whole: never copied or synced.
+    $seo = $db->insert('pages', ['title' => 'Seo', 'seo' => ['heading' => 'Hello', 'noindex' => true]], true)[0];
+    $seoDe = $db->insert('pages', ['title' => 'Seo DE', 'locale' => 'de', 'translationOf' => $seo['id'], 'seo' => ['heading' => 'Hallo', 'noindex' => true]], true)[0];
+    $db->update('pages', ['seo' => ['heading' => 'Hi', 'noindex' => false]], ['id' => $seo['id']]);
+    eq('a group with a localized sub-field stays per row', [$seoDe['seo']['heading'], $db->findFirst('pages', ['where' => ['id' => $seoDe['id']]])['seo']], ['Hallo', ['heading' => 'Hallo', 'noindex' => true]]);
+    $db->delete('pages', ['id' => ['in' => [$seo['id'], $seoDe['id']]]]);
     // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
     $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];
     $kaffee = $db->insert('pages', ['title' => 'Kaffee', 'locale' => 'de', 'translationOf' => $coffee['id']], true)[0];

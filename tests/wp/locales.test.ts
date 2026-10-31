@@ -125,3 +125,39 @@ test("posts that predate localization become default-locale rows; Polylang's def
   assert.deepEqual([polylang(id)[0], wp("eval", "echo pll_default_language();")], ["en", "en"]);
   assert.deepEqual(titles(await ok("GET", "/guides" + qs({ where: { id } }))), [`en:Legacy ${run}`]);
 });
+
+test("a write based on a group another connection changed first is refused, not committed divergent", async () => {
+  const { en, fr } = await pair("Race");
+  // Inside one Zero transaction: read the group (the snapshot), let a second MySQL connection commit
+  // a synced change, then write. Both a stale update and a stale join must fail with 409 conflict.
+  const out = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $other = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
+    $race = function (callable $write) use ($db, $other): string {
+      try {
+        $db->transaction(function () use ($db, $other, $write) {
+          $db->findMany('guides', ['where' => ['id' => ['in' => [${en.id}, ${fr.id}]]], 'locale' => '*']);
+          $other->query("UPDATE wp_postmeta SET meta_value = meta_value + 1 WHERE post_id IN (${en.id}, ${fr.id}) AND meta_key = 'zero_price'");
+          $write();
+        });
+        return 'committed';
+      } catch (\\Zero\\HttpError $e) {
+        return $e->status . ' ' . $e->errorCode;
+      }
+    };
+    echo wp_json_encode([
+      $race(fn () => $db->update('guides', ['price' => 3], ['id' => ${fr.id}])),
+      $race(fn () => $db->insert('guides', ['title' => 'Race DE ${run}', 'locale' => 'de', 'translationOf' => ${en.id}])),
+    ]);`));
+  assert.deepEqual(out, ["409 conflict", "409 conflict"]);
+  const both = await ok("GET", "/guides" + qs({ locale: "*", where: { id: { in: [en.id, fr.id] } }, orderBy: "id" }), { as: "editor" });
+  assert.deepEqual(both.map((r: any) => r.price), [5, 5], "the group stays equal at the other connection's value");
+});
+
+test("a trashed translation leaves the group usable; its locale can be translated again", async () => {
+  const { en, fr } = await pair("Trash");
+  wp("eval", `wp_trash_post(${fr.id});`); // to the trash: Polylang keeps the relationship
+  await ok("PATCH", `/guides/${en.id}`, { as: "editor", body: { price: 8 } });
+  const again = await ok("POST", "/guides", { as: "editor", body: { title: `Trash FR2 ${run}`, locale: "fr", translationOf: en.id } });
+  assert.deepEqual([again.price, polylang(en.id)[1]], [8, { en: en.id, fr: again.id }]);
+});

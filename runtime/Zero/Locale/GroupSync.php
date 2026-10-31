@@ -51,7 +51,17 @@ final class GroupSync
      */
     public static function write(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
-        if ($op !== 'create' || !Module::localized($collection)) {
+        if (!Module::localized($collection)) {
+            return;
+        }
+        if ($op === 'update') {
+            // Group sync compares this write with the row as this request read it, so that read must
+            // be current: a write based on a stale row (another request changed the group) is a 409.
+            Lock::unchanged($collection, $existing[db()->schema()->collection($collection)['primaryKey']]);
+
+            return;
+        }
+        if ($op !== 'create') {
             return;
         }
         $spec = db()->schema()->collection($collection);

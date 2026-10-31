@@ -45,8 +45,9 @@ final class Module
     }
 
     /**
-     * Columns kept equal across a translation group: every column that isn't localized, the primary
-     * key, a system column (status/publishedAt/uid/locale/...), the slug, or generated per row.
+     * Columns kept equal across a translation group: every column that isn't translated (see
+     * translated()), the primary key, a system column (status/publishedAt/uid/locale/...), the slug,
+     * or generated per row.
      *
      * @return list<string>
      */
@@ -55,13 +56,31 @@ final class Module
         $out = [];
         foreach ($spec['columns'] as $name => $col) {
             $generated = isset($col['onUpdate']) || isset($col['default']['now']) || isset($col['default']['fn']) || ($col['autoIncrement'] ?? false);
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !($col['localized'] ?? false)
+            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !self::translated($col)
                 && $name !== ($spec['slug'] ?? null) && !$generated) {
                 $out[] = (string) $name;
             }
         }
 
         return $out;
+    }
+
+    /**
+     * A column is translated per locale when it, or any sub-field, is `.localized()`: a group or
+     * repeater holding a translated field is translated whole (its sub-values aren't merged).
+     */
+    public static function translated(array $col): bool
+    {
+        if ($col['localized'] ?? false) {
+            return true;
+        }
+        foreach ([...array_values($col['fields'] ?? []), ...array_merge([], ...array_map('array_values', array_values($col['layouts'] ?? [])))] as $sub) {
+            if (self::translated($sub)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Equal JS-form values (decoded rows and normalized input compare as canonical JSON). */

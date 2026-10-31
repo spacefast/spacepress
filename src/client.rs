@@ -377,7 +377,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         let synced: Vec<String> = c
             .columns
             .values()
-            .filter(|col| !col.localized && !col.system && !col.primary_key && Some(&col.name) != c.slug.as_ref())
+            .filter(|col| !col.translated() && !col.system && !col.primary_key && Some(&col.name) != c.slug.as_ref())
             .map(|col| lit(&col.name))
             .collect();
         let synced = if synced.is_empty() {

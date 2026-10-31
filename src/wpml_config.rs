@@ -37,7 +37,7 @@ pub fn render(schema: &Schema) -> Option<String> {
     let mut seen = std::collections::BTreeMap::new();
     for c in &collections {
         for col in c.columns.values().filter(|col| !c.is_core_column(&col.name)) {
-            let action = if col.localized { "translate" } else { "copy" };
+            let action = if col.translated() { "translate" } else { "copy" };
             let nested = col.fields.is_some() || col.layouts.is_some();
             for key in [format!("zero_{}", col.name)]
                 .into_iter()

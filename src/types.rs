@@ -374,7 +374,7 @@ pub fn insert(schema: &Schema, table: &str) -> Ty {
         for col in c
             .columns
             .values()
-            .filter(|col| !col.localized && !col.system && !col.primary_key)
+            .filter(|col| !col.translated() && !col.system && !col.primary_key)
         {
             if let Some(f) = fields.get_mut(&col.name) {
                 f.1 = true;

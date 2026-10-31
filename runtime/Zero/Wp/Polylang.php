@@ -170,6 +170,12 @@ final class Polylang
             $members = array_map('intval', array_column($db->run("SELECT object_id AS id FROM `{$p}term_relationships` WHERE term_taxonomy_id IN ({$in($groups)}) FOR UPDATE", $groups), 'id'));
             $ids = array_values(array_unique([...$ids, ...$members]));
         }
+        // Live members only, as every read sees them: a trashed translation keeps Polylang's group
+        // relationship but is no longer a row (a join in its locale drops it from the group).
+        $ids = array_map('intval', array_column($db->run("SELECT ID FROM `{$p}posts` WHERE ID IN ({$in($ids)}) AND post_status NOT IN ('trash', 'auto-draft', 'inherit') FOR UPDATE", $ids), 'ID'));
+        if ($ids === []) {
+            return [];
+        }
         $out = [];
         foreach ($db->run("SELECT tr.object_id AS id, t.slug FROM `{$p}term_relationships` tr JOIN `{$p}term_taxonomy` tt ON tt.term_taxonomy_id = tr.term_taxonomy_id"
             . " JOIN `{$p}terms` t ON t.term_id = tt.term_id WHERE tr.object_id IN ({$in($ids)}) AND tt.taxonomy = 'language' ORDER BY tr.object_id FOR UPDATE", $ids) as $r) {

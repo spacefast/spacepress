@@ -1153,6 +1153,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                     'price' => ['type' => 'integer'],
                     'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['a', 'b'], 'notNull' => true, 'default' => ['value' => []]],
                     'seo' => ['type' => 'group', 'fields' => ['heading' => ['type' => 'text', 'localized' => true], 'noindex' => ['type' => 'boolean']]],
+                    'box' => ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
                     'parentId' => ['type' => 'integer', 'references' => ['collection' => 'pages', 'column' => 'id', 'onDelete' => 'set null']],
                     'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
                     'publishedAt' => ['type' => 'timestamp', 'system' => true],
@@ -1176,6 +1177,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($existing['title'] === 'Tag DE' && isset($patch['price'])) {
                 $patch['tags'] = ['b']; // a different synced column than the one propagated
             }
+            if ($existing['title'] === 'Adopt DE' && isset($patch['price'])) {
+                $patch['price']++; // rewrites the value it is adopting
+            }
             if ($existing['title'] === 'Move DE') {
                 $patch['locale'] = 'fr';
             }
@@ -1198,7 +1202,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         }
         PHP;
     $migration = <<<'SQL'
-        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
+        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "box" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
         --> statement-breakpoint
         CREATE UNIQUE INDEX "pages_slug_unique" ON "pages" ("slug");
         --> statement-breakpoint
@@ -1283,6 +1287,23 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $moveDe = $db->insert('pages', ['title' => 'Move DE', 'locale' => 'de', 'translationOf' => $move['id']], true)[0];
     problem('a hook can\'t move a row to another locale either', fn () => $db->update('pages', ['title' => 'Move DE'], ['id' => $moveDe['id']]), 422, 'invalid_input', '/locale');
     $db->delete('pages', ['id' => ['in' => [$move['id'], $moveDe['id']]]]);
+
+    // A synced group with an admin-only sub-field: an editor can't confirm the hidden value by guessing.
+    $boxed = $db->insert('pages', ['title' => 'Boxed', 'box' => ['label' => 'L', 'secret' => 's3cret']], true)[0];
+    $boxGuess = static fn (string $secret) => fn () => $db->insert('pages', ['title' => 'Boxed DE', 'locale' => 'de', 'translationOf' => $boxed['id'], 'box' => ['label' => 'L', 'secret' => $secret]], true, $editor);
+    problem('a hidden sub-field is refused whatever it is (right guess)', $boxGuess('s3cret'), 422, 'invalid_input', '/box');
+    problem('… exactly like a wrong guess', $boxGuess('nope'), 422, 'invalid_input', '/box');
+    $db->delete('pages', ['id' => $boxed['id']]);
+
+    // Adoption (a row linked into a group outside the API) is held to the same group invariant.
+    $adopt = $db->insert('pages', ['title' => 'Adopt', 'price' => 7], true)[0];
+    problem('a hook rewriting an adopted synced value → 409, nothing committed', fn () => $db->transaction(function () use ($db, $adopt) {
+        $de = $db->insert('pages', ['title' => 'Adopt DE', 'locale' => 'de', 'price' => 1], true)[0];
+        $db->store()->update('pages', $de['id'], ['translationGroup' => $db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup']]); // linked outside the pipeline
+        \Zero\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
+    }), 409, 'conflict', '/price');
+    eq('… no Adopt DE row was committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => 'Adopt DE']])), 0);
+    $db->delete('pages', ['id' => $adopt['id']]);
 
     // An idempotent translation create replays its receipt even after the group's values moved on.
     $idem = $db->insert('pages', ['title' => 'Idem', 'price' => 3], true)[0];

@@ -31,6 +31,11 @@ export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {
   guides: {
+    // A translation titled "Bump…" rewrites the price it is given: group sync must refuse, not split the group.
+    async beforeUpdate(patch, existing) {
+      const price = patch.price;
+      if (existing.title.startsWith("Bump") && price != null) patch.price = price + 1;
+    },
     async afterUpdate(row) {
       await db.insert(guideLog).values({ guideId: row.id, entry: `${row.locale}:${row.price}` });
     },

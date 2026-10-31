@@ -96,7 +96,8 @@ final class GroupSync
         foreach (Module::synced($spec) as $col) {
             if (!array_key_exists($col, $provided)) {
                 $data[$col] = $source[$col];
-            } elseif (!array_key_exists($col, $visible)) {
+            } elseif (!array_key_exists($col, $visible) || !Module::same($visible[$col], $source[$col])) {
+                // Not fully readable by the caller (the column, or a sub-field of it, is hidden).
                 throw self::synced($col);
             } else {
                 $supplied[] = $col;
@@ -247,6 +248,7 @@ final class GroupSync
         }
         if ($patch !== []) {
             self::quietly(self::key($collection, $row, $pk), static fn () => db()->update($collection, $patch, [$pk => $row[$pk]]));
+            self::agrees($collection, $row[$pk]); // the adopting row's hooks may have rewritten what it adopted
         }
     }
 

@@ -88,6 +88,20 @@ test("a translation linked outside the API (Polylang's +) adopts the group's syn
   assert.deepEqual([row.locale, row.price, row.tags, row.translations], ["de", 7, ["coffee"], { en: en.id, de }]);
 });
 
+test("a link made outside the API is refused when a hook would split the group", async () => {
+  const en = await ok("POST", "/guides", { as: "editor", body: { title: `Linked ${run}`, price: 7 } });
+  const out = JSON.parse(wp("eval", `
+    $id = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
+    try {
+      pll_save_post_translations(['en' => ${en.id}, 'de' => $id]);
+      $result = 'linked';
+    } catch (\\Zero\\HttpError $e) {
+      $result = $e->status . ' ' . $e->errorCode;
+    }
+    echo wp_json_encode([$result, $id, get_post_meta($id, 'zero_price', true), get_post_meta(${en.id}, 'zero_price', true)]);`));
+  assert.deepEqual([out[0], out[2], out[3]], ["409 conflict", "", "7"], "the adoption rolled back; no divergent price was committed");
+});
+
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
   const out = JSON.parse(wp("eval", `
     $db = \\Zero\\Wp\\Plugin::instance()->db();

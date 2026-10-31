@@ -37,11 +37,21 @@ file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export([
             'deck' => ['type' => 'file', 'bucket' => 'decks'],
         ],
         'relations' => [],
+        'hooks' => ['beforeCreate' => 'talks__beforeCreate'],
         'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['role' => 'author'], 'delete' => ['role' => 'author']],
         'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
         'revisions' => false,
     ]],
 ], true) . ';');
+// A before-hook that swaps in a file id: the column check must see the final value.
+file_put_contents("$root/zero/app/functions.php", <<<'PHP'
+    <?php
+    namespace ZeroApp;
+    function talks__beforeCreate(array $data): array
+    {
+        return ($data['title'] ?? '') === 'hooked' ? ['deck' => 999999] + $data : $data;
+    }
+    PHP);
 file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer);');
 
 require "$root/zero/runtime/bootstrap.php";
@@ -133,6 +143,31 @@ eq('without with: the id', call('GET', "/talks/{$talk['id']}", 'bob')[1]['deck']
 $own = call('GET', "/talks/{$talk['id']}", 'alice', query: ['with' => 'deck'])[1]['deck'];
 check('with: { deck: true } populates for a reader the bucket admits, with a working url', is_array($own) && $own['id'] === $deck['id'] && $download($own['url'])[0] === 200, $own);
 eq('with: { deck: true } keeps the id for a reader the owner rule refuses', [call('GET', "/talks/{$talk['id']}", 'bob', query: ['with' => 'deck'])[1]['deck'], call('GET', '/talks', query: ['with' => 'deck'])[1][0]['deck']], [$deck['id'], $deck['id']]);
+
+isProblem('a before-hook cannot slip in an unchecked file id', call('POST', '/talks', 'alice', ['title' => 'hooked']), 422, 'invalid_input', '/deck');
+eq('… and the rejected create left no row', array_column(call('GET', '/talks')[1], 'title'), ['Q3']);
+
+// Rollback: an upload inside a failing transaction leaves no row and no bytes; a failed delete keeps both.
+$before = glob("$root/private/decks/*");
+$tmp = tempnam(sys_get_temp_dir(), 'zf');
+file_put_contents($tmp, 'rolled back');
+try {
+    \Zero\db()->transaction(static function () use ($tmp): void {
+        \Zero\Media\Files::upload('decks', $tmp, 'r.txt', null);
+        throw new \RuntimeException('roll back');
+    });
+} catch (\RuntimeException) {
+}
+eq('a rolled-back upload leaves no bytes behind', glob("$root/private/decks/*"), $before);
+try {
+    \Zero\db()->transaction(static function () use ($deck): void {
+        \Zero\Media\Files::delete('decks', $deck['id'], null);
+        throw new \RuntimeException('roll back');
+    });
+} catch (\RuntimeException) {
+}
+eq('a rolled-back delete keeps the row, the reference and the bytes', [call('GET', "/files/decks/{$deck['id']}", 'alice')[0], call('GET', "/talks/{$talk['id']}")[1]['deck'], glob("$root/private/decks/*")],
+    [200, $deck['id'], $before]);
 
 [$s, $gone] = call('DELETE', "/files/decks/{$deck['id']}", 'alice');
 eq('owner deletes; referencing columns are nulled', [$s, $gone['id'], call('GET', "/talks/{$talk['id']}")[1]['deck']], [200, $deck['id'], null]);

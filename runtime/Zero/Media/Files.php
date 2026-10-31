@@ -32,10 +32,11 @@ final class Files
     {
         Extensions::route('files', FileRoutes::dispatch(...));
         \Zero\SystemTables::register('__zero_files', [SqliteFiles::DDL], [
-            'CREATE TABLE IF NOT EXISTS `{prefix}zero__files` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `bucket` VARCHAR(64) NOT NULL, `filename` VARCHAR(255) NOT NULL, `mime` VARCHAR(127) NOT NULL, `size` BIGINT NOT NULL, `path` VARCHAR(255) NOT NULL, `ownerId` BIGINT UNSIGNED NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`), KEY `bucket` (`bucket`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+            'CREATE TABLE IF NOT EXISTS `{prefix}zero__files` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `bucket` TEXT NOT NULL, `filename` TEXT NOT NULL, `mime` TEXT NOT NULL, `size` BIGINT NOT NULL, `path` TEXT NOT NULL, `ownerId` BIGINT UNSIGNED NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
         ]);
         // `file({ bucket })` columns: existence + bucket on write, populate with `with`, null on delete.
-        Extensions::onWrite(self::checkColumns(...));
+        // After before-hooks and persistence, still inside the transaction: hooks can't slip an unchecked id in.
+        Extensions::onWritten(self::checkColumns(...));
         Extensions::beforeRead(self::takeWith(...));
         Extensions::onRead(self::populate(...));
         Extensions::schemaDescribe(static function (array $description): array {
@@ -285,17 +286,17 @@ final class Files
         return $out;
     }
 
-    /** Written ids must exist in the column's bucket (422 with the column pointer). */
-    private static function checkColumns(string $op, string $collection, array &$data, ?array $existing): void
+    /** Newly written ids must exist in the column's bucket (422 with the column pointer; the write rolls back). */
+    private static function checkColumns(string $op, string $collection, array $row, ?array $previous): void
     {
         if ($op === 'delete') {
             return;
         }
         $ids = [];
         foreach (self::fileColumns($collection) as $col => $bucket) {
-            $v = $data[$col] ?? null;
-            if (is_int($v) || (is_float($v) && floor($v) === $v)) {
-                $ids[$col] = [(int) $v, $bucket];
+            $v = $row[$col] ?? null;
+            if (is_int($v) && $v !== ($previous[$col] ?? null)) {
+                $ids[$col] = [$v, $bucket];
             }
         }
         if ($ids === []) {
@@ -307,6 +308,12 @@ final class Files
                 throw HttpError::invalidInput("No file $id in $bucket", HttpError::seg($col));
             }
         }
+    }
+
+    /** Null when file $id is in $bucket, else the message editor validation shows. */
+    public static function missing(int $id, string $bucket): ?string
+    {
+        return (self::storage()->getMany([$id])[$id]['bucket'] ?? null) === $bucket ? null : "No file $id in $bucket";
     }
 
     /** @var array<string, list<string>> collection => file columns `with` asked to populate (this read) */

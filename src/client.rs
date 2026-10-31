@@ -180,7 +180,7 @@ fn names(schema: &Schema) -> IndexMap<String, String> {
     let mut out = IndexMap::new();
     for c in schema.collections.values() {
         let mut n = type_name(&c.key);
-        if n == "Media" || n == "User" || out.values().any(|x| *x == n) {
+        if n == "Media" || n == "User" || n == "PrivateFile" || out.values().any(|x| *x == n) {
             n.push_str("Row");
         }
         out.insert(c.table.clone(), n);

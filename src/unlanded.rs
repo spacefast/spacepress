@@ -13,7 +13,7 @@
 
 use crate::diag::{Diag, Result, Span};
 use crate::eval::Evaluator;
-use crate::schema::{ColType, Column, Schema};
+use crate::schema::{Column, Schema};
 use crate::value::{ColBuilder, Value};
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -23,7 +23,6 @@ use std::rc::Rc;
 enum Feature {
     Sync,
     Auth,
-    Files,
     Localized,
 }
 
@@ -32,7 +31,6 @@ enum Feature {
 const UNLANDED: &[(Feature, char, &str, &str)] = &[
     (Feature::Sync, 'C', "content sync (`sync`)", "remove sync"),
     (Feature::Auth, 'E', "`auth: true` collections", "remove auth: true and keep members in a regular collection"),
-    (Feature::Files, 'G', "private files (`files` and `file()`)", "remove the file bucket; use media() for public uploads"),
     (Feature::Localized, 'H', "localization (`locales` and `.localized()`)", "remove locales and .localized()"),
 ];
 
@@ -82,10 +80,6 @@ fn declared(schema: &Schema) -> Vec<Feature> {
         (schema.collections.values().any(|c| c.sync.is_some()), Feature::Sync),
         (schema.collections.values().any(|c| c.auth), Feature::Auth),
         (
-            !schema.files.is_empty() || columns(&|c| c.ty == ColType::File),
-            Feature::Files,
-        ),
-        (
             schema.locales.is_some() || columns(&|c| c.localized),
             Feature::Localized,
         ),
@@ -102,9 +96,7 @@ fn locate(feature: Feature, config: &Value, ev: &Evaluator<'_>) -> Option<Span> 
         seen: HashSet::new(),
         found: Vec::new(),
     };
-    for (key, f) in [("locales", Feature::Localized), ("files", Feature::Files)] {
-        walk.option(config, key, f);
-    }
+    walk.option(config, "locales", Feature::Localized);
     walk.value(config);
     walk.found
         .into_iter()
@@ -180,9 +172,6 @@ impl Walk<'_, '_> {
         }
         if b.localized {
             self.found.push((Feature::Localized, b.span_of("localized")));
-        }
-        if b.ty == ColType::File {
-            self.found.push((Feature::Files, b.span));
         }
         for sub in b.fields.iter().flat_map(|f| f.values()) {
             self.column(sub);

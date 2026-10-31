@@ -1164,7 +1164,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         return ['version' => 3, 'runtime' => '0.2', 'locales' => ['default' => 'en', 'all' => ['en', 'de', 'fr'], 'fallback' => true], 'collections' => [
             'pages' => ['primaryKey' => 'id', 'localized' => true, 'drafts' => true, 'revisions' => true, 'slug' => 'slug', 'access' => $open, 'api' => $api,
                 'hooks' => ['beforeUpdate' => 'pages__beforeUpdate', 'afterUpdate' => 'pages__afterUpdate'],
-                'relations' => ['notes' => ['kind' => 'many', 'collection' => 'notes', 'from' => 'id', 'to' => 'pageId'], 'parent' => ['kind' => 'one', 'collection' => 'pages', 'from' => 'parentId', 'to' => 'id', 'optional' => true]],
+                'relations' => ['notes' => ['kind' => 'many', 'collection' => 'notes', 'from' => 'id', 'to' => 'pageId'], 'chapters' => ['kind' => 'many', 'collection' => 'chapters', 'from' => 'id', 'to' => 'pageId'], 'parent' => ['kind' => 'one', 'collection' => 'pages', 'from' => 'parentId', 'to' => 'id', 'optional' => true]],
                 'columns' => [
                     'id' => $id,
                     'title' => ['type' => 'text', 'notNull' => true, 'localized' => true],
@@ -1192,6 +1192,15 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                 ]],
             'notes' => ['primaryKey' => 'id', 'access' => $open, 'api' => $api, 'relations' => [],
                 'columns' => ['id' => $id, 'pageId' => ['type' => 'integer'], 'body' => ['type' => 'text', 'notNull' => true]]],
+            'chapters' => ['primaryKey' => 'id', 'localized' => true, 'access' => $open, 'api' => $api, 'relations' => [],
+                'columns' => [
+                    'id' => $id,
+                    'pageId' => ['type' => 'integer'],
+                    'heading' => ['type' => 'text', 'notNull' => true, 'localized' => true],
+                    'locale' => ['type' => 'text', 'enum' => ['en', 'de', 'fr'], 'notNull' => true, 'default' => ['value' => 'en'], 'system' => true],
+                    'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
+                    'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
+                ]],
         ]];
         PHP;
     $functionsPhp = <<<'PHP'
@@ -1245,6 +1254,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         CREATE TABLE "codes" ("code" text PRIMARY KEY NOT NULL, "label" text, "rank" integer, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
         --> statement-breakpoint
         CREATE UNIQUE INDEX "codes_translationGroup_locale" ON "codes" ("translationGroup", "locale");
+        --> statement-breakpoint
+        CREATE TABLE "chapters" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "pageId" integer, "heading" text NOT NULL, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
+        --> statement-breakpoint
+        CREATE UNIQUE INDEX "chapters_translationGroup_locale" ON "chapters" ("translationGroup", "locale");
         SQL;
     foreach (['zero/app/schema.php' => $schemaPhp, 'zero/app/functions.php' => $functionsPhp, 'zero/app/migrations/0001_init.sql' => $migration] as $rel => $content) {
         @mkdir(dirname("$app/$rel"), 0777, true);
@@ -1408,10 +1421,26 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $isBad($rest('GET', '/notes', ['locale' => 'en']), '/locale');
     problem('translations cannot be filtered', fn () => $db->findMany('pages', ['where' => ['translations' => null]]), 400, 'invalid_query', '/where/translations');
 
-    // with: `many` follows the parent's locale, `one` resolves the stored id
+    // with: a localized `many` resolves to each parent row's locale, `one` resolves the stored id
     $db->insert('notes', ['pageId' => $coffee['id'], 'body' => 'child']);
     $fallback = $db->findMany('pages', ['locale' => 'de', 'with' => ['notes' => true], 'where' => ['id' => $coffee['id']]]);
-    eq('`many` children of a fallback parent row are attached as stored', [$fallback[0]['locale'], in_array('child', array_column($fallback[0]['notes'], 'body'), true)], ['en', true]);
+    eq('`many` children that aren\'t localized are attached as stored', [$fallback[0]['locale'], in_array('child', array_column($fallback[0]['notes'], 'body'), true)], ['en', true]);
+    // Chapters name the en page (pageId is synced, so the de translation names it too); Serve has no de row.
+    $steep = $db->insert('chapters', ['pageId' => $tea['id'], 'heading' => 'Steep'], true)[0];
+    $db->insert('chapters', ['heading' => 'Ziehen', 'locale' => 'de', 'translationOf' => $steep['id']]);
+    $db->insert('chapters', ['pageId' => $tea['id'], 'heading' => 'Serve']);
+    $headings = static fn (array $rows): array => array_map(static fn ($r) => [$r['locale'] . ':' . $r['title'], $titles(array_map(static fn ($c) => ['title' => $c['heading']] + $c, $r['chapters']))], $rows);
+    $mine = ['id' => ['in' => [$tea['id'], $tee['id'], $the['id']]]];
+    eq('each parent row gets its group\'s children in its own locale, falling back per group', $headings($db->findMany('pages', ['locale' => '*', 'where' => $mine, 'orderBy' => ['id' => 'asc'], 'with' => ['chapters' => true]])), [
+        ['en:Tea', ['en:Steep', 'en:Serve']], ['de:Tee', ['de:Ziehen', 'en:Serve']], ['fr:Thé vert', ['en:Steep', 'en:Serve']],
+    ]);
+    eq('… limit applies per parent', $headings($db->findMany('pages', ['locale' => '*', 'where' => $mine, 'orderBy' => ['id' => 'asc'], 'with' => ['chapters' => ['limit' => 1, 'offset' => 1]]])), [
+        ['en:Tea', ['en:Serve']], ['de:Tee', ['en:Serve']], ['fr:Thé vert', ['en:Serve']],
+    ]);
+    eq('… over REST, a viewer who can\'t see the de draft gets its fallback parent and en children', $headings($rest('GET', '/pages', ['locale' => 'de', 'with' => 'chapters', 'where' => json_encode(['id' => $tea['id']])])[1]), [
+        ['en:Tea', ['en:Steep', 'en:Serve']],
+    ]);
+    eq('… a nested locale still wins', $headings($db->findMany('pages', ['where' => ['id' => $tee['id']], 'with' => ['chapters' => ['locale' => 'fr']]])), [['de:Tee', ['en:Steep', 'en:Serve']]]);
     $db->update('pages', ['parentId' => $tea['id']], ['id' => $coffee['id']]);
     $fr = $db->findMany('pages', ['locale' => 'fr', 'with' => ['parent' => true], 'orderBy' => ['id' => 'asc']]);
     eq('`one` relation resolves the referenced row as stored', array_map(static fn ($r) => $r['parent']['title'] ?? null, $fr), [null, 'Tea']);

@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 4, 2026-10-31; three review rounds folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 5, 2026-10-31; four review rounds folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -262,9 +262,16 @@ phase 2 makes the wp-content artifact one build with one manifest, and
   so `runtime/admin/apps/` never enters the binary and `runtime/admin/build/`
   does.
 
-Nothing else in `src/` changes. `zero doctor --site` gains one row ("admin:
-present / absent / permalinks plain") in the docs PR if it stays a one-liner;
-otherwise it is left out.
+Nothing else in `src/` changes except one `zero doctor` row, delivered in
+PR 6 (§8): with `admin: true` in the manifest, `doctor --site` reports
+`admin` as ✓ when the plugin is active and `/zero-admin/` answers, ✗ with
+"plain permalinks" when the site's permalink structure is empty, and ✗ with
+"WordPress <version> is newer than the tested 7.1.x" when the site's
+WordPress minor is above the floor (§3.3 step 3b). The data comes from
+`GET /_schema`'s existing `runtime.wp` block plus one new boolean
+`runtime.wp.admin`, which the admin plugin contributes through the runtime's
+`Extensions::schemaDescribe` seam (so `src/commands/doctor.rs` reads a field,
+the runtime never learns about the admin, and no other `src/` file changes).
 
 ### 2.4 Mount and boot
 
@@ -448,23 +455,25 @@ tests/wp/run.sh
 Inside `run.sh`, the step is one command run from the repository root:
 
 ```
-runtime/admin/apps/node_modules/.bin/playwright test --config runtime/admin/apps/playwright.wp.config.ts
+runtime/admin/apps/node_modules/.bin/playwright test --config runtime/admin/apps/wp-journey/playwright.config.ts
 ```
 
-The config lives in the workspace, so `@playwright/test` resolves from the
-workspace's `node_modules` for the config and, through `testDir` pointing at
-the repository's `tests/wp/browser/` directory, for the spec it loads
-(Playwright resolves the spec's imports from the config's package, which is
-the documented behaviour for a `testDir` outside the package). The spec is
-`tests/wp/browser/admin.spec.ts`: a different directory and a different
-suffix from `tests/wp/*.test.ts`, so the `node --test` glob never sees it. It
-reads the harness receipt from `tests/wp/.harness.json` like `env.ts` does
-(a relative path from the spec, independent of the working directory).
-`run.sh` runs the step when the workspace's Playwright binary exists and
-otherwise prints "browser journey skipped: run `pnpm --dir runtime/admin/apps
-install`" and exits non-zero, so a local run without the workspace is an
-explicit failure, never a silent pass; `ZERO_WP_SKIP_BROWSER=1` turns that
-into a skip for people iterating on PHP only.
+Both the config and the spec live **inside the workspace**, under
+`runtime/admin/apps/wp-journey/` (`playwright.config.ts`, `admin.spec.ts`),
+because a spec's imports resolve from the spec's own location: a spec under
+`tests/wp/` cannot see the workspace's `node_modules`, and the repository
+root has none. The spec reads the harness receipt by absolute path derived
+from `import.meta.url` (`../../../../tests/wp/.harness.json`), the same data
+`env.ts` reads, so it is independent of the working directory. Nothing under
+`tests/wp/` changes except `run.sh`, and the `node --test` glob there never
+sees the spec. `wp-journey/` is excluded from the `sources` digest and from
+`build/` (it is a test, not a shipped module), and `build.rs` never embeds
+`apps/` anyway. `run.sh` runs the step when the workspace's Playwright binary
+exists and otherwise prints "browser journey skipped: run `pnpm --dir
+runtime/admin/apps install`" and exits non-zero, so a local run without the
+workspace is an explicit failure, never a silent pass;
+`ZERO_WP_SKIP_BROWSER=1` turns that into a skip for people iterating on PHP
+only.
 
 Node is a dev dependency of this repository already (`runtime/identity/apps`,
 `tests/wp/*.test.ts`); the admin adds pnpm, pinned through `packageManager`.
@@ -638,7 +647,7 @@ behaviour, one test, at the lowest level that can break it):
 | media: upload and delete as the screen does them go through `/zero/v1/media`; a subscriber's upload is 403; deleting an attachment referenced by a `media` column nulls the column | WP e2e | `tests/wp/admin.test.ts` (one case; `media.test.ts` owns the rules) |
 | editor settings/assets endpoints answer for an editor and 403 for a subscriber | WP e2e | `tests/wp/admin.test.ts` |
 | rewrite: `/zero-admin/` answers after activation on a site whose rules were generated before the plugin existed; 404 after deactivation | WP e2e | `tests/wp/admin.test.ts` |
-| **the shipped admin runs**: a signed-in editor opens `/zero-admin/`, the boot module and its external imports load with no console error, the collections overview renders the test app's readable collections, opening one lists rows, editing a text field and saving persists it (asserted through `/zero/v1` after reload) | browser acceptance (Playwright, one spec, against the emitted assets in the harness; wiring in §3.4) | `tests/wp/browser/admin.spec.ts` |
+| **the shipped admin runs**: a signed-in editor opens `/zero-admin/`, the boot module and its external imports load with no console error, the collections overview renders the test app's readable collections, opening one lists rows, editing a text field and saving persists it (asserted through `/zero/v1` after reload) | browser acceptance (Playwright, one spec, against the emitted assets in the harness; wiring in §3.4) | `runtime/admin/apps/wp-journey/admin.spec.ts` |
 
 The browser run is deliberately one journey, not a screen matrix: it exists
 to prove that the committed modules, the import map, the externals and the
@@ -660,7 +669,7 @@ example the editor panel's `showIf` toggling), it joins the same spec.
 | 3 | `p3/admin-build` | `build.mjs`-style manifest and licence file, committed `runtime/admin/build/`, the `admin` CI job, the drift line in `vendor_drift.php` | CI green |
 | 4 | `p3/admin-package` | `admin: true` (types, extract, schema, build.rs emission, manifest), harness activation, `tests/wp/admin.test.ts` activation + page-load cases, `tests/wp_plugins.rs` case | CI green, Sol clean |
 | 5 | `p3/admin-rewire` | `@zero-admin/schema`, collections overview/list/new/edit on Zero's model, media mutations over `/zero/v1/media`, the globals form, the menu builder with `CoreAccess::mayRead`, the readable-menu test; deletes the last `/types/*` public routes | needs #38 merged; CI green, Sol clean |
-| 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, `zero doctor` row if one line | CI green, Sol clean |
+| 6 | `p3/admin-tests` | the refusal, media, rewrite and viewer cases of §7, the browser acceptance spec, actions form if it fits, the `zero doctor` row of §2.3 | CI green, Sol clean |
 | 7 | `p3/admin-docs` | `docs/admin.md` (what it is, opt-in, URL, permalinks, what's in scope), README row, `config-api.md` entry; the pin move to stable releases (§3.3 step 2) if it is small enough, else its own PR | CI green |
 
 Each PR is reviewed with
@@ -732,5 +741,5 @@ Sol outcome.
 - **PR #38 timing.** The rewire PR (5) cannot merge before it. PRs 2–4 are
   independent of it.
 - **Pretty permalinks.** `/zero-admin/` needs them. The harness sets
-  `/%postname%/`; real sites almost always have them; `zero doctor` says so
-  when they don't.
+  `/%postname%/`; real sites almost always have them; the `zero doctor` row
+  of §2.3 says so when they don't.

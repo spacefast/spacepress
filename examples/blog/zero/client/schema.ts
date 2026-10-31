@@ -30,7 +30,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
-      "localized": false,
+      "localized": true,
       "relations": {
         "author": {
           "kind": "one",
@@ -47,7 +47,16 @@ export const SCHEMA = {
         "cover"
       ],
       "mediaList": [],
-      "files": []
+      "files": [
+        "deck"
+      ],
+      "showIf": {
+        "seo": {
+          "when": {
+            "status": "published"
+          }
+        }
+      }
     },
     "comments": {
       "path": "comments",
@@ -65,6 +74,17 @@ export const SCHEMA = {
       "media": [],
       "mediaList": [],
       "files": []
+    },
+    "members": {
+      "path": "members",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {},
+      "media": [],
+      "mediaList": [],
+      "files": []
     }
   },
   "globals": [
@@ -74,7 +94,9 @@ export const SCHEMA = {
     "approveComment",
     "publishedCount"
   ],
-  "buckets": []
+  "buckets": [
+    "decks"
+  ]
 } as const;
 
 export type SchemaDescriptor = typeof SCHEMA;

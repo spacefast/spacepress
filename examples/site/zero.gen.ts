@@ -2,4 +2,4 @@
 // Registers this project's schema so `db` (imported from "zero") is typed.
 import type { relations } from "./zero.config";
 import type config from "./zero.config";
-declare module "zero" { interface Register { relations: typeof relations; config: typeof config } }
+declare module "zero" { interface Register { relations: typeof relations; config: typeof config; locales: "en" | "de" } }

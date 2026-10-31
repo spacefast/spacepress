@@ -248,6 +248,17 @@
           "default": false,
           "references": null
         },
+        "notifiedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
         "createdAt": {
           "type": "timestamp",
           "notNull": true,

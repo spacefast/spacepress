@@ -24,6 +24,17 @@
       "treeSha256": "330514bd6b335f55b5ea83696a661b8b422ee28d6ac241ffa014a767073139d7"
     },
     {
+      "slug": "polylang",
+      "version": "3.9",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "polylang.3.9.zip"
+      },
+      "sha256": "6a8b939d5209090e33600114f6f6dae03513688856514734118613c5147c68c2",
+      "requires": [],
+      "treeSha256": "ce24cb03b8cf566973ca213ce0dc3268fa6e6ce6397a58c90d439afc0cc3fe27"
+    },
+    {
       "slug": "secure-custom-fields",
       "version": "6.9.7",
       "pluginData": {

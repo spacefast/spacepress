@@ -9,19 +9,66 @@
     h1 { margin-bottom: 0; } .tagline { color: #666; margin-top: .25rem; }
     article { border-top: 1px solid #ddd; padding: 1rem 0; } .meta { color: #666; font-size: .875rem; }
     form { display: grid; gap: .5rem; margin-top: .5rem; } textarea { min-height: 4rem; }
-    .error { color: #b00020; }
+    .error { color: #b00020; } .who { float: right; font-size: .875rem; }
+    #signin { display: grid; gap: .5rem; max-width: 20rem; } #signin[hidden] { display: none; }
   </style>
 </head>
 <body>
-  <header><h1 id="title">Blog</h1><p class="tagline" id="tagline"></p></header>
+  <header>
+    <span class="who"><span id="me"></span> <button id="auth">Sign in</button></span>
+    <h1 id="title">Blog</h1><p class="tagline" id="tagline"></p>
+  </header>
+  <!-- Standalone signs in with a password here; WordPress sends readers to its /identity screens. -->
+  <form id="signin" hidden>
+    <input name="email" type="email" placeholder="Email" autocomplete="username" required>
+    <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button>Sign in</button><span class="error"></span>
+  </form>
   <main id="posts"><p>Loading…</p></main>
   <script type="module">
     // The generated typed client, type-stripped to JS by `node build-client.mjs` (no bundler).
     import { createClient, ZeroError } from "./client/index.js";
+    import { SCHEMA } from "./client/schema.js";
 
-    const zero = createClient({ url: "/api" });
+    // Sessions survive reloads (sessionStorage). On WordPress, register this page once with
+    // `wp zero-identity app add --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
+    const wp = SCHEMA.target === "wp";
+    const zero = createClient({
+      url: wp ? "/wp-json/zero/v1" : "/api",
+      auth: { storage: "session", ...(wp ? { clientId: "app_blog", redirectUri: location.origin + location.pathname } : {}) },
+    });
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+    async function renderMe() {
+      const me = await zero.auth.me();
+      $("me").textContent = me ? `Hi, ${me.member?.name ?? me.name}` : "";
+      $("auth").textContent = me ? "Sign out" : "Sign in";
+    }
+
+    $("auth").addEventListener("click", async () => {
+      if (await zero.auth.me()) {
+        await zero.auth.signOut();
+        await Promise.all([renderMe(), render()]);
+      } else if (wp) {
+        await zero.auth.signIn({ returnTo: location.href }); // leaves the page
+      } else {
+        $("signin").hidden = !$("signin").hidden;
+      }
+    });
+
+    $("signin").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target, out = form.querySelector(".error");
+      try {
+        await zero.auth.login(form.email.value, form.password.value);
+        form.reset();
+        form.hidden = true;
+        await Promise.all([renderMe(), render()]);
+      } catch (err) {
+        out.textContent = err instanceof ZeroError ? err.detail : "Couldn't reach the server.";
+      }
+    });
 
     async function render() {
       const settings = await zero.globals.settings.get();
@@ -30,7 +77,7 @@
       const posts = await zero.posts.list({ orderBy: { publishedAt: "desc" }, limit: settings.postsPerPage, with: { author: true, comments: true, cover: true } });
       $("posts").innerHTML = posts.length === 0 ? "<p>No posts yet.</p>" : posts.map((p) => `
         <article>
-          ${p.cover ? `<img src="${esc(p.cover.url)}" alt="${esc(p.cover.alt)}" width="${p.cover.width}">` : ""}
+          ${p.cover ? `<img src="${esc(p.cover.sizes.card?.url ?? p.cover.url)}" alt="${esc(p.cover.alt)}" width="600" height="400">` : ""}
           <h2>${esc(p.title)}</h2>
           <p class="meta">${esc(p.author?.name ?? "Anonymous")} · ${new Date(p.publishedAt).toLocaleDateString()} · ${p.tags.map(esc).join(", ")}</p>
           ${p.body ?? `<p>${esc(p.excerpt)}</p>`}
@@ -56,7 +103,15 @@
       }
     });
 
-    render().catch((err) => { $("posts").innerHTML = `<p class="error">${esc(err.detail ?? err.message)}</p>`; });
+    // Back from the WordPress sign-in screens: finish the sign-in, then drop ?code&state from the URL.
+    async function start() {
+      if (wp && new URLSearchParams(location.search).has("code")) {
+        await zero.auth.handleCallback();
+        history.replaceState(null, "", location.pathname);
+      }
+      await Promise.all([renderMe(), render()]);
+    }
+    start().catch((err) => { $("posts").innerHTML = `<p class="error">${esc(err.detail ?? err.message)}</p>`; });
   </script>
 </body>
 </html>

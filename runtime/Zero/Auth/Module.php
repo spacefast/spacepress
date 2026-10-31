@@ -74,6 +74,9 @@ final class Module
         Extensions::onWrite(self::guardWrite(...));
         Extensions::onWritten(self::forgetDeleted(...));
         Extensions::schemaDescribe(self::describe(...));
+        if (function_exists('add_action')) {
+            \Zero\Wp\Guests::register(); // `zero.prune-guests` through Action Scheduler
+        }
     }
 
     /** The target installs its issuer when it boots (standalone App::boot, WP Plugin::app). */

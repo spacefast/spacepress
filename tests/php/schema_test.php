@@ -157,4 +157,16 @@ eq('pattern accepted', $write($pattern, 'ABC', 'code'), 'ABC');
 eq('action input: nested defaults + coercion', Schema::validateInput(['tags' => $posts['tags'], 'seo' => $posts['seo']], ['seo' => []]),
     ['tags' => [], 'seo' => ['metaTitle' => null, 'metaDescription' => null, 'noindex' => false]]);
 
+// SCF codec for nested booleans (Zero\Wp\Scf is pure here). SCF keeps an unchecked true_false as ''
+// in the sub-field's meta row, and writes '' for null too: a notNull boolean reads it as false, a
+// nullable one keeps it as null. Both row key forms (field key and core REST meta name) agree.
+$scfGroup = ['type' => 'group', 'fields' => [
+    'req' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]],
+    'opt' => ['type' => 'boolean'],
+]];
+$scfBack = static fn (array $raw) => Schema::decode($scfGroup, \Zero\Wp\Scf::toStorage($scfGroup, $raw, 'field_x'));
+eq('scf group: unchecked notNull toggle is false, unset nullable stays null', $scfBack(['field_x_req' => '', 'field_x_opt' => '']), ['req' => false, 'opt' => null]);
+eq('scf group: the same through core REST meta names', $scfBack(['zero_x_req' => '', 'zero_x_opt' => '']), ['req' => false, 'opt' => null]);
+eq('scf group: checked toggles are true', $scfBack(['field_x_req' => 1, 'field_x_opt' => '1']), ['req' => true, 'opt' => true]);
+
 finish('schema_test');

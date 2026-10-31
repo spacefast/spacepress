@@ -140,9 +140,15 @@ fn may_hide(c: &Column) -> bool {
         .is_some_and(|r| !matches!(r, Access::Allow(true)) && !matches!(r, Access::Role(role) if role == "anyone"))
 }
 
-/// An update rule (or a read rule) can make the viewer's patch leave a sub-field out.
+/// An update rule (or a read rule) can make the viewer's patch leave a sub-field out; so can one
+/// anywhere below it, since the runtime then keeps the whole structured value (§4.3).
 fn may_keep(c: &Column) -> bool {
-    may_hide(c) || c.access.contains_key("update")
+    may_hide(c)
+        || c.access.contains_key("update")
+        || c.fields.as_ref().is_some_and(|f| f.values().any(may_keep))
+        || c.layouts
+            .as_ref()
+            .is_some_and(|l| l.values().any(|f| f.values().any(may_keep)))
 }
 
 fn fields_ts(fields: &IndexMap<String, Column>, mode: impl Into<Mode>) -> String {

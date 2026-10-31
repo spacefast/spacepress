@@ -92,7 +92,8 @@ eq('missing fields → 422', $login(['name' => 'maria'])[1]['pointer'] ?? null, 
 $rotated = $login(['grant_type' => 'refresh_token', 'refreshToken' => $out['data']['refreshToken']]);
 check('refresh rotates the pair and the new access token works', $rotated[0] === 200 && $rotated[1]['data']['refreshToken'] !== $out['data']['refreshToken']
     && $me('Bearer ' . $rotated[1]['data']['accessToken'])['name'] === 'maria', $rotated);
-eq('reusing a rotated refresh token → 400 invalid_grant (§3.5)', array_intersect_key($login(['grant_type' => 'refresh_token', 'refreshToken' => $out['data']['refreshToken']])[1], ['status' => 1, 'code' => 1]), ['status' => 400, 'code' => 'invalid_grant']);
+$reuse = $login(['grant_type' => 'refresh_token', 'refreshToken' => $out['data']['refreshToken']]);
+eq('reusing a rotated refresh token → HTTP 400 invalid_grant (§3.5)', [$reuse[0], $reuse[1]['status'] ?? null, $reuse[1]['code'] ?? null], [400, 400, 'invalid_grant']);
 eq('reuse revokes the family: the newest access token → 401 (so a client refreshes, then fails)', $meStatus('Bearer ' . $rotated[1]['data']['accessToken']), [401, 'unauthenticated']);
 eq('reuse revokes the family: the newest refresh token fails', $login(['grant_type' => 'refresh_token', 'refreshToken' => $rotated[1]['data']['refreshToken']])[0], 400);
 
@@ -169,6 +170,7 @@ eq('filtering on a hidden column is refused (403, §4.3)', array_intersect_key($
 eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['member' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/member/passwordHash');
 eq('nested OR/NOT filters are checked too', $probe(['where' => json_encode(['OR' => [['NOT' => ['suspendedAt' => null]]]])], $token)[1]['pointer'] ?? null, '/where/OR/0/NOT/suspendedAt');
 eq('ordering on a hidden column is refused', $probe(['orderBy' => 'guest'], $token)[1]['pointer'] ?? null, '/orderBy/guest');
+problem('selecting a hidden column is refused (403, §4.3)', fn () => $clubApp->db->findMany('members', ['columns' => ['passwordHash' => true]], new \Zero\Viewer(['id' => 1, 'name' => 'Ana', 'role' => 'subscriber'], 'standalone')), 403, 'forbidden', '/columns/passwordHash');
 eq('hidden columns are unknown to direct writes', $call('PATCH', '/members/1', ['passwordHash' => 'x'], $token)[1]['pointer'] ?? null, '/passwordHash');
 eq('role is admin-only: a member can\'t promote themself', $call('PATCH', '/members/1', ['role' => 'admin'], $token)[0], 403);
 [$s, $renamed] = $call('PATCH', '/members/1', ['name' => 'Ana B', 'password' => 'a brand new password'], $token);

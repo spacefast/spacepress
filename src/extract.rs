@@ -2395,6 +2395,12 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
                 return Err(Diag::new(b.span, "at most one auth: true collection is allowed")
                     .help("keep one members collection"));
             }
+            if c.primary_key()
+                .is_none_or(|pk| pk.name != "id" || pk.ty != ColType::Integer)
+            {
+                return Err(Diag::new(b.span, "auth: true needs the primary key id: id()")
+                    .help("members are users: their row id is the user id"));
+            }
             if !c
                 .columns
                 .get("email")

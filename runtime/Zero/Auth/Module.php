@@ -112,7 +112,7 @@ final class Module
                     }];
                 } catch (Reused $reused) {
                     // The family revocation commits with this transaction; the client still gets the 401.
-                    return Response::raw(Js::jsonStringify(App::problem($reused->error)) ?? '{}', 401, ['Content-Type' => 'application/problem+json']);
+                    return Response::raw(Js::jsonStringify(App::problem($reused->error)) ?? '{}', $reused->error->status, ['Content-Type' => 'application/problem+json']);
                 }
             case 'auth/guest':
                 App::allow($method, ['POST']);
@@ -153,8 +153,18 @@ final class Module
             return $user;
         }
 
-        // Read as the user themself, so field access and "self" apply exactly as on GET /members.
-        return $user + ['member' => db()->findFirst($collection, ['where' => ['id' => $user['id']]], new Viewer($user, db()->target()))];
+        // Read as the user themself, so field access and "self" apply exactly as on GET /members;
+        // a read rule that keeps users from their own row yields no member, never a failed sign-in.
+        try {
+            $member = db()->findFirst($collection, ['where' => ['id' => $user['id']]], new Viewer($user, db()->target()));
+        } catch (HttpError $e) {
+            if (!in_array($e->status, [401, 403], true)) {
+                throw $e;
+            }
+            $member = null;
+        }
+
+        return $user + ['member' => $member];
     }
 
     /** Token responses carry the user like `/me` does. */
@@ -201,7 +211,7 @@ final class Module
         $columns = $opts['columns'] ?? null;
         foreach (is_array($columns) ? array_keys($columns) : [] as $col) {
             if (isset($hidden[(string) $col])) {
-                throw HttpError::invalidQuery("Unknown column '$col'", $pointer . '/columns' . HttpError::seg($col));
+                throw new HttpError(403, 'forbidden', "$col can't be selected", $pointer . '/columns' . HttpError::seg($col));
             }
         }
     }

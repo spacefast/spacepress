@@ -148,6 +148,8 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
   const viaApp = await fetch(`${api}/me`, { headers: basic });
   assert.deepEqual([viaApp.status, (await viaApp.json()).code], [403, "suspended"]);
+  const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-list/run`, { headers: basic });
+  assert.equal(viaAbility.status, 403, "abilities refuse a suspended account too");
   // zero-identity also refuses native sign-in and destroys WordPress sessions on suspension.
   const cookieAfter = await viaCookie();
   assert.ok([401, 403].includes(cookieAfter.status), `the cookie no longer works (${cookieAfter.status})`);
@@ -174,6 +176,35 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   const dupe = await member("dy");
   const taken = await call("PATCH", `/members/${dupe.id}`, { token: (await signIn(dupe.email, dupe.password)).json.access_token, body: { handle: `cy-${run}` } });
   assert.deepEqual([taken.status, taken.json.code, taken.json.pointer], [409, "unique_violation", "/handle"], "declared unique columns hold in usermeta");
+});
+
+test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
+  const email = `hosted-${run}@example.test`;
+  const start = await fetch(`${site}/wp-json/zero-identity/v1/sign-in/email`, {
+    method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ email }),
+  });
+  const { data: { challenge_id } } = await start.json();
+  const code = /Your code is (\d{6})/.exec(wp("eval", `echo file_get_contents(WP_CONTENT_DIR . '/zero-test-mail/' . sanitize_file_name(${JSON.stringify(email)}) . '.txt');`))?.[1];
+  const verify = await fetch(`${site}/wp-json/zero-identity/v1/sign-in/verify`, {
+    method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ challenge_id, code }),
+  });
+  assert.deepEqual(await verify.json(), { data: { kind: "signed_in" } });
+  const id = Number(sql(`SELECT ID FROM wp_users WHERE user_email = '${email}'`)[0].ID);
+  const row = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id } })));
+  assert.deepEqual([row.data[0].plan, row.data[0].points, row.data[0].tags], ["free", 0, []]);
+});
+
+test("a rolled-back member update leaves no usermeta in WordPress's cache", () => {
+  const out = wp("eval", `
+    $plugin = \\Zero\\Wp\\Runtime::plugin(); $db = $plugin->app()->db;
+    $id = $db->insert('members', ['email' => 'rb-${run}@example.test', 'name' => 'rb'], true)[0]['id'];
+    try { $db->transaction(function () use ($db, $id) {
+      $db->update('members', ['points' => 99], ['id' => $id]);
+      get_user_meta($id, 'zero_points', true); // a hook reads the new value
+      throw new RuntimeException('rollback');
+    }); } catch (RuntimeException $e) {}
+    echo get_user_meta($id, 'zero_points', true);`);
+  assert.equal(out, "0");
 });
 
 test("hidden columns never leave the runtime: list, get, with, write results, abilities", async () => {

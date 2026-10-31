@@ -114,6 +114,12 @@ final class Scf
     }
 
     /** The SCF field array for one column (the field-builder switch, adapted from the original Zero). */
+    /** One generated SCF field (rules, validation metadata, field filters), for other field groups (user forms, §6.2). */
+    public static function fieldFor(Schema $schema, string $key, string $name, string $col, array $def, array $spec): array
+    {
+        return ['zero_top' => true] + self::field($schema, $key, $name, $col, $def, $spec);
+    }
+
     private static function field(Schema $schema, string $key, string $name, string $col, array $def, array $spec): array
     {
         $rules = $def['rules'] ?? [];

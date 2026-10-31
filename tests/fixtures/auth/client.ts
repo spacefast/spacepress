@@ -13,6 +13,7 @@ await zero.members.create({ email: "a@example.test", name: "A", password: "corre
 await zero.members.update(1, { password: "a new long password" });
 // A patch may leave out a sub-field the viewer can't set (the stored value is kept, §4.3);
 await zero.members.update(1, { billing: { city: "Oslo" } });
+await zero.members.update(1, { profile: { bio: "hi" } }); // the protected grandchild's group too
 // a create still needs it.
 // @ts-expect-error tier is required on insert
 await zero.members.create({ email: "b@example.test", name: "B", billing: { city: "Oslo" } });

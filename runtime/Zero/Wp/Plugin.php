@@ -42,6 +42,12 @@ final class Plugin
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
+        // Users created outside Zero (identity's hosted sign-up, wp-admin) become members with defaults.
+        add_action('user_register', function (int $userId): void {
+            if (!$this->connection()->busy()) {
+                WpUserStore::fillDefaults($this->schema, $userId);
+            }
+        });
         add_action('rest_api_init', fn () => Rest::register(fn () => $this->app()));
         IdentityBridge::hook($this->connection());
         Rest::boot();

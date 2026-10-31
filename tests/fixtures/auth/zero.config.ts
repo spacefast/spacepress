@@ -9,6 +9,8 @@ export const members = collection("members", {
   plan: select({ options: ["free", "pro"] }).notNull().default("free"),
   // A required sub-field only admins set: a member's own patch of `billing` may leave it out.
   billing: group({ fields: { city: text(), tier: text().notNull().access({ update: "admin" }) } }),
+  // A required group whose grandchild only admins set: a member's patch of `profile` may leave `vip` out.
+  profile: group({ fields: { bio: text(), vip: group({ fields: { level: text().notNull().access({ update: "admin" }) } }).notNull() } }),
 }, { auth: true, access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
 export const notes = collection("notes", {

@@ -734,6 +734,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-showif-nested-sibling", "showIf names non-sibling"),
         ("reject-showif-title", "title is always readable"),
         ("reject-sync-auth", "auth collections cannot sync"),
+        ("reject-auth-primary-key", "auth: true needs the primary key id: id()"),
         ("reject-sync-directory", "two collections sync into the same directory"),
         ("reject-sync-outside", "sync directory must stay inside the project"),
         ("reject-sync-content", "Markdown sync needs a content designation"),

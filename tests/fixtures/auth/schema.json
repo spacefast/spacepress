@@ -85,6 +85,29 @@
                         }
                     }
                 },
+                "profile": {
+                    "type": "group",
+                    "fields": {
+                        "bio": {
+                            "type": "text"
+                        },
+                        "vip": {
+                            "type": "group",
+                            "notNull": true,
+                            "fields": {
+                                "level": {
+                                    "type": "text",
+                                    "notNull": true,
+                                    "access": {
+                                        "update": {
+                                            "role": "admin"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 "role": {
                     "type": "text",
                     "enum": [

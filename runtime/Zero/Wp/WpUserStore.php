@@ -44,30 +44,17 @@ final class WpUserStore implements Store
         if ($collection === null || !function_exists('acf_add_local_field_group')) {
             return;
         }
+        $spec = $schema->collection($collection);
         $fields = [];
-        foreach ($schema->collection($collection)['columns'] as $col => $def) {
+        foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
-            if (in_array($col, ['id', 'email', 'name'], true) || ($def['system'] ?? false)) {
+            // Scalar columns, whose SCF form this store reads and writes; structured columns
+            // (json, group, repeater, blocks, media lists) stay API-only on user forms.
+            if (in_array($col, ['id', 'email', 'name'], true) || ($def['system'] ?? false) || isset($def['references'])
+                || !in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true)) {
                 continue;
             }
-            $base = ['key' => 'field_zero_member_' . $col, 'label' => ucfirst($col), 'name' => self::META . $col, 'required' => 0];
-            $extra = match ($def['type']) {
-                'integer', 'real' => ['type' => 'number', 'step' => $def['type'] === 'integer' ? 1 : 'any'],
-                'boolean' => ['type' => 'true_false', 'ui' => 1],
-                'select' => ['type' => 'select', 'choices' => array_combine($def['enum'] ?? [], $def['enum'] ?? []), 'multiple' => 1, 'ui' => 1, 'return_format' => 'value'],
-                'email' => ['type' => 'email'],
-                'url' => ['type' => 'url'],
-                'text' => isset($def['enum'])
-                    ? ['type' => 'select', 'choices' => array_combine($def['enum'], $def['enum']), 'return_format' => 'value']
-                    : ['type' => 'text'],
-                // Structured columns (json, group, repeater, blocks, media, dates) stay API-only.
-                default => null,
-            };
-            if ($extra === null) {
-                continue;
-            }
-            $field = $base + $extra;
-            $fields[] = $field;
+            $fields[] = Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, $def, $spec);
         }
         acf_add_local_field_group([
             'key' => 'group_zero_' . $collection,
@@ -76,6 +63,43 @@ final class WpUserStore implements Store
             'location' => [[['param' => 'user_form', 'operator' => '==', 'value' => 'all']]],
             'active' => true,
         ]);
+    }
+
+    /**
+     * WordPress users created outside Zero (hosted sign-up, wp-admin, other plugins) get the member
+     * columns' declared defaults, as a Zero create would give them (§6.2: rows are users).
+     */
+    public static function fillDefaults(Schema $schema, int $userId): void
+    {
+        $collection = $schema->auth()['collection'] ?? null;
+        if ($collection === null) {
+            return;
+        }
+        foreach ($schema->collection($collection)['columns'] as $col => $def) {
+            $col = (string) $col;
+            if (($def['system'] ?? false) || !isset($def['default']) || in_array($col, ['id', 'email', 'name'], true)
+                || metadata_exists('user', $userId, self::META . $col)) {
+                continue;
+            }
+            $stored = Schema::store($def, Schema::generate($def['default'], $def['type']));
+            if ($stored === null) {
+                continue;
+            }
+            $value = self::metaForm($def, $stored);
+            update_user_meta($userId, self::META . $col, wp_slash($value));
+        }
+    }
+
+    /** Storage form (§3.4) → the usermeta value SCF's own field would keep. */
+    private static function metaForm(array $def, int|float|string $stored): mixed
+    {
+        return match ($def['type'] ?? '') {
+            'select' => json_decode((string) $stored, true),   // an array; WordPress serializes it
+            'boolean' => $stored ? '1' : '0',
+            'timestamp' => substr((string) $stored, 0, 10) . ' ' . substr((string) $stored, 11, 8),
+            'date' => str_replace('-', '', (string) $stored),
+            default => is_float($stored) ? \Zero\Js::numStr($stored) : (string) $stored,
+        };
     }
 
     public static function wpRole(string $role): string
@@ -120,6 +144,9 @@ final class WpUserStore implements Store
                 $def['type'] === 'integer', $def['type'] === 'media' => new ColumnRef($v, $meta(self::META . $col), "CAST($v AS SIGNED)", 'scalar'),
                 $def['type'] === 'real' => new ColumnRef($v, $meta(self::META . $col), "CAST($v AS DECIMAL(30,10))", 'scalar'),
                 $def['type'] === 'boolean' => new ColumnRef($v, $meta(self::META . $col), $v, 'scalar'),
+                // SCF's date/time pickers keep 'Y-m-d H:i:s' (UTC) and 'Ymd', as on posts (§3.5.1).
+                $def['type'] === 'timestamp' => new ColumnRef("CONCAT(REPLACE($v, ' ', 'T'), '.000Z')", $meta(self::META . $col), $v, 'scalar'),
+                $def['type'] === 'date' => new ColumnRef("DATE_FORMAT(STR_TO_DATE($v, '%Y%m%d'), '%Y-%m-%d')", $meta(self::META . $col), $v, 'scalar'),
                 // Structured columns keep their storage form (§3.4), as custom tables do; no SCF field edits them.
                 default => new ColumnRef($v, $meta(self::META . $col), ColumnRef::kindFor($def['type']) === 'scalar' ? $v : '', ColumnRef::kindFor($def['type'])),
             };
@@ -176,9 +203,9 @@ final class WpUserStore implements Store
         if ($id instanceof \WP_Error) {
             throw new \RuntimeException('wp_insert_user failed: ' . $id->get_error_message());
         }
+        $this->forgetOnRollback((int) $id);
         $this->writePassword((int) $id, $values);
         $this->writeMeta($spec, (int) $id, $values);
-        $this->db->onRollback(static fn () => clean_user_cache((int) $id));
 
         return (int) $id;
     }
@@ -187,6 +214,7 @@ final class WpUserStore implements Store
     {
         $spec = $this->schema->collection($collection);
         $id = (int) $pk;
+        $this->forgetOnRollback($id);
         $this->checkUnique($spec, $values, $id);
         $core = [];
         if (array_key_exists('email', $values)) {
@@ -208,15 +236,14 @@ final class WpUserStore implements Store
         $this->writePassword($id, $values);
         $this->writeMeta($spec, $id, $values);
         clean_user_cache($id);
-        $this->db->onRollback(static fn () => clean_user_cache($id));
     }
 
     public function delete(string $collection, int|string $pk): void
     {
         require_once ABSPATH . 'wp-admin/includes/user.php';
         $id = (int) $pk;
+        $this->forgetOnRollback($id);
         $this->db->core(static fn () => wp_delete_user($id));
-        $this->db->onRollback(static fn () => clean_user_cache($id));
     }
 
     /**
@@ -242,15 +269,20 @@ final class WpUserStore implements Store
             if (in_array($col, [$spec['primaryKey'], 'email', 'name', 'role', 'guest', 'passwordHash', 'suspendedAt'], true)) {
                 continue;
             }
-            $value = $stored === null ? null : match ($spec['columns'][$col]['type'] ?? '') {
-                'select' => json_decode((string) $stored, true),   // SCF stores the array (serialized)
-                'boolean' => $stored ? '1' : '0',
-                default => (string) $stored,
-            };
+            $value = $stored === null ? null : self::metaForm($spec['columns'][$col] ?? [], $stored);
             $this->db->core(static fn () => $value === null
                 ? delete_user_meta($id, self::META . $col)
                 : update_user_meta($id, self::META . $col, wp_slash($value)));
         }
+    }
+
+    /** On rollback, WordPress's caches of this user (row and usermeta) must not outlive the SQL. */
+    private function forgetOnRollback(int $id): void
+    {
+        $this->db->onRollback(static function () use ($id): void {
+            clean_user_cache($id);
+            wp_cache_delete($id, 'user_meta');
+        });
     }
 
     /** Declared unique usermeta columns hold no duplicate (email is wp_users' own, checked apart). */
@@ -258,13 +290,15 @@ final class WpUserStore implements Store
     {
         foreach ($values as $col => $stored) {
             $col = (string) $col;
-            if ($stored === null || $col === 'email' || !($spec['columns'][$col]['unique'] ?? false) || in_array($col, [$spec['primaryKey'], 'name', 'role'], true)) {
+            if ($stored === null || $col === 'email' || !($spec['columns'][$col]['unique'] ?? false) || in_array($col, [$spec['primaryKey'], 'role'], true)) {
                 continue;
             }
-            $hit = $this->db->run(
-                'SELECT user_id FROM `' . $this->db->wpdb()->usermeta . '` WHERE meta_key = ? AND meta_value = ? AND user_id <> ? LIMIT 1 FOR UPDATE',
-                [self::META . $col, (string) $stored, $self],
-            );
+            $hit = $col === 'name'
+                ? $this->db->run('SELECT ID FROM `' . $this->db->wpdb()->users . '` WHERE display_name = ? AND ID <> ? LIMIT 1 FOR UPDATE', [(string) $stored, $self])
+                : $this->db->run(
+                    'SELECT user_id FROM `' . $this->db->wpdb()->usermeta . '` WHERE meta_key = ? AND meta_value = ? AND user_id <> ? LIMIT 1 FOR UPDATE',
+                    [self::META . $col, (string) $stored, $self],
+                );
             if ($hit !== []) {
                 throw new HttpError(409, 'unique_violation', "A row with this $col already exists", HttpError::seg($col));
             }

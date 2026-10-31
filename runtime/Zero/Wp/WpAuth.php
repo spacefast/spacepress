@@ -26,18 +26,25 @@ final class WpAuth implements Auth
                 default => null,
             };
         }
-        if ($user !== null && IdentityBridge::suspended($user['id'])) {
-            throw new HttpError(403, 'suspended', 'This account is suspended');
-        }
 
         return $user;
     }
 
+    /**
+     * The WordPress user of this request, for every Zero channel (REST, abilities, MCP, editor
+     * hooks). A suspended account is refused here, so no channel can act for it.
+     */
     public static function current(): ?array
     {
         $user = wp_get_current_user();
+        if (!$user->exists()) {
+            return null;
+        }
+        if (IdentityBridge::suspended((int) $user->ID)) {
+            throw new HttpError(403, 'suspended', 'This account is suspended');
+        }
 
-        return $user->exists() ? self::map($user) : null;
+        return self::map($user);
     }
 
     public function user(int $id): ?array

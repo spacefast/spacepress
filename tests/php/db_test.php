@@ -155,6 +155,7 @@ $files = [
                             'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
                         ]],
                         'cleared' => ['type' => 'boolean', 'access' => ['update' => ['fn' => 'profiles__field__cleared__update']]],
+                        'meta' => ['type' => 'json', 'access' => ['update' => ['allow' => false]]],
                         'checks' => ['type' => 'repeater', 'fields' => [
                             'open' => ['type' => 'boolean'],
                             'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__checks__note__update']]],
@@ -359,6 +360,7 @@ $files = [
         	"locker" text,
         	"entries" text,
         	"cleared" integer,
+        	"meta" text,
         	"checks" text,
         	"tasks" text,
         	"teamId" integer REFERENCES "teams"("id") ON DELETE set null
@@ -840,7 +842,7 @@ $byName = static fn (array $rows) => array_column($rows, null, 'name');
 
 // read: shorthand rules once per page, function rules per row; hidden keys are removed, not nulled.
 $anon = $byName($as(null, 'GET', '/profiles')[1]);
-eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
+eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
 $alice = $byName($as('fa_alice', 'GET', '/profiles')[1]);
 eq('a function read rule runs per row (author sees only her own salary)', [$alice['Alice']['salary'] ?? 'hidden', $alice['Bob']['salary'] ?? 'hidden', isset($alice['Alice']['email'])], [10, 'hidden', false]);
 $editor = $as('fa_ed', 'GET', "/profiles/{$theirs['id']}")[1];
@@ -869,7 +871,7 @@ eq('editors may follow the link', $as('fa_ed', 'GET', "/profiles/{$mine['id']}",
 $faProblem('orderBy on a hidden column', $as(null, 'GET', '/profiles', query: ['orderBy' => '-email']), 403, 'forbidden', '/orderBy/email');
 problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null, 'standalone')), 403, 'forbidden', '/columns/email');
 problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'], 'standalone')), 403, 'forbidden', '/columns/salary');
-eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'standalone'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'checks', 'tasks', 'teamId']);
+eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'standalone'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
 eq('a readable column filters normally; trusted filters see everything', [
     array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
@@ -959,6 +961,14 @@ $db->update('profiles', ['notes' => ['public' => 'p', 'flag' => false], 'cleared
 $faProblem('a merged hidden value is not incoming data (group first)', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['public' => 'n'], 'cleared' => true]), 403, 'forbidden', '/cleared');
 $faProblem('… nor with the keys reversed', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['cleared' => true, 'notes' => ['public' => 'n']]), 403, 'forbidden', '/cleared');
 eq('… and nothing was stored', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['cleared'], false);
+// Update/delete selectors run as the viewer: they can't filter on a column hidden from it.
+$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user'], 'standalone');
+problem('an update selector on a hidden column is refused', fn () => $db->update('profiles', ['name' => 'x'], ['email' => 'alice@example.test'], true, $aliceViewer), 403, 'forbidden', '/where/email');
+problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'], 'standalone')), 403, 'forbidden', '/where/salary');
+// An unchanged resend must be the same value: a list resent as an object is a change.
+$db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
+$faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
+eq('… the stored list is untouched, and the true resend passes', [$db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta'], $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
 // Carrying an omitted protected value forward compares only what the viewer sees: any hidden value
 // in that item is refused alike, right guess or wrong.
 $db->update('profiles', ['tasks' => [['label' => 'w', 'rate' => 5, 'secret' => 'old']]], ['id' => $mine['id']]);
@@ -987,6 +997,6 @@ eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$m
 
 // /_schema reports per-column summaries (no function names).
 $described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
-eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule']]);
+eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
 
 finish('db_test');

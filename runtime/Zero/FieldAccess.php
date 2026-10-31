@@ -547,21 +547,25 @@ final class FieldAccess
         return $value;
     }
 
-    /** Structural equality: object keys in any order, list order, types and null-vs-absent preserved. */
+    /**
+     * Structural equality: object keys in any order; list order, list-vs-object, types and
+     * null-vs-absent preserved. Objects are tagged so key sorting can never turn one into a list.
+     */
     private static function same(mixed $a, mixed $b): bool
     {
-        $sort = static function (mixed $v) use (&$sort): mixed {
+        $form = static function (mixed $v) use (&$form): mixed {
             if (!is_array($v)) {
                 return $v;
             }
-            $v = array_map($sort, $v);
-            if (!array_is_list($v)) {
-                ksort($v, SORT_STRING);
+            if ($v !== [] && array_is_list($v)) {
+                return ['l' => array_map($form, $v)];
             }
+            $o = array_map($form, $v);
+            ksort($o, SORT_STRING);
 
-            return $v;
+            return ['o' => array_map(null, array_map('strval', array_keys($o)), array_values($o))];
         };
 
-        return Js::jsonStringify($sort($a)) === Js::jsonStringify($sort($b));
+        return Js::jsonStringify($form($a)) === Js::jsonStringify($form($b));
     }
 }

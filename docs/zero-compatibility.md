@@ -79,7 +79,11 @@ explicit refusal for unsupported behavior. Full application support requires:
 2. Implementations of each missing PHP/runtime and Rust/build contract above,
    with tests against legacy behavior.
 3. A data migration preserving IDs/references/ownership/URLs, rich content and
-   private file permissions, plus a recoverable cutover.
+   private file permissions, plus a recoverable cutover. `zero migrate site`
+   covers collection records, scalar/enum/media/single-reference fields,
+   statuses, dates, authors and revisions on WordPress
+   ([guide](migrating-from-zero.md)); rich content, native stores and private
+   files remain.
 4. A migrated application proof covering editor changes, client navigation,
    subscriptions, identity upgrade, publication and rollback.
 

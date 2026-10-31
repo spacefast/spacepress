@@ -272,7 +272,10 @@ final class Plugin
 
     public function promoting(mixed $post): void
     {
-        $this->promoting[(int) ($post instanceof \WP_Post ? $post->ID : $post)] = true;
+        $id = (int) ($post instanceof \WP_Post ? $post->ID : $post);
+        if ($this->collectionOf($id) !== null) {
+            $this->promoting[$id] = true;
+        }
     }
 
     public function promoted(mixed $post): void

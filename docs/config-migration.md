@@ -65,6 +65,10 @@ empty-value policy. Optional Payload email fields carry a
 specific review entry because Zero rejects empty strings that Payload accepts;
 null/absence remain nullable. Port or normalize that behavior before deployment.
 
+Zero's PHP runtime has no empty JSON object: `{}` reads back as `[]`. A JSON
+default that is or contains `{}` is refused at its `defaultValue` pointer, and
+`zero build` rejects such a `.default()` in any config.
+
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload
 boolean access rules and original Zero's `publicRead` override the corresponding

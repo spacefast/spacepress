@@ -8,6 +8,15 @@ type Object = Map<String, Value>;
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
 
+/// The PHP runtime decodes JSON objects as arrays, so an empty object would read back as `[]`.
+fn has_empty_object(v: &Value) -> bool {
+    match v {
+        Value::Object(o) => o.is_empty() || o.values().any(has_empty_object),
+        Value::Array(a) => a.iter().any(has_empty_object),
+        _ => false,
+    }
+}
+
 fn object<'a>(v: &'a Value, at: &str) -> Result<&'a Object, Failure> {
     v.as_object().ok_or_else(|| fail(at, "expected an object"))
 }
@@ -463,6 +472,12 @@ fn field(
         "defaultValue"
     };
     if let Some(value) = o.get(default_key) {
+        if has_empty_object(value) {
+            return Err(fail(
+                &pointer(at, default_key),
+                "Zero's runtime has no empty JSON object (it reads back as []); choose a non-empty or null default explicitly",
+            ));
+        }
         builder.push_str(&format!(".default({value})"));
     } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
         builder.push_str(".default(false)");

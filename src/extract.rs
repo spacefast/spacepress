@@ -1415,9 +1415,25 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
 }
 
 /// Validates a constant default against its column and returns it as JSON.
+/// The PHP runtime decodes JSON objects as arrays, so an empty object comes back as `[]`.
+fn has_empty_object(v: &Json) -> bool {
+    match v {
+        Json::Object(o) => o.is_empty() || o.values().any(has_empty_object),
+        Json::Array(a) => a.iter().any(has_empty_object),
+        _ => false,
+    }
+}
+
 fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     let span = b.span_of("default");
-    plain_json(v, span, "default")?;
+    let json = plain_json(v, span, "default")?;
+    if has_empty_object(&json) {
+        return Err(Diag::new(
+            span,
+            format!("`{name}` defaults to a value containing an empty object, which the PHP runtime stores as []"),
+        )
+        .help("Zero's runtime has no empty JSON object; default to null or a non-empty value"));
+    }
     let bad = |what: &str| -> Result<Json> {
         Err(Diag::new(
             span,

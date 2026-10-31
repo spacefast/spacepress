@@ -330,3 +330,19 @@ fn refuses_behavior_loss_dynamic_code_and_ambiguous_names_without_output() {
     assert!(!marker.exists());
     assert!(!out.exists());
 }
+
+#[test]
+fn json_defaults_with_empty_objects_are_refused_at_the_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("emdash.json");
+    std::fs::write(
+        &input,
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{}}}]}]}"#,
+    )
+    .unwrap();
+    let out = migrate("emdash", &input, &dir.path().join("app/zero.config.ts"));
+    assert_eq!(out.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["errors"][0]["pointer"], "/collections/0/fields/1/defaultValue");
+    assert!(!dir.path().join("app").exists());
+}

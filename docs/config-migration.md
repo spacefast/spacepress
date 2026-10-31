@@ -45,7 +45,8 @@ metadata and EmDash's seed metadata are identified in the report, not deployed.
 Required Payload checkboxes without an explicit default receive `false`, matching
 Payload's sanitizer. Optional checkboxes keep their declared default or absence.
 Required Payload JSON values must be JavaScript-truthy: `false`, `0`, `""` and
-null are rejected; empty arrays and objects are allowed. Payload text bounds use
+null are rejected; empty arrays and objects are allowed. Required EmDash JSON
+values reject only `""`, as EmDash does for every required field. Payload text bounds use
 generated validators that count UTF-16 code units, so a supplementary Unicode
 character counts as two. A Payload `text` or `textarea` without `maxLength`
 receives Payload's default `defaultMaxTextLength` of 40000. These validators preserve the source constraint rather

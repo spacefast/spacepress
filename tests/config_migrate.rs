@@ -421,6 +421,23 @@ fn emdash_datetime_keeps_its_iso_format_and_calendar() {
 }
 
 #[test]
+fn emdash_required_json_rejects_only_the_empty_string() {
+    let (_dir, app) = migrated_app(
+        "emdash",
+        "emdash.json",
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","required":true}]}]}"#,
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([["data", ""], ["data", false], ["data", 0], ["data", []], ["data", {"a": 1}]])
+        ),
+        json!(["/data", true, true, true, true])
+    );
+}
+
+#[test]
 fn json_defaults_with_empty_objects_are_refused_at_the_default() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("emdash.json");

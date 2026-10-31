@@ -434,6 +434,10 @@ fn field(
         if matches!(source, Source::Payload) && kind == "json" {
             builder.push_str(".validate(value => !!value || \"Required\")");
         }
+        // EmDash rejects "" for every required field, whatever its type.
+        if matches!(source, Source::Emdash) && kind == "json" {
+            builder.push_str(".validate(value => value !== \"\" || \"Required\")");
+        }
     }
     if boolean(o, "unique", at)?.unwrap_or(false) {
         builder.push_str(".unique()");

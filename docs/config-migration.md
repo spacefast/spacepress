@@ -73,9 +73,10 @@ a calendar-valid date (no February 30), a time, and `Z` or an offset. The value
 is stored as given, like EmDash does. Zero's `timestamp()` would accept free-form
 dates and numbers and normalize them, so it is not used.
 
-Zero's PHP runtime has no empty JSON object: `{}` reads back as `[]`. A JSON
-default that is or contains `{}` is refused at its `defaultValue` pointer, and
-`zero build` rejects such a `.default()` in any config.
+Zero's PHP runtime has no empty JSON object: `{}`, and an object keyed `"0"`,
+`"1"`, ... in order, read back as arrays. A JSON default that is or contains
+one is refused at its `defaultValue` pointer, and `zero build` rejects such a
+`.default()` on any `json()` column.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload

@@ -15,15 +15,6 @@ const EMDASH_DATETIME: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48
 /// Zero's email() accepts quoted local parts and address literals that Payload rejects.
 const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
 
-/// The PHP runtime decodes JSON objects as arrays, so an empty object would read back as `[]`.
-fn has_empty_object(v: &Value) -> bool {
-    match v {
-        Value::Object(o) => o.is_empty() || o.values().any(has_empty_object),
-        Value::Array(a) => a.iter().any(has_empty_object),
-        _ => false,
-    }
-}
-
 fn object<'a>(v: &'a Value, at: &str) -> Result<&'a Object, Failure> {
     v.as_object().ok_or_else(|| fail(at, "expected an object"))
 }
@@ -486,10 +477,10 @@ fn field(
         "defaultValue"
     };
     if let Some(value) = o.get(default_key) {
-        if has_empty_object(value) {
+        if crate::extract::has_list_shaped_object(value) {
             return Err(fail(
                 &pointer(at, default_key),
-                "Zero's runtime has no empty JSON object (it reads back as []); choose a non-empty or null default explicitly",
+                "Zero's PHP runtime reads {} and objects keyed \"0\", \"1\", ... back as arrays; choose another default explicitly",
             ));
         }
         builder.push_str(&format!(".default({value})"));

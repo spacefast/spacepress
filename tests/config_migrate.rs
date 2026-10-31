@@ -438,12 +438,12 @@ fn emdash_required_json_rejects_only_the_empty_string() {
 }
 
 #[test]
-fn json_defaults_with_empty_objects_are_refused_at_the_default() {
+fn json_defaults_with_list_shaped_objects_are_refused_at_the_default() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("emdash.json");
     std::fs::write(
         &input,
-        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{}}}]}]}"#,
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{"0":"a","1":"b"}}}]}]}"#,
     )
     .unwrap();
     let out = migrate("emdash", &input, &dir.path().join("app/zero.config.ts"));

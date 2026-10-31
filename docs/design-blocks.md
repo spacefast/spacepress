@@ -204,9 +204,9 @@ the build's own Node process**, like a `vite.config.ts` or a Zero
 static `node:*` imports a bundle error, which catches the common accident; it
 is not a sandbox, and `fetch`, `process`, `Date.now()` and `Math.random()`
 remain reachable. Determinism is therefore a contract the author keeps, not
-one the compiler enforces: the build runs each module once, and the example
-theme's double-build test (§4.7) proves the *compiler* adds no
-nondeterminism of its own. A restricted evaluator (Zero's Rust evaluator
+one the compiler enforces: the build runs each module once, and the
+double-build test over the compiler's fixture theme (§4.7) proves the
+*compiler* adds no nondeterminism of its own. A restricted evaluator (Zero's Rust evaluator
 handles `zero.config.ts` this way) is the obvious upgrade if untrusted themes
 ever need building; it is out of scope here.
 
@@ -235,15 +235,19 @@ restored after, as before) and, for each block node:
    `core/heading.content` are all registered attributes that `createBlock`
    accepts and `save()` writes into the markup rather than the comment, so
    they are allowed like any other. Attributes registered with
-   `role: "local"` (`core/image.blob`, `core/html.content` is the one
-   exception the serializer handles itself) are editor-session state that
-   WordPress deliberately never serializes; setting one is
+   `role: "local"` (`core/image.blob` for one) are editor-session state that
+   WordPress's serializer deliberately never writes; setting one is
    `local_attribute`, with the hint that it cannot reach the saved markup,
-   and the codegen omits them from the generated props. The one rule about
+   and the codegen omits them from the generated props. The single exception
+   is `core/html.content`, also `role: "local"`: it is the Custom HTML
+   block's whole body, stored as the block's `innerContent` rather than an
+   attribute, so the codegen keeps it as the author-facing prop and the
+   serializer writes it into `innerContent` (ported; preservation is tested
+   by reparsing the inner HTML, not an attribute). The one rule about
    `content`: when a block has both children and a `content` prop, that is
-   two bodies for one block (`content_and_children`). `createBlock` would
-   drop an unknown or local attribute silently, which is exactly the failure
-   this package exists to prevent.
+   two bodies for one block (`content_and_children`). `createBlock` drops
+   an unknown attribute silently and `serialize()` drops a local one
+   silently, which are exactly the failures this package exists to prevent.
 
    Value typing follows the registry's vocabulary, not raw JSON types:
    `string` and `rich-text` accept a string (`rich-text` is what `createBlock`
@@ -474,7 +478,8 @@ part, pattern and variation (one shared block registry, deterministic order)
 → validate `theme.json` → write to a staging directory → replace `<out>/<slug>`
 atomically → zip. Any diagnostic of severity error means nothing is written.
 `zero-blocks check <dir>` is the same without writing. Output is byte-stable
-for the same input (the unit suite builds the example theme twice and compares).
+for the same input (the unit suite builds its fixture theme twice and
+compares; PR 4 does the same for the example theme).
 
 Diagnostics print as `templates/single.tsx:22:7 unknown_attribute: core/post-date
 has no attribute "fmt". Did you mean "format"?` and exit 1; `--json` prints
@@ -641,10 +646,10 @@ existing job plus the package's:
 | PR | Branch | Contents | Proof |
 |---|---|---|---|
 | 0 | `p3/blocks-design` | this document | review |
-| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
-| 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts` | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
-| 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; double build byte-equal |
-| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key |
+| 1 | `p3/blocks-content` | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `zero-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 2 | `p3/blocks-codegen` | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts`; the `blocks` job gains both codegen check-mode steps | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
+| 3 | `p3/blocks-theme` | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `zero-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
+| 4 | `p3/blocks-example` | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `zero` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |
 | 5 | `p3/blocks-docs` | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits Zero), a pointer section in the root README | docs render; links resolve |
 
 Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.

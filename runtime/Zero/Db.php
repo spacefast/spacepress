@@ -165,8 +165,15 @@ final class Db
             return [];
         }
         $filterViewer ??= $viewer;
-        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-            $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
+        // The one point before SQL: query options and access guards are plain arrays, except json()
+        // operands (`{}` and `[]` compare differently).
+        $sqlOpts = $this->plainQuery($collection, $opts);
+        $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
+        $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
+            $filterViewer === null ? null : fn (string $target): array => array_map(
+                fn ($g) => $this->plainFilter($target, $g),
+                $this->readGuards($target, $filterViewer),
+            ));
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),
@@ -427,14 +434,35 @@ final class Db
     }
 
     /** Query options as plain arrays, except a json() column's filter operands (`{ meta: { eq: {} } }`). */
-    private function plainQuery(string $collection, array|JsObject $opts): array
+    private function plainQuery(string $collection, mixed $opts): mixed
     {
         $opts = $opts instanceof JsObject ? [] : $opts;
+        if (!is_array($opts)) {
+            return Js::plain($opts);
+        }
+        $relations = $this->schema->hasCollection($collection) ? ($this->schema->collection($collection)['relations'] ?? []) : [];
         foreach ($opts as $k => $v) {
-            $opts[$k] = $k === 'where' ? $this->plainFilter($collection, $v) : Js::plain($v);
+            $opts[$k] = match ((string) $k) {
+                'where' => $this->plainFilter($collection, $v),
+                // Nested relation options are queries on the related collection.
+                'with' => is_array($v) || $v instanceof JsObject ? $this->plainWith($relations, $v) : Js::plain($v),
+                default => Js::plain($v),
+            };
         }
 
         return $opts;
+    }
+
+    private function plainWith(array $relations, array|JsObject $with): array
+    {
+        $with = $with instanceof JsObject ? [] : $with;
+        foreach ($with as $name => $o) {
+            $with[$name] = isset($relations[$name]) && (is_array($o) || $o instanceof JsObject)
+                ? $this->plainQuery($relations[$name]['collection'], $o)
+                : Js::plain($o);
+        }
+
+        return $with;
     }
 
     /**
@@ -453,13 +481,37 @@ final class Db
             $where[$k] = match (true) {
                 $k === 'OR' || $k === 'AND' => is_array($v) ? array_map(fn ($f) => $this->plainFilter($collection, $f), $v) : Js::plain($v),
                 $k === 'NOT' => $this->plainFilter($collection, $v),
-                ($spec['columns'][$k]['type'] ?? null) === 'json' => $v,
+                isset($spec['columns'][$k]) => self::plainOperand($spec['columns'][$k], $v),
                 isset($spec['relations'][$k]) => $this->plainFilter($spec['relations'][$k]['collection'], $v),
                 default => Js::plain($v),
             };
         }
 
         return $where;
+    }
+
+    /**
+     * A field filter: an operator object (`{ eq: v, OR: [...] }`) maps its operands by the column's
+     * schema; a bare value is itself the operand. Each operand keeps `{}` only inside json() values.
+     */
+    private static function plainOperand(array $col, mixed $v): mixed
+    {
+        $ops = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
+        $isOps = is_array($v) && $v !== [] && !array_is_list($v) && array_diff(array_map('strval', array_keys($v)), $ops) === [];
+        if (!$isOps) {
+            return Schema::plainOutsideJson($col, $v);
+        }
+        foreach ($v as $op => $arg) {
+            $v[$op] = match ((string) $op) {
+                'in', 'notIn' => is_array($arg) ? array_map(static fn ($x) => Schema::plainOutsideJson($col, $x), $arg) : Js::plain($arg),
+                'OR', 'AND' => is_array($arg) ? array_map(static fn ($x) => self::plainOperand($col, $x), $arg) : Js::plain($arg),
+                'NOT' => self::plainOperand($col, $arg),
+                'isNull', 'isNotNull', 'like', 'notLike', 'ilike', 'notIlike', 'has' => Js::plain($arg),
+                default => Schema::plainOutsideJson($col, $arg),
+            };
+        }
+
+        return $v;
     }
 
     /** Only json() values keep the empty-object marker; field access, rules and hooks see plain arrays. */

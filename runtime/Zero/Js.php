@@ -1287,12 +1287,17 @@ final class Js
         } catch (\JsonException $e) {
             // PHP objects can't hold a property named "\u0000…". Such valid JSON is decoded with a
             // placeholder for that one byte in keys, then restored, so `{}` elsewhere keeps its shape.
-            if (!str_contains($s, '\\u0000')) {
+            // Only a real \u0000 escape (an odd run of backslashes before `u0000`) is replaced; the
+            // placeholder is a fresh random token that can't occur in the document.
+            if (!preg_match('/(?<!\\\\)(?:\\\\\\\\)*\\\\u0000/', $s)) {
                 throw $e;
             }
-            $mark = "\u{10FFFF}nul\u{10FFFF}";
+            do {
+                $mark = 'zn' . bin2hex(random_bytes(8));
+            } while (str_contains($s, $mark));
+            $swapped = preg_replace('/(?<!\\\\)((?:\\\\\\\\)*)\\\\u0000/', '${1}' . $mark, $s);
 
-            return self::restoreNul(self::fromJson(json_decode(str_replace('\\u0000', $mark, $s), false, $depth, JSON_THROW_ON_ERROR)), $mark);
+            return self::restoreNul(self::fromJson(json_decode($swapped, false, $depth, JSON_THROW_ON_ERROR)), $mark);
         }
     }
 

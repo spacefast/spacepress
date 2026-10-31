@@ -1478,16 +1478,21 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 // reaches the rule as [], never as a JsObject its array code can't handle.
 (static function (): void {
     eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
+    // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
+    eval('namespace ZeroApp; function marked__read($ctx) { return ["AND" => [new \\Zero\\JsObject()]]; }');
     $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
-        'primaryKey' => 'id', 'access' => ['read' => ['role' => 'anyone'], 'update' => ['fn' => 'marked__update']],
+        'primaryKey' => 'id', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
             'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['locked', 'open']],
             'meta' => ['type' => 'json'],
+            'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json']]],
+            'parentId' => ['type' => 'integer'],
         ],
+        'relations' => ['kids' => ['kind' => 'many', 'collection' => 'marked', 'from' => 'id', 'to' => 'parentId']],
     ]]]);
     $pdo = \Zero\Store\SqliteStore::connect(':memory:');
-    $pdo->exec('CREATE TABLE "marked" ("id" integer PRIMARY KEY, "tags" text, "meta" text)');
+    $pdo->exec('CREATE TABLE "marked" ("id" integer PRIMARY KEY, "tags" text, "meta" text, "info" text, "parentId" integer)');
     $store = new \Zero\Store\SqliteStore($pdo, $schema);
     $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
     $previous = \Zero\Db::instance();
@@ -1508,6 +1513,19 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $db->delete('marked', \Zero\Js::decodeJson('{"meta":{"eq":{}}}'));
         eq('a json() filter compares {} and [] as different values', array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']),
             $db->findMany('marked', ['orderBy' => ['id' => 'asc']])), ['{"a":{}}', '[]']);
+        // The same holds in nested `with` options, in a json() sub-field of a structured filter, and
+        // under a viewer whose read rule returns a filter containing {} (all flattened by schema).
+        $parent = $db->findFirst('marked', ['orderBy' => ['id' => 'asc']]);
+        $db->insert('marked', [['parentId' => $parent['id'], 'meta' => \Zero\Js::decodeJson('{}'), 'info' => ['extra' => \Zero\Js::decodeJson('{}')]],
+            ['parentId' => $parent['id'], 'meta' => [], 'info' => ['extra' => []]]]);
+        $kids = $db->findFirst('marked', \Zero\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
+        $byInfo = $db->findMany('marked', \Zero\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
+        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'standalone'));
+        eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
+            array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']), $kids),
+            array_map(static fn ($r) => \Zero\Js::jsonStringify($r['info']['extra']), $byInfo),
+            count($asViewer),
+        ], [['{}'], ['{}'], 4]);
     } finally {
         \Zero\Db::setInstance($previous);
     }

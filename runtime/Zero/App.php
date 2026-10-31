@@ -383,6 +383,7 @@ final class App
         $s = trim(self::queryString($value, '/with'));
         if (str_starts_with($s, '{')) {
             $with = self::queryJson($s, '/with');
+            $with = $with instanceof JsObject ? [] : $with;
             if (!is_array($with) || ($with !== [] && array_is_list($with))) {
                 throw HttpError::invalidQuery('with must be an object', '/with');
             }
@@ -415,7 +416,8 @@ final class App
     private static function queryJson(mixed $value, string $ptr): mixed
     {
         try {
-            return json_decode(self::queryString($value, $ptr), true, 512, JSON_THROW_ON_ERROR);
+            // `{}` stays an object here; Db flattens query options by schema, keeping json() operands.
+            return Js::decodeJson(self::queryString($value, $ptr));
         } catch (\JsonException $e) {
             throw HttpError::invalidQuery('Invalid JSON: ' . $e->getMessage(), $ptr);
         }

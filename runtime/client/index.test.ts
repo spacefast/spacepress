@@ -97,14 +97,16 @@ function stubBrowser(search = "") {
   const store = new Map<string, string>();
   let navigate: (to: string) => void = () => {};
   const navigated = new Promise<string>((resolve) => (navigate = resolve));
+  const visits: string[] = [];
   Object.defineProperty(globalThis, "sessionStorage", {
     configurable: true,
     value: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) },
   });
-  Object.defineProperty(globalThis, "location", { configurable: true, value: { search, assign: (to: string) => navigate(to) } });
+  Object.defineProperty(globalThis, "location", { configurable: true, value: { search, assign: (to: string) => (visits.push(to), navigate(to)) } });
   return {
     store,
     navigated,
+    visits,
     restore() {
       for (const [k, d] of saved) d ? Object.defineProperty(globalThis, k, d) : Reflect.deleteProperty(globalThis, k);
     },
@@ -720,7 +722,7 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
   const issuer = `${origin}/identity`;
   const auth = { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage: "session" };
   const base = `${origin}/wp-json/zero/v1`;
-  const pkce = JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43) });
+  const pkce = JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo: "/drafts" });
   const member = { id: 3, name: "ann", role: "subscriber", member: { id: 3, email: "ann@x.test" } };
   reply = (s) => {
     if (s.path === "/identity/token") return { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, id_token: "h.p.s", token_type: "Bearer" }) };
@@ -745,6 +747,7 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     const zero = wpMod.createClient({ url: base, auth });
     seen = [];
     assert.deepEqual(await zero.auth.handleCallback(), member);
+    assert.equal(await browser.navigated, "/drafts", "back to signIn's returnTo");
     assert.deepEqual([seen[0].path, seen[0].headers["content-type"], seen[0].headers.authorization], ["/identity/token", "application/x-www-form-urlencoded", undefined]);
     assert.deepEqual(form(seen[0]), {
       grant_type: "authorization_code",
@@ -763,7 +766,7 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
     // Signed out, the record keeps only the session generation (no tokens).
     assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}")), ["sid"]);
-    const logout = new URL(await browser.navigated);
+    const logout = new URL(browser.visits.at(-1) ?? "");
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
       [`${issuer}/logout`, { id_token_hint: "h.p.s", post_logout_redirect_uri: "https://blog.test/" }],

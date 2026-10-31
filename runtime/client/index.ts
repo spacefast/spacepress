@@ -667,6 +667,10 @@ export function createClient(options: ClientOptions = {}): Client {
       }, from)) throw authError(409, "session_changed", "Another sign-in or sign-out happened first");
       const user = await auth.me();
       if (!user) throw authError(401, "unauthenticated", "The issuer's tokens were not accepted");
+      // Back to where signIn({ returnTo }) started (same-origin paths only).
+      if (typeof pkce.returnTo === "string" && pkce.returnTo.startsWith("/") && !pkce.returnTo.startsWith("//")) {
+        location?.assign(pkce.returnTo);
+      }
       return user;
     },
     async login(name: string, password: string) {

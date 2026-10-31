@@ -165,14 +165,30 @@ final class GroupSync
             // Every member as currently committed, locked: a translation created concurrently can't be missed.
             $members = Lock::members($collection, $row, Module::members($row, $pk));
             $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
-            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
+            $deferred = null;
+            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed, &$deferred): void {
                 foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
                     $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
-                    if ($patch !== []) {
+                    if ($patch === []) {
+                        continue;
+                    }
+                    // A sibling the same bulk update will write next gets the values with its own
+                    // update, so its hooks and revision happen once; the group is checked after it.
+                    $bulk = db()->pendingUpdate($collection, $sibling[$pk]);
+                    if ($bulk !== null) {
+                        $bulk->hand($sibling[$pk], $patch);
+                        $deferred = $bulk;
+                    } else {
                         db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                     }
                 }
             });
+            if ($deferred !== null) {
+                $id = $row[$pk];
+                $deferred->after[] = static fn () => self::agrees($collection, $id);
+
+                return;
+            }
         }
         self::agrees($collection, $row[$pk]);
     }

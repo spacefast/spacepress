@@ -3,7 +3,8 @@
 //
 // Lane K1 (runtime gaps): `legs` is a post-backed localized child of the localized `tours` (lane
 // H), for `with` resolving each parent row's children in that row's locale through Polylang.
-import { collection, id, integer, text } from "zero";
+// `bulkTourPrice` is one trusted update over two rows of a translation group (hooks once per row).
+import { action, collection, db, id, integer, text } from "zero";
 import { tours } from "./locales.ts";
 
 export const legs = collection("legs", {
@@ -17,7 +18,17 @@ export const schema = { legs };
 export const relations = (r: any) => ({
   tours: { legs: r.many.legs({ from: r.tours.id, to: r.legs.tourId }) },
 });
-export const actions = {};
+export const actions = {
+  bulkTourPrice: action({
+    input: { a: integer().notNull(), b: integer().notNull(), price: integer().notNull() },
+    access: "editor",
+    agents: false,
+    async handler({ a, b, price }) {
+      const rows = await db.update(tours).set({ price }).where({ id: { in: [a, b] } }).returning();
+      return rows.length;
+    },
+  }),
+};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {};

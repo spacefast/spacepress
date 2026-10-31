@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 8, 2026-10-31; six review rounds folded in; §9.2 ruled). Extends `design-phase2.md`; where
+Status: approved for build (revision 9, 2026-10-31; six review rounds folded in; §9.1 and §9.2 ruled, §9.3 and §9.5 accepted by default). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -194,12 +194,11 @@ reworded follows the same §9.1 ruling. Flagged in §9.5.
 - **The internal framework.** Declared GPL-2.0-or-later by Spacefast at
   vendoring time. The source tree contains no licence grant from its upstream,
   no copyright holder, and no provenance for the declaration. Under the
-  clean-room rule this is the one thing this plan cannot decide. Until the
-  owner rules (§9.1), nothing from class I is imported, including the class-I
-  additions inside the `views` fork. Class U comes from npm either way, and
-  class S is Spacefast's own. The ruling, the grant it rests on and the
-  required notices are recorded in the private evidence record **before** the
-  import PR is opened, and the `NOTICE` file in PR 2 is derived from it.
+  clean-room rule this was the one thing this plan could not decide; the
+  owner has since confirmed the right to redistribute and modify (§9.1), so
+  class I, including the additions inside the `views` fork, may be imported. Class U comes from npm either way, and
+  class S is Spacefast's own. The ruling (§9.1, granted) and the notices it requires are recorded in the
+  private evidence record, and the `NOTICE` file in PR 2 is derived from it.
 - **Third-party in the tree.** `routes/design-styles/.../lib/{lib-font,inflate,unbrotli}.js`
   (MIT, Pomax; zlib/brotli ports) are dropped with the design screens.
   `packages/boot/src/dashicons` (GPL-2.0-or-later, with its own LICENSE.md)
@@ -730,20 +729,16 @@ Sol outcome.
 
 ## 9. Open questions for the project owner
 
-1. **Licence and provenance of the internal framework (blocks PR 2).** The
-   vendored code (class I in §1.2: about 60% of the tree after pruning) was
-   declared GPL-2.0-or-later by Spacefast when it was vendored, and the tree
-   holds no upstream grant, copyright holder or author list. Please confirm
-   (a) that Spacefast has the right to redistribute it under GPL-2.0-or-later
-   in a public repository, (b) whose copyright line goes in
-   `runtime/admin/LICENSE` / `NOTICE`, and (c) whether the original
-   framework must be credited by name (this plan assumes not: the public
-   text, including this document, says "Spacefast's earlier WordPress admin
-   work"; if yes, the name appears in `NOTICE` only). The `views` fork's
-   additions are part of this ruling. If (a) is no, the fallback is to import
-   only class U from npm and write the shell (router, sidebar, page, editor
-   host, collection screens) fresh on `@wordpress/boot`, `route`,
-   `dataviews`, `fields` and `ui`; that is a different, larger plan.
+1. **Licence and provenance of the internal framework.** *Ruled
+   (2026-10-31): Spacefast has the right to redistribute the vendored code
+   under GPL-2.0-or-later and to change it freely.* Consequences: PR 2 is
+   unblocked; `runtime/admin/LICENSE` is the GPL-2.0-or-later text with a
+   `Copyright (c) 2026 Spacefast` line in `NOTICE`; the original framework is
+   not credited by name anywhere (the public text says "Spacefast's earlier
+   WordPress admin work"); the `views` fork's additions are covered; and the
+   port may rewrite, prune or restructure any imported file, so the scrub in
+   §1.3 and the rewire in §4 are not bound to keep the source's shape. The
+   grant is recorded in the private evidence record.
 2. **Zero's top-level licence.** *Ruled: split licence, MIT for everything
    that can be, GPL-2.0-or-later only for what runs inside WordPress.* The
    `p3/readme` branch's `LICENSE` is that split; `runtime/admin/` joins its
@@ -759,11 +754,11 @@ Sol outcome.
    also replace every private-API use with public equivalents where they now
    exist (`@wordpress/boot`, `@wordpress/views`), which is larger.
 5. **The identity lane's attribution header.** One file under
-   `runtime/identity/apps/admin/src/` names the internal framework and its
-   contributors as copyright holders. Outside this plan's files. It is an
-   attribution notice, so it is not scrubbed by this plan; the §9.1 ruling
-   decides whether it stays, moves to `NOTICE`, or is reworded, and the
-   identity lane applies that before publication.
+   `runtime/identity/apps/admin/src/` and `runtime/identity/NOTICE` name the
+   internal framework and its contributors as copyright holders. Outside this
+   plan's files. Under the §9.1 ruling the credit by name goes: the identity
+   lane rewords both to "adapted from Spacefast's earlier WordPress admin
+   work, Copyright (c) 2026 Spacefast, GPL-2.0-or-later" before publication.
 
 ---
 

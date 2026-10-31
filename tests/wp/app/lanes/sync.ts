@@ -33,6 +33,10 @@ export const hooks = {
     async beforeDelete(row) {
       if (row.summary === "keep") throw new HttpError(409, "kept", "this guide is kept");
     },
+    // A hook rewriting identity: the runtime refuses it after the hook and rolls the write back.
+    async beforeUpdate(patch, existing) {
+      if (patch.title === "steal uid") return { ...patch, uid: "zr_99999999999999999999" };
+    },
     // Fails after the post is already in the trash, so the request must roll the trash back.
     async afterDelete(row) {
       if (row.summary === "regret") throw new HttpError(409, "regretted", "this guide came back");

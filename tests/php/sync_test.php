@@ -55,7 +55,8 @@ $functions = <<<'PHP'
     // Authors and up create; while the test flag is set, only published rows (status comes from its default).
     function notes__create($ctx) {
         $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx['user']['role'] ?? ''] ?? 0;
-        return $rank >= 1 && (empty($GLOBALS['zeroCreateNeedsPublished']) || ($ctx['data']['status'] ?? null) === 'published');
+        return $rank >= 1 && (empty($GLOBALS['zeroCreateNeedsPublished'])
+            || (($ctx['data']['status'] ?? null) === 'published' && ($ctx['data']['publishedAt'] ?? null) !== null));
     }
     // Editors may update every note; authors only notes credited to a person with their name (a filter).
     function notes__update($ctx) {

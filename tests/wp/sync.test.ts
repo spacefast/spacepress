@@ -45,6 +45,10 @@ test("sync on WordPress", async (t) => {
     const meta = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${writer.id} AND meta_key = '_zero_uid'`);
     assert.deepEqual(meta, [{ meta_value: writer.uid }], "the uid lives in _zero_uid meta, not an SCF field");
     await problem("PATCH", `/writers/${writer.id}`, { as: "admin", body: { uid: uidOf(99) } }, { status: 422, code: "invalid_input", pointer: "/uid" });
+    const hooked = zero("insert", "guides", JSON.stringify({ title: `Hooked ${run}`, slug: `hooked-${run}` }))[0];
+    await problem("PATCH", `/guides/${hooked.id}`, { as: "editor", body: { title: "steal uid" } }, { status: 422, code: "invalid_input", pointer: "/uid" });
+    assert.deepEqual(sql(`SELECT p.post_title, m.meta_value FROM wp_posts p JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = '_zero_uid' WHERE p.ID = ${hooked.id}`),
+      [{ post_title: `Hooked ${run}`, meta_value: hooked.uid }], "a hook's uid rewrite rolls back the post and its uid");
   });
 
   let created: any;

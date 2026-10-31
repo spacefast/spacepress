@@ -296,8 +296,12 @@ final class Routes
                 $data[$name] = Schema::generate($col['default'], $col['type']);
             }
         }
-        if (($spec['drafts'] ?? false) && !array_key_exists('status', $data)) {
-            $data['status'] = 'published';
+        if ($spec['drafts'] ?? false) {
+            // Db::draftRules: an absent status is published, and a published row without a date gets now.
+            $data['status'] ??= 'published';
+            if ($data['status'] === 'published' && ($data['publishedAt'] ?? null) === null) {
+                $data['publishedAt'] = Js::iso(Js::now());
+            }
         }
 
         return $data;

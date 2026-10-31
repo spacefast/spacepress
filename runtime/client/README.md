@@ -46,5 +46,5 @@ Server to server: `token` sends a standalone CLI token (`zt_...`). On WordPress,
 `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.
 
-Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
+This folder is MIT (see its LICENSE). Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
 `"allowImportingTsExtensions": true` (or `rewriteRelativeImportExtensions`).

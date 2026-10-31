@@ -608,7 +608,8 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
-    for f in ["index.ts", "README.md"] {
+    // The copied runtime half of the client is MIT; its notice travels with it.
+    for f in ["index.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
             let text = String::from_utf8_lossy(bytes)
                 .replace("{{name}}", &schema.name)

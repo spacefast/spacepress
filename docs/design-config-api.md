@@ -284,7 +284,10 @@ What changed and why:
   its key, not its column set.
 - **`media({ accept })`** takes MIME patterns like buckets do (F14); both
   accept one pattern or a list. `"image"` is not a value; the error for it
-  suggests `"image/*"`.
+  suggests `"image/*"`. `multiple: true` needs `accept` within `image/*`:
+  SCF renders a media list as a `gallery` field (`Wp/Scf.php:165`), which
+  is images only, so a mixed or document list is a build error ("a media
+  list is an image gallery; use a repeater of `media()` for other files").
 - **`file("manuscripts")`** takes the bucket's key under
   `defineConfig.files` (F7, F15), resolved and type-checked exactly like a
   `ref` target. Today's `{ bucket: "name" }` object becomes the one string
@@ -369,6 +372,7 @@ collection({ ...columns }, {
   label?: string,            // default: title case of the key
   title?: column,            // default: a column named title (§4.9.2)
   body?: column | false,     // default: the only richText column; several need a choice (§4.9.5)
+  author?: column | false,   // content only: the user() column stored as post_author; default: the only one (§4.8)
   // behaviour
   content?: boolean,         // default: inferred (§4.9.3). true = posts + drafts + revisions on WP; false = a plain table
   drafts?: true,             // on a table: add status/publishedAt and scheduling anyway
@@ -419,10 +423,14 @@ collection({ ...columns }, {
   columns, so `beforeCreate(data) { data.name … }` types as today. A *named*
   helper used as a hook (`afterCreate: restock`) cannot be typed as
   `Row<typeof items>` because that refers to the value being defined
-  (TypeScript reports a circular initializer); the helper names the fields
-  it reads instead, which is what the pantry rewrite does (§5.2). A hook
-  that needs another collection references it by name as today (module
-  scope, hoisted). Open question 9 asks whether this cost is worth the move.
+  (TypeScript reports a circular initializer); it is typed by the registered
+  key, `Row<"items">` (§4.11), which has no such cycle, and the compiler
+  resolves it to the full row so the hook's argument is assignable to it
+  (the compiler rejects extra keys on object parameters,
+  `src/compile.rs:4938`, so a hand-written subset of fields would not
+  compile either). The pantry rewrite does this (§5.2). A hook that needs
+  another collection references it by name as today (module scope,
+  hoisted). Open question 9 asks whether this cost is worth the move.
 - **`uid` goes** (F8): a synced collection and every collection a synced
   collection references get a `uid` column automatically; the compiler can see
   the reference graph. `uid: true` for its own sake has no use in the repo.
@@ -595,7 +603,8 @@ export const manuscripts = bucket({ accept: ["application/pdf"], maxBytes: 1_000
 defineConfig({
   files: { manuscripts },
   media: { sizes: { card: { width, height?, fit? } } },
-  locales: ["en", "de"],              // first = default; Polylang owns fallback
+  locales: ["en", "de"],              // first = default
+  localeFallback?: false,             // default true: read the default-locale row when a locale has no translation
   webhooks: [{ url, secret, events }],
 })
 ```
@@ -605,8 +614,13 @@ defineConfig({
   Its access takes `write` too, covering `create` and `delete` (a bucket
   has no update).
 - `locales` as an array (F19): the first entry is the default. `fallback`
-  (no use in the repo) goes: it emulated Polylang's fallback on standalone,
-  and Polylang's own settings decide it now (§4.12).
+  (no use in the repo) moves to a sibling key, `localeFallback: false`, so
+  there is one spelling of the list and `default` is never repeated. It
+  stays because it is Zero's own read behaviour on WordPress too: the
+  locale filter on every read consults `schema.locales.fallback`
+  (`Locale/Read.php:69`), Polylang supplies languages and translation
+  groups only (`Wp/Polylang.php`), and localized tables are outside Polylang
+  altogether.
 - Webhook events name collections by key, which is now the only name (F18).
 
 ### 4.8 Auth and users
@@ -615,15 +629,23 @@ defineConfig({
 export const members = collection({ name: text().notNull() }, { auth: true });
 ```
 
-- `auth: true` marks the collection whose rows are per-user profiles: its
-  `id` is the `wp_users.ID`, it gets a read-only `role` column (the
-  WordPress role, mapped as in `WpUserStore.php:25`), and nothing else. The
-  `email` the compiler insists on today (`src/extract.rs:2402`), the virtual
-  `password` input and the hidden `passwordHash`/`suspendedAt`/`guest`
-  columns all go (§4.12): the email and password live on `wp_users`, the
-  suspension state in zero-identity, and a guest is a viewer with the
-  `zero_guest` role. A profile field that must mirror the account (an
-  `email` column) is an ordinary column the app keeps in a hook.
+- `auth: true` marks the collection whose rows *are* the site's users: a
+  row is a `wp_users` account plus the collection's profile columns in
+  usermeta, as today (`WpUserStore.php`). Its `id` is the `wp_users.ID`.
+  It gets two system columns, both backed by `wp_users`: `email`
+  (`user_email`, NOT NULL, unique, writable) and `role` (the WordPress
+  role, mapped as in `WpUserStore.php:25`, admin-only to change). The user
+  no longer declares `email` (`src/extract.rs:2402` insisted on it); the
+  virtual `password` input stays, write-only, and is the one way the API
+  creates a sign-in (`wp_insert_user` with `user_pass`, `WpUserStore.php:266`).
+  The hidden `passwordHash`, `suspendedAt` and `guest` columns go (§4.12):
+  the hash is `wp_users.user_pass`, suspension is zero-identity's, and a
+  guest is a viewer with the `zero_guest` role. CRUD on the collection is
+  CRUD on accounts: `create` runs `wp_insert_user`, `delete` runs
+  `wp_delete_user` (`:320`), `update` writes `user_email`/`user_pass` and
+  the profile meta. So `create: "anyone"` is self-signup, as the two
+  fixtures use it, and `ctx.user` gains `email` so hooks and rules can read
+  the account's address.
 - **`user(opts?)`** is a new column: an integer reference to the app's user
   (`User.id`), named with the `Id` suffix like any `ref` (`userId`,
   `createdById`). With an auth collection in the config it is exactly
@@ -641,14 +663,30 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   collection's `id` is the same number, `src/extract.rs:2397`), so adding
   or removing the auth collection never changes what the column means; the
   standalone user table that made that a hazard is gone (§4.12). Deletion of
-  the user (`wp_delete_user`) follows `ref()`'s rule: `"set null"` when
-  nullable, `"restrict"` when `.notNull()`, and `{ onDelete: "cascade" }`
-  explicitly, applied by the pipeline since `wp_users` has no FK. It is what
+  the user follows `ref()`'s rule: `"set null"` when nullable, `"restrict"`
+  when `.notNull()`, and `{ onDelete: "cascade" }` explicitly. `wp_users`
+  has no foreign keys and users are deleted from wp-admin, WP-CLI and other
+  plugins, so the rule runs on core's `delete_user` action (which fires
+  before the row goes, with the reassignment target core offers): `"set
+  null"` clears or, when core was told to reassign, rewrites the column;
+  `"restrict"` aborts the deletion with a `wp_die` naming the rows (the
+  existing `delete_user` hook only guards storage availability today);
+  `"cascade"` deletes the owning rows through the pipeline. Without an
+  auth collection the same hook applies; `Db::referentialActions()` keys on
+  a registered target today and gains the built-in users as one. It is what
   `authors.userId` and the `ownerId` columns are by hand today, and it is
-  what `"self"` reads. On a content collection the post's `post_author` is
-  set from the `user()` column when there is exactly one, so wp-admin's
-  "Mine" filter and author capabilities (`edit_others_posts`) agree with
-  `"self"`.
+  what `"self"` reads.
+- **One owner per post.** On a content collection, ownership has one
+  authoritative home: `post_author`. A collection with exactly one `user()`
+  column stores that column *as* `post_author` (a core column, like `slug`
+  is `post_name`), not as meta; wp-admin's author box, "Mine" views,
+  `edit_others_posts` and Zero's `"self"` therefore read the same value and
+  cannot disagree. A content collection with two `user()` columns must say
+  which is the author (`author: "assignedToId"`, a new designation beside
+  `title` and `body`), or `author: false` for meta-only user columns; adding
+  a second `user()` column without it is a build error, whether or not any
+  rule says `"self"`. Tables have no `post_author`; their `user()` columns
+  are ordinary columns.
 
 ### 4.9 Magic that removes config
 
@@ -713,9 +751,16 @@ trip never writes them. On content collections `updatedAt` is
 post meta like any other column, because `post_date_gmt` is the
 publication time (it already backs `publishedAt`, `WpPostStore.php:84`, and
 moves when a post is scheduled or re-dated, `:282`). On tables both are
-columns of the `$wpdb` table. Off: `timestamps: false`. Error: a user
-column of either name. Localized rows keep per-row timestamps (today's rule
-for `$onUpdate` columns).
+columns of the `$wpdb` table. On the auth collection `createdAt` is
+`wp_users.user_registered` (read-only, every account has it) and
+`updatedAt` is usermeta that the pipeline sets on every profile write and
+that `profile_update` sets on a native wp-admin edit; an account created
+natively (wp-admin, WP-CLI) has no `updatedAt` until its first edit, so on
+the auth collection `updatedAt` reads as `createdAt` when absent rather
+than null (today's `fillDefaultsAt` skips system columns for native
+accounts, `WpUserStore.php:78`; that is the one place it fills). Off:
+`timestamps: false`. Error: a user column of either name. Localized rows
+keep per-row timestamps (today's rule for `$onUpdate` columns).
 
 #### 4.9.5 `body` and `slug`
 
@@ -768,7 +813,7 @@ explicit smaller `.max()`.
 
 ```ts
 defineConfig({
-  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, webhooks?, plugins?, admin?,
+  name?, collections, globals?, actions?, jobs?, files?, media?, locales?, localeFallback?, webhooks?, plugins?, admin?,
 })
 ```
 
@@ -817,7 +862,6 @@ cut and this redesign can be reconciled.
 | `defineConfig.target`, `zero build --target` | choose a runtime | `src/extract.rs:169`, `src/commands/build.rs` |
 | `ctx.target` in hooks, access, validators, jobs | branch on the runtime | `HookCtx.target`, `AccessCtx.target`, `ValidateCtx.target` (`index.d.ts:102,920,926`); `src/compile.rs:390` |
 | the `editor` flag's "no storage effect on standalone" meaning | one config, two behaviours | `src/extract.rs:658`; replaced by `content` (§4.2) |
-| `locales.fallback` / `localeFallback` | standalone had no Polylang; the pipeline emulated fallback | `src/extract.rs:2095`; Polylang's language settings own fallback on WordPress, so the config has only the list |
 | the `translationGroup` system column on content collections | standalone had no Polylang groups | `src/extract.rs:2467` (emitted when `!c.editor \|\| target == Standalone`); stays only for tables, where Polylang has no row |
 | `auth: true` as "the app's own user table" | standalone users and password login | the auth collection is now purely a per-user profile row joined to `wp_users` by `id`; `email`, `password`, `passwordHash`, `suspendedAt` and `guest` system columns go (`src/extract.rs:2402-2435`): `wp_users` holds the email and password, zero-identity holds suspension, and guests are the `zero_guest` role |
 | `password` as a virtual insert field on auth collections | standalone password login | `index.d.ts:429` (`{ password?: string }`); accounts are created through WordPress or zero-identity |
@@ -1076,7 +1120,7 @@ is a `user()` column; since `members` is the auth collection it also gives
 ```ts
 import {
   collection, text, integer, boolean, date, timestamp, json, select, ref, slug,
-  defineConfig, action, job, jobs, db, HttpError,
+  defineConfig, action, job, jobs, db, HttpError, type Row,
 } from "zero";
 import { UNITS, LOW_STOCK } from "./lib/fields";
 
@@ -1086,6 +1130,17 @@ const named = <T extends object>(extra: T) => ({ name: text().notNull(), ...extr
 export const locations = collection(named({
   kind: select(["fridge", "freezer", "pantry"]).default("pantry"),
 }));
+
+// Typed by the registered key, not the value: `items` is defined below and its hooks name this helper.
+async function restock(item: Row<"items">) {
+  if (item.quantity > item.lowStockAt) return;
+  const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
+  if (!existing) {
+    await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
+    // Off the request: runs after this write commits, on Action Scheduler.
+    await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
+  }
+}
 
 export const items = collection(named({
   slug: slug({ source: "name" }),
@@ -1114,17 +1169,6 @@ export const shoppingList = collection({
   done: boolean().default(false),
   notifiedAt: timestamp(),                // set by the notifyLowStock job
 });
-
-// Typed by what it needs, not by `items`: a helper a collection's own hooks call can't name the collection.
-async function restock(item: { id: number; name: string; quantity: number; lowStockAt: number }) {
-  if (item.quantity > item.lowStockAt) return;
-  const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
-  if (!existing) {
-    await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
-    // Off the request: runs after this write commits (`zero jobs work`, or the dev worker).
-    await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
-  }
-}
 
 export default defineConfig({
   collections: { locations, items, shoppingList },
@@ -1175,7 +1219,10 @@ export default defineConfig({
 
 The pantry is all tables: none of the three has a `richText`, a `title`
 column or `sync`, so `content` is inferred `false` for each and the three
-`editor: false` go. `items.slug` was a NOT NULL `text().unique().max(191)`
+`editor: false` go. `restock` is a named helper used by `items`' own hooks,
+so it is typed `Row<"items">` by key (§4.2) and declared before `items`
+(function declarations are hoisted in the evaluator, `src/eval.rs:1822`,
+so the order is for the reader). `items.slug` was a NOT NULL `text().unique().max(191)`
 overwritten by a `slugify` helper in `beforeCreate` on every create; the
 proposed `slug({ source: "name" })` is a behaviour change, not the same
 column: a supplied slug is kept, an omitted one is derived with `-2`, `-3`
@@ -1219,12 +1266,11 @@ work from. "Where" names the compiler site that changes.
 | `defineConfig.target` | none; one target | `src/extract.rs:169` |
 | `ctx.target` | none | `index.d.ts:102,920,926` |
 | `"authenticated"` | `"guest"` (the ladder's lowest role) | `src/extract.rs:915` |
-| `localeFallback` / `locales.fallback` | Polylang settings | `src/extract.rs:2095` |
 | auth system columns `email`, `password`, `passwordHash`, `suspendedAt`, `guest` | `wp_users` and zero-identity own them | `src/extract.rs:2402-2435`, `index.d.ts:429` |
 | `defineConfig.schema` | `defineConfig.collections` | `src/extract.rs:196` |
 | `defineConfig.relations`, `defineRelations`, `r.one`, `r.many`, `optional` | inferred from `ref()`; `relations: { x: many("t", "col") }` on the target for the ambiguous case | `src/extract.rs:1677` |
 | `defineConfig.hooks` | `collection(..., { hooks })` | `src/extract.rs:360` |
-| `locales: { default, all, fallback }` | `locales: ["en", "de"]`, `localeFallback: false` | `src/extract.rs:2072` |
+| `locales: { default, all, fallback }` | `locales: ["en", "de"]` and `localeFallback: false` | `src/extract.rs:2072` |
 | auth collection access defaults (anyone/editor) | `self`/`self`/`admin`/`admin` | `src/extract.rs:817` |
 | `references(() => t.col)` to a non-key column | none | `src/extract.rs:1288` |
 | `"owner"` (buckets) | `"self"` | `src/extract.rs:939` |
@@ -1243,7 +1289,8 @@ work from. "Where" names the compiler site that changes.
 `json<T>()`, `select(options, opts?)`, `.onUpdate()`, `.nullable()`,
 `.access({ write })`, `access.write`, `ctx.is()`, `collection.content`,
 `collection.body`, `collection.hooks`, `collection.timestamps`,
-`collection.relations`, `defineConfig.collections`, `Row`, `Insert`, system columns `id`, `createdAt`, `updatedAt`, the
+`collection.relations`, `defineConfig.collections`, `localeFallback`,
+`Row`, `Insert`, system columns `id`, `createdAt`, `updatedAt`, the
 kind-change refusal (§4.9.3), `zero build --explain`.
 
 ### 6.3 Unchanged
@@ -1282,9 +1329,11 @@ literal (`'2026-10-31T19:00:00.000Z'`, the build time, through
 not normalize it), so the literal is the only safe default;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
-names drops its own (on WordPress content collections `updatedAt` reads
+names drops its own (on content collections `updatedAt` reads
 `post_modified_gmt`, which every post already has; `createdAt` is new meta,
-backfilled from `post_date_gmt` once by the migration). The examples'
+backfilled once by the migration from `post_date_gmt`, or from
+`post_modified_gmt` for the unpublished drafts Zero writes with
+`0000-00-00 00:00:00` there, `WpPostStore.php:285`). The examples'
 committed migrations and snapshots are regenerated in the PRs that change
 them.
 
@@ -1391,13 +1440,15 @@ Three places, all small:
   the compiler's annotation resolver matches `InferSelectModel`/
   `InferInsertModel` by name and accepts only `typeof collection`
   (`TyAnn::Query`, `src/compile.rs:854`). The new arm also accepts a string
-  literal, resolved as a `collections` key. The compiler keeps the same
-  distinction the `.d.ts` makes (§4.9.7): `Row<typeof t>` is the extracted
-  row minus any column the build inferred from *other* collections (an
-  inherited `uid`), `Row<"t">` is the whole extracted row. The two agree
-  with the editor, so an object a helper builds to the value form never
-  lacks a field the compiler expects, and a helper that reads `uid` must
-  say `Row<"t">`.
+  literal, resolved as a `collections` key. In the compiler both forms are
+  the whole extracted row: a hook or helper parameter receives complete
+  rows, and `assignable()` rejects an object with keys its parameter type
+  lacks (`src/compile.rs:4938`), so a narrower compiler type would reject
+  the rows the pipeline passes. The editor-side `.d.ts` is the narrower one
+  for `Row<typeof t>` (no inherited `uid`, §4.9.7); that is safe in the
+  direction that matters, since a value a helper *builds* to the editor type
+  is never handed to the pipeline as a row, and a helper that *reads* `uid`
+  must say `Row<"t">` in both.
 
 Nothing else is new to the evaluator: `select(array, opts)` is positional
 arguments it already handles; `collection(cols, opts)` drops an argument;
@@ -1414,8 +1465,8 @@ inside the options object are closures found in an object literal, as
   time unless `content:` is explicit, so the surprise is an error, not a
   storage change. Open question 1 asks whether to require the flag always.
 - **Hooks beside the columns cost one typing pattern.** A named helper used
-  as a hook can't be typed as `Row<typeof thisCollection>`; it types the
-  fields it reads (§5.2). Open question 9.
+  as a hook can't be typed as `Row<typeof thisCollection>`; it uses the key
+  form `Row<"thisCollection">` (§5.2). Open question 9.
 - **Automatic timestamps on tables** (`editor: false` today) are two new
   NOT NULL columns in every `$wpdb` table; the migration step needs the
   backfill rules in §6.4, which it doesn't have today.
@@ -1472,10 +1523,11 @@ inside the options object are closures found in an object literal, as
 9. **Hooks beside the columns, or a separate `hooks(items, {...})` call?**
    Beside the columns is where Payload and Strapi put them and it removes a
    `defineConfig` key, but a named hook helper can't be typed from the
-   collection it belongs to (§4.2). A separate `export const itemHooks =
-   hooks(items, { afterCreate: restock })` registered under
-   `defineConfig.hooks` keeps `Row<typeof items>` working everywhere at the
-   cost of one more top-level key. The proposal picks beside the columns.
+   collection it belongs to and must use the key form `Row<"items">`
+   (§4.2). A separate `export const itemHooks = hooks(items, { afterCreate:
+   restock })` registered under `defineConfig.hooks` keeps `Row<typeof
+   items>` working everywhere at the cost of one more top-level key. The
+   proposal picks beside the columns.
 10. **Drop `api`, or keep it for splitting `list` from `get`?** The proposal
     drops it (zero uses); the one thing access rules can't express is
     `list` and `get` set differently. If that matters (unlisted but linkable
@@ -1488,7 +1540,11 @@ inside the options object are closures found in an object literal, as
     is unaffected either way.
 12. **Add `contributor` to the role ladder?** WordPress's `contributor` can
     write but not publish, which is the role `pending` is for. Zero's ladder
-    skips it (`subscriber < author`). Adding it is one entry in
-    `WpUserStore::ROLES` and the `Role` union; leaving it out means
-    contributors are treated as subscribers by Zero's rules. Tied to
-    question 11.
+    skips it, and today's capability mapping folds contributors into
+    `author` (`edit_posts` or `publish_posts` both give `author`,
+    `WpAuth.php:63`), so `ctx.is("author")` and the examples' staff rules
+    already admit them. Adding `contributor` means a new rung
+    (`subscriber < contributor < author`), a capability test on
+    `publish_posts` alone for `author`, the `ROLES` map and the `Role`
+    union; leaving it out keeps contributors as authors. Tied to question
+    11.

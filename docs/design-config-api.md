@@ -126,7 +126,7 @@ that should be a default or inferred, **U** = no real use.
 | F26 | D | `target` in the config duplicates `zero build --target`; 3 uses, all in fixtures. A config should be target-independent (the Admin design says the same of `admin`). | `src/extract.rs:169`. |
 | F27 | U | `api: { list, get, create, update, delete }`: zero uses in the repo. Access rules cover everything but splitting `list` from `get` (either direction), and a disabled op answers 405 rather than 403 (`App.php:328`). | `src/extract.rs:854`. |
 | F28 | U | `references(..., { onUpdate })`: ids are autoincrement and never change; zero uses. | `src/eval.rs:2002`. |
-| F29 | U | `.primaryKey()` on a non-integer column: 3 fixture uses, two of them rejection tests; auth, sync and editor collections all require `id: id()`. | `src/extract.rs:671,2394,2448`. |
+| F29 | U | `.primaryKey()` on a non-integer column: 3 fixture uses, two of them rejection tests. Auth collections require a key named `id`; editor and sync collections require an autoincrement integer key under any name (`src/extract.rs:681,2394,2475`). | `src/extract.rs:671,2394,2448`. |
 | F30 | U | `optional: false` on `r.one` is a type-only flag (4 uses, each on a `.notNull()` FK) and it is unsound: a loaded `one` is `null` whenever the viewer may not read the target or a nested `where` excludes it, whatever the FK says (`Db.php:292`). | `src/extract.rs:1751`; `index.d.ts:541`. |
 | F31 | I | `action.input` is required in the types but optional in the compiler; `job.input` is required in both. Two actions write `input: {}`. | `src/extract.rs:453` vs `:2530`. |
 | F32 | I | `defineConfig.schema` is the Drizzle word, but Zero's docs, REST paths, abilities and the admin all say "collections". | `src/extract.rs:51`. |
@@ -517,7 +517,14 @@ Rule = boolean | "anyone" | "authenticated" | Role | "self" | ((ctx) => boolean 
   hand-written `ownerId`/`userId` column plus `{ ownerId: ctx.user?.id ?? -1 }`
   function pair (8 uses) becomes `userId: user()` and `"self"`. `"owner"`
   on buckets is renamed `"self"` so the vocabulary is one word.
-- Field access keeps `read`/`create`/`update` and gains `write`.
+- Field access keeps `read`/`create`/`update` and gains `write`. `"self"`
+  on a field rule is a build error: today the types admit it
+  (`FieldRule`, `index.d.ts:908`) and the extractor accepts it on auth
+  fields (`src/extract.rs:912`), but the runtime evaluates `"self"` to a
+  filter and a field rule that returns one throws
+  (`FieldAccess.php:490`). A per-row ownership test on a field is written
+  as a function (`ctx.data.userId === ctx.user?.id`), which is what the
+  repo's field rules already do.
 
 ### 4.5 Globals
 
@@ -636,7 +643,10 @@ No content collection needs `content: true`.
 Every collection gets `createdAt: timestamp().default(() => new Date())` and
 `updatedAt: timestamp().default(() => new Date()).onUpdate(() => new Date())`
 as system columns, readable, filterable, orderable, never writable through the
-API. On WordPress content collections `updatedAt` is `post_modified_gmt`;
+API or `db`. Sync treats them like today's `$onUpdate` columns: left out of
+the record (`Sync/Wire.php:27` keys on `onUpdate`; `createdAt` joins that
+list as a system column), so a Markdown file carries neither and a round
+trip never writes them. On WordPress content collections `updatedAt` is `post_modified_gmt`;
 `createdAt` is ordinary post meta like any other column, because
 `post_date_gmt` is the publication time (it already backs `publishedAt`,
 `WpPostStore.php:84`, and moves when a post is scheduled or re-dated,
@@ -930,7 +940,9 @@ no rich text). `posts.slug` derives from `title`; `posts.body` is the body.
 Relations, from the four `ref("…")` columns: `posts.author`/`authors.posts`,
 `comments.post`/`posts.comments`, `subscribers.post`/`posts.subscribers`,
 `announcements.post`/`posts.announcements`. The old config's `comments.post`
-was `optional: false` by hand; here `.notNull()` says it. `authors.userId`
+was `optional: false` by hand, which claimed a non-null loaded row; that
+claim was unsound and goes (§4.3), so `comments.post` loads as `Row | null`
+and the FK's `.notNull()` is the only requiredness left. `authors.userId`
 is a `user()` column; since `members` is the auth collection it also gives
 `authors.user` and `members.authors`.
 
@@ -1126,10 +1138,16 @@ than destroy: a collection whose key differs from its old name argument is a
 table rename (`shopping_list` to `shoppingList` in the pantry); `ref()`
 columns keep their names but the inferred `onDelete` (`"restrict"` on a
 NOT NULL FK that had none) is a changed constraint; `.default()` implying
-NOT NULL turns a nullable column NOT NULL, which `zero build` lists as a
-destructive change from the snapshot alone (`src/migrate.rs:573` compares
-schema JSON; it sees no rows) and the generated migration backfills with
-the default before adding the constraint, so no null row is lost;
+NOT NULL turns a nullable column NOT NULL, which is new migration work:
+today's `destructive()` (`src/migrate.rs:573`) flags dropped tables and
+columns and storage transitions only, and `sql_default()` deliberately
+emits constant defaults only. The implementation adds two steps to the
+generated migration: a nullable-to-NOT NULL transition emits
+`UPDATE … SET col = <default> WHERE col IS NULL` before the constraint
+(function defaults have no SQL form, so a column with one is refused at
+build time: "`x` has a function default; backfill it in a hook or give it
+a constant default"), and an added NOT NULL timestamp is created with
+`CURRENT_TIMESTAMP` as its one-time SQL default;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on WordPress content collections `updatedAt` reads
@@ -1231,9 +1249,15 @@ Three places, all small:
 - **A method on `ctx`** (`ctx.is("editor")`): access and hook closures are
   compiled, not evaluated; `ctx` is typed in `src/compile.rs:390` and the
   method lowers to a PHP call. No evaluator change.
-- **Two type names** (`Row<typeof t>`, `Insert<typeof t>`): the compiler's
-  annotation resolver matches `InferSelectModel`/`InferInsertModel` by name
-  (`src/compile.rs:854`); the new names go in the same match arm.
+- **Two type names, two argument forms** (`Row<typeof t>`, `Row<"t">`):
+  the compiler's annotation resolver matches `InferSelectModel`/
+  `InferInsertModel` by name and accepts only `typeof collection`
+  (`TyAnn::Query`, `src/compile.rs:854`). The new arm also accepts a string
+  literal, resolved as a `collections` key. Both forms compile to the same
+  extracted row type, which includes everything the build knows (an
+  inferred `uid` too); only the editor-side `.d.ts` distinguishes them
+  (§4.9.7), and the editor type is the narrower one, so code that compiles
+  under it is always valid for the compiler.
 
 Nothing else is new to the evaluator: `select(array, opts)` is positional
 arguments it already handles; `collection(cols, opts)` drops an argument;
@@ -1253,8 +1277,8 @@ inside the options object are closures found in an object literal, as
   as a hook can't be typed as `Row<typeof thisCollection>`; it types the
   fields it reads (§5.2). Open question 9.
 - **Automatic timestamps on WordPress tables** (`editor: false` today) are two
-  new columns in every custom table: a migration for existing apps, written by
-  the `zero build` migration step as usual.
+  new NOT NULL columns in every custom table; the migration step needs the
+  backfill rules in §6.4, which it doesn't have today.
 - **Snake-case keys.** Today `collection("shopping_list")` with key
   `shoppingList` gives a snake-case table and a camel-case query key. Dropping
   the name argument makes the key both, and renames the pantry's table.

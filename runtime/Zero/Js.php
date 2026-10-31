@@ -94,7 +94,10 @@ final class Js
 
     public static function toNumber(mixed $v): int|float
     {
-        if (is_int($v) || is_float($v)) {
+        if (is_int($v)) {
+            return self::n($v);
+        }
+        if (is_float($v)) {
             return $v;
         }
         if ($v === null) {
@@ -120,7 +123,7 @@ final class Js
             $radix = ['x' => 16, 'o' => 8, 'b' => 2][strtolower($m[1])];
             [$value, $used] = self::parseDigits($m[2], $radix);
 
-            return $used === strlen($m[2]) ? $value : NAN;
+            return $used === strlen($m[2]) ? self::num((float) $value) : NAN;
         }
 
         return match ($t) {
@@ -207,14 +210,92 @@ final class Js
     }
 
     /** Integral finite floats within int range become ints (except -0). */
+    /**
+     * A float result as Zero's number: an int when it is a safe integer (|n| <= 2^53, not -0), else
+     * the float. Ints beyond 2^53 would do exact arithmetic JS numbers can't (see n()).
+     */
     private static function num(float $f): int|float
     {
-        if (is_finite($f) && floor($f) === $f && $f >= -9.2233720368547758E18 && $f < 9.2233720368547758E18
-            && !($f === 0.0 && fdiv(1, $f) < 0)) {
+        if (is_finite($f) && floor($f) === $f && abs($f) <= self::MAX_EXACT && !($f === 0.0 && fdiv(1, $f) < 0)) {
             return (int) $f;
         }
 
         return $f;
+    }
+
+    private const MAX_EXACT = 9007199254740992.0; // 2^53
+
+    /**
+     * An integer arithmetic result as a JS number: PHP ints are exact to 2^63, JS numbers are doubles,
+     * so an int beyond ±2^53 rounds to the nearest double, as `2 ** 53 + 1` does in JS. Compiled code
+     * wraps `+ - * **` and `++`/`--` in this.
+     */
+    public static function n(int|float $r): int|float
+    {
+        return is_int($r) && ($r > 9007199254740992 || $r < -9007199254740992) ? (float) $r : $r;
+    }
+
+    /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place through n() and returns the old value. */
+    public static function postStep(int|float &$x, int $step): int|float
+    {
+        $old = $x;
+        $x = self::n($x + $step);
+
+        return $old;
+    }
+
+    /** Prefix `++x` / `--x`: the place is evaluated once (an index with side effects runs once). */
+    public static function preStep(int|float &$x, int $step): int|float
+    {
+        return $x = self::n($x + $step);
+    }
+
+    /**
+     * `a ** b` / `Math.pow`. An integer power is computed exactly, then rounded to the nearest double
+     * past ±2^53 (n()), so every result a double can hold exactly (2 ** 60) matches JS. ECMA-262 leaves
+     * inexact powers implementation-approximated: engines (and V8 vs this runtime) may differ in the last
+     * binary digit there, e.g. 3 ** 35.
+     */
+    public static function pow(int|float $a, int|float $b): int|float
+    {
+        // ECMA-262 Number::exponentiate, where PHP's pow differs: x ** NaN is NaN (PHP: 1 ** NaN = 1) and
+        // (±1) ** ±Infinity is NaN (PHP: 1).
+        if (is_nan((float) $b) || (is_infinite((float) $b) && abs($a) == 1)) {
+            return NAN;
+        }
+        if (is_int($a) && is_int($b) && $b >= 0) {
+            $p = $a ** $b;
+            if (is_int($p)) {
+                return self::n($p);
+            }
+        }
+
+        return self::num((float) $a ** (float) $b);
+    }
+
+    /**
+     * JSON text → Zero values (assoc arrays for objects), with integers past ±2^53 as the doubles a
+     * JS parser would produce. Backs compiled `JSON.parse`; runtime storage and ids keep exact integers.
+     */
+    public static function decodeJson(string $s, int $depth = 512): mixed
+    {
+        return self::jsNumbers(json_decode($s, true, $depth, JSON_THROW_ON_ERROR));
+    }
+
+    private static function jsNumbers(mixed $v): mixed
+    {
+        if (is_int($v)) {
+            return self::n($v);
+        }
+        if (is_array($v)) {
+            foreach ($v as $k => $x) {
+                if (is_int($x) || is_array($x)) {
+                    $v[$k] = self::jsNumbers($x);
+                }
+            }
+        }
+
+        return $v;
     }
 
     /** Truncate toward zero, keeping float type (and -0). */
@@ -1161,7 +1242,7 @@ final class Js
     public static function jsonParse(string $s): mixed
     {
         try {
-            return json_decode($s, true, 4096, JSON_THROW_ON_ERROR);
+            return self::decodeJson($s, 4096);
         } catch (\JsonException $e) {
             throw new JsError('Unexpected token in JSON: ' . $e->getMessage(), 'SyntaxError');
         }

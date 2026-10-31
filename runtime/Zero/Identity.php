@@ -417,7 +417,6 @@ final class Identity implements Auth, Issuer
     /** @return array{id: int, name: string, role: string} */
     private static function shape(array $r): array
     {
-        // The id as compiled code sees it (a JS number); auth operations use the stored row.
-        return ['id' => Js::n((int) $r['id']), 'name' => (string) $r['name'], 'role' => (string) $r['role']];
+        return ['id' => (int) $r['id'], 'name' => (string) $r['name'], 'role' => (string) $r['role']];
     }
 }

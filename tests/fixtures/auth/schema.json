@@ -110,6 +110,7 @@
                 },
                 "role": {
                     "type": "text",
+                    "notNull": true,
                     "enum": [
                         "guest",
                         "subscriber",

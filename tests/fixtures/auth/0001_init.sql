@@ -5,7 +5,7 @@ CREATE TABLE "members" (
 	"plan" text DEFAULT 'free' NOT NULL,
 	"billing" text,
 	"profile" text,
-	"role" text DEFAULT 'subscriber',
+	"role" text DEFAULT 'subscriber' NOT NULL,
 	"passwordHash" text,
 	"suspendedAt" text,
 	"guest" integer

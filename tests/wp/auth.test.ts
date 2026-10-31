@@ -317,6 +317,8 @@ test("hidden columns can't be filtered or ordered on, also through relations; ro
   assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/member/suspendedAt"]);
   const promote = await call("PATCH", `/members/${fy.id}`, { ...asSelf, body: { role: "admin" } });
   assert.equal(promote.status, 403, "role is admin-only");
+  const cleared = await http("PATCH", `${api}/members/1`, { as: "admin", body: { role: null } });
+  assert.deepEqual([cleared.status, cleared.json?.pointer], [422, "/role"], "even an admin can't clear a role");
   assert.equal((await call("GET", "/members/1", asSelf)).status, 404, "another user's row is not this member's");
 });
 

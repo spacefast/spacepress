@@ -2425,6 +2425,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
             }
             let mut role = system_column("role", ColType::Text);
             role.enum_values = Some(ROLES.iter().map(|r| (*r).into()).collect());
+            role.not_null = true;
             role.default = Some(DefaultKind::Value(Json::String("subscriber".into())));
             role.access.insert("update".into(), Access::Role("admin".into()));
             c.columns.insert("role".into(), role);

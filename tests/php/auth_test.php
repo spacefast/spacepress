@@ -202,6 +202,7 @@ eq('ordering on a hidden column is refused', $probe(['orderBy' => 'guest'], $tok
 problem('selecting a hidden column is refused (403, §4.3)', fn () => $clubApp->db->findMany('members', ['columns' => ['passwordHash' => true]], new \Zero\Viewer(['id' => 1, 'name' => 'Ana', 'role' => 'subscriber'], 'standalone')), 403, 'forbidden', '/columns/passwordHash');
 eq('hidden columns are unknown to direct writes', $call('PATCH', '/members/1', ['passwordHash' => 'x'], $token)[1]['pointer'] ?? null, '/passwordHash');
 eq('role is admin-only: a member can\'t promote themself', $call('PATCH', '/members/1', ['role' => 'admin'], $token)[0], 403);
+problem('… and even an admin can\'t clear it: role is never null', fn () => $clubApp->db->update('members', ['role' => null], ['id' => 1], false, new \Zero\Viewer(['id' => 1, 'name' => 'Ana', 'role' => 'admin'], 'standalone')), 422, 'invalid_input', '/role');
 [$s, $renamed] = $call('PATCH', '/members/1', ['name' => 'Ana B', 'password' => 'a brand new password'], $token);
 check('a member updates their own row and password', $s === 200 && $renamed['data']['name'] === 'Ana B' && !$leaks($renamed), $renamed);
 eq('a new password ends the old sessions', $call('GET', '/me', null, $token)[0], 401);

@@ -30,6 +30,8 @@ final class Plugin
     private array $before = [];
     /** @var array<int, array{string, array}> post id → [collection, row] captured before an editor delete */
     private array $deleting = [];
+    /** @var array<int, true> posts WP cron is publishing right now (`publish_future_post`) */
+    private array $promoting = [];
 
     public function __construct(public readonly string $dir, string $mainFile)
     {
@@ -48,6 +50,12 @@ final class Plugin
         add_action('pre_post_update', [$this, 'capturePrevious'], 10, 1);
         add_action('wp_after_insert_post', [$this, 'fillEditorDefaults'], 8, 4);
         add_action('wp_after_insert_post', [$this, 'afterEditorSave'], 20, 4);
+        // §6.3: WP cron's scheduled publish is promotion, not an edit: no hooks, no generated values, no revision.
+        add_action('publish_future_post', [$this, 'promoting'], 9, 1);
+        add_action('publish_future_post', [$this, 'promoted'], 11, 1);
+        add_filter('wp_revisions_to_keep', [$this, 'revisionsToKeep'], PHP_INT_MAX, 2);
+        add_filter('wp_save_post_revision_post_has_changed', [$this, 'revisionHasChanged'], 10, 3);
+        add_action('_wp_put_post_revision', [$this, 'snapshotRevision'], 10, 2);
         add_action('before_delete_post', [$this, 'beforeEditorDelete'], 10, 2);
         add_action('deleted_post', [$this, 'afterEditorDelete'], 10, 2);
     }
@@ -229,7 +237,7 @@ final class Plugin
     public function afterEditorSave(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;
         }
         $previous = $this->editorPrevious($postId, $before);
@@ -262,6 +270,45 @@ final class Plugin
         $this->app()->db->afterEditorDelete($collection, $row, WpAuth::current());
     }
 
+    public function promoting(mixed $post): void
+    {
+        $id = (int) ($post instanceof \WP_Post ? $post->ID : $post);
+        if ($this->collectionOf($id) !== null) {
+            $this->promoting[$id] = true;
+        }
+    }
+
+    public function promoted(mixed $post): void
+    {
+        unset($this->promoting[(int) ($post instanceof \WP_Post ? $post->ID : $post)]);
+    }
+
+    public function revisionsToKeep(int $keep, \WP_Post $post): int
+    {
+        return isset($this->promoting[$post->ID]) ? 0 : $keep;
+    }
+
+    /** Every revision of a Zero post, whoever saved it, carries the full row (§4.7). Autosaves keep their own meta. */
+    public function snapshotRevision(int $revisionId, int $postId): void
+    {
+        $collection = $this->collectionOf($postId);
+        if ($collection === null || wp_is_post_autosave($revisionId)) {
+            return;
+        }
+        CompositeStore::create($this->schema, $this->connection())->posts->snapshotRevision($collection, $revisionId, $postId);
+    }
+
+    /** Core only compares title/content/excerpt; a change to any other Zero column also earns a revision. */
+    public function revisionHasChanged(bool $changed, \WP_Post $latest, \WP_Post $post): bool
+    {
+        $collection = $this->collectionOf($post->ID);
+        if ($changed || $collection === null) {
+            return $changed;
+        }
+
+        return CompositeStore::create($this->schema, $this->connection())->posts->revisionDiffers($collection, $post->ID, $latest->ID);
+    }
+
     /**
      * wp-admin knows nothing of Zero's generated values: on an editor save, write `default` for meta
      * columns that have none yet and `onUpdate` on every update, so editor rows decode like API rows.
@@ -271,7 +318,7 @@ final class Plugin
     public function fillEditorDefaults(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;
         }
         $created = $this->editorPrevious($postId, $before) === null;

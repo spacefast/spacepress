@@ -46,6 +46,23 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
     ["afterUpdate", `Audit ${run} -> Audit ${run} v2`],
   ]);
 
+  // Core's own revision of an editor save carries the whole row, so it reads back and restores like a Zero one.
+  const [rev] = await ok("GET", `/posts/${id}/revisions`, { as: "editor" });
+  const fields = (r: any) => ({ title: r.title, slug: r.slug, excerpt: r.excerpt, tags: r.tags, seo: r.seo, createdAt: r.createdAt, status: r.status });
+  const v2 = fields(after);
+  assert.deepEqual(fields(await ok("GET", `/posts/${id}/revisions/${rev.id}`, { as: "editor" })), v2);
+  // A fields-only save is a change too, though core compares only title/content/excerpt.
+  await http("POST", `${core}/zero_posts/${id}`, { as: "editor", body: { acf: { zero_excerpt: "Third", zero_tags: ["release"] } } });
+  const [third] = await ok("GET", `/posts/${id}/revisions`, { as: "editor" });
+  assert.notEqual(third.id, rev.id);
+  assert.deepEqual(fields(await ok("GET", `/posts/${id}/revisions/${third.id}`, { as: "editor" })), { ...v2, excerpt: "Third", tags: ["release"] });
+  // Each revision keeps the slug it had (a revision post's own post_name is `<id>-revision-v1`).
+  await http("POST", `${core}/zero_posts/${id}`, { as: "editor", body: { slug: `moved-${run}` } });
+  const [moved] = await ok("GET", `/posts/${id}/revisions`, { as: "editor" });
+  assert.equal((await ok("GET", `/posts/${id}/revisions/${moved.id}`, { as: "editor" })).slug, `moved-${run}`);
+  assert.deepEqual(fields(await ok("GET", `/posts/${id}/revisions/${rev.id}`, { as: "editor" })), v2);
+  assert.deepEqual(fields(await ok("POST", `/posts/${id}/revisions/${rev.id}/restore`, { as: "editor" })), v2);
+
   // A core-side status change needs no sync: the next read sees it.
   wp("post", "update", String(id), "--post_status=draft");
   assert.equal((await ok("GET", `/posts/${id}`, { as: "editor" })).status, "draft");

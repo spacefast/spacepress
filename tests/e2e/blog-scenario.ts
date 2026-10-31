@@ -130,7 +130,8 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
     assert.equal(revs[0].user?.id, me.id, "newest first, attributed to the writer");
     const oldest = revs[revs.length - 1];
     assert.equal((await author.posts.revisions.get(p.id, oldest.id)).title, `First ${run}`);
-    assert.equal((await author.posts.revisions.restore(p.id, oldest.id)).title, `First ${run}`);
+    const restored = await author.posts.revisions.restore(p.id, oldest.id);
+    assert.deepEqual([restored.title, restored.slug], [`First ${run}`, p.slug], "the slug is the row's, not the revision post's");
     assert.equal((await author.posts.get(p.id)).title, `First ${run}`);
     assert.equal((await author.posts.revisions.list(p.id)).length, revs.length + 1, "the restore is itself a revision");
     // Revisions need `update` access; posts' update rule is a filter for non-staff, so a reader

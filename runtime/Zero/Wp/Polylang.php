@@ -62,6 +62,7 @@ final class Polylang
             $plugin = Runtime::plugin();
             $locales = $plugin?->schema->locales();
             // Not while storage lags the build (the schema's locales may not be the stored ones yet).
+            // The marker only says provisioning is done; assign() checks each write's language itself.
             if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
                 return;
             }
@@ -142,6 +143,15 @@ final class Polylang
      */
     public static function assign(Connection $db, int $id, string $locale, array $group): void
     {
+        // Polylang resolves the slug through the language list this request loaded; one loaded before
+        // another request provisioned the language wouldn't know it. Reload once, then refuse rather
+        // than store a post without its language.
+        if (!PLL()->model->get_language(self::slug($locale))) {
+            self::reload();
+        }
+        if (!PLL()->model->get_language(self::slug($locale))) {
+            throw new HttpError(503, 'unavailable', "Polylang has no $locale language yet; try again shortly");
+        }
         self::busy(static fn () => pll_set_post_language($id, self::slug($locale)));
         if ($group === []) {
             return;

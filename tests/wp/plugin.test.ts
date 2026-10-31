@@ -174,6 +174,36 @@ test("concurrent first requests create each Polylang language once, and each sto
   }
 });
 
+test("a request that loaded no languages still stores the language another request just created", async () => {
+  const configured = languages();
+  forgetLanguages();
+  // A request boots and loads Polylang's (empty) language list, then pauses at the start of init,
+  // before Zero's provisioning check. Meanwhile another request provisions every language, so when
+  // this one resumes the marker says done, and it writes a German post with the list it loaded.
+  const late = spawn(fileURLToPath(new URL("harness.sh", import.meta.url)), [
+    "wp", "--user=editor",
+    `--exec=WP_CLI::add_wp_hook('init', static function () { fwrite(STDOUT, wp_json_encode(pll_languages_list(['fields' => 'slug'])) . "\\n"); fflush(STDOUT); fgets(STDIN); }, 0);`,
+    "eval", `
+    $row = \\Zero\\Wp\\Runtime::plugin()->app()->dispatch('POST', '/tours', [], wp_json_encode(['title' => 'Late ${run}', 'locale' => 'de']), new \\Zero\\Viewer(\\Zero\\Wp\\WpAuth::current(), 'wp'));
+    $id = (int) ($row->data['id'] ?? 0);
+    echo wp_json_encode([$row->status, $id ? (pll_get_post_language($id) ?: null) : null]);`,
+  ], { stdio: ["pipe", "pipe", "pipe"] });
+  let out = "";
+  late.stdout.on("data", (c) => (out += c));
+  const exited = new Promise((resolve) => late.on("close", resolve));
+  try {
+    await until("the paused request", () => out.includes("\n"));
+    assert.equal(out.trim(), "[]", "it loaded no languages");
+    assert.equal((await fetch(`${api}/tours?limit=1`)).status, 200);
+    assert.deepEqual(languages(), configured, "another request provisioned");
+    late.stdin.end("go\n");
+    await exited;
+    assert.deepEqual(JSON.parse(out.trim().split("\n").pop()!), [201, "de"], out);
+  } finally {
+    late.kill();
+  }
+});
+
 test("while Polylang languages can't be created, Zero refuses writes; the next request recovers", async () => {
   const configured = languages();
   // Polylang refuses every new language (a term insert failing, as a database error would).

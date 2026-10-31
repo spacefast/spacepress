@@ -69,7 +69,10 @@ export async function http(method: string, url: string, opts: { as?: Role; body?
     headers["content-type"] = "application/json";
     body = JSON.stringify(opts.body);
   }
-  const res = await fetch(url, { method, headers, body });
+  // undici reports every transport failure as "fetch failed"; the cause (ECONNRESET, ...) is the clue.
+  const res = await fetch(url, { method, headers, body }).catch((e: Error & { cause?: { code?: string; message?: string } }) => {
+    throw new Error(`${method} ${url}: ${e.message} (${e.cause?.code ?? e.cause?.message ?? "no cause"})`, { cause: e });
+  });
   const text = await res.text();
   let json: any;
   try {

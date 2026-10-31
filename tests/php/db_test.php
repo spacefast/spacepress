@@ -480,6 +480,8 @@ problem('boolean', fn () => $db->insert('locations', ['name' => 'Loft', 'active'
 problem('null for notNull', fn () => $db->insert('items', ['name' => 'x', 'qty' => null]), 422, 'invalid_input', '/qty');
 problem('NaN for real', fn () => $db->insert('items', ['name' => 'x', 'price' => NAN]), 422, 'invalid_input', '/price');
 problem('bad timestamp', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'yesterday-ish']), 422, 'invalid_input', '/seenAt');
+// PHP's own parser understands "tomorrow"; timestamps accept ISO 8601 text only.
+problem('relative timestamp text', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'tomorrow']), 422, 'invalid_input', '/seenAt');
 problem('impossible calendar date', fn () => $db->insert('items', ['name' => 'x', 'bestBefore' => '2023-02-29']), 422, 'invalid_input', '/bestBefore');
 problem('unique_violation with pointer', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 problem('reference_violation names the column', fn () => $db->insert('items', ['name' => 'x', 'locationId' => 99999]), 409, 'reference_violation', '/locationId');

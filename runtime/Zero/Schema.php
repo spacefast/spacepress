@@ -477,7 +477,12 @@ final class Schema
             $ms = $v;
         } elseif (is_string($v) && $v !== '') {
             $ms = Js::date($v);
-            if (is_float($ms)) { // not in JS date-time format; fall back to the PHP parser
+            if (is_float($ms)) {
+                // Not in the JS date-time format: other ISO 8601 spellings (an hour-only offset,
+                // nanoseconds) go through the PHP parser. Free text such as "tomorrow" does not.
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:[T ]|$)/D', $v)) {
+                    return null;
+                }
                 try {
                     $d = new \DateTimeImmutable($v, new \DateTimeZone('UTC'));
                 } catch (\Exception) {

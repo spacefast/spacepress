@@ -179,7 +179,7 @@ Every HTTP request and every CLI command runs in one transaction
 | real | int or float (not NaN/Inf) | REAL |
 | text | string | TEXT |
 | boolean | bool | INTEGER 0/1 |
-| timestamp | ISO-8601 string parseable by `DateTimeImmutable`, or int ms | TEXT `Y-m-d\TH:i:s.v\Z` (UTC) |
+| timestamp | ISO-8601 string (`YYYY-MM-DD`, optional time and offset), or int ms; free text such as `tomorrow` is rejected | TEXT `Y-m-d\TH:i:s.v\Z` (UTC) |
 | date | string `YYYY-MM-DD` that is a real calendar date | TEXT |
 | json | any JSON value | TEXT (json_encode, unescaped slashes/unicode) |
 

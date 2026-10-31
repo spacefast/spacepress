@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 3, 2026-10-31; two review rounds folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 4, 2026-10-31; three review rounds folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -432,24 +432,39 @@ Node.
 
 The `wp` job runs the HTTP suite unchanged: `tests/wp/run.sh` builds the test
 app with `admin: true` and `tests/wp/admin.test.ts` runs under `node --test`
-with the others. The browser journey (§7) is a separate step in the same job,
-after the HTTP suite and against the same stack (`ZERO_WP_KEEP=1` is not
-needed; `run.sh` runs it before tear-down):
+with the others.
+
+The browser journey (§7) runs **inside `run.sh`**, after the `node --test`
+suites and before tear-down, against the same stack. It is not a separate
+workflow step; the `wp` job only gains the two install lines before invoking
+`run.sh`, and its cache key gains the workspace lockfile:
 
 ```
 pnpm --dir runtime/admin/apps install --frozen-lockfile     # Playwright is a devDependency of the workspace
 pnpm --dir runtime/admin/apps exec playwright install --with-deps chromium
-pnpm --dir runtime/admin/apps exec playwright test --config tests/wp/admin-browser.config.ts
+tests/wp/run.sh
 ```
 
-The spec lives at `tests/wp/admin-browser.spec.ts` (not `*.test.ts`, so the
-`node --test` glob in `run.sh` never picks it up), reads the harness receipt
-from `tests/wp/.harness.json` like `env.ts` does, and resolves Playwright from
-the workspace through the config's `testDir`/`rootDir`. `run.sh` runs the
-step when `runtime/admin/apps/node_modules/.bin/playwright` exists and fails
-with a clear message when it does not, so a local run without the workspace
-installed is an explicit skip, not a silent pass. The job's cache key gains
-the workspace lockfile.
+Inside `run.sh`, the step is one command run from the repository root:
+
+```
+runtime/admin/apps/node_modules/.bin/playwright test --config runtime/admin/apps/playwright.wp.config.ts
+```
+
+The config lives in the workspace, so `@playwright/test` resolves from the
+workspace's `node_modules` for the config and, through `testDir` pointing at
+the repository's `tests/wp/browser/` directory, for the spec it loads
+(Playwright resolves the spec's imports from the config's package, which is
+the documented behaviour for a `testDir` outside the package). The spec is
+`tests/wp/browser/admin.spec.ts`: a different directory and a different
+suffix from `tests/wp/*.test.ts`, so the `node --test` glob never sees it. It
+reads the harness receipt from `tests/wp/.harness.json` like `env.ts` does
+(a relative path from the spec, independent of the working directory).
+`run.sh` runs the step when the workspace's Playwright binary exists and
+otherwise prints "browser journey skipped: run `pnpm --dir runtime/admin/apps
+install`" and exits non-zero, so a local run without the workspace is an
+explicit failure, never a silent pass; `ZERO_WP_SKIP_BROWSER=1` turns that
+into a skip for people iterating on PHP only.
 
 Node is a dev dependency of this repository already (`runtime/identity/apps`,
 `tests/wp/*.test.ts`); the admin adds pnpm, pinned through `packageManager`.
@@ -476,7 +491,7 @@ the content kernel Zero v2 replaces, or is capsule/host-specific.
 | `collection-edit` | `/collections/$collection/$slug` | kernel resolve + sync + field editor | **rewire** | by id, not slug; the block editor for `content` collections with a "Fields" sidebar panel rendered from `/_schema` columns and written through the `acf` REST field; a plain form for collections without `content`; `showIf` evaluated client-side from the sibling values; `editor: false` rows use the plain form over `/zero/v1` |
 | `post-list` | `/types/$type/list/$slug` | core `/wp/v2/<type>` + field collections | **keep for `attachment` only** (the media library); the generic post-type list is not exposed for Zero types | its DataViews/actions/quick-edit code is the base the collection list is built on |
 | `post-list-redirect`, `post`, `post-edit`, `post-new` | `/types/$type[...]` | core | **keep** the editor host (`boot/components/editor`), **drop** the public `/types/*` routes | the editor is reached through `/collections/...` only |
-| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep** the details screen, re-path, mutations rewired; **drop the cropper** | reads stay on core `/wp/v2/media`; **upload, delete, alt text and focal point go through `/zero/v1/media`** so Zero's fixed media rules (`create: author`, `update: editor`, `delete: editor`) and reference cleanup apply; caption and title, which Zero has no column or rule for, stay on core (§5.3). The crop/rotate editor rewrites the file through core's `/wp/v2/media/{id}/edit` with WordPress capabilities and would bypass Zero's `update` rule, so it goes; a focal-point picker over `PATCH /zero/v1/media/{id}` replaces it (the runtime regenerates `cover` sizes from `focal`) |
+| `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep** the details screen, re-path, mutations rewired; **drop the cropper** | the list reads core `/wp/v2/media`; the details screen reads **both** `GET /wp/v2/media/{id}` (caption, title, dimensions, sizes WordPress knows) and `GET /zero/v1/media/{id}` (`alt`, `focal`, Zero's `sizes`), because core REST does not expose Zero's focal meta. **Upload, delete, alt text and focal point go through `/zero/v1/media`** so Zero's fixed media rules (`create: author`, `update: editor`, `delete: editor`) and reference cleanup apply; caption and title, which Zero has no column or rule for, stay on core (§5.3). The crop/rotate editor rewrites the file through core's `/wp/v2/media/{id}/edit` with WordPress capabilities and would bypass Zero's `update` rule, so it goes; a focal-point picker over `PATCH /zero/v1/media/{id}` replaces it (the runtime regenerates `cover` sizes from `focal`) |
 | `term-list`, `term-add`, `term-edit` | `/types/$type/taxonomies/$tax[...]` | core terms | **drop** | Zero has no taxonomies |
 | `user-list`, `user-add`, `user-profile`, `user`, `profile` | `/users[...]`, `/profile` | core users + WordPress.com invites | **drop** | duplicates wp-admin; the invite flow is WordPress.com-only; `/zero/v1/me` covers "who am I" |
 | `plugin-list`, `plugin` | `/plugins[...]` | core plugins + overrides | **drop** | duplicates wp-admin |
@@ -561,7 +576,9 @@ Rules, in order of where they are enforced:
      (`update: editor`, phase 2 §7.2). The crop/rotate editor is dropped
      (§4.2) because its save rewrites the file through core with WordPress
      capabilities only. The media list reads core `/wp/v2/media` (read is
-     `anyone` in Zero too).
+     `anyone` in Zero too); the details screen also reads
+     `GET /zero/v1/media/{id}` for `alt` and `focal`, which only Zero's
+     response carries (§4.2).
    - **SCF options pages for globals** in wp-admin are governed by SCF's
      `capability` (`edit_others_posts`). The admin does not link to them;
      globals are edited through `/zero/v1/globals/<g>`, which applies the
@@ -621,7 +638,7 @@ behaviour, one test, at the lowest level that can break it):
 | media: upload and delete as the screen does them go through `/zero/v1/media`; a subscriber's upload is 403; deleting an attachment referenced by a `media` column nulls the column | WP e2e | `tests/wp/admin.test.ts` (one case; `media.test.ts` owns the rules) |
 | editor settings/assets endpoints answer for an editor and 403 for a subscriber | WP e2e | `tests/wp/admin.test.ts` |
 | rewrite: `/zero-admin/` answers after activation on a site whose rules were generated before the plugin existed; 404 after deactivation | WP e2e | `tests/wp/admin.test.ts` |
-| **the shipped admin runs**: a signed-in editor opens `/zero-admin/`, the boot module and its external imports load with no console error, the collections overview renders the test app's readable collections, opening one lists rows, editing a text field and saving persists it (asserted through `/zero/v1` after reload) | browser acceptance (Playwright, one spec, against the emitted assets in the harness) | `tests/wp/admin-browser.test.ts` |
+| **the shipped admin runs**: a signed-in editor opens `/zero-admin/`, the boot module and its external imports load with no console error, the collections overview renders the test app's readable collections, opening one lists rows, editing a text field and saving persists it (asserted through `/zero/v1` after reload) | browser acceptance (Playwright, one spec, against the emitted assets in the harness; wiring in §3.4) | `tests/wp/browser/admin.spec.ts` |
 
 The browser run is deliberately one journey, not a screen matrix: it exists
 to prove that the committed modules, the import map, the externals and the

@@ -1245,6 +1245,18 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
                 // restore the first row's synced value: what was handed to the second must follow
                 \Zero\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
             }
+            if ($row['title'] === 'Mid' && $row['price'] === 51) {
+                \Zero\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
+            }
+            if ($row['title'] === 'Mid' && $row['price'] === 52) {
+                \Zero\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \Zero\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
+            }
+            if ($row['title'] === 'Mid' && $row['price'] === 53) {
+                \Zero\db()->delete('pages', ['title' => 'Late']); // the row that started the group write
+            }
+            if ($row['title'] === 'Late DE' && $row['price'] === 53 && $previous['price'] !== 53) {
+                throw new \Zero\JsError('de refuses 53'); // a sibling write fails after the first row is gone
+            }
             if ($row['title'] === 'Kick' && $row['price'] === 31) {
                 // a nested bulk update over two translations whose group the outer update also covers,
                 // changing another synced column than the outer one
@@ -1324,11 +1336,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $before = array_column($db->findMany('notes'), 'id');
     $db->update('pages', ['price' => 5], ['id' => ['in' => [$tea['id'], $tee['id']]]]);
     $bodies = array_map(static fn ($n) => substr($n['body'], 0, 16), $db->findMany('notes', ['where' => ['id' => ['notIn' => $before]], 'orderBy' => ['id' => 'asc']]));
-    eq('a bulk update over one group runs each row\'s afterUpdate once', $bodies, ['afterUpdate en:5', 'afterUpdate fr:5', 'afterUpdate de:5']);
+    sort($bodies);
+    eq('a bulk update over one group runs each row\'s afterUpdate once', $bodies, ['afterUpdate de:5', 'afterUpdate en:5', 'afterUpdate fr:5']);
     eq('… one revision each', [count($db->revisions('pages', $tea['id'])), count($db->revisions('pages', $tee['id'])), count($db->revisions('pages', $the['id']))], [3, 3, 3]);
     $db->update('pages', ['price' => 4], ['id' => ['in' => [$tea['id'], $tee['id'], $the['id']]]]);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // A nested bulk update hands values to rows of both updates: the group is checked once all are written.
+    // A nested bulk update over rows of the same group: both changes reach every row.
     $kick = $db->insert('pages', ['title' => 'Kick', 'price' => 1], true)[0];
     $nest = $db->insert('pages', ['title' => 'Nest', 'price' => 1], true)[0];
     $nestDe = $db->insert('pages', ['title' => 'Nest DE', 'locale' => 'de', 'translationOf' => $nest['id']], true)[0];
@@ -1338,8 +1351,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         [[31, ['b']], [31, ['b']], [31, ['b']]]);
     $db->delete('pages', ['id' => ['in' => [$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']]]]);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // Writes between two rows of one group in a bulk update see the handoff through: a nested write
-    // waits for it, and a later change replaces the handed value even when it equals what is stored.
+    // Writes between two rows of one group in a bulk update: the group agrees, and the latest change wins.
     $order = $db->insert('pages', ['title' => 'Order', 'price' => 1], true)[0];
     $between = $db->insert('pages', ['title' => 'Between', 'price' => 1], true)[0];
     $orderDe = $db->insert('pages', ['title' => 'Order DE', 'locale' => 'de', 'translationOf' => $order['id']], true)[0];
@@ -1347,8 +1359,24 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $db->update('pages', ['price' => 41], $three);
     eq('… a nested write between the rows commits with the group agreeing', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
     $db->update('pages', ['stampedAt' => '2001-01-01T00:00:00.000Z'], $three);
-    eq('… a later change back to the stored value replaces the handed one', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
+    eq('… also when a later change restores the value the group had', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
     $db->delete('pages', $three);
+    $db->delete('notes', ['id' => ['notIn' => $before]]);
+    // Hooks between two rows of a group in a bulk update: a nested write to the later row, a new
+    // translation of it, or deleting the earlier one all leave the group consistent.
+    $late = $db->insert('pages', ['title' => 'Late', 'price' => 1], true)[0];
+    $mid = $db->insert('pages', ['title' => 'Mid', 'price' => 1], true)[0];
+    $lateDe = $db->insert('pages', ['title' => 'Late DE', 'locale' => 'de', 'translationOf' => $late['id']], true)[0];
+    $lateRows = static fn () => array_map(static fn ($r) => $r['title'] . ':' . $r['price'], $db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['like' => 'Late%']], 'orderBy' => ['id' => 'asc']]));
+    $three = ['id' => ['in' => [$late['id'], $mid['id'], $lateDe['id']]]];
+    $db->update('pages', ['price' => 51], $three);
+    // Late DE was already written by the bulk update (once, with the group's 51); Mid's hook wrote later.
+    eq('… a later nested write to a row the bulk update already reached wins, the group agreeing', $lateRows(), ['Late:57', 'Late DE:57']);
+    $db->update('pages', ['price' => 52], $three);
+    eq('… a translation created between them joins with the group\'s current values', $lateRows(), ['Late:52', 'Late DE:52', 'Late FR:52']);
+    problem('… a sibling hook failing after the first row was deleted still rolls everything back', fn () => $db->update('pages', ['price' => 53], $three), 422, 'rejected');
+    eq('… nothing of it committed', $lateRows(), ['Late:52', 'Late DE:52', 'Late FR:52']);
+    $db->delete('pages', ['title' => ['in' => ['Late', 'Mid', 'Late DE', 'Late FR']]]);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
     // A row from before localization (no group yet): its old revisions show the group it has now.
     $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
@@ -1378,7 +1406,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $bumpDe = $db->insert('pages', ['title' => 'Bump DE', 'locale' => 'de', 'translationOf' => $bump['id']], true)[0];
     problem('a hook that diverges a synced column → 409, nothing committed', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $bump['id']])), 409, 'conflict', '/price');
     problem('… also when one bulk update covers both rows', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
-    problem('… also when the patch is input that normalizes to the handed values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2.0, 'box' => ['label' => 'x']], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
+    problem('… also when the patch is input that normalizes to the group\'s values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2.0, 'box' => ['label' => 'x']], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
     eq('… both rows keep the group value', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]]), 'price'), [1, 1]);
     $db->delete('pages', ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]);
     $tag = $db->insert('pages', ['title' => 'Tag', 'price' => 1, 'tags' => ['a']], true)[0];

@@ -74,6 +74,17 @@ test("activation registers the post types, field groups and options page, and cr
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });
 
+test("one WP-CLI call activates Action Scheduler, the runtime and the app together", () => {
+  // `wp plugin activate a b c` (and `--all`) loads each newly activated plugin after plugins_loaded
+  // has fired, so Action Scheduler never registers its version before the runtime's platform check.
+  const chain = ["action-scheduler", "zero-runtime", "zero-identity", harness.plugin];
+  wp("plugin", "deactivate", ...[...chain].reverse());
+  wp("plugin", "activate", ...chain);
+  const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json"));
+  assert.deepEqual(chain.filter((slug) => !active.includes(slug)), []);
+  assert.equal(wp("option", "get", "zero_runtime_tables"), wp("eval", "echo \\Zero\\Wp\\Runtime::tablesVersion();"), "the runtime recorded its tables");
+});
+
 test("activation grants collection capabilities: editors all, authors their own, subscribers none", () => {
   const caps = (role: string) => JSON.parse(wp("eval", `echo wp_json_encode(array_keys(array_filter(get_role('${role}')->capabilities)));`)).filter((c: string) => c.endsWith("zero_posts"));
   assert.deepEqual(caps("editor").sort(), [

@@ -36,7 +36,10 @@ final class Platform
             'version' => (string) get_bloginfo('version'), 'php' => PHP_VERSION,
             'database' => ['kind' => $maria ? 'mariadb' : 'mysql', 'version' => $match[1] ?? '0'],
             'scf' => class_exists('ACF') && defined('ACF_VERSION') ? ACF_VERSION : null,
-            'actionScheduler' => class_exists('ActionScheduler_Versions') ? \ActionScheduler_Versions::instance()->latest_version() : null,
+            // Action Scheduler registers its version on plugins_loaded. A plugin activated after that hook
+            // fired (several activated in one WP-CLI call) never registers in that request, so the registry
+            // is empty; read the plugin's header instead.
+            'actionScheduler' => class_exists('ActionScheduler_Versions') ? (\ActionScheduler_Versions::instance()->latest_version() ?: $headers['action-scheduler']) : null,
             'mcpAdapter' => in_array('mcp-adapter/mcp-adapter.php', (array) get_option('active_plugins', []), true) || isset(get_site_option('active_sitewide_plugins', [])['mcp-adapter/mcp-adapter.php']) ? (defined('MCP_ADAPTER_VERSION') ? MCP_ADAPTER_VERSION : $headers['mcp-adapter']) : null,
             'polylang' => defined('POLYLANG_VERSION') ? POLYLANG_VERSION : null,
             'identity' => Runtime::identity(), 'imageCdn' => function_exists('jetpack_photon_url'),

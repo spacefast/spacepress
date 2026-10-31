@@ -68,3 +68,27 @@ test("WP cron promotion runs no Zero hooks, fills nothing and writes no revision
   assert.equal(nativeRevisions(), nativeBefore + 1, "core revises the native post as usual");
   wp("post", "delete", String(native), "--force");
 });
+
+// §6.1 on WordPress: Zero keeps its explicit "published" (core would make a future date `future`), and
+// only for its own write: a post a save hook writes meanwhile is scheduled by core as usual.
+test("Zero's explicit status applies to its own write, not to posts written from its save hooks", () => {
+  const [zeroStatus, nested] = JSON.parse(wp("eval", `
+    $at = gmdate('Y-m-d H:i:s', time() + 7200);
+    $nested = null;
+    $hook = static function () use ($at, &$nested): void {
+      if ($nested === null) {
+        $nested = -1;
+        $nested = wp_insert_post(['post_type' => 'post', 'post_title' => 'Native nested', 'post_status' => 'publish', 'post_date_gmt' => $at, 'post_date' => get_date_from_gmt($at)]);
+      }
+    };
+    add_action('save_post_zero_posts', $hook);
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    [, , $out] = \\Zero\\Wp\\Plugin::instance()->app()->handle('POST', '/posts', [], wp_json_encode(['title' => 'Explicit status', 'status' => 'published', 'publishedAt' => str_replace(' ', 'T', $at) . '.000Z']));
+    remove_action('save_post_zero_posts', $hook);
+    $status = json_decode($out, true)['data']['status'];
+    $native = get_post_status($nested);
+    wp_delete_post($nested, true);
+    echo wp_json_encode([$status, $native]);
+  `));
+  assert.deepEqual([zeroStatus, nested], ["published", "future"]);
+});

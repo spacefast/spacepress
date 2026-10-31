@@ -66,6 +66,9 @@ check('status absent → published with publishedAt = now', $pub['status'] === '
 eq('draft keeps a null publishedAt', [$draft['status'], $draft['publishedAt']], ['draft', null]);
 problem('scheduled without publishedAt', fn () => $db->insert('posts', ['title' => 'x', 'status' => 'scheduled']), 422, 'invalid_input', '/publishedAt');
 problem('scheduled in the past', fn () => $db->insert('posts', ['title' => 'x', 'status' => 'scheduled', 'publishedAt' => '2001-01-01T00:00:00Z']), 422, 'invalid_input', '/publishedAt');
+$dated = $db->insert('posts', ['title' => 'Dated', 'status' => 'published', 'publishedAt' => '2031-01-01T00:00:00.000Z'], true)[0];
+eq('published with a future publishedAt stays published (only scheduled schedules)', [$dated['status'], $dated['publishedAt']], ['published', '2031-01-01T00:00:00.000Z']);
+$db->delete('posts', ['id' => $dated['id']]);
 $published = $db->update('posts', ['status' => 'published'], ['id' => $draft['id']], true)[0];
 check('draft → published sets publishedAt', $published['publishedAt'] !== null, $published);
 $again = $db->update('posts', ['status' => 'draft'], ['id' => $draft['id']], true)[0];

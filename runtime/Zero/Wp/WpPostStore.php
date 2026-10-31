@@ -211,7 +211,7 @@ final class WpPostStore implements Store
             'post_status' => 'publish',
             'post_author' => get_current_user_id(),
         ];
-        $id = $this->db->core(fn () => $this->withStatus(fn () => $this->withSlug($post, static fn () => wp_insert_post(wp_slash($post), true))));
+        $id = $this->db->core(fn () => $this->withStatus($post, fn (array $post) => $this->withSlug($post, static fn () => wp_insert_post(wp_slash($post), true))));
         if ($id instanceof \WP_Error) {
             throw new \RuntimeException('wp_insert_post failed: ' . $id->get_error_message());
         }
@@ -234,7 +234,7 @@ final class WpPostStore implements Store
             $post['ID'] = $id;
             // Zero writes the revision itself after the meta is saved (Db::updateOne → revisionWrite);
             // core's own post-update revision would be a second, meta-less one.
-            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withStatus(fn () => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true)))));
+            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withStatus($post, fn (array $post) => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true)))));
             if ($r instanceof \WP_Error) {
                 throw new \RuntimeException('wp_update_post failed: ' . $r->get_error_message());
             }
@@ -295,20 +295,27 @@ final class WpPostStore implements Store
 
     /**
      * Zero's status is explicit (§6.1): core turns `publish` with a future date into `future` and
-     * `future` within a minute into `publish`; keep the status Zero asked for (or the post already has).
+     * `future` within a minute into `publish`; keep the status Zero asked for (or the post already has). Only this write's
+     * postarr (marked with `_zero_status`) is affected, not posts a save hook writes meanwhile.
      */
-    private function withStatus(callable $fn): mixed
+    private function withStatus(array $post, callable $fn): mixed
     {
-        $filter = static function (array $data, array $postarr): array {
-            if (in_array($postarr['post_status'] ?? null, ['publish', 'future'], true)) {
-                $data['post_status'] = $postarr['post_status'];
+        $status = $post['post_status'] ?? (isset($post['ID']) ? get_post_status((int) $post['ID']) : null);
+        if (!in_array($status, ['publish', 'future'], true)) {
+            return $fn($post);
+        }
+        $post['post_status'] = $status;
+        $marker = $post['_zero_status'] = bin2hex(random_bytes(8));
+        $filter = static function (array $data, array $postarr, array $unsanitized) use ($marker, $status): array {
+            if (($unsanitized['_zero_status'] ?? null) === $marker) {
+                $data['post_status'] = $status;
             }
 
             return $data;
         };
-        add_filter('wp_insert_post_data', $filter, PHP_INT_MAX, 2);
+        add_filter('wp_insert_post_data', $filter, PHP_INT_MAX, 3);
         try {
-            return $fn();
+            return $fn($post);
         } finally {
             remove_filter('wp_insert_post_data', $filter, PHP_INT_MAX);
         }

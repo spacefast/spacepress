@@ -50,12 +50,12 @@ On WordPress, build for WordPress first so the browser client talks to
 ./target/release/zero build examples/blog --target wp
 node examples/blog/build-client.mjs
 ./target/release/zero build examples/blog --target wp   # ships public/client/ with the plugin
-./target/release/zero dev examples/blog --wp            # WordPress on http://127.0.0.1:8790
+./target/release/zero dev examples/blog --wp            # WordPress on http://127.0.0.1:8787
 tests/wp/harness.sh wp zero-identity app add --name=Blog --id=app_blog \
-  --redirect=http://127.0.0.1:8790/wp-content/plugins/zero-app-blog/public/ --origin=http://127.0.0.1:8790
+  --redirect=http://127.0.0.1:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://127.0.0.1:8787
 ```
 
-The page is at `http://127.0.0.1:8790/wp-content/plugins/zero-app-blog/public/`,
+The page is at `http://127.0.0.1:8787/wp-content/plugins/zero-app-blog/public/`,
 and its Sign in button goes through the zero-identity screens.
 
 ## Suites

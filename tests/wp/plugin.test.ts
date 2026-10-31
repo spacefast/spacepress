@@ -78,25 +78,33 @@ test("activation registers the post types, field groups and options page, and cr
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });
 
-test("one WP-CLI call activates Action Scheduler, Polylang, the runtime and the app together", () => {
+/** Polylang's languages as stored (its `language` terms, in order), read without booting WordPress. */
+const languages = () => sql("SELECT t.slug FROM wp_terms t JOIN wp_term_taxonomy tt ON tt.term_id = t.term_id WHERE tt.taxonomy = 'language' ORDER BY t.term_group, t.term_id").map((r) => r.slug);
+
+/** A site with none of the app's languages and no provisioning marker, as on a first install. */
+function forgetLanguages() {
+  wp("eval", "foreach (PLL()->model->get_languages_list() as $l) { PLL()->model->delete_language($l->term_id); } delete_option('zero_polylang_languages');");
+}
+
+test("one WP-CLI call activates Action Scheduler, Polylang, the runtime and the app together", async () => {
   // `wp plugin activate a b c` (and `--all`) loads each newly activated plugin after plugins_loaded
   // has fired, so Action Scheduler never registers its version before the runtime's platform check,
   // and Polylang has no model yet when the app activates.
   const chain = ["action-scheduler", "polylang", "zero-runtime", "zero-identity", harness.plugin];
-  const languages = () => JSON.parse(wp("eval", "echo wp_json_encode(pll_languages_list(['fields' => 'slug']));"));
   const configured = languages();
   wp("plugin", "deactivate", ...[...chain].reverse());
   try {
-    // A first install: Polylang has none of the app's languages, and Zero hasn't provisioned any.
     wp("plugin", "activate", "polylang");
-    wp("eval", "foreach (PLL()->model->get_languages_list() as $l) { PLL()->model->delete_language($l->term_id); } delete_option('zero_polylang_languages');");
+    forgetLanguages();
     wp("plugin", "deactivate", "polylang");
     wp("plugin", "activate", ...chain);
+    // Activation couldn't create them; the first request after it (here an anonymous API read) does.
+    assert.deepEqual(languages(), []);
+    assert.equal((await fetch(`${api}/tours?locale=fr&limit=1`)).status, 200);
+    assert.deepEqual(languages(), configured);
     const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json"));
     assert.deepEqual(chain.filter((slug) => !active.includes(slug)), []);
     assert.equal(wp("option", "get", "zero_runtime_tables"), tablesVersion());
-    // The next request of any kind (here WP-CLI's) creates the configured languages.
-    assert.deepEqual(languages(), configured);
   } finally {
     wp("plugin", "activate", ...chain);
   }
@@ -131,6 +139,35 @@ async function until(what: string, ok: () => boolean) {
     await new Promise((r) => setImmediate(r));
   }
 }
+
+test("concurrent first requests create each Polylang language once", async () => {
+  const configured = languages();
+  // Another WordPress process takes the provisioning lock, then leaves the site with no languages and
+  // no marker (a first install), and holds the lock while requests arrive and queue on it.
+  const holder = spawn(fileURLToPath(new URL("harness.sh", import.meta.url)), ["wp", "eval", `
+    \\Zero\\Wp\\Migrator::locked(\\Zero\\Wp\\Runtime::plugin()->connection(), 'zero_polylang_languages', static function (): void {
+      foreach (PLL()->model->get_languages_list() as $l) { PLL()->model->delete_language($l->term_id); }
+      delete_option('zero_polylang_languages');
+      fwrite(STDOUT, "held\\n"); fflush(STDOUT); fgets(STDIN);
+    });`], { stdio: ["pipe", "pipe", "pipe"] });
+  let out = "";
+  holder.stdout.on("data", (c) => (out += c));
+  const exited = new Promise((resolve) => holder.on("close", resolve));
+  try {
+    await until("the holder", () => out.includes("held"));
+    assert.deepEqual(languages(), []);
+    const waiting = () => Number(sql("SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE 'SELECT GET_LOCK%'")[0].n);
+    const queued = [1, 2, 3].map(() => fetch(`${api}/tours?limit=1`).then((r) => r.status));
+    await until("three requests waiting on the provisioning lock", () => waiting() >= 3);
+    assert.deepEqual(languages(), [], "nothing was created while the lock was held");
+    holder.stdin.end("go\n");
+    await exited;
+    assert.deepEqual(await Promise.all(queued), [200, 200, 200]);
+    assert.deepEqual(languages(), configured, "each language exists once");
+  } finally {
+    holder.kill();
+  }
+});
 
 test("an app updated by copying files in migrates on the first request, once, while requests queue on the lock", async () => {
   // Another WordPress process holds the app's migration lock (the runtime's own Migrator::locked).

@@ -53,14 +53,19 @@ final class Polylang
                 self::adopt($objectId, (int) reset($ttIds));
             }
         }, 10, 4);
-        // Languages follow `locales` on the first request of any kind (REST, front end, cron, CLI,
-        // admin) after activation or a change, once Polylang's model exists. Activation alone can't:
-        // with Polylang activated in the same request, its model isn't loaded yet.
+        // Languages follow `locales` on the first request Zero can serve (REST, cron, CLI, admin) after
+        // activation or a change. Activation alone can't: with Polylang activated in the same request,
+        // its model isn't loaded yet. (On a site with no languages Polylang builds no front-end
+        // context, so a theme page doesn't provision; Zero serves nothing there.)
+        // Concurrent first requests queue on one lock and recheck the marker, so a language is added once.
         add_action('init', static function (): void {
-            $schema = Runtime::plugin()?->schema;
-            if ($schema?->locales() !== null && get_option('zero_polylang_languages') !== self::state($schema->locales())) {
-                self::ensureLanguages();
+            $plugin = Runtime::plugin();
+            $locales = $plugin?->schema->locales();
+            // Not while storage lags the build (the schema's locales may not be the stored ones yet).
+            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
+                return;
             }
+            Migrator::upgrade($plugin->connection(), 'zero_polylang_languages', static fn (): bool => self::provisioned($locales, true), self::ensureLanguages(...));
         }, 2);
     }
 
@@ -223,6 +228,15 @@ final class Polylang
             }
         }
         update_option('zero_polylang_languages', self::state($locales), false);
+    }
+
+    private static function provisioned(array $locales, bool $fresh = false): bool
+    {
+        if ($fresh) {
+            wp_cache_delete('zero_polylang_languages', 'options');
+        }
+
+        return get_option('zero_polylang_languages') === self::state($locales);
     }
 
     /** Provisioning marker: the default plus every locale, so changing either re-provisions. */

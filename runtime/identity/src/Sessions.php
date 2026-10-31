@@ -107,6 +107,13 @@ final class Sessions
                     ($id === null ? "" : " AND id=%s"),
                 ...$id === null ? [time(), $uid] : [time(), $uid, $id],
             );
+            if ($id === null) {
+                // Sign-ins waiting on a second factor started before this revocation: they end too.
+                $this->db->run(
+                    "UPDATE {$this->db->prefix}challenges SET expires_at=0 WHERE wp_user_id=%d AND purpose='mfa' AND consumed_at IS NULL",
+                    $uid,
+                );
+            }
         });
         if ($id === null) {
             \WP_Session_Tokens::get_instance($uid)->destroy_all();

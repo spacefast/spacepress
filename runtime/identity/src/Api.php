@@ -201,24 +201,37 @@ final class Api
         }
         if ($op === "sign-in/mfa" && $method === "POST") {
             $this->security->limit("mfa:" . ($_SERVER["REMOTE_ADDR"] ?? ""));
+            $code = $this->field($r, "code", 100);
+            // The challenge is consumed in its own transaction (failed attempts must count), then
+            // factor and session run under the account lock with the challenge rechecked: a password
+            // reset expires pending challenges, so one that committed in between ends this sign-in.
             $c = $this->security->consume(
                 $this->field($r, "challenge_id"),
                 "mfa",
                 (string) ($_COOKIE["zi_factor"] ?? ""),
             );
-            if (
-                !$this->mfa->verify(
-                    (int) $c["wp_user_id"],
-                    $this->field($r, "code", 100),
-                )
-            ) {
-                throw new Failure(
-                    "invalid_factor",
-                    "Authenticator or recovery code is invalid. Sign in again.",
-                    401,
+            [$result, $cookie] = $this->db->transaction(function () use ($c, $code) {
+                $uid = (int) $c["wp_user_id"];
+                $this->db->lock($uid);
+                $live = $this->db->row(
+                    "SELECT expires_at FROM {$this->db->prefix}challenges WHERE id=%s FOR UPDATE",
+                    $c["id"],
                 );
-            }
-            return $this->issue((int) $c["wp_user_id"]);
+                if (!$live || (int) $live["expires_at"] <= time()) {
+                    throw new Failure("invalid_challenge", "The code is incorrect, used, or expired.");
+                }
+                if (!$this->mfa->verify($uid, $code)) {
+                    throw new Failure(
+                        "invalid_factor",
+                        "Authenticator or recovery code is invalid. Sign in again.",
+                        401,
+                    );
+                }
+                $created = $this->sessions->create($uid);
+                return [["kind" => "signed_in"], [$created["secret"], $created["session"]["expires_at"]]];
+            });
+            Sessions::cookie($cookie[0], $cookie[1]);
+            return $result;
         }
         if ($op === "sign-in/passkey/options" && $method === "POST") {
             $this->security->limit(

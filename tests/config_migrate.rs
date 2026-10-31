@@ -405,7 +405,7 @@ fn payload_email_keeps_payloads_address_rule() {
 }
 
 #[test]
-fn payload_dates_reject_free_text() {
+fn payload_dates_accept_what_date_parse_accepts() {
     let (_dir, app) = migrated_app(
         "payload",
         "payload.ts",
@@ -418,10 +418,13 @@ fn payload_dates_reject_free_text() {
             json!([
                 ["due", "2026-01-01T10:00:00.000Z"],
                 ["due", "2026-01-01"],
-                ["due", "tomorrow"]
+                ["due", "tomorrow"],
+                // Date.parse rejects out-of-range times that PHP's parser would roll over.
+                ["due", "2026-01-01T24:01:00Z"],
+                ["due", "2026-01-01T00:00:00+24:00"]
             ])
         ),
-        json!([true, true, "/due"])
+        json!([true, true, "/due", "/due", "/due"])
     );
 }
 

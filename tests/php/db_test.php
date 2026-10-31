@@ -480,8 +480,8 @@ problem('boolean', fn () => $db->insert('locations', ['name' => 'Loft', 'active'
 problem('null for notNull', fn () => $db->insert('items', ['name' => 'x', 'qty' => null]), 422, 'invalid_input', '/qty');
 problem('NaN for real', fn () => $db->insert('items', ['name' => 'x', 'price' => NAN]), 422, 'invalid_input', '/price');
 problem('bad timestamp', fn () => $db->insert('items', ['name' => 'x', 'seenAt' => 'yesterday-ish']), 422, 'invalid_input', '/seenAt');
-// PHP's own parser understands relative dates; timestamps accept complete ISO 8601 text only.
-foreach (['tomorrow', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year'] as $relative) {
+// Timestamps accept what JS Date.parse accepts: no relative text, no out-of-range times.
+foreach (['tomorrow', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T24:01:00Z', '2026-01-01T00:00:00+24:00'] as $relative) {
     problem("relative timestamp text: $relative", fn () => $db->insert('items', ['name' => 'x', 'seenAt' => $relative]), 422, 'invalid_input', '/seenAt');
 }
 problem('impossible calendar date', fn () => $db->insert('items', ['name' => 'x', 'bestBefore' => '2023-02-29']), 422, 'invalid_input', '/bestBefore');

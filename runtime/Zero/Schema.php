@@ -476,20 +476,12 @@ final class Schema
         if (is_int($v) || (is_float($v) && Js::isInteger($v))) {
             $ms = $v;
         } elseif (is_string($v) && $v !== '') {
+            // The JS date-time grammar Date.parse accepts, so a client sees the same answer in
+            // both runtimes. PHP's own parser is never used: it accepts relative text and rolls
+            // out-of-range times (24:01, +24:00) into the next day.
             $ms = Js::date($v);
             if (is_float($ms)) {
-                // Not in the JS date-time format: other complete ISO 8601 spellings (an hour-only
-                // offset, nanoseconds) go through the PHP parser. Nothing else does, so free text
-                // ("tomorrow", "2026-01-01 +1 year") never reaches its relative-date grammar.
-                if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?$/D', $v)) {
-                    return null;
-                }
-                try {
-                    $d = new \DateTimeImmutable($v, new \DateTimeZone('UTC'));
-                } catch (\Exception) {
-                    return null;
-                }
-                $ms = (int) $d->format('U') * 1000 + (int) $d->format('v');
+                return null;
             }
         } else {
             return null;

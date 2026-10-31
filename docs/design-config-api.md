@@ -1121,7 +1121,7 @@ async function restock(item: { id: number; name: string; quantity: number; lowSt
   const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
   if (!existing) {
     await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
-    // Off the request: runs after this write commits (`zero jobs work`, or the dev worker).
+    // Off the request: Action Scheduler runs this after the write commits.
     await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
   }
 }
@@ -1316,10 +1316,10 @@ them.
 - **Fixtures**: 114 `tests/fixtures/*/zero.config.ts`, the three examples,
   `tests/wp/app` and its lanes, `tests/system`. Most of the rewrite is
   mechanical (a codemod over `id: id()`, `editor: false`, `references`,
-  `$onUpdate`, `defineRelations`), and the rejection fixtures for removed
-  options become rejection fixtures for their replacements (an `id` column,
-  `editor`, `api`, `uid`, `target`, `schema` each get a "did you mean"
-  error naming the new form; `drafts: true` on a table keeps its fixture).
+  `$onUpdate`, `defineRelations`). Delete fixtures for removed options along
+  with those options; prove the canonical replacements through their runtime
+  behavior and type contracts. `drafts: true` on a table remains supported
+  and keeps its fixture.
 - **In-flight lanes** (what this simplifies for them; none of their files
   are edited here):
   - K1 (guest pruning, localized relations): localized `many` loads under

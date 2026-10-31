@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under Zero's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { collection, group, id, integer, richText, slug, text } from "zero";
+import { collection, db, group, HttpError, id, integer, richText, slug, text } from "zero";
 
 export const vault = collection("vault", { id: id(), title: text().notNull(), code: text() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -68,12 +68,34 @@ export const gated = collection("gated", {
   },
 });
 
-export const schema = { vault, ledger, payroll, gated, dossier, claims };
+// Editor saves roll back when a hook throws (§1.7): each hook writes a log row first, then refuses.
+export const fuses = collection("fuses", { id: id(), title: text().notNull() },
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const fuseLog = collection("fuse_log", { id: id(), msg: text().notNull() }, { editor: false, access: { read: "anyone" } });
+
+export const schema = { vault, ledger, payroll, gated, dossier, claims, fuses, fuseLog };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {};
+export const hooks = {
+  fuses: {
+    async afterCreate(row: { id: number; title: string; status: string; publishedAt: string | null }) {
+      await db.insert(fuseLog).values({ msg: `created ${row.title}` });
+      if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterCreate refused this");
+    },
+    async afterUpdate(row: { id: number; title: string; status: string; publishedAt: string | null }) {
+      await db.insert(fuseLog).values({ msg: `updated ${row.title}` });
+      if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterUpdate refused this");
+    },
+    async beforeDelete(row: { id: number; title: string; status: string; publishedAt: string | null }) {
+      await db.insert(fuseLog).values({ msg: `deleting ${row.title}` });
+    },
+    async afterDelete(row: { id: number; title: string; status: string; publishedAt: string | null }) {
+      if (row.title.startsWith("Keep")) throw new HttpError(409, "kept", "afterDelete refused this");
+    },
+  },
+};
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
 export const config = {};

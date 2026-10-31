@@ -110,6 +110,18 @@ final class PostsController extends \WP_REST_Posts_Controller
         return EditorSave::rest($this->collection, null, $request, fn () => parent::create_item($request));
     }
 
+    /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */
+    public function delete_item($request)
+    {
+        try {
+            return parent::delete_item($request);
+        } catch (\Zero\HttpError | \Zero\JsError $e) {
+            $problem = \Zero\App::problem($e);
+
+            return CoreAccess::error(new \Zero\HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null));
+        }
+    }
+
     public function update_item($request)
     {
         $post = $this->get_post($request['id']);

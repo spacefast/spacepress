@@ -59,14 +59,9 @@ several stacks side by side, and stop one with `tests/wp/harness.sh down`.
 
 ## The blog tour
 
-`examples/blog` is the full tour on standalone. Build it, turn its client into
-browser JS, then serve it:
-
-```sh
-./target/release/zero build examples/blog --target standalone
-node examples/blog/build-client.mjs
-./target/release/zero dev examples/blog       # open http://127.0.0.1:8787/index.html
-```
+`examples/blog` is the full tour: field access, sync, members, media, jobs,
+webhooks and translations, with a browser page. How to build and run it on
+each target is in [`docs/examples.md`](docs/examples.md).
 
 ## Tests
 

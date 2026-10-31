@@ -471,18 +471,17 @@ final class Schema
         };
     }
 
+    /**
+     * Epoch ms, or ISO 8601: `YYYY-MM-DD` (UTC midnight, as in JS) or `YYYY-MM-DDTHH:mm[:ss[.fff]]`
+     * with `Z` or `±HH:MM`. Every component must be a real calendar/clock value (no `24:00`, no
+     * `02-30` rolling into March); anything else (`now`, `10/30/2026`) is rejected.
+     */
     private static function timestamp(mixed $v): ?string
     {
         if (is_int($v) || (is_float($v) && Js::isInteger($v))) {
             $ms = $v;
-        } elseif (is_string($v) && $v !== '') {
-            // The JS date-time grammar Date.parse accepts, so a client sees the same answer in
-            // both runtimes. PHP's own parser is never used: it accepts relative text and rolls
-            // out-of-range times (24:01, +24:00) into the next day.
+        } elseif (is_string($v) && self::isIsoTimestamp($v)) {
             $ms = Js::date($v);
-            if (is_float($ms)) {
-                return null;
-            }
         } else {
             return null;
         }
@@ -491,6 +490,14 @@ final class Schema
         } catch (JsError) {
             return null;
         }
+    }
+
+    private static function isIsoTimestamp(string $v): bool
+    {
+        return (bool) preg_match('/^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-](\d{2}):(\d{2})))?$/D', $v, $m)
+            && self::isDate($m[1])
+            && (int) ($m[2] ?? 0) <= 23 && (int) ($m[3] ?? 0) <= 59 && (int) ($m[4] ?? 0) <= 59
+            && (int) ($m[5] ?? 0) <= 23 && (int) ($m[6] ?? 0) <= 59;
     }
 
     private static function isDate(string $v): bool

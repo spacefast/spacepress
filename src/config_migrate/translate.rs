@@ -11,7 +11,7 @@ const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
 /// EmDash datetimes are Zod 4.5.4 `z.iso.datetime({ offset: true })` or its minute-precision
 /// variant: calendar-valid dates, a time, and `Z` or an offset, stored as the given string.
-/// Zero's timestamp() accepts free-form dates and numbers and rolls 2026-02-30 to March 2.
+/// Zero's timestamp() also accepts epoch milliseconds, which EmDash rejects.
 const EMDASH_DATETIME: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/";
 /// Sanity's datetime type check (`@sanity/validation` dateValidator `isoDate`, pinned commit in
 /// docs/zero-compatibility.md): a string in one of the ISO 8601 date/date-time forms. Sanity stores

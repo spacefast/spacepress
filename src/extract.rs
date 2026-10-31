@@ -1503,8 +1503,10 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
         }
         (ColType::Date, Value::Str(s)) if is_date(s) => {}
         (ColType::Date, _) => return bad("a date column (use \"YYYY-MM-DD\" or .defaultNow())"),
-        (ColType::Timestamp, Value::Str(_)) => {}
-        (ColType::Timestamp, _) => return bad("a timestamp column (use an ISO string or .defaultNow())"),
+        (ColType::Timestamp, Value::Str(s)) if is_iso_timestamp(s) => {}
+        (ColType::Timestamp, _) => {
+            return bad("a timestamp column (use an ISO string like \"2026-01-31T09:00:00Z\" or .defaultNow())");
+        }
         (ColType::Json, _) => {}
         (ColType::Media, _) => return bad("a media column"),
         (ColType::File, Value::Num(n)) if n.fract() == 0.0 && n.is_finite() => {}
@@ -1550,14 +1552,65 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
     })
 }
 
+/// `YYYY-MM-DD` naming a real calendar day (the runtime's date codec).
 fn is_date(s: &str) -> bool {
     let b = s.as_bytes();
-    b.len() == 10
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && s.chars()
-            .enumerate()
-            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+    if !s.is_ascii() || b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let (Some(y), Some(m), Some(d)) = (digits(&s[0..4]), digits(&s[5..7]), digits(&s[8..10])) else {
+        return false;
+    };
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => 0,
+    };
+    (1..=days).contains(&d)
+}
+
+/// The runtime's timestamp codec for strings: a date, or a date-time with `Z`/`±HH:MM`,
+/// every component in range (`YYYY-MM-DD[THH:mm[:ss[.fff]](Z|±HH:MM)]`).
+fn is_iso_timestamp(s: &str) -> bool {
+    if !s.is_ascii() || s.len() < 10 {
+        return false;
+    }
+    let (date, rest) = s.split_at(10);
+    if !is_date(date) {
+        return false;
+    }
+    let Some(time) = rest.strip_prefix('T') else {
+        return rest.is_empty();
+    };
+    let (clock, zone) = match time.find(['Z', '+', '-']) {
+        Some(i) => time.split_at(i),
+        None => return false,
+    };
+    let zone_ok = zone == "Z"
+        || (zone.len() == 6
+            && &zone[3..4] == ":"
+            && digits(&zone[1..3]).is_some_and(|h| h <= 23)
+            && digits(&zone[4..6]).is_some_and(|m| m <= 59));
+    let (hms, frac) = clock.split_once('.').map_or((clock, None), |(a, b)| (a, Some(b)));
+    let parts: Vec<&str> = hms.split(':').collect();
+    let limits = [23, 59, 59];
+    zone_ok
+        && (2..=3).contains(&parts.len())
+        && frac.is_none_or(|f| parts.len() == 3 && !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
+        && parts
+            .iter()
+            .zip(limits)
+            .all(|(p, max)| p.len() == 2 && digits(p).is_some_and(|n| n <= max))
+}
+
+fn digits(s: &str) -> Option<u32> {
+    if s.is_empty() || !s.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
 }
 
 fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {
@@ -2539,4 +2592,33 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
         add(format!("media-{op}"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_date, is_iso_timestamp};
+
+    #[test]
+    fn literal_dates_and_timestamps_follow_the_runtime_codec() {
+        assert!(is_date("2024-02-29"));
+        assert!(!is_date("2023-02-29"));
+        for ok in [
+            "2024-02-29T23:59:59.123456789012Z",
+            "2026-01-31T09:00+05:30",
+            "2026-01-31",
+        ] {
+            assert!(is_iso_timestamp(ok), "{ok}");
+        }
+        for bad in [
+            "now",
+            "+1 week",
+            "10/30/2026",
+            "2026-02-30T00:00:00Z",
+            "2026-01-01T24:00:00Z",
+            "2026-01-01T10:00:00",
+            "2026-01-01T10:00:00+0100",
+        ] {
+            assert!(!is_iso_timestamp(bad), "{bad}");
+        }
+    }
 }

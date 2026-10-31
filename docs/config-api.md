@@ -123,8 +123,8 @@ export default defineConfig({
 | `real()` | REAL | `number` |
 | `text()` / `text({ enum: [...] })` | TEXT | `string` / union of the enum |
 | `boolean()` | INTEGER 0/1 | `boolean` |
-| `timestamp()` | TEXT (UTC ISO-8601 with ms) | `string` |
-| `date()` | TEXT `YYYY-MM-DD` | `string` |
+| `timestamp()` | TEXT (UTC ISO-8601 with ms); writes take epoch ms or ISO 8601 with `Z`/`±HH:MM` (a bare `YYYY-MM-DD` is UTC midnight) | `string` |
+| `date()` | TEXT `YYYY-MM-DD`, a real calendar day | `string` |
 | `json()` / `json().$type<T>()` | TEXT (JSON; an empty object reads back as `[]`, so a `.default()` can't contain `{}` or an object keyed `"0"`, `"1"`, ...) | `unknown` / `T` |
 | `text({ multiline: true })` | TEXT | `string` (textarea in wp-admin) |
 | `email()` / `url()` | TEXT, validated | `string` |

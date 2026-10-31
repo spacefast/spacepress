@@ -256,6 +256,11 @@ function laneDActions() {
       const other = await once("lane-d-other", () => { runs++; return runs; });
       return { first, second, other, runs };
     } }),
+    onceRegex: action({ input: {}, handler: async () => {
+      const first = await once("lane-d-regex", () => /^a+$/i);
+      const replay = await once("lane-d-regex", () => /never/);
+      return [first.test("AAA"), replay.test("AAA"), replay.test("b")];
+    } }),
     onceNull: action({ input: {}, handler: async () => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")] }),
     enqueueIds: action({ input: {}, handler: async () => {
       const plain = await jobs.ping.enqueue({ note: "hi" });

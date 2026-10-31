@@ -7,6 +7,10 @@ type Object = Map<String, Value>;
 
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
+/// EmDash datetimes are Zod 4.5.4 `z.iso.datetime({ offset: true })` or its minute-precision
+/// variant: calendar-valid dates, a time, and `Z` or an offset, stored as the given string.
+/// Zero's timestamp() accepts free-form dates and numbers and rolls 2026-02-30 to March 2.
+const EMDASH_DATETIME: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/";
 /// Payload's email validator (`fields/validations.ts`, pinned commit in docs/zero-compatibility.md).
 /// Zero's email() accepts quoted local parts and address literals that Payload rejects.
 const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
@@ -373,6 +377,8 @@ fn field(
             if kind == "integer" { "integer()" } else { "real()" }.into()
         }
         "boolean" | "checkbox" => "boolean()".into(),
+        // EmDash stores the validated string (TEXT); timestamp() would normalize and widen it.
+        "datetime" if matches!(source, Source::Emdash) => format!("text().pattern({EMDASH_DATETIME})"),
         "datetime" | "date" => "timestamp()".into(),
         "email" if matches!(source, Source::Payload) => format!("email().pattern({PAYLOAD_EMAIL})"),
         "email" => "email()".into(),

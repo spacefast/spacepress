@@ -397,6 +397,30 @@ fn payload_email_keeps_payloads_address_rule() {
 }
 
 #[test]
+fn emdash_datetime_keeps_its_iso_format_and_calendar() {
+    let (_dir, app) = migrated_app(
+        "emdash",
+        "emdash.json",
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"at","type":"datetime"}]}]}"#,
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([
+                ["at", "2024-02-29T10:00:00.5+02:00"],
+                ["at", "2026-01-01T00:00Z"],
+                ["at", "2026-02-30T00:00:00Z"],
+                ["at", "tomorrow"],
+                ["at", 1700000000000u64],
+                ["at", "2026-01-01T00:00:00"]
+            ])
+        ),
+        json!([true, true, "/at", "/at", "/at", "/at"])
+    );
+}
+
+#[test]
 fn json_defaults_with_empty_objects_are_refused_at_the_default() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("emdash.json");

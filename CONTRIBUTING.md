@@ -3,6 +3,11 @@
 This is the developer's view of the repo: how the compiler works, how to run
 the suites, and where things live. The [README](README.md) is the front page.
 
+Zero is WordPress-only. The compiler and runtime still carry a standalone
+target (PHP over SQLite, `zero dev` without `--wp`, `zero users` and `zero
+tokens`) that was never released; it is being removed, so don't build on it
+and don't document it on the front page.
+
 ## Toolchain
 
 Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,

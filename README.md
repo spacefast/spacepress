@@ -9,9 +9,8 @@ works with Next.js, Astro, TanStack Start, or anything else that can call
 `fetch`.
 
 Zero is built on top of WordPress and runs alongside a traditional WordPress
-setup. The WordPress target needs WordPress 7.1+, PHP 8.2+ and a small set of
-plugins that `zero build` pins for you; there's also a standalone target that
-needs only PHP. Zero apps can be deployed to
+setup. It needs WordPress 7.1+, PHP 8.2+ and a small set of plugins that
+`zero build` pins for you. Zero apps can be deployed to
 [Spacefast](https://spacefast.com) natively.
 
 It's a new, experimental way of building backends for content and personal
@@ -79,18 +78,18 @@ export default defineConfig({
 ## Everything out
 
 ```sh
-$ zero build
-built 2 collections, 0 globals, 1 hooks, 1 actions for standalone -> .zero/app (new migrations zero/migrations/sqlite/0001_init.sql, zero/migrations/wp/0001_init.sql) in 726ms
+$ zero build --target wp
+built 2 collections, 0 globals, 1 hooks, 1 actions for wp -> .zero/wp-content in 6s
 ```
 
 | You get | Where |
 |---|---|
-| SQLite and MySQL migrations, diffed against the last build | `zero/migrations/{sqlite,wp}/0001_init.sql` |
+| MySQL migrations, diffed against the last build | `zero/migrations/wp/0001_init.sql` |
 | A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/client/` |
 | Editor types, so `db` in your hooks knows your schema | `zero.gen.ts` |
-| REST endpoints for every collection, global and action, with relations loaded through `with` | `/api/...` standalone, `/wp-json/zero/v1/...` on WordPress |
-| Sign-in, sessions, roles, guests and MFA | the `zero-identity` plugin on WordPress; passwords and CLI tokens standalone |
-| A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | `zero build --target wp` |
+| REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/zero/v1/...` |
+| Sign-in, sessions, roles, guests, passkeys and MFA | the `zero-identity` plugin |
+| A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
 | Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `.zero/wp-content/plugins/` |
 
 Hooks and actions are compiled, not interpreted. Your `beforeCreate` becomes
@@ -112,61 +111,57 @@ Composer.
 ## Quick start
 
 There's no binary release or npm package yet. Build the compiler from source
-with Rust 1.96 (the checkout pins it), then run the pantry example:
+with Rust 1.96 (the checkout pins it). With Docker running, this builds the
+pantry example and boots it in a throwaway WordPress with every plugin
+activated:
 
 ```sh
 git clone https://github.com/spacefast/zero && cd zero
 cargo build --release
-./target/release/zero dev examples/pantry      # build, then serve on http://127.0.0.1:8787
+./target/release/zero dev examples/pantry --wp    # http://127.0.0.1:8787, admin / zero-test-admin
 ```
 
-Writes need a user. In a second terminal:
+It prints one JSON line with an application password for each test user.
+Writes need one of those; reads of public collections don't:
 
 ```sh
-./target/release/zero users add me --role editor --dir examples/pantry
-./target/release/zero tokens create me --dir examples/pantry   # {"data":{"token":"zt_...","id":1}}
-export TOKEN=zt_...
+export AUTH="admin:<the admin appPassword from that line>"
+BASE=http://127.0.0.1:8787/wp-json/zero/v1
 
-curl -X POST localhost:8787/api/locations -H "Authorization: Bearer $TOKEN" -d '{"name":"Fridge","kind":"fridge"}'
-curl -X POST localhost:8787/api/items -H "Authorization: Bearer $TOKEN" -d '{"name":" Eggs ","quantity":1,"locationId":1}'
-curl localhost:8787/api/shopping_list            # the afterCreate hook added Eggs
-curl -X POST localhost:8787/api/actions/consume -H "Authorization: Bearer $TOKEN" -d '{"itemId":1}'
-curl localhost:8787/api/shopping_list            # repeat until notifiedAt is set: the notifyLowStock job runs within a second
+curl -u "$AUTH" -X POST $BASE/locations -d '{"name":"Fridge","kind":"fridge"}'
+curl -u "$AUTH" -X POST $BASE/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
+curl $BASE/shopping_list                          # the afterCreate hook added Eggs
+curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
+./target/release/zero doctor examples/pantry --wp --site http://127.0.0.1:8787
 ```
 
-The same project builds for WordPress. Stop the standalone server (Ctrl-C),
-then, from a checkout with Docker running, boot a throwaway WordPress with your
-plugins activated:
-
-```sh
-./target/release/zero build examples/pantry --target wp   # .zero/wp-content/plugins/*.zip
-./target/release/zero dev examples/pantry --wp            # http://127.0.0.1:8787, admin / zero-test-admin
-./target/release/zero doctor examples/pantry --site http://127.0.0.1:8787
-```
-
-`zero check` compiles for both targets and writes nothing. Commit
-`zero/migrations/`, `zero/client/`, `zero.gen.ts` and, for WordPress builds,
-`zero/wp-plugins.lock.json`; `.zero/` is build output.
+`zero check` compiles without writing anything; `zero build --target wp`
+writes the plugins to `.zero/wp-content/` without booting anything. Commit
+`zero/migrations/`, `zero/client/`, `zero.gen.ts` and
+`zero/wp-plugins.lock.json`; `.zero/` is build output. Stop the site with the
+`harness.sh down` command that `zero dev --wp` prints.
 
 ## Use it from a frontend
 
 The generated client is dependency-free, erasable TypeScript over `fetch`.
 Copy `zero/client/` into any frontend, or import it by path. To try it against
-the `journal` config from the top of this page: stop the pantry server, save
-the config as `journal/zero.config.ts`, then
+the `journal` config from the top of this page: stop the pantry site, save the
+config as `journal/zero.config.ts`, then
 
 ```sh
-./target/release/zero dev journal                    # builds journal/zero/client/, serves on :8787
-./target/release/zero users add me --role editor --dir journal
-./target/release/zero tokens create me --dir journal
+./target/release/zero dev journal --wp            # builds journal/zero/client/, boots WordPress on :8787
 ```
 
-Node 22.18+ runs this as-is from the `journal` directory:
+Node 22.18+ runs this as-is from the `journal` directory, with the admin
+application password from the receipt:
 
 ```ts
 import { createClient } from "./zero/client/index.ts";
 
-const zero = createClient({ url: "http://127.0.0.1:8787/api", token: "zt_..." });
+const zero = createClient({
+  url: "http://127.0.0.1:8787/wp-json/zero/v1",
+  headers: { Authorization: "Basic " + btoa("admin:<application password>") },
+});
 
 const author = await zero.authors.create({ name: "Alice" });
 const post = await zero.posts.create({ title: "  Hello, Zero  ", authorId: author.id });
@@ -177,10 +172,10 @@ console.log(await zero.actions.publishedCount({}));        // { count: 1 }
 ```
 
 Every argument and result is typed from your schema: `with` keys, filters,
-`orderBy`, action inputs and outputs. The client is built for one target:
-`zero build --target wp` generates one whose `url` is `/wp-json/zero/v1` and
-whose `zero.auth.signIn()` goes through the zero-identity screens, given a
-`clientId` and `redirectUri`. See the client's generated README for sessions,
+`orderBy`, action inputs and outputs. The post is a real WordPress post, so it
+is also in `wp-admin` under Posts. Browser apps sign members in with
+`zero.auth.signIn()`, which goes through the zero-identity screens given a
+`clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 
 ## Requirements
@@ -188,9 +183,8 @@ guests and server-to-server auth.
 | | Minimum |
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
-| WordPress target | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, MySQL 8.0 or MariaDB 10.11 |
+| To run | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, MySQL 8.0 or MariaDB 10.11 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
-| Standalone target | PHP 8.2 with `pdo_sqlite`, `mbstring`, `json`, `gd` and `fileinfo` |
 
 `zero build --target wp` downloads the required plugins at their pinned
 versions, verifies their checksums, and ships them next to yours. The runtime
@@ -208,12 +202,11 @@ terminal.
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Authentication**: sign-in, sessions, roles, and guests who keep their rows
-  when they sign up; passkeys and MFA through `zero-identity` on WordPress.
-  WordPress users on WordPress; the app's own table standalone.
+- **Authentication** through `zero-identity`: sign-in, sessions, roles, guests
+  who keep their rows when they sign up, passkeys and MFA. Members are
+  WordPress users.
 - **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
-  commits, retry with backoff. Action Scheduler on WordPress, `zero jobs work`
-  standalone.
+  commits through Action Scheduler, retry with backoff.
 - **WordPress Abilities and MCP**: your collections' reads and writes, actions
   and globals are registered as Abilities and exposed on a named MCP server,
   so agents can use them. Jobs join with `agents: true`; `agents: false` opts
@@ -230,8 +223,8 @@ terminal.
 
 ## Alongside WordPress
 
-A Zero build for WordPress is three Zero plugins, plus the pinned platform
-plugins it depends on:
+A Zero build is three Zero plugins, plus the pinned platform plugins they
+depend on:
 
 | Plugin | What it is |
 |---|---|
@@ -249,24 +242,14 @@ admin screens for Zero's post types follow Zero's access rules. Need other
 plugins at exact versions? [Declare them in the config](docs/wp-plugins.md)
 and the build pins and ships them too.
 
-Zero also has a **standalone target**: the same app as a PHP directory over
-SQLite, no WordPress. It's the default unless the config says `target: "wp"`
-or you pass `--target wp`, and `zero dev` serves it with PHP's built-in
-server. Both targets run the same runtime and the same test journey.
-
 ## Deploy
 
 Zero apps can be deployed to [Spacefast](https://spacefast.com) natively.
 
-Anywhere else: the WordPress build is `.zero/wp-content/plugins/*.zip`, which
-you upload or copy like any plugin. The standalone build is `.zero/app/`: serve
-`public/` as the document root, route every request that isn't a file to
-`public/index.php` (as `php -S` does and as a `try_files` or rewrite rule does
-on Nginx or Apache), keep `data/`, `private/` and `public/uploads/` writable,
-and run `php zero/bin/zero.php jobs work` from that directory as a long-lived
-process so jobs and webhook deliveries go out (`zero dev` starts it for you).
-Any PHP 8.2 host with the extensions listed under [Requirements](#requirements)
-runs it.
+Anywhere else: the build is `.zero/wp-content/plugins/*.zip`, which you upload
+or copy like any plugin, and `zero-manifest.json` next to them records the
+versions and the activation order. Jobs run through Action Scheduler, so make
+sure WP-Cron or a real cron reaches the site.
 
 ## Examples
 
@@ -274,7 +257,7 @@ runs it.
 |---|---|
 | [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
 | [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, translations, with a browser page |
-| [`examples/site`](examples/site) | the publication that the system suite drives end to end on both targets |
+| [`examples/site`](examples/site) | the publication that the system suite drives end to end |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
 
 [`docs/examples.md`](docs/examples.md) walks through each one and how to run it.
@@ -293,14 +276,15 @@ runs it.
 ## Status
 
 Zero is new and experimental. The examples build and run end to end on
-WordPress and standalone, and CI proves it on every change, but
-the config API, the wire format and the plugin layout will change before a
-first release. There are no binary releases yet; you build the compiler from
-source.
+WordPress, and CI proves it on every change, but the config API, the wire
+format and the plugin layout will change before a first release. There are no
+binary releases yet; you build the compiler from source.
 
-Two companion projects are being designed and are **not shipped**: Zero
-Blocks (Gutenberg blocks and block themes written in TSX) and Zero Admin (an
-optional admin plugin for Zero apps).
+What's next, none of it shipped: a website with an interactive config builder
+that loads your config into WordPress Playground, one-click publish to
+Spacefast, and two companion projects still being designed, Zero Blocks
+(Gutenberg blocks and block themes written in TSX) and Zero Admin (an optional
+admin plugin for Zero apps).
 
 ## License
 

@@ -5,7 +5,6 @@ WordPress. Everything else is MIT.
 GPL-2.0-or-later (full text in LICENSE-GPL)
 
   runtime/Zero/          the PHP runtime; shipped as the zero-runtime plugin
-                         and inside standalone builds
   runtime/identity/      the zero-identity plugin and its screens
   runtime/wp-plugin/     the zero-runtime and zero-app plugin templates
   runtime/bin/           the runtime's CLI entry point
@@ -22,12 +21,12 @@ MIT (full text in LICENSE-MIT)
 
 How the two meet. The compiler binary embeds the GPL runtime files as opaque
 bytes and writes them out unchanged as separate files; it never links against
-or derives from them, and when `zero dev`, `users`, `tokens` or `jobs` need
-the runtime they run it as a separate PHP process. The runtime is to the
+or derives from them, and when a command needs the runtime it runs it as a
+separate PHP process. The runtime is to the
 compiler what an installer's payload is to the installer: distributed
 together, but separate works. The compiler stays MIT; the files it writes under
-.zero/wp-content/plugins/zero-runtime and zero-identity, and the runtime it
-writes into a standalone build, remain GPL-2.0-or-later. Files the compiler
+.zero/wp-content/plugins/zero-runtime, zero-identity and zero-app-<name>
+remain GPL-2.0-or-later. Files the compiler
 generates from your zero.config.ts (schema.php, functions.php, migrations,
 zero.gen.ts, zero/client/types.ts and schema.ts) are yours. The client's
 index.ts and README.md are copied from runtime/client/ and stay MIT; the

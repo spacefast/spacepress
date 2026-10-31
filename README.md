@@ -167,9 +167,11 @@ console.log(await zero.actions.publishedCount({}));        // { count: 1 }
 ```
 
 Every argument and result is typed from your schema: `with` keys, filters,
-`orderBy`, action inputs and outputs. On WordPress, point `url` at
-`/wp-json/zero/v1` and sign users in with `zero.auth.signIn()`; see the
-client's generated README for sessions, guests and server-to-server auth.
+`orderBy`, action inputs and outputs. The client is built for one target:
+`zero build --target wp` generates one whose `url` is `/wp-json/zero/v1` and
+whose `zero.auth.signIn()` goes through the zero-identity screens, given a
+`clientId` and `redirectUri`. See the client's generated README for sessions,
+guests and server-to-server auth.
 
 ## Requirements
 

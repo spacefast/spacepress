@@ -36,14 +36,14 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["zero-global-settings", "zero_global_settings", "zero-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%'");
-  assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_field_teams", "InnoDB"], ["wp_zero_hookNotes", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_signups", "InnoDB"]]);
+  assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__files", "InnoDB"], ["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_field_teams", "InnoDB"], ["wp_zero_hookNotes", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_signups", "InnoDB"]]);
   assert.deepEqual(sql("SELECT id FROM wp_zero__migrations").map((r) => r.id), ["0001_init"]);
 
   const registry: unknown = JSON.parse(wp("eval", `
     $plugin = \\Zero\\Wp\\Runtime::plugin();
     $description = $plugin->schema->describe();
     echo wp_json_encode([
-      get_option('zero_runtime_tables'),
+      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.2' : get_option('zero_runtime_tables'),
       $description['runtime']['series'],
       $description['runtime']['wp']['actionScheduler'],
       $description['runtime']['wp']['mcpAdapter'],

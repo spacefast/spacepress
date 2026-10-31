@@ -16,16 +16,17 @@ const SCHEMA_TS = `export const SCHEMA = {
   name: "blog", target: "standalone", basePath: "/api",
   collections: {
     posts: { path: "posts", primaryKey: "id", drafts: true, revisions: true,
-      relations: { author: { kind: "one", collection: "authors", optional: true } }, media: ["cover"], mediaList: [] },
-    authors: { path: "authors", primaryKey: "id", drafts: true, revisions: true, relations: {}, media: [], mediaList: [] },
-    shoppingList: { path: "shopping_list", primaryKey: "id", drafts: false, revisions: false, relations: {}, media: [], mediaList: [] },
+      relations: { author: { kind: "one", collection: "authors", optional: true } }, media: ["cover"], mediaList: [], files: ["deck"] },
+    authors: { path: "authors", primaryKey: "id", drafts: true, revisions: true, relations: {}, media: [], mediaList: [], files: [] },
+    shoppingList: { path: "shopping_list", primaryKey: "id", drafts: false, revisions: false, relations: {}, media: [], mediaList: [], files: [] },
   },
   globals: ["settings"],
   actions: ["approveComment", "publishedCount"],
+  buckets: ["decks"],
 } as const;
 `;
 const TYPES_TS = `export interface User { id: number; name: string; role: string }
-export type Media = Record<string, unknown>; export type RevisionSummary = unknown; export type Status = string;
+export type Media = Record<string, unknown>; export type PrivateFile = Record<string, unknown>; export type RevisionSummary = unknown; export type Status = string;
 export type Collections = Record<string, any>; export type Globals = Record<string, any>; export type Actions = Record<string, any>;
 `;
 
@@ -228,6 +229,19 @@ test("media.update is a JSON PATCH of alt/focal", async () => {
   await zero.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
   assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
     ["PATCH", "/api/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
+});
+
+test("files.<bucket> upload/get/delete hit /files/<bucket>", async () => {
+  const row = { id: 4, bucket: "decks", url: "/api/files/decks/4/download?exp=1&sig=ab" };
+  reply = ok(row);
+  const zero = mod.createClient({ url });
+  assert.deepEqual(await zero.files.decks.upload(new Blob([new Uint8Array([37, 80])], { type: "application/pdf" }), { filename: "q3.pdf" }), row);
+  const form = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
+  assert.deepEqual([last().method, last().path, (form.get("file") as File).name], ["POST", "/api/files/decks", "q3.pdf"]);
+  await zero.files.decks.get(4);
+  assert.deepEqual([last().method, last().path], ["GET", "/api/files/decks/4"]);
+  await zero.files.decks.delete(4);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/api/files/decks/4"]);
 });
 
 test("default base URL is the build's prefix", async () => {

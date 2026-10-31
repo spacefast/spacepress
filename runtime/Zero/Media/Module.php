@@ -24,8 +24,10 @@ final class Module
     {
         Extensions::route('media', self::dispatch(...));
         SystemTables::register(SqliteMedia::TABLE, [SqliteMedia::upgrade(...)], []);
+        Files::register();
         if (defined('ABSPATH') && function_exists('add_action')) {
             \Zero\Wp\WpMedia::boot();
+            \Zero\Wp\WpFiles::boot();
         }
     }
 

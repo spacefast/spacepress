@@ -51,6 +51,17 @@ final class SqliteMedia implements Media
         $this->schema = new Schema(['collections' => [self::TABLE => ['primaryKey' => 'id', 'columns' => self::COLUMNS, 'relations' => []]]]);
     }
 
+    /** The app root (`<root>/public` holds the uploads); private files live beside it in `<root>/private`. */
+    public function appRoot(): string
+    {
+        return dirname($this->publicDir);
+    }
+
+    public function store(): SqliteStore
+    {
+        return $this->store;
+    }
+
     /** SystemTables upgrade for stores created before phase 2: add `sizes` and `focal`. */
     public static function upgrade(SqliteStore $store): void
     {

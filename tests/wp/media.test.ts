@@ -3,7 +3,7 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
-import { api, harness, http, ok, wp } from "./env.ts";
+import { api, auth, harness, http, ok, problem, sql, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
 function splitPng(): Uint8Array {
@@ -252,4 +252,219 @@ test("a size the original now fits drops its old rendition (metadata and file)",
 test("without Jetpack the Image CDN adapter is inert", async () => {
   const schema = await ok("GET", "/_schema");
   assert.equal(schema.runtime.wp.imageCdn, false);
+});
+
+// ================================================================ private files (G2)
+// Rule edges (accept, maxBytes, owner, expiry math, `with` gating) are held by tests/php/files_test.php;
+// these prove what only WordPress decides: REST streaming, Apache, the probe, editor saves, rollback.
+
+/** A minimal valid PDF (finfo sniffs application/pdf). */
+const pdf = (text: string) => new TextEncoder().encode(`%PDF-1.4\n1 0 obj<<>>endobj\n% ${text}\ntrailer<<>>\n%%EOF\n`);
+
+async function uploadDeck(bytes: Uint8Array, as: "author" | "editor" = "author", name = "Q3 plan.pdf") {
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: "application/pdf" }), name);
+  return http("POST", `${api}/files/decks`, { as, form });
+}
+
+/** Upload a deck as the author; returns the row. */
+async function deck(text: string) {
+  const r = await uploadDeck(pdf(text));
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  return r.json.data;
+}
+
+/**
+ * The harness publishes WordPress on a host port the container can't reach, so the probe is routed
+ * to the web server's in-network name with `zero_private_probe_url`, the filter hosts use for the
+ * same reason. Probing then exercises the real Apache `.htaccess` decision.
+ */
+function probe(): string {
+  muPlugin("zero-test-probe-route", "<?php\nadd_filter('zero_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n");
+  return wp("eval", "echo \\Zero\\Wp\\WpFiles::probe() ? 'protected' : 'exposed';");
+}
+
+/** The stored file names in the decks bucket. */
+const stored = (): string[] => JSON.parse(wp("eval", "echo wp_json_encode(array_map('basename', glob(\\Zero\\Wp\\WpFiles::root() . '/blog/decks/*')));"));
+
+test("activation writes the deny rules and reports a passing probe", async () => {
+  // Route the probe, remove the rules and the verdict, then reactivate the app plugin for real.
+  probe();
+  wp("eval", "unlink(\\Zero\\Wp\\WpFiles::root() . '/.htaccess'); delete_option('zero_runtime_private_ok'); delete_option('zero_runtime_private_checked');");
+  wp("plugin", "deactivate", harness.plugin);
+  wp("plugin", "activate", harness.plugin);
+  assert.equal(wp("option", "get", "zero_runtime_private_ok"), "1");
+  assert.match(wp("eval", "echo file_get_contents(\\Zero\\Wp\\WpFiles::root() . '/.htaccess');"), /Require all denied/);
+  assert.equal(wp("option", "get", "zero_runtime_secret").length, 64);
+  assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, true);
+});
+
+test("a site already on runtime tables 0.2 gains the files table and working protection on its next admin_init", async () => {
+  // What a site that ran the runtime before private files existed looks like: no table, no private
+  // directory, no secret, no probe verdict, and no reactivation.
+  probe(); // routes the probe to the in-network host (harness only)
+  sql("DROP TABLE wp_zero__files");
+  wp("eval", `
+    array_map('unlink', glob(\\Zero\\Wp\\WpFiles::root() . '/{,.}*', GLOB_BRACE) ?: []);
+    foreach (['zero_runtime_private_ok', 'zero_runtime_private_checked', 'zero_runtime_secret'] as $o) delete_option($o);
+  `);
+  wp("option", "update", "zero_runtime_tables", "0.2");
+  wp("eval", "do_action('admin_init');");
+  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_zero\\_\\_files'").length, 1, "the table exists again");
+  assert.equal(wp("option", "get", "zero_runtime_tables"), wp("eval", "echo \\Zero\\Wp\\Runtime::tablesVersion();"));
+  assert.equal(wp("option", "get", "zero_runtime_private_ok"), "1", "the deny rules were written and probed");
+  assert.equal((await uploadDeck(pdf("after upgrade"))).status, 201, "uploads work without reactivating anything");
+});
+
+test("a files table from before rows carried their app gains the column on upgrade", () => {
+  sql("ALTER TABLE wp_zero__files DROP KEY app, DROP COLUMN app");
+  wp("option", "update", "zero_runtime_tables", "0.2");
+  wp("eval", "do_action('admin_init');");
+  assert.equal(sql("SHOW COLUMNS FROM wp_zero__files LIKE 'app'").length, 1);
+});
+
+test("file rows belong to their app: another app's ids don't resolve", async () => {
+  probe();
+  const row = await deck("mine");
+  // Re-label the row as another app's (what a replaced or second app leaves behind).
+  sql(`UPDATE wp_zero__files SET app = 'other' WHERE id = ${row.id}`);
+  try {
+    await problem("GET", `/files/decks/${row.id}`, { as: "author" }, { status: 404, code: "not_found", pointer: undefined });
+    assert.equal((await fetch(row.url)).status, 404);
+    await problem("POST", "/talks", { as: "author", body: { title: "Foreign", deck: row.id } }, { status: 422, code: "invalid_input", pointer: "/deck" });
+  } finally {
+    sql(`UPDATE wp_zero__files SET app = 'blog' WHERE id = ${row.id}`);
+  }
+  assert.equal((await ok("GET", `/files/decks/${row.id}`, { as: "author" })).id, row.id);
+});
+
+test("a signed URL streams the file through the REST route with the security headers", async () => {
+  probe();
+  const row = await deck("slide one");
+  assert.deepEqual([row.bucket, row.mime, row.filename, row.ownerId, "path" in row], ["decks", "application/pdf", "Q3 plan.pdf", harness.users.author.id, false]);
+  assert.ok(row.url.startsWith(`${api}/files/decks/${row.id}/download?`), row.url);
+  const res = await fetch(row.url);
+  assert.equal(res.status, 200);
+  assert.deepEqual(new Uint8Array(await res.arrayBuffer()), pdf("slide one"));
+  assert.deepEqual(
+    ["content-type", "x-content-type-options", "content-security-policy", "cache-control", "content-disposition"].map((h) => res.headers.get(h)),
+    ["application/pdf", "nosniff", "sandbox", "private, no-store", `attachment; filename="Q3 plan.pdf"; filename*=UTF-8''Q3%20plan.pdf`],
+  );
+});
+
+test("a forged or expired signature gets 403 from WordPress", async () => {
+  probe();
+  const row = await deck("signed");
+  const forged = new URL(row.url);
+  forged.searchParams.set("sig", "0".repeat(64));
+  assert.equal((await fetch(forged)).status, 403);
+  // Correctly signed with the site secret, but already expired.
+  const expired = wp("eval", `
+    $exp = time() - 1;
+    echo 'exp=' . $exp . '&sig=' . hash_hmac('sha256', "decks/${row.id}/$exp", get_option('zero_runtime_secret'));
+  `);
+  assert.equal((await fetch(`${api}/files/decks/${row.id}/download?${expired}`)).status, 403);
+});
+
+test("the owner rule holds over REST", async () => {
+  probe();
+  const row = await deck("mine");
+  await problem("GET", `/files/decks/${row.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: undefined });
+  await problem("DELETE", `/files/decks/${row.id}`, { as: "admin" }, { status: 403, code: "forbidden", pointer: undefined });
+  assert.equal((await fetch((await ok("GET", `/files/decks/${row.id}`, { as: "author" })).url)).status, 200, "the owner gets a fresh working url");
+});
+
+test("Apache denies the direct /wp-content/uploads/zero-private/ URL", async () => {
+  probe();
+  const before = stored();
+  await deck("direct");
+  const [file] = stored().filter((f) => !before.includes(f));
+  assert.ok(file);
+  assert.equal((await fetch(`${harness.url}/wp-content/uploads/zero-private/blog/decks/${file}`)).status, 403);
+});
+
+test("file({ bucket }) columns: checked on API and editor writes, populated for the owner only, nulled on delete", async () => {
+  probe();
+  const row = await deck("talk");
+  await problem("POST", "/talks", { as: "author", body: { title: "Bad", deck: 999999 } }, { status: 422, code: "invalid_input", pointer: "/deck" });
+  // Core REST saves with the SCF field go through the same check.
+  const editor = await fetch(`${harness.url}/wp-json/wp/v2/zero_talks`, {
+    method: "POST",
+    headers: { ...auth("author"), "content-type": "application/json" },
+    body: JSON.stringify({ title: "Editor", status: "publish", acf: { zero_deck: 999999 } }),
+  });
+  assert.equal(editor.status, 400, await editor.text());
+  // … including a file id nested in a group, rejected before core persists anything.
+  const nested = await fetch(`${harness.url}/wp-json/wp/v2/zero_talks`, {
+    method: "POST",
+    headers: { ...auth("author"), "content-type": "application/json" },
+    body: JSON.stringify({ title: "Nested editor", status: "publish", acf: { zero_extras: { handout: 999999 } } }),
+  });
+  assert.equal(nested.status, 400, await nested.text());
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_title = 'Nested editor'")[0].n, "0");
+
+  const talk = await ok("POST", "/talks", { as: "author", body: { title: "Q3", deck: row.id } });
+  const own = await ok("GET", `/talks/${talk.id}?with=deck`, { as: "author" });
+  assert.equal((await fetch(own.deck.url)).status, 200);
+  assert.equal((await ok("GET", `/talks/${talk.id}?with=deck`, { as: "editor" })).deck, row.id, "a reader the owner rule refuses keeps the id");
+  await ok("DELETE", `/files/decks/${row.id}`, { as: "author" });
+  assert.equal((await ok("GET", `/talks/${talk.id}`)).deck, null, "the referencing post meta is nulled");
+  assert.equal((await fetch(row.url)).status, 404);
+});
+
+test("rollback: a failed upload leaves no bytes, a failed delete keeps the row, the reference and the bytes", async () => {
+  probe();
+  const row = await deck("keep");
+  const talk = await ok("POST", "/talks", { as: "author", body: { title: "Kept", deck: row.id } });
+  const before = stored();
+  // Run inside the web server (it owns the private directory): upload, then delete, each rolled back.
+  muPlugin("zero-test-rollback", `<?php
+add_action('rest_api_init', fn () => register_rest_route('zero-test/v1', '/rollback/(?P<id>\\\\d+)', ['methods' => 'POST', 'permission_callback' => '__return_true',
+  'callback' => function ($r) {
+    $db = \\Zero\\Wp\\Runtime::plugin()->db();
+    $out = [];
+    $tmp = tempnam(get_temp_dir(), 'zr');
+    file_put_contents($tmp, "%PDF-1.4\\n%%EOF\\n");
+    foreach (['upload' => fn () => \\Zero\\Media\\Files::upload('decks', $tmp, 'r.pdf', null), 'delete' => fn () => \\Zero\\Media\\Files::delete('decks', (int) $r['id'], null)] as $name => $op) {
+      try { $db->transaction(function () use ($op) { $op(); throw new RuntimeException('roll back'); }); } catch (RuntimeException $e) { $out[$name] = $e->getMessage(); }
+    }
+    return $out;
+  }]));
+`);
+  const res = await fetch(`${harness.url}/wp-json/zero-test/v1/rollback/${row.id}`, { method: "POST" });
+  const text = await res.text();
+  assert.equal(res.status, 200, text.slice(0, 2000));
+  assert.deepEqual(JSON.parse(text), { upload: "roll back", delete: "roll back" }, "both operations ran and rolled back");
+  assert.deepEqual(stored(), before);
+  assert.equal((await ok("GET", `/talks/${talk.id}`)).deck, row.id);
+  assert.equal((await fetch(row.url)).status, 200);
+});
+
+test("a probe that cannot write its file is a failed probe, not a pass", async () => {
+  assert.equal(probe(), "protected");
+  wp("eval", "chmod(\\Zero\\Wp\\WpFiles::root(), 0555);");
+  try {
+    assert.equal(probe(), "exposed");
+    assert.equal((await uploadDeck(pdf("unproven"))).status, 503);
+  } finally {
+    wp("eval", "chmod(\\Zero\\Wp\\WpFiles::root(), 0755);");
+  }
+  assert.equal(probe(), "protected");
+});
+
+test("without .htaccess the probe fails and uploads answer 503 until protection is back", async () => {
+  assert.equal(probe(), "protected");
+  wp("eval", "unlink(\\Zero\\Wp\\WpFiles::root() . '/.htaccess');");
+  try {
+    assert.equal(probe(), "exposed");
+    const r = await uploadDeck(pdf("leak"));
+    assert.equal(r.status, 503, JSON.stringify(r.json));
+    assert.equal(r.json.code, "files_unavailable");
+    assert.match(r.json.detail, /deny \/wp-content\/uploads\/zero-private\/ in your web server config/);
+    assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, false);
+  } finally {
+    wp("eval", "\\Zero\\Wp\\WpFiles::protect();");
+  }
+  assert.equal(probe(), "protected");
+  assert.equal((await uploadDeck(pdf("ok"))).status, 201);
 });

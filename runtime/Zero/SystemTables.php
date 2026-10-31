@@ -22,6 +22,21 @@ final class SystemTables
         self::$tables[$table] = ['sqlite' => $sqlite, 'mysql' => $mysql];
     }
 
+    /**
+     * Identifies the registered set (table names and their SQL; a guard step counts by position), so
+     * a site that recorded an older set — a new table, a new column step — upgrades on the next check.
+     */
+    public static function fingerprint(): string
+    {
+        $parts = [];
+        foreach (self::$tables as $table => $dialects) {
+            $parts[$table] = array_map(static fn (array $steps) => array_map(static fn ($s) => is_string($s) ? $s : 'step', $steps), $dialects);
+        }
+        ksort($parts);
+
+        return substr(hash('sha256', (string) json_encode($parts)), 0, 16);
+    }
+
     /** Apply outside request transactions: MySQL DDL commits implicitly. */
     public static function apply(Store $store): void
     {

@@ -6,16 +6,18 @@ the suites, and where things live. The [README](README.md) is the front page.
 ## Toolchain
 
 Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
-`gd` and `curl`, Node 22, TypeScript 5.9 (`npm install --global
-typescript@5.9.3`), and Docker for the WordPress suites. `cargo build
---release` produces `target/release/zero`.
+`gd` and `curl`, Node 22.18+, TypeScript 5.9 (`npm install --global
+typescript@5.9.3`), and for the WordPress suites Docker plus `curl`, `rsync`
+and `python3` on the host. `cargo build --release` produces
+`target/release/zero`.
 
 ## How it works
 
 1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
    files it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
-   supported subset (classes, `this`, `==`, `var`, npm imports, ...) fails the
+   supported subset (classes, `this`, `==` other than `== null`, `var`, npm
+   imports, ...) fails the
    build with `file:line:col` and a suggested fix.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and

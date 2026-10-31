@@ -2,6 +2,8 @@
 name = "zero"
 version = "0.2.0"
 edition = "2024"
+# The crate is MIT; the GPL-2.0-or-later PHP runtime under runtime/ is embedded as
+# opaque bytes and emitted unchanged. LICENSE at the root maps every path.
 license = "MIT"
 description = "Compiles zero.config.ts into a PHP backend: migrations, REST, auth, a typed client and WordPress plugins"
 repository = "https://github.com/spacefast/zero"

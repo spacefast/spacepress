@@ -176,7 +176,7 @@ client's generated README for sessions, guests and server-to-server auth.
 | | Minimum |
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
-| WordPress target | WordPress 7.1, PHP 8.2 with `openssl` and `sodium` (for `zero-identity`), MySQL 8.0 or MariaDB 10.11 |
+| WordPress target | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `openssl` and `sodium`, MySQL 8.0 or MariaDB 10.11 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
 | Standalone target | PHP 8.2 with `pdo_sqlite`, `mbstring`, `json` and `gd` |
 
@@ -201,8 +201,10 @@ refuses to boot on a site that misses any of them and names each one;
 - **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
   commits, retry with backoff. Action Scheduler on WordPress, `zero jobs work`
   standalone.
-- **WordPress Abilities and MCP**: every operation of your app is registered as
-  an Ability and exposed on a named MCP server, so agents can use it.
+- **WordPress Abilities and MCP**: your collections' reads and writes, actions,
+  globals and jobs are registered as Abilities and exposed on a named MCP
+  server, so agents can use them. Uploads stay out; `agents: false` opts
+  anything out.
 - **Media**: named image sizes, focal-point crops, and private file buckets with
   signed, PHP-streamed downloads.
 - **Markdown sync**: `zero sync` keeps `content/posts/*.md` and your records in

@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 5, 2026-10-31; four review rounds folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 6, 2026-10-31; five review rounds folded in). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -263,15 +263,31 @@ phase 2 makes the wp-content artifact one build with one manifest, and
   does.
 
 Nothing else in `src/` changes except one `zero doctor` row, delivered in
-PR 6 (§8): with `admin: true` in the manifest, `doctor --site` reports
-`admin` as ✓ when the plugin is active and `/zero-admin/` answers, ✗ with
-"plain permalinks" when the site's permalink structure is empty, and ✗ with
-"WordPress <version> is newer than the tested 7.1.x" when the site's
-WordPress minor is above the floor (§3.3 step 3b). The data comes from
-`GET /_schema`'s existing `runtime.wp` block plus one new boolean
-`runtime.wp.admin`, which the admin plugin contributes through the runtime's
-`Extensions::schemaDescribe` seam (so `src/commands/doctor.rs` reads a field,
-the runtime never learns about the admin, and no other `src/` file changes).
+PR 6 (§8). The admin plugin contributes an object to `GET /_schema` through
+the runtime's `Extensions::schemaDescribe` seam (so the runtime never learns
+about the admin):
+
+```
+runtime.wp.admin = {
+  version: "<plugin version>",
+  permalinks: bool,     // get_option('permalink_structure') !== ''
+  rewrite: bool,        // the /zero-admin/ regex is present in the persisted rewrite_rules option
+}
+```
+
+Absent key = plugin inactive. `src/commands/doctor.rs` reads it and, when
+the manifest lists `zero-admin`, prints one row:
+
+| state | result |
+|---|---|
+| key absent | ✗ "zero-admin is not active" |
+| `permalinks: false` | ✗ "plain permalinks: /zero-admin/ needs a permalink structure" |
+| `rewrite: false` | ✗ "rewrite rule not persisted: deactivate and reactivate zero-admin" |
+| site WordPress minor above the floor | ✗ "WordPress <version> is newer than the tested 7.1.x" (§3.3 step 3b) |
+| all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and `auth_redirect()` fired), anything else is ✗ with the status |
+
+That probe is the only new request `doctor` makes; it reuses the HTTP client
+`doctor.rs` already has for `/_schema`.
 
 ### 2.4 Mount and boot
 
@@ -443,14 +459,21 @@ with the others.
 
 The browser journey (§7) runs **inside `run.sh`**, after the `node --test`
 suites and before tear-down, against the same stack. It is not a separate
-workflow step; the `wp` job only gains the two install lines before invoking
-`run.sh`, and its cache key gains the workspace lockfile:
+workflow step; the `wp` job gains pnpm and the two install lines before
+invoking `run.sh`, and its cache key gains the workspace lockfile. The
+workflow today has no pnpm (identity's screens are prebuilt and committed),
+so both the `admin` job and the `wp` job enable it the same way:
 
 ```
+corepack enable                                              # Node 22 ships Corepack; the version comes from packageManager
 pnpm --dir runtime/admin/apps install --frozen-lockfile     # Playwright is a devDependency of the workspace
 pnpm --dir runtime/admin/apps exec playwright install --with-deps chromium
 tests/wp/run.sh
 ```
+
+`runtime/admin/apps/package.json` carries `"packageManager": "pnpm@<exact>"`
+so Corepack resolves the pinned version with no separate setup action; the
+identity workspace already does the same.
 
 Inside `run.sh`, the step is one command run from the repository root:
 
@@ -466,9 +489,12 @@ root has none. The spec reads the harness receipt by absolute path derived
 from `import.meta.url` (`../../../../tests/wp/.harness.json`), the same data
 `env.ts` reads, so it is independent of the working directory. Nothing under
 `tests/wp/` changes except `run.sh`, and the `node --test` glob there never
-sees the spec. `wp-journey/` is excluded from the `sources` digest and from
-`build/` (it is a test, not a shipped module), and `build.rs` never embeds
-`apps/` anyway. `run.sh` runs the step when the workspace's Playwright binary
+sees the spec. `wp-journey/` is part of the `sources` digest like every other workspace
+file (the digest excludes only `node_modules`, exactly as identity's
+generator and the PHP drift checker do, so the two implementations agree);
+it produces nothing under `build/` because `wp-build` only builds
+`packages/`, `routes/` and `fields/`, and `build.rs` never embeds `apps/`
+anyway. `run.sh` runs the step when the workspace's Playwright binary
 exists and otherwise prints "browser journey skipped: run `pnpm --dir
 runtime/admin/apps install`" and exits non-zero, so a local run without the
 workspace is an explicit failure, never a silent pass;

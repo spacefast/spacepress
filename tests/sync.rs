@@ -92,6 +92,13 @@ const rungs = collection("rungs", {
   nextId: integer().notNull().references((): any => rungs.id),
   headId: integer().references(() => heads.id),
 }, { editor: false, sync: "content/rungs/*.json", access: { read: "anyone" } });
+// Content only admins may read (field access): editors sync these without a body.
+const dossiers = collection("dossiers", {
+  id: id(),
+  title: text().notNull(),
+  slug: slug({ source: "title" }),
+  body: richText().access({ read: "admin" }),
+}, { editor: false, title: "title", content: "body", sync: "content/dossiers/*.md", access: { read: "anyone" } });
 // A required reference to a target the syncing editor may not list (admins only), on a record whose
 // identity is pushed first because of an optional reference to a record not on the site yet.
 const safes = collection("safes", {
@@ -105,7 +112,7 @@ const vaults = collection("vaults", {
   name: text().notNull(),
 }, { editor: false, uid: true, access: { read: "admin" } });
 
-export default defineConfig({ name: "notes", schema: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs } });
+export default defineConfig({ name: "notes", schema: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
 "#;
 
 struct Site {
@@ -194,20 +201,55 @@ fn setup() -> (PathBuf, Site) {
         .unwrap()
         .to_string();
     let app = project.join(".zero/app");
-    let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let child = Command::new("php")
-        .args(["-S", &format!("127.0.0.1:{port}"), "-t"])
-        .arg(app.join("public"))
-        .arg(app.join("public/index.php"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("php -S");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(Instant::now() < deadline, "php -S didn't start");
-        std::thread::yield_now();
-    }
+    // A port picked by binding :0 is free only until it's released; a test running alongside can take it
+    // before php -S does. Start php -S, then make sure this app (by its own site id) is what answers;
+    // otherwise try another port.
+    let site_id = |port: u16| -> Option<String> {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).ok()?;
+        s.write_all(b"GET /api/_schema HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .ok()?;
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).ok()?;
+        let body: serde_json::Value = serde_json::from_str(raw.split_once("\r\n\r\n")?.1).ok()?;
+        body["data"]["site"]["id"].as_str().map(String::from)
+    };
+    let expected = Command::new("php")
+        .args(["-r", "require $argv[1] . '/zero/runtime/bootstrap.php'; $app = \\Zero\\App::boot($argv[1]); echo $app->schema->describe()['site']['id'] ?? '';"])
+        .arg(&app)
+        .output()
+        .expect("php");
+    let expected = String::from_utf8_lossy(&expected.stdout).trim().to_string();
+    let (child, port) = (0..20)
+        .find_map(|_| {
+            let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            let mut child = Command::new("php")
+                .args(["-S", &format!("127.0.0.1:{port}"), "-t"])
+                .arg(app.join("public"))
+                .arg(app.join("public/index.php"))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("php -S");
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if child.try_wait().ok().flatten().is_some() {
+                    return None; // the port was taken: php -S exited
+                }
+                match site_id(port) {
+                    Some(id) if id == expected => return Some((child, port)),
+                    Some(_) => {
+                        let _ = child.kill();
+                        return None; // someone else answers on this port
+                    }
+                    None if Instant::now() < deadline => std::thread::yield_now(),
+                    None => {
+                        let _ = child.kill();
+                        return None;
+                    }
+                }
+            }
+        })
+        .expect("php -S didn't start on any port");
     git(&project, &["init", "-q"]);
     git(
         &project,
@@ -1165,5 +1207,270 @@ fn creating_an_identity_counts_as_progress() {
         (head["id"].clone(), head["id"].clone()),
         "the optional back-references landed too"
     );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
+    let (project, site) = setup();
+    for dir in ["content/teams", "content/players"] {
+        std::fs::create_dir_all(project.join(dir)).unwrap();
+    }
+    let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
+    assert_eq!(s, 201);
+    let owner = owner["data"]["uid"].as_str().unwrap().to_string();
+    // A new team and player that reference each other: the team's identity (leadId null) is created
+    // first. Then, at the interleaving point, the team's file is edited (case 1) or deleted (case 2).
+    for (case, delete) in [("edit", false), ("delete", true)] {
+        let (team, player) = if delete {
+            ("zr_dededededededede0001", "zr_dededededededede0002")
+        } else {
+            ("zr_edededededededed0001", "zr_edededededededed0002")
+        };
+        let team_file = project.join(format!("content/teams/{case}.json"));
+        std::fs::write(
+            &team_file,
+            format!(r#"{{"uid": "{team}", "name": "New", "leadId": "{player}", "ownerId": "{owner}"}}"#),
+        )
+        .unwrap();
+        std::fs::write(
+            project.join(format!("content/players/{case}.json")),
+            format!(r#"{{"uid": "{player}", "name": "P", "teamId": "{team}"}}"#),
+        )
+        .unwrap();
+        let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let path = team_file.clone();
+        let proxy = proxy_acting_on_first(
+            &site,
+            "/api/sync/players",
+            move || {
+                if delete {
+                    std::fs::remove_file(&path).unwrap();
+                } else {
+                    let t = std::fs::read_to_string(&path).unwrap();
+                    std::fs::write(
+                        &path,
+                        t.replace(r#""name": "New""#, r#""name": "Renamed while waiting""#),
+                    )
+                    .unwrap();
+                }
+            },
+            edited.clone(),
+        );
+        let out = zero()
+            .arg("sync")
+            .arg(&project)
+            .args([
+                "--only",
+                "teams,players",
+                "--site",
+                &proxy,
+                "--token",
+                &site.token,
+                "--json",
+                "--no-commit",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            edited.load(std::sync::atomic::Ordering::SeqCst),
+            "{case}: the file changed between passes"
+        );
+        let report = data_or_error(&out);
+        let team_row = site.rows("teams").into_iter().find(|r| r["uid"] == team);
+        let base = std::fs::read_to_string(project.join(".zero/sync-base.json")).unwrap_or_default();
+        if delete {
+            assert!(
+                team_row.is_none(),
+                "{case}: the provisional team identity is trashed, not adopted: {report}"
+            );
+            assert!(
+                !std::fs::read_dir(project.join("content/teams"))
+                    .unwrap()
+                    .any(|e| std::fs::read_to_string(e.unwrap().path()).unwrap().contains(team)),
+                "{case}: no file recreated for it"
+            );
+        } else {
+            let row = team_row.expect("the team exists");
+            assert_eq!(
+                row["name"], "Renamed while waiting",
+                "{case}: the edit reached the site whole: {report}"
+            );
+            assert!(!row["leadId"].is_null(), "{case}: with its reference: {row}");
+        }
+        assert!(
+            !base.contains(r#""leadId": null"#) || !base.contains(team),
+            "{case}: no base holds the provisional identity"
+        );
+        assert!(
+            report["conflicts"].as_array().is_none_or(|c| c.is_empty()),
+            "{case}: no false conflict: {report}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_file_edited_during_the_push_itself_is_not_overwritten() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    // The file clears its slug, which the site derives again from the title, so the push answers
+    // `normalized` and the CLI would rewrite the file with the stored record. An edit lands while that
+    // very push is in flight.
+    let t = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(
+        &file,
+        t.replace("slug: n\n", "slug: null\n")
+            .replace("title: Note", "title: Renamed"),
+    )
+    .unwrap();
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes",
+        move || {
+            let t = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, t.replace("First.", "Typed during the push.")).unwrap();
+        },
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .arg(&project)
+        .args([
+            "--only",
+            "notes",
+            "--site",
+            &proxy,
+            "--token",
+            &site.token,
+            "--json",
+            "--no-commit",
+        ])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    let report = data_or_error(&out);
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("Typed during the push."),
+        "the edit survives: {report}"
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "and the run reports the file it left alone: {report}"
+    );
+    // The push itself landed but the base didn't move, so the next run compares the edited file with
+    // the old base: the body edit goes up, and the slug the site derived is a field both sides changed,
+    // reported as a conflict for the user rather than decided for them. Nothing is lost.
+    let next = sync(&project, &site, &["--only", "notes"]);
+    let report = data_or_error(&next);
+    assert_eq!(report["conflicts"].as_array().map(Vec::len), Some(1), "{report}");
+    assert!(
+        report["conflicts"][0].as_str().unwrap().contains("/fields/slug"),
+        "{report}"
+    );
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("Typed during the push."),
+        "the file still has the edit"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn hidden_content_round_trips_through_conflicts_resolve_and_trash() {
+    let (project, site) = setup();
+    let admin = admin_token(&project);
+    let admin_site = Site {
+        child: Command::new("true").spawn().unwrap(),
+        port: site.port,
+        token: admin,
+        author: String::new(),
+    };
+    let (s, made) = admin_site.call("POST", "/dossiers", Some(serde_json::json!({"title": "Secret", "body": "<!-- wp:paragraph -->\n<p>Admins only.</p>\n<!-- /wp:paragraph -->"})));
+    assert_eq!(s, 201, "{made}");
+    let id = made["data"]["id"].as_i64().unwrap();
+    std::fs::create_dir_all(project.join("content/dossiers")).unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "dossiers"]).status.code(), Some(0));
+    let file = project.join("content/dossiers/secret.md");
+    assert!(
+        std::fs::read_to_string(&file).unwrap().ends_with("---\n"),
+        "the editor's file has no body"
+    );
+    // A same-field conflict, resolved by the editor: the hidden body is untouched.
+    std::fs::write(
+        &file,
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .replace("title: Secret", "title: Local"),
+    )
+    .unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/dossiers/{id}"),
+        Some(serde_json::json!({"title": "Remote"})),
+    );
+    assert_eq!(s, 200);
+    let conflicted = sync(&project, &site, &["--only", "dossiers"]);
+    let uid = made["data"]["uid"].as_str().unwrap().to_string();
+    let conflict_path = project.join(format!(".zero/conflicts/{uid}.md"));
+    assert!(
+        conflict_path.exists(),
+        "{}",
+        String::from_utf8_lossy(&conflicted.stdout)
+    );
+    let conflict = std::fs::read_to_string(&conflict_path).unwrap();
+    let header: String = conflict
+        .lines()
+        .take_while(|l| l.starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let theirs = conflict
+        .split("=======\n")
+        .nth(1)
+        .unwrap()
+        .split(">>>>>>>")
+        .next()
+        .unwrap();
+    std::fs::write(
+        &conflict_path,
+        format!("{header}{}", theirs.replace("title: Remote", "title: Agreed")),
+    )
+    .unwrap();
+    let resolved = sync(&project, &site, &["resolve", &uid]);
+    assert_eq!(
+        resolved.status.code(),
+        Some(0),
+        "{}{}",
+        String::from_utf8_lossy(&resolved.stdout),
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    let row = admin_site.rows("dossiers").into_iter().find(|r| r["id"] == id).unwrap();
+    assert_eq!(
+        (
+            row["title"].as_str(),
+            row["body"].as_str().map(|b| b.contains("Admins only."))
+        ),
+        (Some("Agreed"), Some(true)),
+        "{row}"
+    );
+    // Trashed on the site: the unchanged bodyless file is deleted, not conflicted.
+    let (s, _) = admin_site.call("DELETE", &format!("/dossiers/{id}"), None);
+    assert_eq!(s, 200);
+    let out = sync(&project, &site, &["--only", "dossiers"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(data(&out)["conflicts"].as_array().unwrap().is_empty());
+    assert!(!project.join("content/dossiers/agreed.md").exists());
     let _ = std::fs::remove_dir_all(&project);
 }

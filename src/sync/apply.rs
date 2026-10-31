@@ -101,6 +101,32 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
 struct File {
     path: PathBuf,
     item: Item,
+    /// sha256 of the bytes read: before replacing, moving or deleting the file, it must still hold them.
+    bytes: String,
+}
+
+fn bytes_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The file still holds what this run read (or, with None, there is still no file).
+fn unchanged(path: &Path, read: Option<&str>) -> bool {
+    match (std::fs::read(path), read) {
+        (Ok(now), Some(read)) => bytes_digest(&now) == read,
+        (Err(e), None) => e.kind() == std::io::ErrorKind::NotFound,
+        _ => false,
+    }
+}
+
+/// A record without its body: content the user can't read (field access) arrives that way, and a file
+/// can't carry what it never received, so local records are compared and pushed without one too.
+fn without_body(item: &Item) -> Item {
+    let mut record = item.record.clone();
+    if let Some(r) = record.as_object_mut() {
+        r.shift_remove("body");
+    }
+    Item::new(record)
 }
 
 /// Every record file of a collection by uid; files without a uid get one written in first.
@@ -131,14 +157,20 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
     paths.sort();
     for path in paths {
         let rel = report.rel(&path);
-        let text = match std::fs::read_to_string(&path) {
-            Ok(t) => t,
+        let raw = match std::fs::read(&path) {
+            Ok(b) => b,
             Err(e) => {
                 report.fail(format!("{rel}: {e}"));
                 clean = false;
                 continue;
             }
         };
+        let Ok(text) = String::from_utf8(raw.clone()) else {
+            report.fail(format!("{rel}: not UTF-8 text"));
+            clean = false;
+            continue;
+        };
+        let mut bytes = bytes_digest(&raw);
         let parsed = if c.format == "json" {
             json_record(&text, c.content)
         } else {
@@ -163,6 +195,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
                     continue;
                 }
                 report.written(&path);
+                bytes = bytes_digest(text.as_bytes());
                 uid
             }
             None => {
@@ -189,6 +222,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
             File {
                 path,
                 item: Item::new(record),
+                bytes,
             },
         );
     }
@@ -476,48 +510,60 @@ fn collection(
     }
     for uid in &uids {
         let mut r = remote.shift_remove(uid).unwrap_or(Remote::Gone);
-        // The site sends no body for content this user can't read (field access). The file can't
-        // carry what it never received: compare and push without one, so the stored body is untouched.
-        let hidden_body = matches!(&r, Remote::Live(item) if item.record.get("body").is_none());
+        let base = base_of(uid);
+        // Content this user can't read (field access) has no body on the site, so neither in the base nor
+        // in the comparison: the file's record is compared and pushed without one.
+        let hidden_body = match &r {
+            Remote::Live(item) => item.record.get("body").is_none(),
+            _ => base.as_ref().is_some_and(|b| b.record.get("body").is_none()),
+        };
         let bodiless;
         let file = match files.get(uid) {
             Some(f) if hidden_body && f.item.record.get("body").is_some() => {
-                let mut record = f.item.record.clone();
-                record
-                    .as_object_mut()
-                    .expect("a record is an object")
-                    .shift_remove("body");
                 bodiless = File {
                     path: f.path.clone(),
-                    item: Item::new(record),
+                    item: without_body(&f.item),
+                    bytes: f.bytes.clone(),
                 };
                 Some(&bodiless)
             }
             other => other,
         };
-        let base = base_of(uid);
         let mut retried = false;
         loop {
             // A later pass sends the record the first pass planned (merged, if it was), expecting exactly the
             // state it was planned against (or its identity push created). If the site changed since, the
             // push is stale and the record is planned again against what is there now.
             // ...unless the file changed while it waited: then the edit is planned like any other.
+            let waiting = only.and_then(|o| o.get(uid));
             let forced = (!retried)
-                .then(|| only.and_then(|o| o.get(uid)))
+                .then_some(waiting)
                 .flatten()
                 .filter(|d| d.local == file.map(|f| f.item.digest.clone()))
                 .map(|d| Action::Push {
                     record: d.record.clone(),
                     expect: d.expect.clone(),
                 });
-            let action = forced.unwrap_or_else(|| {
-                plan::plan(
+            let action = forced.unwrap_or_else(|| match waiting {
+                // An identity this run created is provisional: nobody agreed on it. Its file changed, so
+                // plan the file against the site as it was before the identity existed (absent, no base):
+                // an edit is pushed whole over the identity, a deletion trashes it.
+                Some(d) if d.identity && remote_digest(&r) == Some(d.expect.as_str()) => match file {
+                    Some(f) => Action::Push {
+                        record: f.item.record.clone(),
+                        expect: d.expect.clone(),
+                    },
+                    None => Action::TrashRemote {
+                        expect: d.expect.clone(),
+                    },
+                },
+                _ => plan::plan(
                     file.map(|f| &f.item),
                     &r,
                     base.as_ref(),
                     known && clean,
                     merged.get(uid).cloned(),
-                )
+                ),
             });
             match perform(
                 client,
@@ -532,6 +578,7 @@ fn collection(
                 bases,
                 options,
                 report,
+                waiting.is_some_and(|d| d.identity),
             ) {
                 Ok(()) => break,
                 Err(Stale) if !retried => {
@@ -579,6 +626,8 @@ fn perform(
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
+    // The record waits as an identity this run created (a later pass): it stays provisional.
+    only_identity: bool,
 ) -> Result<(), Stale> {
     let name = &c.name;
     let pending = |report: &mut Report, what: &str| report.pending(format!("{name}/{uid}: {what}"));
@@ -588,7 +637,7 @@ fn perform(
             if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record)))
                 && !options.check
             {
-                write_record(c, Some(&f.path), &f.item.record, report);
+                write_record(c, Some(f), &f.item.record, report);
             }
         }
         Action::Skip(why) => report.note(format!("{name}/{uid}: {why}")),
@@ -608,7 +657,7 @@ fn perform(
                 pending(report, "pull from the site");
                 return Ok(());
             }
-            if write_record(c, file.map(|f| f.path.as_path()), &item.record, report) {
+            if write_record(c, file, &item.record, report) {
                 bases.set(site, name, uid, &item.digest, &item.record);
                 report.applied();
             }
@@ -629,7 +678,7 @@ fn perform(
                     // The file already holds the stored record unless the server reshaped it or its slug moved it.
                     let in_place =
                         file.is_some_and(|f| f.item.digest == digest && f.path == c.dir.join(file_name(c, &stored)));
-                    let landed = in_place || write_record(c, file.map(|f| f.path.as_path()), &stored, report);
+                    let landed = in_place || write_record(c, file, &stored, report);
                     if landed {
                         bases.set(site, name, uid, &digest, &stored);
                         report.applied();
@@ -644,10 +693,13 @@ fn perform(
                     // references the site names as missing (identity first), so records that point at each
                     // other can all exist. Its base doesn't move until the whole record lands.
                     let mut expect_next = expect.clone();
+                    // Still provisional from an earlier pass, or created now.
+                    let mut identity = only_identity;
                     if expect == "absent" {
                         // When its own required references aren't there yet either, it is retried after others land.
                         if let Ok(digest) = identity_push(client, name, &record, &p) {
                             expect_next = digest;
+                            identity = true;
                             report.identities += 1;
                         }
                     }
@@ -657,6 +709,7 @@ fn perform(
                         record: record.clone(),
                         expect: expect_next,
                         local: file.map(|f| f.item.digest.clone()),
+                        identity,
                     });
                 }
                 Err(p) => {
@@ -687,7 +740,15 @@ fn perform(
                 pending(report, "delete the file (trashed on the site)");
                 return Ok(());
             }
-            let path = &file.expect("a file to delete").path;
+            let f = file.expect("a file to delete");
+            let path = &f.path;
+            if !unchanged(path, Some(&f.bytes)) {
+                report.fail(format!(
+                    "{}: changed while zero sync ran; left as it is, run zero sync again",
+                    report.rel(path)
+                ));
+                return Ok(());
+            }
             match std::fs::remove_file(path) {
                 Ok(()) => {
                     report.written(path);
@@ -731,6 +792,13 @@ fn perform(
     Ok(())
 }
 
+fn remote_digest(r: &Remote) -> Option<&str> {
+    match r {
+        Remote::Live(item) => Some(item.digest.as_str()),
+        _ => None,
+    }
+}
+
 /// Create a record's identity: the record with the references the site reports as missing set to null,
 /// one at a time as the site names them (its `sync_missing_reference` pointer, `/fields/<column>`), so
 /// every reference that resolves is kept. The digest of what was created, for the full push to expect.
@@ -764,10 +832,25 @@ fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -
 }
 
 /// Write a record's file where it belongs, moving it when its slug changed. True when it landed.
-fn write_record(c: &Collection, current: Option<&Path>, record: &Value, report: &mut Report) -> bool {
+fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: &mut Report) -> bool {
     let empty = Map::new();
     let uid = record["uid"].as_str().unwrap_or_default();
     let target = c.dir.join(file_name(c, record));
+    // Someone may have edited or removed the file since it was read: never write over that. The edit
+    // stays, the base doesn't move, and the next run plans it.
+    let changed = match current {
+        Some(f) => !unchanged(&f.path, Some(&f.bytes)),
+        None => !unchanged(&target, None),
+    };
+    if changed {
+        let shown = current.map_or(target.clone(), |f| f.path.clone());
+        report.fail(format!(
+            "{}: changed while zero sync ran; left as it is, run zero sync again",
+            report.rel(&shown)
+        ));
+        return false;
+    }
+    let current = current.map(|f| f.path.as_path());
     let text = render(
         c,
         uid,
@@ -823,7 +906,19 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         if in_files.is_none() && on_site.is_none() && bases.get(&site, &c.name, uid).is_none() {
             continue;
         }
-        let local_now = in_files.map_or("absent".to_string(), |f| f.item.digest.clone());
+        // The same projection the run that wrote the conflict used: no body where the site has none.
+        let base = bases.get(&site, &c.name, uid).map(|b| b["record"].clone());
+        let hidden_body = match on_site {
+            Some(Remote::Live(i)) => i.record.get("body").is_none(),
+            _ => base.as_ref().is_some_and(|b| b.get("body").is_none()),
+        };
+        let local_now = in_files.map_or("absent".to_string(), |f| {
+            if hidden_body {
+                without_body(&f.item).digest
+            } else {
+                f.item.digest.clone()
+            }
+        });
         let remote_now = match on_site {
             Some(Remote::Live(i)) => i.digest.clone(),
             _ => "absent".into(),
@@ -838,7 +933,13 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         if front.shift_remove("uid").as_ref().and_then(Value::as_str) != Some(uid) {
             return Err("the resolved record must keep its uid".into());
         }
-        let record = json!({"uid": uid, "fields": front, "body": body});
+        let mut record = json!({"uid": uid, "fields": front, "body": body});
+        if hidden_body {
+            record
+                .as_object_mut()
+                .expect("a record is an object")
+                .shift_remove("body");
+        }
         let answer = client
             .post(
                 &format!("/sync/{}", c.name),
@@ -850,7 +951,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
             .filter(|r| r.is_object())
             .cloned()
             .unwrap_or(record);
-        if !write_record(&c, in_files.map(|f| f.path.as_path()), &stored, report) {
+        if !write_record(&c, in_files, &stored, report) {
             return Err("the record was applied on the site but its file could not be written".into());
         }
         bases.set(

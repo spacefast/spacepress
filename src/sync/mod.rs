@@ -27,6 +27,9 @@ pub struct Deferred {
     pub expect: String,
     /// The digest of the file it was planned from (None: no file); a change means plan again.
     pub local: Option<String>,
+    /// The identity-only record this run created for it, if any: provisional, never a base. Its
+    /// digest is `expect` while it lasts.
+    pub identity: bool,
 }
 
 /// What a run did, for the summary, the exit code and the commit.

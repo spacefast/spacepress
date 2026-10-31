@@ -50,8 +50,7 @@ final class WpUserStore implements Store
             $col = (string) $col;
             // Scalar columns, whose SCF form this store reads and writes; structured columns
             // (json, group, repeater, blocks, media lists) stay API-only on user forms.
-            if (in_array($col, ['id', 'email', 'name'], true) || ($def['system'] ?? false) || isset($def['references'])
-                || !in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true)) {
+            if (!self::onProfile($col, $def)) {
                 continue;
             }
             // showIf (§4.3) works as on posts: rules on watched fields live, rules on core user
@@ -105,35 +104,50 @@ final class WpUserStore implements Store
     }
 
     /**
-     * The ladder role as SQL over the serialized `wp_capabilities`, decided exactly as WpAuth::map
-     * decides it from capabilities: each step lists the WordPress roles (core or custom) that grant
-     * its capability, so filters, ordering and access agree with authentication.
+     * The ladder role as SQL over the serialized `wp_capabilities`, decided as WpAuth::map decides
+     * it from WP_User::has_cap: a step's capability is held when the user is granted it directly
+     * (`s:N:"cap";b:1;`), or holds a role that grants it and isn't denied it directly (`b:0;`).
+     * Filters, ordering and access then agree with authentication, overrides included.
      */
     private static function roleExpression(): string
     {
-        $granting = static function (string ...$caps): array {
-            $out = [];
+        $like = static fn (string $needle): string => "{j}.meta_value LIKE '%" . esc_sql(addcslashes($needle, '_%\\')) . "%'";
+        $has = static function (string ...$caps) use ($like): string {
+            $roles = [];
             foreach (wp_roles()->roles as $name => $role) {
                 foreach ($caps as $cap) {
                     if (!empty($role['capabilities'][$cap])) {
-                        $out[] = (string) $name;
+                        $roles[] = (string) $name;
                         break;
                     }
                 }
             }
-            return $out;
-        };
-        $holds = static function (array $roles): string {
-            if ($roles === []) {
-                return '0 = 1';
+            $parts = [];
+            foreach ($caps as $cap) {
+                $parts[] = $like(serialize($cap) . 'b:1;');
+                if ($roles !== []) {
+                    $parts[] = '((' . implode(' OR ', array_map(static fn (string $r) => $like(serialize($r) . 'b:1;'), $roles)) . ') AND NOT ' . $like(serialize($cap) . 'b:0;') . ')';
+                }
             }
-            return '(' . implode(' OR ', array_map(static fn (string $r) => "{j}.meta_value LIKE '%" . esc_sql(serialize($r)) . "%'", $roles)) . ')';
+
+            return '(' . implode(' OR ', $parts) . ')';
         };
 
-        return 'CASE WHEN ' . $holds($granting('manage_options')) . " THEN 'admin'"
-            . ' WHEN ' . $holds($granting('edit_others_posts')) . " THEN 'editor'"
-            . ' WHEN ' . $holds($granting('publish_posts', 'edit_posts')) . " THEN 'author'"
-            . ' WHEN ' . $holds(['zero_guest']) . " THEN 'guest' ELSE 'subscriber' END";
+        return 'CASE WHEN ' . $has('manage_options') . " THEN 'admin'"
+            . ' WHEN ' . $has('edit_others_posts') . " THEN 'editor'"
+            . ' WHEN ' . $has('publish_posts', 'edit_posts') . " THEN 'author'"
+            . ' WHEN ' . $like(serialize('zero_guest') . 'b:1;') . " THEN 'guest' ELSE 'subscriber' END";
+    }
+
+    /**
+     * Whether a member column is an SCF field on profile forms: scalar usermeta columns this store
+     * reads and writes in SCF's form. Core user columns, system columns, references and structured
+     * columns stay API-only there (ConditionalLogic settles rules on them against the saved member).
+     */
+    public static function onProfile(string $col, array $def): bool
+    {
+        return !in_array($col, ['id', 'email', 'name'], true) && !($def['system'] ?? false) && !isset($def['references'])
+            && in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true);
     }
 
     public static function wpRole(string $role): string

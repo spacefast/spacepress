@@ -16,6 +16,9 @@ export const members = collection("members", {
   // Shown only to pro members: a live rule on the plan field, settled on the saved row's name too.
   perk: text().showIf({ plan: "pro" }),
   badge: text().showIf({ name: "Cy Edited" }),
+  // A reference isn't a profile field: a rule on it is settled against the saved member.
+  sponsorId: integer().references(() => guestbook.id),
+  sponsored: text().showIf({ sponsorId: { isNotNull: true } }),
 }, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {

@@ -28,6 +28,9 @@ interface Issuer
     /** End the current session's sign-in. */
     public function signOut(array $user): void;
 
+    /** An auth-collection row was deleted: revoke every credential of that user id. */
+    public function forget(int $userId): void;
+
     /** Consume a virtual `password` input on the auth collection. */
     public function acceptPassword(array &$data, string $password, ?array $existing): void;
 }

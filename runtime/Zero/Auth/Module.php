@@ -72,6 +72,7 @@ final class Module
         Extensions::onRead(self::strip(...));
         Extensions::normalizeWrite(self::password(...));
         Extensions::onWrite(self::guardWrite(...));
+        Extensions::onWritten(self::forgetDeleted(...));
         Extensions::schemaDescribe(self::describe(...));
     }
 
@@ -273,8 +274,8 @@ final class Module
         }
         $password = $data['password'];
         unset($data['password']);
-        if (!is_string($password) || strlen($password) < 12 || strlen($password) > 1024) {
-            throw HttpError::invalidInput('password must be a string of at least 12 characters', '/password');
+        if (!is_string($password) || strlen($password) < 12 || strlen($password) > 1024 || str_contains($password, "\0")) {
+            throw HttpError::invalidInput('password must be a string of at least 12 characters, without NUL', '/password');
         }
         if (self::$issuer !== null) {
             self::$issuer->acceptPassword($data, $password, $existing);
@@ -302,6 +303,14 @@ final class Module
             if (!$admin && !($op === 'update' && $existing !== null && $provided['role'] === $existing['role'])) {
                 throw new HttpError(403, 'forbidden', 'Only admins can change role', '/role');
             }
+        }
+    }
+
+    /** Every deleted member (API, CLI, cascades) loses its credentials in the same transaction. */
+    public static function forgetDeleted(string $op, string $collection, array $row, ?array $previous): void
+    {
+        if ($op === 'delete' && $collection === (db()->schema()->auth()['collection'] ?? null)) {
+            self::$issuer?->forget((int) $row['id']);
         }
     }
 

@@ -523,6 +523,45 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
     pending[7].release(json(200, { data: true }));
     await settle(out);
     assert.equal(b.auth.session()?.accessToken, "za_dave", "Dave stays signed in");
+
+    // Both clients get a 401 for Dave at once: only one refresh token is ever presented.
+    const n = pending.length;
+    const fromA = a.posts.create({ title: "a" });
+    const fromB = b.posts.create({ title: "b" });
+    await until(n + 2);
+    pending[n].release(denied());
+    pending[n + 1].release(denied());
+    await until(n + 3);
+    assert.equal(pending[n + 2].url, "http://x/api/auth/token");
+    pending[n + 2].release(issued("dave2"));             // one client rotates; the other picks it up
+    await until(n + 5);
+    const retries = pending.slice(n + 3, n + 5).map((p) => (p.init.headers as Record<string, string>).authorization);
+    assert.deepEqual(retries, ["Bearer za_dave2", "Bearer za_dave2"], "both retried with the one rotated pair");
+    assert.equal(pending.slice(n).filter((p) => p.url.endsWith("/auth/token")).length, 1, "exactly one refresh for the shared session");
+    pending[n + 3].release(json(201, { data: { id: 1 } }));
+    pending[n + 4].release(json(201, { data: { id: 2 } }));
+    await Promise.all([fromA, fromB]);
+
+    // A guest started while signed out doesn't come back after a later sign-in and sign-out.
+    const daveOut = a.auth.signOut();
+    await until(n + 6);
+    pending[n + 5].release(json(200, { data: true }));
+    await daveOut;
+    const anon = a.posts.create({ title: "anon again" });
+    await until(n + 7);
+    pending[n + 6].release(denied());                    // starts a guest (pending)
+    await until(n + 8);
+    const erin = b.auth.login("erin", "long password e");
+    await until(n + 9);
+    pending[n + 8].release(issued("erin"));
+    await erin;
+    const erinOut = b.auth.signOut();
+    await until(n + 10);
+    pending[n + 9].release(json(200, { data: true }));
+    await erinOut;
+    pending[n + 7].release(issued("late-guest"));        // the old guest answer arrives last
+    await settle(anon);
+    assert.equal(a.auth.session(), null, "signed out stays signed out");
   } finally {
     browser.restore();
   }
@@ -610,7 +649,8 @@ test("WP handleCallback refuses a foreign state, exchanges the code with the ver
     seen = [];
     await zero.auth.signOut({ returnTo: "https://blog.test/" });
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
-    assert.equal(browser.store.has(`zero.auth:${base}`), false);
+    // Signed out, the record keeps only the session generation (no tokens).
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`zero.auth:${base}`) ?? "{}")), ["sid"]);
     const logout = new URL(await browser.navigated);
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],

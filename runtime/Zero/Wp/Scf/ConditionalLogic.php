@@ -147,9 +147,10 @@ final class ConditionalLogic
     /** Columns rendered as SCF fields (Scf::register skips the core post columns; user forms skip the core user columns). */
     private static function editorFields(array $spec): array
     {
-        $core = ($spec['auth'] ?? false)
-            ? [$spec['primaryKey'] ?? null, 'email', 'name']
-            : [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null];
+        if ($spec['auth'] ?? false) {
+            return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => \Zero\Wp\WpUserStore::onProfile((string) $col, $def), ARRAY_FILTER_USE_BOTH));
+        }
+        $core = [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null];
 
         return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => !in_array($col, $core, true) && !($def['system'] ?? false), ARRAY_FILTER_USE_BOTH));
     }

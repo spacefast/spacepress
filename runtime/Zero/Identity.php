@@ -53,7 +53,9 @@ final class Identity implements Auth, Issuer
             if ($current === $source) {
                 return;
             }
-            if ($current !== false) {
+            // An unmarked database predates source tracking: its credentials named __zero_users ids,
+            // so binding them to an auth collection is a change of source too.
+            if ($current !== false || $source !== '__zero_users') {
                 $at = Js::iso(Js::now());
                 $this->store->run('UPDATE "__zero_tokens" SET "revokedAt" = ? WHERE "revokedAt" IS NULL', [$at]);
                 $this->store->run('UPDATE "__zero_sessions" SET "revokedAt" = ? WHERE "revokedAt" IS NULL', [$at]);
@@ -171,8 +173,8 @@ final class Identity implements Auth, Issuer
         if ($row === null || !(int) $row['guest']) {
             throw new HttpError(409, 'not_guest', 'Only a guest account can be upgraded');
         }
-        if (strlen($password) < 12) {
-            throw HttpError::invalidInput('password must be a string of at least 12 characters', '/password');
+        if (strlen($password) < 12 || str_contains($password, "\0")) {
+            throw HttpError::invalidInput('password must be a string of at least 12 characters, without NUL', '/password');
         }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         if ($this->users['collection'] === null) {
@@ -202,6 +204,14 @@ final class Identity implements Auth, Issuer
         } else {
             $this->revokeToken((int) $id);
         }
+    }
+
+    /** A member row is gone: its credentials go with it, so a later row with the same id inherits none. */
+    public function forget(int $userId): void
+    {
+        $at = Js::iso(Js::now());
+        $this->store->run('UPDATE "__zero_tokens" SET "revokedAt" = ? WHERE "userId" = ? AND "revokedAt" IS NULL', [$at, $userId]);
+        $this->sessions->revokeUser($userId);
     }
 
     public function acceptPassword(array &$data, string $password, ?array $existing): void

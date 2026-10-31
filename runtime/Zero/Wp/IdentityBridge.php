@@ -127,6 +127,14 @@ final class IdentityBridge implements Issuer
         (new \Zero\Identity\OAuth(\Zero\Identity\Plugin::$db, \Zero\Identity\Plugin::$accounts))->endFamily($token['family']);
     }
 
+    /** wp_delete_user removes the user; zero-identity's rows for it would otherwise remain live. */
+    public function forget(int $userId): void
+    {
+        if (self::available()) {
+            \Zero\Identity\Plugin::$sessions->revoke($userId);
+        }
+    }
+
     public function acceptPassword(array &$data, string $password, ?array $existing): void
     {
         // WpUserStore sets it with wp_set_password once the row exists; that ends identity sessions

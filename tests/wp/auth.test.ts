@@ -194,6 +194,16 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   assert.deepEqual([asContributor.json.data.role, asContributor.json.data.member.role], ["author", "author"]);
   const byRole = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
   assert.deepEqual(byRole.data.map((r: any) => r.id), [dupe.id], "filters on role decide it as authentication does");
+  // Capabilities granted or denied to the user directly count the same way.
+  wp("user", "set-role", String(dupe.id), "subscriber");
+  wp("user", "add-cap", String(dupe.id), "manage_options");
+  const granted = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id } })));
+  assert.equal(granted.data[0].role, "admin", "a direct grant of manage_options makes an admin");
+  wp("user", "remove-cap", String(dupe.id), "manage_options");
+  wp("user", "set-role", String(dupe.id), "editor");
+  wp("eval", `$u = new WP_User(${dupe.id}); $u->add_cap('edit_others_posts', false);`);
+  const denied = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
+  assert.deepEqual(denied.data.map((r: any) => r.role), ["author"], "an editor denied edit_others_posts is an author, in filters too");
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
@@ -243,11 +253,13 @@ test("member showIf on profile forms: live rules on member fields, core-column r
     "  $p = apply_filters('acf/prepare_field', $f);",
     "  $out[$f['name']] = $p === false ? 'hidden' : ($p['conditional_logic'] ?: 0);",
     "}",
-    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge']]);",
+    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge'], 'sponsored' => $out['zero_sponsored'], 'fields' => array_keys($out)]);",
   ].join("\n")));
   const plain = rendered(id);
   assert.deepEqual(plain.perk, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
   assert.equal(plain.badge, "hidden", "a rule on the core name column is settled against the saved member: not shown");
+  assert.equal(plain.fields.includes("zero_sponsorId"), false, "references aren't profile fields");
+  assert.equal(plain.sponsored, "hidden", "a rule on a non-profile column is settled against the saved member, never watching a missing field");
   wp("user", "update", id, "--display_name=Cy Edited");
   assert.equal(rendered(id).badge, 0, "once the saved name matches, the field shows unconditionally");
 });

@@ -225,6 +225,24 @@ eq('a CLI token from another user table resolves to nobody after the switch', [$
 eq('the switch is recorded once', $reboot->store->run('SELECT "source" FROM "__zero_auth_source"')->fetchColumn(), 'members');
 \Zero\Db::setInstance($clubApp->db);
 \Zero\Auth\Module::use($clubApp->auth);
+// An unmarked database (credentials from before source tracking) is revoked when bound to members.
+$legacyToken = cli2($club, 'token', 'create', 'bo@example.test')[1]['data']['token'];
+$clubApp->store->run('DELETE FROM "__zero_auth_source"');
+$legacy = App::boot($club);
+[$s, , $body] = $legacy->handle('GET', '/me', [], '', ['Authorization' => "Bearer $legacyToken"]);
+eq('credentials of an unmarked database resolve to nobody once members own the ids', json_decode($body, true), ['data' => null]);
+\Zero\Db::setInstance($clubApp->db);
+\Zero\Auth\Module::use($clubApp->auth);
+
+// Deleting a member revokes its credentials, so a new row with the same id inherits none.
+$gone = $call('POST', '/members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'])[1]['data'];
+$goneToken = $call('POST', '/auth/token', ['name' => 'gone@example.test', 'password' => 'gone password 1'])[1]['data']['accessToken'];
+$goneCli = cli2($club, 'token', 'create', 'gone@example.test')[1]['data']['token'];
+$clubApp->db->delete('members', ['id' => $gone['id']]);
+$clubApp->db->insert('members', ['id' => $gone['id'], 'email' => 'reused@example.test', 'name' => 'Reused']);
+eq('a deleted member\'s sign-in token no longer works for the reused id', $call('GET', '/me', null, $goneToken)[0], 401);
+eq('nor its CLI token', $call('GET', '/me', null, $goneCli)[1], ['data' => null]);
+problem('a password with NUL is refused before hashing', fn () => $clubApp->db->insert('members', ['email' => 'nul@example.test', 'name' => 'N', 'password' => "long password\0with nul"], true, new \Zero\Viewer(null, 'standalone')), 422, 'invalid_input', '/password');
 $describe = json_encode($call('GET', '/_schema')[1]);
 check('/_schema never names hidden columns', !str_contains($describe, 'passwordHash') && !str_contains($describe, 'suspendedAt'), $describe);
 [$s, $guest] = $call('POST', '/auth/guest', []);

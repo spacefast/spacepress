@@ -374,6 +374,9 @@ function authError(status: number, code: string, detail: string): ZeroError {
 
 const notSupported = (what: string) => authError(400, "not_supported", `${what} is not available on the ${SCHEMA.target} target`);
 
+/** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
+const refreshes = new Map<string, Promise<boolean>>();
+
 export function createClient(options: ClientOptions = {}): Client {
   const base = (options.url ?? SCHEMA.basePath).replace(/\/+$/, "");
   const target: string = SCHEMA.target;
@@ -381,39 +384,49 @@ export function createClient(options: ClientOptions = {}): Client {
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
-  // Token storage: memory by default, sessionStorage on request.
+  // Token storage: memory by default, sessionStorage on request. The record always exists once
+  // written: signed out, it keeps only a `sid`, so every sign-in and sign-out (including from the
+  // anonymous state) is a distinct generation that late results can be checked against.
   const storageKey = `zero.auth:${base}`;
-  let memory: Held | null = null;
-  function held(): Held | null {
+  let memory: Stored = {};
+  type Stored = Partial<Held> & { sid?: string };
+  function stored(): Stored {
     if (authOpts.storage !== "session") return memory;
     const raw = browser().sessionStorage?.getItem(storageKey);
-    if (!raw) return null;
+    if (!raw) return {};
     try {
       const v: unknown = JSON.parse(raw);
-      return isObject(v) && typeof v.accessToken === "string" && typeof v.refreshToken === "string" ? (v as unknown as Held) : null;
+      return isObject(v) ? (v as Stored) : {};
     } catch {
-      return null;
+      return {};
     }
   }
-  // Who is signed in is the stored session's `sid`, shared by every client on the same storage. A
-  // sign-in, guest, callback or sign-out starts a new one; a refresh keeps it. Every request,
-  // refresh and sign-in remembers the sid it started from and acts only if it is still current:
-  // a 401 that arrives after the identity changed is never retried as the new user, and a late
-  // result never overwrites or clears a newer session.
-  const sidOf = (h: Held | null): string => h?.sid ?? (h ? h.accessToken : "");
-  function switchTo(next: Held | null, from: string): boolean {
-    if (sidOf(held()) !== from) return false;
-    hold(next === null ? null : { ...next, sid: randomString(12) });
-    return true;
-  }
-  function hold(next: Held | null): void {
+  function store(next: Stored): void {
     if (authOpts.storage !== "session") {
       memory = next;
       return;
     }
-    const store = browser().sessionStorage;
-    if (next) store?.setItem(storageKey, JSON.stringify(next));
-    else store?.removeItem(storageKey);
+    browser().sessionStorage?.setItem(storageKey, JSON.stringify(next));
+  }
+  function held(): Held | null {
+    const v = stored();
+    return typeof v.accessToken === "string" && typeof v.refreshToken === "string" ? (v as Held) : null;
+  }
+  // Who is signed in is the stored `sid`, shared by every client on the same storage. A sign-in,
+  // guest, callback or sign-out starts a new one; a refresh keeps it. Every request, refresh and
+  // sign-in remembers the sid it started from and acts only if it is still current: a 401 that
+  // arrives after the identity changed is never retried as the new user, and a late result never
+  // overwrites or clears a newer session.
+  const sidOf = (v: Stored | null): string => v?.sid ?? v?.accessToken ?? "";
+  const currentSid = (): string => sidOf(stored());
+  function switchTo(next: Held | null, from: string): boolean {
+    if (currentSid() !== from) return false;
+    store({ ...(next ?? {}), sid: randomString(12) });
+    return true;
+  }
+  /** Keep the same identity (refresh): replace the tokens, keep the sid. */
+  function hold(next: Held, sid: string): void {
+    store({ ...next, sid });
   }
   const expiresAt = (expiresIn: number) => Date.now() + expiresIn * 1000;
   // Phase-1 login stored a static token; it stays a token that never refreshes.
@@ -438,7 +451,7 @@ export function createClient(options: ClientOptions = {}): Client {
   async function request<T>(method: string, path: string, send: Send = {}, retried = false): Promise<T> {
     const headers: Record<string, string> = {};
     const tokens = send.anonymous ? null : held();
-    const started = sidOf(tokens);
+    const started = currentSid();
     const bearer = tokens?.accessToken ?? (send.anonymous ? undefined : staticToken);
     if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
     if (options.nonce !== undefined) headers["x-wp-nonce"] = options.nonce;
@@ -464,35 +477,42 @@ export function createClient(options: ClientOptions = {}): Client {
       // that sent it: after a sign-in or sign-out in between, the request fails as it was sent.
       if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
         // Refresh and retry only while the session that sent it is still the current one.
-        if (sidOf(held()) === started && (await renew(tokens)) && sidOf(held()) === started) return request<T>(method, path, send, true);
+        if (currentSid() === started && (await renew(tokens)) && currentSid() === started) return request<T>(method, path, send, true);
       } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
         // An anonymous write becomes a guest's: the one it starts, or the one a concurrent first
         // write started from the same anonymous state. Never a user who signed in meanwhile.
-        const guest = held() ? guestSid : await startGuest("").then(() => guestSid, () => "");
-        if (guest !== "" && sidOf(held()) === guest) return request<T>(method, path, send, true);
+        const guest = held() ? guestSid : await startGuest(started).then(() => guestSid, () => "");
+        if (guest !== "" && currentSid() === guest) return request<T>(method, path, send, true);
       }
     }
     throw error;
   }
 
-  // One refresh at a time: refresh tokens rotate, and presenting a used one revokes the whole family.
-  let refreshing: Promise<boolean> | undefined;
+  // One refresh at a time across every client on the same storage: refresh tokens rotate, and
+  // presenting a used one revokes the whole family. sessionStorage belongs to one tab, so clients
+  // sharing it share this module: an in-flight refresh is kept per storage key, not per client.
   /** Refresh the session `sent` belongs to (the caller checked it is still the current one). */
   function renew(sent: Held): Promise<boolean> {
     const current = held();
     if (!current) return Promise.resolve(false);
     if (current.accessToken !== sent.accessToken) return Promise.resolve(true); // already refreshed
-    refreshing ??= refresh(current).finally(() => (refreshing = undefined));
-    return refreshing;
+    const key = authOpts.storage === "session" ? storageKey : null;
+    const shared = key === null ? localRefresh : refreshes.get(key);
+    if (shared) return shared;
+    const started = refresh(current).finally(() => (key === null ? (localRefresh = undefined) : refreshes.delete(key)));
+    if (key === null) localRefresh = started;
+    else refreshes.set(key, started);
+    return started;
   }
+  let localRefresh: Promise<boolean> | undefined;
 
   /** True on a rotated pair. A rejected refresh forgets the tokens; a network failure keeps them for a later try. */
   async function refresh(current: Held): Promise<boolean> {
-    const started = sidOf(current);
+    const started = currentSid();
     // A rotated pair for a session no longer held is dropped, not stored; the sid stays the same.
-    const keep = (next: Held | null): boolean => {
-      if (sidOf(held()) !== started) return false;
-      hold(next === null ? null : { ...next, sid: started });
+    const keep = (next: Held): boolean => {
+      if (currentSid() !== started) return false;
+      hold(next, started);
       return true;
     };
     try {
@@ -511,7 +531,8 @@ export function createClient(options: ClientOptions = {}): Client {
         return keep({ accessToken: out.accessToken, refreshToken: out.refreshToken, expiresAt: expiresAt(out.expiresIn) });
       }
     } catch (e) {
-      if (!(e instanceof ZeroError) || e.status !== 0) keep(null);
+      // A refused refresh signs this session out: a new generation, like any sign-out.
+      if (!(e instanceof ZeroError) || e.status !== 0) switchTo(null, started);
       return false;
     }
   }
@@ -536,7 +557,7 @@ export function createClient(options: ClientOptions = {}): Client {
     guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
       .then((out) => {
         const user = adopt(out, from);
-        guestSid = sidOf(held());
+        guestSid = currentSid();
         return user;
       })
       .finally(() => (guesting = undefined));
@@ -616,7 +637,7 @@ export function createClient(options: ClientOptions = {}): Client {
       const code = params.get("code");
       if (!code) throw authError(400, "invalid_input", "The sign-in response has no code");
       const clientId = authOpts.clientId ?? "";
-      const from = sidOf(held());
+      const from = currentSid();
       const out = await issuerPost<OidcTokens>("/token", {
         grant_type: "authorization_code",
         code,
@@ -637,10 +658,10 @@ export function createClient(options: ClientOptions = {}): Client {
     },
     async login(name: string, password: string) {
       if (wp) throw notSupported("login()");
-      const from = sidOf(held());
+      const from = currentSid();
       return adopt(await request<Issued>("POST", "/auth/token", { json: { grant_type: "password", name, password }, anonymous: true }), from);
     },
-    guest: () => startGuest(sidOf(held())),
+    guest: () => startGuest(currentSid()),
     upgrade: (async (name?: string, password?: string) => {
       if (!wp) {
         if (name === undefined || password === undefined) throw notSupported("upgrade() without a name and password");
@@ -656,6 +677,7 @@ export function createClient(options: ClientOptions = {}): Client {
     async signOut(opts = {}) {
       const current = held();
       if (!current) return;
+      const from = currentSid();
       try {
         if (wp) await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
         else await request("DELETE", "/auth/session");
@@ -663,7 +685,7 @@ export function createClient(options: ClientOptions = {}): Client {
         // A session the server already ended is signed out; anything else is the caller's to see.
         if (!(e instanceof ZeroError && e.status === 401)) throw e;
       } finally {
-        switchTo(null, sidOf(current)); // only the session this sign-out began with
+        switchTo(null, from); // only the session this sign-out began with
       }
       if (wp && opts.returnTo !== undefined && current.idToken !== undefined) {
         const params = new URLSearchParams({ id_token_hint: current.idToken, post_logout_redirect_uri: opts.returnTo });

@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { collection, date, email, id, integer, select, text } from "zero";
+import { blocks, boolean, collection, date, email, group, id, integer, repeater, select, text, timestamp } from "zero";
 
 export const members = collection("members", {
   id: id(),
@@ -19,6 +19,12 @@ export const members = collection("members", {
   // A reference isn't a profile field: a rule on it is settled against the saved member.
   sponsorId: integer().references(() => guestbook.id),
   sponsored: text().showIf({ sponsorId: { isNotNull: true } }),
+  // Structured fields on the profile form (lane K2), written through Zero: a sub-field only admins
+  // may set, a validated sub-field, a showIf on a scalar sibling, a timestamp in a repeater row.
+  address: group({ fields: { city: text().max(40), verified: boolean().notNull().default(false).access({ update: "admin" }) } }),
+  links: repeater({ fields: { label: text().notNull(), at: timestamp() } }).max(3),
+  sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text() } } }).showIf({ plan: "pro" }),
+  notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
 }, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {

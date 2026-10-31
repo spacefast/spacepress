@@ -277,15 +277,119 @@ test("member showIf on profile forms: live rules on member fields, core-column r
     "  $p = apply_filters('acf/prepare_field', $f);",
     "  $out[$f['name']] = $p === false ? 'hidden' : ($p['conditional_logic'] ?: 0);",
     "}",
-    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge'], 'sponsored' => $out['zero_sponsored'], 'fields' => array_keys($out)]);",
+    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge'], 'sponsored' => $out['zero_sponsored'], 'sections' => $out['zero_sections'], 'fields' => array_keys($out)]);",
   ].join("\n")));
   const plain = rendered(id);
   assert.deepEqual(plain.perk, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
+  assert.deepEqual(plain.sections, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a structured member field's showIf is live too");
   assert.equal(plain.badge, "hidden", "a rule on the core name column is settled against the saved member: not shown");
   assert.equal(plain.fields.includes("zero_sponsorId"), false, "references aren't profile fields");
   assert.equal(plain.sponsored, "hidden", "a rule on a non-profile column is settled against the saved member, never watching a missing field");
   wp("user", "update", id, "--display_name=Cy Edited");
   assert.equal(rendered(id).badge, 0, "once the saved name matches, the field shows unconditionally");
+});
+
+/** A wp-admin session for a WordPress login: cookies, as the browser holds them after signing in. */
+async function adminCookie(login: string, password: string): Promise<string> {
+  const res = await fetch(`${site}/wp-login.php`, {
+    method: "POST", redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
+    body: new URLSearchParams({ log: login, pwd: password, testcookie: "1" }),
+  });
+  return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+}
+
+/** Load a profile screen and post it back as the browser would, with these `acf[...]` fields changed. */
+async function saveProfile(cookie: string, screen: string, fields: Record<string, string>) {
+  const html = await (await fetch(`${site}/wp-admin/${screen}`, { headers: { cookie } })).text();
+  const value = (name: string) => html.match(new RegExp(`name=["']${name}["'][^>]*value=["']([^"']*)`))?.[1] ?? "";
+  const userId = value("user_id");
+  const res = await fetch(`${site}/wp-admin/${screen.split("?")[0]}`, {
+    method: "POST", redirect: "manual",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      _wpnonce: value("_wpnonce"), action: "update", user_id: userId, checkuser_id: value("checkuser_id"), from: "profile",
+      email: value("email"), nickname: value("nickname"), display_name: html.match(/<option[^>]*selected=['"]selected['"][^>]*>([^<]*)</)?.[1] ?? "",
+      _acf_nonce: value("_acf_nonce"), _acf_screen: "user", _acf_post_id: `user_${userId}`, ...fields,
+    }),
+  });
+  return { status: res.status, html, text: res.status === 302 ? "" : await res.text() };
+}
+
+test("structured member fields on the profile form: rendered from the member, saved through Zero's rules", async () => {
+  const gu = await member("gu");
+  const login = wp("user", "get", String(gu.id), "--field=user_login");
+  const cookie = await adminCookie(login, gu.password);
+  const field = (...parts: string[]) => `acf${parts.map((p) => `[${p}]`).join("")}`;
+  const k = (s: string) => `field_zero_member_${s}`;
+  // The member's own profile renders group, repeater and blocks; a group holding an admin-only
+  // sub-field isn't rendered for the member, nor for an editor (field access, as on posts).
+  const own = await saveProfile(cookie, "profile.php", {});
+  for (const name of ["zero_address", "zero_links", "zero_sections"]) assert.match(own.html, new RegExp(`data-name="${name}"`), name);
+  assert.doesNotMatch(own.html, /data-name="zero_notes"/, "a group with a sub-field the member can't read isn't rendered");
+  assert.equal(own.status, 302, `an unchanged profile save goes through: ${own.text.slice(0, 300)}`);
+
+  // A save through the form is a Zero update: the values land in Zero's storage form and read back
+  // through the API, timestamps inside the repeater converted from site time (UTC+2 here) to UTC.
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    const saved = await saveProfile(cookie, "profile.php", {
+      [field(k("address"), k("address_city"))]: "Oslo",
+      [field(k("links"), "row-0", k("links_label"))]: "Site",
+      [field(k("links"), "row-0", k("links_at"))]: "2026-07-01 14:30:00",
+      [field(k("sections"), "row-0", "acf_fc_layout")]: "bio",
+      [field(k("sections"), "row-0", k("sections_bio_body"))]: "Hello",
+    });
+    assert.equal(saved.status, 302, saved.text.slice(0, 500));
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  const self = await signIn(gu.email, gu.password);
+  const row = (await call("GET", `/members/${gu.id}`, { token: self.json.access_token })).json.data;
+  assert.deepEqual([row.address, row.links, row.sections], [
+    { city: "Oslo", verified: false },
+    [{ label: "Site", at: "2026-07-01T12:30:00.000Z" }],
+    [{ layout: "bio", body: "Hello" }],
+  ]);
+  assert.equal(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${gu.id} AND meta_key = 'zero_address'`)[0].meta_value).city, "Oslo",
+    "one usermeta row in Zero's storage form, as the API writes it");
+  // The form shows the saved values back.
+  const shown = (await saveProfile(cookie, "profile.php", {})).html;
+  assert.match(shown, /value="Oslo"/);
+
+  // Refusals roll the whole save back (core's user fields too) with Zero's status and message.
+  const before = sql(`SELECT display_name FROM wp_users WHERE ID = ${gu.id}`)[0].display_name;
+  const forged = await saveProfile(cookie, "profile.php", {
+    [field(k("address"), k("address_verified"))]: "1",
+    display_name: "Forged Name",
+  });
+  assert.equal(forged.status, 403, "an admin-only sub-field can't be set from the member's form");
+  assert.match(forged.text, /verified/);
+  const invalid = await saveProfile(cookie, "profile.php", {
+    ...Object.fromEntries([0, 1, 2, 3].map((i) => [field(k("links"), `row-${i}`, k("links_label")), `L${i}`])),
+  });
+  // Zero's validation answers through SCF's own validation page (as on post forms), with Zero's message.
+  assert.notEqual(invalid.status, 302);
+  assert.match(invalid.text, /links must have at most 3 items/, "the repeater's max(3) holds");
+  assert.equal(sql(`SELECT display_name FROM wp_users WHERE ID = ${gu.id}`)[0].display_name, before, "nothing of a refused save is kept");
+  const after = (await call("GET", `/members/${gu.id}`, { token: self.json.access_token })).json.data;
+  assert.deepEqual([after.address, after.links], [row.address, row.links]);
+
+  // The collection's update rule decides the form too: `update: "self"`, so an admin editing this
+  // member is refused as on /zero/v1, while on their own profile the admin may set the admin-only sub-field.
+  const adminCookieJar = await adminCookie("admin", "zero-test-admin");
+  const other = await saveProfile(adminCookieJar, `user-edit.php?user_id=${gu.id}`, { [field(k("address"), k("address_city"))]: "Bergen" });
+  assert.equal(other.status, 403);
+  assert.match(other.text, /update members rows/);
+  assert.equal((await http("PATCH", `${api}/members/${gu.id}`, { as: "admin", body: { address: { city: "Bergen" } } })).status, 404, "the API's answer to the same write");
+  assert.equal(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: gu.id } }))).data[0].address.city, "Oslo");
+  const adminId = harness.users.admin.id;
+  const ownAdmin = await saveProfile(adminCookieJar, "profile.php", {
+    [field(k("address"), k("address_city"))]: "Rome",
+    [field(k("address"), k("address_verified"))]: "1",
+  });
+  assert.equal(ownAdmin.status, 302, ownAdmin.text.replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 400));
+  assert.deepEqual(JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id: adminId } }))).data[0].address, { city: "Rome", verified: true });
 });
 
 test("hidden columns never leave the runtime: list, get, with, write results, abilities", async () => {

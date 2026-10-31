@@ -57,6 +57,7 @@ final class Plugin
         });
         CoreAccess::register();
         EditorSave::register();
+        ProfileForm::register();
         IdentityBridge::hook($this->connection());
         add_action('rest_api_init', fn () => $this->unavailable() === null
             ? Rest::register(fn () => $this->app())

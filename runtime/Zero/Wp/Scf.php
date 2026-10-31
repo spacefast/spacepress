@@ -375,7 +375,7 @@ final class Scf
         }
 
         return match ($type) {
-            'integer', 'media', 'file' => is_numeric($v) && (float) $v == (int) $v ? (int) $v : $v,
+            'integer', 'media', 'file' => is_numeric($v) && (float) $v == (int) $v ? Js::n((int) $v) : $v,
             'real' => is_numeric($v) ? (float) $v : $v,
             'boolean' => match (true) {
                 is_bool($v) => $v,

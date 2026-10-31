@@ -8,6 +8,7 @@
 //! zero dev [dir] --wp [--port <n>]      build the plugin and boot it in docker WordPress
 //! zero users|tokens <args...> [--dir d] the standalone CLI (zero/bin/zero.php user/token ...)
 //! zero jobs <list|run|retry|cancel|work> [--dir d]   the standalone job queue (§6.1)
+//! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)
 //! ```
 
 mod client;
@@ -25,6 +26,7 @@ mod num;
 mod platform;
 mod schema;
 mod schema_php;
+mod sync;
 mod types;
 mod unlanded;
 mod value;
@@ -52,7 +54,7 @@ struct Args {
     json: bool,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>";
+const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -70,6 +72,10 @@ fn parse_args() -> Result<Args, String> {
         token: None,
         json: false,
     };
+    if args.command == "sync" {
+        args.rest = it.collect();
+        return Ok(args);
+    }
     if matches!(args.command.as_str(), "users" | "tokens" | "user" | "token" | "jobs") {
         while let Some(a) = it.next() {
             if a == "--dir" {

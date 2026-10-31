@@ -163,10 +163,14 @@ final class Files
             foreach ($spec['columns'] as $col => $def) {
                 if ($def['type'] === 'file' && ($def['bucket'] ?? null) === $name) {
                     $db->update((string) $c, [$col => null], [$col => $id]);
-                    // A before-update hook may have put the id back; never leave a dangling reference.
-                    if ($db->findFirst((string) $c, ['where' => [$col => $id]]) !== null) {
-                        throw new HttpError(409, 'reference_violation', "Rows in $c still reference file $id", HttpError::seg((string) $col));
-                    }
+                }
+            }
+        }
+        // Only once every column is nulled: a hook on a later update may have put an id back.
+        foreach ($db->schema()->collections() as $c => $spec) {
+            foreach ($spec['columns'] as $col => $def) {
+                if ($def['type'] === 'file' && ($def['bucket'] ?? null) === $name && $db->findFirst((string) $c, ['where' => [$col => $id]]) !== null) {
+                    throw new HttpError(409, 'reference_violation', "Rows in $c still reference file $id", HttpError::seg((string) $col));
                 }
             }
         }
@@ -347,7 +351,7 @@ final class Files
      *
      * @return list<array{int, string, string}> [id, bucket, pointer]
      */
-    private static function refs(array $def, mixed $v, string $ptr): array
+    public static function refs(array $def, mixed $v, string $ptr): array
     {
         if ($v === null) {
             return [];

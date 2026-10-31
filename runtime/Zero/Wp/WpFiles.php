@@ -46,24 +46,40 @@ final class WpFiles implements FileStorage
             }
         });
         // Editor saves (wp-admin and core REST `acf`) bypass the API pipeline: check file ids there too.
-        add_filter('acf/validate_value/type=number', static fn ($valid, $value, $field) => self::validateEditor($valid, $value, $field, false), 30, 3);
-        add_filter('acf/validate_rest_value/type=number', static fn ($valid, $value, $field) => self::validateEditor($valid, $value, $field, true), 30, 3);
+        // Top-level file fields are SCF numbers; nested ones are reached through their top-level
+        // group/repeater/flexible_content field (SCF validates REST values per top-level field).
+        foreach (['number', 'group', 'repeater', 'flexible_content'] as $type) {
+            add_filter("acf/validate_value/type=$type", static fn ($valid, $value, $field) => self::validateEditor($valid, $value, $field, false), 30, 3);
+            add_filter("acf/validate_rest_value/type=$type", static fn ($valid, $value, $field) => self::validateEditor($valid, $value, $field, true), 30, 3);
+        }
     }
 
-    /** A `file({ bucket })` field's value must name a file in its bucket. */
+    /** Every file id in an editor value (top-level or nested) must name a file in its bucket. */
     private static function validateEditor(mixed $valid, mixed $value, mixed $field, bool $rest): mixed
     {
         $def = is_array($field) ? ($field['zero'] ?? null) : null;
-        if (($valid !== true && $valid !== 1) || !is_array($def) || ($def['type'] ?? null) !== 'file' || $value === null || $value === '') {
+        if (($valid !== true && $valid !== 1) || !is_array($def) || empty($field['zero_top']) || $value === null || $value === '') {
+            return $valid;
+        }
+        if (!in_array($def['type'], ['file', 'group', 'repeater', 'blocks'], true)) {
+            return $valid;
+        }
+        try {
+            $refs = Files::refs($def, Scf::fromScf($def, $value, (string) $field['key']), '');
+        } catch (\Throwable) {
+            return $valid; // shape errors are Scf's to report
+        }
+        if ($refs === []) {
             return $valid;
         }
         Runtime::plugin()?->app(); // editor saves run before any Zero request has booted the app
-        $message = Files::missing((int) $value, (string) $def['bucket']);
-        if ($message === null) {
-            return $valid;
+        foreach ($refs as [$id, $bucket]) {
+            if (($message = Files::missing($id, $bucket)) !== null) {
+                return $rest ? new \WP_Error('rest_invalid_param', $message, ['status' => 400]) : $message;
+            }
         }
 
-        return $rest ? new \WP_Error('rest_invalid_param', $message, ['status' => 400]) : $message;
+        return $valid;
     }
 
     /** The runtime secret, created once (activation, or first use). */

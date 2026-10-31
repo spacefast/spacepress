@@ -35,6 +35,7 @@ file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export([
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
             'title' => ['type' => 'text', 'notNull' => true],
             'deck' => ['type' => 'file', 'bucket' => 'decks'],
+            'backup' => ['type' => 'file', 'bucket' => 'decks'],
             'extra' => ['type' => 'group', 'fields' => ['handout' => ['type' => 'file', 'bucket' => 'decks']]],
         ],
         'relations' => [],
@@ -55,10 +56,15 @@ file_put_contents("$root/zero/app/functions.php", <<<'PHP'
     /** A hook that pins the deck: deleting the file must not leave it dangling. */
     function talks__beforeUpdate(array $patch, array $existing): array
     {
-        return $existing['title'] === 'pinned' ? ['deck' => $existing['deck']] + $patch : $patch;
+        // 'pinned' keeps deck on every update; 'restore' puts deck back while backup is being nulled.
+        return match (true) {
+            $existing['title'] === 'pinned' => ['deck' => $existing['deck']] + $patch,
+            $existing['title'] === 'restore' && array_key_exists('backup', $patch) => ['deck' => $existing['backup']] + $patch,
+            default => $patch,
+        };
     }
     PHP);
-file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer, "extra" text);');
+file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer, "backup" integer, "extra" text);');
 
 require "$root/zero/runtime/bootstrap.php";
 $app = App::boot($root);
@@ -190,6 +196,13 @@ $pinned = call('POST', '/talks', 'alice', ['title' => 'pinned', 'deck' => $pinne
 isProblem('a hook that keeps the reference blocks the delete', call('DELETE', "/files/decks/{$pinnedDeck['id']}", 'alice'), 409, 'reference_violation', '/deck');
 eq('… and the file and reference are intact', [call('GET', "/files/decks/{$pinnedDeck['id']}", 'alice')[0], call('GET', "/talks/{$pinned['id']}")[1]['deck']], [200, $pinnedDeck['id']]);
 call('DELETE', "/talks/{$pinned['id']}", 'alice');
+
+// Two columns hold the file; nulling the second puts it back in the first: still refused.
+[, $twice] = $upload('decks', 'twice', 'tw.txt', 'alice');
+$restore = call('POST', '/talks', 'alice', ['title' => 'restore', 'deck' => $twice['id'], 'backup' => $twice['id']])[1];
+isProblem('a hook on a later column cannot restore an already nulled one', call('DELETE', "/files/decks/{$twice['id']}", 'alice'), 409, 'reference_violation', '/deck');
+eq('… and nothing changed', [call('GET', "/files/decks/{$twice['id']}", 'alice')[0], call('GET', "/talks/{$restore['id']}")[1]['deck']], [200, $twice['id']]);
+call('DELETE', "/talks/{$restore['id']}", 'alice');
 
 [$s, $gone] = call('DELETE', "/files/decks/{$deck['id']}", 'alice');
 eq('owner deletes; referencing columns are nulled', [$s, $gone['id'], call('GET', "/talks/{$talk['id']}")[1]['deck']], [200, $deck['id'], null]);

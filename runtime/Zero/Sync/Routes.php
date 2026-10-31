@@ -138,6 +138,9 @@ final class Routes
             }
             Trash::restore($trashed);
             $current = self::current($collection, $uid, $viewer);
+            // Decode again against the restored row, so a body it already holds isn't rewritten (and a
+            // read-only one doesn't refuse the restore).
+            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null);
         } elseif ($current === null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($spec, ['uid' => $uid] + $data), "create $collection rows");
             if ($expect !== 'absent') {

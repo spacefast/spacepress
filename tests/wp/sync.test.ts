@@ -290,6 +290,14 @@ test("sync on WordPress", async (t) => {
       const stored = zero("find", collection, JSON.stringify({ where: { id: made.id } }))[0];
       assert.deepEqual([stored.title, stored.body], [`${label} renamed ${run}`, blocks], `${label}: the body is untouched`);
     }
+    // Restoring a trashed memo as the editor pulled it keeps its read-only body as stored.
+    const memo = zero("insert", "memos", JSON.stringify({ title: `Restore ${run}`, body: blocks }))[0];
+    const seen = (await ok("GET", "/sync/memos" + qs({ after: String(memo.id - 1), first: "1" }), { as: "editor" })).records[0];
+    wp("eval", `wp_trash_post(${memo.id});`);
+    const restored = await ok("POST", "/sync/memos", { as: "editor", body: { record: seen.record, expect: "absent" } });
+    assert.equal(restored.status, "applied");
+    const back = zero("find", "memos", JSON.stringify({ where: { id: memo.id } }))[0];
+    assert.equal(back.body, blocks, "the restored memo's read-only body is untouched");
   });
 
   await t.test("unknown reference uid", async () => {

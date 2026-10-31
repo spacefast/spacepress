@@ -201,10 +201,10 @@ refuses to boot on a site that misses any of them and names each one;
 - **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
   commits, retry with backoff. Action Scheduler on WordPress, `zero jobs work`
   standalone.
-- **WordPress Abilities and MCP**: your collections' reads and writes, actions,
-  globals and jobs are registered as Abilities and exposed on a named MCP
-  server, so agents can use them. Uploads stay out; `agents: false` opts
-  anything out.
+- **WordPress Abilities and MCP**: your collections' reads and writes, actions
+  and globals are registered as Abilities and exposed on a named MCP server,
+  so agents can use them. Jobs join with `agents: true`; `agents: false` opts
+  anything out; uploads stay out.
 - **Media**: named image sizes, focal-point crops, and private file buckets with
   signed, PHP-streamed downloads.
 - **Markdown sync**: `zero sync` keeps `content/posts/*.md` and your records in

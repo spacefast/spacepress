@@ -1255,6 +1255,8 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'afterUpdate de:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
     ]);
     eq('each synced row keeps its own revision', count($db->revisions('pages', $tee['id'])), 2);
+    $firstRevision = array_reverse($db->revisions('pages', $tea['id']))[0]['id'];
+    eq('a revision shows the group as it is now, not as it was', $db->revision('pages', $tea['id'], $firstRevision)['translations'], ['en' => $tea['id'], 'de' => $tee['id'], 'fr' => $the['id']]);
     $notesBefore = count($db->findMany('notes'));
     $revisionsBefore = count($db->revisions('pages', $tea['id']));
     problem('a sibling hook failing mid-sync rolls back the whole group', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 13], ['id' => $tea['id']])), 422, 'rejected');

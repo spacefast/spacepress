@@ -105,6 +105,25 @@ test("a link made outside the API is refused when a hook would split the group",
   assert.deepEqual((await ok("GET", `/guides/${en.id}`, { as: "editor" })).translations, { en: en.id });
 });
 
+test("a refused link of three posts leaves none of them linked or changed", async () => {
+  const en = await ok("POST", "/guides", { as: "editor", body: { title: `Three ${run}`, price: 7 } });
+  const de = await ok("POST", "/guides", { as: "editor", body: { title: `Three DE ${run}`, locale: "de", price: 1 } });
+  const out = JSON.parse(wp("eval", `
+    $fr = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump FR ${run}', 'post_status' => 'publish'], 'fr');
+    try {
+      pll_save_post_translations(['en' => ${en.id}, 'de' => ${de.id}, 'fr' => $fr]);
+      $result = 'linked';
+    } catch (\\Zero\\HttpError $e) {
+      $result = $e->status . ' ' . $e->errorCode;
+    }
+    echo wp_json_encode([$result, $fr]);`));
+  assert.equal(out[0], "409 conflict");
+  assert.deepEqual([polylang(en.id)[1], polylang(de.id)[1], polylang(out[1])[1]], [{ en: en.id }, { de: de.id }, { fr: out[1] }]);
+  const rows = await ok("GET", "/guides" + qs({ locale: "*", where: { id: { in: [en.id, de.id] } }, orderBy: "id" }), { as: "editor" });
+  assert.deepEqual(rows.map((r: any) => [r.price, r.translations]), [[7, { en: en.id }], [1, { de: de.id }]]);
+  assert.deepEqual(await log([de.id]), [], "the rolled-back adoption ran no committed hook effects");
+});
+
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
   const out = JSON.parse(wp("eval", `
     $db = \\Zero\\Wp\\Plugin::instance()->db();

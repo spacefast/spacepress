@@ -229,6 +229,39 @@ final class GroupSync
         }
     }
 
+    /**
+     * Every row of $rows (one intended group, oldest first) takes the oldest row's synced values;
+     * the rows must then agree on every synced column (hooks run per row), or 409 conflict.
+     *
+     * @param non-empty-list<array> $rows
+     */
+    public static function adoptAll(string $collection, array $rows): void
+    {
+        $spec = db()->schema()->collection($collection);
+        $pk = $spec['primaryKey'];
+        $source = $rows[0];
+        $synced = Module::synced($spec);
+        foreach (array_slice($rows, 1) as $row) {
+            $patch = [];
+            foreach ($synced as $col) {
+                if (!Module::same($row[$col], $source[$col])) {
+                    $patch[$col] = $source[$col];
+                }
+            }
+            if ($patch !== []) {
+                self::quietly(self::key($collection, $row, $pk), static fn () => db()->update($collection, $patch, [$pk => $row[$pk]]));
+            }
+        }
+        $now = db()->findMany($collection, ['where' => [$pk => ['in' => array_column($rows, $pk)]], 'locale' => '*']);
+        foreach ($synced as $col) {
+            foreach ($now as $row) {
+                if (!Module::same($row[$col], $now[0][$col])) {
+                    throw new HttpError(409, 'conflict', "A hook changed $col on one translation; synced columns must stay equal across the group", HttpError::seg($col));
+                }
+            }
+        }
+    }
+
     /** Give $row (decoded, `translations` filled) the synced values of its group's oldest row, unless it is that row. */
     public static function adopt(string $collection, array $row): void
     {

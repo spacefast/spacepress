@@ -77,11 +77,15 @@ final class Read
         }
         $order = array_flip(db()->schema()->locales()['all']);
         $pk = db()->schema()->collection($collection)['primaryKey'];
+        $current = Module::polylang($collection) ? null : self::groups($collection, $rows, $pk);
         foreach ($rows as &$row) {
             if (!array_key_exists('locale', $row)) {
                 continue;
             }
-            $members = Module::members($row, $pk);
+            // Current membership for every row, revision snapshots included (§7.3: one query per page).
+            $members = $current === null || ($row['translationGroup'] ?? null) === null
+                ? Module::members($row, $pk)
+                : ($current[$row['translationGroup']] ?? [$row['locale'] => $row[$pk]]);
             uksort($members, static fn ($a, $b) => ($order[$a] ?? PHP_INT_MAX) <=> ($order[$b] ?? PHP_INT_MAX));
             $row['translations'] = $members;
             if ($viewer !== null) {
@@ -91,6 +95,26 @@ final class Read
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * group => [locale => pk] for the groups of $rows, from one query on the store.
+     *
+     * @return array<string, array<string, int|string>>
+     */
+    private static function groups(string $collection, array $rows, string $pk): array
+    {
+        $groups = array_values(array_unique(array_filter(array_column($rows, 'translationGroup'), static fn ($g) => $g !== null)));
+        if ($groups === []) {
+            return [];
+        }
+        $q = \Zero\Sql::select(db()->schema(), db()->store(), $collection, ['where' => ['translationGroup' => ['in' => $groups]]]);
+        $out = [];
+        foreach (db()->store()->select($collection, $q) as $raw) {
+            $out[(string) $raw['translationGroup']][(string) $raw['locale']] = is_numeric($raw[$pk]) ? (int) $raw[$pk] : $raw[$pk];
+        }
+
+        return $out;
     }
 
     private static function pinned(mixed $where, string $pk): int|string|null

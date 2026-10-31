@@ -47,8 +47,8 @@ final class Polylang
         }, 100, 3);
         // A group linked outside Zero's API (wp-admin "+", pll_save_post_translations): adopt synced columns.
         add_action('set_object_terms', static function (int $objectId, mixed $terms, mixed $ttIds, string $taxonomy): void {
-            if ($taxonomy === 'post_translations' && !self::$busy && !self::zeroWriting()) {
-                self::adopt($objectId);
+            if ($taxonomy === 'post_translations' && !self::$busy && !self::zeroWriting() && ($ttIds = (array) $ttIds) !== []) {
+                self::adopt($objectId, (int) reset($ttIds));
             }
         }, 10, 4);
         add_action('activated_plugin', static function (): void {
@@ -246,36 +246,52 @@ final class Polylang
         return $out;
     }
 
-    /** Every member of $postId's group adopts the group's synced values (links arrive one post at a time). */
-    private static function adopt(int $postId): void
+    /** @var array<string, true> group links (term + membership) already adopted in this request */
+    private static array $adopted = [];
+
+    /**
+     * A group linked outside Zero's API. Polylang writes the group's full membership into the group
+     * term, then links its posts one at a time; on the first link, every intended member adopts the
+     * group's synced values in one transaction, checked as a whole. If that fails, every member
+     * already linked is taken back out of the group through Polylang (the link was written before
+     * Zero learned of it) and the error propagates, so Polylang links no further posts.
+     */
+    private static function adopt(int $postId, int $groupTt): void
     {
         $plugin = Runtime::plugin();
         $type = get_post_type($postId);
-        if ($plugin === null || !in_array($type, self::postTypes(), true)) {
+        $term = get_term_by('term_taxonomy_id', $groupTt, 'post_translations');
+        if ($plugin === null || !in_array($type, self::postTypes(), true) || !$term instanceof \WP_Term) {
             return;
         }
+        $intended = array_map('intval', array_values(array_filter((array) maybe_unserialize($term->description), 'is_numeric')));
+        $key = $groupTt . ':' . implode(',', $intended);
+        if (isset(self::$adopted[$key]) || count($intended) < 2) {
+            return;
+        }
+        self::$adopted[$key] = true;
         foreach ($plugin->schema->collections() as $name => $spec) {
             if (($spec['wp']['postType'] ?? null) !== $type) {
                 continue;
             }
             $db = $plugin->db();
+            $pk = $spec['primaryKey'];
             try {
-                $db->transaction(static function () use ($db, $name, $spec, $postId): void {
-                    $row = $db->editorRow((string) $name, $postId);
-                    foreach ($row === null ? [] : \Zero\Locale\Module::members($row, $spec['primaryKey']) as $id) {
-                        $member = $db->editorRow((string) $name, $id);
-                        if ($member !== null) {
-                            GroupSync::adopt((string) $name, $member);
-                        }
+                $db->transaction(static function () use ($db, $name, $pk, $intended): void {
+                    $rows = $db->findMany((string) $name, ['where' => [$pk => ['in' => $intended]], 'locale' => '*']);
+                    if (count($rows) < 2) {
+                        return;
                     }
+                    usort($rows, static fn ($x, $y) => $x[$pk] <=> $y[$pk]);
+                    GroupSync::adoptAll((string) $name, $rows);
                 });
             } catch (\Throwable $e) {
-                // Polylang wrote the link before Zero learned of it, so the rollback can't undo it:
-                // take this post back out of the group through Polylang, then refuse the link.
-                self::busy(static function () use ($postId): void {
-                    PLL()->model->post->delete_translation($postId);
-                });
-                clean_object_term_cache($postId, (string) get_post_type($postId));
+                foreach ($intended as $member) {
+                    if (in_array($groupTt, wp_get_object_terms($member, 'post_translations', ['fields' => 'tt_ids']), true)) {
+                        self::busy(static fn () => PLL()->model->post->delete_translation($member));
+                    }
+                    clean_object_term_cache($member, (string) get_post_type($member));
+                }
                 throw $e;
             }
 

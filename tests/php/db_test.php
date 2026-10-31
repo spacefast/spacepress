@@ -170,7 +170,7 @@ $files = [
                         'tasks' => ['type' => 'repeater', 'fields' => [
                             'label' => ['type' => 'text'],
                             'rate' => ['type' => 'integer', 'access' => ['update' => ['role' => 'editor']]],
-                            'secret' => ['type' => 'text', 'access' => ['read' => ['allow' => false]]],
+                            'secret' => ['type' => 'text', 'access' => ['read' => ['allow' => false], 'update' => ['allow' => true]]],
                         ]],
                         'teamId' => ['type' => 'integer', 'references' => ['collection' => 'teams', 'column' => 'id', 'onDelete' => 'set null']],
                     ],
@@ -423,6 +423,12 @@ putenv('ZERO_AUTO_MIGRATE');
 ini_set('error_log', "$root/error.log"); // 5xx problems are logged by design; keep test output clean
 
 register_shutdown_function(static function () use ($root): void {
+    // A fatal error or an uncaught throwable ends the suite here: say so before the log goes with the
+    // temp dir, and fail the run (a bare exit 255 with no output says nothing).
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
+        fwrite(STDERR, "db_test died: {$error['message']} at {$error['file']}:{$error['line']}\n");
+    }
     stopServer();
     exec('rm -rf ' . escapeshellarg($root));
 });
@@ -932,6 +938,7 @@ eq('a sub-field rule sees the item after its defaults', $as('fa_alice', 'POST', 
 $GLOBALS['stampCalls'] = 0;
 [$s, $stamped] = $as('fa_alice', 'POST', '/profiles', ['name' => 'Stamped', 'stamp' => ['note' => 'x']]);
 eq('a dynamic sub-field default is generated once: the value the rule saw is stored', [$s, $stamped['stamp'] ?? null, $GLOBALS['stampCalls']], [201, ['n' => 1, 'note' => 'x'], 1]);
+$faProblem('a nested hidden field without an update rule cannot be overwritten', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['private' => 'changed']]), 403, 'forbidden', '/notes/private');
 $faProblem('a null group would erase the hidden sub-field', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
 // Repeater items have no identity: protected values must be resent unchanged in place, never moved or dropped.
 $faProblem('an emptied repeater would drop protected values', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => []]), 403, 'forbidden', '/tasks/0');
@@ -1016,10 +1023,16 @@ eq('resending the item as she sees it keeps the stored item whole', [$as('fa_ali
 // hidden value is stored, so a destructive write can't test for presence.
 $db->update('profiles', ['notes' => ['public' => 'x', 'flag' => null]], ['id' => $mine['id']]);
 $faProblem('a null group is refused even when the hidden sub-field is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
-$faProblem('an unchanged group resend can\'t confirm a hidden value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']]), 403, 'forbidden', '/notes/flag');
+$faProblem('an unchanged group resend can\'t confirm a hidden value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']]), 403, 'forbidden', '/notes/private');
 $faProblem('switching a block\'s layout would erase its protected value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'link', 'href' => 'x']]]), 403, 'forbidden', '/blocks/0');
 eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
 $faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
+
+// A column hidden from the viewer can't be overwritten either, whatever is sent: a write is only for
+// those who can see the value (review: field-write-hidden). A declared update rule makes it write-only.
+$faProblem('an author can\'t overwrite a value she can\'t read', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'mine@x.test']), 403, 'forbidden', '/email');
+eq('… and nothing changed', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['email'], 'alice@example.test');
+eq('an editor, who reads it, may', $as('fa_ed', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'alice@example.test'])[0], 200);
 
 // Revisions are read through the same strip.
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
@@ -1027,7 +1040,8 @@ $revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
 eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
 // Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
 // value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
-$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/notes/flag');
+// (email, hidden from her too, is the first column the replay would overwrite)
+$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/email');
 eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
 
 // /_schema reports per-column summaries (no function names).
@@ -1649,6 +1663,51 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     } finally {
         \Zero\Db::setInstance($previous);
     }
+})();
+
+// ================================================================ a second Db keeps its own rules
+
+// Extensions (field access, sync, locales, files…) reach the schema through db(): that must be the
+// Db running the operation, not the booted app's, or a second Db silently loses its field rules.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    eval('namespace ZeroApp; function scoped__rule($ctx) { return \\Zero\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\Zero\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+        'people' => ['primaryKey' => 'id', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
+    ], 'globals' => ['scope' => ['fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']]]]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text)');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'standalone'))), false);
+    eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
+    $viewer = new \Zero\Viewer(['id' => 1, 'role' => 'admin'], 'standalone');
+    eq('direct permission rules query the secondary schema', [$db->permits('people', 'read', 1, $viewer), $db->permittedKeys('people', 'update', $viewer)], [true, null]);
+    $revisions = $db->revisions('people', 1, $viewer);
+    eq('revision authorization queries the secondary schema', count($revisions), 1);
+    eq('revision restore authorization keeps the secondary schema', $db->restoreRevision('people', 1, $revisions[0]['id'], $viewer)['name'], 'p');
+    \Zero\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+        if ($collection === 'people' && !\Zero\db()->schema()->hasCollection('people')) {
+            throw new \RuntimeException('wrong query Db');
+        }
+    });
+    eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
+    eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
+    eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');
+    $shared = new \Zero\Db($store, new \Zero\Schema(['collections' => []]), $db->media());
+    $committed = [];
+    $shared->transaction(function () use ($db, &$committed): void {
+        $db->transaction(function () use ($db, &$committed): void {
+            \Zero\Extensions::afterCommit(function () use (&$committed): void {
+                $committed[] = \Zero\db()->schema()->hasCollection('people');
+            });
+        });
+        eq('a secondary Db callback waits for the shared outer commit', $committed, []);
+    });
+    eq('deferred callbacks retain the registering Db', $committed, [true]);
+    eq('the booted app\'s db() is back afterwards', \Zero\db()->schema()->hasCollection('profiles'), true);
 })();
 
 finish('db_test');

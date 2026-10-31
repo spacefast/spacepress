@@ -3,7 +3,7 @@
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { core, harness, http, ok, run, wp, zero } from "./env.ts";
+import { api, core, harness, http, ok, run, wp, zero } from "./env.ts";
 
 let vaultId: number;
 let mine: number;
@@ -63,6 +63,112 @@ test("writes need Zero's create/update rules, not role capabilities", async () =
   assert.equal((await http("POST", `${core}/zero_ledger/${theirs}`, { as: "author", body: { title: "stolen" } })).status, 403);
   assert.equal((await http("POST", `${core}/zero_ledger`, { as: "subscriber", body: { title: "s", status: "publish" } })).status, 403);
   assert.equal((await ok("GET", `/ledger/${mine}`, { as: "editor" })).title, `Mine ${run} edited`);
+});
+
+test("hidden fields need an explicit update rule, including nested fields", async () => {
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Guarded ${run}`, salary: "secret", managerId: mine, notes: { open: "visible", sealed: "secret" }, entries: [{ open: "visible", sealed: "secret" }], policy: { gate: "locked", value: "old" }, writeOnly: "old" }))[0].id;
+  const top = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { managerId: theirs } });
+  assert.deepEqual([top.status, top.json.pointer], [403, "/managerId"]);
+  const nested = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { notes: { sealed: "changed" } } });
+  assert.deepEqual([nested.status, nested.json.pointer], [403, "/notes/sealed"]);
+  const cleared = await http("PATCH", `${api}/payroll/${id}`, { as: "editor", body: { entries: [] } });
+  assert.deepEqual([cleared.status, cleared.json.pointer], [403, "/entries/0"]);
+  const emptyId = zero("insert", "payroll", JSON.stringify({ title: `Empty ${run}` }))[0].id;
+  const newNested = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { notes: { sealed: "changed" } } });
+  assert.deepEqual([newNested.status, newNested.json.pointer], [403, "/notes/sealed"]);
+  const newItem = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { entries: [{ sealed: "changed" }] } });
+  assert.deepEqual([newItem.status, newItem.json.pointer], [403, "/entries/0/sealed"]);
+  const newLayout = await http("PATCH", `${api}/payroll/${emptyId}`, { as: "editor", body: { sections: [{ layout: "private", sealed: "changed" }] } });
+  assert.deepEqual([newLayout.status, newLayout.json.pointer], [403, "/sections/0/sealed"]);
+  const coreNested = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "changed" } } } });
+  assert.deepEqual([coreNested.status, coreNested.json.data.pointer], [403, "/notes/sealed"]);
+  const visible = await ok("PATCH", `/payroll/${id}`, { as: "editor", body: { notes: { open: "edited" }, writeOnly: "new" } });
+  assert.deepEqual(visible.notes, { open: "edited" });
+  assert.equal("writeOnly" in visible, false);
+  const policy = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_policy: { value: "new" } } } });
+  assert.deepEqual([policy.status, policy.json.data.pointer], [403, "/policy/value"], "the rule sees the saved sibling, even when it was omitted from the input");
+  zero("update", "payroll", JSON.stringify({ id: emptyId }), JSON.stringify({ notes: { open: "visible", sealed: null } }));
+  const clearNull = await http("POST", `${core}/zero_payroll/${emptyId}`, { as: "editor", body: { acf: { zero_notes: null } } });
+  const clearSecret = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: null } } });
+  assert.deepEqual([clearNull.status, clearNull.json.data.pointer, clearSecret.status, clearSecret.json.data.pointer], [403, "/notes", 403, "/notes"]);
+  const coreVisible = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { open: "edited in core" } } } });
+  assert.equal(coreVisible.status, 200, JSON.stringify(coreVisible.json));
+  const stored = await ok("GET", `/payroll/${id}`, { as: "admin" });
+  assert.deepEqual([stored.managerId, stored.notes, stored.writeOnly], [mine, { open: "edited in core", sealed: "secret" }, "new"]);
+
+  // A second Db shares WordPress storage but owns different field policy. Both its read and write
+  // must use that schema, then restore the booted app's Db even when the operation throws.
+  const scoped = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    \\Zero\\Db::setInstance($app);
+    $spec = $app->schema()->collection('payroll');
+    $spec['columns']['title']['access']['read'] = ['allow' => false];
+    eval('namespace ZeroApp; function secondary_scope_rule($ctx) { return \\\\Zero\\\\db()->schema()->hasCollection("scope_marker"); } function secondary_scope_default() { return \\\\Zero\\\\db()->schema()->hasCollection("scope_marker") ? "secondary" : "booted"; }');
+    $spec['access']['read'] = $spec['access']['update'] = ['fn' => 'secondary_scope_rule'];
+    $settings = $app->schema()->global('settings');
+    $settings['access'] = ['read' => ['fn' => 'secondary_scope_rule'], 'update' => ['fn' => 'secondary_scope_rule']];
+    $schema = new \\Zero\\Schema(['collections' => ['payroll' => $spec, 'scope_marker' => $spec], 'globals' => [
+      'settings' => $settings,
+      'secondary_global' => ['fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'secondary_scope_default']]], 'access' => $settings['access'], 'wp' => ['postId' => 'zero_secondary_global', 'fieldKeyPrefix' => 'field_zero_secondary_global_']],
+    ]]);
+    $store = \\Zero\\Wp\\CompositeStore::create($schema, \\Zero\\Wp\\Plugin::instance()->connection());
+    $db = new \\Zero\\Db($store, $schema, $app->media(), 'wp');
+    $viewer = new \\Zero\\Viewer(['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $row = $db->findFirst('payroll', ['where' => ['id' => ${id}]], $viewer);
+    try { $db->update('payroll', ['title' => 'overwritten'], ['id' => ${id}], true, $viewer); }
+    catch (\\Zero\\HttpError $error) { $status = $error->status; }
+    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+      if ($collection === 'payroll' && !\\Zero\\db()->schema()->hasCollection('scope_marker')) throw new RuntimeException('wrong query Db');
+    });
+    $permissions = [$db->permits('payroll', 'read', ${id}, $viewer), $db->permittedKeys('payroll', 'update', $viewer)];
+    $captured = $db->editorRow('payroll', ${id});
+    $revisions = $db->revisions('payroll', ${id}, $viewer);
+    $global = $db->globalGet('secondary_global', $viewer);
+    $settings = $db->globalUpdate('settings', ['postsPerPage' => 12], $viewer);
+    echo wp_json_encode([array_key_exists('title', $row), $status ?? null, \\Zero\\db() === $app, $permissions, $captured['id'], count($revisions) > 0, $global['name'], $settings['postsPerPage']]);
+  `));
+  assert.deepEqual(scoped, [false, 403, true, [true, null], id, true, "secondary", 12]);
+  const coreScoped = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.editor.id});
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $spec = $app->schema()->collection('payroll');
+    unset($spec['columns']['salary']['access']);
+    $schema = new \\Zero\\Schema(['collections' => ['payroll' => $spec]]);
+    $other = new \\Zero\\Db($app->store(), $schema, $app->media(), 'wp');
+    $result = [];
+    try {
+      $other->transaction(static function () use ($other, &$result) {
+        $read = rest_do_request('/wp/v2/zero_payroll/${id}');
+        $result[] = array_key_exists('zero_salary', $read->get_data()['acf']);
+        $write = new WP_REST_Request('POST', '/wp/v2/zero_payroll/${id}');
+        $write->set_param('acf', ['zero_salary' => 'overwritten']);
+        try { rest_do_request($write); }
+        catch (\\Zero\\HttpError $error) {
+          $result[] = $error->status;
+          $result[] = \\Zero\\db() === $other;
+          throw $error;
+        }
+      });
+    } catch (\\Zero\\HttpError) {}
+    echo wp_json_encode($result);
+  `));
+  assert.deepEqual(coreScoped, [false, 403, true], "the plugin retains its own policy inside another Db's transaction");
+  assert.equal((await ok("GET", `/payroll/${id}`, { as: "admin" })).salary, "secret");
+  const deferred = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $other = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => []]), $app->media(), 'wp');
+    $committed = [];
+    $other->transaction(function () use ($app, &$committed) {
+      $app->transaction(function () use (&$committed) {
+        \\Zero\\Extensions::afterCommit(function () use (&$committed) {
+          $committed[] = \\Zero\\db()->schema()->hasCollection('ledger');
+        });
+      });
+    });
+    echo wp_json_encode([$committed, \\Zero\\db() === $app]);
+  `));
+  assert.deepEqual(deferred, [[true], true], "deferred callbacks retain the registering Db across a shared transaction");
+
 });
 
 // ---- wp-admin and data-dependent rules (review of #38): every save is authorized on its own data
@@ -125,10 +231,15 @@ test("nested field rules hold in wp-admin: the form hides the group, a save can'
 });
 
 test("acf selector aliases can't smuggle a value past the field rules", async () => {
-  const id = zero("insert", "payroll", JSON.stringify({ title: `Alias ${run}`, salary: "1" }))[0].id;
+  const id = zero("insert", "payroll", JSON.stringify({ title: `Alias ${run}`, salary: "1", notes: { open: "o", sealed: "s" } }))[0].id;
   const res = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_salary: "1", field_zero_payroll_salary: "999" } } });
   assert.equal(res.status, 403, JSON.stringify(res.json));
   assert.equal(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].salary, "1");
+  const equal = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "s" }, field_zero_payroll_notes: { open: "changed" } } } });
+  const other = await http("POST", `${core}/zero_payroll/${id}`, { as: "editor", body: { acf: { zero_notes: { sealed: "guess" }, field_zero_payroll_notes: { open: "changed" } } } });
+  assert.deepEqual([equal.status, equal.json.data.pointer, other.status, other.json.data.pointer], [403, "/notes", 403, "/notes"]);
+  assert.deepEqual(zero("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "o", sealed: "s" });
+
 });
 
 test("Add New works for a user the create rule allows: the auto-draft opens and saves", async () => {
@@ -257,6 +368,21 @@ test("wp-admin's revision diffs leave out fields hidden from the viewer", async 
   const editor = await diffs("editor");
   assert.ok(editor.includes("post_title"));
   assert.deepEqual(editor.filter((f: string) => f.startsWith("zero_salary")), [], "the editor's doesn't");
+});
+
+test("restoring a hidden group is refused independently of whether its saved value matches", async () => {
+  const id = zero("insert", "gated", JSON.stringify({ title: `Restore ${run}`, notes: { open: "old", sealed: "secret" } }))[0].id;
+  zero("update", "gated", JSON.stringify({ id }), JSON.stringify({ title: `Restore ${run} v2`, notes: { open: "new", sealed: "secret" } }));
+  const [revision] = JSON.parse(wp("eval", `echo wp_json_encode(array_keys(wp_get_post_revisions(${id}, ['order' => 'ASC'])));`));
+  const editor = await adminSession("editor");
+  const html = await (await editor.get(`revision.php?revision=${revision}`)).text();
+  const match = html.match(/"restoreUrl":("[^"]*")/);
+  assert.ok(match, "WordPress supplies the restore URL and its session nonce");
+  const restore = JSON.parse(match[1]).replace(/^.*\/wp-admin\//, "");
+  assert.equal((await editor.get(restore)).status, 403, "matching hidden value");
+  zero("update", "gated", JSON.stringify({ id }), JSON.stringify({ notes: { open: "new", sealed: "different" } }));
+  assert.equal((await editor.get(restore)).status, 403, "different hidden value");
+  assert.deepEqual(zero("find", "gated", JSON.stringify({ where: { id } }))[0].notes, { open: "new", sealed: "different" });
 });
 
 test("autosaving one's own draft returns it without the fields hidden from the author of the save", async () => {

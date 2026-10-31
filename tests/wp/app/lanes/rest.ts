@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under Zero's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { collection, db, group, HttpError, id, integer, richText, slug, text } from "zero";
+import { blocks, collection, db, group, HttpError, id, integer, repeater, richText, slug, text } from "zero";
 
 export const vault = collection("vault", { id: id(), title: text().notNull(), code: text() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -28,6 +28,11 @@ export const payroll = collection("payroll", {
   id: id(),
   title: text().notNull(),
   salary: text().access({ read: "admin", update: "admin" }),
+  notes: group({ fields: { open: text(), sealed: text().access({ read: "admin" }) } }),
+  entries: repeater({ fields: { open: text(), sealed: text().access({ read: "admin" }) } }),
+  sections: blocks({ layouts: { private: { sealed: text().access({ read: "admin" }) }, public: { open: text() } } }),
+  policy: group({ fields: { gate: text(), value: text().access({ update: (ctx) => ctx.data.gate !== "locked" }) } }),
+  writeOnly: text().access({ read: "admin", update: "editor" }),
   // An admin-only reference: SCF links (and can embed) the post it names.
   managerId: integer().references(() => ledger.id).access({ read: "admin" }),
 }, { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
@@ -60,6 +65,7 @@ export const gated = collection("gated", {
   notes: group({ fields: { open: text(), sealed: text().access({ read: "admin", update: "admin" }) } }),
   ownerId: integer(),
 }, {
+  revisions: true,
   access: {
     read: "anyone",
     create: (ctx) => ctx.user !== null && ctx.data != null && (ctx.data.level !== "locked" || ctx.user.role === "admin"),

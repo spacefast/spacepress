@@ -258,7 +258,7 @@ final class CoreAccess
             return $response;
         }
         $spec = self::schema()->collection($collection);
-        $visible = $viewer === null || $stored === null ? null : (FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+        $visible = $viewer === null || $stored === null ? null : (self::visibleFields($stored, $collection, $viewer));
         $dropped = false;
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
@@ -440,10 +440,16 @@ final class CoreAccess
         }));
     }
 
+    /** WordPress fields always belong to the plugin, even inside a secondary Db operation. */
+    private static function visibleFields(array $row, string $collection, Viewer $viewer): array
+    {
+        return Plugin::instance()->db()->current(static fn () => FieldAccess::strip([$row], $collection, $viewer)[0] ?? []);
+    }
+
     /** Is $col of $row readable in full (a structured value with a hidden sub-field is not)? */
     private static function fullyVisible(string $collection, string $col, array $row, Viewer $viewer): bool
     {
-        $visible = FieldAccess::strip([$row], $collection, $viewer)[0] ?? [];
+        $visible = self::visibleFields($row, $collection, $viewer);
 
         return !array_key_exists($col, $row) || (array_key_exists($col, $visible) && $visible[$col] === $row[$col]);
     }
@@ -505,7 +511,7 @@ final class CoreAccess
             return $viewer === null || FieldAccess::mayHide(self::schema()->collection($collection)['columns'][$col], $viewer);
         }
 
-        return !array_key_exists($col, FieldAccess::strip([$stored], $collection, $viewer)[0] ?? []);
+        return !array_key_exists($col, self::visibleFields($stored, $collection, $viewer));
     }
 
     private static function nativeHidden(int $postId, string $designation): bool
@@ -546,7 +552,7 @@ final class CoreAccess
             // A new post holds nothing to hide; a trashed one is judged by the rules alone.
             return !FieldAccess::mayHide($def, $viewer) ? $field : false;
         }
-        $visible = FieldAccess::strip([$stored], $collection, $viewer)[0] ?? [];
+        $visible = self::visibleFields($stored, $collection, $viewer);
         // A structured field renders inputs for every sub-field, empty ones included: any sub-field
         // that may be hidden from this viewer hides the whole field.
         $nested = in_array($def['type'], self::STRUCTURED, true) && FieldAccess::mayHide(['access' => []] + $def, $viewer);
@@ -573,7 +579,7 @@ final class CoreAccess
      *
      * @return array{array<string, mixed>, list<string>}
      */
-    public static function incoming(string $collection, \WP_REST_Request $request): array
+    public static function incoming(string $collection, \WP_REST_Request $request, bool $singleSelector = false): array
     {
         $spec = self::schema()->collection($collection);
         $data = [];
@@ -594,6 +600,9 @@ final class CoreAccess
                 foreach ($spec['columns'] as $col => $def) {
                     $key = $spec['wp']['fieldKeyPrefix'] . $col;
                     if ($name === $key || $name === $spec['wp']['metaPrefix'] . $col) {
+                        if ($singleSelector && array_key_exists($col, $data)) {
+                            throw new HttpError(403, 'forbidden', "Submit $col only once", HttpError::seg((string) $col));
+                        }
                         $data[(string) $col] = Scf::fromScf($def, $value, $key);
                     }
                 }

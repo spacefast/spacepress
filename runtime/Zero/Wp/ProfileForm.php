@@ -134,6 +134,11 @@ final class ProfileForm
      */
     private static function readable(string $collection, int $id, ?array $stored, string $col, array $def, \Zero\Viewer $viewer): bool
     {
+        return self::plugin()->db()->current(fn () => self::readableInContext($collection, $id, $stored, $col, $def, $viewer));
+    }
+
+    private static function readableInContext(string $collection, int $id, ?array $stored, string $col, array $def, \Zero\Viewer $viewer): bool
+    {
         if ($stored === null || !self::plugin()->db()->permits($collection, 'read', $id, $viewer)) {
             return false;
         }
@@ -209,6 +214,11 @@ final class ProfileForm
 
     private static function incoming(array $ctx, mixed $raw, array $field, bool $form, bool $strict = false): mixed
     {
+        return self::plugin()->db()->current(fn () => self::incomingInContext($ctx, $raw, $field, $form, $strict));
+    }
+
+    private static function incomingInContext(array $ctx, mixed $raw, array $field, bool $form, bool $strict = false): mixed
+    {
         $row = self::plugin()->db()->editorRow($ctx['collection'], $ctx['id']);
         $viewer = $form ? CoreAccess::viewer() : null;
         $rendered = $viewer !== null && self::readable($ctx['collection'], $ctx['id'], $row, $ctx['col'], $ctx['def'], $viewer);
@@ -219,6 +229,11 @@ final class ProfileForm
 
     /** Select and authorize the patch while core still holds the original member row. */
     private static function authorize(): void
+    {
+        self::plugin()->db()->current(self::authorizeInContext(...));
+    }
+
+    private static function authorizeInContext(): void
     {
         $plugin = self::plugin();
         $collection = (string) $plugin->schema->auth()['collection'];

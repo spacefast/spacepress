@@ -391,6 +391,9 @@ final class Db
                 // One instant per row: every `now` default, nested ones and publishedAt included.
                 $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
             }
+            if ($viewer !== null && $this->blind($spec, $viewer)) {
+                return $returning ? $out : null; // already the values sent (createOne)
+            }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
         });
@@ -464,13 +467,35 @@ final class Db
         }
         if ($viewer !== null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
+            $this->refuseHiddenUnique($collection, $spec, $provided, $viewer);
         }
-        $write = fn (): array => $this->persistCreate($collection, $spec, $data);
+        $write = fn (): array => $this->persistCreate($collection, $spec, $data, $viewer);
+        if ($viewer === null || !$this->blind($spec, $viewer)) {
+            return $around === null ? $write() : $around($write);
+        }
+        // A viewer the read rule may deny never gets the stored row back: it gets what it sent. A
+        // unique conflict then answers the same way and stores nothing (it is already there), so a
+        // create can't tell whether a row it can't read holds a value.
+        $sent = array_intersect_key($provided, $columns);
+        $quiet = function () use ($write, $sent, $collection, $spec, $data): array {
+            if ($this->uniqueTaken($collection, $spec, $data)) {
+                return $sent; // already there: nothing is written, no hook runs
+            }
+            try {
+                $write();
+            } catch (HttpError $e) {
+                if ($e->errorCode !== 'unique_violation') { // a concurrent create won the race, or a hook's value
+                    throw $e;
+                }
+            }
 
-        return $around === null ? $write() : $around($write);
+            return $sent;
+        };
+
+        return $around === null ? $quiet() : $around($quiet);
     }
 
-    private function persistCreate(string $collection, array $spec, array $data): array
+    private function persistCreate(string $collection, array $spec, array $data, ?Viewer $viewer = null): array
     {
         $columns = $spec['columns'];
         $ctx = $this->hookCtx();
@@ -500,7 +525,7 @@ final class Db
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm, null);
         }
         $full = $norm + array_fill_keys(array_keys($columns), null);
-        $this->checkValues($columns, $norm, $full);
+        $this->checkValues($columns, $norm, $full, $viewer, $data);
 
         $insert = [];
         foreach ($norm as $name => $v) {
@@ -562,7 +587,7 @@ final class Db
         if ($slugCol !== null && array_key_exists($slugCol, $patch) && !array_key_exists($slugCol, $norm)) {
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm + $previous, $pkValue);
         }
-        $this->checkValues($columns, $norm, $norm + $previous);
+        $this->checkValues($columns, $norm, $norm + $previous, $viewer, $provided);
 
         $set = [];
         foreach ($norm as $name => $v) {
@@ -703,7 +728,13 @@ final class Db
     }
 
     /** Rules (min/max/pattern/validate, nested) + media and reference existence for written values. */
-    private function checkValues(array $columns, array $norm, array $full): void
+    /**
+     * Rules (min/max/pattern/validate, nested) + media and reference existence for written values.
+     * A reference the viewer supplied must name a row the viewer may read: a row it can't read and
+     * one that doesn't exist get the same 409, so a write can't probe for rows. Hook-written and
+     * trusted values are checked for existence only.
+     */
+    private function checkValues(array $columns, array $norm, array $full, ?Viewer $viewer = null, array $supplied = []): void
     {
         $ctx = ['data' => $full, 'user' => $this->actor, 'target' => $this->target];
         foreach ($norm as $name => $v) {
@@ -727,11 +758,65 @@ final class Db
             if ($ref === null || $v === null) {
                 continue;
             }
+            $missing = new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
+            $guards = [];
+            if ($viewer !== null && array_key_exists($name, $supplied)) {
+                try {
+                    $guards = $this->readGuards($ref['collection'], $viewer);
+                } catch (HttpError) {
+                    throw $missing;
+                }
+            }
             $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
-            if ($this->selectDecoded($ref['collection'], $opts, '', null) === []) {
-                throw new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
+            if ($this->selectDecoded($ref['collection'], $opts, '', null, null, $guards) === []) {
+                throw $missing;
             }
         }
+    }
+
+    /**
+     * True when the read rule may deny $viewer the row it creates (a shorthand role it doesn't hold,
+     * or `false`): its creates answer with the values it sent. Must match the generated client's
+     * `created` type (src/client.rs `creates_read_back`).
+     */
+    private function blind(array $spec, Viewer $viewer): bool
+    {
+        $rule = Access::collectionRules($spec)['read'];
+
+        return Access::isShorthand($rule) && Access::evaluate($rule, $viewer, 'read') !== true;
+    }
+
+    /**
+     * Setting a unique column the viewer may not read is refused outright (403 at the column), so a
+     * unique conflict can't confirm a value it can't see. On a row the viewer can't read at all, the
+     * create answers blind instead (see createOne).
+     */
+    private function refuseHiddenUnique(string $collection, array $spec, array $provided, Viewer $viewer): void
+    {
+        foreach ($provided as $name => $_) {
+            $col = $spec['columns'][$name] ?? null;
+            if ($col !== null && ($col['unique'] ?? false) && FieldAccess::mayHide($col, $viewer)) {
+                throw $viewer->user === null
+                    ? new HttpError(401, 'unauthenticated', "Sign in to set $name", HttpError::seg((string) $name))
+                    : new HttpError(403, 'forbidden', "You can't set $name", HttpError::seg((string) $name));
+            }
+        }
+    }
+
+    /** Does a stored row already hold one of $data's unique values? (Trusted lookup; the answer is never shown.) */
+    private function uniqueTaken(string $collection, array $spec, array $data): bool
+    {
+        foreach ($spec['columns'] as $name => $col) {
+            if (!($col['unique'] ?? false) || $name === $spec['primaryKey'] || !isset($data[$name])) {
+                continue;
+            }
+            $opts = ['where' => [$name => Schema::normalize($col, $data[$name], (string) $name, HttpError::seg((string) $name))], 'limit' => 1];
+            if ($this->selectDecoded($collection, $opts, '', null) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function rejectUnknown(array $columns, array $data): void

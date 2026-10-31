@@ -1500,4 +1500,68 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('the booted app\'s db() is back afterwards', \Zero\db()->schema()->hasCollection('profiles'), true);
 })();
 
+// ================================================================ write errors don't reveal what the viewer can't read
+
+// A unique conflict or a dangling reference is an answer about stored rows. Writes may only get one
+// about rows the viewer could read anyway (review: field-unique-oracle, ref-existence-oracle).
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $anyone = ['role' => 'anyone'];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+        // Anyone signs up; only admins see who did.
+        'subscribers' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin'], 'create' => $anyone],
+            'columns' => ['id' => $id, 'email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]],
+        // Anyone reads people; the ssn column is admin-only.
+        'people' => ['primaryKey' => 'id', 'access' => ['read' => $anyone, 'create' => $anyone, 'update' => $anyone],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'unique' => true, 'access' => ['read' => ['role' => 'admin']]]]],
+        // Notes are their owner's; tags may point at a note.
+        'notes' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'editor'], 'create' => $anyone],
+            'columns' => ['id' => $id, 'body' => ['type' => 'text', 'notNull' => true]]],
+        'tags' => ['primaryKey' => 'id', 'access' => ['read' => $anyone, 'create' => $anyone, 'update' => $anyone],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'noteId' => ['type' => 'integer', 'references' => ['collection' => 'notes', 'column' => 'id']]]],
+    ]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "subscribers" ("id" integer PRIMARY KEY, "email" text NOT NULL UNIQUE, "note" text);
+        CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text UNIQUE);
+        CREATE TABLE "notes" ("id" integer PRIMARY KEY, "body" text NOT NULL);
+        CREATE TABLE "tags" ("id" integer PRIMARY KEY, "name" text NOT NULL, "noteId" integer REFERENCES "notes" ("id"))');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $anon = new \Zero\Viewer(null, 'standalone');
+    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber'], 'standalone');
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'standalone');
+    $count = static fn (string $c) => (int) $pdo->query("SELECT COUNT(*) FROM \"$c\"")->fetchColumn();
+
+    // A create the viewer can't read back answers with what it sent, taken or not.
+    $first = $db->insert('subscribers', ['email' => 'a@x.test'], true, $anon);
+    $again = $db->insert('subscribers', ['email' => 'a@x.test'], true, $anon);
+    $fresh = $db->insert('subscribers', ['email' => 'b@x.test'], true, $anon);
+    eq('a signup answers with the values sent, never the stored row (no id, no defaults)', [$first, $again, $fresh], [[['email' => 'a@x.test']], [['email' => 'a@x.test']], [['email' => 'b@x.test']]]);
+    eq('… and an address already subscribed is stored once', $count('subscribers'), 2);
+    eq('a reader of the collection gets the row, and its conflict as usual', $db->insert('subscribers', ['email' => 'c@x.test'], true, $admin)[0]['note'], 'welcome');
+    problem('… unique_violation for an admin', fn () => $db->insert('subscribers', ['email' => 'c@x.test'], true, $admin), 409, 'unique_violation', '/email');
+
+    // A unique column the viewer can't read: refused before any lookup, whatever the value.
+    $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
+    problem('setting a hidden unique column is refused when the value exists…', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '123-45-6789'], true, $anon), 401, 'unauthenticated', '/ssn');
+    problem('… and the same when it doesn\'t', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '000-00-0000'], true, $anon), 401, 'unauthenticated', '/ssn');
+    eq('a create that leaves it out is fine', $db->insert('people', ['name' => 'r'], true, $anon)[0]['name'], 'r');
+    eq('an admin sets it', $db->insert('people', ['name' => 's', 'ssn' => '111-11-1111'], true, $admin)[0]['ssn'], '111-11-1111');
+
+    // A reference must name a row the viewer may read: unreadable and missing answer alike.
+    $note = $db->insert('notes', ['body' => 'private'], true)[0];
+    $missing = $note['id'] + 100;
+    problem('a reference to a row the viewer can\'t read is a 409…', fn () => $db->insert('tags', ['name' => 't', 'noteId' => $note['id']], true, $sub), 409, 'reference_violation', '/noteId');
+    $unreadable = \Zero\App::problem((function () use ($db, $sub, $note) { try { $db->insert('tags', ['name' => 't', 'noteId' => $note['id']], true, $sub); } catch (\Throwable $e) { return $e; } })());
+    $absent = \Zero\App::problem((function () use ($db, $sub, $missing) { try { $db->insert('tags', ['name' => 't', 'noteId' => $missing], true, $sub); } catch (\Throwable $e) { return $e; } })());
+    eq('… with the same detail as a row that doesn\'t exist, apart from the id named', str_replace((string) $missing, 'N', $absent['detail']), str_replace((string) $note['id'], 'N', $unreadable['detail']));
+    $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
+    problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
+    eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
+    eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
+    // This Db isn't the booted app's: field rules (and every extension) still read its own schema.
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', ['where' => ['name' => 'p']], $anon)), false);
+    eq('… and its trusted reads see the column', $db->findFirst('people', ['where' => ['name' => 'p']])['ssn'], '123-45-6789');
+})();
+
 finish('db_test');

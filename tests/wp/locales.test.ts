@@ -210,4 +210,11 @@ test("sync pulls a localized collection as one record per locale, and a pushed t
   const [de] = await ok("GET", "/tours" + qs({ locale: "de", where: { uid: deUid } }), { as: "editor" });
   assert.deepEqual([de.locale, de.price, de.tags], ["de", 3, ["tea"]]);
   assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id, de: de.id });
+  // A file with no group yet (`translations: {}`) creates a translation of its own.
+  const soloUid = "zr_" + createHash("sha256").update(`${run}:tour-solo`).digest("hex").slice(0, 20);
+  const solo = await http("POST", `${api}/sync/tours`, {
+    as: "editor",
+    body: { expect: "absent", record: { uid: soloUid, fields: { title: `Solo ${run}`, locale: "en", translations: {} }, body: "Alone." } },
+  });
+  assert.equal(solo.status, 201, JSON.stringify(solo.json));
 });

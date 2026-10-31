@@ -2709,7 +2709,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let mut pre = Vec::new();
             let mut ks = Vec::new();
             for k in keys {
-                if k.starts_with('\'') || k.chars().all(|c| c.is_ascii_digit()) {
+                // Only a lone literal key needs no temporary; any expression (even one that starts
+                // with a quote, like `'k' . $i++`) is evaluated exactly once.
+                let literal =
+                    (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
+                        || (!k.is_empty() && k.chars().all(|c| c.is_ascii_digit()));
+                if literal {
                     ks.push(k.clone());
                 } else {
                     let tmp = self.tmp_var();
@@ -2733,10 +2738,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
+            let mut bin_ty = None;
             let new = match op {
                 None => v.php.clone(),
                 Some(AssignOp::Bin(b)) => {
                     let r = self.binary(b, Out::atom(read.clone(), t.ty.clone()), v.clone(), span)?;
+                    if !(assignable(&r.ty, &constraint)
+                        || r.ty.is_num()
+                            && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
+                    {
+                        return err(
+                            span,
+                            format!(
+                                "can't assign {} to something of type {}",
+                                r.ty.describe(),
+                                constraint.describe()
+                            ),
+                        );
+                    }
+                    bin_ty = Some(r.ty.clone());
                     r.php
                 }
                 Some(AssignOp::Log(LogOp::Nullish)) => format!("{read} ?? {}", v.wrapped()),
@@ -2753,7 +2773,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let ty = match op {
                 None => v.ty.clone(),
                 Some(AssignOp::Log(l)) => logical_result_type(l, &t.ty, &v.ty),
-                Some(AssignOp::Bin(_)) => Ty::Num,
+                Some(AssignOp::Bin(_)) => bin_ty.expect("binary result type"),
             };
             let write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
             let php = if pre.is_empty() {

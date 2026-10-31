@@ -384,6 +384,8 @@ final class Db
     public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
         [$set, $where] = [$set instanceof JsObject ? [] : $set, Js::plain($where)];
+        // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
+        $set = self::plainOutsideJson($this->schema->collection($collection)['columns'], $set);
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
@@ -942,6 +944,7 @@ final class Db
     {
         $patch = $patch instanceof JsObject ? [] : $patch;
         $g = $this->schema->global($name);
+        $patch = self::plainOutsideJson($g['fields'], $patch);
         if ($viewer !== null) {
             Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name");
         }

@@ -1282,7 +1282,17 @@ final class Js
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
-        return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
+        try {
+            return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
+        } catch (\JsonException $e) {
+            // PHP objects can't hold a property named "\u0000…": such valid JSON decodes as arrays
+            // (that one value then can't tell `{}` from `[]`), anything invalid still throws.
+            if (!str_contains($s, '\\u0000')) {
+                throw $e;
+            }
+
+            return json_decode($s, true, $depth, JSON_THROW_ON_ERROR);
+        }
     }
 
     /** The marker → plain arrays at every depth: for values outside json() columns (groups, inputs, filters). */

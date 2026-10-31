@@ -169,6 +169,7 @@ final class Wire
 
     private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self): int|string|null
     {
+        $translations = $translations instanceof \Zero\JsObject ? [] : $translations;
         if (!is_array($translations)) {
             throw HttpError::invalidInput('translations must map locales to uids', '/fields/translations');
         }

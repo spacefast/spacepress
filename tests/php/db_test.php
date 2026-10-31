@@ -1472,4 +1472,40 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
 })();
 
+// ================================================================ the empty-object marker stays in json() values
+
+// An access rule sees the patch as plain arrays: a list column sent as `{}` (the marker once decoded)
+// reaches the rule as [], never as a JsObject its array code can't handle.
+(static function (): void {
+    eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
+        'primaryKey' => 'id', 'access' => ['read' => ['role' => 'anyone'], 'update' => ['fn' => 'marked__update']],
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['locked', 'open']],
+            'meta' => ['type' => 'json'],
+        ],
+    ]]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "marked" ("id" integer PRIMARY KEY, "tags" text, "meta" text)');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $previous = \Zero\Db::instance();
+    \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
+    try {
+        $row = $db->insert('marked', ['tags' => ['open']], true)[0];
+        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
+        $patch = \Zero\Js::decodeJson('{"tags":{},"meta":{"a":{}}}');
+        try {
+            $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
+            $got = [$updated['tags'], \Zero\Js::jsonStringify($updated['meta'])];
+        } catch (\Throwable $e) {
+            $got = $e::class . ': ' . $e->getMessage();
+        }
+        eq('an update rule gets plain arrays; the json() value keeps {}', $got, [[], '{"a":{}}']);
+    } finally {
+        \Zero\Db::setInstance($previous);
+    }
+})();
+
 finish('db_test');

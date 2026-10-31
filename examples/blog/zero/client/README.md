@@ -35,10 +35,15 @@ const user = await wp.auth.handleCallback(); // on /callback
 
 // Both: anonymous visitors write as guests, and keep their rows when they sign up.
 // Needs an `auth: true` collection (members sign in by email) and a collection whose create rule admits guests.
-const app = createClient({ auth: { guests: true } });
-await app.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // starts a guest session on first write
-await app.auth.upgrade("alice@example.com", "correct horse battery"); // standalone: the guest becomes this member
-await app.auth.upgrade();                                                // WordPress: redirects to the account screens
+const guest = createClient({ auth: { guests: true } });
+await guest.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // starts a guest session on first write
+await guest.auth.upgrade("alice@example.com", "correct horse battery");   // standalone: the guest becomes this member
+
+// On WordPress the upgrade happens on the zero-identity screens, so the client needs the same
+// clientId and redirectUri as signIn(); upgrade() redirects and handleCallback() finishes it.
+const wpGuest = createClient({ auth: { guests: true, clientId: "app_...", redirectUri: location.origin + "/callback" } });
+await wpGuest.comments.create({ postId: 1, name: "A reader", body: "Hi" });
+await wpGuest.auth.upgrade();
 
 await zero.auth.signOut();
 ```

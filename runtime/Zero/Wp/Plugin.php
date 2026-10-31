@@ -44,7 +44,9 @@ final class Plugin
         add_action('admin_init', [$this, 'maybeMigrate']);
 
         // Editor saves (wp-admin, core /wp/v2/<type>): hooks run after the post and its fields are saved.
+        // Generated values are filled before core snapshots its revision (wp_after_insert_post, 9).
         add_action('pre_post_update', [$this, 'capturePrevious'], 10, 1);
+        add_action('wp_after_insert_post', [$this, 'fillEditorDefaults'], 8, 4);
         add_action('wp_after_insert_post', [$this, 'afterEditorSave'], 20, 4);
         add_action('before_delete_post', [$this, 'beforeEditorDelete'], 10, 2);
         add_action('deleted_post', [$this, 'afterEditorDelete'], 10, 2);
@@ -230,10 +232,9 @@ final class Plugin
         if ($collection === null || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
             return;
         }
-        $previous = $before === null || $before->post_status === 'auto-draft' ? null : ($this->before[$postId] ?? null);
+        $previous = $this->editorPrevious($postId, $before);
         unset($this->before[$postId]);
         $app = $this->app();
-        $this->fillEditorDefaults($collection, $postId, $previous === null);
         $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
     }
 
@@ -264,9 +265,16 @@ final class Plugin
     /**
      * wp-admin knows nothing of Zero's generated values: on an editor save, write `default` for meta
      * columns that have none yet and `onUpdate` on every update, so editor rows decode like API rows.
+     * SCF keeps an unchecked true_false and an emptied list as '', so for those types only a missing
+     * meta row means "no value"; a '' boolean is stored as false, which is what SCF means by it.
      */
-    private function fillEditorDefaults(string $collection, int $postId, bool $created): void
+    public function fillEditorDefaults(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
+        $collection = $this->collectionOf($postId);
+        if ($collection === null || $this->connection()->busy() || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+            return;
+        }
+        $created = $this->editorPrevious($postId, $before) === null;
         $spec = $this->schema->collection($collection);
         $store = CompositeStore::create($this->schema, $this->connection())->posts;
         $values = [];
@@ -276,15 +284,26 @@ final class Plugin
                 continue;
             }
             $key = $spec['wp']['metaPrefix'] . $col;
+            $exists = metadata_exists('post', $postId, $key);
+            $raw = $exists ? get_post_meta($postId, $key, true) : null;
+            $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
                 $values[$col] = Schema::store($def, Schema::generate($def['onUpdate'], $def['type']));
-            } elseif (isset($def['default']) && in_array(get_post_meta($postId, $key, true), ['', false, null], true) && !in_array($def['type'], ['boolean', 'select', 'mediaList'], true)) {
+            } elseif (isset($def['default']) && $empty) {
                 $values[$col] = Schema::store($def, Schema::generate($def['default'], $def['type']));
+            } elseif ($def['type'] === 'boolean' && $raw === '') {
+                $values[$col] = Schema::store($def, false);
             }
         }
         if ($values !== []) {
             $store->update($collection, $postId, $values);
         }
+    }
+
+    /** The row captured before this editor save, or null when the save created the post. */
+    private function editorPrevious(int $postId, ?\WP_Post $before): ?array
+    {
+        return $before === null || $before->post_status === 'auto-draft' ? null : ($this->before[$postId] ?? null);
     }
 
     // ================================================================ helpers

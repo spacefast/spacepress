@@ -27,6 +27,15 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
   );
   assert.match(row.createdAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z$/, "defaults Zero generates are filled on editor saves");
   assert.deepEqual(row.comments.map((c: any) => [c.name, c.body]), [["afterCreate", "by Editor"]]);
+  // Every declared default is filled, booleans and lists included; SCF's '' for an unchecked toggle is false.
+  const event = await http("POST", core + "/zero_events", { as: "editor", body: { title: `Defaults ${run}`, status: "publish" } });
+  assert.equal(event.status, 201, JSON.stringify(event.json));
+  const defaults = await ok("GET", `/events/${event.json.id}`, { as: "editor" });
+  assert.deepEqual([defaults.open, defaults.kinds], [false, []]);
+  await http("POST", `${core}/zero_events/${event.json.id}`, { as: "editor", body: { acf: { zero_open: true } } });
+  assert.equal((await ok("GET", `/events/${event.json.id}`, { as: "editor" })).open, true);
+  await http("POST", `${core}/zero_events/${event.json.id}`, { as: "editor", body: { acf: { zero_open: false } } });
+  assert.equal((await ok("GET", `/events/${event.json.id}`, { as: "editor" })).open, false);
 
   const updated = await http("POST", `${core}/zero_posts/${id}`, { as: "editor", body: { title: `Audit ${run} v2`, acf: { zero_excerpt: "Edited in core" } } });
   assert.equal(updated.status, 200, JSON.stringify(updated.json));

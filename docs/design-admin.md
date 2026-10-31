@@ -1,6 +1,6 @@
 # Zero Admin — design and provenance audit
 
-Status: proposed (revision 7, 2026-10-31; six review rounds folded in). Extends `design-phase2.md`; where
+Status: proposed (revision 8, 2026-10-31; six review rounds folded in; §9.2 ruled). Extends `design-phase2.md`; where
 this document is silent, phase 2 holds. Sections 1 and 9 need rulings from the
 project owner before the import PR (§8, PR 2) can merge; everything else is
 decided here.
@@ -36,6 +36,7 @@ build of it.
 | Where the JS lives | `runtime/admin/apps/` (a self-contained pnpm workspace), built into `runtime/admin/build/` which is **committed** with a source-hash manifest, exactly like `runtime/identity/{apps,build}`. The Rust binary embeds `runtime/admin/` minus `apps/`; Zero core never needs Node. |
 | Pins | One exact `@wordpress/*` snapshot in one catalog, no `next` dist-tag anywhere. The nightly snapshot stays through the rewire PR; then a dedicated PR moves to the stable releases that match WordPress 7.1's bundled packages, and from then on bumps ride the platform floor in `src/platform.rs`. |
 | Provenance | Upstream Gutenberg packages come from npm. Three vendored forks of Gutenberg packages are replaced by npm or kept as a renamed fork (§1.2). The rest is the internal framework the source was vendored from; it is imported only after the licence ruling in §9.1, with every internal name, link, telemetry seam and private endpoint removed (§1.3). |
+| Licence | Zero is MIT by default and GPL-2.0-or-later only where WordPress forces it (ruled, §1.4). The admin plugin runs inside WordPress and bundles GPL Gutenberg packages, so `runtime/admin/` is GPL-2.0-or-later, like `runtime/identity/`. |
 | Tests | Real WordPress through the existing harness (`tests/wp/admin.test.ts`), driven by HTTP and WP-CLI with the exact calls the screens make, per role, plus **one** browser acceptance run (Playwright) that boots the shipped modules, opens a collection, edits a field and reloads. Pure JS logic (schema → DataViews fields, menu builder) at unit level in the workspace. |
 
 ---
@@ -167,10 +168,25 @@ reworded follows the same §9.1 ruling. Flagged in §9.5.
 
 ### 1.4 Licensing
 
-- **Zero.** `runtime/Zero/composer.json` and every generated plugin header say
-  GPL-2.0-or-later. `Cargo.toml` has no `license` field and the repository has
-  no top-level `LICENSE`. `design-phase2.md` §3.6 refers to "the repo's
-  existing licence", which does not exist yet. Flagged in §9.2.
+- **Zero.** Ruled (2026-10-31, §9.2): Zero is licensed **by component, MIT
+  wherever possible**. Anything that runs inside WordPress is
+  GPL-2.0-or-later (WordPress plugins are derivative works of WordPress);
+  everything else, the Rust compiler and CLI, the typed client, the type
+  declarations, examples, docs, scripts and tests, is MIT. The top-level
+  `LICENSE` stating this, with `LICENSE-GPL` and `LICENSE-MIT`, is owned by
+  the `p3/readme` branch; the admin lane adds one line to its GPL list and
+  nothing else. Until that branch lands, `runtime/Zero/composer.json` and the
+  generated plugin headers are the only licence statements in the tree.
+- **The admin plugin is on the GPL side.** `runtime/admin/` (the PHP, the
+  workspace and the committed build) is GPL-2.0-or-later, like
+  `runtime/identity/`: it runs only inside WordPress, it bundles
+  GPL-2.0-or-later Gutenberg packages (`dataviews`, `fields`, `ui`, `icons`)
+  into its modules, and the source it is ported from is declared GPL. The
+  fresh code this plan writes (`@zero-admin/schema`, the menu builder, the
+  browser journey) is GPL too; splitting MIT files into a GPL bundle would
+  buy nothing and complicate the notice. Every workspace `package.json`
+  carries `"license": "GPL-2.0-or-later"`, `runtime/admin/LICENSE` is the
+  GPL text, and the plugin header says the same.
 - **Gutenberg packages.** `@wordpress/*` on npm are GPL-2.0-or-later
   (Gutenberg itself is dual-licensed GPL-2.0-or-later / MPL-2.0). Compatible
   with Zero's PHP licence; the admin plugin is GPL-2.0-or-later like the other
@@ -728,11 +744,10 @@ Sol outcome.
    only class U from npm and write the shell (router, sidebar, page, editor
    host, collection screens) fresh on `@wordpress/boot`, `route`,
    `dataviews`, `fields` and `ui`; that is a different, larger plan.
-2. **Zero's top-level licence.** There is none. Options: GPL-2.0-or-later for
-   the whole repository (simplest, matches every emitted artifact), or
-   MIT/Apache-2.0 for the Rust compiler with GPL-2.0-or-later for `runtime/`
-   and `types/`. This plan works under either; it only needs the file to exist
-   before the repo goes public.
+2. **Zero's top-level licence.** *Ruled: split licence, MIT for everything
+   that can be, GPL-2.0-or-later only for what runs inside WordPress.* The
+   `p3/readme` branch's `LICENSE` is that split; `runtime/admin/` joins its
+   GPL list (§1.4). Nothing left to decide here.
 3. **Scope cut.** Users, themes, plugins, settings, design and taxonomy
    screens are dropped (§4.2). Say so if you want any of them back; users is
    the only one with a plausible case (an editor inviting an author), and it

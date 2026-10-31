@@ -14,7 +14,8 @@ use Zero\Schema;
  * language (`language` taxonomy) and its translation group (`post_translations` taxonomy); Zero
  * writes them through Polylang's public API (`pll_set_post_language`, `pll_save_post_translations`)
  * and reads them in SQL as term subqueries, so `locale`, `translations` and the locale rule compile
- * like any other column. Polylang languages are created from `locales.all` on activation.
+ * like any other column. Polylang languages are created from `locales.all` on the first request after
+ * activation or a change to them.
  */
 final class Polylang
 {
@@ -52,15 +53,15 @@ final class Polylang
                 self::adopt($objectId, (int) reset($ttIds));
             }
         }, 10, 4);
-        add_action('activated_plugin', static function (): void {
-            self::ensureLanguages();
-        });
-        add_action('admin_init', static function (): void {
+        // Languages follow `locales` on the first request of any kind (REST, front end, cron, CLI,
+        // admin) after activation or a change, once Polylang's model exists. Activation alone can't:
+        // with Polylang activated in the same request, its model isn't loaded yet.
+        add_action('init', static function (): void {
             $schema = Runtime::plugin()?->schema;
             if ($schema?->locales() !== null && get_option('zero_polylang_languages') !== self::state($schema->locales())) {
                 self::ensureLanguages();
             }
-        });
+        }, 2);
     }
 
     /** locale => post id of $postId's group (self included), in configured locale spelling. */

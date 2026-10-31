@@ -78,15 +78,28 @@ test("activation registers the post types, field groups and options page, and cr
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });
 
-test("one WP-CLI call activates Action Scheduler, the runtime and the app together", () => {
+test("one WP-CLI call activates Action Scheduler, Polylang, the runtime and the app together", () => {
   // `wp plugin activate a b c` (and `--all`) loads each newly activated plugin after plugins_loaded
-  // has fired, so Action Scheduler never registers its version before the runtime's platform check.
-  const chain = ["action-scheduler", "zero-runtime", "zero-identity", harness.plugin];
+  // has fired, so Action Scheduler never registers its version before the runtime's platform check,
+  // and Polylang has no model yet when the app activates.
+  const chain = ["action-scheduler", "polylang", "zero-runtime", "zero-identity", harness.plugin];
+  const languages = () => JSON.parse(wp("eval", "echo wp_json_encode(pll_languages_list(['fields' => 'slug']));"));
+  const configured = languages();
   wp("plugin", "deactivate", ...[...chain].reverse());
-  wp("plugin", "activate", ...chain);
-  const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json"));
-  assert.deepEqual(chain.filter((slug) => !active.includes(slug)), []);
-  assert.equal(wp("option", "get", "zero_runtime_tables"), tablesVersion());
+  try {
+    // A first install: Polylang has none of the app's languages, and Zero hasn't provisioned any.
+    wp("plugin", "activate", "polylang");
+    wp("eval", "foreach (PLL()->model->get_languages_list() as $l) { PLL()->model->delete_language($l->term_id); } delete_option('zero_polylang_languages');");
+    wp("plugin", "deactivate", "polylang");
+    wp("plugin", "activate", ...chain);
+    const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json"));
+    assert.deepEqual(chain.filter((slug) => !active.includes(slug)), []);
+    assert.equal(wp("option", "get", "zero_runtime_tables"), tablesVersion());
+    // The next request of any kind (here WP-CLI's) creates the configured languages.
+    assert.deepEqual(languages(), configured);
+  } finally {
+    wp("plugin", "activate", ...chain);
+  }
 });
 
 /**

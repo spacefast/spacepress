@@ -76,6 +76,17 @@ eq('still GIF resizes; animated GIFs (with or without control blocks) and SVG do
     Images::resizable("$dir/src.png", 'image/svg+xml'),
 ], [true, false, false, false]);
 
+// A transparent GIF stays transparent once resized.
+$t = imagecreate(40, 40);
+$bg = imagecolorallocate($t, 0, 255, 0);
+imagecolortransparent($t, $bg);
+imagefilledrectangle($t, 10, 10, 29, 29, imagecolorallocate($t, 255, 0, 0));
+imagegif($t, "$dir/clear.gif");
+Images::render("$dir/clear.gif", 'image/gif', Images::dimensions(40, 40, 20, 20, true), "$dir/clear-small.gif");
+$small = imagecreatefromgif("$dir/clear-small.gif");
+$corner = imagecolorat($small, 0, 0);
+eq('resized GIF keeps a transparent background and an opaque centre', [$corner === imagecolortransparent($small), imagecolorsforindex($small, imagecolorat($small, 10, 10))['red'] > 240], [true, true]);
+
 // The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
 require dirname(__DIR__, 2) . '/runtime/Zero/Wp/Media/ImageCdn.php';
 eq('CDN cover args carry the focal crop rectangle; inside args fit', [

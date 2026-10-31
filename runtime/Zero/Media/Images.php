@@ -145,12 +145,37 @@ final class Images
         $ok = match ($mime) {
             'image/jpeg' => imagejpeg($out, $dest, 82),
             'image/png' => imagepng($out, $dest),
-            'image/gif' => imagegif($out, $dest),
+            'image/gif' => self::gif($out, $dest),
             'image/webp' => imagewebp($out, $dest, 82),
         };
         if (!$ok) {
             throw new \RuntimeException('Cannot write the resized image');
         }
+    }
+
+    /** GIF has one transparent palette index, not an alpha channel: map transparent pixels onto it. */
+    private static function gif(\GdImage $img, string $dest): bool
+    {
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $mask = [];
+        for ($y = 0; $y < $h; $y++) {
+            for ($x = 0; $x < $w; $x++) {
+                if (((imagecolorat($img, $x, $y) >> 24) & 0x7F) >= 64) {
+                    $mask[] = [$x, $y];
+                }
+            }
+        }
+        imagetruecolortopalette($img, false, 255);
+        if ($mask !== []) {
+            $key = imagecolorallocate($img, 255, 0, 255);
+            imagecolortransparent($img, $key);
+            foreach ($mask as [$x, $y]) {
+                imagesetpixel($img, $x, $y, $key);
+            }
+        }
+
+        return imagegif($img, $dest);
     }
 
     /** Validate a focal point from request input: {x, y} in 0..1, or null. */

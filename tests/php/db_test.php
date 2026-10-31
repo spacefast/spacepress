@@ -1268,6 +1268,9 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('translations cannot be filtered', fn () => $db->findMany('pages', ['where' => ['translations' => null]]), 400, 'invalid_query', '/where/translations');
 
     // with: `many` follows the parent's locale, `one` resolves the stored id
+    $db->insert('notes', ['pageId' => $coffee['id'], 'body' => 'child']);
+    $fallback = $db->findMany('pages', ['locale' => 'de', 'with' => ['notes' => true], 'where' => ['id' => $coffee['id']]]);
+    eq('`many` children of a fallback parent row are attached as stored', [$fallback[0]['locale'], in_array('child', array_column($fallback[0]['notes'], 'body'), true)], ['en', true]);
     $db->update('pages', ['parentId' => $tea['id']], ['id' => $coffee['id']]);
     $fr = $db->findMany('pages', ['locale' => 'fr', 'with' => ['parent' => true], 'orderBy' => ['id' => 'asc']]);
     eq('`one` relation resolves the referenced row as stored', array_map(static fn ($r) => $r['parent']['title'] ?? null, $fr), [null, 'Tea']);

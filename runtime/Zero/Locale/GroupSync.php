@@ -74,6 +74,8 @@ final class GroupSync
         if (($viewer !== null && $find($viewer) === null) || ($source = $find(null)) === null) {
             throw HttpError::invalidInput("No $collection row with $pk " . Js::str($of), '/translationOf');
         }
+        Lock::members($collection, $source, Module::members($source, $pk)); // holds the group: joins serialize
+        Lock::unchanged($collection, $source[$pk]); // and the values about to be copied are current
         foreach (Module::synced($spec) as $col) {
             if (array_key_exists($col, $provided)
                 && !Module::same(Schema::normalize($spec['columns'][$col], $provided[$col], $col, HttpError::seg($col)), $source[$col])) {
@@ -115,7 +117,9 @@ final class GroupSync
 
             return;
         }
-        $siblings = array_values(array_filter(Module::members($row, $pk), static fn ($id) => $id !== $row[$pk]));
+        // Every member as currently committed, locked: a translation created concurrently can't be missed.
+        $members = Lock::members($collection, $row, Module::members($row, $pk));
+        $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
         self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
             foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
                 $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);

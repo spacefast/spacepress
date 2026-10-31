@@ -51,7 +51,10 @@ test("a synced column change saved in the editor (core REST) runs the sibling's 
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
   assert.equal(wp("eval", `echo get_post_meta(${fr.id}, 'zero_price', true);`), "6");
   assert.deepEqual(await log([en.id, fr.id]), [`${en.id}=en:6`, `${fr.id}=fr:6`]);
-  assert.equal((await ok("GET", `/guides/${fr.id}/revisions`, { as: "editor" })).length, 2);
+  const revisions = await ok("GET", `/guides/${fr.id}/revisions`, { as: "editor" });
+  assert.equal(revisions.length, 2);
+  const revision = await ok("GET", `/guides/${fr.id}/revisions/${revisions[0].id}`, { as: "editor" });
+  assert.deepEqual([revision.locale, revision.price, revision.translations], ["fr", 6, { en: en.id, fr: fr.id }]);
 });
 
 test("locale reads: the locale's row, else the group's default-locale row, combined with filters", async () => {
@@ -109,4 +112,16 @@ test("editor: false collections keep their own translation group", async () => {
   assert.deepEqual((await ok("GET", "/phrases" + qs({ locale: "de", where: mine }))).map((r: any) => r.text), [`Hello ${run}`]);
   // The (translationGroup, locale) unique key on MySQL backs one row per locale.
   await problem("POST", "/phrases", { as: "editor", body: { text: "Salut", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
+});
+
+test("posts that predate localization become default-locale rows; Polylang's default follows locales.default", async () => {
+  const id = Number(wp("eval", `
+    $id = wp_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Legacy ${run}', 'post_status' => 'publish']);
+    wp_delete_object_term_relationships($id, 'language');
+    PLL()->model->update_default_lang('fr');
+    delete_option('zero_polylang_languages');
+    \\Zero\\Wp\\Polylang::ensureLanguages();
+    echo $id;`));
+  assert.deepEqual([polylang(id)[0], wp("eval", "echo pll_default_language();")], ["en", "en"]);
+  assert.deepEqual(titles(await ok("GET", "/guides" + qs({ where: { id } }))), [`en:Legacy ${run}`]);
 });

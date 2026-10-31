@@ -49,10 +49,14 @@ const postLocale: "en" | "de" = post.locale;
 // @ts-expect-error the group id is hidden
 post.translationGroup;
 const translation: PostInsert = { title: "Hallo", locale: "de", translationOf: 1, slug: null };
+// A translation copies synced columns, so they may be omitted; a fresh row needs its required ones.
+type Required<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+type FreshRequired = Required<Extract<PostInsert, { translationOf?: undefined }>>;
+const freshNeedsTitle: "title" extends FreshRequired ? true : false = true;
 // @ts-expect-error translations are derived
 const derived: PostInsert = { title: "x", translations: {} };
 // @ts-expect-error locale is fixed per row
 const moved: PostPatch = { locale: "de" };
 // @ts-expect-error translations can't be filtered
 const byGroup: PostFilter = { translations: null };
-void [locales, badLocale, translations, postLocale, translation, derived, moved, byGroup];
+void [locales, badLocale, translations, postLocale, translation, freshNeedsTitle, derived, moved, byGroup];

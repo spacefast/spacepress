@@ -461,6 +461,9 @@ final class WpPostStore implements Store
             $system += array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? [], $keys);
         }
         $row = array_replace($row, array_intersect_key($system, $keys));
+        if ($spec['localized'] ?? false) { // a revision post has no language: its group is the parent's
+            $row['translations'] = Js::jsonStringify(Polylang::group($pk, $this->schema->locales()['all'] ?? []) ?: new \stdClass());
+        }
         $row[$spec['primaryKey']] = $pk;
         $at = $post instanceof \WP_Post && $post->post_date_gmt !== '0000-00-00 00:00:00' ? $post->post_date_gmt : $post?->post_date;
 
@@ -501,6 +504,9 @@ final class WpPostStore implements Store
         }
         if (($spec['slug'] ?? null) !== null) {
             $keys[$spec['slug']] = true;
+        }
+        if ($spec['localized'] ?? false) {
+            $keys['locale'] = true; // immutable per row, so a revision's locale is its parent's
         }
 
         return $keys;

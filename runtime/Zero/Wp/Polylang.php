@@ -56,10 +56,29 @@ final class Polylang
         });
         add_action('admin_init', static function (): void {
             $schema = Runtime::plugin()?->schema;
-            if ($schema?->locales() !== null && get_option('zero_polylang_languages') !== implode(',', $schema->locales()['all'])) {
+            if ($schema?->locales() !== null && get_option('zero_polylang_languages') !== self::state($schema->locales())) {
                 self::ensureLanguages();
             }
         });
+    }
+
+    /** locale => post id of $postId's group (self included), in configured locale spelling. */
+    public static function group(int $postId, array $locales): array
+    {
+        $bySlug = [];
+        foreach ($locales as $l) {
+            $bySlug[self::slug($l)] = $l;
+        }
+        $out = [];
+        $members = (array) pll_get_post_translations($postId);
+        if ($members === [] && ($own = pll_get_post_language($postId))) {
+            $members = [$own => $postId];
+        }
+        foreach ($members as $slug => $id) {
+            $out[$bySlug[$slug] ?? $slug] = (int) $id;
+        }
+
+        return $out;
     }
 
     /** Polylang language slugs are lowercase; Zero locales may carry a region in caps (pt-BR). */
@@ -108,7 +127,7 @@ final class Polylang
         if ($group === []) {
             return;
         }
-        $current = self::lockedGroup($db, array_map('intval', array_values($group)));
+        $current = self::locked($db, array_map('intval', array_values($group)));
         if (isset($current[self::slug($locale)])) {
             throw new HttpError(409, 'unique_violation', "This translation group already has a $locale row", '/locale');
         }
@@ -140,7 +159,7 @@ final class Polylang
      * @param list<int> $ids
      * @return array<string, int>
      */
-    private static function lockedGroup(Connection $db, array $ids): array
+    public static function locked(Connection $db, array $ids): array
     {
         $p = $db->prefix();
         $in = static fn (array $v) => implode(', ', array_fill(0, count($v), '?'));
@@ -181,7 +200,27 @@ final class Polylang
                 throw new \RuntimeException("Polylang could not add $locale: " . $added->get_error_message());
             }
         }
-        update_option('zero_polylang_languages', implode(',', $locales['all']), false);
+        // Polylang's default follows locales.default, also on sites whose languages already existed.
+        $default = PLL()->model->get_language(self::slug($locales['default']));
+        if ($default instanceof \PLL_Language && pll_default_language() !== $default->slug) {
+            PLL()->model->update_default_lang($default->slug);
+        }
+        // Posts of localized post types that predate localization (no language) become default-locale rows.
+        $types = self::postTypes();
+        if ($types !== [] && $default instanceof \PLL_Language) {
+            foreach (get_posts(['post_type' => $types, 'post_status' => 'any', 'numberposts' => -1, 'fields' => 'ids', 'lang' => '', 'suppress_filters' => true]) as $id) {
+                if (!pll_get_post_language((int) $id)) {
+                    pll_set_post_language((int) $id, $default->slug);
+                }
+            }
+        }
+        update_option('zero_polylang_languages', self::state($locales), false);
+    }
+
+    /** Provisioning marker: the default plus every locale, so changing either re-provisions. */
+    private static function state(array $locales): string
+    {
+        return $locales['default'] . ':' . implode(',', $locales['all']);
     }
 
     /** @return list<string> post types of localized post-backed collections */

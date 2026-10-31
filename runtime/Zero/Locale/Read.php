@@ -14,8 +14,8 @@ use function Zero\db;
  * every row. API list reads default to locales.default. A read pinned to one primary key names that
  * row: without `locale` it is returned as is; with `locale` its group's row in that locale is. Trusted
  * reads (hooks, CLI, the write pipeline) see rows as stored, every locale, unless they pass `locale`.
- * `with`: a `many` relation follows the parent's explicit locale; a `one` relation stores a specific
- * row's id and resolves to exactly that row.
+ * `with`: a `one` relation resolves the stored id; a `many` relation follows an explicit locale of a
+ * non-localized parent and is attached as stored under a localized parent.
  */
 final class Read
 {
@@ -44,11 +44,11 @@ final class Read
                     || (is_array($nested) && array_key_exists('locale', $nested))) {
                     continue;
                 }
-                if ($rel['kind'] === 'one') {
-                    $nested = ($nested === true ? [] : $nested) + ['locale' => '*'];
-                } elseif ($has) {
-                    $nested = ($nested === true ? [] : $nested) + ['locale' => $locale];
-                }
+                // `one` stores a specific row's id. `many` children follow an explicit query locale
+                // from a non-localized parent; under a localized parent (whose rows may be fallbacks in
+                // another locale) they are attached as stored, since `with` loads one page for all parents.
+                $follow = $rel['kind'] === 'many' && $has && !$localized;
+                $nested = ($nested === true ? [] : $nested) + ['locale' => $follow ? $locale : '*'];
             }
             unset($nested);
         }

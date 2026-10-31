@@ -370,16 +370,32 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         })
         .collect();
     if c.localized {
-        insert.push("translationOf?: number".into());
-    }
-    let _ = writeln!(s, "export interface {n}Insert {{ {} }}", insert.join("; "));
-    if c.localized {
+        // §7.3: a new row, or a translation joining another row's group. A translation copies every
+        // synced (non-localized) column from its group, so those may be omitted there.
+        insert.push("translationOf?: undefined".into());
+        let _ = writeln!(s, "export interface {n}Fields {{ {} }}", insert.join("; "));
+        let synced: Vec<String> = c
+            .columns
+            .values()
+            .filter(|col| !col.localized && !col.system && !col.primary_key && Some(&col.name) != c.slug.as_ref())
+            .map(|col| lit(&col.name))
+            .collect();
+        let synced = if synced.is_empty() {
+            "never".to_string()
+        } else {
+            synced.join(" | ")
+        };
+        let _ = writeln!(
+            s,
+            "export type {n}Insert = {n}Fields | (Omit<{n}Fields, {synced} | \"translationOf\"> & Partial<Pick<{n}Fields, {synced}>> & {{ translationOf: number }});"
+        );
         // `locale` is fixed per row; `translationOf` only applies on create.
         let _ = writeln!(
             s,
-            "export type {n}Patch = Partial<Omit<{n}Insert, \"locale\" | \"translationOf\">>;"
+            "export type {n}Patch = Partial<Omit<{n}Fields, \"locale\" | \"translationOf\">>;"
         );
     } else {
+        let _ = writeln!(s, "export interface {n}Insert {{ {} }}", insert.join("; "));
         let _ = writeln!(s, "export type {n}Patch = Partial<{n}Insert>;");
     }
 

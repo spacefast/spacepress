@@ -369,6 +369,17 @@ pub fn insert(schema: &Schema, table: &str) -> Ty {
         fields.shift_remove("translations");
         fields.shift_remove("translationGroup");
         fields.insert("translationOf".into(), (Ty::Num.nullable(), true));
+        // A translation copies synced columns from its group, so hooks may omit them; a fresh row
+        // missing a required one is still refused by the pipeline (422 at the column).
+        for col in c
+            .columns
+            .values()
+            .filter(|col| !col.localized && !col.system && !col.primary_key)
+        {
+            if let Some(f) = fields.get_mut(&col.name) {
+                f.1 = true;
+            }
+        }
     }
     t
 }

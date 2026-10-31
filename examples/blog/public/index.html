@@ -80,13 +80,18 @@
       render();
     });
 
+    // Only the latest render paints: a slower, older one (say English after German) is dropped.
+    let renders = 0;
     async function render() {
+      const mine = ++renders;
       const locale = $("lang").value;
       document.documentElement.lang = locale;
       const settings = await zero.globals.settings.get();
+      if (mine !== renders) return;
       document.title = $("title").textContent = settings.siteTitle;
       $("tagline").textContent = settings.tagline ?? "";
       const posts = await zero.posts.list({ orderBy: { publishedAt: "desc" }, limit: settings.postsPerPage, locale, with: { author: true, comments: true, cover: true } });
+      if (mine !== renders) return;
       $("posts").innerHTML = posts.length === 0 ? "<p>No posts yet.</p>" : posts.map((p) => `
         <article lang="${esc(p.locale)}">
           ${p.cover ? `<img src="${esc(p.cover.sizes.card?.url ?? p.cover.url)}" alt="${esc(p.cover.alt)}" width="600" height="400">` : ""}

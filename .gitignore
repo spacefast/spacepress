@@ -11,3 +11,5 @@ runtime/identity/apps/node_modules/
 /tests/system/.wp-content-legacy/
 /tests/system/.harness.json
 /tests/system/.harness-legacy.json
+/tests/system/.wp-content-blog/
+/tests/system/.harness-blog.json

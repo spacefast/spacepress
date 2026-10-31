@@ -262,7 +262,8 @@ Throwing anything aborts the request and rolls back every write in it.
 - `signature: { secret: env("NAME"), header, scheme: "zero" | "hmac-sha256" }`:
   an inbound webhook. The HMAC over the raw body replaces the access rule;
   `zero` also checks a timestamp so old deliveries are refused.
-- `agents: false` keeps it out of WordPress abilities and MCP.
+- `agents: false` keeps it out of MCP and the abilities' public REST
+  discovery; it stays callable over the app's own API.
 
 ## Jobs and webhooks
 

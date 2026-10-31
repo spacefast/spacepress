@@ -1,15 +1,17 @@
 <?php
 declare(strict_types=1);
 $root = $argv[1];
+// Each bundle gets its own loader class and files registry, so two Zero bundles never share one.
+$bundle = ($argv[2] ?? 'runtime') === 'identity' ? ['ZeroIdentity', '__zero_identity_vendor_autoload_files'] : ['ZeroRuntime', '__zero_runtime_vendor_autoload_files'];
 $lock = json_decode(file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
 // Strauss creates a temporary Composer project without a lock, so Composer
 // chooses a random loader suffix. Give this isolated bundle a stable identity.
 foreach (['autoload.php', 'composer/autoload_real.php', 'composer/autoload_static.php'] as $relative) {
     $file = $root . '/vendor-prefixed/' . $relative;
-    file_put_contents($file, preg_replace('/(Composer(?:Autoloader|Static)Init)[a-f0-9]{32}/', '${1}ZeroRuntime', file_get_contents($file)));
+    file_put_contents($file, preg_replace('/(Composer(?:Autoloader|Static)Init)[a-f0-9]{32}/', '${1}' . $bundle[0], file_get_contents($file)));
 }
 $autoload = $root . '/vendor-prefixed/composer/autoload_real.php';
-file_put_contents($autoload, str_replace('__composer_autoload_files', '__zero_runtime_vendor_autoload_files', file_get_contents($autoload)));
+file_put_contents($autoload, str_replace('__composer_autoload_files', $bundle[1], file_get_contents($autoload)));
 // The bundle root is a build helper, not an installed dependency. Composer's
 // inferred branch and commit must not make its metadata depend on the checkout.
 $installed = $root . '/vendor-prefixed/composer/installed.php';

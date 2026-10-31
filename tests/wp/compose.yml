@@ -59,6 +59,11 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: zero-test-db
       WORDPRESS_DB_NAME: wordpress
+      # wp-config evaluates this per process, so WP-CLI needs the same constants as the web server.
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('DISABLE_WP_CRON', true);
+        define('ZERO_IDENTITY_DEV_HTTP', true);
     volumes:
       - wp:/var/www/html
       - ./cache:/zero-cache:ro

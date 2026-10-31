@@ -145,25 +145,18 @@ jobs:
   identity:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        if: hashFiles('tests/identity/run.sh') != ''
         with:
           node-version: '22'
-      - name: Install host test tools
-        if: hashFiles('tests/identity/run.sh') != ''
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y php8.3-cli php8.3-mbstring
-          sudo update-alternatives --set php /usr/bin/php8.3
-      - name: Run identity on PHP 8.2 and 8.5
-        if: hashFiles('tests/identity/run.sh') != ''
-        run: |
-          for version in 8.2 8.5; do
-            IDENTITY_WORDPRESS_IMAGE="wordpress:7.1-php${version}-apache" \
-              IDENTITY_CLI_IMAGE="wordpress:cli-php${version}" tests/identity/run.sh
-          done
-      - name: Identity suite arrives with E1
-        if: hashFiles('tests/identity/run.sh') == ''
-        run: echo 'Identity is an inert placeholder; its acceptance suite is not present yet.'
+      - run: sudo apt-get update && sudo apt-get install -y rsync
+      - name: Identity acceptance on PHP ${{ matrix.php }}
+        env:
+          IDENTITY_WORDPRESS_IMAGE: wordpress:7.1-php${{ matrix.php }}-apache
+          IDENTITY_CLI_IMAGE: wordpress:cli-php${{ matrix.php }}
+        run: tests/identity/run.sh

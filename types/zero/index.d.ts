@@ -467,12 +467,17 @@ type HasLocalized<TCols> = true extends (TCols extends unknown ? {
 type LocalizedKeys<TCols> = {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: true } } ? K : never;
 }[keyof TCols];
+/** Per-row columns a translation doesn't copy: slugs. (A text `.primaryKey()` is per row too, but the builder type doesn't record it; the runtime refuses its omission.) */
+type PerRowKeys<TCols> = {
+  [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { kind: "slug" } } ? K : never;
+}[keyof TCols];
 /** A localized insert: a new row, or a translation (`translationOf`) that copies every synced column, so those may be omitted. */
 type TranslationInsert<TCols> =
   | (InsertShape<Omit<TCols, "translations">> & { translationOf?: undefined })
   | Simplify<
       InsertShape<Pick<TCols, (LocalizedKeys<TCols> | "locale") & keyof TCols>> &
-        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | "locale" | "translations">>> & { translationOf: number }
+        InsertShape<Pick<TCols, PerRowKeys<TCols>>> &
+        Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: number }
     >;
 type LocaleColumns = {
   locale: ColumnBuilder<"text", Locale, true, true>;

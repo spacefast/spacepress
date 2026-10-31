@@ -88,75 +88,22 @@ test("a translation linked outside the API (Polylang's +) adopts the group's syn
   assert.deepEqual([row.locale, row.price, row.tags, row.translations], ["de", 7, ["coffee"], { en: en.id, de }]);
 });
 
-test("a link made outside the API is refused when a hook would split the group", async () => {
+test("a link made outside the API: adoption a hook would split is rolled back; the link stands, as for editor saves", async () => {
   const en = await ok("POST", "/guides", { as: "editor", body: { title: `Linked ${run}`, price: 7 } });
-  const out = JSON.parse(wp("eval", `
-    $id = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
-    try {
-      pll_save_post_translations(['en' => ${en.id}, 'de' => $id]);
-      $result = 'linked';
-    } catch (\\Zero\\HttpError $e) {
-      $result = $e->status . ' ' . $e->errorCode;
-    }
-    echo wp_json_encode([$result, $id, get_post_meta($id, 'zero_price', true), get_post_meta(${en.id}, 'zero_price', true)]);`));
-  assert.deepEqual([out[0], out[2], out[3]], ["409 conflict", "", "7"], "the adoption rolled back; no divergent price was committed");
-  // The link itself is undone too, as Polylang and Zero see it from a fresh request.
-  assert.deepEqual([polylang(en.id), polylang(out[1])], [["en", { en: en.id }], ["de", { de: out[1] }]]);
-  assert.deepEqual((await ok("GET", `/guides/${en.id}`, { as: "editor" })).translations, { en: en.id });
-});
-
-test("a refused link of three posts leaves none of them linked or changed", async () => {
-  const en = await ok("POST", "/guides", { as: "editor", body: { title: `Three ${run}`, price: 7 } });
-  const de = await ok("POST", "/guides", { as: "editor", body: { title: `Three DE ${run}`, locale: "de", price: 1 } });
-  const out = JSON.parse(wp("eval", `
-    $fr = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump FR ${run}', 'post_status' => 'publish'], 'fr');
-    try {
-      pll_save_post_translations(['en' => ${en.id}, 'de' => ${de.id}, 'fr' => $fr]);
-      $result = 'linked';
-    } catch (\\Zero\\HttpError $e) {
-      $result = $e->status . ' ' . $e->errorCode;
-    }
-    echo wp_json_encode([$result, $fr]);`));
-  assert.equal(out[0], "409 conflict");
-  assert.deepEqual([polylang(en.id)[1], polylang(de.id)[1], polylang(out[1])[1]], [{ en: en.id }, { de: de.id }, { fr: out[1] }]);
-  const rows = await ok("GET", "/guides" + qs({ locale: "*", where: { id: { in: [en.id, de.id] } }, orderBy: "id" }), { as: "editor" });
-  assert.deepEqual(rows.map((r: any) => [r.price, r.translations]), [[7, { en: en.id }], [1, { de: de.id }]]);
-  assert.deepEqual(await log([de.id]), [], "the rolled-back adoption ran no committed hook effects");
-});
-
-test("a refused link that extends a group keeps the group it had", async () => {
-  const { en, fr } = await pair("Extend");
   const out = JSON.parse(wp("eval", `
     $de = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
     try {
-      pll_save_post_translations(['en' => ${en.id}, 'fr' => ${fr.id}, 'de' => $de]);
-      $result = 'linked';
+      pll_save_post_translations(['en' => ${en.id}, 'de' => $de]);
+      $result = 'adopted';
     } catch (\\Zero\\HttpError $e) {
       $result = $e->status . ' ' . $e->errorCode;
     }
     echo wp_json_encode([$result, $de]);`));
-  assert.equal(out[0], "409 conflict");
-  assert.deepEqual([polylang(en.id)[1], polylang(fr.id)[1], polylang(out[1])[1]], [{ en: en.id, fr: fr.id }, { en: en.id, fr: fr.id }, { de: out[1] }]);
-  assert.deepEqual((await ok("GET", `/guides/${fr.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
-});
-
-test("a refused link that replaces a member keeps the group it had, also when repeated", async () => {
-  const { en, fr } = await pair("Replace");
-  const out = JSON.parse(wp("eval", `
-    $bump = pll_insert_post(['post_type' => 'zero_guides', 'post_title' => 'Bump FR ${run}', 'post_status' => 'publish'], 'fr');
-    $results = [];
-    foreach ([1, 2] as $attempt) { // the same refused link twice in one request: both are refused
-      try {
-        pll_save_post_translations(['en' => ${en.id}, 'fr' => $bump]);
-        $results[] = 'linked';
-      } catch (\\Zero\\HttpError $e) {
-        $results[] = $e->status . ' ' . $e->errorCode;
-      }
-    }
-    echo wp_json_encode([$results, $bump]);`));
-  assert.deepEqual(out[0], ["409 conflict", "409 conflict"]);
-  assert.deepEqual([polylang(en.id)[1], polylang(fr.id)[1], polylang(out[1])[1]], [{ en: en.id, fr: fr.id }, { en: en.id, fr: fr.id }, { fr: out[1] }]);
-  assert.deepEqual((await ok("GET", `/guides/${en.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
+  // The adoption that would leave en=7, de=8 is refused and rolled back (no adopted price, no hook
+  // effects); like an editor save (design-wp-parity §1.7), the link Polylang already wrote stands.
+  assert.deepEqual([out[0], wp("eval", `echo get_post_meta(${out[1]}, 'zero_price', true);`)], ["409 conflict", ""]);
+  assert.deepEqual(await log([out[1]]), []);
+  assert.deepEqual(polylang(en.id)[1], { en: en.id, de: out[1] });
 });
 
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {

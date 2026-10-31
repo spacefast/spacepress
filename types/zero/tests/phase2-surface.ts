@@ -32,7 +32,7 @@ expectType<Equal<LocalizedBlockRow["locale"], Locale>>();
 expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translations"]>>();
 
 // A required synced column (price): translations may omit it, fresh rows may not.
-const priced = collection("priced", { id: id(), title: text().notNull().localized(), price: integer().notNull() }, { editor: false });
+const priced = collection("priced", { id: id(), title: text().notNull().localized(), price: integer().notNull(), handle: slug().notNull() }, { editor: false });
 
 const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
 const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });
@@ -53,9 +53,11 @@ async function surface() {
   await once(42, () => true);
   const row = (await db.insert(posts).values({ title: "Hallo", locale: "de", translationOf: 1 }).returning())[0];
   // A translation copies synced columns (authorId here), a fresh row still needs its required ones.
-  await db.insert(priced).values({ title: "Preis", locale: "de", translationOf: 1 });
+  await db.insert(priced).values({ title: "Preis", locale: "de", translationOf: 1, handle: "preis" });
   // @ts-expect-error a fresh row must give its required synced column
-  await db.insert(priced).values({ title: "Price" });
+  await db.insert(priced).values({ title: "Price", handle: "price" });
+  // @ts-expect-error a slug is per row: a translation must give its own
+  await db.insert(priced).values({ title: "Prix", locale: "de", translationOf: 1 });
   expectType<Equal<typeof row.locale, Locale>>();
   expectType<Equal<typeof row.translations, LocalizedColumns["translations"]>>();
   expectType<Equal<typeof row.uid, string>>();

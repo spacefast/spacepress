@@ -311,7 +311,11 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // including one for a post type whose name merely ends like the app's.
   wp("role", "create", "desk", "Desk");
   wp("cap", "add", "desk", "edit_zero_posts", "unrelated_cap", "edit_acme_zero_posts");
-  assert.ok(caps().editor.includes("edit_others_zero_posts"), "activation granted the post type's capabilities");
+  // Capabilities of the app's post types come from its access rules (map_meta_cap), not from roles:
+  // activation grants none, and the editor's edit rights are the posts rules' answer.
+  assert.deepEqual(caps().editor, [], "activation grants no role a capability");
+  const can = () => wp("eval", "echo wp_json_encode([user_can(get_user_by('login', 'editor'), 'edit_others_zero_posts'), user_can(get_user_by('login', 'subscriber'), 'edit_others_zero_posts')]);");
+  assert.equal(can(), "[true,false]", "posts' update rule lets editors edit any post, not subscribers");
   // Pending work in the app's and the runtime's groups, and in a group that isn't Zero's.
   const seeded = JSON.parse(wp("eval", "echo wp_json_encode([as_schedule_single_action(time() + 3600, 'not_zero', [], 'someone-else')]);"));
   const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'zero' AND a.hook = 'zero_jobs_maintain' AND a.status = 'pending'");
@@ -357,7 +361,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   after.posts.splice(queuedIndex, 1);
   after.revisions.splice(queuedIndex, 1);
   assert.deepEqual(after, before);
-  assert.ok(caps().editor.includes("edit_others_zero_posts"), "reactivation grants the capabilities again");
+  assert.deepEqual([caps().editor, can()], [[], "[true,false]"], "the reinstalled app's rules decide again, still with no role caps");
   // The reinstalled app runs the work queued before the uninstall.
   wp("action-scheduler", "run", "--hooks=zero_job");
   assert.deepEqual(sql(`SELECT state FROM wp_zero__jobs WHERE id = '${queued}'`), ["done"]);

@@ -157,11 +157,14 @@ test("showIf becomes SCF conditional_logic, including rules on core post columns
   assert.equal(prepared(draft), false, "draft: the field is not rendered");
 });
 
-// Core /wp/v2 is governed by WordPress capabilities, not Zero's field rules (phase 1 §1.6).
-test("core /wp/v2 saves ignore field access that /zero/v1 enforces", async () => {
+// Core /wp/v2 is Zero's rules too: the field rules /zero/v1 enforces refuse the same core save.
+test("core /wp/v2 saves follow the field access /zero/v1 enforces", async () => {
   const id = zero("insert", "field_staff", JSON.stringify({ name: `Paid ${run}`, salary: 10 }))[0].id;
   await problem("PATCH", `/field_staff/${id}`, { as: "editor", body: { salary: 42 } }, { status: 403, code: "forbidden", pointer: "/salary" });
-  const updated = await http("POST", `${core}/zero_field_staff/${id}`, { as: "editor", body: { acf: { zero_salary: 42 } } });
-  assert.equal(updated.status, 200, JSON.stringify(updated.json));
-  assert.equal((await ok("GET", `/field_staff/${id}`, { as: "editor" })).salary, 42);
+  const refused = await http("POST", `${core}/zero_field_staff/${id}`, { as: "editor", body: { acf: { zero_salary: 42 } } });
+  assert.deepEqual([refused.status, refused.json.code, refused.json.data.pointer], [403, "forbidden", "/salary"]);
+  assert.equal((await ok("GET", `/field_staff/${id}`, { as: "editor" })).salary, 10, "nothing was saved");
+  const allowed = await http("POST", `${core}/zero_field_staff/${id}`, { as: "admin", body: { acf: { zero_salary: 42 } } });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.json));
+  assert.equal((await ok("GET", `/field_staff/${id}`, { as: "admin" })).salary, 42);
 });

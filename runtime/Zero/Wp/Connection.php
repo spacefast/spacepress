@@ -121,20 +121,38 @@ final class Connection
                 $this->depth--;
             }
         }
-        $this->query('START TRANSACTION');
-        $this->depth = 1;
+        $this->begin();
         try {
             $result = $fn();
+        } catch (\Throwable $e) {
+            $this->rollback();
+            throw $e;
+        }
+        $this->commit();
+
+        return $result;
+    }
+
+    /**
+     * Open the outermost transaction by hand, for a save that WordPress drives through hooks (§4.9):
+     * Zero's own transactions join it until commit() or rollback() ends it. Throws if one is open.
+     */
+    public function begin(): void
+    {
+        if ($this->depth > 0) {
+            throw new \LogicException('A transaction is already open');
+        }
+        $this->query('START TRANSACTION');
+        $this->depth = 1;
+    }
+
+    /** Commit the outermost transaction, then run its afterCommit callbacks. A failed COMMIT rolls back. */
+    public function commit(): void
+    {
+        try {
             $this->query('COMMIT');
         } catch (\Throwable $e) {
-            $this->depth = 0;
-            $this->query('ROLLBACK');
-            $this->cleanCaches();
-            $undo = $this->onRollback;
-            $this->reset();
-            foreach ($undo as $cb) {
-                $cb();
-            }
+            $this->rollback();
             throw $e;
         }
         $this->depth = 0;
@@ -143,8 +161,22 @@ final class Connection
         foreach ($after as $cb) {
             $cb();
         }
+    }
 
-        return $result;
+    /** Roll the outermost transaction back, clean the caches it touched, run its onRollback callbacks. */
+    public function rollback(): void
+    {
+        $this->depth = 0;
+        $undo = $this->onRollback;
+        try {
+            $this->query('ROLLBACK');
+        } finally {
+            $this->cleanCaches();
+            $this->reset();
+        }
+        foreach ($undo as $cb) {
+            $cb();
+        }
     }
 
     public function inTransaction(): bool

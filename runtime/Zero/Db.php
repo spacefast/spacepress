@@ -179,6 +179,45 @@ final class Db
         return Extensions::read($rows, $collection, $viewer);
     }
 
+    /**
+     * Does $viewer's read/update/delete rule (+ draft visibility for read; $data as a write's rule
+     * sees it) cover row $pk? For surfaces that ask the pipeline's question outside it: core `/wp/v2`
+     * and WordPress capabilities. A rule that denies outright is false, like a row it filters out.
+     */
+    public function permits(string $collection, string $op, int|string $pk, Viewer $viewer, ?array $data = null): bool
+    {
+        try {
+            $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, $data);
+        } catch (HttpError) {
+            return false;
+        }
+
+        return $this->keysMatching($collection, [$this->schema->collection($collection)['primaryKey'] => $pk], $guards) !== [];
+    }
+
+    /**
+     * The primary keys $viewer's read or update rule (+ draft visibility for read) covers, or null when
+     * it covers every row. Throws 401/403 when the rule denies. Rows as stored: no locale or other
+     * query extension narrows them.
+     *
+     * @return ?list<int|string>
+     */
+    public function permittedKeys(string $collection, string $op, Viewer $viewer): ?array
+    {
+        $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
+
+        return $guards === [] ? null : $this->keysMatching($collection, null, $guards);
+    }
+
+    /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */
+    private function keysMatching(string $collection, ?array $where, array $guards): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
+
+        return array_column($this->store->select($collection, $q), $pk);
+    }
+
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
     private function readGuards(string $collection, Viewer $viewer): array
     {
@@ -817,7 +856,8 @@ final class Db
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
     }
 
-    private function revisionRow(string $collection, int|string $pk, int $revisionId): array
+    /** The decoded row a revision (or autosave) holds, trusted: no access checks. */
+    public function revisionRow(string $collection, int|string $pk, int $revisionId): array
     {
         $rev = $this->store->revision($collection, $pk, $revisionId)
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");

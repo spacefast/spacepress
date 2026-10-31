@@ -28,7 +28,7 @@ namespace Zero;
  *   rule counts as possibly denying), never stored values the viewer can't see.
  *
  * Trusted callers (null viewer: hooks, actions' db, CLI) see and write everything. wp-admin and core
- * `/wp/v2` are governed by WordPress capabilities (phase 1 §1.6) and never reach this class.
+ * `/wp/v2` apply these same rules through Wp\CoreAccess (strip on read, checkWrite on a save's diff).
  */
 final class FieldAccess
 {
@@ -181,7 +181,7 @@ final class FieldAccess
     }
 
     /** True when some row could hide this column (or a sub-field inside it) from $viewer. */
-    private static function mayHide(array $def, Viewer $viewer): bool
+    public static function mayHide(array $def, Viewer $viewer): bool
     {
         $rule = $def['access']['read'] ?? null;
         if ($rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, 'read', null))) {
@@ -355,7 +355,7 @@ final class FieldAccess
      * True when the viewer may not be able to set this field or something nested in it: a function rule
      * (it could deny) or a shorthand that denies. From the rules alone, so it reveals no stored data.
      */
-    private static function unwritable(string $op, array $def, Viewer $viewer): bool
+    public static function unwritable(string $op, array $def, Viewer $viewer): bool
     {
         $rule = $def['access'][$op] ?? null;
         if ($rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, $op, null))) {

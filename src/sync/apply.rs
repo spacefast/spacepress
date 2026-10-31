@@ -1039,13 +1039,22 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
                     )
                     .map_err(|p| report.problem("site", &p))?;
             }
-            if let Some(f) = in_files {
-                std::fs::remove_file(&f.path).map_err(|e| format!("{}: {e}", report.rel(&f.path)))?;
-                report.written(&f.path);
-            }
+            // The record is in the site's trash: its base goes whatever happens to the file, so a file
+            // that survives reads as new next run and is pushed back rather than deleted.
             bases.remove(&site, &c.name, uid);
             if bases.save()? {
                 report.written(bases.path());
+            }
+            if let Some(f) = in_files {
+                // Edited while the trash request ran: keep that edit, and the draft with it.
+                if !unchanged(&f.path, Some(&f.bytes)) {
+                    return Err(format!(
+                        "{} changed while resolve ran; the record was trashed but your newer file is kept (the next zero sync pushes it back)",
+                        report.rel(&f.path)
+                    ));
+                }
+                std::fs::remove_file(&f.path).map_err(|e| format!("{}: {e}", report.rel(&f.path)))?;
+                report.written(&f.path);
             }
             report.applied();
             if !unchanged(&path, Some(&draft)) {

@@ -2106,3 +2106,76 @@ fn a_delete_versus_edit_conflict_can_be_resolved_as_a_deletion_either_way() {
     }
     let _ = std::fs::remove_dir_all(&project);
 }
+
+#[test]
+fn a_file_edited_while_resolve_deletes_it_is_kept() {
+    let (project, site) = setup();
+    std::fs::write(
+        project.join("content/notes/n.md"),
+        "---\ntitle: Note\nslug: n\nlevel: null\nauthorId: null\n---\nFirst.\n",
+    )
+    .unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    let file = project.join("content/notes/n.md");
+    let id = site.rows("notes")[0]["id"].as_i64().unwrap();
+    let uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
+    // An edit/edit conflict, resolved as a deletion; the file is edited while the trash request runs.
+    std::fs::write(
+        &file,
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .replace("title: Note", "title: Local"),
+    )
+    .unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Remote"})),
+    );
+    assert_eq!(s, 200);
+    sync(&project, &site, &["--only", "notes"]);
+    let draft = project.join(format!(".zero/conflicts/{uid}.md"));
+    let conflict = std::fs::read_to_string(&draft).unwrap();
+    let header: String = conflict
+        .lines()
+        .take_while(|l| l.starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(&draft, format!("{header}(deleted)\n")).unwrap();
+    let edited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let path = file.clone();
+    let proxy = proxy_acting_on_first(
+        &site,
+        "/api/sync/notes/trash",
+        move || {
+            let t = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, t.replace("First.", "Kept: typed during the delete.")).unwrap();
+        },
+        edited.clone(),
+    );
+    let out = zero()
+        .arg("sync")
+        .args(["resolve", &uid])
+        .arg(&project)
+        .args(["--site", &proxy, "--token", &site.token])
+        .output()
+        .unwrap();
+    assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("Kept: typed during the delete."),
+        "the newer file is kept"
+    );
+    assert!(draft.exists(), "and the draft too");
+    // The next run treats the surviving file as new and pushes it back.
+    std::fs::remove_file(&draft).unwrap();
+    assert_eq!(sync(&project, &site, &["--only", "notes"]).status.code(), Some(0));
+    assert!(site.rows("notes").iter().any(|r| {
+        r["body"]
+            .as_str()
+            .is_some_and(|b| b.contains("Kept: typed during the delete."))
+    }));
+    let _ = std::fs::remove_dir_all(&project);
+}

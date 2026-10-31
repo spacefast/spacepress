@@ -172,6 +172,14 @@ final class FieldAccess
         }
     }
 
+    /** True when some row could hide this column itself from $viewer (sub-fields not counted). */
+    private static function mayHideSelf(array $def, Viewer $viewer): bool
+    {
+        $rule = $def['access']['read'] ?? null;
+
+        return $rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, 'read', null));
+    }
+
     /** True when some row could hide this column (or a sub-field inside it) from $viewer. */
     private static function mayHide(array $def, Viewer $viewer): bool
     {
@@ -222,6 +230,12 @@ final class FieldAccess
         }
         if (!in_array($def['type'], self::STRUCTURED, true)) {
             return $value;
+        }
+        // A container the viewer may not see, holding something it may not set: whatever happens inside
+        // it (unchanged children, list length, layouts) would be decided by hidden data, so any write to
+        // it is refused outright, decided by the rules alone.
+        if ($storedIn !== null && self::mayHideSelf($def, $viewer) && self::unwritable($op, ['access' => []] + $def, $viewer)) {
+            throw self::denied($viewer, $name, $ptr);
         }
         $resolved ??= self::resolveValue($op, $def, $value, $before, $merge, $viewer, $page);
         if ($def['type'] === 'group' && self::isObject($value)) {

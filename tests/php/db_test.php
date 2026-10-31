@@ -147,6 +147,13 @@ $files = [
                         'seen' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => [
                             'x' => ['type' => 'text', 'access' => ['read' => ['fn' => 'profiles__field__seen__x__read']]],
                         ]],
+                        // Hidden containers holding unwritable fields (round-11 review).
+                        'locker' => ['type' => 'group', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'pin' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                        ]],
+                        'entries' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                            'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                        ]],
                         'checks' => ['type' => 'repeater', 'fields' => [
                             'open' => ['type' => 'boolean'],
                             'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__checks__note__update']]],
@@ -342,6 +349,8 @@ $files = [
         	"seeded" text,
         	"vault" text,
         	"seen" text,
+        	"locker" text,
+        	"entries" text,
         	"checks" text,
         	"tasks" text,
         	"teamId" integer REFERENCES "teams"("id") ON DELETE set null
@@ -929,6 +938,14 @@ $faProblem('… and with it off', $as('fa_alice', 'PATCH', "/profiles/{$mine['id
 // A group she reads in full may be resent unchanged even under a function read rule.
 $db->update('profiles', ['seen' => ['x' => 'v']], ['id' => $mine['id']]);
 eq('a fully visible group resends unchanged', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['seen' => $as('fa_alice', 'GET', "/profiles/{$mine['id']}")[1]['seen']])[0], 200);
+// Under a hidden container, nothing about its contents can be learned by writing: right or wrong
+// guesses, empty or populated lists, all refused the same way.
+$db->update('profiles', ['locker' => ['pin' => '1234'], 'entries' => []], ['id' => $mine['id']]);
+$faProblem('right guess of a pin inside a hidden group', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['locker' => ['pin' => '1234']]), 403, 'forbidden', '/locker');
+$faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['locker' => ['pin' => '0000']]), 403, 'forbidden', '/locker');
+$faProblem('emptying a hidden list that is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
+$db->update('profiles', ['entries' => [['v' => 'x']]], ['id' => $mine['id']]);
+$faProblem('… and one that is not', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['entries' => []]), 403, 'forbidden', '/entries');
 // Carrying an omitted protected value forward compares only what the viewer sees: any hidden value
 // in that item is refused alike, right guess or wrong.
 $db->update('profiles', ['tasks' => [['label' => 'w', 'rate' => 5, 'secret' => 'old']]], ['id' => $mine['id']]);
@@ -956,6 +973,6 @@ eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$m
 
 // /_schema reports per-column summaries (no function names).
 $described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
-eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false]]);
+eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'entries' => ['read' => 'editor']]);
 
 finish('db_test');

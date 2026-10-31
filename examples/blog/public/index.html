@@ -34,7 +34,7 @@
     import { SCHEMA } from "./client/schema.js";
 
     // Sessions survive reloads (sessionStorage). On WordPress, register this page once with
-    // `wp zero-identity app add --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
+    // `wp zero-identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
     const wp = SCHEMA.target === "wp";
     const zero = createClient({
       url: wp ? "/wp-json/zero/v1" : "/api",

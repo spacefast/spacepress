@@ -1376,7 +1376,9 @@ Group sync on update runs in `Db::onWritten` (`Zero\Locale\GroupSync`).
 - `Zero\Wp\Polylang` (lane H): `add_filter('pll_get_post_types', …)` registers
   every localized collection's post type as translatable (and hides it from
   Polylang's own settings UI). Languages are **Polylang's** (created from
-  `locales.all` on activation via `PLL()->model->add_language()` when missing;
+  `locales.all` via `PLL()->model->add_language()` when missing, on the first
+  request after activation or a `locales` change, under a lock; until they
+  exist, Zero refuses writes with 503;
   `zero doctor` reports a mismatch between `locales.all` and
   `pll_languages_list()`).
 - `WpPostStore::insert` calls `pll_set_post_language($id, $locale)` and, for

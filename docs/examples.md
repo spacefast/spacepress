@@ -40,12 +40,23 @@ echo "a-long-password" | ./target/release/zero users add you@example.com --role 
 
 The page signs you in, switches between English and German, and takes
 comments. Send its posts to the site with
-`zero sync examples/blog --site http://127.0.0.1:8787 --token <token>`
-(`zero tokens create you@example.com`).
+`zero sync examples/blog --site http://127.0.0.1:8787 --token <token>`, where
+`zero tokens create you@example.com --dir examples/blog` prints the token.
 
-On WordPress, `zero dev examples/blog --wp` boots the artifact in the test
-harness. Register the page once as a sign-in client:
-`wp zero-identity app add --id=app_blog --redirect=<page URL> --origin=<its origin>`.
+On WordPress, build for WordPress first so the browser client talks to
+`/wp-json/zero/v1`, then boot the artifact in the test harness:
+
+```sh
+./target/release/zero build examples/blog --target wp
+node examples/blog/build-client.mjs
+./target/release/zero build examples/blog --target wp   # ships public/client/ with the plugin
+./target/release/zero dev examples/blog --wp            # WordPress on http://127.0.0.1:8790
+tests/wp/harness.sh wp zero-identity app add --name=Blog --id=app_blog \
+  --redirect=http://127.0.0.1:8790/wp-content/plugins/zero-app-blog/public/ --origin=http://127.0.0.1:8790
+```
+
+The page is at `http://127.0.0.1:8790/wp-content/plugins/zero-app-blog/public/`,
+and its Sign in button goes through the zero-identity screens.
 
 ## Suites
 

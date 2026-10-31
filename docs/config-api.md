@@ -345,7 +345,7 @@ an editor collection. Members sign in through the typed client:
 `auth.login(email, password)` on standalone, or `auth.signIn()` and
 `auth.handleCallback()` on WordPress, which redirect through the
 zero-identity screens (register the frontend once with
-`wp zero-identity app add --id=<app_id> --redirect=<url> --origin=<origin>`).
+`wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
 `GET /me` returns the user with their `member` row. With no auth collection,
 standalone users are named by `zero users add`; with one, they're its emails.
 

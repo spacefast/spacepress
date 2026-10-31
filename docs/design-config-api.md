@@ -36,7 +36,7 @@ Everything below is what `src/extract.rs` and `src/eval.rs` accept on `main`
 plus PR #50 (which only documents what already compiles). Line references are
 to `main` at `b45e586`.
 
-### 1.1 Column builders (19 kinds, `src/eval.rs:1358`)
+### 1.1 Column builders (18 kinds, `src/eval.rs:1358`)
 
 | builder | options | storage kind |
 |---|---|---|
@@ -103,7 +103,7 @@ that should be a default or inferred, **U** = no real use.
 | F3 | R | `id()` and `integer().primaryKey()` produce the same column. | `"primaryKey" => { c.auto_increment = c.ty == ColType::Integer }` (`src/eval.rs:1947`). 153 of 163 collections write `id: id()` by hand. |
 | F4 | R | `defaultNow()` and `$default(() => new Date())` are the same (`DefaultVal::Now`). | `now_or_fn` (`src/eval.rs:1890`). |
 | F5 | R | `timestamp().notNull().defaultNow()` + `.$onUpdate(() => new Date())` is written by hand in every example (8 times, plus a shared `timestamps` helper in pantry), while WordPress posts already carry `post_date`/`post_modified`. Payload and Convex add these automatically. | `examples/pantry/lib/fields.ts`, `WpPostStore.php:85`. |
-| F6 | R | A relation needs three declarations: the `references()` column, `r.one` with `from`/`to`, and `r.many` on the other side. The `one` side is derivable from the FK and the `many` side already is (`pending_many`). Every `r.one` in the repo (14) repeats exactly the `references()` pair. | `src/extract.rs:1678-1870`. |
+| F6 | R | A relation needs three declarations: the `references()` column, `r.one` with `from`/`to`, and `r.many` on the other side. The `one` side is derivable from the FK and the `many` side already is (`pending_many`). Every `r.one` in the repo (14) repeats exactly the `references()` pair. The two mechanisms are independent today (an FK without a relation, or a relation without an FK, both compile); no config in the repo uses a relation without an FK. | `src/extract.rs:1288,1678-1870`. |
 | F7 | R | `files.<key>` must equal `files(name, …)`'s name; same for `globals.<key>` and `global(name, …)`. The name is stated twice and the compiler rejects a mismatch. | `src/extract.rs:976,2143`. |
 | F8 | R | `uid: true` is implied by `sync`, required for being a sync reference target, and otherwise unused in examples except to satisfy that rule (3 uses, all for sync). | `uid = flag("uid")?.unwrap_or(sync.is_some())` (`src/extract.rs:705`); `sync references need uid: true on …` (`:2490`). |
 | F9 | R | `access.update` and `access.delete` are identical in 4 of 5 examples; `create`/`update`/`delete` are identical in most. There is no "all writes" shorthand. | `ACCESS_OPS` loop (`src/extract.rs:812`). |
@@ -234,11 +234,14 @@ What changed and why:
 - **`ref("authors")`** replaces `integer().references(() => authors.id, …)`
   (F6). The argument is the target's key under `defineConfig.collections`,
   the same name `db.query.authors`, `hooks` and webhook events use. The
-  column is an integer FK to the target's `id`; a target with its own
-  `.primaryKey()` text key cannot be referenced (build error: "`codes` has a
-  text key; references need the automatic `id`"), because the column's TS
-  type (`number`) is fixed before the target is known. Every reference in
-  the repo targets an integer `id`. The extractor resolves the key after
+  column is an integer FK to the target's automatic `id`; a target with its
+  own `.primaryKey()` column, text or integer, cannot be referenced (build
+  error: "`codes` has its own key `code`; references need the automatic
+  `id`"), because the column's TS type (`number`) and its target column are
+  fixed before the target is known. Every reference in the repo targets an
+  automatic integer `id`. A relation with no foreign key behind it (allowed
+  by `defineRelations` today, unused in the repo) goes with it: `ref()` is
+  both the constraint and the relation. The extractor resolves the key after
   every collection is registered, the
   way it resolves `hooks.<key>` today (`src/extract.rs:367`), so forward and
   self references need no lazy arrow. It also declares the relation (§4.3).
@@ -584,7 +587,12 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   names the relation (`userId` gives `user`, loadable with
   `with: { user: true }`) and the reverse on the auth collection is inferred
   as for any `ref`. Without an auth collection there is no row to
-  load, so it declares no relation. Adding, renaming or removing the auth
+  load, so it declares no relation, and a synced collection may not carry
+  it (build error: "`userId` names a site-local user; sync has no portable
+  identity for it; add an auth collection, which gives users a uid, or
+  drop sync"), since sync carries references as uids of registered
+  collections only (`src/extract.rs:2488`, `Sync/Wire.php:215`). With an
+  auth collection, `user()` syncs as the `ref` it is. Adding, renaming or removing the auth
   collection changes what a `user()` id means on standalone (the runtime
   already revokes every credential when the user table changes,
   `Identity.php:42`); `zero build` refuses that change while any
@@ -1189,9 +1197,11 @@ them.
   `Column.table`; `RelationsOf` derives from `ref` columns' phantom target
   keys instead of `Register.relations`; `One` loses `TOptional`;
   `WriteStructured` treats defaulted sub-fields as optional; `zero.gen.ts`
-  registers `config` only, and `Locale` (today read from `Register.locales`,
-  `index.d.ts:1139`) derives from the registered config's `locales` tuple
-  (`defineConfig` keeps `const` on it), so the configured union is not lost.
+  registers `config`, and `locales` separately as today
+  (`Register.locales`, `index.d.ts:1139`): localized collections already
+  contain `Locale` (`LocaleColumns`, `:485`) and the config contains those
+  collections, so deriving `Locale` from the config would be circular.
+  `zero.gen.ts` writes the union from the extracted schema, as it does now.
 - **Generated client** (`src/client.rs`): relation names come from the
   column name; `with` typing follows.
 - **Fixtures**: 114 `tests/fixtures/*/zero.config.ts`, the three examples,

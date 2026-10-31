@@ -19,6 +19,8 @@ final class Module
         Storage::register();
         Extensions::aroundOperation(Receipts::around(...));
         Extensions::cli('jobs', self::cli(...));
+        // `agents: true` jobs become `<app>/job-<name>` abilities (lane F); the ability runs this in a transaction.
+        \Zero\Abilities\Module::jobs(static fn (string $job, array $input): string => Jobs::enqueue($job, $input)['id']);
         if (function_exists('add_action')) {
             \Zero\Wp\Jobs\ActionSchedulerQueue::register();
         }

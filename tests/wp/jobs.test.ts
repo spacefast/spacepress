@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { api, auth, ok, problem, run, sql, wp, zero } from "./env.ts";
+import { api, auth, harness, http, ok, problem, run, sql, wp, zero } from "./env.ts";
 
 const jobRow = (id: string) => sql(`SELECT state, attempts, runAt, lastError FROM wp_zero__jobs WHERE id = '${id}'`)[0];
 const actions = (id: string) =>
@@ -132,6 +132,21 @@ async function contend(body: string, blockedSql: string) {
     b?.kill();
   }
 }
+
+test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS runs it, subscribers are refused", async () => {
+  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `ability ${run}` } });
+  runQueue(); // the hook's own job
+  const run1 = (who: "editor" | "subscriber") =>
+    http("POST", `${harness.url}/wp-json/wp-abilities/v1/abilities/blog/job-stamp/run`, { as: who, body: { input: { noteId: note.id } } });
+  const denied = await run1("subscriber");
+  assert.equal(denied.status, 403, JSON.stringify(denied.json));
+  const r = await run1("editor");
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(actions(r.json.id), ["pending"], "the ability's enqueue reached Action Scheduler after commit");
+  runQueue();
+  assert.equal(jobRow(r.json.id).state, "done");
+  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_jobNotes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
+});
 
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   const key = `race-${run}`;

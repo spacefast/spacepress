@@ -41,6 +41,7 @@ export const config = {
     stamp: job({
       input: { noteId: integer().notNull(), fail: boolean().notNull().default(false) },
       retries: 2,
+      agents: true, // also the `blog/job-stamp` ability (lane F)
       handler: async (input, ctx) => {
         if (input.fail) {
           // Write first: the failure must roll this back on WordPress's connection.

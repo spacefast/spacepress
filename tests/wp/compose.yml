@@ -46,6 +46,7 @@ services:
       - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
       - ./apache/zz-zero-tests.conf:/etc/apache2/conf-enabled/zz-zero-tests.conf:ro
       - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
   # WP-CLI, kept running so `harness.sh wp` is an exec, not a container start.
   cli:
     image: wordpress:cli-php8.5
@@ -68,5 +69,6 @@ services:
       - wp:/var/www/html
       - ./cache:/zero-cache:ro
       - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
 volumes:
   wp:

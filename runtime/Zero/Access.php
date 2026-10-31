@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Zero;
 
 /**
- * Access rules (§1.6). A rule is ['allow' => bool] | ['role' => 'anyone'|'authenticated'|Role] | ['fn' => name].
+ * Access rules (§1.6). A rule is ['allow' => bool] | ['role' => 'anyone'|'authenticated'|Role] | ['self' => true] | ['fn' => name].
  * evaluate() returns true (allowed / all rows), false (denied) or a filter array (rows matching it).
  */
 final class Access
@@ -41,6 +41,10 @@ final class Access
         $user = $viewer->user;
         if (array_key_exists('allow', $rule)) {
             return (bool) $rule['allow'];
+        }
+        if (($rule['self'] ?? false) === true) {
+            // "self" (auth collections, §6.2): the viewer's own row; anonymous viewers get nothing.
+            return $user === null ? false : ['id' => $user['id']];
         }
         if (isset($rule['role'])) {
             return match ($rule['role']) {

@@ -41,7 +41,9 @@ final class Plugin
         $this->mainFile = $mainFile;
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
+        add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
         add_action('rest_api_init', fn () => Rest::register(fn () => $this->app()));
+        IdentityBridge::hook($this->connection());
         Rest::boot();
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         add_action('admin_init', [$this, 'maybeMigrate']);
@@ -101,6 +103,7 @@ final class Plugin
             $db = $this->connection();
             $store = CompositeStore::create($this->schema, $db);
             $this->app = App::boot($this->dir, $store, new WpAuth(), new WpMedia($db, $store->dialect()));
+            \Zero\Auth\Module::use(IdentityBridge::available() ? new IdentityBridge($db) : null);
         }
 
         return $this->app;
@@ -123,6 +126,7 @@ final class Plugin
         }
         update_option($this->schemaOption(), $this->schemaHash(), false);
         $this->grantCapabilities();
+        IdentityBridge::provision();
     }
 
     public function maybeMigrate(): void
@@ -130,6 +134,7 @@ final class Plugin
         if (get_option($this->schemaOption()) !== $this->schemaHash()) {
             $this->migrator()->migrate();
             $this->grantCapabilities();
+            IdentityBridge::provision();
             update_option($this->schemaOption(), $this->schemaHash(), false);
         }
     }

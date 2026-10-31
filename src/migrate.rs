@@ -76,7 +76,12 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     for col in c.columns.values() {
         cols.insert(col.name.clone(), column_snapshot(col, schema));
     }
-    json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols })
+    let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
+    if c.auth {
+        // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
+        table["auth"] = true.into();
+    }
+    table
 }
 
 fn column_snapshot(col: &Column, schema: &Schema) -> Json {
@@ -164,7 +169,7 @@ fn dialect_tables(snap: &Json, d: Dialect) -> Map {
     let empty = Map::new();
     let tables = snap["tables"].as_object().unwrap_or(&empty);
     for (t, def) in tables {
-        if d == Dialect::Mysql && def["editor"].as_bool() != Some(false) {
+        if d == Dialect::Mysql && (def["editor"].as_bool() != Some(false) || def["auth"].as_bool() == Some(true)) {
             continue;
         }
         out.insert(t.clone(), def.clone());

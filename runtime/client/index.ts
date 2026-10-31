@@ -132,11 +132,33 @@ export type GlobalsClient = {
   };
 };
 
+/** The tokens a signed-in client holds (`auth.session()`). */
+export interface Session {
+  accessToken: string;
+  refreshToken: string;
+  /** Epoch milliseconds. */
+  expiresAt: number;
+}
+
 export interface AuthClient {
-  /** The signed-in user, or null. */
+  /** WordPress: redirects to `<issuer>/authorize` (PKCE S256); the promise never settles. */
+  signIn(opts?: { returnTo?: string }): Promise<never>;
+  /** WordPress, on the redirect URI: exchanges `?code` at `<issuer>/token`, keeps the tokens, returns the user. */
+  handleCallback(): Promise<User>;
+  /** Standalone: signs in with a password and keeps the session tokens. */
+  login(name: string, password: string): Promise<User>;
+  /** Starts a guest session (`role: "guest"`) and keeps its tokens. */
+  guest(): Promise<User>;
+  /** Standalone: turns the current guest into a password account in place (same `id`). */
+  upgrade(name: string, password: string): Promise<User>;
+  /** WordPress: sends the current guest to the issuer's screens to upgrade in place; never settles. */
+  upgrade(): Promise<never>;
+  /** The signed-in user (with `member`, the auth collection row, when the app has one), or null. */
   me(): Promise<User | null>;
-  /** Standalone only: exchanges a password for a token. The client uses the token from then on. */
-  login(name: string, password: string): Promise<{ token: string; user: User }>;
+  /** Revokes the session and forgets the tokens; WordPress also signs out at the issuer when `returnTo` is given. */
+  signOut(opts?: { returnTo?: string }): Promise<void>;
+  /** The held tokens, for server-side callers that forward them; null when signed out. */
+  session(): Session | null;
 }
 
 export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
@@ -159,6 +181,21 @@ export interface ClientOptions {
   fetch?: typeof fetch;
   /** Extra headers on every request (e.g. `Authorization: Basic ...` for WP application passwords). They win over the above. */
   headers?: Record<string, string>;
+  /** Frontend sign-in (design §6.2). */
+  auth?: AuthOptions;
+}
+
+export interface AuthOptions {
+  /** WordPress OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
+  issuer?: string;
+  /** WordPress: the registered application's client id. */
+  clientId?: string;
+  /** WordPress: where the issuer sends the browser back (the page that calls `handleCallback()`). */
+  redirectUri?: string;
+  /** Where tokens live: in memory (default) or `sessionStorage` under `zero.auth:<base url>`. */
+  storage?: "memory" | "session";
+  /** A write rejected as unauthenticated while signed out starts a guest session and is retried once. */
+  guests?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,15 +315,118 @@ interface Send {
   query?: URLSearchParams;
   json?: unknown;
   form?: FormData;
+  /** Token and guest endpoints: no held Bearer, no refresh or guest retry. */
+  anonymous?: boolean;
 }
+
+/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `zero.auth:<base>`. */
+interface Held extends Session {
+  clientId?: string;
+  idToken?: string;
+}
+
+/** Zero's own token responses (`/auth/token`, `/auth/guest`). */
+interface Issued {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: User;
+  clientId?: string;
+}
+
+/** The OIDC issuer's token response (`<issuer>/token`). */
+interface OidcTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  id_token?: string;
+}
+
+/** The browser globals sign-in touches, looked up at call time (absent on servers). */
+interface BrowserGlobals {
+  sessionStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void };
+  location?: { search: string; assign(url: string): void };
+}
+
+const browser = () => globalThis as unknown as BrowserGlobals;
+
+const PKCE_KEY = "zero.auth.pkce";
+
+function base64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function randomString(bytes: number): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
+}
+
+async function s256(verifier: string): Promise<string> {
+  return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+}
+
+function authError(status: number, code: string, detail: string): ZeroError {
+  return new ZeroError({ type: "about:blank", title: code, status, code, detail });
+}
+
+const notSupported = (what: string) => authError(400, "not_supported", `${what} is not available on the ${SCHEMA.target} target`);
 
 export function createClient(options: ClientOptions = {}): Client {
   const base = (options.url ?? SCHEMA.basePath).replace(/\/+$/, "");
-  let token = options.token;
+  const target: string = SCHEMA.target;
+  const wp = target === "wp";
+  const authOpts = options.auth ?? {};
+  const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
-  async function request<T>(method: string, path: string, send: Send = {}): Promise<T> {
+  // Token storage: memory by default, sessionStorage on request.
+  const storageKey = `zero.auth:${base}`;
+  let memory: Held | null = null;
+  function held(): Held | null {
+    if (authOpts.storage !== "session") return memory;
+    const raw = browser().sessionStorage?.getItem(storageKey);
+    if (!raw) return null;
+    try {
+      const v: unknown = JSON.parse(raw);
+      return isObject(v) && typeof v.accessToken === "string" && typeof v.refreshToken === "string" ? (v as unknown as Held) : null;
+    } catch {
+      return null;
+    }
+  }
+  function hold(next: Held | null): void {
+    if (authOpts.storage !== "session") {
+      memory = next;
+      return;
+    }
+    const store = browser().sessionStorage;
+    if (next) store?.setItem(storageKey, JSON.stringify(next));
+    else store?.removeItem(storageKey);
+  }
+  const expiresAt = (expiresIn: number) => Date.now() + expiresIn * 1000;
+  // Phase-1 login stored a static token; it stays a token that never refreshes.
+  const staticToken = options.token;
+
+  async function call(url: string, init: RequestInit, label: string): Promise<{ res: Response; parsed: unknown }> {
+    let res: Response;
+    let text: string;
+    try {
+      res = await doFetch(url, init);
+      text = await res.text();
+    } catch (e) {
+      throw networkError(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    try {
+      return { res, parsed: text === "" ? undefined : JSON.parse(text) };
+    } catch {
+      throw networkError(`${label}: HTTP ${res.status} with a non-JSON body`);
+    }
+  }
+
+  async function request<T>(method: string, path: string, send: Send = {}, retried = false): Promise<T> {
     const headers: Record<string, string> = {};
-    if (token !== undefined) headers.authorization = `Bearer ${token}`;
+    const tokens = send.anonymous ? null : held();
+    const bearer = tokens?.accessToken ?? (send.anonymous ? undefined : staticToken);
+    if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
     if (options.nonce !== undefined) headers["x-wp-nonce"] = options.nonce;
     let body: string | FormData | undefined;
     if (send.form) body = send.form;
@@ -299,28 +439,208 @@ export function createClient(options: ClientOptions = {}): Client {
     const qs = send.query?.toString();
     const init: RequestInit = { method, headers, body };
     if (options.nonce !== undefined) init.credentials = "same-origin";
-    const doFetch = options.fetch ?? globalThis.fetch;
-
-    let res: Response;
-    let text: string;
-    try {
-      res = await doFetch(base + path + (qs ? `?${qs}` : ""), init);
-      text = await res.text();
-    } catch (e) {
-      throw networkError(`${method} ${path}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    let parsed: unknown;
-    try {
-      parsed = text === "" ? undefined : JSON.parse(text);
-    } catch {
-      throw networkError(`${method} ${path}: HTTP ${res.status} with a non-JSON body`);
-    }
+    const { res, parsed } = await call(base + path + (qs ? `?${qs}` : ""), init, `${method} ${path}`);
     if (res.ok) {
       if (!isObject(parsed) || !("data" in parsed)) throw networkError(`${method} ${path}: response has no data`);
       return parsed.data as T;
     }
-    throw toError(res, parsed);
+    const error = toError(res, parsed);
+    if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
+      // Only a 401 for the Bearer this client holds is ours to repair.
+      if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
+        if (await renew(tokens.accessToken)) return request<T>(method, path, send, true);
+      } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
+        // Another request may have signed a guest in while this one was in flight: reuse it.
+        if (!held()) await startGuest();
+        return request<T>(method, path, send, true);
+      }
+    }
+    throw error;
   }
+
+  // One refresh at a time: refresh tokens rotate, and presenting a used one revokes the whole family.
+  let refreshing: Promise<boolean> | undefined;
+  function renew(sent: string): Promise<boolean> {
+    const current = held();
+    if (!current) return Promise.resolve(false);
+    if (current.accessToken !== sent) return Promise.resolve(true);
+    refreshing ??= refresh(current).finally(() => (refreshing = undefined));
+    return refreshing;
+  }
+
+  /** True on a rotated pair. A rejected refresh forgets the tokens; a network failure keeps them for a later try. */
+  async function refresh(current: Held): Promise<boolean> {
+    try {
+      if (wp) {
+        const clientId = current.clientId ?? authOpts.clientId ?? "";
+        const out = await issuerPost<OidcTokens>("/token", { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: clientId });
+        hold({
+          accessToken: out.access_token,
+          refreshToken: out.refresh_token,
+          expiresAt: expiresAt(out.expires_in),
+          ...(current.clientId !== undefined ? { clientId: current.clientId } : {}),
+          ...((out.id_token ?? current.idToken) !== undefined ? { idToken: out.id_token ?? current.idToken } : {}),
+        });
+      } else {
+        const out = await request<Issued>("POST", "/auth/token", { json: { grant_type: "refresh_token", refreshToken: current.refreshToken }, anonymous: true });
+        hold({ accessToken: out.accessToken, refreshToken: out.refreshToken, expiresAt: expiresAt(out.expiresIn) });
+      }
+      return true;
+    } catch (e) {
+      if (!(e instanceof ZeroError) || e.status !== 0) hold(null);
+      return false;
+    }
+  }
+
+  function adopt(out: Issued): User {
+    hold({
+      accessToken: out.accessToken,
+      refreshToken: out.refreshToken,
+      expiresAt: expiresAt(out.expiresIn),
+      ...(typeof out.clientId === "string" ? { clientId: out.clientId } : {}),
+    });
+    return out.user;
+  }
+
+  // Concurrent first writes share one guest.
+  let guesting: Promise<User> | undefined;
+  function startGuest(): Promise<User> {
+    guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
+      .then(adopt)
+      .finally(() => (guesting = undefined));
+    return guesting;
+  }
+
+  let issuerUrl: string | undefined = authOpts.issuer?.replace(/\/+$/, "");
+  async function issuer(): Promise<string> {
+    if (issuerUrl === undefined) {
+      const config = await request<{ issuer: string | null }>("GET", "/auth/config", { anonymous: true });
+      if (typeof config.issuer !== "string") throw authError(400, "not_supported", "This app has no sign-in issuer");
+      issuerUrl = config.issuer.replace(/\/+$/, "");
+    }
+    return issuerUrl;
+  }
+
+  /** OAuth endpoints answer bare JSON; failures are `{ error, error_description }`. */
+  async function issuerPost<T>(path: string, form: Record<string, string>, accessToken?: string): Promise<T> {
+    const url = (await issuer()) + path;
+    const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
+    if (accessToken !== undefined) headers.authorization = `Bearer ${accessToken}`;
+    const { res, parsed } = await call(url, { method: "POST", headers, body: new URLSearchParams(form).toString() }, `POST ${url}`);
+    if (res.ok) return parsed as T;
+    const body = isObject(parsed) ? parsed : {};
+    const code = typeof body.error === "string" ? body.error : "http_error";
+    throw authError(res.status, code, typeof body.error_description === "string" ? body.error_description : `HTTP ${res.status}`);
+  }
+
+  async function redirectToIssuer(returnTo: string | undefined, extra: Record<string, string>): Promise<never> {
+    const { clientId, redirectUri } = authOpts;
+    if (!clientId || !redirectUri) throw authError(400, "invalid_input", "auth.clientId and auth.redirectUri are required to sign in");
+    const { sessionStorage, location } = browser();
+    if (!sessionStorage || !location) throw authError(400, "not_supported", "Redirect sign-in needs a browser");
+    const verifier = randomString(64);
+    const state = randomString(32);
+    const nonce = randomString(32);
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: "openid profile email",
+      state,
+      nonce,
+      code_challenge: await s256(verifier),
+      code_challenge_method: "S256",
+      ...extra,
+    });
+    const url = `${await issuer()}/authorize?${params}`;
+    sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state, nonce, ...(returnTo !== undefined ? { returnTo } : {}) }));
+    location.assign(url);
+    return new Promise<never>(() => {});
+  }
+
+  const auth: AuthClient = {
+    signIn(opts = {}) {
+      if (!wp) return Promise.reject(notSupported("signIn()"));
+      return redirectToIssuer(opts.returnTo, {});
+    },
+    async handleCallback() {
+      if (!wp) throw notSupported("handleCallback()");
+      const { sessionStorage, location } = browser();
+      const params = new URLSearchParams(location?.search ?? "");
+      let pkce: Json = {};
+      try {
+        const v: unknown = JSON.parse(sessionStorage?.getItem(PKCE_KEY) ?? "null");
+        if (isObject(v)) pkce = v;
+      } catch {
+        // No usable sign-in in progress: the state check below refuses it.
+      }
+      const state = params.get("state");
+      if (typeof pkce.state !== "string" || typeof pkce.verifier !== "string" || state !== pkce.state) {
+        throw authError(400, "invalid_state", "This sign-in response does not match a sign-in started here");
+      }
+      sessionStorage?.removeItem(PKCE_KEY);
+      const failed = params.get("error");
+      if (failed) throw authError(400, failed, params.get("error_description") ?? failed);
+      const code = params.get("code");
+      if (!code) throw authError(400, "invalid_input", "The sign-in response has no code");
+      const clientId = authOpts.clientId ?? "";
+      const out = await issuerPost<OidcTokens>("/token", {
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: authOpts.redirectUri ?? "",
+        client_id: clientId,
+        code_verifier: pkce.verifier,
+      });
+      hold({
+        accessToken: out.access_token,
+        refreshToken: out.refresh_token,
+        expiresAt: expiresAt(out.expires_in),
+        clientId,
+        ...(out.id_token !== undefined ? { idToken: out.id_token } : {}),
+      });
+      const user = await auth.me();
+      if (!user) throw authError(401, "unauthenticated", "The issuer's tokens were not accepted");
+      return user;
+    },
+    async login(name: string, password: string) {
+      if (wp) throw notSupported("login()");
+      return adopt(await request<Issued>("POST", "/auth/token", { json: { grant_type: "password", name, password }, anonymous: true }));
+    },
+    guest: () => startGuest(),
+    upgrade: (async (name?: string, password?: string) => {
+      if (!wp) {
+        if (name === undefined || password === undefined) throw notSupported("upgrade() without a name and password");
+        return (await request<{ user: User }>("POST", "/auth/guest/upgrade", { json: { name, password } })).user;
+      }
+      if (name !== undefined) throw notSupported("upgrade(name, password)");
+      const current = held();
+      if (!current) throw authError(401, "unauthenticated", "Only a guest session can be upgraded");
+      const { handoff } = await issuerPost<{ handoff: string }>("/handoff", {}, current.accessToken);
+      return redirectToIssuer(undefined, { handoff });
+    }) as AuthClient["upgrade"],
+    me: () => request<User | null>("GET", "/me"),
+    async signOut(opts = {}) {
+      const current = held();
+      if (!current) return;
+      try {
+        if (wp) await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
+        else await request("DELETE", "/auth/session");
+      } catch (e) {
+        // A session the server already ended is signed out; anything else is the caller's to see.
+        if (!(e instanceof ZeroError && e.status === 401)) throw e;
+      } finally {
+        hold(null);
+      }
+      if (wp && opts.returnTo !== undefined && current.idToken !== undefined) {
+        const params = new URLSearchParams({ id_token_hint: current.idToken, post_logout_redirect_uri: opts.returnTo });
+        browser().location?.assign(`${await issuer()}/logout?${params}`);
+      }
+    },
+    session() {
+      const current = held();
+      return current ? { accessToken: current.accessToken, refreshToken: current.refreshToken, expiresAt: current.expiresAt } : null;
+    },
+  };
 
   function collection(key: CollectionKey) {
     const desc: { path: string } = SCHEMA.collections[key];
@@ -380,14 +700,7 @@ export function createClient(options: ClientOptions = {}): Client {
         },
       ]),
     ),
-    auth: {
-      me: () => request("GET", "/me"),
-      async login(name: string, password: string) {
-        const out = await request<{ token: string; user: User }>("POST", "/auth/token", { json: { name, password } });
-        token = out.token;
-        return out;
-      },
-    },
+    auth,
     schema: () => request("GET", "/_schema"),
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);

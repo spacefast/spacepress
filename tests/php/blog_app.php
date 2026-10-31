@@ -100,6 +100,21 @@ function blogApp(string $root): string
     return $root;
 }
 
+/** The auth-collection fixture (tests/fixtures/auth): members are the app's users (§6.2). */
+function authApp(string $root): string
+{
+    $fixtures = dirname(__DIR__) . '/fixtures/auth';
+    foreach (['zero/app/migrations', 'public', 'data'] as $d) {
+        @mkdir("$root/$d", 0777, true);
+    }
+    file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export(json_decode(file_get_contents("$fixtures/schema.json"), true, 512, JSON_THROW_ON_ERROR), true) . ';');
+    file_put_contents("$root/zero/app/functions.php", "<?php\nnamespace ZeroApp;\n");
+    copy("$fixtures/0001_init.sql", "$root/zero/app/migrations/0001_init.sql");
+    copyRuntime($root);
+
+    return $root;
+}
+
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     $dir = $argv[1] ?? (sys_get_temp_dir() . '/zero-blog-' . bin2hex(random_bytes(4)));
     echo blogApp($dir), "\n";

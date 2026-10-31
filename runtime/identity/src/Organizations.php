@@ -128,9 +128,11 @@ final class Organizations
                         404,
                     );
                 }
+                // A locking read after the organization lock: a demotion that committed meanwhile counts.
                 $inviter = $this->member(
                     $p["organization_id"],
                     (int) $c["wp_user_id"],
+                    true,
                 );
                 if (!in_array($inviter["role"], ["owner", "admin"], true)) {
                     throw new Failure(

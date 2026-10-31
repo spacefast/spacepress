@@ -266,10 +266,13 @@ What changed and why:
   `ref` target. Today's `{ bucket: "name" }` object becomes the one string
   it carries.
 - **`id()` goes** (F3, see §4.9.1). A collection gets `id` automatically.
-  `.primaryKey()` stays for the rare text key (`code: text().primaryKey()`),
+  `.primaryKey()` stays for the rare text key (`code: text().primaryKey()`,
+  which implies `.max(191)` like `.unique()` does, so MySQL gets a
+  `VARCHAR` it can key; today the renderer emits an unkeyable `LONGTEXT`
+  for it, `src/migrate.rs:246`),
   which suppresses the automatic `id` (F29).
 
-Modifiers (14, down from 18):
+Modifiers (13, down from 18):
 
 ```
 .notNull() .nullable() .unique() .primaryKey()
@@ -309,7 +312,12 @@ Modifiers (14, down from 18):
   resolve by order: `.nullable()` together with `.notNull()` or
   `.primaryKey()` in one chain is a build error at the second of them
   ("`x` is both nullable and NOT NULL"). Only the *implied* NOT NULL from
-  `.default()` yields to `.nullable()`. One declaration follows: the write
+  `.default()` yields to `.nullable()`. The compiler's handler-input typing
+  follows the same words: today it strips nullability from every defaulted
+  action or job input (`src/types.rs:426`) while the declarations keep it
+  (`InferActionInput`, `index.d.ts:998`); after this, a `.default(x)` input
+  is non-null in both and a `.nullable().default(x)` input is nullable in
+  both. One declaration follows: the write
   shape of `group`/`repeater`/`blocks` sub-fields (`WriteStructured`,
   `index.d.ts:335`) makes a sub-field optional by nullability alone, so a
   NOT NULL sub-field with a default would become required on write even
@@ -452,10 +460,12 @@ Rules, all enforced at build time:
   the target; a reverse whose name is already taken on the target (by a
   column, a forward relation, or another reverse from the same pass) is a
   build error naming both sides ("name the reverse of posts.editorId in
-  authors.relations"). So with `posts.authorId` and `posts.editorId` both
-  targeting `authors`, naming `written: many("posts", "authorId")` leaves
-  `editorId` to infer `authors.posts`, which is then unambiguous and
-  allowed; naming neither is the error.
+  authors.relations"). The one exception is deliberate: when two or more
+  `ref` columns of one collection target the same collection, *none* of
+  their reverses is inferred and every one must be named, so adding
+  `posts.editorId` beside `posts.authorId` is a build error until both
+  `written` and `edited` exist, and the inferred `authors.posts` can never
+  silently rebind from one column to the other.
 - `onDelete` defaults to `"set null"` for nullable refs and `"restrict"` for
   NOT NULL refs, the same rule the importer already applies
   (`docs/config-migration.md`, "Original Zero reference"); `cascade` is
@@ -649,7 +659,8 @@ or `slug({ source: false })`.
 
 As §4.3: every `ref()` is a `one`, every `one` not named in the target's
 `relations:` gets a `many` back named after the referencing collection; a
-taken name is an error. Off: name the reverse explicitly with `relations:`
+taken name is an error, and two `ref` columns to one target infer nothing
+until both are named. Off: name the reverse explicitly with `relations:`
 on the target.
 
 #### 4.9.7 `uid`
@@ -657,12 +668,14 @@ on the target.
 A `uid` column exists on synced collections and on every collection a synced
 collection references. Off: none; it is a system column. In the types the
 first case is local (`sync` is an option of the collection, as today's
-`IdentityColumns` reads it, `index.d.ts:489`); the second is not knowable
-from the collection alone, so `uid` on a reference target is typed through
-the registered config, where the referencing collection's `sync` and its
-`ref` targets are both visible, the same place relations are typed (§4.3).
-Hooks and `Row<typeof authors>` see `uid` only once the config is
-registered, which `zero build` does on every build.
+`IdentityColumns` reads it, `index.d.ts:489`). The second is not knowable
+from the collection value alone, and two collections with identical columns
+are one TypeScript type once the name argument is gone, so it is typed by
+key, not by value: `Row<"authors">` (the registered key) carries `uid` when
+the registered config shows a synced collection referencing `authors`;
+`Row<typeof authors>` does not. Hook signatures inside `collection()` are
+contextually typed from the local columns, so they see `uid` only on
+synced collections themselves. §4.11 defines both forms of `Row`.
 
 #### 4.9.8 Access on auth collections
 
@@ -702,9 +715,11 @@ import {
 
 `Row<typeof items>` and `Insert<typeof items>` replace `InferSelectModel`/
 `InferInsertModel` (shorter, and the Drizzle names were the only reason for
-the long ones). The compiler resolves these two by name
-(`src/compile.rs:854`), so the rename is a compiler change, not only a
-`.d.ts` one (§7.3).
+the long ones). Both also take the registered key, `Row<"items">`, which
+is the form that knows what only the whole config knows (an inferred `uid`,
+§4.9.7, and relations); the value form knows the local columns and system
+columns only. The compiler resolves these by name (`src/compile.rs:854`),
+so the rename is a compiler change, not only a `.d.ts` one (§7.3).
 
 Not one way yet, and said so: `.notNull().default(x)` and `.default(x)` are
 the same column (the first is kept so the explicit form stays legal);
@@ -1111,8 +1126,10 @@ than destroy: a collection whose key differs from its old name argument is a
 table rename (`shopping_list` to `shoppingList` in the pantry); `ref()`
 columns keep their names but the inferred `onDelete` (`"restrict"` on a
 NOT NULL FK that had none) is a changed constraint; `.default()` implying
-NOT NULL turns a nullable column NOT NULL, which the migration refuses while
-null values exist ("`done` has 3 null rows; add `.nullable()` or backfill");
+NOT NULL turns a nullable column NOT NULL, which `zero build` lists as a
+destructive change from the snapshot alone (`src/migrate.rs:573` compares
+schema JSON; it sees no rows) and the generated migration backfills with
+the default before adding the constraint, so no null row is lost;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on WordPress content collections `updatedAt` reads

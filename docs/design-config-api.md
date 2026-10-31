@@ -124,7 +124,7 @@ that should be a default or inferred, **U** = no real use.
 | F24 | D | `.notNull().default(x)` is what nearly every defaulted column in the repo writes: `boolean().notNull().default(false)` 10 times, `.notNull().default([])` 5 times. The exceptions are global fields and sub-fields (`text().default("Hello")` in `phase2-surface`), where NOT NULL would need the default anyway. Today a default only fills an *absent* value; an explicit `null` is still accepted unless `.notNull()` is there too (`Db.php:429`). So the two words are not redundant, but the combination users almost always want is two words long. | `src/eval.rs:1907,1952`; `RequiredInsertKeys` (`index.d.ts:322`) makes a defaulted column optional on insert. |
 | F25 | D | `unique()` text needs `.max(191)` or the build fails; the number is a MySQL constant the user has to know (22 uses). | `MAX_UNIQUE_TEXT` (`src/extract.rs:82`). |
 | F26 | D | `target` in the config duplicates `zero build --target`; 3 uses, all in fixtures. A config should be target-independent (the Admin design says the same of `admin`). | `src/extract.rs:169`. |
-| F27 | U | `api: { list, get, create, update, delete }`: zero uses in the repo. Access rules cover every combination but one: `api: { list: false, get: true }` (rows fetchable by id but not enumerable) has no access-rule spelling, and a disabled op answers 405 rather than 403 (`App.php:328`). | `src/extract.rs:854`. |
+| F27 | U | `api: { list, get, create, update, delete }`: zero uses in the repo. Access rules cover everything but splitting `list` from `get` (either direction), and a disabled op answers 405 rather than 403 (`App.php:328`). | `src/extract.rs:854`. |
 | F28 | U | `references(..., { onUpdate })`: ids are autoincrement and never change; zero uses. | `src/eval.rs:2002`. |
 | F29 | U | `.primaryKey()` on a non-integer column: 3 fixture uses, two of them rejection tests; auth, sync and editor collections all require `id: id()`. | `src/extract.rs:671,2394,2448`. |
 | F30 | U | `optional: false` on `r.one` is a type-only flag (4 uses, each on a `.notNull()` FK) and it is unsound: a loaded `one` is `null` whenever the viewer may not read the target or a nested `where` excludes it, whatever the FK says (`Db.php:292`). | `src/extract.rs:1751`; `index.d.ts:541`. |
@@ -206,7 +206,7 @@ Builders (19: `id` goes, `ref` and `user` arrive, and `select` absorbs
 text(opts?)          // { multiline?: true }
 integer(), real(), boolean(), date(), timestamp(), json<T>()
 email(), url()
-slug(opts?)          // { source?: column } — source defaults to the title
+slug(opts?)          // { source?: column | false } — source defaults to the title; false = supplied by the writer
 richText()
 media(opts?)         // { accept?: string | string[], multiple?: true }   MIME patterns, default any
 file("bucket")       // the bucket's key under defineConfig.files
@@ -234,9 +234,12 @@ What changed and why:
 - **`ref("authors")`** replaces `integer().references(() => authors.id, …)`
   (F6). The argument is the target's key under `defineConfig.collections`,
   the same name `db.query.authors`, `hooks` and webhook events use. The
-  column takes the type of the target's primary key (integer for the
-  automatic `id`, text for a `.primaryKey()` text key) and is an FK to it;
-  the extractor resolves the key after every collection is registered, the
+  column is an integer FK to the target's `id`; a target with its own
+  `.primaryKey()` text key cannot be referenced (build error: "`codes` has a
+  text key; references need the automatic `id`"), because the column's TS
+  type (`number`) is fixed before the target is known. Every reference in
+  the repo targets an integer `id`. The extractor resolves the key after
+  every collection is registered, the
   way it resolves `hooks.<key>` today (`src/extract.rs:367`), so forward and
   self references need no lazy arrow. It also declares the relation (§4.3).
   References to non-key columns (one fixture, `a.name`) go; a
@@ -245,9 +248,9 @@ What changed and why:
   Typing, and why it is not circular: at the column, `ref("authors")` is
   `ColumnBuilder<"ref", number, …, { target: "authors" }>`, a string
   literal carried as a phantom type and nothing more; the column's own type
-  (`number`, or the key type when the target has a text key) is checked by
-  the build, not by TypeScript, so defining a collection never depends on
-  the map it will be registered in. The key is validated and the relation
+  is `number` everywhere (row, insert, filter), which is why text-keyed
+  targets are refused rather than typed late, so defining a collection
+  never depends on the map it will be registered in. The key is validated and the relation
   typed only where today's relation typing already lives: `zero.gen.ts`
   registers the config, and `db.query.<key>`, `with` and relation filters
   derive from `Register` after the fact (`index.d.ts:814`). A wrong key is
@@ -302,7 +305,10 @@ Modifiers (14, down from 18):
   `index.d.ts:335`) makes a sub-field optional by nullability alone, so a
   NOT NULL sub-field with a default would become required on write even
   though the runtime fills it; it becomes optional when nullable *or*
-  defaulted, which is what the runtime already does.
+  defaulted, which is what the runtime already does. That needs the
+  structured builders to carry their child builders (`F`) instead of the
+  erased `SelectShape<F>` (`index.d.ts:301`), so `hasDefault` survives to the
+  write type; the read type is unchanged.
 - **`.unique()` on text implies `.max(191)`** (F25). The constant moves into
   the compiler; an explicit larger `.max()` on a unique text column is the
   build error it is today.
@@ -334,7 +340,12 @@ collection({ ...columns }, {
 ```
 
 - **No name argument.** The schema key is the name, like `jobs`, `actions`
-  and Drizzle's `defineRelations` keys (F15, F18). The table name is the key;
+  and Drizzle's `defineRelations` keys (F15, F18). One value, one key: the
+  same `collection()` value registered under two keys is a build error
+  ("`records` is registered as `active` and `archived`; call `collection()`
+  twice"), so `db.insert(records)` always names one table, as today's
+  object-identity lookup requires (`src/compile.rs:945`). The table name is
+  the key;
   `zero_` prefixing is unchanged. Snake-case keys stay valid identifiers
   (`shopping_list` today) and a camel-case key (`shoppingList`) is the
   table name `shoppingList`, which SQLite and MySQL accept; the REST path is
@@ -361,10 +372,10 @@ collection({ ...columns }, {
   collection references get a `uid` column automatically; the compiler can see
   the reference graph. `uid: true` for its own sake has no use in the repo.
 - **`api` goes** (F27). Access rules are the one way to close an endpoint;
-  a closed endpoint answers 403 instead of today's 405. The one shape this
-  loses is "fetchable by id, not listable" (`list: false, get: true`), which
-  nothing in the repo uses; open question 10 asks whether to keep `api` for
-  it.
+  a closed endpoint answers 403 instead of today's 405. What this loses is
+  independent control of `list` and `get`, in either direction (unlisted but
+  fetchable rows, or a list with no by-id route); nothing in the repo uses
+  it; open question 10 asks whether to keep `api` for it.
 - **`target` goes** from the config (F26); `zero build --target` and
   `zero.toml`/CLI defaults own it. `name` stays (it is the plugin slug).
 
@@ -532,8 +543,12 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   compiler insists on (`src/extract.rs:2402`). Declaring `email` yourself
   stays allowed for extra rules.
 - **`user(opts?)`** is a new column: an integer reference to the app's user
-  (`User.id`), conventionally named `userId` (any name is allowed; it
-  declares no relation). Deletion of the user follows `ref()`'s rule:
+  (`User.id`), conventionally named `userId`. With an auth collection in the
+  config it is exactly `ref("<auth key>")` plus the ownership meaning: the
+  `Id`-stripping rule names the relation (`userId` gives `user`, loadable
+  with `with: { user: true }`) and the reverse on the auth collection is
+  inferred as for any `ref`. Without an auth collection there is no row to
+  load, so it declares no relation. Deletion of the user follows `ref()`'s rule:
   `"set null"` when nullable, `"restrict"` when `.notNull()`, and
   `{ onDelete: "cascade" }` explicitly. It is what `authors.userId` and the
   `ownerId` columns are by hand today, and it is what `"self"` reads.
@@ -605,8 +620,11 @@ rule for `$onUpdate` columns).
 `body` is the only `richText()` column; with two or more, `body:` must name
 one (a build error says so), so reordering fields never moves the WordPress
 post content. `body: false` keeps every rich-text column as a plain field.
-`slug()` with no `source` derives from the title column. Off: `body: false`;
-`slug({ source: "other" })`.
+`slug()` with no `source` derives from the title column when there is one,
+and on a table with no title it is a hand-supplied slug, as a source-free
+`slug()` is today. `slug({ source: false })` makes the hand-supplied form
+explicit on a content collection. Off: `body: false`; `slug({ source: "other" })`
+or `slug({ source: false })`.
 
 #### 4.9.6 Relations
 
@@ -871,7 +889,8 @@ Relations, from the four `ref("…")` columns: `posts.author`/`authors.posts`,
 `comments.post`/`posts.comments`, `subscribers.post`/`posts.subscribers`,
 `announcements.post`/`posts.announcements`. The old config's `comments.post`
 was `optional: false` by hand; here `.notNull()` says it. `authors.userId`
-is a `user()` column, which declares no relation.
+is a `user()` column; since `members` is the auth collection it also gives
+`authors.user` and `members.authors`.
 
 ### 5.2 `examples/pantry/zero.config.ts`, after
 
@@ -1088,7 +1107,9 @@ them.
   `Column.table`; `RelationsOf` derives from `ref` columns' phantom target
   keys instead of `Register.relations`; `One` loses `TOptional`;
   `WriteStructured` treats defaulted sub-fields as optional; `zero.gen.ts`
-  registers `config` only.
+  registers `config` only, and `Locale` (today read from `Register.locales`,
+  `index.d.ts:1139`) derives from the registered config's `locales` tuple
+  (`defineConfig` keeps `const` on it), so the configured union is not lost.
 - **Generated client** (`src/client.rs`): relation names come from the
   column name; `with` typing follows.
 - **Fixtures**: 114 `tests/fixtures/*/zero.config.ts`, the three examples,
@@ -1242,7 +1263,7 @@ inside the options object are closures found in an object literal, as
    hooks(items, { afterCreate: restock })` registered under
    `defineConfig.hooks` keeps `Row<typeof items>` working everywhere at the
    cost of one more top-level key. The proposal picks beside the columns.
-10. **Drop `api`, or keep it for "fetchable, not listable"?** The proposal
-    drops it (zero uses); the one shape access rules can't express is
-    `{ list: false, get: true }`. If that shape matters (unlisted but
-    linkable rows), `api` stays as the rarely-used option it is.
+10. **Drop `api`, or keep it for splitting `list` from `get`?** The proposal
+    drops it (zero uses); the one thing access rules can't express is
+    `list` and `get` set differently. If that matters (unlisted but linkable
+    rows, say), `api` stays as the rarely-used option it is.

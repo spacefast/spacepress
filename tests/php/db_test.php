@@ -1444,7 +1444,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         ['en:Tea', ['en:Steep']], ['de:Tee', ['en:Steep']], ['fr:Thé vert', ['en:Steep']],
     ]);
     problem('… a nested limit is still validated', fn () => $db->findMany('pages', ['where' => ['id' => $tea['id']], 'with' => ['chapters' => ['limit' => -1]]]), 400, 'invalid_query', '/with/chapters/limit');
-    problem('… so is a nested option when no parent has a key to follow', fn () => $db->findMany('pages', ['where' => ['id' => $tea['id']], 'with' => ['parent' => ['bogus' => 1]]]), 400, 'invalid_query', '/with/parent/bogus');
+    problem('… so is a nested option when no parent has a key to follow', fn () => $db->findMany('pages', ['where' => ['id' => $tea['id']], 'with' => ['parent' => ['limit' => -1]]]), 400, 'invalid_query', '/with/parent/limit');
     $db->update('pages', ['parentId' => $tea['id']], ['id' => $coffee['id']]);
     $fr = $db->findMany('pages', ['locale' => 'fr', 'with' => ['parent' => true], 'orderBy' => ['id' => 'asc']]);
     eq('`one` relation resolves the referenced row as stored', array_map(static fn ($r) => $r['parent']['title'] ?? null, $fr), [null, 'Tea']);

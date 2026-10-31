@@ -159,12 +159,13 @@ final class Db
         if ($viewer !== null) {
             array_push($guards, ...$this->readGuards($collection, $viewer));
         }
+        $filterViewer ??= $viewer;
+        // Compiled even for an empty partition: the query's options are validated either way.
+        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
+            $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
         if ($partition !== null && $partition[1] === []) {
             return [];
         }
-        $filterViewer ??= $viewer;
-        $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-            $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),

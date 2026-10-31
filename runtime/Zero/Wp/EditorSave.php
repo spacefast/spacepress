@@ -21,7 +21,9 @@ use Zero\HttpError;
  * code) are WordPress's trusted callers and are not authorized here, as on every core API.
  *
  * Owners: `rest` (PostsController wraps create/update), `restore` (wp-admin's revision restore, whose
- * SCF meta is copied after the post update), `core` (everything else, ended at wp_after_insert_post).
+ * SCF meta is copied after the post update), `delete` (a permanent delete, from before_delete_post to
+ * deleted_post), `core` (everything else, ended at wp_after_insert_post). A Zero hook that throws in
+ * any of them rolls the whole operation back ({@see fail()}).
  * A save still open at shutdown never completed (a callback threw and was caught, the request died)
  * and rolls back.
  */
@@ -40,6 +42,9 @@ final class EditorSave
         add_action('wp_after_insert_post', [self::class, 'check'], 9, 1);
         add_action('wp_after_insert_post', [self::class, 'end'], PHP_INT_MAX, 1);
         add_action('check_admin_referer', [self::class, 'beginRestore'], 10, 2);
+        // A permanent delete: beforeDelete, FK actions, core's delete and afterDelete, all or nothing.
+        add_action('before_delete_post', [self::class, 'beginDelete'], 0, 1);
+        add_action('deleted_post', [self::class, 'endDelete'], PHP_INT_MAX, 1);
         add_action('wp_restore_post_revision', [self::class, 'endRestore'], PHP_INT_MAX, 1);
         register_shutdown_function([self::class, 'shutdown']);
     }
@@ -86,6 +91,12 @@ final class EditorSave
             self::rollback();
 
             return CoreAccess::error($e->error);
+        } catch (HttpError | \Zero\JsError $e) {
+            // A Zero hook refused the save (§1.7): the editor sees its status and message, as /zero/v1 answers.
+            self::rollback();
+            $problem = \Zero\App::problem($e);
+
+            return CoreAccess::error(new HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null));
         } catch (\Throwable $e) {
             self::rollback();
             throw $e;
@@ -158,6 +169,24 @@ final class EditorSave
         }
     }
 
+    public static function beginDelete(mixed $postId): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin === null || self::busy() || $plugin->connection()->inTransaction()
+            || ($collection = CoreAccess::collection((string) get_post_type((int) $postId))) === null) {
+            return;
+        }
+        self::open('delete', $collection, (int) $postId, null, null, []);
+        self::$open['checked'] = true; // delete_post (the delete rule) decided it
+    }
+
+    public static function endDelete(mixed $postId): void
+    {
+        if (self::$open !== null && self::$open['owner'] === 'delete' && self::$open['postId'] === (int) $postId) {
+            self::commit();
+        }
+    }
+
     /** wp-admin's revision.php checks its nonce, then restores: the save opens here. */
     public static function beginRestore(mixed $action, mixed $result): void
     {
@@ -193,12 +222,24 @@ final class EditorSave
         }
     }
 
-    /** A Zero after hook threw inside an open save: nothing of it may commit. */
-    public static function abort(): void
+    /**
+     * A Zero after hook threw inside an open save (§1.7: throwing rolls back every write): nothing of
+     * the save commits. Core REST answers the problem itself (rest()); wp-admin and other callers get
+     * an error page with the hook's status and message, never a critical error.
+     */
+    public static function fail(\Throwable $e): never
     {
-        if (self::$open !== null) {
-            self::rollback();
+        if (self::$open === null || self::$open['owner'] === 'rest' || (self::$open['nested'] ?? false)) {
+            throw $e;
         }
+        if (self::$open['owner'] === 'delete' && defined('REST_REQUEST') && REST_REQUEST) {
+            self::rollback();
+            throw $e; // the controller answers it
+        }
+        self::rollback();
+        $problem = \Zero\App::problem($e);
+        wp_die(esc_html($problem['detail']), '', ['response' => $problem['status'], 'code' => $problem['code'], 'back_link' => true]);
+        throw $e; // a wp_die handler that returns
     }
 
     // ================================================================ authorization

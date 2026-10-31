@@ -2,7 +2,7 @@
 // meta and its revision back, and the object cache doesn't keep a ghost of it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { api, http, problem, sql, wp } from "./env.ts";
+import { api, core, http, problem, run, sql, wp, zero } from "./env.ts";
 
 test("a hook throwing after wp_insert_post leaves no post behind", async () => {
   const max = () => Number(sql("SELECT COALESCE(MAX(ID), 0) AS m FROM wp_posts")[0].m);
@@ -44,4 +44,77 @@ test("extension effects share WordPress transactions and commit callbacks", () =
     delete_option('zero_seam_commit'); delete_option('zero_seam_nested');
   `));
   assert.deepEqual(result, [422, [], [], "absent", "absent", "committed", "committed"]);
+});
+
+// Editor saves (§1.7: throwing rolls back every write): the same holds when the save comes from
+// core /wp/v2 or wp-admin. Fixture: tests/wp/app/lanes/rest.ts `fuses`, whose hooks log, then throw.
+const logged = (msg: string) => sql(`SELECT COUNT(*) AS n FROM wp_zero_fuse_log WHERE msg = '${msg}'`)[0].n;
+const titled = (title: string) => wp("post", "list", "--post_type=zero_fuses", "--post_status=any", `--title=${title}`, "--format=count");
+
+test("a hook throwing on a core REST create is a 4xx with its message, and nothing persists", async () => {
+  const maxId = Number(sql("SELECT COALESCE(MAX(ID), 0) AS m FROM wp_posts")[0].m);
+  const res = await http("POST", `${core}/zero_fuses`, { as: "editor", body: { title: `Explode ${run}`, status: "publish", acf: { zero_note: "doomed" } } });
+  assert.deepEqual([res.status, res.json.code, res.json.message], [422, "boom", "afterCreate refused this"]);
+  assert.deepEqual(sql(`SELECT ID FROM wp_posts WHERE ID > ${maxId}`), [], "no post and no revision");
+  assert.deepEqual(sql(`SELECT meta_id FROM wp_postmeta WHERE post_id > ${maxId}`), [], "no meta");
+  assert.equal(logged(`created Explode ${run}`), "0", "the hook's own write rolled back");
+});
+
+test("a hook throwing on a core REST update leaves the post, its meta and its revisions as they were", async () => {
+  const id = zero("insert", "fuses", JSON.stringify({ title: `Steady ${run}`, note: "kept" }))[0].id;
+  const revisions = () => sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_parent = ${id} AND post_type = 'revision'`)[0].n;
+  const before = revisions();
+  const res = await http("POST", `${core}/zero_fuses/${id}`, { as: "editor", body: { title: `Explode later ${run}`, acf: { zero_note: "changed" } } });
+  assert.deepEqual([res.status, res.json.code], [422, "boom"]);
+  assert.deepEqual([wp("post", "get", String(id), "--field=post_title"), wp("post", "meta", "get", String(id), "zero_note"), revisions(), logged(`updated Explode later ${run}`)],
+    [`Steady ${run}`, "kept", before, "0"]);
+  // Within one request too: no cache keeps the rolled-back values.
+  const same = JSON.parse(wp("eval", `
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    $r = new WP_REST_Request('POST', '/wp/v2/zero_fuses/${id}');
+    $r->set_body_params(['title' => 'Explode cached ${run}', 'acf' => ['zero_note' => 'cached']]);
+    $status = rest_do_request($r)->get_status();
+    echo wp_json_encode([$status, get_post(${id})->post_title, get_post_meta(${id}, 'zero_note', true), \\Zero\\Wp\\Plugin::instance()->db()->findFirst('fuses', ['where' => ['id' => ${id}]])['note']]);
+  `));
+  assert.deepEqual(same, [422, `Steady ${run}`, "kept", "kept"]);
+});
+
+test("a hook throwing on a core delete keeps the post, and its beforeDelete write rolls back", async () => {
+  const id = zero("insert", "fuses", JSON.stringify({ title: `Keep ${run}` }))[0].id;
+  const res = await http("DELETE", `${core}/zero_fuses/${id}?force=true`, { as: "editor" });
+  assert.deepEqual([res.status, res.json.code, res.json.message], [409, "kept", "afterDelete refused this"]);
+  assert.deepEqual([wp("post", "get", String(id), "--field=post_status"), logged(`deleting Keep ${run}`)], ["publish", "0"]);
+});
+
+test("a hook refusing a core REST delete inside an open transaction aborts that transaction", () => {
+  const id = zero("insert", "fuses", JSON.stringify({ title: `Keep nested ${run}` }))[0].id;
+  const out = JSON.parse(wp("eval", `
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    try {
+      $db->transaction(static function () use ($db) {
+        $db->insert('fuse_log', ['msg' => 'outer ${run}']);
+        $request = new WP_REST_Request('DELETE', '/wp/v2/zero_fuses/${id}');
+        $request->set_query_params(['force' => true]);
+        return rest_do_request($request);
+      });
+      $caught = null;
+    } catch (Throwable $e) { $caught = $e->getMessage(); }
+    clean_post_cache(${id});
+    echo wp_json_encode([$caught, get_post_status(${id})]);
+  `));
+  assert.deepEqual(out, ["afterDelete refused this", "publish"]);
+  assert.deepEqual([logged(`outer ${run}`), logged(`deleting Keep nested ${run}`)], ["0", "0"], "the enclosing work rolled back too");
+});
+
+test("a hook throwing on a wp-admin style save gets an error page, not a critical error, and saves nothing", () => {
+  const out = JSON.parse(wp("eval", `
+    wp_set_current_user(get_user_by('login', 'editor')->ID);
+    add_filter('wp_die_handler', fn () => static function ($message, $title, $args) { throw new RuntimeException(wp_json_encode([$args['response'] ?? null, (string) $message])); });
+    try { wp_insert_post(['post_type' => 'zero_fuses', 'post_title' => 'Explode admin ${run}', 'post_status' => 'publish'], true); $died = null; }
+    catch (RuntimeException $e) { $died = json_decode($e->getMessage(), true); }
+    echo wp_json_encode([$died, (int) (new WP_Query(['post_type' => 'zero_fuses', 'title' => 'Explode admin ${run}', 'post_status' => 'any', 'fields' => 'ids']))->found_posts]);
+  `));
+  assert.deepEqual(out, [[422, "afterCreate refused this"], 0]);
+  assert.equal(logged(`created Explode admin ${run}`), "0");
 });

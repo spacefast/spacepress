@@ -421,8 +421,7 @@ final class Plugin
         try {
             $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
         } catch (\Throwable $e) {
-            EditorSave::abort();
-            throw $e;
+            EditorSave::fail($e);
         }
     }
 
@@ -436,7 +435,12 @@ final class Plugin
         $row = $db->editorRow($collection, $postId);
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
-            $db->beforeEditorDelete($collection, $row, WpAuth::current());
+            try {
+                $db->beforeEditorDelete($collection, $row, WpAuth::current());
+            } catch (\Throwable $e) {
+                unset($this->deleting[$postId]);
+                EditorSave::fail($e);
+            }
         }
     }
 
@@ -447,7 +451,11 @@ final class Plugin
         }
         [$collection, $row] = $this->deleting[$postId];
         unset($this->deleting[$postId]);
-        $this->app()->db->afterEditorDelete($collection, $row, WpAuth::current());
+        try {
+            $this->app()->db->afterEditorDelete($collection, $row, WpAuth::current());
+        } catch (\Throwable $e) {
+            EditorSave::fail($e);
+        }
     }
 
     public function promoting(mixed $post): void

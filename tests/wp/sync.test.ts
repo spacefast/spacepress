@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { api, core, http, ok, problem, qs, run, sql, wp, zero } from "./env.ts";
+import { api, core, http, ok, problem, qs, run, sql, wp, wpTry, zero } from "./env.ts";
 
 const canon = (v: unknown): string => {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -195,6 +195,7 @@ test("sync on WordPress", async (t) => {
       } catch (\\Zero\\HttpError $e) {
         $refused = $e->status;
       }
+      $untrashedByPush = $untrashed;
       wp_untrash_post($id);
 
       delete_post_meta($id, '_zero_uid');
@@ -202,7 +203,7 @@ test("sync on WordPress", async (t) => {
       $assigned = 'zr_' . str_repeat('e', 20);
       $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_zero_uid', '$assigned')");
       $kept = $db->transaction(fn () => \\Zero\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
-      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $refused, $untrashed, $kept, get_post_meta($id, '_zero_uid')]);
+      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $refused, $untrashedByPush, $kept, get_post_meta($id, '_zero_uid')]);
     `));
     assert.deepEqual(result, [409, false, "Theirs", 409, false, 409, "trash", 403, 0, "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]],
       "stale without an outdated current (also for a mismatched expect), their title kept, the stale restore left in the trash, an unauthorized restore refused before WordPress untrashes, their uid kept");
@@ -218,6 +219,16 @@ test("sync on WordPress", async (t) => {
       { status: 422, code: "not_representable", pointer: undefined });
     assert.match(dynamic.detail, /core\/archives/);
     assert.deepEqual(await ok("POST", "/sync/guides/merge", { as: "editor", body: { base: "a\n\nb\n", ours: "A\n\nb\n", theirs: "a\n\nB\n" } }), { merged: "A\n\nB\n", conflicts: [] });
+  });
+
+  await t.test("sync operations are WordPress Abilities that run through the same routes", async () => {
+    const names = zero("abilities").map((a: any) => a.name).filter((n: string) => n.startsWith("blog/guides-sync-")).sort();
+    assert.deepEqual(names, ["blog/guides-sync-apply", "blog/guides-sync-read", "blog/guides-sync-trash"]);
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_zero_uid' AND meta_value = '${guideUid}'`);
+    const read = JSON.parse(wp("zero", "run", "blog/guides-sync-read", `--input=${JSON.stringify({ after: Number(ID) - 1, first: 1 })}`, "--user=editor")).data;
+    assert.deepEqual(read.records, [(await pull("guides")).get(guideUid)]);
+    const denied = JSON.parse(wpTry("zero", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
+    assert.ok("error" in denied, JSON.stringify(denied));
   });
 
   await t.test("unknown reference uid", async () => {

@@ -383,7 +383,7 @@ collection({ ...columns }, {
   // rules
   access?: { read?, write?, create?, update?, delete? },
   hooks?: { beforeCreate?, afterCreate?, beforeUpdate?, afterUpdate?, beforeDelete?, afterDelete? },
-  relations?: { name: many("other", "column") },   // only when inference is ambiguous (§4.3)
+  relations?: { name: many("other", "column") | false } | false,   // name or decline an inferred reverse (§4.3)
   // rarely
   timestamps?: false,        // drop createdAt/updatedAt
   agents?: false,            // keep out of MCP (WordPress)
@@ -430,12 +430,25 @@ collection({ ...columns }, {
   separate value: `const itemFields = { … }`, `collection(itemFields, {
   hooks: { afterCreate: restock } })`, `function restock(item:
   Row<typeof itemFields>)`. `Row<F>` accepts a columns object as well as a
-  collection and produces the same row type (the collection's row *is*
-  derived from its columns plus the system columns, which `Row` of a
-  columns object adds too). The pantry rewrite does this (§5.2); it is the
-  one pattern the move costs, and only for named helpers. A hook that needs
-  another collection references it by name as today (module scope,
-  hoisted). Open question 9 asks whether this cost is worth the move.
+  collection. For a columns object it is the row of a *default* collection
+  over those columns: the authored columns plus `id`, `createdAt` and
+  `updatedAt`, and nothing that an option adds (`status`/`publishedAt`
+  from `content`, `uid` from `sync`, `role`/`email` from `auth`, `locale`
+  from `.localized()` columns is in the columns themselves). A collection
+  whose options change the row (`content: true`, `sync`, `auth`,
+  `timestamps: false`) therefore cannot type a named helper this way; the
+  compiler checks a declared hook parameter against the collection's real
+  row (`src/compile.rs:468`, exact keys at `:4938`) and reports the
+  mismatch with the one fix: `Row<typeof itemFields, { content: true }>`,
+  a second type argument that is the same options object the collection
+  was given (`const itemOptions = { content: true } as const`, passed to
+  both). That keeps the row derivation in one place, the `.d.ts`'s
+  `Collection<TCols, TOptions>` type, which `Row` of a columns object
+  calls with the given options or `{}`. The pantry rewrite needs no options
+  (§5.2); it is the one pattern the move costs, and only for named helpers
+  of non-default collections. A hook that needs another collection
+  references it by name as today (module scope, hoisted). Open question 9
+  asks whether this cost is worth the move.
 - **`uid` goes** (F8): a synced collection and every collection a synced
   collection references get a `uid` column automatically; the compiler can see
   the reference graph. `uid: true` for its own sake has no use in the repo.
@@ -488,9 +501,12 @@ Rules, all enforced at build time:
   (`authors.posts`). When two `ref` columns of one collection point at the
   same target (`posts.authorId` and `posts.editorId` both to `authors`) no
   reverse is inferred, the build says so, and the target names them:
-  `relations: { written: many("posts", "authorId"), edited: many("posts", "editorId") }`.
-  `many("t", "col")` joins `t.col` to this collection's primary key; it
-  is the only explicit relation form. Today's `r.many.x({ from, to })` with
+  `relations: { written: many("posts", "authorId"), edited: many("posts", "editorId") }`,
+  or declines them: `relations: { posts: false }` suppresses every inferred
+  reverse from `posts` (and `relations: false` every inferred reverse on
+  this collection), since an inferred default must be refusable as well as
+  renamable. `many("t", "col")` joins `t.col` to this collection's primary
+  key; with `false` it is the whole explicit relation form. Today's `r.many.x({ from, to })` with
   arbitrary endpoints (`r.posts.id` to `r.subscribers.postId`) is exactly
   this case, since `from` is always the primary key in every use; joins
   between two non-key columns go with non-key `references()` targets.
@@ -511,8 +527,9 @@ Rules, all enforced at build time:
   `ref` columns of one collection target the same collection, *none* of
   their reverses is inferred and every one must be named, so adding
   `posts.editorId` beside `posts.authorId` is a build error until both
-  `written` and `edited` exist, and the inferred `authors.posts` can never
-  silently rebind from one column to the other.
+  `written` and `edited` exist or `posts: false` declines both, and the
+  inferred `authors.posts` can never silently rebind from one column to
+  the other.
 - `onDelete` defaults to `"set null"` for nullable refs and `"restrict"` for
   NOT NULL refs, the same rule the importer already applies
   (`docs/config-migration.md`, "Original Zero reference"); `cascade` is
@@ -661,7 +678,7 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   `IdentityBridge.php:144`) and the store redeems it on `wp_set_password`
   (`WpUserStore.php:330`). Its replacement is a pipeline-level side channel
   (the pending token travels on the write context, not in the row), which
-  §7.1's auth PR includes; until then the column stays hidden as today. CRUD on the collection is
+  is §7.1's PR 5; until then the column stays hidden as today. CRUD on the collection is
   CRUD on accounts: `create` runs `wp_insert_user`, `delete` runs
   `wp_delete_user` (`:320`), `update` writes `user_email`/`user_pass` and
   the profile meta. `create: "anyone"` means what the runtime lets it
@@ -680,9 +697,10 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   names the relation (`userId` gives `user`, loadable with
   `with: { user: true }`) and the reverse on the auth collection is inferred
   as for any `ref`. Without an auth collection there is no row to
-  load, so it declares no relation. A synced collection may not carry a
-  `user()` column at all (build error: "`userId` names a user of this
-  site; sync has no portable identity for users; leave it out of the
+  load, so it declares no relation. A synced collection may not reference
+  users at all, by either spelling (`user()` or `ref("<auth key>")`; the
+  check is on the resolved target, build error: "`userId` names a user of
+  this site; sync has no portable identity for users; leave it out of the
   synced collection"): sync carries references as uids of registered
   collections (`src/extract.rs:2488`), an auth collection cannot itself
   sync (`src/extract.rs:2359`) so its rows never acquire matching uids
@@ -697,18 +715,23 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   when `.notNull()`, and `{ onDelete: "cascade" }` explicitly. `wp_users`
   has no foreign keys and users are deleted from wp-admin, WP-CLI and other
   plugins, so the rule runs on core's `delete_user` action (which fires
-  before the row goes, with the reassignment target core offers), in two
-  phases so a late refusal never follows an early write: first every
-  `"restrict"` column is checked and the deletion is refused with a
+  before the row goes, with the reassignment target core offers), inside
+  one transaction that also contains core's own deletion: the hook opens
+  it on `$wpdb`, locks the account row (`SELECT … FROM wp_users WHERE ID = ?
+  FOR UPDATE`, the same lock a reference write takes on its target before
+  it validates existence, which today only checks, `Db.php:705`), checks
+  every `"restrict"` column first and refuses the whole deletion with a
   `wp_die` naming the rows if any owns one (the existing `delete_user`
-  hook only guards storage availability today); only then, inside one
-  transaction on `$wpdb`, `"set null"` clears or, when core was told to
-  reassign, rewrites each column and `"cascade"` deletes the owning rows
-  through the pipeline, and the transaction commits before core deletes
-  the account (a failure rolls it back and refuses the deletion). Without
-  an auth collection the same hook applies; `Db::referentialActions()`
-  keys on a registered target today and gains the built-in users as one,
-  with the preflight split out of its in-order loop. It is what
+  hook only guards storage availability today), then runs `"set null"`
+  (clear, or rewrite to the reassignment target core was given) and
+  `"cascade"` through the pipeline, and leaves the transaction open for
+  core to delete the user, committing on `deleted_user` and rolling back
+  if core fails in between. A concurrent reference write therefore either
+  commits before the lock and is seen by the restrict check, or waits on
+  the lock and then fails its existence check. Without an auth collection
+  the same hook applies; `Db::referentialActions()` keys on a registered
+  target today and gains the built-in users as one, with the restrict
+  check split out of its in-order loop. It is what
   `authors.userId` and the `ownerId` columns are by hand today, and it is
   what `"self"` reads.
 - **One owner per post.** On a content collection, ownership has one
@@ -813,8 +836,8 @@ or `slug({ source: false })`.
 As §4.3: every `ref()` is a `one`, every `one` not named in the target's
 `relations:` gets a `many` back named after the referencing collection; a
 taken name is an error, and two `ref` columns to one target infer nothing
-until both are named. Off: name the reverse explicitly with `relations:`
-on the target.
+until both are named or declined. Off: name the reverse explicitly with
+`relations:` on the target, or decline it (`relations: { posts: false }`).
 
 #### 4.9.7 `uid`
 
@@ -873,10 +896,12 @@ import {
 `Row<T>` and `Insert<T>` replace `InferSelectModel`/`InferInsertModel`
 (shorter, and the Drizzle names were the only reason for the long ones).
 `T` is a collection (`typeof items`) or a columns object (`typeof
-itemFields`, for a helper the collection's own hooks name, §4.2); both give
-the same row. The compiler resolves these by name (`src/compile.rs:854`)
-and today accepts a collection path only, so the rename and the columns
-form are compiler changes, not only `.d.ts` ones (§7.3). What only the
+itemFields`, for a helper the collection's own hooks name, §4.2) with an
+optional second argument carrying the collection's options; a columns
+object with no options gives the row of a default collection over it. The
+compiler resolves these by name (`src/compile.rs:854`) and today accepts a
+collection path only, so the rename and the columns form are compiler
+changes, not only `.d.ts` ones (§7.3). What only the
 whole config knows (an inherited `uid`, §4.9.7) is not part of `Row`.
 
 Not one way yet, and said so: `.notNull().default(x)` and `.default(x)` are
@@ -1434,10 +1459,13 @@ them.
   of their files are edited here):
   - Localized relations: localized `many` loads under `with` are keyed by
     the inferred relation; nothing to add to the config.
-  - The `.d.ts` primary-key typing (`TPrimary` on the builder, merged in
-    #56) is what §4.9.1 needs to know whether a user key exists; keep it,
-    and `RowId<TCols>` simplifies because `id` is always present unless
-    `TPrimary` says otherwise.
+  - The `.d.ts` primary-key typing: `main` (#56) types row ids from the
+    actual primary key but the builder still records only nullability and
+    defaultability for `.primaryKey()` (`index.d.ts:180`), which cannot
+    tell a custom key from a defaulted required integer. §4.9.1 needs a
+    `TPrimary` flag on the builder to know whether to add `id`; it is the
+    first item of §7.1's PR 2, and `RowId<TCols>` then simplifies because
+    `id` is always present unless `TPrimary` says otherwise.
   - Compiler aliasing: untouched; `ref("key")` is a string the extractor
     resolves, not an expression the compiler sees.
   - The README: its first example should be §5.2's first collection; a
@@ -1457,7 +1485,9 @@ them.
 1. Columns: `select`, structured builders, `json<T>`, `.default(fn)`,
    `.onUpdate`, `.nullable`, implied NOT NULL, implied `.max(191)`, `media`
    MIME patterns. Fixtures and examples follow in the same PR.
-2. System columns: automatic `id`, `createdAt`, `updatedAt`; `timestamps`;
+2. System columns: a `TPrimary` flag on `ColumnBuilder` (set by
+   `.primaryKey()`, read by `collection()` to decide whether `id` is
+   added); automatic `id`, `createdAt`, `updatedAt`; `timestamps`;
    the WP post-date mapping; `id()` removed. The automatic `id` is added to
    the evaluator's `CollectionVal.columns` (`src/eval.rs:1181`), not only to
    the extracted schema, because `.references(() => authors.id)` still
@@ -1468,8 +1498,11 @@ them.
 4. Collections: no name argument, `content` inferred, `body`, `hooks` in
    `collection()`, `uid` inferred, `api`/`editor`/`target` removed,
    `collections` key.
-5. Access: `write`, `ctx.is()`, `user()`, `"self"` on `user()` columns,
-   `"owner"` renamed.
+5. Access and auth: `write`, `ctx.is()`, `user()`, `"self"` on `user()`
+   columns, `"owner"` renamed; the auth collection's system `email` and
+   `role`, the `delete_user` hook, the pending-password side channel that
+   replaces `passwordHash` (`Auth/Module.php:284`, `WpUserStore.php:330`),
+   and the removal of `suspendedAt`/`guest`.
 6. Names: `global(fields)`, `bucket()`, `file("key")`, `locales` array,
    optional `input`, `Row`/`Insert`.
 7. Importers and docs: `zero migrate config`, `docs/config-api.md`,
@@ -1501,7 +1534,9 @@ Three places, all small:
   and resolves a collection path (`TyAnn::Query`, `src/compile.rs:854`);
   the new arm also resolves a path to a columns object (a plain object of
   column builders at module scope, which the evaluator already holds as
-  values) and builds the row from it plus the system columns. Two more
+  values) and an optional options object (a plain object literal the
+  evaluator holds too), and builds the row exactly as `extract` builds a
+  collection's from the same two inputs, so the two can never disagree. Two more
   changes make the compiler's row agree with the `.d.ts` exactly, which is
   what lets an object that type-checks in the editor be assignable in the
   compiler (`assignable()` is exact on object keys, `src/compile.rs:4938`):

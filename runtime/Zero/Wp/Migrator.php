@@ -66,9 +66,11 @@ final class Migrator
     public function nonInnoDb(): array
     {
         $wpdb = $this->db->wpdb();
+        // An auth collection's rows are users (§6.2), so wp_users/wp_usermeta join Zero's transactions.
+        $users = ($this->schema->auth()['collection'] ?? null) !== null ? [$wpdb->users, $wpdb->usermeta] : [$wpdb->posts, $wpdb->postmeta];
         $rows = $this->db->run(
-            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?) OR TABLE_NAME LIKE ?)',
-            [$wpdb->posts, $wpdb->postmeta, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
+            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?, ?, ?) OR TABLE_NAME LIKE ?)',
+            [$wpdb->posts, $wpdb->postmeta, $users[0], $users[1], $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
         );
         $bad = [];
         foreach ($rows as $r) {

@@ -40,6 +40,7 @@ final class Module
     public static function register(): void
     {
         // Standalone only: WordPress keeps users in wp_users and sessions in zero-identity.
+        SystemTables::register(Throttle::TABLE, Throttle::ddl(), []);
         SystemTables::register(Sessions::TABLE, [
             ...Sessions::ddl(),
             static function (Store $store): void {
@@ -111,7 +112,7 @@ final class Module
                         default => throw HttpError::invalidInput('grant_type must be password or refresh_token', '/grant_type'),
                     }];
                 } catch (Reused $reused) {
-                    // The family revocation commits with this transaction; the client still gets the 401.
+                    // The family revocation or throttle count commits with this transaction; the client still gets the error.
                     return Response::raw(Js::jsonStringify(App::problem($reused->error)) ?? '{}', $reused->error->status, ['Content-Type' => 'application/problem+json']);
                 }
             case 'auth/guest':
@@ -275,10 +276,14 @@ final class Module
         if (!is_string($password) || strlen($password) < 12 || strlen($password) > 1024) {
             throw HttpError::invalidInput('password must be a string of at least 12 characters', '/password');
         }
-        if (self::$issuer === null) {
-            throw HttpError::invalidInput('Passwords are managed by WordPress on this target', '/password');
+        if (self::$issuer !== null) {
+            self::$issuer->acceptPassword($data, $password, $existing);
+        } elseif (db()->target() === 'wp') {
+            // No identity issuer: WordPress still owns the password (wp_set_password in WpUserStore).
+            $data['passwordHash'] = \Zero\Wp\PendingPassword::put($password);
+        } else {
+            throw new \LogicException('The standalone issuer is always installed');
         }
-        self::$issuer->acceptPassword($data, $password, $existing);
     }
 
     /** API writes never set system columns of the auth collection directly, and only admins change `role`. */

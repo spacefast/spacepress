@@ -92,9 +92,15 @@ final class Identity implements Auth, Issuer
 
     public function password(string $name, string $password): array
     {
+        $address = (string) ($_SERVER['REMOTE_ADDR'] ?? 'cli');
+        $throttle = new Auth\Throttle($this->store);
+        $throttle->check($name, $address);
         $row = $this->row($this->q($this->users['login']) . ' = ?', [$name]);
-        if ($row === null || $row['passwordHash'] === null || !password_verify($password, (string) $row['passwordHash'])) {
-            throw new HttpError(401, 'unauthenticated', 'Wrong name or password');
+        // Verify against a real hash even for unknown names, so timing doesn't tell which exist.
+        $hash = $row !== null && $row['passwordHash'] !== null ? (string) $row['passwordHash'] : self::dummyHash();
+        if (!password_verify($password, $hash) || $row === null || $row['passwordHash'] === null) {
+            $throttle->fail($name, $address);
+            throw new Auth\Failed(new HttpError(401, 'unauthenticated', 'Wrong name or password'));
         }
         self::live($row);
 
@@ -123,7 +129,7 @@ final class Identity implements Auth, Issuer
         } else {
             $values = ['email' => "guest-$tag@guest.invalid", 'role' => 'guest', 'guest' => true];
             if ($this->users['display'] === 'name') {
-                $values['name'] = 'Guest';
+                $values['name'] = 'Guest ' . substr($tag, 0, 6);
             }
             $id = (int) db()->insert($this->users['collection'], $values, true)[0]['id'];
         }
@@ -335,6 +341,13 @@ final class Identity implements Auth, Issuer
     private function requireUser(string $name): array
     {
         return $this->findUser($name) ?? throw HttpError::notFound("No user named '$name'");
+    }
+
+    private static function dummyHash(): string
+    {
+        static $hash = null;
+
+        return $hash ??= password_hash(random_bytes(16), PASSWORD_DEFAULT);
     }
 
     private static function rejected(): HttpError

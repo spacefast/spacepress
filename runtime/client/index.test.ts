@@ -407,6 +407,55 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   assert.deepEqual([pending[3], pending[4]].map((p) => (p.init.headers as Record<string, string>).authorization), ["Bearer za_g", "Bearer za_g"]);
 });
 
+test("a 401 or refresh that outlives a sign-in never acts as the new user", async () => {
+  const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
+  const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
+  const zero = mod.createClient({ url: "http://x/api", fetch });
+  const until = async (n: number) => {
+    for (let turn = 0; pending.length < n; turn++) {
+      if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
+      await Promise.resolve();
+    }
+  };
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const denied = () => json(401, { type: "about:blank", title: "Unauthorized", status: 401, code: "unauthenticated", detail: "no" });
+  const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: n.length, name: n, role: "author" } } });
+  const auth = (i: number) => (pending[i].init.headers as Record<string, string>).authorization;
+
+  const loginA = zero.auth.login("a", "pw-a-long-enough");
+  await until(1);
+  pending[0].release(issued("a"));
+  await loginA;
+  const draft = zero.posts.create({ title: "A's private draft" }); // sent as A
+  await until(2);
+  assert.equal(auth(1), "Bearer za_a");
+  const loginB = zero.auth.login("b", "pw-b-long-enough");     // B signs in on the same client
+  await until(3);
+  pending[2].release(issued("b"));
+  await loginB;
+  pending[1].release(denied());                                   // A's 401 lands late
+  // Settle the draft, or see what it sent instead (a retry or refresh would be a 4th request).
+  let failed: any;
+  void draft.then(() => (failed = "resolved"), (e: unknown) => (failed = e));
+  for (let turn = 0; failed === undefined && pending.length === 3 && turn < 10_000; turn++) await Promise.resolve();
+  assert.equal(pending.length, 3, `nothing was retried or refreshed as B (saw ${pending.slice(3).map((p) => `${p.url} ${auth(pending.indexOf(p))}`).join(", ")})`);
+  assert.equal(failed?.code, "unauthenticated", "A's request fails as it was sent");
+
+  // A refresh started as B, finishing after a sign-out, doesn't bring B back.
+  const other = zero.posts.create({ title: "x" });
+  await until(4);
+  pending[3].release(denied());
+  await until(5);
+  assert.equal(pending[4].url, "http://x/api/auth/token");
+  const out = zero.auth.signOut();
+  await until(6);
+  pending[5].release(json(200, { data: true }));
+  await out;
+  pending[4].release(issued("b2"));
+  await other.catch(() => undefined);
+  assert.equal(zero.auth.session(), null, "the late refresh was dropped");
+});
+
 test("WP signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kept in sessionStorage", async () => {
   const browser = stubBrowser();
   try {

@@ -89,7 +89,7 @@ final class IdentityBridge implements Issuer
             // Through the pipeline, so the member row gets its defaults like any other create.
             $values = ['email' => 'guest-' . bin2hex(random_bytes(8)) . '@guest.invalid', 'role' => 'guest'];
             if (isset(\Zero\db()->schema()->collection($collection)['columns']['name'])) {
-                $values['name'] = 'Guest';
+                $values['name'] = 'Guest ' . substr(bin2hex(random_bytes(4)), 0, 6);
             }
             $id = (int) \Zero\db()->insert($collection, $values, true)[0]['id'];
         } else {

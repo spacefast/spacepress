@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { collection, email, id, integer, select, text } from "zero";
+import { collection, date, email, id, integer, select, text } from "zero";
 
 export const members = collection("members", {
   id: id(),
@@ -12,6 +12,7 @@ export const members = collection("members", {
   points: integer().notNull().default(0),
   tags: select({ options: ["early", "beta"], multiple: true }).notNull().default([]),
   handle: text().unique().max(40),
+  joined: date().unique(),
 }, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {

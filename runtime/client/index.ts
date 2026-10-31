@@ -393,6 +393,15 @@ export function createClient(options: ClientOptions = {}): Client {
       return null;
     }
   }
+  // Who is signed in changes only through sign-in, guest, callback and sign-out (a refresh keeps the
+  // same identity). Requests and refreshes remember the generation they started in: a 401 that
+  // arrives after the identity changed is never retried as the new user, and a late refresh result
+  // never overwrites the new session.
+  let generation = 0;
+  function switchTo(next: Held | null): void {
+    generation++;
+    hold(next);
+  }
   function hold(next: Held | null): void {
     if (authOpts.storage !== "session") {
       memory = next;
@@ -424,6 +433,7 @@ export function createClient(options: ClientOptions = {}): Client {
 
   async function request<T>(method: string, path: string, send: Send = {}, retried = false): Promise<T> {
     const headers: Record<string, string> = {};
+    const started = generation;
     const tokens = send.anonymous ? null : held();
     const bearer = tokens?.accessToken ?? (send.anonymous ? undefined : staticToken);
     if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
@@ -446,13 +456,15 @@ export function createClient(options: ClientOptions = {}): Client {
     }
     const error = toError(res, parsed);
     if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
-      // Only a 401 for the Bearer this client holds is ours to repair.
-      if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
-        if (await renew(tokens.accessToken)) return request<T>(method, path, send, true);
+      // Only a 401 for the Bearer this client holds is ours to repair, and only for the identity
+      // that sent it: after a sign-in or sign-out in between, the request fails as it was sent.
+      if (tokens && headers.authorization === `Bearer ${tokens.accessToken}` && started === generation) {
+        if ((await renew(tokens.accessToken)) && started === generation) return request<T>(method, path, send, true);
       } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
-        // Another request may have signed a guest in while this one was in flight: reuse it.
+        // An anonymous write becomes a guest's: the one it starts, or the one a concurrent first
+        // write started since. Never a user who signed in meanwhile.
         if (!held()) await startGuest();
-        return request<T>(method, path, send, true);
+        if (guestOf === generation && guestFrom >= started) return request<T>(method, path, send, true);
       }
     }
     throw error;
@@ -470,11 +482,18 @@ export function createClient(options: ClientOptions = {}): Client {
 
   /** True on a rotated pair. A rejected refresh forgets the tokens; a network failure keeps them for a later try. */
   async function refresh(current: Held): Promise<boolean> {
+    const started = generation;
+    // A rotated pair for an identity this client no longer holds is dropped, not stored.
+    const keep = (next: Held | null): boolean => {
+      if (started !== generation) return false;
+      hold(next);
+      return true;
+    };
     try {
       if (wp) {
         const clientId = current.clientId ?? authOpts.clientId ?? "";
         const out = await issuerPost<OidcTokens>("/token", { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: clientId });
-        hold({
+        return keep({
           accessToken: out.access_token,
           refreshToken: out.refresh_token,
           expiresAt: expiresAt(out.expires_in),
@@ -483,17 +502,16 @@ export function createClient(options: ClientOptions = {}): Client {
         });
       } else {
         const out = await request<Issued>("POST", "/auth/token", { json: { grant_type: "refresh_token", refreshToken: current.refreshToken }, anonymous: true });
-        hold({ accessToken: out.accessToken, refreshToken: out.refreshToken, expiresAt: expiresAt(out.expiresIn) });
+        return keep({ accessToken: out.accessToken, refreshToken: out.refreshToken, expiresAt: expiresAt(out.expiresIn) });
       }
-      return true;
     } catch (e) {
-      if (!(e instanceof ZeroError) || e.status !== 0) hold(null);
+      if (!(e instanceof ZeroError) || e.status !== 0) keep(null);
       return false;
     }
   }
 
   function adopt(out: Issued): User {
-    hold({
+    switchTo({
       accessToken: out.accessToken,
       refreshToken: out.refreshToken,
       expiresAt: expiresAt(out.expiresIn),
@@ -504,9 +522,17 @@ export function createClient(options: ClientOptions = {}): Client {
 
   // Concurrent first writes share one guest.
   let guesting: Promise<User> | undefined;
+  /** The generation of the guest session this client started (-1: none), and the anonymous generation it replaced. */
+  let guestOf = -1;
+  let guestFrom = -1;
   function startGuest(): Promise<User> {
     guesting ??= request<Issued>("POST", "/auth/guest", { json: {}, anonymous: true })
-      .then(adopt)
+      .then((out) => {
+        guestFrom = generation;
+        const user = adopt(out);
+        guestOf = generation;
+        return user;
+      })
       .finally(() => (guesting = undefined));
     return guesting;
   }
@@ -591,7 +617,7 @@ export function createClient(options: ClientOptions = {}): Client {
         client_id: clientId,
         code_verifier: pkce.verifier,
       });
-      hold({
+      switchTo({
         accessToken: out.access_token,
         refreshToken: out.refresh_token,
         expiresAt: expiresAt(out.expires_in),
@@ -629,7 +655,7 @@ export function createClient(options: ClientOptions = {}): Client {
         // A session the server already ended is signed out; anything else is the caller's to see.
         if (!(e instanceof ZeroError && e.status === 401)) throw e;
       } finally {
-        hold(null);
+        switchTo(null);
       }
       if (wp && opts.returnTo !== undefined && current.idToken !== undefined) {
         const params = new URLSearchParams({ id_token_hint: current.idToken, post_logout_redirect_uri: opts.returnTo });

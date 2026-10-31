@@ -146,10 +146,18 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   wp("zero-identity", "suspend", String(bo.id));
   const bearer = await call("GET", "/me", { token: tokens.json.access_token });
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
+  // zero-identity refuses a suspended account's application password, so WordPress doesn't
+  // authenticate it: the request is anonymous everywhere (no member, no writes, no abilities).
   const viaApp = await fetch(`${api}/me`, { headers: basic });
-  assert.deepEqual([viaApp.status, (await viaApp.json()).code], [403, "suspended"]);
-  const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-list/run`, { headers: basic });
-  assert.equal(viaAbility.status, 403, "abilities refuse a suspended account too");
+  assert.deepEqual([viaApp.status, (await viaApp.json()).data], [200, null]);
+  const write = await fetch(`${api}/reviews`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ body: "as suspended" }) });
+  assert.equal(write.status, 401, "a suspended account can't write");
+  const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-create/run`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ input: { message: "x" } }) });
+  assert.equal(viaAbility.status, 401, "abilities refuse a suspended account too");
+  // A session WordPress resolved some other way (a cookie issued before suspension, a plugin) still
+  // meets WpAuth's own suspension check on every Zero channel.
+  const viaRuntime = wp("eval", `wp_set_current_user(${bo.id}); try { \\Zero\\Wp\\WpAuth::current(); echo 'allowed'; } catch (\\Zero\\HttpError $e) { echo $e->errorCode; }`);
+  assert.equal(viaRuntime, "suspended");
   // zero-identity also refuses native sign-in and destroys WordPress sessions on suspension.
   const cookieAfter = await viaCookie();
   assert.ok([401, 403].includes(cookieAfter.status), `the cookie no longer works (${cookieAfter.status})`);
@@ -176,6 +184,14 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   const dupe = await member("dy");
   const taken = await call("PATCH", `/members/${dupe.id}`, { token: (await signIn(dupe.email, dupe.password)).json.access_token, body: { handle: `cy-${run}` } });
   assert.deepEqual([taken.status, taken.json.code, taken.json.pointer], [409, "unique_violation", "/handle"], "declared unique columns hold in usermeta");
+  // Uniqueness compares the stored (SCF) form: a date is kept as Ymd.
+  await call("PATCH", `/members/${cy.id}`, { token: self.json.access_token, body: { joined: "2026-01-02" } });
+  const sameDay = await call("PATCH", `/members/${dupe.id}`, { token: (await signIn(dupe.email, dupe.password)).json.access_token, body: { joined: "2026-01-02" } });
+  assert.deepEqual([sameDay.status, sameDay.json.pointer], [409, "/joined"]);
+  // A member's role is the one Zero authenticates them with: a contributor is an author.
+  wp("user", "set-role", String(dupe.id), "contributor");
+  const asContributor = await call("GET", "/me", { token: (await signIn(dupe.email, dupe.password)).json.access_token });
+  assert.deepEqual([asContributor.json.data.role, asContributor.json.data.member.role], ["author", "author"]);
 });
 
 test("a hosted sign-up (no Zero create) is a member with the collection's defaults", async () => {
@@ -192,6 +208,14 @@ test("a hosted sign-up (no Zero create) is a member with the collection's defaul
   const id = Number(sql(`SELECT ID FROM wp_users WHERE user_email = '${email}'`)[0].ID);
   const row = JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id } })));
   assert.deepEqual([row.data[0].plan, row.data[0].points, row.data[0].tags], ["free", 0, []]);
+});
+
+test("existing WordPress users become members with defaults when the app (re)activates", () => {
+  const id = wp("user", "create", `before-${run}`, `before-${run}@example.test`, "--porcelain");
+  wp("user", "meta", "delete", id, "zero_plan");
+  wp("plugin", "deactivate", "zero-app-blog");
+  wp("plugin", "activate", "zero-app-blog");
+  assert.equal(wp("user", "meta", "get", id, "zero_plan"), "free");
 });
 
 test("a rolled-back member update leaves no usermeta in WordPress's cache", () => {
@@ -256,6 +280,28 @@ test("identity work joins the Zero transaction: a rollback leaves no guest, toke
       'cached' => get_userdata($id) !== false,
     ]);`);
   assert.deepEqual(JSON.parse(out), { users: 0, tokens: 0, cached: false });
+});
+
+test("activation refuses user tables that can't roll back with Zero (auth rows live there)", () => {
+  // MyISAM wp_usermeta would keep member writes through a rollback: the storage gate reports it.
+  sql("ALTER TABLE wp_usermeta ENGINE=MyISAM");
+  try {
+    const bad = JSON.parse(wp("eval", `echo wp_json_encode(\\Zero\\Wp\\Runtime::plugin()->storageProblems());`));
+    assert.ok(bad.includes("wp_usermeta"), JSON.stringify(bad));
+  } finally {
+    sql("ALTER TABLE wp_usermeta ENGINE=InnoDB");
+  }
+  const ok = JSON.parse(wp("eval", `echo wp_json_encode(\\Zero\\Wp\\Runtime::plugin()->storageProblems());`));
+  assert.deepEqual(ok, []);
+});
+
+test("without zero-identity, a member's password still goes through wp_set_password", () => {
+  const out = wp("eval", `
+    $db = \\Zero\\Wp\\Runtime::plugin()->app()->db;
+    \\Zero\\Auth\\Module::use(null); // as when zero-identity is inactive
+    $id = $db->insert('members', ['email' => 'noid-${run}@example.test', 'name' => 'noid', 'password' => 'a long password 1'], true)[0]['id'];
+    echo wp_check_password('a long password 1', get_userdata($id)->user_pass, $id) ? 'set' : 'unset';`);
+  assert.equal(out, "set");
 });
 
 test("application passwords still authenticate /zero/v1 as before", async () => {

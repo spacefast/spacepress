@@ -133,6 +133,18 @@ final class Plugin
         update_option($this->schemaOption(), $this->schemaHash(), false);
         $this->grantCapabilities();
         IdentityBridge::provision();
+        $this->backfillMembers();
+    }
+
+    /** Existing WordPress users are members too (§6.2): give them the member columns' defaults. */
+    private function backfillMembers(): void
+    {
+        if (($this->schema->auth()['collection'] ?? null) === null) {
+            return;
+        }
+        foreach (get_users(['fields' => 'ID', 'number' => -1]) as $id) {
+            WpUserStore::fillDefaults($this->schema, (int) $id);
+        }
     }
 
     public function maybeMigrate(): void
@@ -141,6 +153,7 @@ final class Plugin
             $this->migrator()->migrate();
             $this->grantCapabilities();
             IdentityBridge::provision();
+            $this->backfillMembers();
             update_option($this->schemaOption(), $this->schemaHash(), false);
         }
     }

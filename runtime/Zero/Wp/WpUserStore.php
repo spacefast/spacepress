@@ -54,7 +54,12 @@ final class WpUserStore implements Store
                 || !in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true)) {
                 continue;
             }
-            $fields[] = Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, $def, $spec);
+            // showIf is UI-only (§4.3) and its conditional logic resolves against post forms and saved
+            // posts; on a profile screen every member field stays visible.
+            $fields[] = ['conditional_logic' => 0] + array_diff_key(
+                Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, array_diff_key($def, ['showIf' => true]), $spec),
+                ['conditional_logic' => true, 'zero_logic' => true],
+            );
         }
         acf_add_local_field_group([
             'key' => 'group_zero_' . $collection,
@@ -165,6 +170,16 @@ final class WpUserStore implements Store
         $rows = $this->db->run($q['sql'], $q['params']);
         $spec = $this->schema->collection($collection);
         \Zero\Extensions::lookup($collection, array_column($rows, $spec['primaryKey']));
+        if (isset($spec['columns']['role'])) {
+            // The role a member has is the one Zero authenticates them with (capabilities, WpAuth::map).
+            foreach ($rows as &$row) {
+                $user = get_userdata((int) $row[$spec['primaryKey']]);
+                if ($user instanceof \WP_User) {
+                    $row['role'] = WpAuth::map($user)['role'];
+                }
+            }
+            unset($row);
+        }
         foreach ($spec['columns'] as $col => $def) {
             if ($def['type'] !== 'select') {
                 continue;
@@ -297,7 +312,7 @@ final class WpUserStore implements Store
                 ? $this->db->run('SELECT ID FROM `' . $this->db->wpdb()->users . '` WHERE display_name = ? AND ID <> ? LIMIT 1 FOR UPDATE', [(string) $stored, $self])
                 : $this->db->run(
                     'SELECT user_id FROM `' . $this->db->wpdb()->usermeta . '` WHERE meta_key = ? AND meta_value = ? AND user_id <> ? LIMIT 1 FOR UPDATE',
-                    [self::META . $col, (string) $stored, $self],
+                    [self::META . $col, maybe_serialize(self::metaForm($spec['columns'][$col], $stored)), $self],
                 );
             if ($hit !== []) {
                 throw new HttpError(409, 'unique_violation', "A row with this $col already exists", HttpError::seg($col));

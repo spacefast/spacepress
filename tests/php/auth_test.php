@@ -87,6 +87,27 @@ eq('wrong password → 401', [$login(['name' => 'maria', 'password' => 'nope'])[
 eq('user without a password can\'t log in', $login(['name' => 'sam', 'password' => ''])[0], 401);
 eq('missing fields → 422', $login(['name' => 'maria'])[1]['pointer'] ?? null, '/password');
 
+// An unknown name costs a real password check too, so timing doesn't reveal which names exist.
+$time = static function (string $name) use ($login): float {
+    $t = hrtime(true);
+    $login(['name' => $name, 'password' => 'wrong guess']);
+    return (hrtime(true) - $t) / 1e6;
+};
+$known = $time('maria');
+$unknown = $time('nobody-' . bin2hex(random_bytes(3)));
+check('an unknown name takes as long as a wrong password (a hash is verified either way)', $unknown > $known / 3, ['known ms' => $known, 'unknown ms' => $unknown]);
+
+// Failed attempts are throttled per account, counted in the database across requests.
+$target = 'throttle-' . bin2hex(random_bytes(3));
+cli('user', 'add', $target, '--role', 'author', '--password', 'right password 1');
+$codes = [];
+for ($i = 0; $i < \Zero\Auth\Throttle::PER_ACCOUNT; $i++) {
+    $codes[] = $login(['name' => $target, 'password' => 'wrong ' . $i])[0];
+}
+eq('wrong passwords answer 401 until the account budget is spent', array_unique($codes), [401]);
+eq('then the account is throttled: 429 rate_limited, even with the right password', [$login(['name' => $target, 'password' => 'right password 1'])[0], $login(['name' => $target, 'password' => 'right password 1'])[1]['code'] ?? null], [429, 'rate_limited']);
+eq('another account is unaffected', $login(['name' => 'maria', 'password' => 's3cret pass'])[0], 200);
+
 // Refresh rotation (§6.2): a refresh yields a new pair; reusing the old refresh token fails and
 // revokes the whole family, the newest pair included.
 $rotated = $login(['grant_type' => 'refresh_token', 'refreshToken' => $out['data']['refreshToken']]);

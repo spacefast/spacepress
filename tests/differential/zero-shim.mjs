@@ -1,9 +1,9 @@
 // Minimal "zero" for running a config's pure functions under Node.
-// Builders record only what the differential test calls: `.validate(fn)` closures
-// and collection `access` functions. Everything else is inert.
+// Builders record only what the differential test calls: `.validate(fn)` and `.access({...})`
+// closures and collection `access` functions. Everything else is inert.
 const chain = (meta = {}) =>
   new Proxy(function () {}, {
-    get: (_, k) => (k === "$meta" ? meta : (...args) => chain(k === "validate" ? { ...meta, validate: args[0] } : meta)),
+    get: (_, k) => (k === "$meta" ? meta : (...args) => chain(k === "validate" || k === "access" ? { ...meta, [k]: args[0] } : meta)),
     apply: () => chain(meta),
   });
 const builder = () => chain();

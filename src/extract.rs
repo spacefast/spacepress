@@ -1133,6 +1133,12 @@ fn column(
         .help("remove the modifier"));
     }
     let mut access = IndexMap::new();
+    if b.access.is_some() && !matches!(owner, Owner::Collection(_)) {
+        return Err(
+            Diag::new(b.span_of("access"), "field access applies to collection columns")
+                .help("guard the whole global or action with its access rule instead"),
+        );
+    }
     if let Some(v) = &b.access {
         let rules = object(v, b.span_of("access"), "field access")?;
         for (op, rule) in rules {
@@ -2048,7 +2054,9 @@ fn has_localized(c: &Column) -> bool {
             .is_some_and(|ls| ls.values().any(|fs| fs.values().any(has_localized)))
 }
 
-fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, span: Span) -> Result<()> {
+/// `nested`: a sub-field or global condition, which only SCF's browser-side evaluation can settle; SCF has no
+/// equality test for date, timestamp, rich text or media fields.
+fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, nested: bool, span: Span) -> Result<()> {
     let invalid = |message: String| {
         Diag::new(span, message)
             .help("compare a scalar sibling with eq/ne/in/isNull/isNotNull; combine filters with top-level OR")
@@ -2062,7 +2070,7 @@ fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, span: Span)
                 return Err(invalid("showIf OR must be a nonempty filter array".into()));
             };
             for f in items {
-                check_show_if(f, siblings, span)?;
+                check_show_if(f, siblings, nested, span)?;
             }
             continue;
         }
@@ -2080,8 +2088,9 @@ fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, span: Span)
                 let valid = match op.as_str() {
                     "eq" | "ne" => value.is_null() || value.is_string() || value.is_boolean() || value.is_number(),
                     "in" => value.as_array().is_some_and(|a| {
-                        a.iter()
-                            .all(|v| v.is_null() || v.is_string() || v.is_boolean() || v.is_number())
+                        !a.is_empty()
+                            && a.iter()
+                                .all(|v| v.is_null() || v.is_string() || v.is_boolean() || v.is_number())
                     }),
                     "isNull" | "isNotNull" => value == &Json::Bool(true),
                     _ => false,
@@ -2093,22 +2102,56 @@ fn check_show_if(filter: &Json, siblings: &IndexMap<String, Column>, span: Span)
         } else if test.is_array() {
             return Err(invalid("showIf needs a scalar or operator object".into()));
         }
+        let tests_null = match test.as_object() {
+            Some(ops) => ops.iter().any(|(op, v)| {
+                matches!(op.as_str(), "isNull" | "isNotNull")
+                    || v.is_null()
+                    || (op == "in" && v.as_array().is_some_and(|a| a.iter().any(Json::is_null)))
+            }),
+            None => test.is_null(),
+        };
+        if col.ty == ColType::Boolean && tests_null {
+            return Err(invalid(format!(
+                "the editor shows {name:?} as a checkbox, which is never empty; compare it with true or false"
+            )));
+        }
+        let compares_value = match test.as_object() {
+            Some(ops) => ops
+                .iter()
+                .any(|(op, v)| matches!(op.as_str(), "eq" | "ne" | "in") && !v.is_null()),
+            None => !test.is_null(),
+        };
+        if nested
+            && compares_value
+            && matches!(
+                col.ty,
+                ColType::Date | ColType::Timestamp | ColType::RichText | ColType::Media
+            )
+        {
+            return Err(invalid(format!(
+                "the editor can't compare the value of {name:?} inside a group, repeater or blocks; test isNull/isNotNull"
+            )));
+        }
     }
     Ok(())
 }
 
-fn field_conditions(fields: &IndexMap<String, Column>, builders: &IndexMap<String, Rc<ColBuilder>>) -> Result<()> {
+fn field_conditions(
+    fields: &IndexMap<String, Column>,
+    builders: &IndexMap<String, Rc<ColBuilder>>,
+    nested: bool,
+) -> Result<()> {
     for name in builders.keys() {
         let col = &fields[name];
         if let Some(f) = &col.show_if {
-            check_show_if(f, fields, builders[name].span_of("showIf"))?;
+            check_show_if(f, fields, nested, builders[name].span_of("showIf"))?;
         }
         if let Some(fs) = &col.fields {
-            field_conditions(fs, builders[name].fields.as_ref().unwrap())?;
+            field_conditions(fs, builders[name].fields.as_ref().unwrap(), true)?;
         }
         if let Some(ls) = &col.layouts {
             for (layout, fs) in ls {
-                field_conditions(fs, &builders[name].layouts.as_ref().unwrap()[layout])?;
+                field_conditions(fs, &builders[name].layouts.as_ref().unwrap()[layout], true)?;
             }
         }
     }
@@ -2252,7 +2295,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         }
     }
     for b in &out.collections {
-        field_conditions(&out.schema.collections[&b.table].columns, &b.columns)?;
+        field_conditions(&out.schema.collections[&b.table].columns, &b.columns, false)?;
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         for col in c.columns.values() {
@@ -2356,7 +2399,7 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
     if let Some(v) = cfg.get("globals") {
         for (name, value) in object(v, span, "globals")? {
             if let Value::Global(g) = value {
-                field_conditions(&out.schema.globals[&name].fields, &g.fields)?;
+                field_conditions(&out.schema.globals[&name].fields, &g.fields, true)?;
             }
         }
     }

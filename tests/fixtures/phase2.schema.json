@@ -205,6 +205,15 @@
                         }
                     }
                 },
+                "avatar": {
+                    "type": "media",
+                    "accept": "any",
+                    "access": {
+                        "read": {
+                            "role": "authenticated"
+                        }
+                    }
+                },
                 "status": {
                     "type": "text",
                     "notNull": true,

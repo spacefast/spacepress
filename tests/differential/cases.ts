@@ -68,7 +68,7 @@ function makeCounterReader(value: { count: number }) {
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 export default defineConfig({
-  schema: { n, docs },
+  schema: { n, docs, fieldDocs: fieldDocs() },
   actions: {
     hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.target] }),
     numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
@@ -271,3 +271,25 @@ function laneDActions() {
     envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
   };
 }
+
+// ---- lane B: field access (phase 2 §4). A field rule compiles through the access-fn path; data is
+// the row on read, the incoming data on create/update, the enclosing item for sub-fields.
+export const FIELD_CTXS = [
+  { user: null, target: "standalone", data: { ownerId: 1, salary: 10 } },
+  { user: { id: 1, name: "Owner", role: "author" }, target: "wp", data: { ownerId: 1, salary: 10 } },
+  { user: { id: 2, name: "Other", role: "author" }, target: "standalone", data: { ownerId: 1, salary: null } },
+  { user: { id: 3, name: "Ed", role: "editor" }, target: "standalone", data: { ownerId: 1, salary: 5 } },
+];
+
+// A hoisted function, so the collection can live in this block below the default export.
+function fieldDocs() {
+  return collection("fieldDocs", {
+    id: id(),
+    ownerId: integer(),
+    salary: integer().access({
+      read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
+      update: (ctx) => ctx.target === "wp" ? ctx.user?.role === "admin" : ctx.data.salary !== null && ctx.op === "update",
+    }),
+  }, { editor: false });
+}
+

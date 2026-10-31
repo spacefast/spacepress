@@ -5,6 +5,8 @@ use super::{Entry, Failure, Source, entry, fail, pointer};
 
 type Object = Map<String, Value>;
 
+/// JavaScript's Number.MAX_SAFE_INTEGER.
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
 /// EmDash datetimes are Zod 4.5.4 `z.iso.datetime({ offset: true })` or its minute-precision
@@ -449,6 +451,10 @@ fn field(
             "mapped",
             format!("Payload defaultMaxTextLength ({PAYLOAD_DEFAULT_MAX_TEXT_LENGTH}) applies without maxLength"),
         ));
+    }
+    // Zod's int() (EmDash integers) admits only safe integers; Zero's integer() admits any PHP int.
+    if matches!(source, Source::Emdash) && kind == "integer" {
+        builder.push_str(&format!(".min(-{MAX_SAFE_INTEGER}).max({MAX_SAFE_INTEGER})"));
     }
     for key in ["maxLength", "min", "max"] {
         if let Some(n) = o.get(key).or(implicit.as_ref().filter(|_| key == "maxLength")) {

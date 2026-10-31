@@ -547,6 +547,28 @@ fn sanity_datetime_keeps_sanitys_iso_rule_and_rejects_numbers() {
 }
 
 #[test]
+fn emdash_integers_stay_within_zods_safe_integer_range() {
+    let (_dir, app) = migrated_app(
+        "emdash",
+        "emdash.json",
+        r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"n","type":"integer"}]}]}"#,
+    );
+    assert_eq!(
+        accepts(
+            &app,
+            json!({"title": "t"}),
+            json!([
+                ["n", 9007199254740991u64],
+                ["n", -9007199254740991i64],
+                ["n", 9007199254740992u64],
+                ["n", -9007199254740992i64]
+            ])
+        ),
+        json!([true, true, "/n", "/n"])
+    );
+}
+
+#[test]
 fn emdash_required_json_rejects_only_the_empty_string() {
     let (_dir, app) = migrated_app(
         "emdash",

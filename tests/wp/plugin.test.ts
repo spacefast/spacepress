@@ -162,11 +162,31 @@ test("concurrent first requests create each Polylang language once", async () =>
     assert.deepEqual(languages(), [], "nothing was created while the lock was held");
     holder.stdin.end("go\n");
     await exited;
-    assert.deepEqual(await Promise.all(queued), [200, 200, 200]);
+    assert.deepEqual(await Promise.all(queued), [200, 200, 200], "no request saw a provisioning failure");
     assert.deepEqual(languages(), configured, "each language exists once");
   } finally {
     holder.kill();
   }
+});
+
+test("while Polylang languages can't be created, Zero refuses writes; the next request recovers", async () => {
+  const configured = languages();
+  // Polylang refuses every new language (a term insert failing, as a database error would).
+  const mu = "zero-test-refuse-languages";
+  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${mu}.php', "<?php add_filter('pre_insert_term', fn (\\$t, \\$tax) => \\$tax === 'language' ? new WP_Error('refused', 'refused') : \\$t, 10, 2);");`);
+  try {
+    forgetLanguages();
+    const title = `Unprovisioned ${run}`;
+    const refused = await http("POST", `${api}/tours`, { as: "editor", body: { title, locale: "fr" } });
+    assert.deepEqual([refused.status, refused.json.code], [503, "unavailable"]);
+    assert.deepEqual(sql(`SELECT ID FROM wp_posts WHERE post_title = '${title}'`), [], "nothing was written without its language");
+  } finally {
+    wp("eval", `unlink(WPMU_PLUGIN_DIR . '/${mu}.php');`);
+  }
+  const created = await http("POST", `${api}/tours`, { as: "editor", body: { title: `Provisioned ${run}`, locale: "fr" } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.deepEqual(languages(), configured);
+  assert.equal(wp("eval", `echo pll_get_post_language(${created.json.data.id});`), "fr");
 });
 
 test("an app updated by copying files in migrates on the first request, once, while requests queue on the lock", async () => {

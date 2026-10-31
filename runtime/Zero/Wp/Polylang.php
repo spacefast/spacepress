@@ -65,7 +65,12 @@ final class Polylang
             if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
                 return;
             }
-            Migrator::upgrade($plugin->connection(), 'zero_polylang_languages', static fn (): bool => self::provisioned($locales, true), self::ensureLanguages(...));
+            // Until every language exists a localized write would store no language, so a failure
+            // (lock timeout, Polylang refusing) refuses Zero like lagging storage; the next request retries.
+            $problem = Migrator::upgrade($plugin->connection(), 'zero_polylang_languages', static fn (): bool => self::provisioned($locales, true), self::ensureLanguages(...));
+            if ($problem !== null) {
+                $plugin->refuse($problem);
+            }
         }, 2);
     }
 
@@ -200,6 +205,7 @@ final class Polylang
         if ($locales === null || !function_exists('PLL') || !function_exists('pll_languages_list')) {
             return;
         }
+        PLL()->model->clean_languages_cache(); // another request may have added some since this one loaded them
         $have = array_map('strval', (array) pll_languages_list(['fields' => 'slug']));
         $ordered = array_values(array_unique([$locales['default'], ...$locales['all']]));
         foreach ($ordered as $i => $locale) {
@@ -233,7 +239,11 @@ final class Polylang
     private static function provisioned(array $locales, bool $fresh = false): bool
     {
         if ($fresh) {
-            wp_cache_delete('zero_polylang_languages', 'options');
+            // Under the lock: the committed value, past the option caches (an absent option is
+            // cached as a negative entry in `notoptions`, which deleting the key alone keeps).
+            global $wpdb;
+
+            return $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'zero_polylang_languages')) === self::state($locales);
         }
 
         return get_option('zero_polylang_languages') === self::state($locales);

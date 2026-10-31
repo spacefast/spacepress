@@ -9,14 +9,10 @@ type Object = Map<String, Value>;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
-/// EmDash datetimes are Zod 4.5.4 `z.iso.datetime({ offset: true })` or its minute-precision
-/// variant: calendar-valid dates, a time, and `Z` or an offset, stored as the given string.
-/// Zero's timestamp() also accepts epoch milliseconds, which EmDash rejects.
-const EMDASH_DATETIME: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/";
-/// Sanity's datetime type check (`@sanity/validation` dateValidator `isoDate`, pinned commit in
-/// docs/zero-compatibility.md): a string in one of the ISO 8601 date/date-time forms. Sanity stores
-/// the string as given and, like this pattern, doesn't check calendar days.
-const SANITY_DATETIME: &str = r"/^(?:[-+]\d{2})?(?:\d{4}(?!\d{2}\b))(?:(-?)(?:(?:0[1-9]|1[0-2])(?:\1(?:[12]\d|0[1-9]|3[01]))?|W(?:[0-4]\d|5[0-2])(?:-?[1-7])?|(?:00[1-9]|0[1-9]\d|[12]\d{2}|3(?:[0-5]\d|6[1-6])))(?![T]$|[T][\d]+Z$)(?:[T\s](?:(?:(?:[01]\d|2[0-3])(?:(:?)[0-5]\d)?|24:?00)(?:[.,]\d+(?!:))?)(?:\2[0-5]\d(?:[.,]\d+)?)?(?:[Z]|(?:[+-])(?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?)?$/";
+/// What timestamp() accepts (runtime/Zero/Schema.php `isIsoTimestamp`), stated once for reports.
+const TIMESTAMP_GRAMMAR: &str = "Zero timestamps accept exactly YYYY-MM-DD, or YYYY-MM-DDTHH:MM[:SS[.fraction]] with Z or ±HH:MM, with real calendar and clock values (UTC years 0000-9999), or epoch milliseconds; nothing else.";
+/// How timestamp() keeps a value, unlike sources that stored the given text.
+const TIMESTAMP_STORAGE: &str = "Values are stored as UTC with millisecond precision (finer fractions are truncated); on WordPress post-backed collections they keep whole seconds.";
 /// Payload's email validator (`fields/validations.ts`, pinned commit in docs/zero-compatibility.md).
 /// Zero's email() accepts quoted local parts and address literals that Payload rejects.
 const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
@@ -374,9 +370,6 @@ fn field(
             if kind == "integer" { "integer()" } else { "real()" }.into()
         }
         "boolean" | "checkbox" => "boolean()".into(),
-        // EmDash and Sanity store the validated string; timestamp() would normalize and widen it.
-        "datetime" if matches!(source, Source::Emdash) => format!("text().pattern({EMDASH_DATETIME})"),
-        "datetime" if matches!(source, Source::Sanity) => format!("text().pattern({SANITY_DATETIME})"),
         "datetime" | "date" => "timestamp()".into(),
         "email" if matches!(source, Source::Payload) => format!("email().pattern({PAYLOAD_EMAIL})"),
         "email" => "email()".into(),
@@ -515,6 +508,14 @@ fn field(
     }
     if matches!(source, Source::Emdash) && kind == "boolean" {
         report.push(entry(at, "review", "EmDash stores booleans as 0/1 and accepts 0/1 back; Zero's boolean() accepts only true/false. Send booleans from clients that round-tripped EmDash's stored values."));
+    }
+    // timestamp() takes strict ISO 8601 with real calendar dates (no 02-30), or epoch milliseconds,
+    // and stores normalized UTC. Each source's own rule differs at the edges; say where.
+    if matches!(source, Source::Emdash) && kind == "datetime" {
+        report.push(entry(at, "review", format!("{TIMESTAMP_GRAMMAR} Unlike EmDash, a date alone and epoch milliseconds are accepted, and values whose UTC time falls outside years 0000-9999 are refused. {TIMESTAMP_STORAGE}")));
+    }
+    if matches!(source, Source::Sanity) && kind == "datetime" {
+        report.push(entry(at, "review", format!("{TIMESTAMP_GRAMMAR} Sanity accepted many other ISO 8601 spellings, all now refused: for example week (2026-W05-3), ordinal (2026-032), reduced (2026-01) and compact (20260101, T103000) forms, expanded years (+002026), impossible dates (02-30), 24:00, no timezone, space separators, comma or fractional-minute fractions, and offsets without a colon. It did not accept epoch milliseconds, which Zero does. {TIMESTAMP_STORAGE}")));
     }
     if matches!(source, Source::Payload) && kind == "date" {
         report.push(entry(at, "review", "Zero timestamps accept ISO 8601 dates and epoch milliseconds; Payload's Date.parse also accepted free-form dates such as \"Jan 1 2026\". Normalize such inputs before writing."));

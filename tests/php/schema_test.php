@@ -78,7 +78,10 @@ eq('timestamp boundaries accepted (leap day, year 0000, negative offset, long fr
     fn ($v) => Schema::encode($at, $v, 'createdAt', '/createdAt'),
     ['2024-02-29T23:59:59.999Z', '0000-02-29T00:00:00Z', '2026-01-01T00:00:00-00:30', '2026-01-01T00:00:00.123456Z', '2026-01-31'],
 ), ['2024-02-29T23:59:59.999Z', '0000-02-29T00:00:00.000Z', '2026-01-01T00:30:00.000Z', '2026-01-01T00:00:00.123Z', '2026-01-31T00:00:00.000Z']);
-foreach (['now', '+1 week', '10/30/2026', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T10:00:00', '2026-01-01T24:00:00Z', '2026-01-01T00:00:00+24:00', '2026-01-01T00:00Z00:00', '2026-02-30T00:00:00Z', '9999-12-31T23:59:59-00:30', '0000-01-01T00:00:00+00:30', 253402300800000] as $bad) {
+// ...and the other ISO 8601 spellings sources such as Sanity accepted: week, ordinal, reduced and
+// compact forms, expanded years, space separators, comma and fractional-minute fractions, colonless offsets.
+foreach (['now', '+1 week', '10/30/2026', '2026-01-01 tomorrow', '2026-01-01T00:00:00Z +1 year', '2026-01-01T10:00:00', '2026-01-01T24:00:00Z', '2026-01-01T00:00:00+24:00', '2026-01-01T00:00Z00:00', '2026-02-30T00:00:00Z', '9999-12-31T23:59:59-00:30', '0000-01-01T00:00:00+00:30', 253402300800000,
+    '2026-W05-3', '2026-032', '2026-01', '20260101', '2026-01-01T103000+02:00', '+002026-01-01T10:00:00Z', '2026-01-01 10:00:00Z', '2026-01-01T10:00:00,5Z', '2026-01-01T10:30.5Z', '2026-01-01T10:00:00+0200'] as $bad) {
     problem("timestamp rejected: " . json_encode($bad), fn () => Schema::encode($at, $bad, 'createdAt', '/createdAt'), 422, 'invalid_input', '/createdAt');
 }
 

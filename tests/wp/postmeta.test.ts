@@ -58,6 +58,18 @@ test("operators that can't run on postmeta are rejected with the shared messages
   await problem("GET", "/posts" + qs({ orderBy: "tags" }), {}, { status: 400, code: "invalid_query", pointer: "/orderBy/tags" });
 });
 
+test("a post-backed timestamp refuses invalid dates", async () => {
+  // The column type migrated datetimes use (docs/config-migration.md); 02-30 would roll into March.
+  for (const startsAt of ["2026-02-30T00:00:00Z", "2026-01-01T24:00:00Z", "tomorrow"]) {
+    await problem("POST", "/events", { as: "editor", body: { title: `Bad ${run}`, startsAt } }, { status: 422, code: "invalid_input", pointer: "/startsAt" });
+  }
+});
+
+test("a post-backed timestamp keeps whole UTC seconds", async () => {
+  const created = await ok("POST", "/events", { as: "editor", body: { title: `Precise ${run}`, startsAt: "2026-01-01T10:00:00.789+02:00" } });
+  assert.equal((await ok("GET", `/events/${created.id}`)).startsAt, "2026-01-01T08:00:00.000Z");
+});
+
 test("relation filters and `with` across post↔post and post↔table", async () => {
   const comment = await ok("POST", "/comments", { as: "editor", body: { postId: post.id, name: "Staff", body: `On meta ${run}` } });
   // post → post through a meta reference: filtered on the target's serialized meta, target attached.

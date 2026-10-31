@@ -185,7 +185,8 @@ guests and server-to-server auth.
 `zero build --target wp` downloads the required plugins at their pinned
 versions, verifies their checksums, and ships them next to yours. The runtime
 refuses to boot on a site that misses any of them and names each one;
-`zero doctor --site <url>` prints the same table from your terminal.
+`zero doctor <project> --wp --site <url>` prints the same table from your
+terminal.
 
 ## What's in the box
 
@@ -291,7 +292,7 @@ optional admin plugin for Zero apps).
 
 ## License
 
-Zero is dual-licensed by component, and [`LICENSE`](LICENSE) maps every path.
+Zero is licensed by component, and [`LICENSE`](LICENSE) maps every path.
 Everything that runs inside WordPress is GPL-2.0-or-later: the PHP runtime,
 the `zero-identity` plugin and the plugins `zero build` emits. Everything else
 is MIT: the Rust compiler, the TypeScript client, the `"zero"` types, the

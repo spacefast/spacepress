@@ -29,7 +29,7 @@ use Zero\HttpError;
  */
 final class EditorSave
 {
-    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covers: list<string>, supplied: list<string>, checked: bool, claimed: bool} */
+    /** @var ?array{owner: string, collection: string, postId: ?int, before: ?array, covers: list<string>, declared: ?array, supplied: list<string>, checked: bool, claimed: bool} */
     private static ?array $open = null;
     /** Inserts of the open save's collection started inside it (hooks): their ids come first. */
     private static int $nested = 0;
@@ -58,7 +58,15 @@ final class EditorSave
     public static function rest(string $collection, ?int $postId, \WP_REST_Request $request, callable $save): mixed
     {
         $plugin = Plugin::instance() ?? throw new \LogicException('No Zero app');
-        [$declared, $supplied] = CoreAccess::incoming($collection, $request);
+        try {
+            [$declared, $supplied] = CoreAccess::incoming($collection, $request, singleSelector: true);
+        } catch (HttpError $e) {
+            if ($plugin->connection()->inTransaction()) {
+                throw $e;
+            }
+
+            return CoreAccess::error($e);
+        }
         $before = $postId === null ? null : $plugin->db()->editorRow($collection, $postId);
         if ($plugin->connection()->inTransaction()) {
             $outer = self::$open;
@@ -195,7 +203,8 @@ final class EditorSave
             || $plugin->connection()->inTransaction()) {
             return;
         }
-        $revision = wp_get_post_revision((int) substr($action, strlen('restore-post_')));
+        $revisionId = (int) substr($action, strlen('restore-post_'));
+        $revision = wp_get_post_revision($revisionId);
         $collection = $revision instanceof \WP_Post ? CoreAccess::collection((string) get_post_type($revision->post_parent)) : null;
         if ($collection !== null) {
             self::open('restore', $collection, $revision->post_parent, $plugin->db()->editorRow($collection, $revision->post_parent), null, []);
@@ -269,6 +278,11 @@ final class EditorSave
      */
     private static function authorize(): void
     {
+        Plugin::instance()?->db()->current(self::authorizeInContext(...));
+    }
+
+    private static function authorizeInContext(): void
+    {
         $open = self::$open;
         self::$open['checked'] = true;
         $plugin = Plugin::instance();
@@ -297,8 +311,9 @@ final class EditorSave
             }
             $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => !\Zero\Js::sameJson($v, $before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
             $patch = array_intersect_key($after, array_flip([...$changed, ...$open['supplied']]));
+            $supplied = $open['owner'] === 'restore' ? $patch : self::groupPatch($spec['columns'], $patch, $before, $open['declared'] ?? []);
             $data = $patch;
-            FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $patch);
+            FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $supplied, stored: true);
             $r = Access::evaluate($rules['update'], $viewer, 'update', $patch);
             if ($r === false || (is_array($r) && !in_array(serialize($r), $open['covers'], true))) {
                 throw Access::deny($viewer->user, "update $collection rows");
@@ -306,6 +321,27 @@ final class EditorSave
         } catch (HttpError $e) {
             throw new Refused($e);
         }
+    }
+
+    /** Keep stored group siblings outside the save's input; changed or explicitly sent keys are checked. */
+    private static function groupPatch(array $fields, array $patch, array $before, array $declared): array
+    {
+        foreach ($patch as $name => $value) {
+            if (($fields[$name]['type'] ?? null) !== 'group' || !is_array($value)) {
+                continue;
+            }
+            if (array_key_exists($name, $declared) && !is_array($declared[$name])) {
+                $patch[$name] = $declared[$name]; // an explicit container replacement stays input
+                continue;
+            }
+            $old = is_array($before[$name] ?? null) ? $before[$name] : [];
+            $sent = is_array($declared[$name] ?? null) ? $declared[$name] : [];
+            $children = array_filter($value, static fn ($v, $key) => array_key_exists($key, $sent)
+                || !\Zero\Js::sameJson($v, $old[$key] ?? null), ARRAY_FILTER_USE_BOTH);
+            $patch[$name] = self::groupPatch($fields[$name]['fields'] ?? [], $children, $old, $sent);
+        }
+
+        return $patch;
     }
 
     /**
@@ -373,7 +409,7 @@ final class EditorSave
 
         // A save opened by its own insert has claimed it; a REST create claims the first one it makes.
         return ['owner' => $owner, 'collection' => $collection, 'postId' => $postId, 'before' => $before, 'covers' => $covers,
-            'supplied' => array_values(array_unique($supplied)), 'checked' => false, 'claimed' => $owner === 'core'];
+            'declared' => $declared, 'supplied' => $owner === 'restore' ? array_keys($plugin->schema->collection($collection)['columns']) : array_values(array_unique($supplied)), 'checked' => false, 'claimed' => $owner === 'core'];
     }
 
     /** Commit the save; a COMMIT that fails rolls back (Connection) and cleans the post's caches too. */

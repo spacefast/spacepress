@@ -488,10 +488,16 @@ type TranslationInsert<TCols> =
 type PrimaryKeyOf<TCols> = {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { primaryKey: true } } ? K : never;
 }[keyof TCols];
-/** The row id type of a collection: its primary key's (a number for `id()`); `unknown` for an unknown collection. */
+/**
+ * The row id type of a collection: its primary key's (a number for `id()`). A builder annotated without
+ * the primary-key flag hides which column it is, so then an `id` column's type, else number; `unknown`
+ * for an unknown collection.
+ */
 type RowId<TCols> = string extends keyof TCols
   ? unknown
-  : [PrimaryKeyOf<TCols>] extends [never] ? number : NonNullable<SelectValue<TCols[PrimaryKeyOf<TCols>]>>;
+  : [PrimaryKeyOf<TCols>] extends [never]
+    ? "id" extends keyof TCols ? NonNullable<SelectValue<TCols["id"]>> : number
+    : NonNullable<SelectValue<TCols[PrimaryKeyOf<TCols>]>>;
 type LocaleColumns<TCols> = {
   locale: ColumnBuilder<"text", Locale, true, true>;
   translations: ColumnBuilder<"json", Partial<Record<Locale, RowId<TCols>>>, true, true>;

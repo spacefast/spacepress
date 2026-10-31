@@ -43,6 +43,10 @@ const annotated: import("zero").ColumnBuilder<"id", number, true, true> = id();
 const acceptBuilder = <T extends import("zero").ColumnBuilder>(c: T) => c;
 acceptBuilder(text().primaryKey());
 void annotated;
+// An annotation that drops the flag still keys translations by the `id` column's type.
+const textKey: import("zero").ColumnBuilder<"text", string, true, false> = text().primaryKey();
+const annotatedCodes = collection("annotated_codes", { id: textKey, label: text().localized() }, { editor: false });
+expectType<Equal<(typeof annotatedCodes.$inferSelect)["translations"], Partial<Record<Locale, string>>>>();
 
 const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
 const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });

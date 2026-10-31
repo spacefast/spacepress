@@ -518,51 +518,82 @@ final class Js
 
     // ---------------------------------------------------------------- strings
 
+    // Every string index and length counts UTF-16 code units, as in JS: the helpers below
+    // work on the UTF-16LE form (2 bytes per unit) and convert results back to UTF-8.
+
+    /** UTF-8 → UTF-16LE. */
+    private static function units(string $s): string
+    {
+        return (string) mb_convert_encoding($s, 'UTF-16LE', 'UTF-8');
+    }
+
+    /**
+     * UTF-16LE → UTF-8. An index can split an astral character, leaving a lone surrogate
+     * that UTF-8 can't hold; it becomes U+FFFD, which is also what JS emits when such a
+     * string is encoded as UTF-8 (TextEncoder, HTTP output).
+     */
+    private static function fromUnits(string $u): string
+    {
+        $prev = mb_substitute_character();
+        mb_substitute_character(0xFFFD);
+        try {
+            return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
+        } finally {
+            mb_substitute_character($prev);
+        }
+    }
+
+    /** Units [$from, $to) of a UTF-16LE string, as UTF-8. */
+    private static function unitSlice(string $u, int $from, int $to): string
+    {
+        return $from >= $to ? '' : self::fromUnits(substr($u, 2 * $from, 2 * ($to - $from)));
+    }
+
     public static function slice(string $s, int|float $start = 0, int|float|null $end = null): string
     {
-        $len = mb_strlen($s);
+        $u = self::units($s);
+        $len = intdiv(strlen($u), 2);
         $from = self::relIndex($start, $len);
         $to = $end === null ? $len : self::relIndex($end, $len);
 
-        return $from >= $to ? '' : mb_substr($s, $from, $to - $from);
+        return self::unitSlice($u, $from, $to);
     }
 
     public static function substring(string $s, int|float $start, int|float|null $end = null): string
     {
-        $len = mb_strlen($s);
+        $u = self::units($s);
+        $len = intdiv(strlen($u), 2);
         $a = self::clampIndex($start, $len);
         $b = $end === null ? $len : self::clampIndex($end, $len);
-        [$from, $to] = $a <= $b ? [$a, $b] : [$b, $a];
 
-        return mb_substr($s, $from, $to - $from);
+        return self::unitSlice($u, min($a, $b), max($a, $b));
     }
 
     public static function charAt(string $s, int|float $i): string
     {
         $i = self::toInteger($i);
-        if ($i < 0 || $i >= mb_strlen($s)) {
-            return '';
-        }
 
-        return mb_substr($s, (int) $i, 1);
+        return $i < 0 ? '' : self::strAt($s, $i) ?? '';
     }
 
     /** `String.prototype.length`: UTF-16 code units (astral characters count twice). */
     public static function length(string $s): int
     {
-        return intdiv(strlen((string) mb_convert_encoding($s, 'UTF-16LE', 'UTF-8')), 2);
+        return intdiv(strlen(self::units($s)), 2);
     }
 
+    /** `s.at(i)` and `s[i]`: one code unit, relative indexes allowed. */
     public static function strAt(string $s, int|float $i): ?string
     {
-        $len = mb_strlen($s);
+        $u = self::units($s);
+        $len = intdiv(strlen($u), 2);
         $i = self::toInteger($i);
         $i = $i < 0 ? $len + $i : $i;
         if ($i < 0 || $i >= $len) {
             return null;
         }
 
-        return mb_substr($s, (int) $i, 1);
+        return self::unitSlice($u, (int) $i, (int) $i + 1);
     }
 
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
@@ -578,15 +609,20 @@ final class Js
 
             return -1;
         }
-        $needle = self::str($needle);
-        $pos = self::clampIndex($from, mb_strlen($s));
-        $found = mb_strpos($s, $needle, $pos);
+        $u = self::units($s);
+        $n = self::units(self::str($needle));
+        // A byte match at an odd offset straddles two units; keep looking.
+        for ($at = 2 * self::clampIndex($from, intdiv(strlen($u), 2)); ($found = strpos($u, $n, $at)) !== false; $at = $found + 1) {
+            if ($found % 2 === 0) {
+                return intdiv($found, 2);
+            }
+        }
 
-        return $found === false ? -1 : $found;
+        return -1;
     }
 
     /** String.prototype.lastIndexOf for strings, Array.prototype.lastIndexOf for lists. */
-    public static function lastIndexOf(string|array $s, mixed $needle): int
+    public static function lastIndexOf(string|array $s, mixed $needle, int|float|null $from = null): int
     {
         if (is_array($s)) {
             for ($i = count($s) - 1; $i >= 0; $i--) {
@@ -597,9 +633,20 @@ final class Js
 
             return -1;
         }
-        $found = mb_strrpos($s, self::str($needle));
+        $u = self::units($s);
+        $n = self::units(self::str($needle));
+        $len = intdiv(strlen($u), 2);
+        $start = $from === null || is_nan($from) ? $len : self::clampIndex($from, $len);
+        // Only matches starting at or before unit $start; skip odd (unit-straddling) offsets.
+        $hay = substr($u, 0, 2 * $start + strlen($n));
+        while (($found = strrpos($hay, $n)) !== false) {
+            if ($found % 2 === 0) {
+                return intdiv($found, 2);
+            }
+            $hay = substr($hay, 0, $found + strlen($n) - 1);
+        }
 
-        return $found === false ? -1 : $found;
+        return -1;
     }
 
     /** @return list<?string> */
@@ -611,7 +658,7 @@ final class Js
         }
         if (is_string($sep)) {
             if ($sep === '') {
-                $parts = mb_str_split($s);
+                $parts = array_map(self::fromUnits(...), str_split(self::units($s), 2));
             } else {
                 $parts = explode($sep, $s);
             }
@@ -681,7 +728,7 @@ final class Js
     private static function pad(string $s, int|float $len, string $fill, bool $start): string
     {
         $target = max(0, self::toInteger($len));
-        $cur = mb_strlen($s);
+        $cur = self::length($s);
         if ($target <= $cur || $fill === '') {
             return $s;
         }
@@ -689,8 +736,8 @@ final class Js
             throw new JsError('Invalid string length', 'RangeError');
         }
         $need = (int) $target - $cur;
-        $fillLen = mb_strlen($fill);
-        $padding = mb_substr(str_repeat($fill, intdiv($need, $fillLen) + 1), 0, $need);
+        $fill = self::units($fill);
+        $padding = self::unitSlice(str_repeat($fill, intdiv(2 * $need, strlen($fill)) + 1), 0, $need);
 
         return $start ? $padding . $s : $s . $padding;
     }
@@ -757,7 +804,7 @@ final class Js
             if (is_string($replacement)) {
                 $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
             } else {
-                $rep = self::str($replacement($matched, ...[...$groups, mb_strlen(substr($s, 0, $start)), $s]));
+                $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)), $s]));
             }
             $out .= substr($s, $last, $start - $last) . $rep;
             $last = $end;
@@ -1269,7 +1316,7 @@ final class Js
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
         if (is_string($indent)) {
-            $gap = mb_substr($indent, 0, 10);
+            $gap = self::unitSlice(self::units($indent), 0, 10);
         } elseif ($indent !== null) {
             $gap = str_repeat(' ', (int) min(10, max(0, self::toInteger($indent))));
         } else {

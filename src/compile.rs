@@ -6,6 +6,7 @@
 //! unknown operands, string indexing, sort order) the output calls a `Js::`
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
+mod aliasing;
 mod effects;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -548,7 +549,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.helper_types
                 .insert(closure_key(closure), Ty::Fn(param_tys.clone(), Box::new(ret)));
         }
-        check_aliasing(&f)?;
+        aliasing::check(&f)?;
         let saved = self.fx.replace(fx);
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
@@ -2663,7 +2664,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
         self.fx = Some(inner);
-        check_aliasing(f)?;
+        aliasing::check(f)?;
         let result = self.closure_body(f, &param_tys);
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));
@@ -5282,224 +5283,5 @@ fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, Strin
             Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out),
             _ => {}
         }
-    }
-}
-
-/// JS shares arrays and objects by reference; compiled PHP copies them when
-/// they're stored. Code that stores a local container inside another value
-/// and then mutates it would silently diverge, so it's a build error.
-fn check_aliasing(f: &Func) -> Result<()> {
-    struct Walk {
-        /// Local name → span where it was stored into another value.
-        stored: HashMap<String, Span>,
-    }
-    fn root(e: &Expr) -> Option<&str> {
-        match &e.kind {
-            ExprKind::Ident(n) => Some(n),
-            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } | ExprKind::NonNull(obj) => root(obj),
-            _ => None,
-        }
-    }
-    const MUTATORS: &[&str] = &["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill"];
-    impl Walk {
-        fn mutated(&self, name: &str, span: Span) -> Result<()> {
-            if let Some(at) = self.stored.get(name) {
-                let _ = at;
-                return err_help(
-                    span,
-                    format!("`{name}` was stored in another value earlier, so changing it here wouldn't show up there"),
-                    "build the value completely before storing it, or change it through the place you stored it",
-                );
-            }
-            Ok(())
-        }
-        /// Bare identifiers placed inside array/object literals or passed into db calls get copied.
-        fn note_stores(&mut self, e: &Expr) {
-            match &e.kind {
-                ExprKind::Array(items) => {
-                    for it in items {
-                        if let ArrEl::Item(x) = it {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                ExprKind::Object(props) => {
-                    for p in props {
-                        if let Prop::KV(_, x) = p {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        fn note_store(&mut self, x: &Expr) {
-            if let ExprKind::Ident(n) = &x.kind {
-                self.stored.entry(n.clone()).or_insert(x.span);
-            }
-        }
-        fn expr(&mut self, e: &Expr) -> Result<()> {
-            match &e.kind {
-                ExprKind::Assign { target, value, .. } => {
-                    self.expr(value)?;
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                    if !matches!(target.kind, ExprKind::Ident(_)) {
-                        self.note_store(value);
-                    }
-                    self.note_stores(value);
-                }
-                ExprKind::Update { target, .. } => {
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                }
-                ExprKind::Call { callee, args, .. } => {
-                    if let ExprKind::Member { obj, prop, .. } = &callee.kind
-                        && MUTATORS.contains(&prop.as_str())
-                        && let Some(r) = root(obj)
-                    {
-                        self.mutated(r, e.span)?;
-                    }
-                    self.expr(callee)?;
-                    for a in args {
-                        let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                        self.expr(x)?;
-                        if let ArrEl::Item(x) = a
-                            && matches!(&callee.kind, ExprKind::Member { prop, .. } if prop == "push" || prop == "unshift")
-                        {
-                            self.note_store(x);
-                        }
-                        self.note_stores(x);
-                    }
-                }
-                ExprKind::Array(_) | ExprKind::Object(_) => {
-                    self.note_stores(e);
-                    match &e.kind {
-                        ExprKind::Array(items) => {
-                            for it in items {
-                                let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
-                                self.expr(x)?;
-                            }
-                        }
-                        ExprKind::Object(props) => {
-                            for p in props {
-                                let (Prop::KV(_, x) | Prop::Spread(x)) = p;
-                                self.expr(x)?;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                }
-                ExprKind::Cond(a, b, c) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                    self.expr(c)?;
-                }
-                ExprKind::Unary(_, x)
-                | ExprKind::Await(x)
-                | ExprKind::Chain(x)
-                | ExprKind::As(x, _)
-                | ExprKind::NonNull(x)
-                | ExprKind::IsNullish(x, _)
-                | ExprKind::Member { obj: x, .. } => self.expr(x)?,
-                ExprKind::Index { obj, index, .. } => {
-                    self.expr(obj)?;
-                    self.expr(index)?;
-                }
-                ExprKind::Template(_, xs) => {
-                    for x in xs {
-                        self.expr(x)?;
-                    }
-                }
-                // Nested functions are checked on their own.
-                _ => {}
-            }
-            Ok(())
-        }
-        fn stmts(&mut self, stmts: &[Stmt]) -> Result<()> {
-            for s in stmts {
-                match s {
-                    Stmt::Decl { init: Some(e), .. } => {
-                        self.expr(e)?;
-                        self.note_stores(e);
-                    }
-                    Stmt::Expr(e) | Stmt::Throw(e) | Stmt::Return(Some(e), _) => self.expr(e)?,
-                    Stmt::If(t, a, b) => {
-                        self.expr(t)?;
-                        self.stmts(a)?;
-                        if let Some(b) = b {
-                            self.stmts(b)?;
-                        }
-                    }
-                    Stmt::Block(b) => self.stmts(b)?,
-                    Stmt::While(t, b) => {
-                        self.expr(t)?;
-                        self.stmts(b)?;
-                    }
-                    Stmt::For {
-                        init,
-                        test,
-                        update,
-                        body,
-                        ..
-                    } => {
-                        if let Some(i) = init {
-                            self.stmts(std::slice::from_ref(i))?;
-                        }
-                        if let Some(t) = test {
-                            self.expr(t)?;
-                        }
-                        if let Some(u) = update {
-                            self.expr(u)?;
-                        }
-                        self.stmts(body)?;
-                    }
-                    Stmt::ForOf { iter, body, .. } => {
-                        self.expr(iter)?;
-                        self.stmts(body)?;
-                    }
-                    Stmt::Try {
-                        block,
-                        handler,
-                        finalizer,
-                        ..
-                    } => {
-                        self.stmts(block)?;
-                        if let Some(h) = handler {
-                            self.stmts(h)?;
-                        }
-                        if let Some(f) = finalizer {
-                            self.stmts(f)?;
-                        }
-                    }
-                    Stmt::Switch { disc, cases, .. } => {
-                        self.expr(disc)?;
-                        for (t, b) in cases {
-                            if let Some(t) = t {
-                                self.expr(t)?;
-                            }
-                            self.stmts(b)?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(())
-        }
-    }
-    let mut w = Walk { stored: HashMap::new() };
-    match &f.body {
-        FnBody::Expr(e) => w.expr(e),
-        FnBody::Block(b) => w.stmts(b),
     }
 }

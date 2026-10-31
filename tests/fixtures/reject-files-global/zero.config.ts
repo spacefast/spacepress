@@ -1,3 +1,3 @@
-import { defineConfig, file, files, global } from "zero";
-const site = global("site", { brochure: file({ bucket: "decks" }) });
+import { defineConfig, file, files, global, group } from "zero";
+const site = global("site", { assets: group({ fields: { brochure: file({ bucket: "decks" }) } }) });
 export default defineConfig({ schema: {}, globals: { site }, files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 10 }) } });

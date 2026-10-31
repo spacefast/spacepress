@@ -1183,7 +1183,7 @@ fn column(
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
             .help("declare it in config.files with files()"));
     }
-    if b.bucket.is_some() && place == Place::Global {
+    if b.bucket.is_some() && matches!(owner, Owner::Global(_)) {
         return Err(Diag::new(b.span, "file() columns belong to collections, not globals")
             .help("keep the file id on a collection row, or use media() for a public asset"));
     }

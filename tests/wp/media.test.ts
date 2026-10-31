@@ -3,7 +3,7 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
-import { api, auth, harness, http, ok, problem, wp } from "./env.ts";
+import { api, auth, harness, http, ok, problem, sql, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
 function splitPng(): Uint8Array {
@@ -355,6 +355,14 @@ test("file({ bucket }) columns: checked on API and editor writes, populated for 
     body: JSON.stringify({ title: "Editor", status: "publish", acf: { zero_deck: 999999 } }),
   });
   assert.equal(editor.status, 400, await editor.text());
+  // … including a file id nested in a group, rejected before core persists anything.
+  const nested = await fetch(`${harness.url}/wp-json/wp/v2/zero_talks`, {
+    method: "POST",
+    headers: { ...auth("author"), "content-type": "application/json" },
+    body: JSON.stringify({ title: "Nested editor", status: "publish", acf: { zero_extras: { handout: 999999 } } }),
+  });
+  assert.equal(nested.status, 400, await nested.text());
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_title = 'Nested editor'")[0].n, "0");
 
   const talk = await ok("POST", "/talks", { as: "author", body: { title: "Q3", deck: row.id } });
   const own = await ok("GET", `/talks/${talk.id}?with=deck`, { as: "author" });

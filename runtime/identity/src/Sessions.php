@@ -108,9 +108,10 @@ final class Sessions
                 ...$id === null ? [time(), $uid] : [time(), $uid, $id],
             );
             if ($id === null) {
-                // Sign-ins waiting on a second factor started before this revocation: they end too.
+                // Sign-ins waiting on a second factor started before this revocation end too,
+                // including one whose challenge was just consumed and is waiting on this lock.
                 $this->db->run(
-                    "UPDATE {$this->db->prefix}challenges SET expires_at=0 WHERE wp_user_id=%d AND purpose='mfa' AND consumed_at IS NULL",
+                    "UPDATE {$this->db->prefix}challenges SET expires_at=0 WHERE wp_user_id=%d AND purpose='mfa' AND expires_at>0",
                     $uid,
                 );
             }

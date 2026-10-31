@@ -6,7 +6,7 @@ any frontend or import it by path. Don't edit it: `zero build` rewrites it.
 ```ts
 import { createClient, ZeroError } from "./zero/client/index.ts";
 
-const zero = createClient({ url: "https://example.test/wp-json/zero/v1", token: "zt_..." });
+const zero = createClient({ url: "https://example.test/api", token: "zt_..." });
 
 const posts = await zero.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
 const post = await zero.posts.create({ title: "Hello" });
@@ -46,5 +46,5 @@ Server to server: `token` sends a standalone CLI token (`zt_...`). On WordPress,
 `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.
 
-Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
+This folder is MIT (see its LICENSE). Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
 `"allowImportingTsExtensions": true` (or `rewriteRelativeImportExtensions`).

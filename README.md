@@ -132,8 +132,9 @@ curl localhost:8787/api/shopping_list            # the afterCreate hook added Eg
 curl -X POST localhost:8787/api/actions/consume -H "Authorization: Bearer $TOKEN" -d '{"itemId":1}'
 ```
 
-The same project builds for WordPress. From a checkout, with Docker running,
-this boots a throwaway WordPress with your plugins activated:
+The same project builds for WordPress. Stop the standalone server (Ctrl-C),
+then, from a checkout with Docker running, boot a throwaway WordPress with your
+plugins activated:
 
 ```sh
 ./target/release/zero build examples/pantry --target wp   # .zero/wp-content/plugins/*.zip
@@ -174,7 +175,7 @@ client's generated README for sessions, guests and server-to-server auth.
 | | Minimum |
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
-| WordPress target | WordPress 7.1, PHP 8.2, MySQL 8.0 or MariaDB 10.11 |
+| WordPress target | WordPress 7.1, PHP 8.2 with `openssl` and `sodium` (for `zero-identity`), MySQL 8.0 or MariaDB 10.11 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
 | Standalone target | PHP 8.2 with `pdo_sqlite`, `mbstring`, `json` and `gd` |
 
@@ -240,9 +241,12 @@ server. Both targets run the same runtime and the same test journey.
 Zero apps can be deployed to [Spacefast](https://spacefast.com) natively.
 
 Anywhere else: the WordPress build is `.zero/wp-content/plugins/*.zip`, which
-you upload or copy like any plugin. The standalone build is `.zero/app/`, with
-`public/` as the document root and the SQLite file under `data/`; any PHP 8.2
-host with the extensions listed under [Requirements](#requirements) runs it.
+you upload or copy like any plugin. The standalone build is `.zero/app/`: serve
+`public/` as the document root, route every request that isn't a file to
+`public/index.php` (as `php -S` does and as a `try_files` or rewrite rule does
+on Nginx or Apache), and keep `data/` and `private/` writable and outside the
+document root. Any PHP 8.2 host with the extensions listed under
+[Requirements](#requirements) runs it.
 
 ## Examples
 

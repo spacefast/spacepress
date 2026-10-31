@@ -41,4 +41,5 @@ Third-party code keeps its own license and is not relicensed by this file:
 
   Each of those directories carries a THIRD-PARTY-LICENSES.txt listing every
   package and its license. Rust dependencies are under their own permissive
-  licenses as recorded in Cargo.lock and each crate's metadata.
+  licenses, recorded in each crate's metadata and license files (Cargo.lock
+  names the crates and versions).

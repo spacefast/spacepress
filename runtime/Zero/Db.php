@@ -107,15 +107,17 @@ final class Db
     // ================================================================ reads
 
     /** @return list<array> */
-    public function findMany(string $collection, array $opts = [], ?Viewer $viewer = null): array
+    public function findMany(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): array
     {
+        $opts = Js::plain($opts);
         $rows = $this->fetch($collection, $opts, '', $viewer);
 
         return $this->project($rows, $collection, $opts, '');
     }
 
-    public function findFirst(string $collection, array $opts = [], ?Viewer $viewer = null): ?array
+    public function findFirst(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): ?array
     {
+        $opts = Js::plain($opts);
         return $this->findMany($collection, ['limit' => 1] + $opts, $viewer)[0] ?? null;
     }
 
@@ -357,8 +359,9 @@ final class Db
      * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
      * @return ?list<array>
      */
-    public function insert(string $collection, array $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
+    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
+        $values = $values instanceof JsObject ? [] : array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values);
         $rows = $values !== [] && array_is_list($values) ? $values : [$values];
 
         return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
@@ -377,8 +380,9 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function update(string $collection, array $set, array $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
+        [$set, $where] = [$set instanceof JsObject ? [] : $set, Js::plain($where)];
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
@@ -393,8 +397,9 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function delete(string $collection, array $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    public function delete(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
+        $where = Js::plain($where);
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
@@ -422,9 +427,7 @@ final class Db
     private static function plainOutsideJson(array $columns, array $data): array
     {
         foreach ($data as $name => $v) {
-            if (($columns[$name]['type'] ?? null) !== 'json') {
-                $data[$name] = Js::plain($v);
-            }
+            $data[$name] = isset($columns[$name]) ? Schema::plainOutsideJson($columns[$name], $v) : Js::plain($v);
         }
 
         return $data;
@@ -934,8 +937,9 @@ final class Db
         return $out;
     }
 
-    public function globalUpdate(string $name, array $patch, ?Viewer $viewer = null): array
+    public function globalUpdate(string $name, array|JsObject $patch, ?Viewer $viewer = null): array
     {
+        $patch = $patch instanceof JsObject ? [] : $patch;
         $g = $this->schema->global($name);
         if ($viewer !== null) {
             Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name");

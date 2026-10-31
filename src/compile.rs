@@ -2706,6 +2706,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         match op {
+            // JS evaluates the right side before writing: `o.x = JSON.stringify(o)` must see `o` as it
+            // was, so the right side runs before Js::own unwraps an empty-object marker.
+            None if t.php.contains("\\Zero\\Js::own(") => {
+                // PHP binds a by-reference place (creating the key) before evaluating the value, so the
+                // value goes through a temporary first.
+                let tmp = self.tmp_var();
+                Ok(Out::new(format!("[{tmp} = {}, {} = {tmp}][1]", v.php, t.php), v.ty))
+            }
             None => Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty)),
             Some(AssignOp::Bin(b)) => {
                 let r = self.binary(b, t.clone(), v, span)?;

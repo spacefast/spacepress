@@ -52,8 +52,9 @@ final class Runner
         $committed = false;
         try {
             $spec = Jobs::spec((string) $locked['job']);
-            // Stored job input keeps exact integers (row ids); only compiled JSON.parse rounds like JS.
-            $input = json_decode((string) $locked['input'], true, 4096, JSON_THROW_ON_ERROR);
+            // Exact integers (row ids), and `{}` stays an object in json() input fields.
+            $input = Js::decodeJson((string) $locked['input'], 4096);
+            $input = $input instanceof \Zero\JsObject ? [] : $input;
             $ctx = ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id];
             if (is_callable($spec['handler'])) {
                 // Built-in jobs that only talk to the network (webhooks) run outside a transaction, so a

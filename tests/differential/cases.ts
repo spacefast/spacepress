@@ -252,7 +252,10 @@ export default defineConfig({
       filled.k = 1;
       const copy = { ...o };
       const parsed = JSON.parse('{"x":{},"y":[]}');
-      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o];
+      // The right side runs before the write: it still sees the empty object.
+      const self: Record<string, string> = {};
+      self.x = JSON.stringify(self);
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self];
     }),
     errors: run(() => {
       try {
@@ -279,8 +282,8 @@ function laneDActions() {
   return {
     onceReplays: action({ input: {}, handler: async () => {
       let runs = 0;
-      const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"] }; });
-      const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"] }; });
+      const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"], extra: {} }; });
+      const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"], extra: {} }; });
       const other = await once("lane-d-other", () => { runs++; return runs; });
       return { first, second, other, runs };
     } }),

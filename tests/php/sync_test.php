@@ -200,14 +200,18 @@ eq('a hook that reshapes the write reports normalized with the stored record',
 eq('normalized digest is the stored record', $normalized['digest'], Canon::digest($normalized['record']));
 
 
-// `{}` and `[]` are different JSON; a store that can't keep the difference answers `normalized`,
-// so the digest a client holds is always one a pull reproduces.
+// `{}` and `[]` are different JSON, and a json() value keeps the difference through storage, so the
+// write is applied as sent and the digest a client holds is one a pull reproduces.
 $shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []], 'authorId' => null, 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
-eq('a reshaped value reports normalized with the stored shape', [$shaped['status'], $shaped['record']['fields']['meta']], ['normalized', ['nested' => [], 'list' => []]]);
+[, , $raw] = $app->handle('GET', '/sync/notes', ['after' => '0', 'first' => '100'], '', ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('{} and [] in a json() value are kept apart: applied as sent, pulled back apart',
+    [$shaped['status'], str_contains($raw, '"meta":{"list":[],"nested":{}}') || str_contains($raw, '"meta":{"nested":{},"list":[]}')], ['applied', true]);
 eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
-$repush = req('POST', '/sync/notes', ['record' => pull('notes')['zr_ffffffffffffffffffff']['record'], 'expect' => $shaped['digest']]);
-eq('and pushing the pulled record is a no-op', $repush[1]['status'] ?? $repush, 'unchanged');
+// Re-push the pulled record as the wire carried it (decoding it to PHP arrays would turn {} into []).
+$pulled = array_values(array_filter(json_decode($raw, false)->data->records, static fn ($r) => ($r->uid ?? $r->record->uid) === 'zr_ffffffffffffffffffff'))[0];
+[, , $out] = $app->handle('POST', '/sync/notes', [], json_encode(['record' => $pulled->record, 'expect' => $shaped['digest']]), ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['status'] ?? $out, 'unchanged');
 
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.

@@ -102,6 +102,16 @@ export interface ValidateCtx {
   target: Target;
 }
 
+/** Editor presentation, independent of stored data and access rules. */
+export interface FieldUi {
+  label?: string;
+  /** Plain text. */
+  help?: string;
+  placeholder?: string;
+  /** Integer percentage, from 1 to 100. */
+  width?: number;
+}
+
 /**
  * A column definition inside `collection(...)`, `global(...)`, a structured field, or `action({ input })`.
  * Builders are immutable: each modifier returns a new builder.
@@ -127,6 +137,9 @@ export interface ColumnBuilder<
     localized: TLocalized;
     primaryKey: TPrimary;
   };
+
+  /** Replace this field's presentation metadata. Does not affect storage or authorization. */
+  ui(options: FieldUi): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Per-viewer field rules; omitted operations inherit collection access. */
   access(

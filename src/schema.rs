@@ -132,6 +132,20 @@ impl Rules {
     }
 }
 
+/// Presentation only: never part of storage, validation or authorization.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FieldUi {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u8>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
@@ -159,6 +173,7 @@ pub struct Column {
     pub localized: bool,
     pub access: IndexMap<String, Access>,
     pub show_if: Option<Json>,
+    pub ui: Option<FieldUi>,
     pub bucket: Option<String>,
     pub derived: bool,
     pub hidden: bool,
@@ -189,6 +204,7 @@ impl Column {
             localized: false,
             access: IndexMap::new(),
             show_if: None,
+            ui: None,
             bucket: None,
             derived: false,
             hidden: false,

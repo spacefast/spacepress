@@ -52,10 +52,14 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
-    let mut ev = eval::Evaluator::new(&program);
-    let config = ev.run()?;
+    build_program(project, target, &program)
+}
+
+fn build_program(project: &Path, target: Option<Target>, program: &loader::Program) -> Result<Built, Diag> {
+    let mut ev = eval::Evaluator::new(program);
+    let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {
-        file: program.entry as u32,
+        file: program.modules[program.entry].file,
         start: 0,
         end: 0,
     };
@@ -63,14 +67,15 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         .file_name()
         .map(|n| extract::slugify_name(&n.to_string_lossy()))
         .unwrap_or_else(|| "app".into());
-    let mut ext = extract::extract(&config, &mut ev, config_span, &dir_name, target)?;
+    let mut ext =
+        extract::extract(&config, &mut ev, config_span, &dir_name, target).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
     let (functions, slots) = {
-        let mut c = compile::Compiler::new(&schema, &mut ev, &ext, &program);
-        c.resolve_json_types()?;
-        let slots = c.compile_roots(&roots)?;
+        let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
+        c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
+        let slots = c.compile_roots(&roots).map_err(|d| d.phase(diag::Code::Compile))?;
         action_results = std::mem::take(&mut c.action_results);
         (std::mem::take(&mut c.output), slots)
     };
@@ -645,11 +650,33 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+fn check_json(project: &Path) -> ExitCode {
+    let diagnostics = match loader::load_all(&project.join("zero.config.ts")) {
+        Err(diagnostics) => diagnostics,
+        Ok(program) => build_program(project, Some(Target::Wp), &program)
+            .err()
+            .into_iter()
+            .collect(),
+    };
+    println!(
+        "{}",
+        serde_json::to_string(&diag::envelope(&diagnostics, project)).expect("diagnostic envelope serializes")
+    );
+    if diagnostics.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 pub(super) fn run(args: &crate::Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
     if !matches!(args.command.as_str(), "build" | "check" | "dev") {
         eprintln!("unknown command {}\n{USAGE}", args.command);
         return ExitCode::from(2);
+    }
+    if args.command == "check" && args.json {
+        return check_json(&project);
     }
     let started = std::time::Instant::now();
     let target = if args.wp { Some(Target::Wp) } else { args.target };

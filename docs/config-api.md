@@ -157,6 +157,13 @@ Phase-2 modifiers:
   `null`), and filtering or ordering by it is refused (403). Omitted
   operations follow the collection. On WordPress it holds in wp-admin and
   core `/wp/v2` too (see [Access](#access)).
+- `.ui({ label?, help?, placeholder?, width? })`: presentation metadata. Text
+  properties are strings; width is an integer percentage from 1 to 100. A call
+  replaces the whole UI descriptor, and returns a new builder. Native SCF uses
+  label, plain-text help, width and placeholders on supported input controls;
+  schema description preserves metadata for other consumers. It never changes
+  stored field names, JSON pointers, validation or access. Nested fields support
+  the same metadata. See the [SEO recipe](../examples/recipes/seo.ts).
 - `.showIf({ sibling: value | { eq, ne, in, isNull, isNotNull } })`: editor
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
@@ -419,6 +426,17 @@ Supported: `const`/`let`, functions, arrows, closures, destructuring,
 spread, template literals, `if`/`for`/`for...of`/`while`/`switch`/`try`,
 `?.`, `??`, objects, arrays, type annotations, type aliases, interfaces,
 generics (erased).
+
+`encodeURI(value)` and `encodeURIComponent(value)` accept exactly one string in
+configuration evaluation and compiled handlers. Both preserve `-_.!~*'()`;
+only `encodeURI` preserves URI delimiters (`;,/?:@&=+$#`). They percent-encode
+UTF-8 bytes with uppercase hex. The PHP helper refuses malformed UTF-8 with
+`URIError`; source strings with lone UTF-16 surrogates are already outside the
+subset. General JS argument coercion and decoding globals are not implemented.
+
+Use [`zero check --json`](compiler-diagnostics.md) for machine-readable blockers.
+The [tested compatibility inventory](language-support.md) links specific
+restrictions and intentional differences to executable evidence.
 
 Indexed array/tuple reads and destructured elements include `null` when an
 entry is missing (Zero represents `undefined` as PHP null). Check the fetched

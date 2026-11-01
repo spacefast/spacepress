@@ -21,6 +21,10 @@ pub struct Program {
 }
 
 pub fn load(entry: &Path) -> Result<Program> {
+    load_all(entry).map_err(|diagnostics| diagnostics.into_iter().next().expect("failed load has diagnostics"))
+}
+
+pub fn load_all(entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
     let mut program = Program {
         modules: Vec::new(),
         resolved: HashMap::new(),
@@ -29,12 +33,25 @@ pub fn load(entry: &Path) -> Result<Program> {
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let entry = entry
         .canonicalize()
-        .map_err(|e| Diag::new(Span::NONE, format!("{}: {e}", entry.display())))?;
-    program.entry = load_module(&entry, &mut program, &mut by_path)?;
-    Ok(program)
+        .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
+    let mut diagnostics = Vec::new();
+    match load_module(&entry, &mut program, &mut by_path, &mut diagnostics) {
+        Ok(id) => program.entry = id,
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    if diagnostics.is_empty() {
+        Ok(program)
+    } else {
+        Err(diagnostics)
+    }
 }
 
-fn load_module(path: &Path, program: &mut Program, by_path: &mut HashMap<PathBuf, usize>) -> Result<usize> {
+fn load_module(
+    path: &Path,
+    program: &mut Program,
+    by_path: &mut HashMap<PathBuf, usize>,
+    diagnostics: &mut Vec<Diag>,
+) -> Result<usize> {
     if let Some(&id) = by_path.get(path) {
         return Ok(id);
     }
@@ -43,10 +60,11 @@ fn load_module(path: &Path, program: &mut Program, by_path: &mut HashMap<PathBuf
     let file = diag::register_file(path, &source);
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
-    let body = parse(&source, path, file, id)?;
+    let body = parse(&source, path, file, id, diagnostics)?;
     let imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     program.modules.push(Rc::new(Module {
         id,
+        file,
         path: path.to_path_buf(),
         body,
     }));
@@ -54,9 +72,12 @@ fn load_module(path: &Path, program: &mut Program, by_path: &mut HashMap<PathBuf
         if spec == ZERO_MODULE {
             continue;
         }
-        let target = resolve(path, &spec, span)?;
-        let target_id = load_module(&target, program, by_path)?;
-        program.resolved.insert((id, spec), target_id);
+        match resolve(path, &spec, span).and_then(|target| load_module(&target, program, by_path, diagnostics)) {
+            Ok(target_id) => {
+                program.resolved.insert((id, spec), target_id);
+            }
+            Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+        }
     }
     Ok(id)
 }
@@ -88,7 +109,7 @@ fn import_source(s: &Stmt) -> Option<(String, Span)> {
     }
 }
 
-fn parse(source: &str, path: &Path, file: u32, module: usize) -> Result<Vec<Stmt>> {
+fn parse(source: &str, path: &Path, file: u32, module: usize, diagnostics: &mut Vec<Diag>) -> Result<Vec<Stmt>> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     if source_type.is_jsx() {
@@ -98,7 +119,9 @@ fn parse(source: &str, path: &Path, file: u32, module: usize) -> Result<Vec<Stmt
         ));
     }
     let ret = Parser::new(&allocator, source, source_type).parse();
-    if let Some(err) = ret.diagnostics.errors().next() {
+    let mut syntax_failed = false;
+    for err in ret.diagnostics.errors() {
+        syntax_failed = true;
         let span = err
             .labels
             .first()
@@ -108,9 +131,14 @@ fn parse(source: &str, path: &Path, file: u32, module: usize) -> Result<Vec<Stmt
                 end: l.offset() + l.len(),
             })
             .unwrap_or(Span { file, start: 0, end: 0 });
-        return Err(Diag::new(span, format!("syntax error: {}", err.message)));
+        diagnostics.push(Diag::new(span, format!("syntax error: {}", err.message)).code(diag::Code::Syntax));
     }
-    Lowerer { file, module }.program(&ret.program)
+    if syntax_failed {
+        return Ok(Vec::new());
+    }
+    let (body, errors) = Lowerer { file, module }.program_diagnostics(&ret.program);
+    diagnostics.extend(errors);
+    Ok(body)
 }
 
 fn resolve(from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
@@ -119,6 +147,7 @@ fn resolve(from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
             span,
             format!("can't import \"{spec}\": npm packages aren't supported yet"),
         )
+        .code(crate::diag::Code::NpmImport)
         .help("import from \"zero\" or from a relative .ts file; Zero compiles every imported line to PHP"));
     }
     let base = from.parent().expect("file has a directory").join(spec);

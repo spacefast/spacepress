@@ -11,3 +11,4 @@ cache/*/
 .legacy-users.json
 .wp-content-admin/
 .harness-admin.json
+.app-build.*/

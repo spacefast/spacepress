@@ -119,6 +119,7 @@ const ZERO_TYPES: &[&str] = &[
     "HookCtx",
     "AccessCtx",
     "ValidateCtx",
+    "FieldUi",
     "AccessRule",
     "AccessConfig",
     "CollectionOptions",
@@ -160,6 +161,8 @@ pub const GLOBALS: &[&str] = &[
     "Boolean",
     "parseInt",
     "parseFloat",
+    "encodeURI",
+    "encodeURIComponent",
     "isNaN",
     "Date",
     "console",
@@ -223,7 +226,7 @@ impl<'p> Evaluator<'p> {
             Some(v) => Ok(v.clone()),
             None => Err(Diag::new(
                 Span {
-                    file: entry as u32,
+                    file: self.program.modules[entry].file,
                     start: 0,
                     end: 0,
                 },
@@ -1630,10 +1633,14 @@ impl<'p> Evaluator<'p> {
                 None => Value::Undef,
             },
             ("Date", "now") => {
-                return err(
-                    span,
-                    "`Date.now()` isn't available while the config is evaluated (builds must be repeatable)",
-                );
+                return Err(Ctl::Err(
+                    Diag::new(
+                        span,
+                        "`Date.now()` isn't available while the config is evaluated (builds must be repeatable)",
+                    )
+                    .code(crate::diag::Code::BuildTimeClock)
+                    .help("compute the time in a hook or use timestamp().defaultNow()"),
+                ));
             }
             ("console", _) => return err(span, "`console` isn't available while the config is evaluated"),
             _ => return err(span, format!("`{g}.{m}` isn't supported while the config is evaluated")),
@@ -1861,6 +1868,9 @@ fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
 }
 
 fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
+    if matches!(g, "encodeURI" | "encodeURIComponent") && args.len() != 1 {
+        return err(span, format!("`{g}` needs exactly one string argument"));
+    }
     for value in args {
         require_static_data(value, span)?;
     }
@@ -1869,6 +1879,10 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
         "String" => Value::str(&arg(0).to_js_string().unwrap_or_else(|| "[object]".into())),
         "Number" => Value::Num(to_number(&arg(0))),
         "Boolean" => Value::Bool(arg(0).truthy()),
+        "encodeURI" | "encodeURIComponent" => match arg(0) {
+            Value::Str(value) => Value::str(&crate::uri::encode(&value, g == "encodeURIComponent")),
+            _ => return err(span, format!("`{g}` needs a string")),
+        },
         "parseInt" => Value::Num(parse_int(&arg(0).to_js_string().unwrap_or_default(), &arg(1))),
         "parseFloat" => Value::Num(parse_float(&arg(0).to_js_string().unwrap_or_default())),
         "isNaN" => Value::Bool(to_number(&arg(0)).is_nan()),
@@ -1903,6 +1917,7 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
     match m {
         "access" => c.access = Some(arg(0)),
         "showIf" => c.show_if = Some(arg(0)),
+        "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
         "notNull" => c.not_null = true,
         "unique" => c.unique = true,
@@ -2043,6 +2058,7 @@ const MODIFIERS: &[&str] = &[
     "validate",
     "access",
     "showIf",
+    "ui",
     "localized",
 ];
 
@@ -2111,6 +2127,7 @@ impl ColBuilder {
             ts_type: None,
             access: None,
             show_if: None,
+            ui: None,
             localized: false,
             bucket: None,
             span,
@@ -2386,4 +2403,20 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
         }
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn missing_default_export_points_to_the_current_file_after_repeated_loads() {
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["first.ts", "second.ts"] {
+            let entry = tmp.path().join(name);
+            std::fs::write(&entry, "export const value = 1;").unwrap();
+            let program = crate::loader::load(&entry).unwrap();
+            let error = super::Evaluator::new(&program).run().unwrap_err();
+            let rendered = crate::diag::render(&error, tmp.path());
+            assert!(rendered.contains(&format!("--> {name}:1:1")), "{rendered}");
+        }
+    }
 }

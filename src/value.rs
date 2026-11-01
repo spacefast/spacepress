@@ -99,6 +99,7 @@ pub struct ColBuilder {
     pub ts_type: Option<(TyAnn, usize)>,
     pub access: Option<Value>,
     pub show_if: Option<Value>,
+    pub ui: Option<Value>,
     pub localized: bool,
     pub bucket: Option<String>,
     pub span: Span,

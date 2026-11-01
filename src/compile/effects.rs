@@ -600,25 +600,18 @@ impl Graph {
                         p.path.pop()?;
                         Some(p)
                     });
-                    if matches!(
-                        prop.as_str(),
-                        "push" | "pop" | "shift" | "unshift" | "splice" | "sort" | "reverse" | "fill"
-                    ) && let Some(p) = &recv
+                    let mutation = crate::builtins::array_mutation(prop);
+                    if mutation.is_some()
+                        && let Some(p) = &recv
                     {
                         let target = p.at(Step::Index);
                         self.write_events.entry(e.span).or_default().insert(target.clone());
                         self.function_writes.entry(owner).or_default().insert(target);
                     }
-                    if matches!(prop.as_str(), "push" | "unshift" | "fill" | "splice")
+                    if let Some(mutation) = mutation
                         && let Some(recv) = &recv
                     {
-                        let inserted = if prop == "splice" {
-                            &argv[argv.len().min(2)..]
-                        } else if prop == "fill" {
-                            &argv[..argv.len().min(1)]
-                        } else {
-                            &argv
-                        };
+                        let inserted = mutation.inserted(&argv);
                         for src in inserted {
                             self.copy(src.clone(), Some(recv.at(Step::Index)), owner);
                         }

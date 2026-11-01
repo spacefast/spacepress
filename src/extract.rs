@@ -1371,6 +1371,29 @@ fn column(
             Some(m)
         }
     };
+    let ui =
+        b.ui.as_ref()
+            .map(|value| {
+                let span = b.span_of("ui");
+                let mut options = object(value, span, "ui")?;
+                keys(&options, &["label", "help", "placeholder", "width"], span, "ui")?;
+                options.retain(|_, value| !matches!(value, Value::Undef));
+                let value = plain_json(&Value::object(options), span, "ui")?;
+                if !value.is_object() || value.as_object().is_some_and(|obj| obj.values().any(|v| v.is_null())) {
+                    return Err(Diag::new(
+                        span,
+                        ".ui() needs an object with string label/help/placeholder and an integer width from 1 to 100",
+                    ));
+                }
+                let ui: crate::schema::FieldUi = serde_json::from_value(value)
+                    .map_err(|e| Diag::new(span, format!("invalid .ui() metadata: {e}")))?;
+                if ui.width.is_some_and(|width| !(1..=100).contains(&width)) {
+                    return Err(Diag::new(span, ".ui() width must be an integer from 1 to 100"));
+                }
+                Ok(ui)
+            })
+            .transpose()
+            .map_err(|d: Diag| d.code(crate::diag::Code::FieldUi))?;
     Ok(Column {
         name: name.to_string(),
         ty: b.ty,
@@ -1397,6 +1420,7 @@ fn column(
         localized: b.localized,
         access,
         show_if,
+        ui,
         bucket: b.bucket.clone(),
         derived: false,
         hidden: false,

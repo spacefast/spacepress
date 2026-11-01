@@ -505,6 +505,30 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
     const probe = await saveProfile(iu.cookie, "profile.php", { [acf("notes", "notes_private")]: guess });
     assert.equal(probe.status, 403, `guess ${JSON.stringify(guess)}`);
   }
+  // A surrounding Db cannot replace the plugin's profile field policy.
+  const profileHtml = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: iu.cookie } })).text();
+  const scopedBody = new URLSearchParams(successfulControls(profileHtml));
+  scopedBody.set(acf("notes", "notes_private"), "replacement");
+  const encoded = Buffer.from(scopedBody.toString()).toString("base64");
+  const scoped = JSON.parse(wp("eval", `
+    parse_str(str_replace('; ', '&', base64_decode('${Buffer.from(iu.cookie).toString("base64")}')), $_COOKIE);
+    wp_set_current_user(${iu.id});
+    parse_str(base64_decode('${encoded}'), $_POST);
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $spec = $app->schema()->collection('members');
+    unset($spec['columns']['notes']['fields']['private']['access']);
+    $schema = new \\Zero\\Schema(['collections' => ['members' => $spec]]);
+    $other = new \\Zero\\Db($app->store(), $schema, $app->media(), 'wp');
+    add_filter('wp_die_handler', static fn () => static function ($message, $title, $args): never {
+      throw new \\Zero\\HttpError((int) ($args['response'] ?? 500), (string) ($args['code'] ?? 'error'), strip_tags($message));
+    });
+    $status = 200;
+    try { $other->current(static fn () => \\Zero\\Wp\\ProfileForm::begin(${iu.id})); \\Zero\\Wp\\ProfileForm::end(${iu.id}); }
+    catch (\\Zero\\HttpError $error) { $status = $error->status; }
+    echo wp_json_encode([$status, \\Zero\\db() === $app]);
+  `));
+  assert.deepEqual(scoped, [403, true]);
+  assert.deepEqual(memberRow(iu.id).notes, { private: "secret" });
   // The same answer when nothing is stored there.
   const empty = await profileMember("iv");
   assert.equal((await saveProfile(empty.cookie, "profile.php", { [acf("notes", "notes_private")]: "" })).status, 403);

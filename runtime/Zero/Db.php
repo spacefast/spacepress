@@ -18,6 +18,7 @@ final class Db
     private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with'];
 
     private static ?self $instance = null;
+    private static ?self $current = null;
 
     private int $depth = 0;
     private ?array $actor = null;
@@ -37,9 +38,26 @@ final class Db
         self::$instance = $db;
     }
 
+    /**
+     * The Db that `db()` names: the one running the current operation, else the app's. Extensions
+     * (field access, sync, locales, files…) read the schema and query through `db()`, so a second Db
+     * (another app, a test fixture) gets its own schema and store, never the booted app's.
+     */
     public static function instance(): self
     {
-        return self::$instance ?? throw new \LogicException('Zero\Db is not initialised; call App::boot() first');
+        return self::$current ?? self::$instance ?? throw new \LogicException('Zero\Db is not initialised; call App::boot() first');
+    }
+
+    /** Run $fn with this Db as `db()`; the previous one is restored after, even on a throw. */
+    public function current(callable $fn): mixed
+    {
+        $previous = self::$current;
+        self::$current = $this;
+        try {
+            return $fn();
+        } finally {
+            self::$current = $previous;
+        }
     }
 
     public function store(): Store
@@ -112,7 +130,7 @@ final class Db
     /** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
     public function transaction(callable $fn): mixed
     {
-        return $this->store->transaction($fn);
+        return $this->current(fn () => $this->store->transaction($fn));
     }
 
     /**
@@ -141,10 +159,12 @@ final class Db
     /** @return list<array> */
     public function findMany(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): array
     {
-        $opts = $this->plainQuery($collection, $opts);
-        $rows = $this->fetch($collection, $opts, '', $viewer);
+        return $this->current(function () use ($collection, $opts, $viewer): array {
+            $opts = $this->plainQuery($collection, $opts);
+            $rows = $this->fetch($collection, $opts, '', $viewer);
 
-        return $this->project($rows, $collection, $opts, '');
+            return $this->project($rows, $collection, $opts, '');
+        });
     }
 
     public function findFirst(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): ?array
@@ -179,37 +199,39 @@ final class Db
      */
     private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
     {
-        if (!$this->schema->hasCollection($collection)) {
-            throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
-        }
-        $spec = $this->schema->collection($collection);
-        // A viewer-bound mutation selector is a query too: extensions see its viewer.
-        Extensions::query($collection, $opts, $viewer ?? $filterViewer, $ptr);
-        foreach ($opts as $k => $_) {
-            if (!in_array($k, self::QUERY_OPTS, true)) {
-                throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer): array {
+            if (!$this->schema->hasCollection($collection)) {
+                throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
-        }
-        if ($viewer !== null) {
-            array_push($guards, ...$this->readGuards($collection, $viewer));
-        }
-        $filterViewer ??= $viewer;
-        // The one point before SQL: query options and access guards are plain arrays, except json()
-        // operands (`{}` and `[]` compare differently). Validate even an empty partition.
-        $sqlOpts = $this->plainQuery($collection, $opts);
-        $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
-        $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
-            $filterViewer === null ? null : fn (string $target): array => array_map(
-                fn ($g) => $this->plainFilter($target, $g),
-                $this->readGuards($target, $filterViewer),
-            ));
-        if ($partition !== null && $partition[1] === []) {
-            return [];
-        }
-        return array_map(
-            static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
-            $this->store->select($collection, $q),
-        );
+            $spec = $this->schema->collection($collection);
+            // A viewer-bound mutation selector is a query too: extensions see its viewer.
+            Extensions::query($collection, $opts, $viewer ?? $filterViewer, $ptr);
+            foreach ($opts as $k => $_) {
+                if (!in_array($k, self::QUERY_OPTS, true)) {
+                    throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));
+                }
+            }
+            if ($viewer !== null) {
+                array_push($guards, ...$this->readGuards($collection, $viewer));
+            }
+            $filterViewer ??= $viewer;
+            // The one point before SQL: query options and access guards are plain arrays, except json()
+            // operands (`{}` and `[]` compare differently). Validate even an empty partition.
+            $sqlOpts = $this->plainQuery($collection, $opts);
+            $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
+            $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
+                $filterViewer === null ? null : fn (string $target): array => array_map(
+                    fn ($g) => $this->plainFilter($target, $g),
+                    $this->readGuards($target, $filterViewer),
+                ));
+            if ($partition !== null && $partition[1] === []) {
+                return [];
+            }
+            return array_map(
+                static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
+                $this->store->select($collection, $q),
+            );
+        });
     }
 
     /** Mutation results and revision snapshots may bypass selects, or follow hooks that replace caches. */
@@ -253,12 +275,14 @@ final class Db
     /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */
     private function keysMatching(string $collection, ?array $where, array $guards): array
     {
-        $pk = $this->schema->collection($collection)['primaryKey'];
-        $where = $where === null ? null : $this->plainFilter($collection, $where);
-        $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
-        $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
+        return $this->current(function () use ($collection, $where, $guards): array {
+            $pk = $this->schema->collection($collection)['primaryKey'];
+            $where = $where === null ? null : $this->plainFilter($collection, $where);
+            $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
+            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
 
-        return array_column($this->store->select($collection, $q), $pk);
+            return array_column($this->store->select($collection, $q), $pk);
+        });
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
@@ -266,7 +290,7 @@ final class Db
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
-        $r = Access::evaluate($rule, $viewer, 'read');
+        $r = $this->current(fn () => Access::evaluate($rule, $viewer, 'read'));
         if ($r === false) {
             throw Access::deny($viewer->user, "read $collection");
         }
@@ -513,7 +537,7 @@ final class Db
     /** update/delete rule → filters for the row select; throws 401/403 when false. */
     private function writeGuards(string $collection, string $op, Viewer $viewer, ?array $data): array
     {
-        $r = Access::evaluate(Access::collectionRules($this->schema->collection($collection))[$op], $viewer, $op, $data);
+        $r = $this->current(fn () => Access::evaluate(Access::collectionRules($this->schema->collection($collection))[$op], $viewer, $op, $data));
         if ($r === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
         }
@@ -971,7 +995,7 @@ final class Db
         }
         $this->depth++;
         try {
-            return $this->store->transaction($fn);
+            return $this->current(fn () => $this->store->transaction($fn));
         } finally {
             $this->depth--;
         }
@@ -1042,12 +1066,17 @@ final class Db
 
         return array_map(
             static fn (array $r) => ['id' => $r['id'], 'at' => $r['at'], 'userId' => $r['userId']],
-            $this->store->revisions($collection, $pk),
+            $this->current(fn () => $this->store->revisions($collection, $pk)),
         );
     }
 
     /** The full decoded row at a revision. */
     public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    {
+        return $this->current(fn (): array => $this->revisionAt($collection, $pk, $revisionId, $viewer));
+    }
+
+    private function revisionAt(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
 
@@ -1058,7 +1087,7 @@ final class Db
     /** The decoded row a revision (or autosave) holds, trusted: no access checks. */
     public function revisionRow(string $collection, int|string $pk, int $revisionId): array
     {
-        $rev = $this->store->revision($collection, $pk, $revisionId)
+        $rev = $this->current(fn () => $this->store->revision($collection, $pk, $revisionId))
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
 
         return Schema::decodeRow($this->schema->collection($collection)['columns'], $rev['row']);
@@ -1102,21 +1131,23 @@ final class Db
     /** Current values (JS form); never-written fields read as their defaults. */
     public function globalGet(string $name, ?Viewer $viewer = null): array
     {
-        $g = $this->schema->global($name);
-        if ($viewer !== null) {
-            Access::require(Access::globalRules($g)['read'], $viewer, 'read', null, "read $name");
-        }
-        $stored = $this->store->globalRead($name) ?? [];
-        $out = [];
-        foreach ($g['fields'] as $field => $f) {
-            if (array_key_exists($field, $stored)) {
-                $out[$field] = Schema::decode($f, $stored[$field]);
-            } else {
-                $out[$field] = isset($f['default']) ? Schema::normalize($f, Schema::generate($f['default'], $f['type']), (string) $field, '') : null;
+        return $this->current(function () use ($name, $viewer): array {
+            $g = $this->schema->global($name);
+            if ($viewer !== null) {
+                Access::require(Access::globalRules($g)['read'], $viewer, 'read', null, "read $name");
             }
-        }
+            $stored = $this->store->globalRead($name) ?? [];
+            $out = [];
+            foreach ($g['fields'] as $field => $f) {
+                if (array_key_exists($field, $stored)) {
+                    $out[$field] = Schema::decode($f, $stored[$field]);
+                } else {
+                    $out[$field] = isset($f['default']) ? Schema::normalize($f, Schema::generate($f['default'], $f['type']), (string) $field, '') : null;
+                }
+            }
 
-        return $out;
+            return $out;
+        });
     }
 
     public function globalUpdate(string $name, array|JsObject $patch, ?Viewer $viewer = null): array
@@ -1125,7 +1156,7 @@ final class Db
         $g = $this->schema->global($name);
         $patch = self::plainOutsideJson($g['fields'], $patch);
         if ($viewer !== null) {
-            Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name");
+            $this->current(fn () => Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name"));
         }
         $fields = $g['fields'];
         $this->rejectUnknown($fields, $patch);
@@ -1161,12 +1192,12 @@ final class Db
 
     public function mediaGet(int $id): ?array
     {
-        return $this->media->get($id);
+        return $this->current(fn () => $this->media->get($id));
     }
 
     public function mediaList(array $opts): array
     {
-        return $this->media->list($opts);
+        return $this->current(fn () => $this->media->list($opts));
     }
 
     /** Delete a media row: null `media` columns and drop the id from `mediaList` columns first (hooks + revisions apply). */

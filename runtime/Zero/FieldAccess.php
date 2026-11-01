@@ -17,7 +17,8 @@ namespace Zero;
  *   otherwise reveal values the strip removes.
  * - write: a supplied key whose create/update rule is false is refused with 403 (401 when anonymous,
  *   as phase 1 §1.6) at `/<col>`; a value the viewer can't read is refused whatever it is, so updates
- *   can't probe hidden values. Defaults and hook-written values are trusted. An update may resend a
+ *   can't probe or overwrite hidden values (a field without its own update rule is
+ *   refused outright; one that declares an allowing update rule is write-only). Defaults and hook-written values are trusted. An update may resend a
  *   value it can fully read unchanged, so read-modify-write and revision restore keep working.
  * - structured values: the stored value is resolved first (supplied values; in a group, omitted
  *   sub-fields the viewer can't read or set keep their stored values; defaults, generated once, fill
@@ -198,7 +199,8 @@ final class FieldAccess
 
     // ================================================================ write
 
-    public static function checkWrite(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
+    /** $stored: an editor save supplies its persisted data separately from the input it must authorize. */
+    public static function checkWrite(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided, bool $stored = false): void
     {
         if ($viewer === null || $op === 'delete') {
             return;
@@ -214,7 +216,7 @@ final class FieldAccess
             if ($def === null || !array_key_exists($name, $incoming)) {
                 continue; // consumed virtual input; unknown keys are rejected by the pipeline
             }
-            $data[$name] = self::guard($op, $def, (string) $name, $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name));
+            $data[$name] = self::guard($op, $def, (string) $name, $stored ? $provided[$name] : $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name), resolved: $stored ? $incoming[$name] : null);
         }
     }
 
@@ -225,10 +227,16 @@ final class FieldAccess
     private static function guard(string $op, array $def, string $name, mixed $value, array $ctx, ?array $storedIn, Viewer $viewer, array &$page, string $ptr, bool $merge = true, mixed $resolved = null): mixed
     {
         $before = $storedIn !== null && array_key_exists($name, $storedIn) ? $storedIn[$name] : null;
+        // An allowing update rule explicitly opts into write-only input, at every nesting depth.
+        if ($op === 'update' && !isset($def['access']['update'])
+            && ($storedIn === null ? self::mayHideSelf($def, $viewer) : !self::readable($def, $storedIn, $viewer, $page))) {
+            throw self::denied($viewer, $name, $ptr);
+        }
         $rule = $def['access'][$op] ?? null;
         if ($rule !== null && !self::allows($rule, $viewer, $op, $ctx) && !self::unchangedVisible($def, $name, $value, $storedIn, $viewer, $page)) {
             throw self::denied($viewer, $name, $ptr);
         }
+
         if (!in_array($def['type'], self::STRUCTURED, true)) {
             return $value;
         }
@@ -358,6 +366,9 @@ final class FieldAccess
     public static function unwritable(string $op, array $def, Viewer $viewer): bool
     {
         $rule = $def['access'][$op] ?? null;
+        if ($op === 'update' && $rule === null && self::mayHideSelf($def, $viewer)) {
+            return true;
+        }
         if ($rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, $op, null))) {
             return true;
         }

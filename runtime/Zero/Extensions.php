@@ -53,7 +53,8 @@ final class Extensions
     /** Run after the active store's outermost commit; immediately if no transaction is open. */
     public static function afterCommit(callable $fn): void
     {
-        db()->store()->afterCommit($fn);
+        $db = db();
+        $db->store()->afterCommit(static fn () => $db->current($fn));
     }
 
     /**

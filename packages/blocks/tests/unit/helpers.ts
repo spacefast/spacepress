@@ -66,7 +66,11 @@ export function reparse(markup: string): Promise<Parsed[]> {
   });
 }
 
-/** True when every block at every depth passed the editor's validation. */
+/**
+ * True when every block at every depth passed the editor's validation. A block
+ * the editor could not recognise comes back as a valid `core/missing`, which is
+ * the opposite of what a caller means by valid, so it fails too.
+ */
 export function allValid(blocks: readonly Parsed[]): boolean {
-  return blocks.every((b) => b.isValid && allValid(b.inner));
+  return blocks.every((b) => b.isValid && b.name !== "core/missing" && allValid(b.inner));
 }

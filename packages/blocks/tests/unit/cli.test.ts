@@ -87,6 +87,9 @@ test("--out followed by another flag has no path: exit 2 and no file named after
 test("a diagnostic from inside a component prints where the component was used", async () => {
   const text = await run(["content", fixture("uses-card.tsx")]);
   assert.match(text.stderr, /card\.tsx:3:10 style_prop_unsupported: .* \(used at tests\/unit\/fixtures\/uses-card\.tsx:7:7\)/);
+});
+
+test("the JSON report carries the component's call site as usedAt", async () => {
   const json = await run(["content", fixture("uses-card.tsx"), "--json"]);
   assert.deepEqual((JSON.parse(json.stderr) as { usedAt: unknown }[])[0]!.usedAt, { file: "tests/unit/fixtures/uses-card.tsx", line: 7, column: 7 });
 });

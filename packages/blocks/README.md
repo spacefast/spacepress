@@ -123,4 +123,6 @@ pnpm build            # dist/ for the published package and the zero-blocks bin
 
 ## License
 
-MIT.
+The package's own source is MIT. The prebundled `vendor/wp.cjs` is built from
+the pinned `@wordpress/*` packages (GPL-2.0-or-later) and React (MIT); their
+license headers are kept in `vendor/wp.cjs.LEGAL.txt` beside it.

@@ -261,6 +261,11 @@ class Mapper {
         this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${child.tag}> sits inside rich text, where only phrasing tags (a, strong, em, code, span, …) can go.`, hint: "Move it out of the paragraph, or use a phrasing tag.", loc: child.loc });
         continue;
       }
+      if (VOID_TAGS.has(child.tag)) {
+        // A void tag renders without its children, so any it was given would vanish.
+        this.onlyChildren(child, [], `a <${child.tag}> has no content`, "Remove the children.");
+        continue;
+      }
       this.checkInline(child.children);
     }
   }

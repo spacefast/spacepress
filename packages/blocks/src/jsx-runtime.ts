@@ -82,9 +82,10 @@ function locate(node: ContentNode, loc: SourceLocation | undefined): ContentNode
   if (node.kind === "element" && isFragmentNode(node)) {
     return { ...node, children: node.children.map((child) => locate(child, loc)) };
   }
-  if (node.loc === undefined) return { ...node, loc };
-  if (node.loc.usedAt !== undefined || sameLocation(node.loc, loc)) return node;
-  const at = { ...node.loc, usedAt: loc };
+  if (node.loc !== undefined && (node.loc.usedAt !== undefined || sameLocation(node.loc, loc))) return node;
+  // A root the component built without JSX (`Block({...})`) takes the call site as its own
+  // location; the JSX under it still has positions of its own, which get the call site as `usedAt`.
+  const at = node.loc === undefined ? loc : { ...node.loc, usedAt: loc };
   return node.kind === "element"
     ? { ...node, loc: at, children: node.children.map((child) => locate(child, loc)) }
     : { ...node, loc: at, inner: node.inner.map((child) => locate(child, loc)) };
@@ -92,6 +93,19 @@ function locate(node: ContentNode, loc: SourceLocation | undefined): ContentNode
 
 function sameLocation(a: SourceLocation, b: SourceLocation): boolean {
   return a.file === b.file && a.line === b.line && a.column === b.column;
+}
+
+/**
+ * A ContentError thrown while a component's own JSX was being built never
+ * reached `locate`, so it carries the component's position but not the call
+ * site. Give it the same two places a diagnostic from the returned tree has.
+ */
+function usedAt(error: unknown, loc: SourceLocation | undefined): unknown {
+  if (loc === undefined || !(error instanceof ContentError)) return error;
+  if (error.loc !== undefined && (error.loc.usedAt !== undefined || sameLocation(error.loc, loc))) return error;
+  const relocated = new ContentError(error.code, error.message, error.loc === undefined ? loc : { ...error.loc, usedAt: loc });
+  if (error.stack !== undefined) relocated.stack = error.stack;
+  return relocated;
 }
 
 /** What the TSX transform passes as the fifth argument of `jsxDEV`. */
@@ -122,7 +136,12 @@ function create(type: unknown, props: ElementProps | null | undefined, loc: Sour
   }
 
   if (typeof type === "function") {
-    const rendered = (type as (props: ElementProps) => unknown)(props ?? {});
+    let rendered: unknown;
+    try {
+      rendered = (type as (props: ElementProps) => unknown)(props ?? {});
+    } catch (error) {
+      throw usedAt(error, loc);
+    }
     return locate(collapse(toContentNodes(rendered, loc)), loc);
   }
 

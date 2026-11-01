@@ -43,7 +43,8 @@ await build({
   platform: "node",
   target: "node22",
   logLevel: "warning",
-  legalComments: "none",
+  // Keep the bundled packages' license headers; esbuild writes them beside the bundle as wp.cjs.LEGAL.txt.
+  legalComments: "linked",
   define: { "process.env.NODE_ENV": '"production"' },
   banner: { js: `/* @wordpress bundle: ${JSON.stringify(versions)} */` },
 });

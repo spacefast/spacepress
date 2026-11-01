@@ -90,16 +90,32 @@ test("a Custom HTML block's body is written as inner content and read back verba
   assert.deepEqual([html!.name, html!.isValid, html!.innerContent.map((part) => part?.trim())], ["core/html", true, ['<div data-x="1">raw &amp; <b>kept</b></div>']]);
 });
 
-test("fitsAttribute: an enum is the whole set of allowed values; a type array is a union; object means a plain object", () => {
+test("an attribute's enum is the whole set of values it accepts", () => {
   assert.equal(fitsAttribute({ type: "string", enum: ["left", "right"] }, "left"), true);
   assert.equal(fitsAttribute({ type: "string", enum: ["left", "right"] }, "bogus"), false);
+});
+
+test("an attribute's type array is a union, and integer excludes fractions", () => {
   assert.equal(fitsAttribute({ type: ["string", "boolean"] }, false), true);
   assert.equal(fitsAttribute({ type: ["string", "boolean"] }, 1), false);
   assert.equal(fitsAttribute({ type: "integer" }, 1.5), false);
+});
+
+test("rich-text is a string attribute", () => {
+  assert.equal(fitsAttribute({ type: "rich-text" }, "x"), true);
+  assert.equal(fitsAttribute({ type: "rich-text" }, 1), false);
+});
+
+test("an object attribute takes a plain object only", () => {
   assert.equal(fitsAttribute({ type: "object" }, { a: 1 }), true);
   assert.equal(fitsAttribute({ type: "object" }, new Date(0)), false);
-  assert.equal(fitsAttribute({ type: "rich-text" }, "x"), true);
   assert.deepEqual([isPlainObject(Object.create(null)), isPlainObject([]), isPlainObject(new Map())], [true, false, false]);
+});
+
+test("a block the editor cannot recognise does not count as valid, even though core/missing parses", async () => {
+  const parsed = await reparse("<!-- wp:never/registered {\"a\":1} /-->");
+  assert.deepEqual([parsed[0]!.name, parsed[0]!.isValid], ["core/missing", true]);
+  assert.equal(allValid(parsed), false);
 });
 
 test("an unknown core block is a located error naming the nearest block", async () => {

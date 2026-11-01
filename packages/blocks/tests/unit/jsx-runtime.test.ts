@@ -54,6 +54,27 @@ test("jsxDEV attaches the source position to the node, and a component's result 
   assert.deepEqual(child?.kind === "element" ? child.loc : null, { file: "/t/card.tsx", line: 3, column: 3, usedAt });
 });
 
+test("JSX under a root a component built without JSX still remembers the call site", () => {
+  const source = { fileName: "/t/a.tsx", lineNumber: 7, columnNumber: 5 };
+  const inner = { fileName: "/t/card.tsx", lineNumber: 3, columnNumber: 3 };
+  const Card = () => Block({ name: "acme/card", children: jsxDEV("p", {}, undefined, false, inner) });
+  const fromCard = jsxDEV(Card, {}, undefined, false, source);
+  const usedAt = { file: "/t/a.tsx", line: 7, column: 5 };
+  assert.deepEqual(fromCard.kind === "block" ? fromCard.loc : null, usedAt);
+  const child = fromCard.kind === "block" ? fromCard.inner[0] : null;
+  assert.deepEqual(child?.kind === "element" ? child.loc : null, { file: "/t/card.tsx", line: 3, column: 3, usedAt });
+});
+
+test("a content error thrown while a component's JSX is built names the call site too", () => {
+  const source = { fileName: "/t/a.tsx", lineNumber: 7, columnNumber: 5 };
+  const inner = { fileName: "/t/card.tsx", lineNumber: 3, columnNumber: 3 };
+  const Card = () => jsxDEV("section", { children: new Date(0) }, undefined, false, inner);
+  assert.throws(
+    () => jsxDEV(Card, {}, undefined, false, source),
+    (error: unknown) => error instanceof ContentError && error.code === "not_content" && error.loc !== undefined && error.loc.line === 3 && error.loc.usedAt?.line === 7,
+  );
+});
+
 test("a malformed node anywhere in a returned tree is refused as not content", () => {
   assert.throws(() => toContentNodes({ kind: "element", tag: "p", props: {}, children: [{ kind: "text" }] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
   assert.throws(() => toContentNodes({ kind: "block", blockName: "core/group", attrs: {}, inner: [null] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");

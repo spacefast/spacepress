@@ -8,15 +8,23 @@ import { blockAt, brief, names, text } from "./helpers.ts";
 
 const map = (rendered: unknown) => mapToBlocks(toContentNodes(rendered));
 
-test("a heading carries its level, class and anchor; a paragraph keeps phrasing content as rich text", () => {
-  const { blocks, diagnostics } = map([
-    jsx("h2", { class: "tight", id: "pricing", children: "Plans" }),
-    jsxs("p", { children: ["a ", jsx("strong", { children: "b" }), " c"] }),
-  ]);
+test("a heading carries its level, class and anchor", () => {
+  const { blocks, diagnostics } = map(jsx("h2", { class: "tight", id: "pricing", children: "Plans" }));
   assert.deepEqual(diagnostics, []);
   assert.deepEqual(blocks[0], { kind: "block", blockName: "core/heading", attrs: { level: 2, className: "tight", anchor: "pricing" }, inner: [text("Plans")] });
-  assert.equal(blocks[1]?.blockName, "core/paragraph");
-  assert.equal(renderRichTextHtml(blocks[1]!.inner), "a <strong>b</strong> c");
+});
+
+test("a paragraph keeps phrasing content as rich text", () => {
+  const { blocks, diagnostics } = map(jsxs("p", { children: ["a ", jsx("strong", { children: "b" }), " c"] }));
+  assert.deepEqual(diagnostics, []);
+  assert.equal(blocks[0]?.blockName, "core/paragraph");
+  assert.equal(renderRichTextHtml(blocks[0]!.inner), "a <strong>b</strong> c");
+});
+
+test("text given to a line break is refused rather than dropped", () => {
+  const { diagnostics } = map(jsxs("p", { children: ["before", jsx("br", { children: "LOST" }), "after"] }));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.severity]), [["unmappable_element", "error"]]);
+  assert.match(diagnostics[0]!.message, /Text inside a <br>/);
 });
 
 test("rich text escapes what would otherwise be markup, and className becomes class", () => {

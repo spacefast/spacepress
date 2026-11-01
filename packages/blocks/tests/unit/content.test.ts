@@ -65,9 +65,12 @@ test("a throw while rendering points at the author's line through the source map
   assert.match(result.diagnostics[0]!.message, /boom at build time/);
 });
 
-test("a value that is not content is refused at the element holding it, or at the file when the default export returned it", async () => {
+test("a value that is not content is refused at the element holding it", async () => {
   const inside = await compileContent(fixture("not-content.tsx"));
   assert.deepEqual(inside.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("not-content.tsx"), line: 5, column: 7 }]);
+});
+
+test("a default export that returns a value that is not content is refused at the file", async () => {
   const returned = await compileContent(fixture("returns-date.tsx"));
   assert.deepEqual(returned.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("returns-date.tsx"), line: 1, column: 1 }]);
   assert.equal(returned.markup, "");

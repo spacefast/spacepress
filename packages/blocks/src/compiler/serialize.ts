@@ -403,7 +403,11 @@ class Serializer {
     const parts = [renderRichTextHtml(richText)];
     if (childBlocks.length > 0) {
       const built = childBlocks.map((child) => this.build(child)).filter((child): child is WpBlock => child !== null);
-      parts.push(this.api.serialize(built));
+      const html = this.api.serialize(built);
+      // These become raw HTML inside the passthrough, so the document-level read-back never sees them as
+      // blocks; read them back here, so a core block inside a third-party wrapper is checked like any other.
+      if (built.length > 0) this.verify(built, quietParse(this.api, html), node);
+      parts.push(html);
     }
     return parts.filter((part) => part !== "").join("\n\n");
   }
@@ -537,7 +541,8 @@ function jsonProblem(value: unknown, path = "", ancestors = new Set<object>()): 
   if (!Array.isArray(value) && !isPlainObject(value)) return `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "non-plain object"}${at}`;
   ancestors.add(value);
   try {
-    const entries = Array.isArray(value) ? value.map((entry, index) => [`${path}[${index}]`, entry] as const) : Object.entries(value).map(([key, entry]) => [path === "" ? key : `${path}.${key}`, entry] as const);
+    // `Array.from` visits holes too (as undefined), which JSON would write as null.
+    const entries = Array.isArray(value) ? Array.from(value, (entry, index) => [`${path}[${index}]`, entry] as const) : Object.entries(value).map(([key, entry]) => [path === "" ? key : `${path}.${key}`, entry] as const);
     for (const [entryPath, entry] of entries) {
       const problem = jsonProblem(entry, entryPath, ancestors);
       if (problem !== null) return problem;

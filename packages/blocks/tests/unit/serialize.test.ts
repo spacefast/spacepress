@@ -240,6 +240,20 @@ test("a value JSON would rewrite inside an object attribute is refused rather th
   }
 });
 
+test("a core block inside a third-party wrapper is read back and checked like any other", async () => {
+  const dropped = await serializeBlocks([block("acme/wrapper", {}, [at(block("core/list", { values: "<li>LOST</li>" }), 3)])]);
+  assert.equal(dropped.markup, "");
+  assert.deepEqual(dropped.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["attribute_dropped", 3]]);
+  const invalid = await serializeBlocks([block("acme/wrapper", {}, [at(block("core/heading", { level: 7, content: "x" }), 4)])]);
+  assert.deepEqual(invalid.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["save_failed", 4]]);
+});
+
+test("a hole in an array attribute is refused, since JSON would write it as null", async () => {
+  const { diagnostics } = await serializeBlocks([at(block("core/group", { metadata: { items: Array(1) } }), 7)]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 7]]);
+  assert.match(diagnostics[0]!.message, /items\[0\]/);
+});
+
 test("one object reached twice in an attribute is shared, not circular", async () => {
   const shared = { color: "red" };
   const { diagnostics, markup } = await serializeBlocks([block("core/group", { metadata: { a: shared, b: shared } })]);

@@ -55,10 +55,11 @@ export function escapeHtml(text: string): string {
 
 /**
  * HTML's boolean attributes on phrasing tags: present or absent, never a value.
- * Every other attribute keeps its value as text, so `aria-checked={false}` and
- * `draggable={false}` write the "false" they mean instead of vanishing.
+ * Every other attribute keeps its value as text, so `aria-checked={false}`,
+ * `draggable={false}` and `contenteditable={false}` (enumerated, where "false"
+ * overrides what is inherited) write the "false" they mean instead of vanishing.
  */
-const BOOLEAN_ATTRIBUTES = new Set(["hidden", "inert", "autofocus", "disabled", "download", "contenteditable", "spellcheck", "translate"]);
+const BOOLEAN_ATTRIBUTES = new Set(["hidden", "inert", "autofocus", "disabled", "download"]);
 
 function attributeString(props: ElementProps): string {
   return Object.entries(props)

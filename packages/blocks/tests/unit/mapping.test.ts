@@ -32,7 +32,7 @@ test("rich text escapes what would otherwise be markup, and className becomes cl
 });
 
 test("an inline boolean value is written as text unless the attribute is an HTML boolean", () => {
-  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { role: "checkbox", "aria-checked": false, draggable: false, children: "c" }))), '<span role="checkbox" aria-checked="false" draggable="false">c</span>');
+  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { role: "checkbox", "aria-checked": false, draggable: false, contenteditable: false, children: "c" }))), '<span role="checkbox" aria-checked="false" draggable="false" contenteditable="false">c</span>');
   assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: true, children: "h" }))), "<span hidden>h</span>");
   assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: false, children: "h" }))), "<span>h</span>");
 });

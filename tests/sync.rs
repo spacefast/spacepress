@@ -3,6 +3,9 @@
 //! with the `zero` binary over application passwords. Each step drives the CLI and checks the files,
 //! the site (over its API) and the exit code.
 
+// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+#![cfg(feature = "cli")]
+
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};

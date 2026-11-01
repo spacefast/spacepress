@@ -1,15 +1,23 @@
-//! Build-only WordPress plugin dependencies. No PHP is evaluated here.
+//! Build-only WordPress plugin dependencies. No PHP is evaluated here. Declaring and resolving the
+//! plan is part of the compiler core; downloading, unpacking and staging the archives is `cli`.
+#[cfg(feature = "cli")]
 mod archive;
+#[cfg(feature = "cli")]
 pub mod assembly;
 pub mod version;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{self, Read, Write};
+use std::io;
+#[cfg(feature = "cli")]
+use std::io::{Read, Write};
+#[cfg(feature = "cli")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "cli")]
 use std::time::Duration;
 
+#[cfg(feature = "cli")]
 pub use assembly::{Prepared, copy_output};
 pub type Result<T> = io::Result<T>;
 
@@ -106,6 +114,7 @@ fn slug(s: &str) -> bool {
             .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()))
 }
 
+#[cfg(feature = "cli")]
 impl Resource {
     fn url(&self) -> String {
         match self {
@@ -270,8 +279,10 @@ pub fn digest(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
+#[cfg(feature = "cli")]
 const MAX_ZIP: u64 = 64 * 1024 * 1024;
 
+#[cfg(feature = "cli")]
 fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path, url: &str) -> Result<(PathBuf, String)> {
     std::fs::create_dir_all(cache)?;
     if let Some(pin) = pin {

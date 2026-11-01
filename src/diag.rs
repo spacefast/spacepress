@@ -108,6 +108,16 @@ thread_local! {
     static FILES: RefCell<Vec<(PathBuf, String)>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Runs `f` with an empty source registry and restores the caller's afterwards. Spans only mean
+/// something within the run that registered them; a long-lived process (the browser build checks on
+/// every edit) gives each run its own, and anything the caller holds keeps rendering correctly.
+pub fn isolated<T>(f: impl FnOnce() -> T) -> T {
+    let outer = FILES.with(|files| std::mem::take(&mut *files.borrow_mut()));
+    let result = f();
+    FILES.with(|files| *files.borrow_mut() = outer);
+    result
+}
+
 /// Registers a source file so spans can be rendered later. Returns its id.
 pub fn register_file(path: &Path, source: &str) -> u32 {
     FILES.with(|files| {

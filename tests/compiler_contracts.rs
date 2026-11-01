@@ -1,4 +1,7 @@
 //! Executable joins between compatibility claims, diagnostics, authoring and PHP behavior.
+
+// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+#![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

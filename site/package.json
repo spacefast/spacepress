@@ -1,0 +1,31 @@
+{
+  "name": "@spacefast/zero-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "zero.dev: the Zero website, with the compiler running in the browser.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check && tsc --noEmit -p tsconfig.json",
+    "test": "node --test tests/unit/*.test.ts",
+    "test:browser": "playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm test:browser"
+  },
+  "dependencies": {
+    "astro": "7.3.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@playwright/test": "1.64.1",
+    "@types/node": "22.19.3",
+    "typescript": "5.9.3"
+  }
+}

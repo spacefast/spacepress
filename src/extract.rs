@@ -2375,16 +2375,17 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
                 return Err(Diag::new(b.span, "Markdown sync needs a content designation")
                     .help("add content: richText() or use *.json"));
             }
+            let fs = &ev.program().fs;
             let project = ev.program().modules[ev.program().entry].path.parent().unwrap();
             let mut resolved = project.to_path_buf();
             for component in sync["dir"].as_str().unwrap().split('/') {
                 resolved.push(component);
-                if std::fs::symlink_metadata(&resolved).is_ok() {
-                    resolved = resolved.canonicalize().map_err(|_| {
+                if fs.exists(&resolved) {
+                    resolved = fs.canonicalize(&resolved).map_err(|_| {
                         Diag::new(b.span, "sync directory cannot be resolved")
                             .help("repair the directory or its symlink")
                     })?;
-                    if !resolved.starts_with(project) || !resolved.is_dir() {
+                    if !resolved.starts_with(project) || !fs.is_dir(&resolved) {
                         return Err(Diag::new(b.span, "sync directory must stay inside the project")
                             .help("point sync at a directory inside this project"));
                     }

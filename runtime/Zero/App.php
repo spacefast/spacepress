@@ -71,6 +71,8 @@ final class App
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user']);
         $fn = '\\ZeroApp\\' . $action['handler'];
+        $input = Seam::toJs($input, $action['input'] ?? []);
+        $ctx = Seam::ctx($ctx);
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
             static fn (): Response => Response::json($fn($input, $ctx)));
@@ -311,7 +313,7 @@ final class App
         $s = trim(self::queryString($value, '/with'));
         if (str_starts_with($s, '{')) {
             $with = self::queryJson($s, '/with');
-            $with = $with instanceof JsObject ? [] : $with;
+            $with = Seam::container($with);
             if (!is_array($with) || ($with !== [] && array_is_list($with))) {
                 throw HttpError::invalidQuery('with must be an object', '/with');
             }
@@ -366,9 +368,7 @@ final class App
 
     private static function object(mixed $v): array
     {
-        if ($v instanceof JsObject) {
-            return []; // a top-level `{}` body: no fields
-        }
+        $v = Seam::container($v);
         if (!is_array($v) || ($v !== [] && array_is_list($v))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }
@@ -497,7 +497,7 @@ final class App
     /** The row or rows of an insert argument as a list, a top-level `{}` meaning an empty row. */
     private static function rows(mixed $v): array
     {
-        $v = $v instanceof JsObject ? [] : $v; // a top-level `{}` row; nested json() values keep theirs
+        $v = Seam::container($v); // a top-level `{}` row; nested json() values keep theirs
 
         return is_array($v) ? $v : throw HttpError::invalidInput('Expected a JSON object or array of objects');
     }

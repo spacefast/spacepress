@@ -192,7 +192,7 @@ final class Register
                 && (self::lower($prev) || ctype_digit($prev) || self::lower($next))) {
                 $out .= '-';
             }
-            $out .= mb_strtolower($c);
+            $out .= mb_strtolower($c, 'UTF-8');
         }
 
         return $out;
@@ -280,7 +280,7 @@ final class Register
                 'name' => "$app/$k-update", 'op' => 'update',
                 'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay.",
                 'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']),
-                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => \Zero\Db::plainOutsideJson($spec['columns'], Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch')),
+                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => \Zero\Seam::toPhp(Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'), $spec['columns']),
                 'call' => static fn (array $in): array => ['PATCH', $item()($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ];
         }
@@ -369,7 +369,7 @@ final class Register
                 'name' => "$app/global-$k-update", 'op' => 'update', 'label' => "Update $label",
                 'description' => "Change some $label values of the $appLabel app; the input is the patch.",
                 'input' => JsonSchema::input($patch), 'output' => $values, 'annotations' => [],
-                'rule' => [$rules['update'], 'update', "update $name"], 'data' => static fn (array $in): array => \Zero\Db::plainOutsideJson($global['fields'], $in),
+                'rule' => [$rules['update'], 'update', "update $name"], 'data' => static fn (array $in): array => \Zero\Seam::toPhp($in, $global['fields']),
                 'call' => static fn (array $in): array => ['PATCH', '/globals/' . rawurlencode($name), [], $in],
             ],
         ];
@@ -477,11 +477,11 @@ final class Register
 
     private static function upper(string $c): bool
     {
-        return $c !== '' && mb_strtolower($c) !== $c;
+        return $c !== '' && mb_strtolower($c, 'UTF-8') !== $c;
     }
 
     private static function lower(string $c): bool
     {
-        return $c !== '' && mb_strtoupper($c) !== $c;
+        return $c !== '' && mb_strtoupper($c, 'UTF-8') !== $c;
     }
 }

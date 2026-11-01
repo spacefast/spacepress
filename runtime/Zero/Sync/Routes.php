@@ -355,7 +355,7 @@ final class Routes
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }
-        $in = $in instanceof \Zero\JsObject ? [] : $in;
+        $in = \Zero\Seam::container($in);
         if (!is_array($in) || ($in !== [] && array_is_list($in))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }

@@ -265,7 +265,7 @@ final class Files
         $name = trim(basename(str_replace('\\', '/', $name)));
         $name = (string) preg_replace('/[\x00-\x1F\x7F]/', '', $name);
 
-        return $name === '' ? 'file' : mb_substr($name, 0, 200);
+        return $name === '' ? 'file' : mb_substr($name, 0, 200, 'UTF-8');
     }
 
     /** Rows as stored → typed. */

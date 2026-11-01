@@ -54,7 +54,7 @@ final class Runner
             $spec = Jobs::spec((string) $locked['job']);
             // Exact integers (row ids), and `{}` stays an object in json() input fields.
             $input = Js::decodeJson((string) $locked['input'], 4096);
-            $input = $input instanceof \Zero\JsObject ? [] : $input;
+            $input = \Zero\Seam::container($input);
             $ctx = ['user' => null, 'attempt' => $attempt, 'jobId' => $id];
             if (is_callable($spec['handler'])) {
                 // Built-in jobs that only talk to the network (webhooks) run outside a transaction, so a
@@ -69,7 +69,9 @@ final class Runner
                     });
                     if (is_string($spec['handler'])) {
                         $fn = '\\ZeroApp\\' . $spec['handler'];
-                        $fn(is_array($input) ? $input : [], $ctx);
+                        $input = \Zero\Seam::toJs(is_array($input) ? $input : [], $spec['input'] ?? []);
+                        $ctx = \Zero\Seam::ctx($ctx);
+                        $fn($input, $ctx);
                     }
                     Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
                 });
@@ -94,7 +96,7 @@ final class Runner
     private static function fail(array $row, int $attempt, \Throwable $e): array
     {
         $id = (string) $row['id'];
-        $error = mb_substr($e::class . ': ' . $e->getMessage(), 0, 2000);
+        $error = mb_substr($e::class . ': ' . $e->getMessage(), 0, 2000, 'UTF-8');
         $retries = self::retries((string) $row['job']);
         $dead = $attempt >= $retries;
         $runAt = Js::iso(Js::now() + 1000 * self::BACKOFF[min($attempt, count(self::BACKOFF)) - 1]);

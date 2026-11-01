@@ -334,13 +334,13 @@ final class Connection
                 return null;
             }
             $regex = '';
-            for ($i = 0, $n = mb_strlen($pattern); $i < $n; $i++) {
-                $c = mb_substr($pattern, $i, 1);
+            for ($i = 0, $n = mb_strlen($pattern, 'UTF-8'); $i < $n; $i++) {
+                $c = mb_substr($pattern, $i, 1, 'UTF-8');
                 $regex .= match ($c) {
                     '%' => '.*',
                     '_' => '.',
                     // `\\x` is a literal x; a trailing backslash is itself (as MySQL reads it).
-                    '\\' => preg_quote($i + 1 < $n ? mb_substr($pattern, ++$i, 1) : '\\', '~'),
+                    '\\' => preg_quote($i + 1 < $n ? mb_substr($pattern, ++$i, 1, 'UTF-8') : '\\', '~'),
                     default => preg_quote($c, '~'),
                 };
             }

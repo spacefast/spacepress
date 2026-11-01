@@ -154,7 +154,7 @@ final class Db
     public function findMany(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): array
     {
         return $this->current(function () use ($collection, $opts, $viewer): array {
-            $opts = $this->plainQuery($collection, $opts);
+            $opts = Seam::query($collection, $opts, $this->schema);
             $rows = $this->fetch($collection, $opts, '', $viewer);
 
             return $this->project($rows, $collection, $opts, '');
@@ -163,7 +163,7 @@ final class Db
 
     public function findFirst(string $collection, array|JsObject $opts = [], ?Viewer $viewer = null): ?array
     {
-        $opts = $this->plainQuery($collection, $opts);
+        $opts = Seam::query($collection, $opts, $this->schema);
         return $this->findMany($collection, ['limit' => 1] + $opts, $viewer)[0] ?? null;
     }
 
@@ -211,11 +211,11 @@ final class Db
             $filterViewer ??= $viewer;
             // The one point before SQL: query options and access guards are plain arrays, except json()
             // operands (`{}` and `[]` compare differently). Validate even an empty partition.
-            $sqlOpts = $this->plainQuery($collection, $opts);
-            $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
+            $sqlOpts = Seam::query($collection, $opts, $this->schema);
+            $guards = array_map(fn ($g) => Seam::filter($collection, $g, $this->schema), $guards);
             $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
                 $filterViewer === null ? null : fn (string $target): array => array_map(
-                    fn ($g) => $this->plainFilter($target, $g),
+                    fn ($g) => Seam::filter($target, $g, $this->schema),
                     $this->readGuards($target, $filterViewer),
                 ));
             if ($partition !== null && $partition[1] === []) {
@@ -271,8 +271,8 @@ final class Db
     {
         return $this->current(function () use ($collection, $where, $guards): array {
             $pk = $this->schema->collection($collection)['primaryKey'];
-            $where = $where === null ? null : $this->plainFilter($collection, $where);
-            $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
+            $where = $where === null ? null : Seam::filter($collection, $where, $this->schema);
+            $guards = array_map(fn ($g) => Seam::filter($collection, $g, $this->schema), $guards);
             $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
 
             return array_column($this->store->select($collection, $q), $pk);
@@ -460,8 +460,8 @@ final class Db
     public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
         // Only the row containers unwrap here: a json() value inside a row keeps its `{}`.
-        $values = $values instanceof JsObject ? [] : $values;
-        $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values) : [$values];
+        $values = Seam::container($values);
+        $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => Seam::container($r), $values) : [$values];
 
         return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
@@ -481,9 +481,9 @@ final class Db
     /** @return ?list<array> */
     public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, ?Viewer $errorViewer = null): ?array
     {
-        [$set, $where] = [$set instanceof JsObject ? [] : $set, $this->plainFilter($collection, $where)];
+        [$set, $where] = [Seam::container($set), Seam::filter($collection, $where, $this->schema)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
-        $set = self::plainOutsideJson($this->schema->collection($collection)['columns'], $set);
+        $set = Seam::toPhp($set, $this->schema->collection($collection)['columns']);
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $errorViewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
@@ -515,7 +515,7 @@ final class Db
     /** @return ?list<array> */
     public function delete(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
     {
-        $where = $this->plainFilter($collection, $where);
+        $where = Seam::filter($collection, $where, $this->schema);
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
@@ -537,98 +537,6 @@ final class Db
         }
 
         return is_array($r) ? [$r] : [];
-    }
-
-    /** Query options as plain arrays, except a json() column's filter operands (`{ meta: { eq: {} } }`). */
-    private function plainQuery(string $collection, mixed $opts): mixed
-    {
-        $opts = $opts instanceof JsObject ? [] : $opts;
-        if (!is_array($opts)) {
-            return Js::plain($opts);
-        }
-        $relations = $this->schema->hasCollection($collection) ? ($this->schema->collection($collection)['relations'] ?? []) : [];
-        foreach ($opts as $k => $v) {
-            $opts[$k] = match ((string) $k) {
-                'where' => $this->plainFilter($collection, $v),
-                // Nested relation options are queries on the related collection.
-                'with' => is_array($v) || $v instanceof JsObject ? $this->plainWith($relations, $v) : Js::plain($v),
-                default => Js::plain($v),
-            };
-        }
-
-        return $opts;
-    }
-
-    private function plainWith(array $relations, array|JsObject $with): array
-    {
-        $with = $with instanceof JsObject ? [] : $with;
-        foreach ($with as $name => $o) {
-            $with[$name] = isset($relations[$name]) && (is_array($o) || $o instanceof JsObject)
-                ? $this->plainQuery($relations[$name]['collection'], $o)
-                : Js::plain($o);
-        }
-
-        return $with;
-    }
-
-    /**
-     * A filter as plain arrays, walking OR/AND/NOT and relations, but leaving a json() column's
-     * operands as given: `{}` and `[]` are different values to compare against.
-     */
-    private function plainFilter(string $collection, mixed $where): mixed
-    {
-        $where = $where instanceof JsObject ? [] : $where;
-        if (!is_array($where) || !$this->schema->hasCollection($collection)) {
-            return Js::plain($where);
-        }
-        $spec = $this->schema->collection($collection);
-        foreach ($where as $k => $v) {
-            $k = (string) $k;
-            $where[$k] = match (true) {
-                $k === 'OR' || $k === 'AND' => is_array($v) ? array_map(fn ($f) => $this->plainFilter($collection, $f), $v) : Js::plain($v),
-                $k === 'NOT' => $this->plainFilter($collection, $v),
-                isset($spec['columns'][$k]) => self::plainOperand($spec['columns'][$k], $v),
-                isset($spec['relations'][$k]) => $this->plainFilter($spec['relations'][$k]['collection'], $v),
-                default => Js::plain($v),
-            };
-        }
-
-        return $where;
-    }
-
-    /**
-     * A field filter: an operator object (`{ eq: v, OR: [...] }`) maps its operands by the column's
-     * schema; a bare value is itself the operand. Each operand keeps `{}` only inside json() values.
-     */
-    private static function plainOperand(array $col, mixed $v): mixed
-    {
-        $ops = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
-        $isOps = is_array($v) && $v !== [] && !array_is_list($v) && array_diff(array_map('strval', array_keys($v)), $ops) === [];
-        if (!$isOps) {
-            return Schema::plainOutsideJson($col, $v);
-        }
-        foreach ($v as $op => $arg) {
-            $v[$op] = match ((string) $op) {
-                'in', 'notIn' => is_array($arg) ? array_map(static fn ($x) => Schema::plainOutsideJson($col, $x), $arg) : Js::plain($arg),
-                'OR', 'AND' => is_array($arg) ? array_map(static fn ($x) => self::plainOperand($col, $x), $arg) : Js::plain($arg),
-                'NOT' => self::plainOperand($col, $arg),
-                'isNull', 'isNotNull', 'like', 'notLike', 'ilike', 'notIlike', 'has' => Js::plain($arg),
-                default => Schema::plainOutsideJson($col, $arg),
-            };
-        }
-
-        return $v;
-    }
-
-    /** Only json() values keep the empty-object marker; field access, rules and hooks see plain arrays. */
-    /** The marker → plain arrays in every value but a json() column's (writes and permission checks). */
-    public static function plainOutsideJson(array $columns, array $data): array
-    {
-        foreach ($data as $name => $v) {
-            $data[$name] = isset($columns[$name]) ? Schema::plainOutsideJson($columns[$name], $v) : Js::plain($v);
-        }
-
-        return $data;
     }
 
     /** The canonical default preview and write share constraint preflight before generators run. */
@@ -654,7 +562,7 @@ final class Db
     private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
-        $data = self::plainOutsideJson($columns, $data);
+        $data = Seam::toPhp($data, $columns);
         $provided = $data;
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
@@ -686,9 +594,11 @@ final class Db
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeCreate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
+            $data = Seam::rowToJs($collection, $data);
+            $ctx = Seam::ctx($ctx, $columns);
             $r = $fn($data, $ctx);
             if (is_array($r) || $r instanceof JsObject) {
-                $data = self::plainOutsideJson($columns, $r instanceof JsObject ? [] : $r);
+                $data = Seam::toPhp($r, $columns);
             }
             $this->rejectUnknown($columns, $data);
         }
@@ -727,7 +637,7 @@ final class Db
         if ($spec['revisions'] ?? false) {
             $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
         }
-        $this->hook($spec, 'afterCreate', $row);
+        $this->hook($collection, $spec, 'afterCreate', $row);
         Extensions::written('create', $collection, $row, null);
 
         return $row;
@@ -738,7 +648,7 @@ final class Db
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
-        $patch = self::plainOutsideJson($columns, $patch);
+        $patch = Seam::toPhp($patch, $columns);
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
@@ -764,9 +674,12 @@ final class Db
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {
             $fn = '\\ZeroApp\\' . $spec['hooks']['beforeUpdate'];
+            $patch = Seam::rowToJs($collection, $patch);
+            $existing = Seam::rowToJs($collection, $existing);
+            $ctx = Seam::ctx($ctx, $columns);
             $r = $fn($patch, $existing, $ctx);
             if (is_array($r) || $r instanceof JsObject) {
-                $patch = self::plainOutsideJson($columns, $r instanceof JsObject ? [] : $r);
+                $patch = Seam::toPhp($r, $columns);
             }
             $this->checkPatch($spec, $previous, $patch);
         }
@@ -815,7 +728,7 @@ final class Db
         if ($spec['revisions'] ?? false) {
             $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
         }
-        $this->hook($spec, 'afterUpdate', $row, $previous);
+        $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
         Extensions::written('update', $collection, $row, $previous);
 
         return $row;
@@ -826,14 +739,14 @@ final class Db
         $spec = $this->schema->collection($collection);
         $existing = $row;
         Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
-        $this->hook($spec, 'beforeDelete', $row);
+        $this->hook($collection, $spec, 'beforeDelete', $row);
         $this->referentialActions($collection, $row, $viewer);
         try {
             $this->store->delete($collection, $this->pkValue($spec, $row));
         } catch (\Throwable $e) {
             throw $this->store->mapError($e);
         }
-        $this->hook($spec, 'afterDelete', $row);
+        $this->hook($collection, $spec, 'afterDelete', $row);
         Extensions::written('delete', $collection, $row, $existing);
     }
 
@@ -1241,13 +1154,15 @@ final class Db
     }
 
     /** Call a hook that receives rows (afterCreate/afterUpdate/before|afterDelete); result ignored. */
-    private function hook(array $spec, string $name, array $row, ?array $previous = null): void
+    private function hook(string $collection, array $spec, string $name, array $row, ?array $previous = null): void
     {
         if (!isset($spec['hooks'][$name])) {
             return;
         }
         $fn = '\\ZeroApp\\' . $spec['hooks'][$name];
-        $ctx = $this->hookCtx();
+        $ctx = Seam::ctx($this->hookCtx(), $spec['columns']);
+        $row = Seam::rowToJs($collection, $row);
+        $previous = $previous === null ? null : Seam::rowToJs($collection, $previous);
         if ($previous === null) {
             $fn($row, $ctx);
         } else {
@@ -1305,7 +1220,7 @@ final class Db
         $this->asEditor($user, function () use ($collection, $pk, $previousRow) {
             $spec = $this->schema->collection($collection);
             [$row] = $this->readByPk($collection, $spec, $pk);
-            $previousRow === null ? $this->hook($spec, 'afterCreate', $row) : $this->hook($spec, 'afterUpdate', $row, $previousRow);
+            $previousRow === null ? $this->hook($collection, $spec, 'afterCreate', $row) : $this->hook($collection, $spec, 'afterUpdate', $row, $previousRow);
             Extensions::written($previousRow === null ? 'create' : 'update', $collection, $row, $previousRow);
         });
     }
@@ -1317,7 +1232,7 @@ final class Db
             $spec = $this->schema->collection($collection);
             $existing = $row;
             Extensions::write('delete', $collection, $row, $existing, null, $existing);
-            $this->hook($spec, 'beforeDelete', $row);
+            $this->hook($collection, $spec, 'beforeDelete', $row);
             $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user));
         });
     }
@@ -1326,7 +1241,7 @@ final class Db
     public function afterEditorDelete(string $collection, array $row, ?array $user = null): void
     {
         $this->asEditor($user, function () use ($collection, $row) {
-            $this->hook($this->schema->collection($collection), 'afterDelete', $row);
+            $this->hook($collection, $this->schema->collection($collection), 'afterDelete', $row);
             Extensions::written('delete', $collection, $row, $row);
         });
     }
@@ -1437,9 +1352,9 @@ final class Db
 
     public function globalUpdate(string $name, array|JsObject $patch, ?Viewer $viewer = null): array
     {
-        $patch = $patch instanceof JsObject ? [] : $patch;
+        $patch = Seam::container($patch);
         $g = $this->schema->global($name);
-        $patch = self::plainOutsideJson($g['fields'], $patch);
+        $patch = Seam::toPhp($patch, $g['fields']);
         if ($viewer !== null) {
             $this->current(fn () => Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name"));
         }

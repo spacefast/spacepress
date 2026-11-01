@@ -39,13 +39,20 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
+/** The classic format's limits; a theme never approaches them, and ZIP64 would be a new format to prove. */
+const MAX_ENTRIES = 0xffff;
+const MAX_BYTES = 0xffffffff;
+
 export function zip(entries: readonly ZipEntry[]): Uint8Array {
+  if (entries.length > MAX_ENTRIES) throw new RangeError(`zip: ${entries.length} entries; the format holds at most ${MAX_ENTRIES}`);
   const sorted = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const locals: Uint8Array[] = [];
   const centrals: Uint8Array[] = [];
   let offset = 0;
   for (const entry of sorted) {
     const name = new TextEncoder().encode(entry.name);
+    if (name.length > MAX_ENTRIES) throw new RangeError(`zip: the name of ${entry.name.slice(0, 40)}… is longer than the format allows`);
+    if (entry.data.length > MAX_BYTES) throw new RangeError(`zip: ${entry.name} is larger than the format allows`);
     const deflated = deflateRawSync(entry.data, { level: 9 });
     const stored = deflated.length < entry.data.length;
     const payload = stored ? new Uint8Array(deflated) : entry.data;
@@ -63,6 +70,7 @@ export function zip(entries: readonly ZipEntry[]): Uint8Array {
     offset += local.length;
   }
   const centralSize = centrals.reduce((n, c) => n + c.length, 0);
+  if (offset + centralSize > MAX_BYTES) throw new RangeError("zip: the archive is larger than the format allows");
   const end = concat([u32(0x06054b50), u16(0), u16(0), u16(sorted.length), u16(sorted.length), u32(centralSize), u32(offset), u16(0)]);
   return concat([...locals, ...centrals, end]);
 }

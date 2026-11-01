@@ -23,12 +23,34 @@ export function patternHeader(meta: PatternMeta, slug: string): string[] {
   return fields.flatMap(([name, value]) => (value === undefined || value === "" ? [] : [`${name}: ${value}`]));
 }
 
-/** A header value cannot contain a newline (`get_file_data` reads one line) or close the comment. */
+/** A header value cannot contain a newline (`get_file_data` reads one line), close the comment, or open PHP. */
 export function headerValueProblem(value: string): string | null {
   if (/[\r\n]/.test(value)) return "contains a line break";
   const closer = "*" + "/";
   if (value.includes(closer) || value.includes("?>")) return `contains "${closer}" or "?>", which ends the header`;
+  if (value.includes("<?")) return 'contains "<?", which opens PHP';
   return null;
+}
+
+/** Every header value a pattern's meta would write, each with its problem if it has one. */
+export function headerProblems(meta: PatternMeta, slug: string): { field: string; problem: string }[] {
+  const out: { field: string; problem: string }[] = [];
+  const check = (field: string, value: string | undefined) => {
+    const problem = value === undefined ? null : headerValueProblem(value);
+    if (problem) out.push({ field, problem });
+  };
+  check("title", meta.title);
+  check("slug", slug);
+  check("description", meta.description);
+  for (const [field, list] of [["categories", meta.categories], ["keywords", meta.keywords], ["blockTypes", meta.blockTypes], ["postTypes", meta.postTypes], ["templateTypes", meta.templateTypes]] as const) {
+    for (const value of list ?? []) check(field, value);
+  }
+  return out;
+}
+
+/** The markup after the header is served through PHP's interpreter, so a PHP opener in it would run. */
+export function markupOpensPhp(markup: string): boolean {
+  return markup.includes("<?");
 }
 
 export function renderPatternFile(meta: PatternMeta, slug: string, markup: string): string {

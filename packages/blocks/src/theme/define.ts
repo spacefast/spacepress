@@ -86,7 +86,8 @@ export interface Theme<C extends ThemeConfig = ThemeConfig> {
 }
 
 function slugsOf(list: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
+  // No prototype: a slug named like an Object method (or `__proto__`) is a key, not an inherited property.
+  const out: Record<string, string> = Object.create(null) as Record<string, string>;
   if (!Array.isArray(list)) return out;
   for (const entry of list) {
     const slug = (entry as { slug?: unknown } | null)?.slug;

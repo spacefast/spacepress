@@ -20,8 +20,8 @@ import type { BlockNode, ContentNode, SourceLocation } from "../nodes.ts";
 import { hasKind, isTheme, type PartMeta, type PatternMeta, type StyleVariation, type TemplateMeta, type Theme, type ThemeConfig } from "../theme/define.ts";
 import { classifyTemplate, defaultPartArea, partTagName, TEMPLATE_PART_AREAS, TEMPLATE_SLUG, type TemplatePartArea } from "../theme/hierarchy.ts";
 import { defaultExportMissing, withModule } from "./module.ts";
-import { headerValueProblem, renderPatternFile } from "./pattern-file.ts";
-import { checkBlockPresets, checkStylePresets, presetTable } from "./presets.ts";
+import { headerProblems, headerValueProblem, markupOpensPhp, renderPatternFile } from "./pattern-file.ts";
+import { checkBlockPresets, checkStylePresets, presetTable, variationPresetTable } from "./presets.ts";
 import { serializeBlocks } from "./serialize.ts";
 import { THEME_JSON_SCHEMA_URL, validateThemeJson } from "./theme-json.ts";
 import { zip } from "./zip.ts";
@@ -48,7 +48,7 @@ interface SourceFile {
   file: string;
 }
 
-async function listSources(dir: string, folder: string): Promise<SourceFile[]> {
+async function listSources(dir: string, folder: string, diagnostics: Diagnostic[]): Promise<SourceFile[]> {
   const root = path.join(dir, folder);
   let entries: string[];
   try {
@@ -56,10 +56,21 @@ async function listSources(dir: string, folder: string): Promise<SourceFile[]> {
   } catch {
     return [];
   }
-  return entries
+  const sources = entries
     .filter((name) => SOURCE_EXTENSIONS.has(path.extname(name)) && !name.endsWith(".d.ts"))
     .sort()
     .map((name) => ({ slug: name.slice(0, -path.extname(name).length), file: path.join(root, name) }));
+  // Two files that differ only by extension would both become `<slug>.html`; the second is refused, not the winner.
+  const seen = new Map<string, SourceFile>();
+  return sources.filter((source) => {
+    const earlier = seen.get(source.slug);
+    if (earlier) {
+      diagnostics.push(error("duplicate_slug", `${folder}/${path.basename(source.file)} and ${folder}/${path.basename(earlier.file)} would both become ${folder}/${source.slug}; keep one.`, at(source.file)));
+      return false;
+    }
+    seen.set(source.slug, source);
+    return true;
+  });
 }
 
 function at(file: string): SourceLocation {
@@ -91,15 +102,15 @@ export async function buildTheme(dir: string): Promise<ThemeBuild> {
 
   // Every authored file, executed, mapped and checked, in a fixed order.
   const sources = {
-    templates: await listSources(root, "templates"),
-    parts: await listSources(root, "parts"),
-    patterns: await listSources(root, "patterns"),
-    styles: await listSources(root, "styles"),
+    templates: await listSources(root, "templates", diagnostics),
+    parts: await listSources(root, "parts", diagnostics),
+    patterns: await listSources(root, "patterns", diagnostics),
+    styles: await listSources(root, "styles", diagnostics),
   };
   const units = new Map<string, Unit>();
   for (const [folder, list] of Object.entries(sources) as [keyof typeof sources, SourceFile[]][]) {
     for (const source of list) {
-      if (!TEMPLATE_SLUG.test(source.slug)) {
+      if (!TEMPLATE_SLUG.test(source.slug) && !(folder === "templates" && classifyTemplate(source.slug).kind === "attachment")) {
         diagnostics.push(error("unknown_template", `${folder}/${path.basename(source.file)}: "${source.slug}" is not a name WordPress can resolve (lowercase letters, digits, dashes, dots and underscores).`, at(source.file), "Rename the file."));
         continue;
       }
@@ -163,6 +174,11 @@ export async function buildTheme(dir: string): Promise<ThemeBuild> {
       continue;
     }
     const meta = unit.meta as PatternMeta;
+    // WordPress drops a pattern whose parsed title is empty or PHP-false ("0").
+    if (typeof meta.title !== "string" || meta.title.trim() === "" || meta.title.trim() === "0") {
+      diagnostics.push(error("theme_config_invalid", `patterns/${source.slug}: definePattern() needs a non-empty title; WordPress would skip the pattern.`, at(source.file)));
+      continue;
+    }
     const patternSlug = meta.slug ?? `${slug}/${source.slug}`;
     if (!/^[A-Za-z0-9/_-]+$/.test(patternSlug)) {
       diagnostics.push(error("theme_config_invalid", `patterns/${source.slug}: slug "${patternSlug}" is not one WordPress accepts (letters, digits, "/", "_" and "-").`, at(source.file)));
@@ -173,10 +189,7 @@ export async function buildTheme(dir: string): Promise<ThemeBuild> {
       diagnostics.push(error("duplicate_slug", `patterns/${source.slug} and patterns/${earlier.slug} both have the slug "${patternSlug}".`, at(source.file), "Give one of them a different slug in definePattern()."));
       continue;
     }
-    for (const [field, value] of [["title", meta.title], ["description", meta.description], ["slug", patternSlug]] as const) {
-      const problem = typeof value === "string" ? headerValueProblem(value) : null;
-      if (problem) diagnostics.push(error("theme_config_invalid", `patterns/${source.slug}: ${field} ${problem}.`, at(source.file)));
-    }
+    for (const { field, problem } of headerProblems(meta, patternSlug)) diagnostics.push(error("theme_config_invalid", `patterns/${source.slug}: ${field} ${problem}.`, at(source.file)));
     patternSlugs.set(patternSlug, source);
     patternMeta.set(source.slug, { meta, slug: patternSlug });
   }
@@ -242,7 +255,8 @@ export async function buildTheme(dir: string): Promise<ThemeBuild> {
     const document: Record<string, unknown> = { $schema: THEME_JSON_SCHEMA_URL, version: 3, title: variation.title };
     if (variation.settings !== undefined) document.settings = variation.settings;
     if (variation.styles !== undefined) document.styles = variation.styles;
-    const layered = presetTable(settings, variation.settings as Record<string, unknown> | undefined);
+    // WordPress merges a variation over the theme list by list: a variation palette replaces the theme's, not adds to it.
+    const layered = variationPresetTable(settings, variation.settings as Record<string, unknown> | undefined);
     checkStylePresets(variation.styles, layered, "styles", at(source.file), diagnostics);
     for (const problem of validateThemeJson(document)) diagnostics.push(error("theme_json_invalid", `styles/${source.slug}.json${problem.pointer || "/"} ${problem.message}.`, at(source.file)));
     variationFiles.push({ path: `styles/${source.slug}.json`, data: utf8(`${JSON.stringify(document, null, 2)}\n`) });
@@ -271,8 +285,15 @@ export async function buildTheme(dir: string): Promise<ThemeBuild> {
   for (const source of sources.patterns) {
     const unit = units.get(`patterns/${source.slug}`);
     const entry = patternMeta.get(source.slug);
-    if (unit && entry) files.push({ path: `patterns/${source.slug}.php`, data: utf8(renderPatternFile(entry.meta, entry.slug, unit.markup)) });
+    if (!unit || !entry) continue;
+    // The pattern file is PHP, so a "<?" anywhere in the markup (a Custom HTML block's body, say) would execute.
+    if (markupOpensPhp(unit.markup)) {
+      diagnostics.push(error("theme_config_invalid", `patterns/${source.slug}: the markup contains "<?", which would run as PHP inside the pattern file.`, at(source.file), "Remove it; a pattern is block markup, not a PHP template."));
+      continue;
+    }
+    files.push({ path: `patterns/${source.slug}.php`, data: utf8(renderPatternFile(entry.meta, entry.slug, unit.markup)) });
   }
+  if (hasErrors(diagnostics)) return { slug, files: [], diagnostics };
   files.push(...variationFiles);
   files.push({ path: "theme.json", data: utf8(`${JSON.stringify(themeJson, null, 2)}\n`) });
   files.push({ path: "style.css", data: utf8(styleCss(config)) });
@@ -455,34 +476,55 @@ export async function writeTheme(build: ThemeBuild, options: WriteOptions): Prom
   const out = path.resolve(options.out);
   await mkdir(out, { recursive: true });
   const destination = path.join(out, build.slug);
+  const archive = path.join(out, `${build.slug}.zip`);
+  // One private staging directory holds the new theme and, when asked, the new zip; nothing at the
+  // destination changes until both are complete, and a failure after that point puts the previous
+  // theme back. The staging name is unique per call, so two writers cannot share a backup path.
   const staging = await mkdtemp(path.join(out, `.${build.slug}-`));
+  const stagedDir = path.join(staging, "theme");
+  const stagedZip = path.join(staging, "theme.zip");
+  const previousDir = path.join(staging, "previous");
+  const previousZip = path.join(staging, "previous.zip");
   try {
     for (const file of build.files) {
-      const target = path.join(staging, ...file.path.split("/"));
+      const target = path.join(stagedDir, ...file.path.split("/"));
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, file.data);
     }
-    const previous = `${destination}.previous-${process.pid}`;
-    let hadPrevious = false;
+    if (options.zip) await writeFile(stagedZip, zip(build.files.map((file) => ({ name: `${build.slug}/${file.path}`, data: file.data }))));
+
+    const moved: { from: string; to: string }[] = [];
+    const move = async (from: string, to: string) => {
+      await rename(from, to);
+      moved.push({ from, to });
+    };
     try {
-      await rename(destination, previous);
-      hadPrevious = true;
-    } catch {
-      /* nothing there yet */
+      if (await exists(destination)) await move(destination, previousDir);
+      await move(stagedDir, destination);
+      if (options.zip) {
+        if (await exists(archive)) await move(archive, previousZip);
+        await move(stagedZip, archive);
+      }
+    } catch (failure) {
+      // Undo in reverse order: whatever was moved goes back where it was.
+      for (const step of moved.reverse()) await rename(step.to, step.from).catch(() => undefined);
+      throw failure;
     }
-    await rename(staging, destination);
-    if (hadPrevious) await rm(previous, { recursive: true, force: true });
-  } catch (failure) {
+  } finally {
     await rm(staging, { recursive: true, force: true });
-    throw failure;
   }
   const result: { dir: string; zip?: string } = { dir: destination };
-  if (options.zip) {
-    const archive = path.join(out, `${build.slug}.zip`);
-    await writeFile(archive, zip(build.files.map((file) => ({ name: `${build.slug}/${file.path}`, data: file.data }))));
-    result.zip = archive;
-  }
+  if (options.zip) result.zip = archive;
   return result;
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await stat(file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** `zero-blocks check`: the diagnostics a build would produce, formatted, without writing. */

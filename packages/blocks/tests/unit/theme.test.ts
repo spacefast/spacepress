@@ -365,3 +365,125 @@ test("the fixture theme's output is stable (drift guard)", async () => {
   if (process.env.UPDATE_GOLDEN) writeFileSync(golden, `${JSON.stringify(actual, null, 2)}\n`);
   assert.deepEqual(actual, JSON.parse(readFileSync(golden, "utf8")));
 });
+
+test("a pattern header list value that would close the comment is refused, so no PHP can be smuggled through a header", () =>
+  withVariant(async (v) => {
+    v.write("patterns/evil.tsx", 'import { definePattern } from "@spacefast/zero-blocks/theme";\nexport const meta = definePattern({ title: "T", keywords: ["*" + "/ echo 123; /" + "*"], categories: ["<?php"] });\nexport default () => <p>x</p>;\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["theme_config_invalid", "patterns/evil.tsx"], ["theme_config_invalid", "patterns/evil.tsx"]]);
+    assert.deepEqual(errors(build).map((d) => /: (\w+) contains/.exec(d.message)?.[1]), ["categories", "keywords"]);
+  }));
+
+test("pattern markup containing a PHP opener is refused rather than written into a .php file", () =>
+  withVariant(async (v) => {
+    v.write("patterns/raw.tsx", 'import { definePattern, Html } from "@spacefast/zero-blocks/theme";\nexport const meta = definePattern({ title: "Raw" });\nexport default () => <Html content={"<" + "?php echo 1; ?" + ">"} />;\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["theme_config_invalid", "patterns/raw.tsx"]]);
+    assert.match(errors(build)[0]!.message, /"<\?"/);
+    assert.deepEqual(build.files, []);
+  }));
+
+test("a pattern title that WordPress would read as empty is refused", () =>
+  withVariant(async (v) => {
+    for (const title of ['""', '"   "', '"0"']) {
+      v.write("patterns/blank.tsx", `import { definePattern } from "@spacefast/zero-blocks/theme";\nexport const meta = definePattern({ title: ${title} });\nexport default () => <p>x</p>;\n`);
+      assert.deepEqual(where(v.dir, errors(await buildTheme(v.dir))), [["theme_config_invalid", "patterns/blank.tsx"]], title);
+    }
+  }));
+
+test("two sources that differ only by extension are a duplicate_slug, not a silent overwrite", () =>
+  withVariant(async (v) => {
+    v.write("templates/index.js", 'export default () => ({ kind: "block", blockName: "core/paragraph", attrs: {}, inner: [{ kind: "text", text: "other" }] });\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["duplicate_slug", "templates/index.tsx"]]);
+    assert.deepEqual(build.files, []);
+  }));
+
+test("a preset a block defines for itself is available to that block only", () =>
+  withVariant(async (v) => {
+    const config = readFileSync(path.join(v.dir, "theme.config.ts"), "utf8").replace("appearanceTools: true,", 'appearanceTools: true,\n    blocks: { "core/button": { color: { palette: [{ slug: "button-only", name: "Button only", color: "#0f0" }] } } },');
+    v.write("theme.config.ts", config);
+    v.write("templates/404.tsx", 'import { Button, Buttons, Paragraph } from "@spacefast/zero-blocks/theme";\nexport default () => (\n  <>\n    <Buttons><Button text="x" backgroundColor="button-only" /></Buttons>\n    <Paragraph textColor="button-only">x</Paragraph>\n  </>\n);\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["unknown_preset", "templates/404.tsx"]]);
+    assert.equal(errors(build)[0]!.loc?.line, 5);
+  }));
+
+test("a block's own preset counts for that block's entry under styles.blocks, and not elsewhere in styles", () =>
+  withVariant(async (v) => {
+    const config = readFileSync(path.join(v.dir, "theme.config.ts"), "utf8").replace("appearanceTools: true,", 'appearanceTools: true,\n    blocks: { "core/button": { color: { palette: [{ slug: "button-only", name: "Button only", color: "#0f0" }] } } },').replace('blocks: { "core/button": { border: { radius: "4px" } } },', 'blocks: { "core/button": { border: { radius: "4px" }, color: { background: preset.color("button-only") } }, "core/paragraph": { color: { text: preset.color("button-only") } } },');
+    v.write("theme.config.ts", config);
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["unknown_preset", "theme.config.ts"]]);
+    assert.match(errors(build)[0]!.message, /styles\/blocks\/core~1paragraph/);
+  }));
+
+test("a variation's palette replaces the theme's, as WordPress merges it, so a theme slug it dropped is unknown there", () =>
+  withVariant(async (v) => {
+    v.write("styles/ember.ts", 'import { defineStyleVariation, preset } from "@spacefast/zero-blocks/theme";\nexport default defineStyleVariation({ title: "Ember", settings: { color: { palette: [{ slug: "ember", name: "Ember", color: "#c33" }] } }, styles: { color: { text: preset.color("ember"), background: preset.color("base") } } });\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["unknown_preset", "styles/ember.ts"]]);
+    assert.match(errors(build)[0]!.message, /"base"/);
+  }));
+
+test("a variation that sets no palette keeps the theme's, and one that turns the defaults back on gains them", () =>
+  withVariant(async (v) => {
+    v.write("styles/plain.ts", 'import { defineStyleVariation, preset } from "@spacefast/zero-blocks/theme";\nexport default defineStyleVariation({ title: "Plain", styles: { color: { text: preset.color("contrast") } } });\n');
+    v.write("styles/wp.ts", 'import { defineStyleVariation, preset } from "@spacefast/zero-blocks/theme";\nexport default defineStyleVariation({ title: "WP", settings: { color: { defaultPalette: true } }, styles: { color: { text: preset.color("vivid-red") } } });\n');
+    assert.deepEqual(errors(await buildTheme(v.dir)), []);
+  }));
+
+test("the slugs a spacingScale generates are presets, as WordPress computes them", () =>
+  withVariant(async (v) => {
+    const config = readFileSync(path.join(v.dir, "theme.config.ts"), "utf8").replace('spacing: { spacingSizes: [{ slug: "20", name: "2", size: "1rem" }, { slug: "40", name: "4", size: "2rem" }] },', 'spacing: { defaultSpacingSizes: false, spacingScale: { steps: 3, mediumStep: 1.5, unit: "rem", operator: "*", increment: 1.5 } },');
+    v.write("theme.config.ts", config);
+    v.write("templates/404.tsx", 'import { Group } from "@spacefast/zero-blocks/theme";\nexport default () => (\n  <>\n    <Group style={{ spacing: { padding: { top: "var:preset|spacing|50" } } }}><p>x</p></Group>\n    <Group style={{ spacing: { padding: { top: "var:preset|spacing|70" } } }}><p>x</p></Group>\n  </>\n);\n');
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(where(v.dir, errors(build)), [["unknown_preset", "templates/404.tsx"]]);
+    assert.equal(errors(build)[0]!.loc?.line, 5);
+  }));
+
+test("an attachment MIME template whose subtype carries uppercase or a plus sign is accepted", () =>
+  withVariant(async (v) => {
+    v.write("templates/application-ttaf+xml.tsx", "export default () => <p>x</p>;\n");
+    v.write("templates/application-vnd.ms-excel.sheet.macroEnabled.12.tsx", "export default () => <p>x</p>;\n");
+    const build = await buildTheme(v.dir);
+    assert.deepEqual(errors(build), []);
+    assert.ok(build.files.some((f) => f.path === "templates/application-ttaf+xml.html"));
+  }));
+
+test("a palette slug named like an inherited property is a token of its own, not an Object method", async () => {
+  const { defineTheme } = await import("../../src/theme/define.ts");
+  const theme = defineTheme({ name: "T", slug: "t", settings: { color: { palette: [{ slug: "constructor", name: "C", color: "#000" }, { slug: "__proto__", name: "P", color: "#111" }] } } });
+  assert.equal(theme.tokens.color.constructor, "constructor");
+  assert.equal(Object.getOwnPropertyDescriptor(theme.tokens.color, "__proto__")?.value, "__proto__");
+  assert.equal(Object.hasOwn(theme.tokens.color, "toString"), false);
+});
+
+test("a failed replacement puts the previous theme and zip back", () =>
+  withVariant((v) =>
+    withOutDir(async (out) => {
+      const { chmodSync, mkdirSync, rmSync } = await import("node:fs");
+      const first = await buildTheme(v.dir);
+      await writeTheme(first, { out, zip: true });
+      const before = readFileSync(path.join(out, "fixture-theme", "theme.json"), "utf8");
+      // Put something at the zip path that cannot be moved aside: a directory with no write permission
+      // cannot be renamed into another parent. The theme directory has already been swapped by then.
+      const blocker = path.join(out, "fixture-theme.zip");
+      rmSync(blocker);
+      mkdirSync(path.join(blocker, "occupied"), { recursive: true });
+      chmodSync(blocker, 0o555);
+      v.write("templates/404.tsx", "export default () => <p>changed</p>;\n");
+      try {
+        await assert.rejects(writeTheme(await buildTheme(v.dir), { out, zip: true }));
+        assert.equal(readFileSync(path.join(out, "fixture-theme", "theme.json"), "utf8"), before);
+        assert.equal(existsSync(path.join(out, "fixture-theme", "templates", "404.html")), false);
+        assert.equal(existsSync(path.join(blocker, "occupied")), true);
+        assert.equal(readdirSync(out).filter((n) => n.startsWith(".")).length, 0);
+      } finally {
+        chmodSync(blocker, 0o755);
+      }
+      rmSync(blocker, { recursive: true });
+      await writeTheme(await buildTheme(v.dir), { out, zip: true });
+      assert.equal(existsSync(path.join(out, "fixture-theme", "templates", "404.html")), true);
+    })));

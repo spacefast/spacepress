@@ -16,14 +16,14 @@ the order in which the change lands.
 | Representation | Two final PHP classes, `Zero\JsObject` and `Zero\JsArray`, each a handle around one PHP array (`->p` for properties, `->a` for elements). Compiled code holds and passes handles. Primitives stay PHP scalars. First-class function values are PHP `Closure`s. |
 | Identity | PHP object identity is JS identity. `===` between handles compiles to PHP `===`. The compile-time refusal of `===` on containers goes away. |
 | Key order | Property order is computed by one function, `Js::ownKeys`, at every enumeration: array-index keys ascending, then the rest in insertion order. Objects are only ever built by per-key assignment, never by PHP array spread, `array_merge` or `array_values`, so integer-like keys can't renumber. |
-| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist, so every "missing element" rule in the array methods reduces to `i >= count`. |
-| Evaluation order | Assignments, spreads, destructuring and `concat` snapshot their receiver, keys and old value in temporaries exactly where JS reads them. §4.2 gives the emission for each. |
+| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist; where JS would produce one (a `map` whose callback shrinks the receiver) Zero stores `undefined`, the one documented deviation of the dense subset. |
+| Evaluation order | Assignments, `===`, spreads, destructuring, `concat` and every array helper read their receiver, keys and old value exactly where JS reads them: a temporary or a helper call whose arguments PHP evaluates left to right. §4.2 gives the emission for each. |
 | Boundary | Compiled code lives in "JS land" (handles). `Db`, `Schema`, `Sql`, stores, SCF codecs, Sync and WordPress live in "runtime land" (plain arrays). One file, `runtime/Zero/Seam.php`, owns every conversion in both directions, driven by the schema. `Db` calls it at its public entry points; nothing else converts. A user `json()` column's value is a handle at every layer and every callback receives its own deep copy of it. |
 | Graphs | `structuredClone`, `JSON.stringify`, `String()` and `Seam::toPhp` all walk with an identity map: aliases are preserved by clone, cycles throw `TypeError` from `JSON.stringify` and `Seam`, and `String()` renders a cycle as `""` as JS does. |
-| Compiler analysis | `src/compile/effects.rs` stays for what it does for types (capture detection for fresh loop bindings, numeric and tuple widening, refinement invalidation). Its sharing half (by-reference parameters, capture anchors, `shared_parameter`, `argument_by_ref`, `replaces_argument`) and the four aliasing refusals are deleted. |
+| Compiler analysis | `src/compile/effects.rs` stays for what it does for types (capture detection for fresh loop bindings, numeric and tuple widening, tuple-shape restoration, refinement invalidation). Refinement invalidation becomes alias-aware: it follows the copy edges the analysis already records, and a refinement on a value that has escaped (passed, stored, captured, returned) dies at the next call. The by-reference half (`by_ref`, `shared_parameter`, `argument_by_ref`, `replaces_argument`, capture anchors) and the four aliasing refusals are deleted. |
 | Deleted | `check_aliasing`, `check_identity_eq`, `check_destructured_mutation`, by-ref parameters and `objectBinding`, capture anchors, `Js::write`/`at`/`obj`-marker/`copyObject`/`plain`, `Schema::plainOutsideJson` (moves into `Seam`), the empty-object marker and its 30 `instanceof JsObject` sites, `extract.rs`'s list-shaped-default refusal. |
 | Acceptance | The 65-row sharing corpus (`CORPUS.md` on `archive/s2-ownership-rule`: 58 compile and differ from Node, 3 agree, 4 are refused) plus `tests/differential` run under Node and compiled PHP; results must be identical. |
-| Cost | Measured as a representation microbenchmark (`docs/spikes/js-references-bench.php`): object build 2.8x per literal, member read/write 1.5x, `map`/`filter` 1.1–1.6x, JSON encode 1.04x, JSON decode 1.2–1.5x over today's decode walk, +56 bytes per handle. Pipeline cost (Seam traversals, per-callback cloning) is not measured yet; §6 says what the implementation PR must measure. |
+| Cost | Measured as a representation microbenchmark (`docs/spikes/js-references-bench.php`): object build 2.8x per literal, member read/write 1.5x, a receiver-capturing write 1.0x in statement position and 1.6x inside an expression, `map`/`filter` 1.1–1.6x, JSON encode 1.04x, JSON decode 1.2–1.5x over today's decode walk, +56 bytes per handle. Pipeline cost (Seam traversals, per-callback cloning) is not measured yet; §6 says what the implementation PR must measure. |
 | Rollout | Three PRs: a preparatory `Seam` extraction that changes no representation, one atomic representation switch (runtime, compiler, boundaries, corpus), then deletions. |
 
 ---
@@ -101,9 +101,9 @@ Why not the alternatives:
   arrays as PHP arrays, which is the bug we are fixing. Half the programs in
   the corpus mutate arrays.
 - **`ArrayObject` / `ArrayAccess`.** Member read/write is 1.6x slower than
-  the handle (19.2 versus 12.5 ms per million), and nested writes through
-  `offsetGet` go to a copy on PHP 8.3 unless the inner value is itself an
-  object. The syntax sugar buys nothing the compiler needs.
+  the handle (19.2 versus 12.5 ms per million) because every access is a
+  method call, and it still leaves `[]` versus `{}` ambiguous inside. The
+  syntax sugar buys nothing the compiler needs.
 - **A handle around a PHP array.** One pointer indirection over today's code,
   the array inside keeps PHP's hash ordering and copy-on-write for internal
   helpers, and the two classes make `[]` versus `{}` unambiguous for the
@@ -112,7 +112,13 @@ Why not the alternatives:
 ### 2.2 Identity and equality
 
 A handle is a PHP object; `$a === $b` is identity. Compiled `===`/`!==`
-between two values typed as containers emits PHP `===`. `Js::strictEq` keeps
+between two values typed as containers emits PHP `===` when the right operand
+is pure (a variable, literal or member chain without calls or assignments);
+otherwise `\Zero\Js::strictEq(<a>, <b>)`, because PHP evaluates `$o === f()`
+by calling `f()` first and reading `$o` after, while JS reads the left operand
+first (`let o = {}; const old = o; o === (o = {}, old)` is `true` in Node and
+`false` as a direct PHP `===`; verified). A call's arguments are evaluated
+left to right in PHP, which restores JS order. `Js::strictEq` keeps
 its number handling and falls through to `===` for everything else, which is
 now right for handles too. `includes` uses `sameValueZero` (`NaN` equals
 `NaN`); `indexOf`/`lastIndexOf` use `strictEq` (`[NaN].indexOf(NaN)` is -1),
@@ -189,7 +195,12 @@ Decision: Zero arrays are dense. JS holes are unreachable by construction:
   `delete a[i]`, `a.length = n`, non-numeric index types.
 
 With density, every "missing element" rule in the array methods collapses to
-one test, `$i >= count($a->a)`, which §4.1 uses.
+one test, `$i >= count($a->a)`, which §4.1 uses. One case can still ask for a
+hole: `map` over an array whose callback shrinks it (`[1, 2, 3].map(() => a.pop())`)
+produces holes at the missing indices in JS. Zero's `map` writes `undefined`
+there and keeps `length`, so `JSON.stringify` and indexed reads agree with JS
+and only `forEach`/`Object.keys` over the result differ (they visit the
+`undefined`). This is the one documented deviation of the dense subset.
 
 ### 2.5 Prototype-less plain objects, functions
 
@@ -201,13 +212,17 @@ accepted difference: no program in the corpus or the examples touches a
 prototype member, and `Object.hasOwn` is the supported spelling.
 
 Decision: a named function used as a value (`list.forEach(bump)`,
-`const f = helper`) compiles to a first-class callable,
-`\ZeroApp\bump(...)`, so every function value is a PHP `Closure`. Today it is
-the string `'\ZeroApp\bump'`, which `typeof` reports as `"string"` and
-`JSON.stringify` encodes as a string. With one representation, `typeOf`
-(`"function"`), `jsonStringify` (dropped from objects, `null` in arrays),
-`str` (`function () { [native code] }`) and `clone` (`DataCloneError`) all
-recognize functions.
+`const f = helper`) compiles to a memoized closure,
+`\ZeroApp\__fn_bump()`, a generated helper holding
+`static $f; return $f ??= \ZeroApp\bump(...);`, so every function value is a
+PHP `Closure` and every read of the same function yields the same `Closure`
+(`bump === bump` and `[bump].includes(bump)` are true; a bare `bump(...)` on
+each read would allocate a new closure each time and make them false). Today
+the value is the string `'\ZeroApp\bump'`, which `typeof` reports as
+`"string"` and `JSON.stringify` encodes as a string. With one representation,
+`typeOf` (`"function"`), `jsonStringify` (dropped from objects, `null` in
+arrays), `str` (`function () { [native code] }`) and `clone`
+(`DataCloneError`) all recognize functions.
 
 `typeof` returns `"object"` for both handles. `Js::truthy` is true for every
 handle, including empty ones. `Js::str` gives `[object Object]` for a
@@ -277,12 +292,25 @@ final class Seam
     /** Query options and filters: the operator grammar is unwrapped, json() operands stay handles. */
     public static function query(string $collection, mixed $opts): array;
     public static function filter(string $collection, mixed $where): array;
-    /** Callback contexts. */
+    /** Callback contexts: one graph per invocation; `data` by $dataShape, `user` by the fixed user shape. */
     public static function ctx(array $ctx, ?array $dataShape = null): JsObject;
+    /** A default/onUpdate `fn` result, by its column. */
+    public static function generated(array $col, mixed $v): mixed;
+    /** Sync request envelopes and batch items, by collection. */
+    public static function sync(string $collection, mixed $in): array;
     /** Outgoing to a foreign JSON encoder (WordPress, Action Scheduler): handles → stdClass / list. */
     public static function toWire(mixed $v): mixed;
 }
 ```
+
+Shapes are schema data the runtime already has: a collection's `columns`, an
+action's or job's `input`, a global's `fields`, a relation's target
+collection, a field list for a `group`/`blocks` item, the fixed user shape
+`{ id, name, role }`, the sync envelope, and a short list of system columns
+(`sizes`, `focal`, `translations`). Every `Seam` method takes one explicitly;
+callers that today pass a bare `$data` (`Access::evaluate`,
+`FieldAccess::allows`, `Schema::checkRules`) gain a shape parameter, threaded
+from the collection or enclosing field list they already know.
 
 Three rules apply to every row of the table:
 
@@ -303,7 +331,13 @@ Three rules apply to every row of the table:
    fresh handles on each call, and a `json()` value inside them is
    `Js::clone`d, so a hook, rule or validator can't change what the pipeline
    validated or stored by mutating a shared leaf. The exception is a
-   `before*` hook's `data`/`patch`, which is read back on purpose.
+   `before*` hook's `data`/`patch`, which is read back on purpose. Within one
+   invocation, arguments that are one object in JS are one handle in PHP:
+   `.validate(value, ctx)` receives `value` as the very handle at
+   `ctx.data[field]`; a `before*` hook's `data` and `ctx.data` are the same
+   handle; `previous` and `ctx` are built from the same `rowToJs` call where
+   they overlap. Each callback builds its graph once and takes every argument
+   from it.
 
 | Crossing | Direction | Owner, and what happens |
 |---|---|---|
@@ -312,20 +346,20 @@ Three rules apply to every row of the table:
 | Compiled `db.*` calls | JS → runtime → JS | The compiler emits `\Zero\Seam::findMany(...)` and friends: thin static facades that call `Db` and convert the result with `rowToJs($collection, $row, $with)` (relations recursively, media rows as objects) or `toJs($value, $globalFields)`. `insert`/`update` with `returning` convert the returned row the same way. |
 | Stored `json()` text → row value | storage → runtime | `Schema::decode` for `'json'` calls `Js::decodeJson` and returns a handle. This is the one runtime-land value that is a handle, by rule, for **user** `json()` columns. The runtime treats it as opaque: `Sql` filters call `Js::jsonStringify($arg)`, `Scf::scfValue` calls `Js::jsonStringify`, `Response` encodes it. |
 | System JSON structures: media `sizes`/`focal`, locale `translations` | storage ↔ runtime ↔ JS | These are `'json'`-typed but the runtime indexes into them. `SqliteMedia` and `Locale\{Module,Read}` call `Seam::toPhp` right after decode where they read them and build plain arrays where they write them (`Locale\Read` replaces `translations` with a plain array today; that array is a runtime value). When a media row or a localized row reaches compiled code, `rowToJs` boxes `sizes`, `focal` and `translations` as objects by a system-column shape list in `Seam`. `WpMedia` keeps `json_decode(..., true)` for its own meta. |
-| `json()` column defaults | compile time → runtime | `schema_php::generator` emits `'json' => <text>` for **every** default of a `json()`-typed column or subfield (today only when the literal contains `{}`), and `Schema::generate` decodes it to a handle. `group`/`repeater`/`blocks` defaults stay PHP arrays (`'value' => […]`). `extract.rs`'s refusal of list-shaped object defaults (`has_list_shaped_object`) is deleted: its premise was the array representation. |
+| Column defaults and `onUpdate` | compile time → runtime | `schema_php::generator` emits `'json' => <text>` for every literal default of a container-typed column (`json`, `group`, `repeater`, `blocks`, and any subfield tree containing a `json()` leaf), not only when the literal contains `{}`. `Schema::generate($spec, $col)` takes the full column spec, decodes the text to handles and converts with `Seam::toPhp($v, $col)`, which leaves `json()` leaves as handles and makes structured parts arrays, so a `{}` or `{"1":1}` nested in a `group` default survives. A `fn` default's return value goes through `Seam::generated($col, $r)` at the same place. Every `default`/`onUpdate` caller passes the column. `extract.rs`'s refusal of list-shaped object defaults (`has_list_shaped_object`) is deleted: its premise was the array representation. |
 | SCF / postmeta codecs | runtime ↔ storage | `Scf::scfValue` and `Scf::fromScf` convert runtime arrays to SCF's shapes for `group`/`repeater`/`blocks`/`mediaList`; those stay arrays. The `'json'` field type calls `Js::jsonStringify(handle)` and `Js::decodeJson(text)`, unchanged. `WpPostStore`/`WpUserStore` `select`/`mediaList` lists stay `json_decode(..., true)`: runtime arrays. No handle ever reaches `update_post_meta`, `wp_insert_post`, `get_field` or any other WordPress function; `Seam::toWire` sits in front of the two places that hand a Zero value to a foreign encoder (Abilities, below). |
-| Hook `ctx`, `data`/`row`/`previous`; access rule `ctx`; `.validate(value, ctx)`; default `fn` | runtime → JS → runtime | `Db::hook`, the `before*` branches of `Db::create`/`update`, `Access::allows`, `Schema::checkRules` and `Schema::defaultValue` build their arguments with `Seam::rowToJs` and `Seam::ctx($ctx, $dataShape)` right before calling the `\ZeroApp\…` function. `ctx.user` is the fixed `{ id, name, role }` shape; `ctx.data` is shaped by the caller (action input spec, the collection's columns for a write, the enclosing field list for a subfield validator) and is built once per callback invocation, so every field validator of one write sees one `data` handle. Absent keys stay absent. `beforeCreate(data)`/`beforeUpdate(patch, existing)` are documented as "mutate `data` or return a replacement"; today only the return works because PHP passed a copy. With a handle both work: `Db` takes the returned handle if there is one, otherwise the `data` handle it passed, through `Seam::rowToPhp`. `after*` hooks, rules and validators get fresh graphs (rule 3), so their mutations are discarded, `json()` leaves included. An access rule's `true/false/filter` goes through `Seam::filter`; a validator's `true/string/null` and a default's value are scalars or `Seam::toPhp($v, $column)`. |
+| Hook `ctx`, `data`/`row`/`previous`; access rule `ctx`; `.validate(value, ctx)`; default `fn` | runtime → JS → runtime | `Db::hook`, the `before*` branches of `Db::create`/`update`, `Access::allows`, `Schema::checkRules` and `Schema::generate` build their arguments with `Seam::rowToJs` and `Seam::ctx($ctx, $dataShape)` right before calling the `\ZeroApp\…` function; `Access::evaluate(rule, viewer, op, data, dataShape)` and `FieldAccess::allows` gain the shape parameter and pass the collection's columns or the enclosing field list. `ctx.user` is the fixed `{ id, name, role }` shape; `ctx.data` is shaped by the caller (action input spec, the collection's columns for a write, the enclosing field list for a subfield validator) and is built once per callback invocation, so every field validator of one write sees one `data` handle. Absent keys stay absent. `beforeCreate(data)`/`beforeUpdate(patch, existing)` are documented as "mutate `data` or return a replacement"; today only the return works because PHP passed a copy. With a handle both work: `Db` takes the returned handle if there is one, otherwise the `data` handle it passed, through `Seam::rowToPhp`. `after*` hooks, rules and validators get fresh graphs (rule 3), so their mutations are discarded, `json()` leaves included. An access rule's `true/false/filter` goes through `Seam::filter`; a validator's `true/string/null` and a default's value are scalars or `Seam::toPhp($v, $column)`. |
 | Action handler `(input, ctx)` and its return | runtime → JS → wire | `App::action` validates the body (`Schema::validateInput`, which normalizes and applies defaults in runtime land) and passes `Seam::toJs($normalized, $inputSpec)` and `Seam::ctx`. The return value is a handle graph; `Response::json` calls `Js::jsonStringify`, which encodes handles directly. No conversion back. |
 | REST responses, generated TS client | runtime → wire | `Js::jsonStringify` is the only encoder for `{data}` bodies on both targets (standalone `Response`, `Wp\Rest`). Plain arrays still encode as today (list → `[]`, assoc → `{}`, empty → `[]`); handles encode by class. The wire format and the generated client are unchanged, with one fix: a `json()` value of `{}` round-trips as `{}` in every path, and a numeric-string-keyed object stays an object. |
 | `JSON.stringify` / `JSON.parse` in compiled code | JS ↔ text | `Js::jsonStringify(handle)` walks `ownKeys` for objects, `->a` for arrays, with the cycle check of §2.7. `Js::jsonParse` → `Js::decodeJson` → handles, with `jsNumbers` applied as today. `decodeJson` builds handles directly from `json_decode(..., false)`'s `stdClass`/arrays (the `"\0"` key workaround stays, since `json_decode` still goes through `stdClass`). Runtime callers that want arrays (`Jobs\Module`, `Scf::json` for non-json fields, `Sync\Wire`, `Abilities\Register`) call `Seam::toPhp(Js::decodeJson(...), $shape)`. |
 | Job enqueue | JS → runtime → text, and back | `jobs.x.enqueue(input, opts)` compiles to `\Zero\Seam::enqueue($name, $input, $opts)`: `opts` → `toPhp`, `input` → `Schema::validateInput` (normalized, defaults applied, `json()` fields handles) → `Js::jsonStringify`; the `{ id }` result comes back as a `JsObject`. `Jobs::enqueue` itself keeps its runtime-array contract for runtime callers (webhooks, sync). |
 | Job run | text → runtime → JS | `Jobs\Runner` decodes with `Js::decodeJson`, re-validates with `Schema::validateInput` (runtime arrays, `json()` handles), then: a **native** handler (`Webhooks`, any PHP callable in the spec) gets the normalized runtime array and `$ctx` array, as today; a **compiled** handler gets `Seam::toJs($normalized, $jobInputSpec)` and `Seam::ctx`. Action Scheduler only ever carries `['id' => $id]`; the payload lives in Zero's table. |
-| `once()` / `Idempotency-Key` receipts | JS → bytes → JS | `Receipts` stores `serialize($result)` and replays with `unserialize`. `allowed_classes` becomes `[stdClass::class, JsObject::class, JsArray::class, RegExp::class]`: `stdClass` stays because runtime producers (media `sizes`, `jobs_test`'s fixture) still put it in results. Decision: a replayed `once` result is a **snapshot**, structurally equal to the first result and not identical to it; `tests/differential/zero-shim.mjs` returns `structuredClone(result)` on replay so Node and PHP agree. |
+| `once()` / `Idempotency-Key` receipts | JS → bytes → JS | `Receipts` stores `serialize($result)` and replays with `unserialize`. `allowed_classes` becomes `[stdClass::class, JsObject::class, JsArray::class, RegExp::class]`: `stdClass` stays because runtime producers (media `sizes`, `jobs_test`'s fixture) still put it in results. Decision: a replayed `once` result is a **snapshot** taken when the result is stored (PHP `serialize` does this; the shim stores `structuredClone(result)`), structurally equal to the first result and not identical to it; the first call returns the original in both. The shim returns `structuredClone(stored)` on each replay so a later mutation of a replayed value can't leak into the next replay. |
 | Captured module-level data | compile time → JS | The compiler walks the evaluator's `Value` graph (`Rc<RefCell<…>>` containers, so identity is available) and emits one memoized static per distinct container into a per-module `__captured_N()` helper: `const p = { n: 0 }; const pairs = [p, p]` compiles to one `JsObject` referenced twice, and two roots that share a descendant share it in PHP. `to_json` is no longer on this path; `validate_captured_data` already refuses cycles. Lifetime: the PHP process, which is one HTTP request on the web and the worker's life under `zero jobs work`, the same shape as a Node process that serves many requests. `config-api.md` says so. |
 | `schema.php` | compile time → runtime | Unchanged apart from the defaults row above: plain arrays via `php_json`. It is runtime-land data. |
-| Abilities / MCP, in | wire → runtime | `Register::rawInput` decodes the POST body with `Js::decodeJson` and converts with `Seam::toPhp($body, $op['input'])`, shape-aware, so nested `json()` values keep `{}` versus `[]`. `Invoke::object` loses its marker check. |
+| Abilities / MCP, in | wire → runtime | Each operation descriptor carries a `shape` next to its JSON Schema `input`: the action's or job's Zero input spec, or the collection's columns for record operations. `Register::rawInput` decodes the POST body with `Js::decodeJson`, takes the `input` key out of the run envelope, and converts it with `Seam::toPhp($input, $op['shape'])`, so nested `json()` values keep `{}` versus `[]`. `Invoke::object` loses its marker check. |
 | Abilities / MCP, out | runtime → wire | `Invoke::call` returns `App::invoke`'s data straight to WordPress's JSON encoder, bypassing `Response`. It now returns `Seam::toWire($data)`: `JsObject` → `stdClass`, `JsArray` → list, recursively, so core's `wp_json_encode` writes `{}` for an empty object. A WP test covers an ability returning a row with an empty `json()` value and a numeric-keyed one. |
-| Sync, in | wire → runtime | `Sync\Routes` decodes envelopes and batch items with `Js::decodeJson`; each record's `fields` goes through `Seam::toPhp($fields, $columns)`, replacing the marker check in `Sync\Wire`. |
+| Sync, in | wire → runtime | `Sync\Routes::input` becomes `Seam::sync($collection, Js::decodeJson($body))`: the envelope (`records`, `uid`, `base`, `fields`, `translations`, cursor fields) is converted to arrays by a fixed envelope shape, each record's `fields` by the collection's columns (so `json()` values stay handles for the pipeline), each batch item the same way. Every array consumer in `Routes`, `Wire` and `Apply` keeps receiving arrays; the marker checks in `Sync\Wire` go. |
 | Sync, out | runtime → wire | `Wire::encode` keeps `json()` column values (handles) inside records and digests them with `Canon::digest`. `Canon::json` gains the two handle branches: `JsObject` → object with keys sorted (its existing canonical rule) over `->p`, `JsArray` → list over `->a`. `Canon` is runtime-land code reading the one handle type the runtime holds, like `Sql`. |
 
 What this removes: `Js::plain`, `Schema::plainOutsideJson` (moves into
@@ -349,16 +383,17 @@ dates, regexp, logging).
 | `str`, `truthy`, `typeOf`, `toNumber`, `strictEq`, `sameValueZero` | array branches | `instanceof` branches per §2.5; `str` with cycle guard |
 | `split(string, …)` | `array` | `JsArray` |
 | `strMatch(string, RegExp)` | `?array` | `?JsArray` (groups as elements, `index`/`input`/`groups` keys on `->p`-less array are not supported; today's shape is kept as elements only) |
-| `find`, `findLast` | `(array, callable)` | `(JsArray, callable)` |
+| `find`, `findLast` | `(array, callable)` | `(JsArray, callable)`; each returns the element it read before calling the predicate, never a re-read |
 | `findIndex`, `findLastIndex`, `some`, `every`, `includes`, `indexOf`, `lastIndexOf`, `join` | `array` first | `JsArray` first |
-| `filter`, `map`, `flatMap`, `flat`, `arrSlice`, `sorted`, `range` | `array → array` | `JsArray → JsArray` |
+| `filter`, `map`, `flat`, `arrSlice`, `sorted`, `range` | `array → array` | `JsArray → JsArray` |
+| `flatMap` | `flat(map(...))` | one loop that flattens each callback result into the output before the next callback runs (a later callback may mutate an array an earlier one returned) |
 | `splice(&array, …)`, `reverse(&array)`, `sort(&array, ?cmp)`, `fill(&array, …)` | by-reference PHP array | `(JsArray, …)`: the handle is the reference; `splice` returns a `JsArray` |
 | `reduce(array, callable, ...$init)` | | `(JsArray, callable, ...$init)` |
 | `arrAt(array, i)` | | `(JsArray, int\|float)` |
 | `keys`, `values`, `entries` | `array\|JsObject → array` | `JsObject → JsArray`; `entries` boxes each pair as a `JsArray` |
 | `fromEntries(iterable)` | | `(JsArray)` of `JsArray` pairs |
 | `omit(array\|JsObject, array)` | | `(JsObject, list<string>) → JsObject` |
-| `hasOwn(array\|JsObject, string)` | | `(JsObject\|JsArray, mixed $k)`: arrays answer by `Js::index` |
+| `hasOwn(array\|JsObject, string)` | | `(JsObject\|JsArray, mixed $k)`: `$k` → `Js::key`; on an array `"length"` is true, a canonical index string is `< count`, anything else false |
 | `jsonStringify(mixed, …)` | | encodes handles by class, plain arrays as today (runtime callers), cycle → `TypeError` |
 | `decodeJson(string)`, `jsonParse(string)` | arrays + marker | handles |
 | `sameJson(a, b)` | arrays + marker | structural over handles and arrays: same class, same `ownKeys`/length, recursive |
@@ -377,10 +412,17 @@ dates, regexp, logging).
 **Iteration rule for callbacks.** Every array method that takes a callback
 follows ECMA-262: `len = count($a->a)` is read once; for `i` in `0..len`, if
 `i >= count($a->a)` the element is missing and the method applies its
-missing-element rule (`map` writes nothing at that index and the result is
-compacted, which is what the dense rule means; `filter`/`forEach`/`some`/
-`every`/`reduce`/`find*` skip it; `find`/`findIndex`/`findLast*` visit it as
-`undefined`); otherwise the callback gets `($a->a[$i], $i, $a)` read live.
+missing-element rule (`map` writes `undefined` at that index and keeps
+`length`, §2.4; `filter`/`forEach`/`some`/`every`/`reduce`/`flatMap`/
+`findIndex`/`findLastIndex` skip it; `find`/`findLast` visit it as
+`undefined`); otherwise the callback gets the element read live. Each helper
+keeps the element it read in a local and collects or returns that local,
+never re-reading `->a` after the callback. Callback shapes are the JS ones
+and the compiler types them so: `(value, index, array)` for `map`, `filter`,
+`forEach`, `some`, `every`, `find*`, `flatMap`; `(acc, value, index, array)`
+for `reduce`; `(value, index)` for `Array.from`'s mapper; `(a, b)` for
+`sort`'s comparator. `effects.rs`'s callback edges gain the `array`
+parameter as a copy of the receiver.
 Pushes inside the callback are not visited (they are past `len`); writes to
 not-yet-visited indices are seen. `Array.from(arr, f)` and `for…of` use the
 iterator protocol instead: they continue while `i < count($a->a)` live, so
@@ -410,24 +452,28 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
   `length` → `count($a->a)`. Array and tuple index reads → `\Zero\Js::get($a, $i)`;
   a literal in-range tuple index may stay `$t->a[0]`.
 - **Member write.** `Js::write($root, [$k1, $k2], $v)` → the receiver and
-  key are captured before the right-hand side runs, because JS evaluates the
+  key are read before the right-hand side runs, because JS evaluates the
   reference first and the value second and a right-hand side can replace the
   receiver (`o.child.x = rhs()` where `rhs` reassigns `o.child` writes the
-  *old* child in JS; verified against Node):
-  - `o.k = v` → `[R = <o>, R->p['k'] = <v>][1]` when `<o>` is not a plain
-    variable; `$o->p['k'] = <v>` when it is (a variable can't be replaced
-    by evaluating `<v>` except by assignment to that variable, which is a
-    compile error on a `const` and a different object on a `let`; in both
-    cases JS also writes to the object the variable held before).
-  - `o[k] = v` → `[R = <o>, K = \Zero\Js::key(<k>), R->p[K] = <v>][2]`.
-  - `o.k += v` and `o.k ??= v` capture `R`, `K` and the old value
-    `O = R->p[K] ?? null` before `<v>`, then write `R->p[K] = Js::add(O, <v>)`
-    or `(O !== null ? O : R->p[K] = <v>)`. JS reads the old value before
+  *old* child in JS; verified against Node). The receiver is exempt from
+  capture only when it is a `const` local or a parameter the function never
+  reassigns; a `let` can be reassigned by the right-hand side, so it is
+  captured like any expression.
+  - Statement position (most writes): `R = <o>; K = \Zero\Js::key(<k>); R->p[K] = <v>;`
+    as separate statements, with `R`/`K` elided for an exempt receiver and a
+    literal key. Measured at parity with a direct write (§6).
+  - Expression position: `\Zero\Js::set(<o>, \Zero\Js::key(<k>), <v>)`, a
+    helper whose arguments PHP evaluates left to right and which returns the
+    value. The `[R = …, write][1]` array form was measured at 2.3x and is
+    not used.
+  - `o.k += v` and `o.k ??= v`: `R`, `K` and the old value `O = R->p[K] ?? null`
+    are read before `<v>`, then `R->p[K] = Js::add(O, <v>)` or
+    `(O !== null ? O : R->p[K] = <v>)`. JS reads the old value before
     evaluating the right-hand side for compound assignment, and logical
-    assignment short-circuits on it.
-  - `a[i] = v` → `[R = <a>, K = <i>, \Zero\Js::setAt(R, K, <v>)][2]`.
-  - A literal key and a variable receiver need no temporaries, which is most
-    writes in practice; the existing `pre.is_empty()` fast path stays.
+    assignment short-circuits on it. In expression position these become
+    `Js::setOp`/`Js::setNullish(<o>, <k>, fn() => <v>)`.
+  - `a[i] = v` → `\Zero\Js::setAt(<a>, <i>, <v>)` in both positions (a
+    helper already).
 - **Destructuring.** The source is **always** captured in a temporary before
   any binding or default runs: `const { a = reset(), b } = src` reads `b`
   from the original object even if `reset()` reassigns `src`. Today the
@@ -477,12 +523,24 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
 - **`JSON.parse` / `JSON.stringify`, `typeof`, truthiness, templates.** Same
   emission; the helpers changed.
 - **`effects.rs`.** Stays. It owns captured-binding detection (fresh loop
-  bindings), numeric and tuple widening of parameters (`parameter_type`),
-  loop view types (`read_view_type`) and refinement invalidation on writes
-  (`invalidate`, `write_type`, `changes_refinement`). Deleted from it:
+  bindings), numeric and tuple widening of parameters (`parameter_type`,
+  including the `incoming_writes` tuple-shape restoration that
+  `tests/compiler.rs` pins), loop view types (`read_view_type`) and
+  refinement invalidation on writes (`invalidate`, `write_type`,
+  `changes_refinement`). Invalidation becomes **alias-aware**: the analysis
+  already records copy edges (assignment, destructuring, argument passing,
+  store into a container, return, capture); it now unions bindings connected
+  by copy edges into alias classes, a member write through any member of a
+  class invalidates the refinements of every member on that path, and a
+  refinement on a binding whose class has escaped the function (passed to a
+  call, stored into a container that escapes, captured by a closure, returned)
+  is dropped at the next call expression. Without this,
+  `const alias = o; if (typeof o.x === "number") { alias.x = "hi"; return o.x + 1; }`
+  would keep the numeric refinement on `o.x` and emit numeric addition where
+  Node gives `"hi1"`. The rule is conservative on purpose: a refinement
+  survives only on an object nothing else can reach. Deleted from the module:
   `by_ref`, `shared`, `shared_parameter`, `argument_by_ref`,
-  `replaces_argument`, `reference_arguments`, and the `incoming_writes`
-  restore path that existed only to type by-reference parameters. Deleted
+  `replaces_argument`, `reference_arguments`. Deleted
   from `compile.rs`: `check_aliasing`, `check_identity_eq`,
   `check_destructured_mutation`, `writes_into_object`, `object_binding`,
   `capture_anchor`, the by-ref plumbing in `closure_body`/`declare_parameter`/
@@ -555,7 +613,7 @@ WordPress request. Compare ratios, not absolutes.
 |---|---|---|---|---|---|
 | Build 100k rows `{ id, name, tags: [3], meta: { a, b } }` (3 containers per row) | 13.2 ms | 37.4 ms (constructor) / 56.0 ms (`Js::obj` variadic) | 18.8 ms | 33.3 ms | 2.8x / 4.2x |
 | 1M member read + write `o.x = o.y + i` | 8.3 ms | 12.5 ms | 6.9 ms | 19.2 ms | 1.5x |
-| 1M nested write `o.meta.a = i`, direct / with receiver temporary | 10.5 ms | 14.6 ms / 13.7 ms | | | 1.4x / 1.3x |
+| 1M nested write `o.meta.a = i`, direct / receiver captured as a statement / `Js::set` helper in expression position / `[R = …, write][1]` array form | 10.5 ms | 14.2 ms / 13.7 ms / 23.2 ms / 31.7 ms | | | 1.4x / 1.3x / 2.2x / 3.0x |
 | `map` then `filter` over 100k ints, live-length loop | 4.0 ms | 6.3 ms | | | 1.6x |
 | `map` 100k rows → `name` | 6.0 ms | 6.9 ms | | | 1.1x |
 | JSON encode 100k rows, runtime-style encoder | 86.9 ms | 90.4 ms | | | 1.04x |
@@ -579,8 +637,12 @@ Reading the numbers:
 - `Js::obj` (variadic literal) is 1.5x slower than the plain constructor, so
   the compiler uses the constructor whenever a literal has only static keys
   and no spread, which is nearly every literal.
-- The receiver temporary for member writes (§4.2) costs nothing measurable
-  (13.7 versus 14.6 ms; the temporary lets PHP skip a second hash lookup).
+- Capturing the receiver of a member write (§4.2) costs nothing in statement
+  position (13.7 versus 14.2 ms direct). In expression position the `Js::set`
+  helper is 1.6x a direct write and the array form 2.2x, which is why the
+  design emits statements where it can and the helper otherwise. Computed
+  keys and compound writes were not measured separately; they add one
+  `Js::key` call and one read.
 - Decode was already a PHP walk (`fromJson`), so the handle version is 1.2x
   to 1.5x of today, not the 2.3x an earlier draft claimed against raw
   `json_decode(…, true)`.
@@ -625,8 +687,14 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    side (`o.child.x = rhs()`), spread snapshot (`{ ...a, y: changeA() }`),
    destructuring default reassigning the source, `concat` with an argument
    that mutates the receiver, compound assignment whose right-hand side
-   changes the old value, `for…of` with a push in the body, `map` with a push
-   and with a write to a later index in the callback.
+   changes the old value, `o === f()` where `f` reassigns `o`, a `let`
+   receiver reassigned by the right-hand side, `flatMap` whose later callback
+   mutates an earlier result, `findLast` whose predicate overwrites the
+   element, `for…of` with a push in the body, `map` with a push, with a write
+   to a later index, and with a `pop` in the callback (the documented
+   `undefined`-for-hole deviation), `bump === bump` and
+   `[bump].includes(bump)` for a named function, and the alias-refinement
+   program from §4.2.
 4. **Key-order case** (§2.3): literal, spread, `reduce`, `fromEntries`,
    `JSON.parse`, through `Object.keys` and `JSON.stringify`.
 5. **Dense-array cases**: `a[a.length] = v` appends; `a[a.length + 1] = v`
@@ -698,11 +766,13 @@ Three PRs, in order, each green on every suite in `LANE-BRIEF.md`.
    or `decodeJson` breaks every program compiled by the old compiler, and
    a compiler that emits `->p` needs the runtime to return handles. It is one
    large PR by necessity; review it by section of this document.
-3. **Deletions.** `Js::plain`, `fromJson`'s marker branch, the dual-shape
-   acceptance that PR 2 left in `Seam::toPhp` for runtime callers that still
-   pass arrays if any remain, dead tests for the old error messages, and the
-   `"\0"` restore path in `decodeJson` only if the handle decoder stops going
-   through `stdClass` (it doesn't in this design, so that stays).
+3. **Deletions.** `Js::plain`, `fromJson`'s marker branch, the marker class's
+   `ArrayAccess` shims, dead tests for the old error messages. `Seam::toPhp`
+   and `Db`'s entry points keep accepting plain arrays permanently: REST,
+   CLI, EditorSave, Sync and compiled query/filter construction pass arrays by
+   design, so array acceptance at the runtime boundary is not a compatibility
+   path. The `"\0"` restore path in `decodeJson` stays because `json_decode`
+   still goes through `stdClass`.
 
 ---
 

@@ -8,12 +8,12 @@ namespace ZeroApp;
 
 function posts__access__read(\Zero\JsObject $ctx)
 {
-    return (\Zero\Js::truthy((($__t1 = $ctx->p['user']) !== null) ? (!(\Zero\Js::strictEq($ctx->p['user']->p['role'], 'subscriber'))) : $__t1)) ? true : ['status' => 'published'];
+    return (\Zero\Js::truthy((($__t1 = \Zero\Js::prop($ctx, 'user')) !== null) ? (!(\Zero\Js::strictEq(\Zero\Js::prop(\Zero\Js::prop($ctx, 'user'), 'role'), 'subscriber'))) : $__t1)) ? true : ['status' => 'published'];
 }
 
 function posts__access__update(\Zero\JsObject $ctx)
 {
-    return ((\Zero\Js::strictEq(($ctx->p['user']->p['role'] ?? null), 'admin')) || (\Zero\Js::strictEq(($ctx->p['user']->p['role'] ?? null), 'editor'))) ? true : ['author' => ['userId' => ($ctx->p['user']->p['id'] ?? null) ?? (-1)]];
+    return ((\Zero\Js::strictEq((($__t1 = \Zero\Js::prop($ctx, 'user')) === null ? null : \Zero\Js::prop($__t1, 'role')), 'admin')) || (\Zero\Js::strictEq((($__t2 = \Zero\Js::prop($ctx, 'user')) === null ? null : \Zero\Js::prop($__t2, 'role')), 'editor'))) ? true : ['author' => ['userId' => (($__t3 = \Zero\Js::prop($ctx, 'user')) === null ? null : \Zero\Js::prop($__t3, 'id')) ?? (-1)]];
 }
 
 function comments__validate__body(string $v)
@@ -23,25 +23,25 @@ function comments__validate__body(string $v)
 
 function comments__access__read(\Zero\JsObject $ctx)
 {
-    return ($ctx->p['user'] !== null) ? true : ['approved' => true];
+    return (\Zero\Js::prop($ctx, 'user') !== null) ? true : ['approved' => true];
 }
 
 function posts__beforeCreate(\Zero\JsObject $data, \Zero\JsObject $ctx)
 {
-    if (\Zero\Js::truthy(($__t1 = ($data->p['authorId'] ?? null) === null) ? $ctx->p['user'] : $__t1)) {
-        $author = \Zero\Seam::findFirst('authors', ['where' => ['userId' => $ctx->p['user']->p['id']]]);
+    if (\Zero\Js::truthy(($__t1 = \Zero\Js::prop($data, 'authorId') === null) ? \Zero\Js::prop($ctx, 'user') : $__t1)) {
+        $author = \Zero\Seam::findFirst('authors', ['where' => ['userId' => \Zero\Js::prop(\Zero\Js::prop($ctx, 'user'), 'id')]]);
         if ($author !== null) {
             $__t2 = $data;
             $__t3 = 'authorId';
-            ($__t2->p[$__t3] = $author->p['id']);
+            \Zero\Js::set($__t2, $__t3, \Zero\Js::prop($author, 'id'));
         }
     }
 }
 
 function comments__afterCreate(\Zero\JsObject $row, \Zero\JsObject $ctx)
 {
-    if (\Zero\Js::truthy((($__t1 = $ctx->p['user']) !== null) ? (!(\Zero\Js::strictEq($ctx->p['user']->p['role'], 'subscriber'))) : $__t1)) {
-        \Zero\Seam::update('comments', (new \Zero\JsObject(['approved' => true])), ['id' => $row->p['id']]);
+    if (\Zero\Js::truthy((($__t1 = \Zero\Js::prop($ctx, 'user')) !== null) ? (!(\Zero\Js::strictEq(\Zero\Js::prop(\Zero\Js::prop($ctx, 'user'), 'role'), 'subscriber'))) : $__t1)) {
+        \Zero\Seam::update('comments', (new \Zero\JsObject(['approved' => true])), ['id' => \Zero\Js::prop($row, 'id')]);
     }
 }
 
@@ -51,7 +51,9 @@ function action__approveComment(\Zero\JsObject $__arg0)
     $id = $__t1->p['id'];
     $__t2 = \Zero\Seam::update('comments', (new \Zero\JsObject(['approved' => true])), ['id' => $id], true);
     $__t3 = $__t2;
-    $row = \Zero\Js::get($__t3, 0);
+    $__t4 = false;
+    $__t4 = $__t4 || 0 >= count($__t3->a);
+    $row = ($__t4 ? null : \Zero\Js::get($__t3, 0));
     if (!($row !== null)) {
         throw new \Zero\HttpError((int) 404, 'not_found', 'No comment ' . \Zero\Js::numStr($id));
     }
@@ -63,4 +65,3 @@ function action__publishedCount()
     $rows = \Zero\Seam::findMany('posts', ['where' => ['status' => 'published'], 'columns' => ['id' => true]]);
     return (new \Zero\JsObject(['count' => count(($rows)->a)]));
 }
-

@@ -339,10 +339,13 @@ function successfulControls(html: string): [string, string][] {
  * Load a profile screen and submit it as the browser does: every control as rendered, with `set`
  * replacing (or adding) the named controls and `drop` removing them (a repeater row deleted).
  */
-async function saveProfile(cookie: string, screen: string, set: Record<string, string> = {}, drop: (name: string) => boolean = () => false) {
-  const page = await fetch(`${site}/wp-admin/${screen}`, { headers: { cookie }, redirect: "manual" });
-  const html = await page.text();
-  assert.equal(page.status, 200, `${screen} didn't render: ${page.status} ${page.headers.get("location") ?? ""}`);
+async function saveProfile(cookie: string, screen: string, set: Record<string, string> = {}, drop: (name: string) => boolean = () => false, renderedHtml?: string) {
+  let html = renderedHtml;
+  if (html === undefined) {
+    const page = await fetch(`${site}/wp-admin/${screen}`, { headers: { cookie }, redirect: "manual" });
+    assert.equal(page.status, 200, `${screen} didn't render: ${page.status} ${page.headers.get("location") ?? ""}`);
+    html = await page.text();
+  }
   const controls = successfulControls(html).filter(([name]) => !(name in set) && !drop(name));
   // Each set control goes where the browser would put it: right after the controls of the field it
   // belongs to (SCF's empty placeholder for a list comes first, its rows after it, so PHP keeps the rows).
@@ -374,8 +377,9 @@ async function saveProfile(cookie: string, screen: string, set: Record<string, s
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body),
   });
-  const text = res.status === 302 ? "" : (await res.text()).replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  return { status: res.status, html, text };
+  const responseHtml = res.status === 302 ? html : await res.text();
+  const text = res.status === 302 ? "" : responseHtml.replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  return { status: res.status, html: responseHtml, text };
 }
 
 /** `acf[...]` control name: field names are prefixed with the member field key; row ids and SCF's own keys aren't. */
@@ -425,25 +429,28 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     assert.equal(saved.status, 302, saved.text.slice(0, 400));
     const row = memberRow(hu.id);
     assert.deepEqual([row.address, row.links, row.sections], [
-      { city: "Oslo", verified: false, optional: null, district: null },
+      { city: "Oslo", verified: false, optional: true, district: null },
       [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail" }],
       [{ layout: "bio", body: "Hello" }],
     ]);
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
     assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
-      { city: "Oslo", verified: false, optional: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
+      { city: "Oslo", verified: false, optional: true, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");
     assert.match(again.html, /value="2026-07-01 14:30:00"/);
     assert.equal(again.status, 302, again.text.slice(0, 400));
     assert.deepEqual(memberRow(hu.id).links, row.links);
+    const changedTime = await saveProfile(hu.cookie, "profile.php", { [acf("links", "row-0", "links_at")]: "2026-07-01 12:30:00" });
+    assert.equal(changedTime.status, 302, changedTime.text.slice(0, 400));
+    assert.equal(memberRow(hu.id).links[0].at, "2026-07-01T10:30:00.000Z", "editing the wall clock to the saved UTC hour is still an edit");
   } finally {
     wp("option", "update", "timezone_string", "");
   }
   // Saved instants the picker can't show exactly survive an untouched save: milliseconds, and the
   // hour the end of summer time repeats (00:30 and 01:30 UTC both show as 02:30 in Berlin).
   // A sub-field SCF doesn't post (its showIf hides it) keeps its value.
-  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum'], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z', 'detail' => 'MS detail'], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z', 'detail' => 'DST detail']], 'sections' => [['layout' => 'quote', 'text' => 'A', 'cite' => 'A cite'], ['layout' => 'quote', 'text' => 'B', 'cite' => 'B cite']]], ['id' => ${hu.id}]);`);
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum', 'optional' => null], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z', 'detail' => 'MS detail'], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z', 'detail' => 'DST detail']], 'sections' => [['layout' => 'quote', 'text' => 'A', 'cite' => 'A cite'], ['layout' => 'quote', 'text' => 'B', 'cite' => 'B cite']]], ['id' => ${hu.id}]);`);
   wp("option", "update", "timezone_string", "Europe/Berlin");
   try {
     const hidden = (name: string) => name === acf("address", "address_district") || name.endsWith("[field_zero_member_links_detail]") || name.endsWith("[field_zero_member_sections_quote_cite]");
@@ -498,19 +505,22 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   const thrown = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Throw", nickname: "Thrown" });
   assert.deepEqual([thrown.status, /address hook refused/.test(thrown.text)], [409, true]);
   assert.deepEqual([name(), wp("user", "meta", "get", String(iu.id), "nickname")], [before, nickname], "core's user update rolled back with it");
-  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", verified: false, optional: null, district: null }, null, { private: "secret" }]);
+  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", verified: false, optional: true, district: null }, null, { private: "secret" }]);
 });
 
 test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
   const ku = await profileMember("ku");
-  const rejected = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Paris", pass1: "new-password-one", pass2: "new-password-two" });
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['links' => [['label' => 'hidden', 'detail' => 'Saved detail']]], ['id' => ${ku.id}]);`);
+  const hidden = (name: string) => name.endsWith("[field_zero_member_links_detail]");
+  const rejected = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Paris", pass1: "new-password-one", pass2: "new-password-two" }, hidden);
   assert.equal(rejected.status, 200, "core shows the form again with its error");
   assert.match(rejected.text, /passwords do not match/i);
   assert.equal(memberRow(ku.id).address, null, "the member field staged before core refused is gone");
-  // A later save starts clean.
-  const next = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Lyon" });
+  // Submit the redisplayed error form itself: SCF has prefixed its submitted row keys again.
+  const next = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Lyon" }, hidden, rejected.html);
   assert.equal(next.status, 302, next.text.slice(0, 400));
   assert.equal(memberRow(ku.id).address.city, "Lyon");
+  assert.deepEqual(memberRow(ku.id).links, [{ label: "hidden", at: null, detail: "Saved detail" }]);
 });
 
 test("the update rule decides profile saves: an admin is refused another member under \"self\", and sets admin-only fields on their own", async () => {
@@ -523,7 +533,7 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.equal(memberRow(ju.id).address, null);
   const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
   assert.equal(own.status, 302, own.text.slice(0, 400));
-  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true, optional: false, district: null });
+  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true, optional: true, district: null });
 });
 
 test("update_field on a structured member field is a trusted Zero write; get_field reads it back by name", () => {

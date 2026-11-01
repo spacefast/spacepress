@@ -324,7 +324,7 @@ final class ProfileForm
         };
 
         return match (true) {
-            $def['type'] === 'boolean' && $v === null => $def['default']['value'] ?? false,
+            $def['type'] === 'boolean' && $v === null => false,
             !is_array($v) => $v,
             $def['type'] === 'group' => self::isUnsetGroup($def['fields'] ?? [], $item($def['fields'] ?? [], $v)) ? null : $item($def['fields'] ?? [], $v),
             $def['type'] === 'repeater' => $v === [] ? null : array_map(static fn ($row) => is_array($row) ? $item($def['fields'] ?? [], $row) : $row, $v),
@@ -374,7 +374,7 @@ final class ProfileForm
                     continue;
                 }
                 if ($viewer !== null && $before !== null && array_key_exists($name, $before)
-                    && self::canonical($sub, $obj[$name]) === self::canonical($sub, $before[$name])) {
+                    && $sub['type'] === 'boolean' && $before[$name] === null && $obj[$name] === false) {
                     $obj[$name] = $before[$name];
                     continue;
                 }
@@ -395,11 +395,13 @@ final class ProfileForm
         $inputs = array_values($inputs);
         $row = static function (mixed $value, int $i) use ($def, $old, $viewer, $keys, $inputs, $key, $item): mixed {
             // The rendered row key names its saved index even after a deletion or a drag. New rows
-            // have generated keys; trusted code uses ordinary list positions.
-            $index = $viewer === null ? $i : (preg_match('/^row-(\d+)$/D', (string) ($keys[$i] ?? ''), $m) ? (int) $m[1] : null);
+            // have generated keys; SCF prefixes the key again on a rejected form. Trusted code uses
+            // ordinary list positions.
+            $index = $viewer === null ? $i : (preg_match('/^(?:row-)+(\d+)$/D', (string) ($keys[$i] ?? ''), $m) ? (int) $m[1] : null);
             $before = $index === null ? null : ($old[$index] ?? null);
             if ($def['type'] === 'blocks') {
                 $layout = is_array($value) ? ($value['layout'] ?? '') : '';
+
                 return $item($def['layouts'][$layout] ?? [], $value,
                     ($before['layout'] ?? null) === $layout ? $before : null, $inputs[$i] ?? null, $key . '_' . $layout . '_');
             }

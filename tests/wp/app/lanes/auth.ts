@@ -24,7 +24,7 @@ export const members = collection("members", {
   address: group({ fields: {
     city: text().max(40),
     verified: boolean().notNull().default(false).access({ update: "admin" }),
-    optional: boolean().access({ update: "admin" }),
+    optional: boolean().default(true).access({ update: "admin" }),
     // Hidden (and so not posted by SCF) unless the city is Oslo.
     district: text().showIf({ city: "Oslo" }),
   } }),

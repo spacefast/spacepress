@@ -140,7 +140,8 @@ export default defineConfig({
       const predicates = [() => true]; predicates.push(() => false);
       const reduced = ["a"].reduce((acc, value) => acc + value);
       const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      const readers = [{ count: 1 }, { count: 2 }].map(item => { item.count++; return () => item.count; });
+      const readers: (() => number)[] = [];
+      for (const item of [{ count: 1 }, { count: 2 }]) { item.count++; readers.push(() => item.count); }
       let missing: { count: number } | undefined = undefined;
       const mutate = (item: { count: number } = { count: 0 }) => { item.count++; return item.count; };
       const defaultCount = mutate(missing);
@@ -162,11 +163,12 @@ export default defineConfig({
         unpackedMissingKeys: Object.keys(emptyOptions),
       };
       let item = { count: 1 };
-      const readItem = makeCounterReader(item);
       const readBinding = () => item.count;
       const spread = { ...item };
       const { ...rest } = item;
       item.count++;
+      // A helper that keeps its argument in a closure takes it after the changes are made.
+      const readItem = makeCounterReader(item);
       const live = readItem();
       item = { count: 9 };
       let absent: { count: number } | null = null;
@@ -174,9 +176,11 @@ export default defineConfig({
       const readAbsent = makeNullable(absent);
       absent = { count: 9 };
       const accumulatorReaders: (() => number)[] = [];
-      [1, 2].reduce((acc, value) => { acc.count++; accumulatorReaders.push(() => acc.count); return { count: acc.count }; }, { count: 0 });
+      let carried = 0;
+      for (const _ of [1, 2]) { carried++; const held = { count: carried }; accumulatorReaders.push(() => held.count); }
       const sharedReaders: (() => number)[] = [];
-      [1, 2].reduce((acc, value) => { acc.count++; sharedReaders.push(() => acc.count); return acc; }, { count: 0 });
+      const shared = { count: 0 };
+      for (const _ of [1, 2]) { shared.count++; sharedReaders.push(() => shared.count); }
       const loopReaders: (() => number)[] = [];
       const localReaders: (() => number)[] = [];
       const loopItems = [{ count: 1 }, { count: 2 }];
@@ -287,6 +291,7 @@ export default defineConfig({
       throw new Error("expected failure");
     }),
     ...laneDActions(),
+    ...laneSActions(),
   },
   jobs: laneDJobs(),
 });
@@ -319,6 +324,71 @@ function laneDActions() {
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
     envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+  };
+}
+
+// ---- lane S: sharing and string units. JS shares objects by reference and counts strings in UTF-16
+// code units; compiled PHP copies arrays and stores UTF-8. What compiles must agree with Node.
+function laneSActions() {
+  return {
+    loopClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let i = 0; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    // The allowed side of the alias rule: writes through a for...of element of a local array, and
+    // replacing (not mutating) a member of a spread copy.
+    forOfWrites: run(() => {
+      const list = [{ x: 1 }, { x: 2 }];
+      for (const e of list) e.x = e.x * 10;
+      const fresh = { a: [1] };
+      const copy = { ...fresh };
+      copy.a = [...fresh.a, 2];
+      return [list.map((e) => e.x), fresh.a, copy.a];
+    }),
+    // A closure over each `for (let { i } ...)` iteration keeps its own `i`; array `includes`
+    // and `lastIndexOf` honor their fromIndex.
+    loopPatternClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
+    // as 0.
+    nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),
+    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -1e300), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -1e300), [1, 2, 1].lastIndexOf(1, 1e300)]),
+    // The allowed side: writing a local nobody else holds, a spread copy's top level, a local passed
+    // by reference to a function that changes it, elements of a fresh array in a callback.
+    unsharedWrites: run(() => {
+      const bump = (v: { x: number }) => { v.x++; };
+      const o = { x: 0 };
+      bump(o);
+      bump(o);
+      const copy = { ...o };
+      copy.x = 10;
+      // A value created and changed inside a callback is the callback's own.
+      const built = [{ x: 1 }].map((e) => { const next = { ...e }; next.x = 2; return next; });
+      const shaped = [{ x: 1 }, { x: 2 }].map((r) => { const o: { x?: number; y?: number } = {}; o.x = r.x; o.y = r.x * 10; return o; });
+      const counts: { n: number }[] = [];
+      for (let i = 0; i < 2; i++) counts.push({ n: i });
+      for (const c of counts) c.n += 5;
+      // Collecting rows with for...of, the rewrite the rule's refusals give for reduce/forEach.
+      const rows = [{ x: 1 }, { x: 2 }];
+      const collected: { x: number }[] = [];
+      for (const r of rows) collected.push(r);
+      const totals = { sum: 0 };
+      for (const r of rows) totals.sum += r.x;
+      // A helper appending to the array it's given (a parameter, passed by reference).
+      const kept: { x: number }[] = [];
+      const add = (into: { x: number }[], r: { x: number }) => { into.push({ x: r.x }); };
+      add(kept, rows[0]!);
+      add(kept, rows[1]!);
+      return [o, copy, built, shaped, counts, collected, totals, kept];
+    }),
+    utf16Units: run(() => {
+      const s = "\u{1F600}a\u00e9";
+      return [s.length, s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
   };
 }
 

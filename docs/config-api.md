@@ -432,8 +432,13 @@ include null in body reads, while a default initializer supplies the missing val
 Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook, mutating an
-object after storing it in another (PHP copies on store), reassigning a
+`eval`/`Function`, assigning to module-level state from a hook, writing
+through a value that may be the same object or array as another one (an
+alias, a member or element read, `find()`'s result, a destructured member, a
+returned argument, a nested value of a spread copy: PHP copies these),
+changing a callback's element in `map`/`forEach`/... (use `for...of`), a
+plain `list[i] = v` (use `push`), `includes`/`startsWith`/`endsWith` with a
+position (slice first), reassigning a
 parameter that also mutates its object or array (use a separate local
 binding for the replacement), mutating a nested container through a
 destructured parameter (accept the whole parameter), replacing an earlier

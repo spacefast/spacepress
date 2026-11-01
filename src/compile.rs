@@ -6,6 +6,7 @@
 //! unknown operands, string indexing, sort order) the output calls a `Js::`
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
+mod aliasing;
 mod effects;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -156,6 +157,8 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
+    /// `list[i]`: a plain `=` here could write past the end (see `aliasing::index_write`).
+    array_index: bool,
 }
 
 impl Out {
@@ -263,6 +266,9 @@ pub struct Compiler<'a, 'p> {
     helpers: HashMap<(usize, bool), String>,
     helper_types: HashMap<usize, Ty>,
     effects: effects::Effects,
+    /// The type each compiled expression had (unioned when compiled more than once), for the
+    /// aliasing check: only containers can be shared.
+    expr_types: HashMap<Span, Ty>,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -297,6 +303,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             helpers: HashMap::new(),
             helper_types: HashMap::new(),
             effects: effects::Effects::default(),
+            expr_types: HashMap::new(),
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -548,11 +555,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.helper_types
                 .insert(closure_key(closure), Ty::Fn(param_tys.clone(), Box::new(ret)));
         }
-        check_aliasing(&f)?;
         let saved = self.fx.replace(fx);
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
+        // After the body: the check reads the types the body's expressions compiled to, and walks
+        // nested closures itself (they share this function's bindings).
+        aliasing::check(
+            &f,
+            &aliasing::Oracle {
+                types: &self.expr_types,
+                effects: &self.effects,
+            },
+        )?;
         let ret_ty = fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone()));
         self.helper_types.insert(
             closure_key(closure),
@@ -1147,6 +1162,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
+                // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
+                // it saw. PHP closures capture by reference, so a captured loop variable moves to a
+                // fresh cell before each update (earlier closures keep theirs; `continue` too).
+                let fresh: Vec<String> = match init.as_deref() {
+                    Some(Stmt::Decl {
+                        kind: DeclKind::Let,
+                        pat,
+                        ..
+                    }) => {
+                        // Every binding the declaration introduces (`let { i } = ...` too).
+                        let mut bindings = Vec::new();
+                        pat_bindings(pat, &mut bindings);
+                        let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        let scope = self.fx().scopes.last().cloned().unwrap_or_default();
+                        let mut cells: Vec<String> = scope
+                            .values()
+                            .filter(|l| captured.contains(&l.binding))
+                            .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
+                            .collect();
+                        cells.sort();
+                        cells
+                    }
+                    _ => Vec::new(),
+                };
+                let update_php = fresh
+                    .into_iter()
+                    .chain((!update_php.is_empty()).then_some(update_php))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
@@ -1904,6 +1948,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn expr(&mut self, e: &Expr) -> Result<Out> {
+        let out = self.expr_untracked(e)?;
+        match self.expr_types.get_mut(&e.span) {
+            Some(t) if *t != out.ty => *t = Ty::union([t.clone(), out.ty.clone()]),
+            Some(_) => {}
+            None => {
+                self.expr_types.insert(e.span, out.ty.clone());
+            }
+        }
+        Ok(out)
+    }
+
+    fn expr_untracked(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
         let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
@@ -2663,7 +2719,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
         self.fx = Some(inner);
-        check_aliasing(f)?;
         let result = self.closure_body(f, &param_tys);
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));
@@ -2703,7 +2758,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             read: t,
             constraint,
             path,
+            array_index,
         } = self.place(target)?;
+        // `??=` and `||=` write when the element is missing (undefined), so past the end too;
+        // `&&=` never writes a missing element.
+        if array_index && matches!(op, None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or))) {
+            aliasing::index_write(span)?;
+        }
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
@@ -2871,6 +2932,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         l.ty
                     };
                     Ok(AssignmentPlace {
+                        array_index: false,
                         constraint: l.constraint,
                         path: Some((l.php.clone(), Vec::new())),
                         read: Out {
@@ -2896,6 +2958,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
@@ -2914,6 +2977,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
+                    array_index: false,
                     constraint,
                     path,
                     read: Out {
@@ -2930,11 +2994,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
+                let array_index = matches!(o.ty.non_null(), Ty::Array(_));
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
@@ -2961,6 +3027,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
+                    array_index,
                     constraint,
                     path,
                     read: Out {
@@ -3249,6 +3316,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             _ => err(span, format!("`new {n}` isn't supported")),
         }
+    }
+
+    /// `s.lastIndexOf(x, pos)`: JS reads an `undefined` position as omitted (search from the end)
+    /// and `null` as 0, but compiled PHP has one null for both. A literal decides it here; a
+    /// value that may be null or undefined at runtime is refused. Returns the compiled arguments.
+    fn position_args(&mut self, args: &[ArrEl], position: usize, m: &str) -> Result<Vec<Out>> {
+        let mut argv = self.plain_args(args)?;
+        let Some(ArrEl::Item(p)) = args.get(position) else {
+            return Ok(argv);
+        };
+        let mut e: &Expr = p;
+        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &e.kind {
+            e = x;
+        }
+        match &e.kind {
+            ExprKind::Undefined => argv.truncate(position),
+            ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
+            _ if argv[position].ty.is_nullable() => {
+                return err_help(
+                    p.span,
+                    format!("`{m}()`'s position might be null or undefined here, which JS reads two different ways"),
+                    "pass a number (`pos ?? 0`), or leave the argument out",
+                );
+            }
+            _ => {}
+        }
+        Ok(argv)
     }
 
     fn plain_args(&mut self, args: &[ArrEl]) -> Result<Vec<Out>> {
@@ -3877,7 +3971,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Str,
             ));
         }
-        let argv = self.plain_args(args)?;
+        // Only String.prototype.lastIndexOf reads an `undefined` position as omitted; everywhere
+        // else (and for arrays) null and undefined are both 0, which the runtime does.
+        let argv = match m {
+            "lastIndexOf" => self.position_args(args, 1, m)?,
+            _ => self.plain_args(args)?,
+        };
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {
@@ -3898,6 +3997,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toLowerCase" => Out::atom(format!("mb_strtolower({})", s.php), Ty::Str),
             "toUpperCase" => Out::atom(format!("mb_strtoupper({})", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
+            "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
+                return err_help(
+                    span,
+                    format!("`{m}()` with a position isn't supported"),
+                    "slice the string first, for example `s.slice(start).startsWith(x)`",
+                );
+            }
             "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "endsWith" => Out::atom(format!("str_ends_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
@@ -5285,221 +5391,26 @@ fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, Strin
     }
 }
 
-/// JS shares arrays and objects by reference; compiled PHP copies them when
-/// they're stored. Code that stores a local container inside another value
-/// and then mutates it would silently diverge, so it's a build error.
-fn check_aliasing(f: &Func) -> Result<()> {
-    struct Walk {
-        /// Local name → span where it was stored into another value.
-        stored: HashMap<String, Span>,
-    }
-    fn root(e: &Expr) -> Option<&str> {
-        match &e.kind {
-            ExprKind::Ident(n) => Some(n),
-            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } | ExprKind::NonNull(obj) => root(obj),
-            _ => None,
-        }
-    }
-    const MUTATORS: &[&str] = &["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill"];
-    impl Walk {
-        fn mutated(&self, name: &str, span: Span) -> Result<()> {
-            if let Some(at) = self.stored.get(name) {
-                let _ = at;
-                return err_help(
-                    span,
-                    format!("`{name}` was stored in another value earlier, so changing it here wouldn't show up there"),
-                    "build the value completely before storing it, or change it through the place you stored it",
-                );
+/// The binding spans a pattern introduces, in source order.
+fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
+    match p {
+        Pat::Id(_, span) => out.push(*span),
+        Pat::Default(p, _) => pat_bindings(p, out),
+        Pat::Obj { props, rest, .. } => {
+            for (_, p) in props {
+                pat_bindings(p, out);
             }
-            Ok(())
-        }
-        /// Bare identifiers placed inside array/object literals or passed into db calls get copied.
-        fn note_stores(&mut self, e: &Expr) {
-            match &e.kind {
-                ExprKind::Array(items) => {
-                    for it in items {
-                        if let ArrEl::Item(x) = it {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                ExprKind::Object(props) => {
-                    for p in props {
-                        if let Prop::KV(_, x) = p {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                _ => {}
+            if let Some((_, span)) = rest {
+                out.push(*span);
             }
         }
-        fn note_store(&mut self, x: &Expr) {
-            if let ExprKind::Ident(n) = &x.kind {
-                self.stored.entry(n.clone()).or_insert(x.span);
+        Pat::Arr { elems, rest, .. } => {
+            for p in elems.iter().flatten() {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
             }
         }
-        fn expr(&mut self, e: &Expr) -> Result<()> {
-            match &e.kind {
-                ExprKind::Assign { target, value, .. } => {
-                    self.expr(value)?;
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                    if !matches!(target.kind, ExprKind::Ident(_)) {
-                        self.note_store(value);
-                    }
-                    self.note_stores(value);
-                }
-                ExprKind::Update { target, .. } => {
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                }
-                ExprKind::Call { callee, args, .. } => {
-                    if let ExprKind::Member { obj, prop, .. } = &callee.kind
-                        && MUTATORS.contains(&prop.as_str())
-                        && let Some(r) = root(obj)
-                    {
-                        self.mutated(r, e.span)?;
-                    }
-                    self.expr(callee)?;
-                    for a in args {
-                        let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                        self.expr(x)?;
-                        if let ArrEl::Item(x) = a
-                            && matches!(&callee.kind, ExprKind::Member { prop, .. } if prop == "push" || prop == "unshift")
-                        {
-                            self.note_store(x);
-                        }
-                        self.note_stores(x);
-                    }
-                }
-                ExprKind::Array(_) | ExprKind::Object(_) => {
-                    self.note_stores(e);
-                    match &e.kind {
-                        ExprKind::Array(items) => {
-                            for it in items {
-                                let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
-                                self.expr(x)?;
-                            }
-                        }
-                        ExprKind::Object(props) => {
-                            for p in props {
-                                let (Prop::KV(_, x) | Prop::Spread(x)) = p;
-                                self.expr(x)?;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                }
-                ExprKind::Cond(a, b, c) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                    self.expr(c)?;
-                }
-                ExprKind::Unary(_, x)
-                | ExprKind::Await(x)
-                | ExprKind::Chain(x)
-                | ExprKind::As(x, _)
-                | ExprKind::NonNull(x)
-                | ExprKind::IsNullish(x, _)
-                | ExprKind::Member { obj: x, .. } => self.expr(x)?,
-                ExprKind::Index { obj, index, .. } => {
-                    self.expr(obj)?;
-                    self.expr(index)?;
-                }
-                ExprKind::Template(_, xs) => {
-                    for x in xs {
-                        self.expr(x)?;
-                    }
-                }
-                // Nested functions are checked on their own.
-                _ => {}
-            }
-            Ok(())
-        }
-        fn stmts(&mut self, stmts: &[Stmt]) -> Result<()> {
-            for s in stmts {
-                match s {
-                    Stmt::Decl { init: Some(e), .. } => {
-                        self.expr(e)?;
-                        self.note_stores(e);
-                    }
-                    Stmt::Expr(e) | Stmt::Throw(e) | Stmt::Return(Some(e), _) => self.expr(e)?,
-                    Stmt::If(t, a, b) => {
-                        self.expr(t)?;
-                        self.stmts(a)?;
-                        if let Some(b) = b {
-                            self.stmts(b)?;
-                        }
-                    }
-                    Stmt::Block(b) => self.stmts(b)?,
-                    Stmt::While(t, b) => {
-                        self.expr(t)?;
-                        self.stmts(b)?;
-                    }
-                    Stmt::For {
-                        init,
-                        test,
-                        update,
-                        body,
-                        ..
-                    } => {
-                        if let Some(i) = init {
-                            self.stmts(std::slice::from_ref(i))?;
-                        }
-                        if let Some(t) = test {
-                            self.expr(t)?;
-                        }
-                        if let Some(u) = update {
-                            self.expr(u)?;
-                        }
-                        self.stmts(body)?;
-                    }
-                    Stmt::ForOf { iter, body, .. } => {
-                        self.expr(iter)?;
-                        self.stmts(body)?;
-                    }
-                    Stmt::Try {
-                        block,
-                        handler,
-                        finalizer,
-                        ..
-                    } => {
-                        self.stmts(block)?;
-                        if let Some(h) = handler {
-                            self.stmts(h)?;
-                        }
-                        if let Some(f) = finalizer {
-                            self.stmts(f)?;
-                        }
-                    }
-                    Stmt::Switch { disc, cases, .. } => {
-                        self.expr(disc)?;
-                        for (t, b) in cases {
-                            if let Some(t) = t {
-                                self.expr(t)?;
-                            }
-                            self.stmts(b)?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(())
-        }
-    }
-    let mut w = Walk { stored: HashMap::new() };
-    match &f.body {
-        FnBody::Expr(e) => w.expr(e),
-        FnBody::Block(b) => w.stmts(b),
     }
 }

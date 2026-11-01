@@ -72,6 +72,17 @@ pub(super) struct Effects {
     expression_places: HashMap<Span, Place>,
     loop_writes: HashMap<Span, HashSet<Place>>,
     reference_arguments: HashMap<Span, HashSet<usize>>,
+    /// Calls to a program function (not runtime APIs, not array-method callbacks).
+    program_calls: HashSet<Span>,
+    /// (call, argument) a program callee may keep past the call: return it, store it or a part
+    /// of it anywhere but its own locals, or capture it in a closure.
+    kept_arguments: HashSet<(Span, usize, bool)>,
+    /// (array method call, parameter index) where its callback writes that parameter.
+    callback_writes: HashSet<(Span, usize)>,
+    /// Array method calls whose callback writes a binding it doesn't own.
+    callback_capture_writes: HashSet<Span>,
+    /// Program calls whose callee writes a binding it doesn't own.
+    capture_writing_calls: HashSet<Span>,
 }
 
 impl Effects {
@@ -149,6 +160,39 @@ impl Effects {
                     && (projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some())
             })
         })
+    }
+
+    /// For the array method call `call`: whether the function it calls back writes its
+    /// parameter `index`.
+    pub fn callback_writes_param(&self, call: Span, index: usize) -> bool {
+        self.callback_writes.contains(&(call, index))
+    }
+
+    /// For the array method call `call`: whether the function it calls back writes a binding it
+    /// doesn't own.
+    pub fn callback_writes_captures(&self, call: Span) -> bool {
+        self.callback_capture_writes.contains(&call)
+    }
+
+    /// Whether the callee writes a binding it doesn't own (a function's writes include what the
+    /// functions it calls write).
+    pub fn writes_captures(&self, call: Span) -> bool {
+        self.capture_writing_calls.contains(&call)
+    }
+
+    /// Whether the call goes to a function of this program.
+    pub fn program_call(&self, call: Span) -> bool {
+        self.program_calls.contains(&call)
+    }
+
+    /// Whether the program callee may store the argument (or a part of it) past the call.
+    pub fn stores_argument(&self, call: Span, index: usize) -> bool {
+        self.kept_arguments.contains(&(call, index, true))
+    }
+
+    /// Whether the program callee may return the argument (or a part of it).
+    pub fn returns_argument(&self, call: Span, index: usize) -> bool {
+        self.kept_arguments.contains(&(call, index, false))
     }
 
     pub fn argument_by_ref(&self, call: Span, index: usize) -> bool {
@@ -304,6 +348,8 @@ fn widen(ty: &Ty, path: &[Step]) -> Ty {
 }
 
 struct Call {
+    /// A callback an array method calls with its elements (not a call written in the program).
+    callback: bool,
     callee: Place,
     args: Vec<Option<Place>>,
     result: Place,
@@ -314,6 +360,8 @@ struct Call {
 
 #[derive(Default)]
 struct Graph {
+    /// Expression span (a literal's or call result's value place) → the function it runs in.
+    temporaries: HashMap<Span, Span>,
     captured: HashSet<Span>,
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
@@ -517,6 +565,7 @@ impl Graph {
         if let Some(place) = &result {
             self.expression_places.insert(e.span, place.clone());
         }
+        self.temporaries.entry(e.span).or_insert(owner);
         result
     }
 
@@ -656,6 +705,7 @@ impl Graph {
                     {
                         if prop == "reduce" {
                             self.calls.push(Call {
+                                callback: true,
                                 callee: callback.clone(),
                                 args: vec![Some(result.clone()), element.clone(), None],
                                 result: result.clone(),
@@ -672,6 +722,7 @@ impl Graph {
                             });
                         }
                         self.calls.push(Call {
+                            callback: true,
                             callee: callback.clone(),
                             args,
                             result: result.clone(),
@@ -756,6 +807,7 @@ impl Graph {
                 }
                 if let Some(callee) = callee_value {
                     self.calls.push(Call {
+                        callback: false,
                         callee,
                         args: argv,
                         result: value.clone(),
@@ -987,6 +1039,72 @@ impl Graph {
                 call.prior.extend(&events);
             }
         }
+    }
+
+    /// Which parameters a function may keep past its call, and whether it stores them (versus only
+    /// returning them or a part of them). Conservative: a parameter (or anything read from it)
+    /// that reaches the function's result, a place outside the function, or a closure's capture.
+    fn keeping(&self) -> HashSet<(Span, bool)> {
+        let parameters: HashMap<Span, Span> = self
+            .functions
+            .iter()
+            .flat_map(|(f, ps)| ps.iter().map(move |p| (p.binding, *f)))
+            .collect();
+        // The function a place lives in: a binding's declaring function, a parameter's function,
+        // or the function a temporary (a literal, a call result) is built in.
+        let owner = |b: &Span| {
+            parameters
+                .get(b)
+                .or_else(|| self.bindings.get(b))
+                .or_else(|| self.temporaries.get(b))
+                .copied()
+        };
+        let mut flows: HashMap<Span, HashSet<Span>> = HashMap::new();
+        for (src, dest, _) in &self.copies {
+            if src.binding != dest.binding && !matches!(src.path.last(), Some(Step::Field(f)) if f == "length") {
+                flows.entry(src.binding).or_default().insert(dest.binding);
+            }
+        }
+        // A function result flows into each call's result place (already a copy edge) — and a
+        // parameter into the callee's own flows (also a copy edge). So reachability over `flows`
+        // follows values through calls. A place a closure captures is reached by that closure.
+        // Reachability stops at the parameter's own function's result: what its caller does with
+        // that result is checked in the caller. Other functions' results flow on to their calls.
+        let reach = |start: Span, stop: Span| -> HashSet<Span> {
+            let mut seen = HashSet::new();
+            let mut todo = vec![start];
+            while let Some(b) = todo.pop() {
+                if b == stop {
+                    continue;
+                }
+                for d in flows.get(&b).into_iter().flatten() {
+                    if seen.insert(*d) {
+                        todo.push(*d);
+                    }
+                }
+            }
+            seen
+        };
+        let mut kept = HashSet::new();
+        for (param, function) in &parameters {
+            let reached = reach(*param, *function);
+            // Kept: returned, or reaching any place outside this function (another function's
+            // binding or parameter, a module place, a place with no known owner), or reaching a
+            // local or the parameter itself that a closure captures.
+            // Another function's parameter isn't a holder by itself: reachability continues
+            // through it to wherever that function puts it.
+            let stored = reached.iter().chain(std::iter::once(param)).any(|d| {
+                (!self.functions.contains_key(d)
+                    && !parameters.contains_key(d)
+                    && owner(d).is_none_or(|o| o != *function))
+                    || self.captured.contains(d)
+            });
+            let returned = reached.iter().any(|d| self.functions.contains_key(d));
+            if stored || returned {
+                kept.insert((*param, stored));
+            }
+        }
+        kept
     }
 
     fn solve(mut self) -> Effects {
@@ -1273,6 +1391,56 @@ impl Graph {
         };
         let expression_writes = summaries(&self.expression_events);
         let loop_writes = summaries(&self.loop_events);
+        let kept_params = self.keeping();
+        let mut program_calls = HashSet::new();
+        let mut kept_arguments = HashSet::new();
+        for call in self.calls.iter().filter(|c| !c.callback) {
+            for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                program_calls.insert(call.span);
+                for (index, param) in self.functions[function].iter().enumerate() {
+                    for stored in [true, false] {
+                        if kept_params.contains(&(param.binding, stored)) {
+                            kept_arguments.insert((call.span, index, stored));
+                        }
+                    }
+                }
+            }
+        }
+        let foreign = |f: &Span| {
+            self.function_writes
+                .get(f)
+                .into_iter()
+                .flatten()
+                .any(|p| !p.path.is_empty() && self.bindings.get(&p.binding).is_some_and(|o| o != f))
+        };
+        let mut callback_capture_writes = HashSet::new();
+        let mut capture_writing_calls = HashSet::new();
+        for call in &self.calls {
+            for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                if foreign(function) {
+                    if call.callback {
+                        callback_capture_writes.insert(call.span);
+                    } else {
+                        capture_writing_calls.insert(call.span);
+                    }
+                }
+            }
+        }
+        let mut callback_writes = HashSet::new();
+        for call in self.calls.iter().filter(|c| c.callback) {
+            for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                for (index, param) in self.functions[function].iter().enumerate() {
+                    if self
+                        .writes
+                        .iter()
+                        .any(|p| p.binding == param.binding && !p.path.is_empty())
+                    {
+                        // Keyed by the array method call that invokes it.
+                        callback_writes.insert((call.span, index));
+                    }
+                }
+            }
+        }
         let mut reference_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
         for call in &self.calls {
             for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
@@ -1301,6 +1469,11 @@ impl Graph {
             expression_places: self.expression_places,
             loop_writes,
             reference_arguments,
+            program_calls,
+            kept_arguments,
+            callback_writes,
+            callback_capture_writes,
+            capture_writing_calls,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

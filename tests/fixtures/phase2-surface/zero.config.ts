@@ -66,8 +66,8 @@ function nullableArguments(absent: { count: number } | null) {
   replace(present);
   mutateNullable(present, []);
   const module = present?.count;
-  const extra = () => { if (present !== null) present.count++; return []; };
-  mutate(present, extra());
+  const bumpPresent = (value: { count: number } | null) => { if (value !== null) value.count++; return []; };
+  mutate(present, bumpPresent(present));
   mutate(absent, []);
   let before = { count: 0 };
   const peek = (value: { count: number }, extra: number[]) => value.count;
@@ -113,12 +113,16 @@ export default defineConfig({
       const values = ["a"]; values.unshift("b");
       let choice = values.length > 0 ? "a" : "b"; choice = "c";
       const finite: ("a" | "b")[] = ["a"]; finite.push("b");
-      const nested = [1].map(() => ["a"]).map((items: string[]) => { items.unshift("b"); return items; });
-      const callbacks = [1].map(() => ["a"]).map(items => { items.unshift("b"); switch (items[0]) { case "a": return true; } });
+      const nested: string[][] = [];
+      for (const _ of [1]) { const items = ["a"]; items.unshift("b"); nested.push(items); }
+      const callbacks = [1].map(() => { const items = ["a"]; items.unshift("b"); switch (items[0]) { case "a": return true; } });
       const pairs: [string, number][] = [["a", 2]];
       const tuples = pairs.map(([label = "", count = 0]) => label.repeat(count));
       const optional: { pair?: [string, number], words?: ("a" | "b")[] } = {};
-      const { pair = ["a", 2], words: finiteDefaults = ["a"] } = optional;
+      const { pair = ["a", 2] } = optional;
+      const given: ("a" | "b")[] = optional.words ?? ["a"];
+      const finiteDefaults: ("a" | "b")[] = [];
+      for (const w of given) finiteDefaults.push(w);
       finiteDefaults.push("b");
       const defaultTuple = pair[0]!.repeat(pair[1]!);
       const reduced = ["a"].reduce((acc, value) => acc + value);

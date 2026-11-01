@@ -1,4 +1,5 @@
-use crate::{Args, platform, wp_plugins::version};
+use crate::cli::Args;
+use crate::{platform, wp_plugins::version};
 use serde_json::{Value, json};
 use std::{process::ExitCode, time::Duration};
 

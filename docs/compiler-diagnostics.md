@@ -10,6 +10,9 @@ zero check examples/recipes --json
 python3 scripts/compiler-contracts.py --check
 ```
 
+The website's browser build of the compiler (`src/wasm.rs`) answers with the same
+envelope under `check`, so an editor, the command line and the site report one shape.
+
 The envelope has `schema: "zero-diagnostics"`, `version: 1`, `compilerVersion`,
 `ok`, `diagnostics` and `groups`. Both arrays are empty on success. Each
 diagnostic has a code, category, severity, message, optional help, location and

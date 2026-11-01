@@ -13,11 +13,45 @@ use std::rc::Rc;
 
 pub const ZERO_MODULE: &str = "zero";
 
+/// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
+/// are absolute either way, so diagnostics and module identity work the same.
+pub trait Fs {
+    fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
+    fn is_file(&self, path: &Path) -> bool;
+    fn is_dir(&self, path: &Path) -> bool;
+    /// Whether anything at all (a file, a directory, a dangling link) is at `path`.
+    fn exists(&self, path: &Path) -> bool;
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
+}
+
+/// The real file system.
+pub struct Disk;
+
+impl Fs for Disk {
+    fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+        std::fs::read_to_string(path)
+    }
+    fn is_file(&self, path: &Path) -> bool {
+        path.is_file()
+    }
+    fn is_dir(&self, path: &Path) -> bool {
+        path.is_dir()
+    }
+    fn exists(&self, path: &Path) -> bool {
+        std::fs::symlink_metadata(path).is_ok()
+    }
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        path.canonicalize()
+    }
+}
+
 pub struct Program {
     pub modules: Vec<Rc<Module>>,
     /// (module id, specifier) → resolved module id.
     pub resolved: HashMap<(usize, String), usize>,
     pub entry: usize,
+    /// The source of these modules; later passes that look beside them (sync directories) ask it.
+    pub fs: Rc<dyn Fs>,
 }
 
 pub fn load(entry: &Path) -> Result<Program> {
@@ -25,17 +59,22 @@ pub fn load(entry: &Path) -> Result<Program> {
 }
 
 pub fn load_all(entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
+    load_from(Rc::new(Disk), entry)
+}
+
+pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
     let mut program = Program {
         modules: Vec::new(),
         resolved: HashMap::new(),
         entry: 0,
+        fs: fs.clone(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
-    let entry = entry
-        .canonicalize()
+    let entry = fs
+        .canonicalize(entry)
         .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
     let mut diagnostics = Vec::new();
-    match load_module(&entry, &mut program, &mut by_path, &mut diagnostics) {
+    match load_module(&*fs, &entry, &mut program, &mut by_path, &mut diagnostics) {
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
@@ -47,6 +86,7 @@ pub fn load_all(entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
 }
 
 fn load_module(
+    fs: &dyn Fs,
     path: &Path,
     program: &mut Program,
     by_path: &mut HashMap<PathBuf, usize>,
@@ -55,7 +95,8 @@ fn load_module(
     if let Some(&id) = by_path.get(path) {
         return Ok(id);
     }
-    let source = std::fs::read_to_string(path)
+    let source = fs
+        .read_to_string(path)
         .map_err(|e| Diag::new(Span::NONE, format!("can't read {}: {e}", path.display())))?;
     let file = diag::register_file(path, &source);
     let id = program.modules.len();
@@ -72,7 +113,8 @@ fn load_module(
         if spec == ZERO_MODULE {
             continue;
         }
-        match resolve(path, &spec, span).and_then(|target| load_module(&target, program, by_path, diagnostics)) {
+        match resolve(fs, path, &spec, span).and_then(|target| load_module(fs, &target, program, by_path, diagnostics))
+        {
             Ok(target_id) => {
                 program.resolved.insert((id, spec), target_id);
             }
@@ -141,7 +183,7 @@ fn parse(source: &str, path: &Path, file: u32, module: usize, diagnostics: &mut 
     Ok(body)
 }
 
-fn resolve(from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
+fn resolve(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     if !spec.starts_with("./") && !spec.starts_with("../") {
         return Err(Diag::new(
             span,
@@ -161,11 +203,11 @@ fn resolve(from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     ];
     // `./util.js` conventionally names `./util.ts` in TypeScript ESM.
     for c in candidates {
-        if c.is_file() && matches!(c.extension().and_then(|e| e.to_str()), Some("ts" | "mts")) {
-            return c.canonicalize().map_err(|e| Diag::new(span, e.to_string()));
+        if fs.is_file(&c) && matches!(c.extension().and_then(|e| e.to_str()), Some("ts" | "mts")) {
+            return fs.canonicalize(&c).map_err(|e| Diag::new(span, e.to_string()));
         }
     }
-    if base.is_file() {
+    if fs.is_file(&base) {
         return Err(Diag::new(
             span,
             format!("can't import \"{spec}\": only TypeScript files can be imported"),

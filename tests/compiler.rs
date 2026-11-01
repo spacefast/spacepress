@@ -2,6 +2,9 @@
 //! location; the pantry example is built, served with `php -S`, and driven
 //! over HTTP so hooks and actions are proven by their effects in PHP.
 
+// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+#![cfg(feature = "cli")]
+
 use std::io::{BufRead, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};

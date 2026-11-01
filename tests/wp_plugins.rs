@@ -1,4 +1,7 @@
 //! Module-owned artifact tests: real HTTP ZIP acquisition through the real CLI.
+
+// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+#![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

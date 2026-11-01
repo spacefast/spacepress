@@ -1,4 +1,7 @@
 //! Config importer owner: run the CLI, compile the result, load emitted PHP metadata.
+
+// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+#![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};

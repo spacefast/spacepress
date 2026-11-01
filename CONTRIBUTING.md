@@ -33,6 +33,14 @@ that boots WordPress: Docker with Compose, plus `bash` 4+, `python3`, `curl`,
    editor), the typed client, and the PHP runtime: the database layer, the
    REST API, the hook pipeline, and the JS-semantics helpers.
 
+The crate is a library plus the `zero` binary. The core (`loader`, `lower`, `eval`, `extract`,
+`compile`, `migrate`, `client`, `schema_php`, tied together by `pipeline`) does no I/O of its own:
+sources come through `loader::Fs` and the previous snapshot is a value. The `cli` feature (on by
+default) adds `commands/`, `sync/`, `config_migrate/`, plugin downloads and the embedded runtime.
+`src/wasm.rs` exports the core to the browser; `site/` builds it with
+`cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
+serves it as the website's compiler (see [`site/README.md`](site/README.md)).
+
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `zero build` into the `zero-runtime`, `zero-identity` and
 `zero-app-<name>` plugins. `zero build` decides which files go where; new
@@ -72,6 +80,7 @@ tests/php/run.sh                 # runtime: JS parity (checked against node) + t
 tsc -p types/zero/tests          # the "zero" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)
 tests/system/run.sh              # examples/site end to end on WordPress
+(cd site && pnpm check)          # the website: browser compiler ≡ zero check --json, page in Chromium
 ```
 
 CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D

@@ -100,6 +100,7 @@ pub(super) fn valid(s: &str) -> bool {
         && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
 }
 
+#[cfg(feature = "cli")]
 pub(super) fn header_matches(header: &str, declared: &str) -> bool {
     if header == declared {
         return true;

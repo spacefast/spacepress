@@ -773,6 +773,28 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     exit(0);
 }
 
+// ================================================================ eval: run PHP on a site built from an artifact
+//
+//   php tests/php/wp.php eval <wp-content dir> <php code> [json argument] [name=role ...]
+//
+// Installs a site from a `zero build --target wp` artifact, loads it with the app active, and runs
+// the code with `$app` (the Zero\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
+// `$site` bound; the site goes when the process ends. For Rust tests that drive compiled PHP.
+
+if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'eval') {
+    $users = [];
+    foreach (array_slice($argv, 5) as $pair) {
+        [$name, $role] = explode('=', $pair, 2);
+        $users[$name] = $role;
+    }
+    $site = wpSite('eval', ['wpContent' => $argv[2], 'users' => $users]);
+    $wp = $site;
+    $app = $site->app();
+    $arg = isset($argv[4]) && $argv[4] !== '' ? json_decode($argv[4], true, 512, JSON_THROW_ON_ERROR) : null;
+    eval($argv[3]);
+    exit(0);
+}
+
 // ================================================================ serve: a site for another process
 //
 //   php tests/php/wp.php serve <wp-content dir> [name=role ...]

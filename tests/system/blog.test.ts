@@ -1,7 +1,7 @@
 // The system suite's third site: examples/blog as its owner installs it on a fresh WordPress (design
 // §5.8 acceptance): the example's committed posts (content/posts/*.md) against the new site, where
 // `zero sync --check` reports them (exit 2), `zero sync` creates them, and a second run is a no-op.
-// Its standalone half lives in tests/compiler.rs (the blog example test).
+// The example is also built and checked for drift in tests/compiler.rs (the blog example test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";

@@ -7,30 +7,25 @@ namespace Zero\Auth;
 use Zero\App;
 use Zero\Extensions;
 use Zero\HttpError;
-use Zero\Js;
 use Zero\Response;
 use Zero\Schema;
-use Zero\Store;
-use Zero\Store\SqliteStore;
-use Zero\SystemTables;
 use Zero\Viewer;
 
 use function Zero\db;
 
 /**
- * Feature 4 (§6.2) on both targets: the `/auth/*` routes, `GET /me`, and the auth-collection
+ * Feature 4 (§6.2): the `/auth/*` routes, `GET /me`, and the auth-collection
  * guards every read and write path goes through:
  *
  * - hidden columns (`passwordHash`, `suspendedAt`, `guest`) are stripped from every row the API
  *   serializes (list, get, `with`, revisions, write results) and refused in filters, ordering
  *   and `columns` selections, also through relation filters;
- * - `password` is a write-only virtual input: hashed into `passwordHash` (standalone) or set
- *   with `wp_set_password` (WordPress), never echoed;
+ * - `password` is a write-only virtual input: set with `wp_set_password` (through the issuer when
+ *   zero-identity is active), never echoed;
  * - `role` is writable by admins only (its column `access.update` rule, enforced here too so it
  *   holds without the field-access lane) and system columns can't be written directly.
  *
- * The target-specific halves live behind the `Issuer` interface: `Standalone` (passwords, `za_`
- * sessions) and `Wp\IdentityBridge` (zero-identity).
+ * Sessions and tokens live behind the `Issuer` interface, implemented by `Wp\IdentityBridge` (zero-identity).
  */
 final class Module
 {
@@ -39,34 +34,6 @@ final class Module
 
     public static function register(): void
     {
-        // Standalone only: WordPress keeps users in wp_users and sessions in zero-identity.
-        SystemTables::register(Throttle::TABLE, Throttle::ddl(), []);
-        SystemTables::register(Sessions::TABLE, [
-            ...Sessions::ddl(),
-            static function (Store $store): void {
-                if (!$store instanceof SqliteStore) {
-                    return;
-                }
-                $have = array_column($store->run('PRAGMA table_info("__zero_users")')->fetchAll(), 'name');
-                foreach (['suspendedAt' => 'text', 'email' => 'text', 'guest' => 'integer NOT NULL DEFAULT 0'] as $col => $type) {
-                    if (!in_array($col, $have, true)) {
-                        $store->applySystemStatements(["ALTER TABLE \"__zero_users\" ADD COLUMN \"$col\" $type"]);
-                    }
-                }
-                $store->applySystemStatements(['CREATE UNIQUE INDEX IF NOT EXISTS "__zero_users_email" ON "__zero_users" ("email")']);
-                // CLI tokens may belong to an auth collection's users, not only __zero_users: drop
-                // the phase-1 foreign key (Identity removes a user's tokens itself).
-                $ddl = (string) $store->run("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '__zero_tokens'")->fetchColumn();
-                if (str_contains($ddl, 'REFERENCES')) {
-                    $store->applySystemStatements([
-                        'CREATE TABLE "__zero_tokens_new" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "userId" integer NOT NULL, "name" text NOT NULL, "role" text NOT NULL, "hash" text NOT NULL UNIQUE, "createdAt" text NOT NULL, "lastUsedAt" text, "revokedAt" text)',
-                        'INSERT INTO "__zero_tokens_new" SELECT "id", "userId", "name", "role", "hash", "createdAt", "lastUsedAt", "revokedAt" FROM "__zero_tokens"',
-                        'DROP TABLE "__zero_tokens"',
-                        'ALTER TABLE "__zero_tokens_new" RENAME TO "__zero_tokens"',
-                    ]);
-                }
-            },
-        ], []);
         Extensions::route('auth', self::route(...));
         Extensions::beforeRead(self::guardQuery(...), constraintSafe: true);
         Extensions::onRead(self::strip(...), constraintSafe: true);
@@ -79,7 +46,7 @@ final class Module
         }
     }
 
-    /** The target installs its issuer when it boots (standalone App::boot, WP Plugin::app). */
+    /** The plugin installs its issuer when it boots (Wp\Plugin::app). */
     public static function use(?Issuer $issuer): void
     {
         self::$issuer = $issuer;
@@ -109,16 +76,11 @@ final class Module
                 $issuer ?? throw HttpError::notFound('Sign in through the identity issuer on this target');
                 $data = $in();
 
-                try {
-                    return [200, match ($data['grant_type'] ?? 'password') {
-                        'password' => self::user($issuer->password(self::string($data, 'name'), self::string($data, 'password'))),
-                        'refresh_token' => self::user($issuer->refresh(self::string($data, 'refreshToken'))),
-                        default => throw HttpError::invalidInput('grant_type must be password or refresh_token', '/grant_type'),
-                    }];
-                } catch (Reused $reused) {
-                    // The family revocation or throttle count commits with this transaction; the client still gets the error.
-                    return Response::raw(Js::jsonStringify(App::problem($reused->error)) ?? '{}', $reused->error->status, ['Content-Type' => 'application/problem+json']);
-                }
+                return [200, match ($data['grant_type'] ?? 'password') {
+                    'password' => self::user($issuer->password(self::string($data, 'name'), self::string($data, 'password'))),
+                    'refresh_token' => self::user($issuer->refresh(self::string($data, 'refreshToken'))),
+                    default => throw HttpError::invalidInput('grant_type must be password or refresh_token', '/grant_type'),
+                }];
             case 'auth/guest':
                 App::allow($method, ['POST']);
                 if ($issuer === null || !$guests) {
@@ -269,7 +231,7 @@ final class Module
         return array_map(static fn (array $row): array => array_diff_key($row, $hidden), $rows);
     }
 
-    /** The virtual `password` input on the auth collection: hashed (standalone) or kept for WordPress. */
+    /** The virtual `password` input on the auth collection: handed to the issuer, or kept for wp_set_password. */
     public static function password(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
         if ($op === 'delete' || $collection !== (db()->schema()->auth()['collection'] ?? null) || !array_key_exists('password', $data)) {
@@ -282,11 +244,9 @@ final class Module
         }
         if (self::$issuer !== null) {
             self::$issuer->acceptPassword($data, $password, $existing);
-        } elseif (db()->target() === 'wp') {
+        } else {
             // No identity issuer: WordPress still owns the password (wp_set_password in WpUserStore).
             $data['passwordHash'] = \Zero\Wp\PendingPassword::put($password);
-        } else {
-            throw new \LogicException('The standalone issuer is always installed');
         }
     }
 

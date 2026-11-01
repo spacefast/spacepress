@@ -147,17 +147,15 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
     // Validate the emitted config through the same compiler as `zero build`.
     let check = tempfile::tempdir().map_err(|e| fail("", e.to_string()))?;
     std::fs::write(check.path().join("zero.config.ts"), &config).map_err(|e| fail("", e.to_string()))?;
-    for target in [crate::schema::Target::Wp, crate::schema::Target::Standalone] {
-        crate::commands::validate_config(check.path(), target).map_err(|d| {
-            fail(
-                "",
-                format!(
-                    "generated config cannot compile: {}",
-                    crate::diag::render(&d, check.path())
-                ),
-            )
-        })?;
-    }
+    crate::commands::validate_config(check.path(), crate::schema::Target::Wp).map_err(|d| {
+        fail(
+            "",
+            format!(
+                "generated config cannot compile: {}",
+                crate::diag::render(&d, check.path())
+            ),
+        )
+    })?;
     let parent = args
         .out
         .parent()

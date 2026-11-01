@@ -598,7 +598,7 @@ test("a runtime update whose system tables fail refuses Zero until they apply", 
   // A feature's system table that can't be created yet (its DDL references a missing table).
   const plugins = fileURLToPath(new URL(".wp-content/plugins/zero-runtime/zero/", import.meta.url));
   const probe = plugins + "Wp/zz-probe.php";
-  writeFileSync(probe, `<?php \\Zero\\SystemTables::register('probe', [], [
+  writeFileSync(probe, `<?php \\Zero\\SystemTables::register('probe', [
     'CREATE TABLE IF NOT EXISTS {prefix}zero__probe (id BIGINT PRIMARY KEY, other BIGINT, FOREIGN KEY (other) REFERENCES {prefix}zero__probe_missing (id)) ENGINE=InnoDB',
   ]);`);
   const mu = "/var/www/html/wp-content/mu-plugins/zero-probe.php";
@@ -640,7 +640,7 @@ test("collection capabilities come from the access rules, not from roles", () =>
 test("runtime registrations extend system tables and every generated SCF field", () => {
   const result = JSON.parse(wp("eval", `
     $plugin = \\Zero\\Wp\\Plugin::instance();
-    \\Zero\\SystemTables::register('seam', [], [
+    \\Zero\\SystemTables::register('seam', [
       'CREATE TABLE IF NOT EXISTS {prefix}zero__seam (id bigint PRIMARY KEY, value text NOT NULL) ENGINE=InnoDB'
     ]);
     $store = $plugin->app()->store;

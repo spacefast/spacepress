@@ -73,7 +73,7 @@ in `migrate.rs` and `zero/migrations/sqlite/`, `commands/{users,jobs}.rs`,
 client and `sync/client.rs`, `Credential::Token`, the standalone half of
 `config_migrate`.
 
-Tests: `tests/e2e/*`, `tests/system/standalone.test.ts`, the standalone legs
+Tests: `tests/e2e/standalone.test.ts`, `tests/system/standalone.test.ts`, the standalone legs
 of `tests/compiler.rs`, `tests/config_migrate.rs` and `tests/wp_plugins.rs`,
 `tests/php/blog_app.php`'s app-root assembler, `tests/fixtures/auth/0001_init.sql`.
 
@@ -108,7 +108,7 @@ Rule: one behaviour, one test; nothing loses its only proof.
   `bootstrap.php` and the compiled `functions.php`, no store.
 - `tests/compiler.rs` builds for WordPress only; the pantry and blog
   behaviour checks that ran against `php -S` move to the WordPress-on-SQLite
-  site (PR 3).
+  site (PR 2).
 
 ## 5. WordPress primitives adopted in the cut
 
@@ -127,7 +127,17 @@ WordPress plus `zero-identity`. Noted for later, not in the cut: folding
    standalone runtime still exists in this PR; only `tests/e2e`,
    `tests/system/standalone.test.ts`, the differential runner and the
    standalone legs of `tests/compiler.rs` still use it.
-2. **Runtime cut**: delete the files in §3 and the branches they fed.
+2. **Runtime cut**: delete the runtime files in §3 and the branches they fed;
+   `zero build` and `zero dev` refuse the standalone target and build WordPress
+   by default (the compiler keeps `Target` until PR 3, so every PR is green on
+   its own);
+   `tests/e2e/standalone.test.ts`, `tests/system/standalone.test.ts` and
+   `blog_app.php` go (`tests/e2e/blog-scenario.ts` stays: the WordPress REST
+   tests drive it); the
+   compiler's behaviour tests (pantry, blog sync, db globals, phase-2
+   closures, the differential actions, the importer's checks) run on a
+   WordPress-on-SQLite site served or loaded by `tests/php/wp.php`; the
+   differential rules run as pure PHP over the runtime plugin.
 3. **Compiler and CLI cut**: `Target`, `--target`, `--wp`, `users`, `tokens`,
    `jobs`, SQLite migrations, doctor, client prefix; standalone tests go.
 4. **Public text**: README, docs, types, client README and regenerated

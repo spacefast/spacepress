@@ -1,4 +1,4 @@
-// WordPress lane of the shared blog scenario (design §9.1): the same function the standalone lane
+// WordPress lane of the blog scenario (design §9.1): the shared function in tests/e2e/blog-scenario.ts
 // runs, driven by the generated typed client over /wp-json/zero/v1 with application passwords.
 // Promotion is WordPress's own: `future` post + its cron event, run through WP-CLI.
 import { test, before } from "node:test";
@@ -18,7 +18,6 @@ before(() => {
 test("blog scenario over /wp-json/zero/v1", async (t) => {
   await blogScenario(
     {
-      target: "wp",
       client: (role: ScenarioRole) =>
         createClient({ url: api, headers: role === "anonymous" ? {} : auth(role) }),
       async promoteDue(at: string) {

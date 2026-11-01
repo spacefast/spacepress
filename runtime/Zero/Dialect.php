@@ -8,24 +8,19 @@ namespace Zero;
 final class Dialect
 {
     public function __construct(
-        public readonly string $name,            // 'sqlite' | 'mysql'
-        public readonly string $quoteOpen,       // '"' | '`'
+        public readonly string $name,            // 'mysql'
+        public readonly string $quoteOpen,       // '`'
         public readonly string $quoteClose,
-        /** sprintf template: (expr, ci arg). SQLite: 1/0; MySQL: a collation name or BINARY. */
+        /** sprintf template: (expr, ci arg): a collation name, or BINARY/empty when translated. */
         public readonly string $likeFn,
-        public readonly bool $windowFunctions,   // both true (SQLite >= 3.25, MariaDB >= 10.2)
+        public readonly bool $windowFunctions,   // true (MySQL 8, MariaDB >= 10.2, the SQLite translator)
         /** MySQL only: the case-insensitive collation for ilike ('utf8mb4_0900_ai_ci' MySQL 8, 'utf8mb4_unicode_ci' MariaDB). */
         public readonly string $ciCollation = 'utf8mb4_0900_ai_ci',
-        /** `LIMIT` with no bound: MySQL's maximum row count; SQLite reads -1 as unbounded. */
+        /** `LIMIT` with no bound: MySQL's maximum row count, or the translator's largest signed integer. */
         public readonly string $noLimit = '18446744073709551615',
         /** MySQL as the SQLite Database Integration plugin translates it (see mysqlOnSqlite()). */
         public readonly bool $translated = false,
     ) {
-    }
-
-    public static function sqlite(): self
-    {
-        return new self('sqlite', '"', '"', 'zero_like(%s, ?, %s)', true, '', '-1');
     }
 
     public static function mysql(string $ciCollation = 'utf8mb4_0900_ai_ci'): self
@@ -54,7 +49,6 @@ final class Dialect
             return "ZERO_ILIKE($expr, ?)";
         }
         $arg = match (true) {
-            $this->name !== 'mysql' => $ci ? '1' : '0',
             $this->translated => 'BINARY ',
             default => $ci ? $this->ciCollation : 'utf8mb4_bin',
         };

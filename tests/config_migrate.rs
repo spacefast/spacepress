@@ -60,7 +60,7 @@ fn build_fixture(dir: &Path, target: &str) -> PathBuf {
 }
 
 #[test]
-fn each_source_compiles_for_both_targets_with_its_storage_and_access() {
+fn each_source_compiles_with_its_storage_and_access() {
     for (from, file, plugin, public) in [
         ("emdash", "emdash.json", "zero-app-imported", false),
         ("payload", "payload.ts", "zero-app-imported", true),
@@ -76,15 +76,12 @@ fn each_source_compiles_for_both_targets_with_its_storage_and_access() {
                 .iter()
                 .any(|e| e["outcome"] == "review")
         );
-        for (target, schema_php) in [
-            ("wp", format!("plugins/{plugin}/zero/app/schema.php")),
-            ("standalone", "zero/app/schema.php".into()),
-        ] {
-            let data = schema(&build_fixture(dir.path(), target).join(schema_php));
+        {
+            let data = schema(&build_fixture(dir.path(), "wp").join(format!("plugins/{plugin}/zero/app/schema.php")));
             let notes = &data["collections"]["notes"];
-            assert_eq!(notes["editor"], true, "{from}/{target}");
+            assert_eq!(notes["editor"], true, "{from}");
             assert_eq!(notes["columns"]["title"]["notNull"], true);
-            assert_eq!(notes["access"]["read"]["allow"], json!(public), "{from}/{target}");
+            assert_eq!(notes["access"]["read"]["allow"], json!(public), "{from}");
             assert_eq!(notes["access"]["create"]["allow"], false);
         }
     }
@@ -110,7 +107,7 @@ fn required_emdash_and_sanity_strings_reject_empty_values() {
         ("sanity", "sanity.ts", vec!["title"]),
     ] {
         let (dir, _) = migrate_fixture(from, file);
-        let app = build_fixture(dir.path(), "standalone");
+        let app = build_fixture(dir.path(), "wp");
         let base: serde_json::Map<String, Value> = fields.iter().map(|f| (f.to_string(), json!("Value"))).collect();
         let cases = json!(fields.iter().map(|f| json!([f, ""])).collect::<Vec<_>>());
         let expected = json!(fields.iter().map(|f| json!(format!("/{f}"))).collect::<Vec<_>>());
@@ -132,23 +129,38 @@ fn payload_optional_email_is_reported_for_empty_strings() {
     );
 }
 
-/// The Payload fixture built for standalone, plus a valid row's base values.
+/// The Payload fixture built for WordPress, plus a valid row's base values.
 fn payload_app() -> (tempfile::TempDir, PathBuf, Value) {
     let (dir, _) = migrate_fixture("payload", "payload.ts");
-    let app = build_fixture(dir.path(), "standalone");
+    let app = build_fixture(dir.path(), "wp");
     (dir, app, json!({"title": "Title", "body": "Body", "tags": ["one"]}))
 }
 
-/// Run PHP against the generated app with `$app` booted; returns its JSON output.
+/// Run PHP on a fresh WordPress-on-SQLite site with the built plugins active (`$app` is the booted
+/// Zero\App, `$arg` the decoded argument); returns its JSON output. See tests/php/wp.php `eval`.
 fn run_php(app: &Path, body: &str, arg: &Value) -> Value {
-    let out = Command::new("php")
-        .args(["-r", &format!("require $argv[1] . '/zero/runtime/bootstrap.php'; $app = \\Zero\\App::boot($argv[1]); $arg = json_decode($argv[2], true); {body}")])
+    let out = wp_eval(app, body, arg);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let json = text.lines().rfind(|l| !l.contains("wp_is_block_theme")).unwrap_or("");
+    serde_json::from_str(json).unwrap_or_else(|_| panic!("{text}"))
+}
+
+fn wp_eval(app: &Path, body: &str, arg: &Value) -> Output {
+    Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
         .arg(app)
+        .arg(body)
         .arg(arg.to_string())
         .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    serde_json::from_slice(&out.stdout).unwrap()
+        .unwrap()
 }
 
 /// The row the Payload app stores for the minimal valid input.
@@ -196,12 +208,14 @@ fn payload_updated_at_moves_on_update() {
 #[test]
 fn payload_literal_read_access_is_carried() {
     let (_dir, app, _) = payload_app();
-    let out = Command::new("php")
-        .args(["-r", "require $argv[1] . '/zero/runtime/bootstrap.php'; echo \\Zero\\App::boot($argv[1])->handle('GET', '/notes', [], '')[0];"])
-        .arg(&app)
-        .output()
-        .unwrap();
-    assert_eq!(String::from_utf8_lossy(&out.stdout), "200");
+    assert_eq!(
+        run_php(
+            &app,
+            "echo json_encode($app->handle('GET', '/notes', [], '')[0]);",
+            &Value::Null
+        ),
+        200
+    );
 }
 
 #[test]
@@ -414,16 +428,16 @@ fn source_code_is_never_executed() {
     assert!(!marker.exists());
 }
 
-/// Migrate one inline source and build it for standalone; returns the app directory.
+/// Migrate one inline source and build it for WordPress; returns the wp-content directory.
 fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join(file);
     std::fs::write(&input, source).unwrap();
     let out = migrate(from, &input, &dir.path().join("app/zero.config.ts"));
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
-    let app = dir.path().join("standalone");
+    let app = dir.path().join("wp-content");
     let build = zero()
-        .args(["build", "--target", "standalone", "--out"])
+        .args(["build", "--target", "wp", "--out"])
         .arg(&app)
         .arg(dir.path().join("app"))
         .output()
@@ -435,15 +449,12 @@ fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, Pat
 /// Insert each `{field: value}` case into `notes` (with `base` filled in), each in its own rolled-back
 /// transaction so cases never see each other's rows; `true` = accepted, else the error pointer.
 fn accepts(app: &Path, base: Value, cases: Value) -> Value {
-    let out = Command::new("php")
-        .args([
-            "-r",
-            r#"
-            require $argv[1] . '/zero/runtime/bootstrap.php';
-            $app = \Zero\App::boot($argv[1]);
-            $base = json_decode($argv[2], true);
+    run_php(
+        app,
+        r#"
+            [$base, $cases] = $arg;
             $out = [];
-            foreach (json_decode($argv[3], true) as [$field, $value]) {
+            foreach ($cases as [$field, $value]) {
                 try {
                     $app->db->transaction(static function () use ($app, $field, $value, $base) {
                         $app->db->insert('notes', [$field => $value] + $base);
@@ -455,14 +466,8 @@ fn accepts(app: &Path, base: Value, cases: Value) -> Value {
             }
             echo json_encode($out);
         "#,
-        ])
-        .arg(app)
-        .arg(base.to_string())
-        .arg(cases.to_string())
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    serde_json::from_slice(&out.stdout).unwrap()
+        &json!([base, cases]),
+    )
 }
 
 #[test]
@@ -534,7 +539,7 @@ fn field_review(from: &str, file: &str, source: &str, field_pointer: &str) -> St
 }
 
 #[test]
-fn imported_datetimes_are_timestamp_columns_on_both_targets() {
+fn imported_datetimes_are_timestamp_columns() {
     for (from, file, source) in [
         ("emdash", "emdash.json", EMDASH_DATETIME_SOURCE),
         ("sanity", "sanity.json", SANITY_DATETIME_SOURCE),
@@ -547,10 +552,8 @@ fn imported_datetimes_are_timestamp_columns_on_both_targets() {
                 .status
                 .success()
         );
-        for (target, schema_php) in [
-            ("wp", "plugins/zero-app-imported/zero/app/schema.php"),
-            ("standalone", "zero/app/schema.php"),
-        ] {
+        {
+            let (target, schema_php) = ("wp", "plugins/zero-app-imported/zero/app/schema.php");
             let built = dir.path().join(target);
             let build = zero()
                 .args(["build", "--target", target, "--out"])
@@ -644,14 +647,16 @@ fn imported_datetimes_refuse_bad_dates_through_the_generated_app() {
 }
 
 #[test]
-fn imported_datetimes_store_utc_milliseconds() {
+fn imported_datetimes_store_utc() {
+    // The imported collection has a title, so it is post-backed: its timestamp lives in SCF's picker
+    // field, which keeps whole seconds (custom tables keep milliseconds; tests/php/db_test.php).
     let (_dir, app) = migrated_app("emdash", "emdash.json", EMDASH_DATETIME_SOURCE);
     let stored = run_php(
         &app,
         "echo json_encode($app->db->insert('notes', $arg, true)[0]['at']);",
         &json!({"title": "t", "at": "2024-02-29T10:00:00.123456+02:00"}),
     );
-    assert_eq!(stored, "2024-02-29T08:00:00.123Z");
+    assert_eq!(stored, "2024-02-29T08:00:00.000Z");
 }
 
 #[test]
@@ -843,7 +848,8 @@ fn original_zero_media_fields_keep_their_cardinality() {
         r#"import { capsule } from "@spacefast/zero/server";
 export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, cover: { kind: "media" }, gallery: { kind: "media", multiple: true, required: true } } } } });"#,
     );
-    let columns = &schema(&app.join("zero/app/schema.php"))["collections"]["notes"]["columns"];
+    let columns =
+        &schema(&app.join("plugins/zero-app-imported/zero/app/schema.php"))["collections"]["notes"]["columns"];
     assert_eq!(columns["cover"], json!({"type": "media", "accept": "any"}));
     assert_eq!(
         columns["gallery"],

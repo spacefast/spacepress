@@ -2,7 +2,7 @@
     "version": 3,
     "runtime": "0.2",
     "name": "phase2",
-    "target": "standalone",
+    "target": "wp",
     "admin": false,
     "site": {
         "uidPrefix": "zr_"
@@ -462,11 +462,6 @@
                 "translations": {
                     "type": "json",
                     "derived": true,
-                    "system": true
-                },
-                "translationGroup": {
-                    "type": "text",
-                    "hidden": true,
                     "system": true
                 }
             },

@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Zero\Media;
 
 /**
- * Where private-file rows and bytes live (phase 2 §7.2): `__zero_files` + `<appRoot>/private` on
- * standalone (Media\SqliteFiles), `{prefix}zero__files` + `uploads/zero-private/<app>` on WordPress
- * (Wp\WpFiles). Files owns every rule; storages only persist. Row values are ints/strings as stored.
+ * Where private-file rows and bytes live (phase 2 §7.2): `{prefix}zero__files` + `uploads/zero-private/<app>`
+ * (Wp\WpFiles). Files owns every rule; the storage only persists. Row values are ints/strings as stored.
  */
 interface FileStorage
 {

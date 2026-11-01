@@ -9,8 +9,7 @@ use Zero\Wp\Plugin;
 use function Zero\db;
 
 /**
- * Row locks for digest-guarded sync writes. SQLite needs none: its request transaction is BEGIN
- * IMMEDIATE, so writers are serialized. MySQL runs REPEATABLE READ: plain reads see the snapshot taken
+ * Row locks for digest-guarded sync writes. MySQL runs REPEATABLE READ: plain reads see the snapshot taken
  * at the transaction's first read, while a locking read sees the latest committed row. A row whose
  * locked state differs from the snapshot changed after this transaction began, so a digest computed
  * from the snapshot is stale. The lock is held until commit, so nobody can change the row after the check.
@@ -31,7 +30,7 @@ final class Lock
         return $locked === $snapshot;
     }
 
-    /** The row's uid as last committed, with the row locked until commit; standalone reads it plainly. */
+    /** The row's uid as last committed, with the row locked until commit (the SQLite translator reads it plainly). */
     public static function uid(string $collection, int|string $pk): ?string
     {
         $spec = db()->schema()->collection($collection);

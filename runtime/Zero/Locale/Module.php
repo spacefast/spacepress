@@ -12,7 +12,7 @@ use function Zero\db;
  * Feature 7 (§7.3): localized collections store one row per locale; non-localized columns are synced
  * across a translation group. Read owns the `locale` query option and presents the derived
  * `translations` (computed by Sql); GroupSync owns `translationOf`, group membership and synced-column
- * propagation. The group is the `translationGroup` column on tables/standalone and Polylang's
+ * propagation. The group is the `translationGroup` column on custom tables and Polylang's
  * translation group on post-backed WordPress (Wp\Polylang).
  */
 final class Module

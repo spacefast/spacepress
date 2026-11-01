@@ -9,7 +9,7 @@ use Zero\Vendor\WordPress\Merge\Merge\LineMerger;
 use Zero\Vendor\WordPress\Merge\Merge\MergeConflict;
 use Zero\Vendor\WordPress\Merge\MergeStrategy;
 
-/** Three-way body merge by line on the bundled php-toolkit, so the CLI and both targets share one merger. */
+/** Three-way body merge by line on the bundled php-toolkit, so the CLI and the runtime share one merger. */
 final class Merge
 {
     /** @return array{merged: ?string, conflicts: list<array{ours: string, theirs: string, line: int}>} */

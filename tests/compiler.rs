@@ -2,11 +2,10 @@
 //! location; the pantry example is built, served with `php -S`, and driven
 //! over HTTP so hooks and actions are proven by their effects in PHP.
 
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{BufRead, Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
 
 fn zero() -> Command {
     Command::new(env!("CARGO_BIN_EXE_zero"))
@@ -180,26 +179,22 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     let tmp = std::env::temp_dir().join(format!("zero-db-globals-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
-    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    let built = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let visit = || {
-        let out = Command::new("php")
-            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
-            .args(["action", "visit"])
-            .output()
-            .unwrap();
-        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
-    };
-    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", null, 1] }));
-    assert_eq!(visit(), serde_json::json!({ "data": ["Hi", { "visits": 1 }, 2] }));
-    let out = Command::new("php")
-        .arg(tmp.join(".zero/app/zero/bin/zero.php"))
-        .args(["action", "emptyMeta"])
-        .output()
-        .unwrap();
+    // One site, three trusted CLI actions in a row (the global's first write, its second, a json filter).
+    let out = wp_eval_json(
+        &tmp.join(".zero/wp-content"),
+        r#"$run = static fn (string $name) => json_decode($app->cli(['action', $name])[1], true);
+           echo json_encode([$run('visit'), $run('visit'), $run('emptyMeta')]);"#,
+        &serde_json::Value::Null,
+    );
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),
-        serde_json::json!({ "data": ["{}"] })
+        out,
+        serde_json::json!([
+            { "data": ["Hi", null, 1] },
+            { "data": ["Hi", { "visits": 1 }, 2] },
+            { "data": ["{}"] },
+        ])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }
@@ -224,55 +219,81 @@ fn rejects_access_rules_that_cant_hold() {
     );
 }
 
+/// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`
+/// (`php tests/php/wp.php serve`): the site a client and `zero sync` talk to.
 struct Server {
     child: Child,
     port: u16,
-    /// Bearer token sent with every request (writes default to `"editor"` access).
-    token: Option<String>,
+    /// Credentials by user name: `user:application password`.
+    users: serde_json::Value,
+    /// The user whose credential goes with every request (writes default to `"editor"` access).
+    as_user: Option<String>,
+    /// The site directory.
+    dir: String,
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let _ = self.child.kill();
+        // SIGTERM lets the server remove its site directory.
+        let _ = Command::new("kill").arg(self.child.id().to_string()).output();
         let _ = self.child.wait();
     }
 }
 
 impl Server {
-    fn start(app: &Path) -> Server {
-        let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        let child = Command::new("php")
-            .args(["-S", &format!("127.0.0.1:{port}"), "-t"])
-            .arg(app.join("public"))
-            .arg(app.join("public/index.php"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+    fn start(wp_content: &Path, users: &[&str]) -> Server {
+        let mut child = Command::new("php")
+            .args(["-d", "memory_limit=512M"])
+            .arg(root().join("tests/php/wp.php"))
+            .arg("serve")
+            .arg(wp_content)
+            .args(users)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
-            .expect("php -S");
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while TcpStream::connect(("127.0.0.1", port)).is_err() {
-            assert!(Instant::now() < deadline, "php -S didn't start");
-            std::thread::yield_now();
-        }
+            .expect("php");
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .expect("the served site's description");
+        let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+        let port: u16 = served["url"]
+            .as_str()
+            .unwrap()
+            .rsplit(':')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         Server {
             child,
             port,
-            token: None,
+            users: served["users"].clone(),
+            as_user: None,
+            dir: served["dir"].as_str().unwrap().to_string(),
         }
     }
 
-    /// Returns (status, body).
+    fn url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    fn credential(&self, name: &str) -> String {
+        self.users[name]["appPassword"].as_str().unwrap().to_string()
+    }
+
+    /// Returns (status, body) for a request to Zero's REST route.
     fn send(&self, method: &str, path: &str, body: Option<&str>) -> (u16, serde_json::Value) {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         let body = body.unwrap_or("");
         // One write: php -S rejects requests whose head arrives in pieces.
         let auth = self
-            .token
+            .as_user
             .as_ref()
-            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .map(|u| format!("Authorization: Basic {}\r\n", base64(self.credential(u).as_bytes())))
             .unwrap_or_default();
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} /wp-json/zero/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         s.write_all(request.as_bytes()).unwrap();
@@ -287,6 +308,49 @@ impl Server {
     }
 }
 
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().fold(0u32, |acc, b| (acc << 8) | *b as u32) << (8 * (3 - chunk.len()));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Run PHP on a fresh WordPress-on-SQLite site with the built wp-content active (`$app`, `$wp`,
+/// `$arg` bound; see tests/php/wp.php `eval`); returns stdout.
+fn wp_eval(wp_content: &Path, code: &str, arg: &serde_json::Value) -> std::process::Output {
+    Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(wp_content)
+        .arg(code)
+        .arg(arg.to_string())
+        .output()
+        .unwrap()
+}
+
+/// The last JSON line of a `wp_eval` run (WordPress's early notices go to stderr, not here).
+fn wp_eval_json(wp_content: &Path, code: &str, arg: &serde_json::Value) -> serde_json::Value {
+    let out = wp_eval(wp_content, code, arg);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    serde_json::from_str(text.lines().next_back().unwrap_or("")).unwrap_or_else(|_| panic!("{text}"))
+}
+
 #[test]
 fn pantry_example_builds_and_its_hooks_run_in_php() {
     let tmp = std::env::temp_dir().join(format!("zero-pantry-{}", std::process::id()));
@@ -296,89 +360,91 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let _ = std::fs::remove_dir_all(project.join(".zero"));
     let _ = std::fs::remove_dir_all(project.join("zero"));
 
-    let out = zero().arg("build").arg(&project).output().unwrap();
+    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
     assert!(
         out.status.success(),
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    // Both dialects get a migration from the shared snapshot; MySQL only for editor:false tables.
-    assert!(project.join("zero/migrations/sqlite/0001_init.sql").is_file());
     let wp = std::fs::read_to_string(project.join("zero/migrations/wp/0001_init.sql")).unwrap();
     assert!(wp.contains("CREATE TABLE `{prefix}zero_items`"), "{wp}");
     // A second build with no changes adds no migration.
-    let again = zero().arg("build").arg(&project).output().unwrap();
+    let again = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/sqlite/0002_update.sql").exists());
     assert!(!project.join("zero/migrations/wp/0002_update.sql").exists());
 
-    // Writes default to editor access: mint a token through the `zero users|tokens` passthrough.
-    let cli = |args: &[&str]| {
-        let out = zero().args(args).arg("--dir").arg(&project).output().unwrap();
-        assert!(
-            out.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
-    };
-    cli(&["users", "add", "kim", "--role", "editor"]);
-    let token = cli(&["tokens", "create", "kim"])["data"]["token"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let app = project.join(".zero/app");
-    let mut server = Server::start(&app);
-    let (s, denied) = server.send("POST", "/api/locations", Some(r#"{"name":"Shed"}"#));
+    // Writes default to editor access: the site's editor signs in with an application password.
+    let content = project.join(".zero/wp-content");
+    let mut server = Server::start(&content, &["kim=editor"]);
+    let (s, denied) = server.send("POST", "/locations", Some(r#"{"name":"Shed"}"#));
     assert_eq!((s, denied["code"].as_str()), (401, Some("unauthenticated")));
-    server.token = Some(token);
+    server.as_user = Some("kim".into());
 
-    let (s, loc) = server.send("POST", "/api/locations", Some(r#"{"name":"Fridge","kind":"fridge"}"#));
+    let (s, loc) = server.send("POST", "/locations", Some(r#"{"name":"Fridge","kind":"fridge"}"#));
     assert_eq!(s, 201, "{loc}");
     let loc_id = loc["data"]["id"].as_i64().unwrap();
 
     // beforeCreate trims, slugifies, and lowercases tags; afterCreate leaves well-stocked items alone.
     let (s, milk) = server.send(
         "POST",
-        "/api/items",
+        "/items",
         Some(&format!(r#"{{"name":"  Oat Milk ","quantity":2,"unit":"l","locationId":{loc_id},"expiresOn":"2000-01-01","tags":["Dairy-Free"]}}"#)),
     );
     assert_eq!(s, 201, "{milk}");
     assert_eq!(milk["data"]["name"], "Oat Milk");
     assert_eq!(milk["data"]["slug"], "oat-milk");
     assert_eq!(milk["data"]["tags"], serde_json::json!(["dairy-free"]));
-    let (_, list) = server.send("GET", "/api/shopping_list", None);
+    let (_, list) = server.send("GET", "/shopping_list", None);
     assert_eq!(list["data"].as_array().unwrap().len(), 0);
 
     // The consume action runs the update pipeline; afterUpdate restocks at the threshold.
     let milk_id = milk["data"]["id"].as_i64().unwrap();
-    let (s, consumed) = server.send(
-        "POST",
-        "/api/actions/consume",
-        Some(&format!(r#"{{"itemId":{milk_id}}}"#)),
-    );
+    let (s, consumed) = server.send("POST", "/actions/consume", Some(&format!(r#"{{"itemId":{milk_id}}}"#)));
     assert_eq!(s, 200, "{consumed}");
     assert_eq!(consumed["data"]["message"], "Oat Milk: 1 l left");
-    let (_, list) = server.send("GET", "/api/shopping_list?with=item", None);
+    let (_, list) = server.send("GET", "/shopping_list?with=item", None);
     assert_eq!(list["data"][0]["name"], "Oat Milk");
     assert_eq!(list["data"][0]["item"]["quantity"], 1);
     assert_eq!(list["data"][0]["notifiedAt"], serde_json::Value::Null);
 
-    // §6.1: restocking enqueued notifyLowStock; `zero jobs work --once` runs it off the request
-    // (the queue's semantics live in tests/php/jobs_test.php).
-    let queued = &cli(&["jobs", "list", "--state", "pending"])["data"];
+    // §6.1: restocking enqueued notifyLowStock; Action Scheduler runs it off the request (the queue's
+    // semantics live in tests/php/jobs_test.php). `wp zero jobs` lists it before and after.
+    let jobs = |args: &str| -> serde_json::Value {
+        let (_, out) = server.send("GET", "/_schema", None);
+        assert_eq!(out["data"]["name"], "pantry");
+        serde_json::from_str(&String::from_utf8_lossy(
+            &Command::new("php")
+                .args(["-d", "memory_limit=512M", "-r"])
+                .arg(format!(
+                    "require $argv[1]; wpLoad($argv[2]); echo \\Zero\\Wp\\Runtime::plugin()->app()->cli({args})[1];"
+                ))
+                .arg(root().join("tests/php/wp.php"))
+                .arg(server_dir(&server))
+                .output()
+                .unwrap()
+                .stdout,
+        ))
+        .unwrap()
+    };
+    let queued = &jobs(r#"['jobs', 'list', '--state', 'pending']"#)["data"];
     assert_eq!(queued.as_array().unwrap().len(), 1, "{queued}");
     assert_eq!(queued[0]["job"], "notifyLowStock");
     assert_eq!(queued[0]["key"], format!("low-{milk_id}"));
-    assert_eq!(cli(&["jobs", "work", "--once"])["data"]["done"], 1);
-    let (_, list) = server.send("GET", "/api/shopping_list", None);
+    let ran = Command::new("php")
+        .args(["-d", "memory_limit=512M", "-r"])
+        .arg("require $argv[1]; wpLoad($argv[2]); ActionScheduler_QueueRunner::instance()->run('tests');")
+        .arg(root().join("tests/php/wp.php"))
+        .arg(server_dir(&server))
+        .output()
+        .unwrap();
+    assert!(ran.status.success(), "{}", String::from_utf8_lossy(&ran.stderr));
+    let (_, list) = server.send("GET", "/shopping_list", None);
     assert!(
         list["data"][0]["notifiedAt"].as_str().is_some_and(|t| t.ends_with('Z')),
         "{list}"
     );
     assert_eq!(
-        cli(&["jobs", "list", "--state", "done"])["data"]
+        jobs(r#"['jobs', 'list', '--state', 'done']"#)["data"]
             .as_array()
             .unwrap()
             .len(),
@@ -386,16 +452,16 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     );
 
     // The hook's own validation and the runtime's coercion both surface as problems.
-    let (s, blank) = server.send("POST", "/api/items", Some(r#"{"name":"   "}"#));
+    let (s, blank) = server.send("POST", "/items", Some(r#"{"name":"   "}"#));
     assert_eq!((s, blank["detail"].as_str()), (422, Some("name can't be empty")));
-    let (s, bad) = server.send("POST", "/api/actions/consume", Some(r#"{"itemId":999}"#));
+    let (s, bad) = server.send("POST", "/actions/consume", Some(r#"{"itemId":999}"#));
     assert_eq!(
         (s, bad["code"].as_str(), bad["detail"].as_str()),
         (404, Some("not_found"), Some("No item 999"))
     );
 
     // A relation loaded inside an action, with a date computed in PHP.
-    let (s, soon) = server.send("POST", "/api/actions/expiringSoon", Some("{}"));
+    let (s, soon) = server.send("POST", "/actions/expiringSoon", Some("{}"));
     assert_eq!(s, 200, "{soon}");
     assert_eq!(
         soon["data"],
@@ -404,6 +470,11 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
 
     drop(server);
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// The served site's directory (its SQLite database lives below it), for in-process PHP.
+fn server_dir(server: &Server) -> PathBuf {
+    PathBuf::from(server.dir.as_str())
 }
 
 fn copy(from: &Path, to: &Path) {
@@ -463,13 +534,21 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
-    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    let built = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
         "build failed:\n{}",
         String::from_utf8_lossy(&built.stderr)
     );
-    let app = tmp.join(".zero/app");
+    // The compiled app plugin (named after the project directory) and the runtime beside it.
+    let plugins = tmp.join(".zero/wp-content/plugins");
+    let app = std::fs::read_dir(&plugins)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("zero-app-"))
+        .expect("the app plugin");
+    let runtime = plugins.join("zero-runtime");
 
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {
@@ -477,25 +556,27 @@ fn compiled_php_matches_node_on_every_differential_case() {
         let out = match parts.as_slice() {
             ["access", _, _, i] => {
                 let ctx = &fixtures["ctxs"][i.parse::<usize>().unwrap()];
-                php_case(&app, name, serde_json::json!({ "ctx": ctx }))
+                php_case(&runtime, &app, name, serde_json::json!({ "ctx": ctx }))
             }
             ["field", _, _, _, i] => {
                 let ctx = &fixtures["fctxs"][i.parse::<usize>().unwrap()];
-                php_case(&app, name, serde_json::json!({ "ctx": ctx }))
+                php_case(&runtime, &app, name, serde_json::json!({ "ctx": ctx }))
             }
             ["validate", c, col, i] => {
                 let value = &fixtures["values"][format!("{c}.{col}")][i.parse::<usize>().unwrap()];
                 php_case(
+                    &runtime,
                     &app,
                     name,
                     serde_json::json!({ "value": value, "ctx": fixtures["vctx"] }),
                 )
             }
-            _ => Command::new("php")
-                .arg(app.join("zero/bin/zero.php"))
-                .args(["action", name])
-                .output()
-                .unwrap(),
+            // Actions run through the trusted CLI on a site: they may use db(), once() and jobs.
+            _ => wp_eval(
+                &tmp.join(".zero/wp-content"),
+                "echo $app->cli(['action', $arg])[1];",
+                &serde_json::Value::String(name.clone()),
+            ),
         };
         assert!(
             out.stderr.is_empty(),
@@ -526,9 +607,10 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
 }
 
-fn php_case(app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {
+fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> std::process::Output {
     Command::new("php")
         .arg(root().join("tests/differential/run-php.php"))
+        .arg(runtime)
         .arg(app)
         .arg(case)
         .arg(args.to_string())
@@ -598,29 +680,15 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     };
 
     let golden = as_json(&root().join("tests/fixtures/blog/schema.php"));
-    for target in ["standalone", "wp"] {
-        let out = zero()
-            .args(["build", "--target", target])
-            .arg(&frozen)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    }
+    let out = zero().args(["build", "--target", "wp"]).arg(&frozen).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
-        as_json(&frozen.join(".zero/app/zero/app/schema.php")),
+        as_json(&frozen.join(".zero/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
         golden,
         "schema.php drifted from tests/fixtures/blog/schema.php"
     );
-    let mut wp_schema = as_json(&frozen.join(".zero/wp-content/plugins/zero-app-blog/zero/app/schema.php"));
-    assert_eq!(wp_schema["target"], "wp");
-    wp_schema["target"] = "standalone".into();
-    assert_eq!(wp_schema, golden);
 
-    let out = zero()
-        .args(["build", "--target", "standalone"])
-        .arg(&project)
-        .output()
-        .unwrap();
+    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     // §3.5.1: post-backed columns that only postmeta can filter get a one-line hint.
     assert!(
@@ -630,9 +698,6 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-
-    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let plugin = project.join(".zero/wp-content/plugins/zero-app-blog");
     for rel in [
         "zero-app-blog.php",
@@ -664,88 +729,18 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/platform.json")).unwrap()).unwrap();
     assert_eq!(doctor["data"]["requirements"], platform);
 
-    let standalone = project.join(".zero/app");
-    let diagnose_standalone = |database: Option<&Path>| {
-        let mut command = zero();
-        command
-            .args(["doctor", "--target", "standalone", "--json"])
-            .arg(&project)
-            .env_remove("ZERO_DB_PATH");
-        if let Some(database) = database {
-            command.env("ZERO_DB_PATH", database);
-        }
-        let output = command.output().unwrap();
-        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        (output.status.code(), report)
-    };
-    // An explicit target must diagnose that artifact even when the other target exists.
-    let saved_standalone = tmp.join("standalone");
-    std::fs::rename(&standalone, &saved_standalone).unwrap();
-    let (code, report) = diagnose_standalone(None);
-    assert_eq!(code, Some(1), "{report}");
-    assert!(
-        report["data"]["checks"].as_array().unwrap().iter().any(|check| {
-            check["name"] == "built runtime series" && check["ok"] == false && check["detail"] == "missing"
-        }),
-        "{report}"
-    );
-    std::fs::rename(&saved_standalone, &standalone).unwrap();
-
-    let migrate = |database: Option<&Path>| {
-        let mut command = Command::new("php");
-        command
-            .arg(standalone.join("zero/bin/zero.php"))
-            .arg("migrate")
-            .env_remove("ZERO_DB_PATH");
-        if let Some(database) = database {
-            command.env("ZERO_DB_PATH", database);
-        }
-        let output = command.output().unwrap();
-        assert!(
-            output.status.success(),
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    };
-    let external = tmp.join("external.sqlite");
-    migrate(Some(&external));
-    let (code, report) = diagnose_standalone(Some(&external));
-    assert_eq!(code, Some(0), "{report}");
-    migrate(None);
-    // `zero dev` serves the example's page at `/` (its public/index.html) and the API beside it.
-    let server = Server::start(&standalone);
-    let mut page = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
-    page.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-        .unwrap();
-    let mut raw = String::new();
-    page.read_to_string(&mut raw).unwrap();
-    assert!(
-        raw.starts_with("HTTP/1.1 200") && raw.contains("<button id=\"auth\">Sign in</button>"),
-        "{raw}"
-    );
-    assert_eq!(server.send("GET", "/api/auth/config", None).0, 200);
     // §5.8: the example's committed posts against a fresh site: --check reports them (exit 2), a
-    // sync creates them, and a second sync changes nothing.
-    let php = |args: &[&str]| -> serde_json::Value {
-        let out = Command::new("php")
-            .arg(standalone.join("zero/bin/zero.php"))
-            .args(args)
-            .output()
-            .unwrap();
-        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)))
-    };
-    php(&["user", "add", "ed@example.test", "--role", "editor"]);
-    let token = php(&["token", "create", "ed@example.test"])["data"]["token"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let site = format!("http://127.0.0.1:{}", server.port);
+    // sync creates them, and a second sync changes nothing. (tests/system/blog.test.ts does the same
+    // against WordPress on MariaDB with the plugins installed as a site owner would.)
+    let server = Server::start(&content, &["ed=editor"]);
+    assert_eq!(server.send("GET", "/auth/config", None).0, 200);
+    let credential = server.credential("ed");
+    let site = server.url();
     let sync = |extra: &[&str]| {
         zero()
             .arg("sync")
             .arg(&project)
-            .args(["--site", &site, "--token", &token, "--no-commit", "--json"])
+            .args(["--site", &site, "--app-password", &credential, "--no-commit", "--json"])
             .args(extra)
             .output()
             .unwrap()
@@ -767,20 +762,9 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         serde_json::from_slice::<serde_json::Value>(&again.stdout).unwrap()["data"]["applied"],
         0
     );
-    let (_, posts) = server.send("GET", "/api/posts?orderBy=id", None);
+    let (_, posts) = server.send("GET", "/posts?orderBy=id", None);
     assert_eq!(posts["data"][0]["title"], "Hello, Zero", "{posts}");
     drop(server);
-    // A migrated default database must not conceal an unmigrated configured database.
-    let (code, report) = diagnose_standalone(Some(&tmp.join("unmigrated.sqlite")));
-    assert_eq!(code, Some(1), "{report}");
-    assert!(
-        report["data"]["checks"].as_array().unwrap().iter().any(|check| {
-            check["name"] == "pending migrations"
-                && check["ok"] == false
-                && check["detail"].as_str().unwrap().starts_with("1;")
-        }),
-        "{report}"
-    );
 
     // §7.3: localized posts ship a wpml-config.xml, so WPML and Polylang know which fields translate.
     assert_eq!(
@@ -988,7 +972,8 @@ fn rejects_phase2_static_contracts() {
         ),
     ];
     for (fixture, message) in cases {
-        for target in ["standalone", "wp"] {
+        {
+            let target = "wp";
             let out = zero()
                 .args(["check", "--target", target])
                 .arg(root().join("tests/fixtures").join(fixture))
@@ -1195,7 +1180,8 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        for target in ["standalone", "wp"] {
+        {
+            let target = "wp";
             let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
             let stderr = String::from_utf8_lossy(&out.stderr);
             assert_eq!(out.status.code(), Some(1), "{target}: {stderr}");
@@ -1217,7 +1203,8 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        for target in ["standalone", "wp"] {
+        {
+            let target = "wp";
             let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
             let stderr = String::from_utf8_lossy(&out.stderr);
             assert_eq!(out.status.code(), Some(1), "{invocation} ({target}): {stderr}");
@@ -1246,7 +1233,8 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        for target in ["standalone", "wp"] {
+        {
+            let target = "wp";
             let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
             let stderr = String::from_utf8_lossy(&out.stderr);
             assert_eq!(out.status.code(), Some(1), "{extraction} ({target}): {stderr}");
@@ -1277,42 +1265,22 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
-    let mut snapshots = Vec::new();
-    for target in ["standalone", "wp"] {
-        let out = zero().args(["build", "--target", target]).arg(&tmp).output().unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        let schema_file = if target == "wp" {
-            tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php")
-        } else {
-            tmp.join(".zero/app/zero/app/schema.php")
-        };
-        let out = Command::new("php")
-            .args(["-r", "echo json_encode(require $argv[1]);"])
-            .arg(schema_file)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-        let mut expected = golden.clone();
-        expected["target"] = target.into();
-        if target == "wp" {
-            expected["collections"]["posts"]["columns"]
-                .as_object_mut()
-                .unwrap()
-                .remove("translationGroup");
-        }
-        assert_eq!(actual, expected, "v3 metadata ({target}) drifted");
-        snapshots.push(std::fs::read_to_string(tmp.join("zero/migrations/snapshot.json")).unwrap());
-    }
-    // §7.3: the migration snapshot is shared by both targets, so switching targets must plan no
-    // migration (a WP build must not drop the SQLite translation-group column).
-    assert_eq!(
-        snapshots[0], snapshots[1],
-        "the migration snapshot depends on the build target"
-    );
+    let out = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(tmp.join(".zero/wp-content/plugins/zero-app-phase2/zero/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, golden, "v3 metadata drifted");
+    // A second build with no changes plans no migration.
+    let again = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(
-        !tmp.join("zero/migrations/sqlite/0002_update.sql").exists(),
-        "switching targets planned a SQLite migration"
+        !tmp.join("zero/migrations/wp/0002_update.sql").exists(),
+        "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
     let wpml = tmp.join(".zero/wp-content/plugins/zero-app-phase2/wpml-config.xml");
@@ -1344,29 +1312,28 @@ fn phase2_schema_and_closures_match_the_contract() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let app = tmp.join(".zero/app");
-    let out = Command::new("php")
-        .args([
-            "-r",
-            r#"
-        require $argv[1] . '/zero/runtime/bootstrap.php';
-        \Zero\App::boot($argv[1]);
+    // The compiled closures run on a WordPress site with the plugins active (fields rules, actions,
+    // a job handler writing through db()).
+    let out = wp_eval(
+        &tmp.join(".zero/wp-content"),
+        r#"
+
         $db = \Zero\Db::instance();
         $schema = $db->schema();
         $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
-        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
-        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
-        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone', 'op' => 'read']);
+        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
+        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
+        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'wp', 'op' => 'read']);
         $fieldThrows = false;
         try {
-            $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'standalone', 'op' => 'read']);
+            $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
         } catch (\Zero\JsError $error) {
             $fieldThrows = $error->getMessage() === 'denied';
         }
         $action = $schema->action('inbound');
         $fn = '\\ZeroApp\\' . $action['handler'];
-        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'standalone'];
+        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'wp'];
         $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
         $actionThrows = false;
         try {
@@ -1381,30 +1348,97 @@ fn phase2_schema_and_closures_match_the_contract() {
         unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
+        $update = $fn(['data' => [], 'op' => 'update', 'target' => 'standalone'] + $actor);
         $wpUpdate = $fn(['data' => [], 'op' => 'update', 'target' => 'wp'] + $actor);
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
-        $bucketGuest = $fn(['user' => null, 'target' => 'standalone', 'op' => 'create']);
+        $bucketGuest = $fn(['user' => null, 'target' => 'wp', 'op' => 'create']);
         $job = $schema->jobs()['sendWelcome'];
         $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
-        $ctx = ['user' => null, 'target' => 'standalone', 'attempt' => 2, 'jobId' => 'job-test'];
+        $ctx = ['user' => null, 'target' => 'wp', 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
         echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
-        ])
-        .arg(&app)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        &serde_json::Value::Null,
+    );
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let result: serde_json::Value =
+        serde_json::from_str(text.lines().next_back().unwrap_or("")).unwrap_or_else(|_| panic!("{text}"));
     let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "optional": null, "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
     assert_eq!(
         result,
         serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// The standalone runtime is gone: a config without `target` builds the WordPress plugins, and asking
+/// for the standalone target is refused before anything is written.
+#[test]
+fn builds_wordpress_by_default_and_refuses_the_standalone_target() {
+    let tmp = std::env::temp_dir().join(format!("zero-no-standalone-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/db-globals"), &tmp);
+    for args in [["build", "--target", "standalone"], ["dev", "--target", "standalone"]] {
+        let refused = zero().args(args).arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&refused.stderr);
+        assert_eq!(refused.status.code(), Some(1), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains("the standalone target has been removed"),
+            "{args:?}: {stderr}"
+        );
+    }
+    // The same refusal for a config that names the target itself.
+    let standalone = std::env::temp_dir().join(format!("zero-config-standalone-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&standalone);
+    copy(&tmp, &standalone);
+    let config = std::fs::read_to_string(standalone.join("zero.config.ts")).unwrap();
+    std::fs::write(
+        standalone.join("zero.config.ts"),
+        config.replacen("defineConfig({", "defineConfig({ target: \"standalone\",", 1),
+    )
+    .unwrap();
+    let refused = zero().arg("build").arg(&standalone).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("the standalone target has been removed"), "{stderr}");
+    // The JSON check reports the same refusal as a diagnostic, never a clean envelope: for the config
+    // option, and for the flag on a config that names no target.
+    for (project, flags) in [(&standalone, vec![]), (&tmp, vec!["--target", "standalone"])] {
+        let json = zero()
+            .args(["check", "--json"])
+            .args(&flags)
+            .arg(project)
+            .output()
+            .unwrap();
+        assert_eq!(json.status.code(), Some(1), "{}", String::from_utf8_lossy(&json.stdout));
+        let envelope: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+        assert_eq!(envelope["ok"], false, "{envelope}");
+        assert!(
+            envelope["diagnostics"].as_array().unwrap().iter().any(|d| d["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("the standalone target has been removed")),
+            "{envelope}"
+        );
+    }
+    assert!(
+        !tmp.join(".zero").exists() && !tmp.join("zero").exists() && !standalone.join(".zero").exists(),
+        "a refusal wrote files"
+    );
+    let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
+    assert!(!tmp.join(".zero/app").exists());
+    let _ = std::fs::remove_dir_all(tmp);
+    let _ = std::fs::remove_dir_all(standalone);
 }
 
 /// The auth-collection fixture the PHP suites run on is exactly what the compiler emits for it.
@@ -1415,15 +1449,11 @@ fn auth_fixture_matches_the_compiler() {
     std::fs::create_dir_all(&tmp).unwrap();
     let fixture = root().join("tests/fixtures/auth");
     std::fs::copy(fixture.join("zero.config.ts"), tmp.join("zero.config.ts")).unwrap();
-    let out = zero()
-        .args(["build", "--target", "standalone"])
-        .arg(&tmp)
-        .output()
-        .unwrap();
+    let out = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join(".zero/app/zero/app/schema.php"))
+        .arg(tmp.join(".zero/wp-content/plugins/zero-app-club/zero/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -1433,11 +1463,6 @@ fn auth_fixture_matches_the_compiler() {
     assert_eq!(
         actual, golden,
         "tests/fixtures/auth/schema.json drifted from the compiler"
-    );
-    assert_eq!(
-        std::fs::read_to_string(tmp.join("zero/migrations/sqlite/0001_init.sql")).unwrap(),
-        std::fs::read_to_string(fixture.join("0001_init.sql")).unwrap(),
-        "tests/fixtures/auth/0001_init.sql drifted from the compiler"
     );
     // The generated client types the auth collection as §6.2 says (tests/fixtures/auth/client.ts).
     std::fs::copy(fixture.join("client.ts"), tmp.join("client.ts")).unwrap();

@@ -209,7 +209,6 @@ test("installing the artifact: activation order, platform requirements, doctor",
 test("the site journey on WordPress", async (t) => {
   await siteJourney(
     {
-      target: "wp",
       origin: receipt.url,
       client,
       get authorId() {

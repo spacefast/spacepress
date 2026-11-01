@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/* Image sizes (phase 2 §7.2): core-compatible resize rectangles, focal-aware crops, GD rendering. */
+/* Image sizes (phase 2 §7.2): core-compatible resize rectangles and focal-aware crops; which files resize. */
 
 use Zero\Media\Images;
 
@@ -40,16 +40,6 @@ $im = imagecreatetruecolor(400, 200);
 imagefilledrectangle($im, 0, 0, 199, 199, imagecolorallocate($im, 255, 0, 0));
 imagefilledrectangle($im, 200, 0, 399, 199, imagecolorallocate($im, 0, 0, 255));
 imagepng($im, "$dir/src.png");
-$colour = static function (string $file): array {
-    $img = imagecreatefrompng($file);
-    $c = imagecolorsforindex($img, imagecolorat($img, intdiv(imagesx($img), 2), intdiv(imagesy($img), 2)));
-
-    return [imagesx($img), imagesy($img), $c['red'], $c['blue']];
-};
-Images::render("$dir/src.png", 'image/png', Images::dimensions(400, 200, 100, 100, true, ['x' => 0, 'y' => 0]), "$dir/left.png");
-Images::render("$dir/src.png", 'image/png', Images::dimensions(400, 200, 100, 100, true, ['x' => 1, 'y' => 0]), "$dir/right.png");
-eq('GD renders the focal crop: left focal is red', $colour("$dir/left.png"), [100, 100, 255, 0]);
-eq('GD renders the focal crop: right focal is blue', $colour("$dir/right.png"), [100, 100, 0, 255]);
 
 // Real GIFs from GD: a still image; two frames (white palette entry last, no control extension on
 // the second frame) is an animation; SVG never resizes.
@@ -75,27 +65,6 @@ eq('still GIF resizes; animated GIFs (with or without control blocks) and SVG do
     Images::resizable($gif(1, false), 'image/gif'), Images::resizable($gif(2, false), 'image/gif'), Images::resizable($gif(2, true), 'image/gif'),
     Images::resizable("$dir/src.png", 'image/svg+xml'),
 ], [true, false, false, false]);
-
-// A transparent GIF stays transparent once resized.
-$t = imagecreate(40, 40);
-$bg = imagecolorallocate($t, 0, 255, 0);
-imagecolortransparent($t, $bg);
-imagefilledrectangle($t, 10, 10, 29, 29, imagecolorallocate($t, 255, 0, 0));
-imagegif($t, "$dir/clear.gif");
-Images::render("$dir/clear.gif", 'image/gif', Images::dimensions(40, 40, 20, 20, true), "$dir/clear-small.gif");
-$small = imagecreatefromgif("$dir/clear-small.gif");
-$corner = imagecolorat($small, 0, 0);
-eq('resized GIF keeps a transparent background and an opaque centre', [$corner === imagecolortransparent($small), imagecolorsforindex($small, imagecolorat($small, 10, 10))['red'] > 240], [true, true]);
-
-// A large, mostly transparent GIF resizes within a 128 MB request.
-$big = imagecreate(1000, 1000);
-imagecolortransparent($big, imagecolorallocate($big, 0, 255, 0));
-imagegif($big, "$dir/big.gif");
-$limit = ini_get('memory_limit');
-ini_set('memory_limit', '128M');
-Images::render("$dir/big.gif", 'image/gif', Images::dimensions(1000, 1000, 800, 800, true), "$dir/big-small.gif");
-ini_set('memory_limit', $limit);
-eq('a large transparent GIF resizes under 128 MB', getimagesize("$dir/big-small.gif")[0], 800);
 
 // The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
 require dirname(__DIR__, 2) . '/runtime/Zero/Wp/Media/ImageCdn.php';

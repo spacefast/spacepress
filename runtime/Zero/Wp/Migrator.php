@@ -27,6 +27,14 @@ final class Migrator
     {
     }
 
+    /** The statements of a migration file: split on the compiler's `--> statement-breakpoint` lines. */
+    public static function statements(string $sql): array
+    {
+        $parts = preg_split('/-->[ \t]*statement-breakpoint/', $sql) ?: [];
+
+        return array_values(array_filter(array_map('trim', $parts), static fn ($s) => $s !== ''));
+    }
+
     /**
      * Records `<id>:<n>` (statement n of migration id) as applied without running it, for a statement
      * whose effect is already in the database. Only the next pending statement can be marked.
@@ -48,7 +56,7 @@ final class Migrator
         if (!is_file($file) || isset($done[$id])) {
             throw new \Zero\HttpError(409, 'not_pending', "$id is not a pending migration of this app");
         }
-        $count = count(\Zero\Migrator::statements((string) file_get_contents($file)));
+        $count = count(self::statements((string) file_get_contents($file)));
         $next = 1;
         while (isset($done["$id:$next"])) {
             $next++;
@@ -74,7 +82,7 @@ final class Migrator
                 continue;
             }
             $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
-            foreach (\Zero\Migrator::statements($sql) as $i => $statement) {
+            foreach (self::statements($sql) as $i => $statement) {
                 $step = $id . ':' . ($i + 1);
                 if (isset($done[$step])) {
                     continue;

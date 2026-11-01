@@ -7,9 +7,9 @@ namespace Zero\Media;
 use Zero\HttpError;
 
 /**
- * Named image sizes (phase 2 §7.2): the rectangle math both targets share and the GD renderer the
- * standalone target uses. dimensions() matches core's image_resize_dimensions() (same rounding, no
- * upscaling), with the crop origin moved to the focal point when one is set.
+ * Named image sizes (phase 2 §7.2): the rectangle math behind WpMedia's renditions. dimensions()
+ * matches core's image_resize_dimensions() (same rounding, no upscaling), with the crop origin moved
+ * to the focal point when one is set.
  */
 final class Images
 {
@@ -84,7 +84,7 @@ final class Images
         return (int) max(0, min($full - $crop, round($focal * $full - $crop / 2)));
     }
 
-    /** True when $path is a still image in a format both targets resize. */
+    /** True when $path is a still image in a format WpMedia resizes. */
     public static function resizable(string $path, string $mime): bool
     {
         return in_array($mime, self::RESIZABLE, true) && !($mime === 'image/gif' && self::animated($path));
@@ -125,59 +125,6 @@ final class Images
         }
 
         return false;
-    }
-
-    /** Render one size with GD into $dest, in the source's format. */
-    public static function render(string $src, string $mime, array $dims, string $dest): void
-    {
-        $image = @imagecreatefromstring((string) file_get_contents($src));
-        if ($image === false) {
-            throw new \RuntimeException('Cannot decode the image');
-        }
-        [, , $sx, $sy, $dw, $dh, $sw, $sh] = $dims;
-        $out = imagecreatetruecolor($dw, $dh);
-        if ($mime !== 'image/jpeg') {
-            imagealphablending($out, false);
-            imagesavealpha($out, true);
-            imagefill($out, 0, 0, imagecolorallocatealpha($out, 0, 0, 0, 127));
-        }
-        imagecopyresampled($out, $image, 0, 0, $sx, $sy, $dw, $dh, $sw, $sh);
-        $ok = match ($mime) {
-            'image/jpeg' => imagejpeg($out, $dest, 82),
-            'image/png' => imagepng($out, $dest),
-            'image/gif' => self::gif($out, $dest),
-            'image/webp' => imagewebp($out, $dest, 82),
-        };
-        if (!$ok) {
-            throw new \RuntimeException('Cannot write the resized image');
-        }
-    }
-
-    /** GIF has one transparent palette index, not an alpha channel: map transparent pixels onto it. */
-    private static function gif(\GdImage $img, string $dest): bool
-    {
-        $w = imagesx($img);
-        $h = imagesy($img);
-        $mask = str_repeat("\0", $w * $h); // one byte per pixel
-        $any = false;
-        for ($y = 0; $y < $h; $y++) {
-            for ($x = 0; $x < $w; $x++) {
-                if (((imagecolorat($img, $x, $y) >> 24) & 0x7F) >= 64) {
-                    $mask[$y * $w + $x] = "\1";
-                    $any = true;
-                }
-            }
-        }
-        imagetruecolortopalette($img, false, 255);
-        if ($any) {
-            $key = imagecolorallocate($img, 255, 0, 255);
-            imagecolortransparent($img, $key);
-            for ($i = strpos($mask, "\1"); $i !== false; $i = strpos($mask, "\1", $i + 1)) {
-                imagesetpixel($img, $i % $w, intdiv($i, $w), $key);
-            }
-        }
-
-        return imagegif($img, $dest);
     }
 
     /** Validate a focal point from request input: {x, y} in 0..1, or null. */

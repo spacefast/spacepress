@@ -18,7 +18,7 @@ use function Zero\db;
 /**
  * Private file buckets (phase 2 §7.2): `files("decks", {...})` rows owned by their uploader, bytes
  * outside any public directory, read only through a signed 5-minute download URL that PHP streams.
- * Shared by both targets; FileStorage is the per-target persistence.
+ * FileStorage (WpFiles) owns the persistence.
  */
 final class Files
 {
@@ -31,7 +31,7 @@ final class Files
     public static function register(): void
     {
         Extensions::route('files', FileRoutes::dispatch(...));
-        \Zero\SystemTables::register('__zero_files', [SqliteFiles::DDL], [
+        \Zero\SystemTables::register('__zero_files', [
             'CREATE TABLE IF NOT EXISTS `{prefix}zero__files` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `app` VARCHAR(191) NOT NULL DEFAULT \'\', `bucket` TEXT NOT NULL, `filename` TEXT NOT NULL, `mime` TEXT NOT NULL, `size` BIGINT NOT NULL, `path` TEXT NOT NULL, `ownerId` BIGINT UNSIGNED NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`), KEY `app` (`app`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
             static fn (\Zero\Store $store) => \Zero\Wp\WpFiles::upgrade($store),
         ]);
@@ -53,14 +53,11 @@ final class Files
         });
     }
 
-    /** The target's storage; standalone builds its own from the booted SQLite media service. */
+    /** The active app's private-file storage. */
     public static function storage(): FileStorage
     {
         if (self::$storage === null || self::$storageFor !== db()) {
-            $media = db()->media();
-            self::$storage = $media instanceof \Zero\Store\SqliteMedia
-                ? new SqliteFiles($media->store(), $media->appRoot())
-                : new \Zero\Wp\WpFiles(\Zero\Wp\Runtime::plugin()?->connection() ?? throw new \LogicException('No Zero app is active'), db()->schema()->name());
+            self::$storage = new \Zero\Wp\WpFiles(\Zero\Wp\Runtime::plugin()?->connection() ?? throw new \LogicException('No Zero app is active'), db()->schema()->name());
             self::$storageFor = db();
         }
 

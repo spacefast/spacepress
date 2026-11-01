@@ -1,63 +1,50 @@
 # Zero PHP runtime contract
 
-The Rust compiler (`zero build`) emits a PHP app. Everything that runs at
-request time is PHP: a hand-written runtime library (`runtime/Zero/*.php`,
+The Rust compiler (`zero build`) emits WordPress plugins. Everything that runs
+at request time is PHP: a hand-written runtime library (`runtime/Zero/*.php`,
 copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
-Requirements: PHP 8.2+, extensions `pdo_sqlite`, `mbstring`, `json` and `gd`
-(`sodium` for phase-two identity features). Composer runs only at maintainer
-time; prefixed third-party libraries ship under `vendor-prefixed/` on both
-targets. See `dependencies.md` for their locks and regeneration. Every Zero file starts with
-`declare(strict_types=1);`. Namespace `Zero`.
+Requirements (`Platform::problems()` is the one statement of them; activation
+and `zero doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
+`mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
+MySQL 8.0+ or MariaDB 10.11+ with every Zero table InnoDB, or SQLite through
+SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
+Fields, Action Scheduler and MCP Adapter at the versions in
+`Platform::PLUGINS`, plus Polylang when the app is localized. Composer runs
+only at maintainer time; prefixed third-party libraries ship under
+`vendor-prefixed/`. See `dependencies.md` for their locks and regeneration.
+Every Zero file starts with `declare(strict_types=1);`. Namespace `Zero`.
 
 ## Build output layout
 
 ```
-<out>/                      (default: <project>/.zero/app)
-  public/index.php          generated front controller (also the php -S router)
-  public/...                copied from <project>/public if present
-  zero/runtime/*.php        this library, copied verbatim
-  zero/runtime/vendor-prefixed/**  bundled, isolated PHP dependencies
-  zero/app/schema.php       generated: `return [...]` schema metadata
-  zero/app/functions.php    generated: compiled hooks, actions, helpers (namespace ZeroApp)
-  zero/app/migrations/NNNN_<name>.sql
-  zero/bin/zero.php         CLI entry (copied from runtime/bin/zero.php)
-  data/                     runtime state (SQLite file), created on demand
-  data/secret               persistent signing key, created on first standalone boot
-  private/                  private-file storage, outside the public root
+<out>/                                 (default: <project>/.zero/wp-content)
+  zero-manifest.json                   versions, runtime series, platform requirements, dependency checksums
+  plugins/zero-runtime/
+    zero-runtime.php                   plugin header; boots Wp\Plugin
+    zero/*.php                         this library, copied verbatim
+    zero/vendor-prefixed/**            bundled, isolated PHP dependencies
+  plugins/zero-identity/               optional identity bundle (passkeys, sessions, tokens)
+  plugins/zero-app-<name>/
+    zero-app-<name>.php                plugin header
+    zero/app/schema.php                generated: `return [...]` schema metadata
+    zero/app/functions.php             generated: compiled hooks, actions, helpers (namespace ZeroApp)
+    zero/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+    public/...                         copied from <project>/public if present
+  *.zip                                the same plugins, packaged
 ```
 
-`public/index.php` is exactly:
+`zero/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()` function),
+sets `ini_set('precision', '-1')`, `ini_set('serialize_precision', '-1')`,
+registers an autoloader for `Zero\*` from its own directory, and registers the
+ordered feature modules through `Features::register()` (once per process).
 
-```php
-<?php
-declare(strict_types=1);
-if (PHP_SAPI === 'cli-server' && is_file(__DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH)) && !str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '.php')) {
-    return false;
-}
-require __DIR__ . '/../zero/runtime/bootstrap.php';
-\Zero\App::boot(dirname(__DIR__))->handleHttp();
-```
+The signing key for private-file URLs is the `zero_runtime_secret` option,
+minted on activation.
 
-`zero/runtime/bootstrap.php` eagerly loads `Db.php` (for the `Zero\db()`
-function), sets `ini_set('precision', '-1')`,
-`ini_set('serialize_precision', '-1')`, registers an autoloader for
-`Zero\*` from its own directory, and registers the ordered feature modules
-through `Features::register()` (once per process).
-
-Standalone boot initializes `data/secret` to 32 random bytes encoded as 64 hex
-characters with mode `0600`, under an exclusive file lock. `Secret::load($root)`
-returns the same key on later boots; `ZERO_SECRET` overrides it without rewriting
-the persisted key. Preserve this file across deployments with the SQLite data.
-
-WordPress builds use `.zero/wp-content` instead. Its `plugins/` contains
-`zero-runtime` (this library under `zero/`), the optional `zero-identity` bundle,
-and `zero-app-<name>` (schema, functions, MySQL migrations and public assets).
-Generated plugin ZIPs sit alongside those directories. `zero-manifest.json` at
-the content root records versions, runtime series, platform requirements and
-resolved dependency checksums. The app's schema is the authoritative runtime
-series check; the runtime refuses a mismatched series or a second app.
+The app's schema is the authoritative runtime series check; the runtime
+refuses a mismatched series or a second app plugin.
 
 `GET /_schema` on WordPress includes `runtime.wp` with WordPress/PHP/database
 versions, `scf`, `actionScheduler`, `mcpAdapter`, `polylang`, `identity`,
@@ -220,19 +207,27 @@ Writes made by hooks or actions through `Db` run the same pipeline
 (including hooks). Nesting deeper than 8 levels → `HttpError(500, 'hook_recursion', ...)`.
 
 Every HTTP request and every CLI command runs in one transaction
-(`BEGIN IMMEDIATE`). Any exception rolls back everything.
+(`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
+back every write of the request. Two things are outside that guarantee: an
+`afterCommit` callback runs after the commit, so its failure propagates without
+undoing the request; and `wp zero migrate` records each DDL statement as it
+succeeds (MySQL DDL commits implicitly), so a later statement's failure leaves
+the earlier ones applied and recorded (see Migrations).
+Transactions run concurrently, so a read whose result the transaction then
+depends on takes an explicit lock (`FOR UPDATE`, `LOCK IN SHARE MODE`; see
+`Sync\Lock`, `Locale\Lock`, `Jobs\Storage`).
 
 ## Validation and coercion (input → stored)
 
-| type | accepts | stored as (SQLite) |
+| type | accepts | stored as (custom table column) |
 |---|---|---|
-| integer | int, or float with no fractional part | INTEGER |
-| real | int or float (not NaN/Inf) | REAL |
-| text | string | TEXT |
-| boolean | bool | INTEGER 0/1 |
+| integer | int, or a float with no fractional part whose magnitude is at most 9007199254740991 (JavaScript's safe-integer range) | BIGINT |
+| real | int or float (not NaN/Inf) | DOUBLE |
+| text | string | LONGTEXT (VARCHAR when unique or bounded) |
+| boolean | bool | TINYINT(1) 0/1 |
 | timestamp | int ms, or ISO 8601 `YYYY-MM-DD` (UTC midnight) / `YYYY-MM-DDTHH:mm[:ss[.fff]]` + `Z` or `±HH:MM`, every component a real calendar/clock value (no `now`, `10/30/2026`, zone-less date-times or `02-30`) | TEXT `Y-m-d\TH:i:s.v\Z` (UTC) |
-| date | string `YYYY-MM-DD` that is a real calendar date | TEXT |
-| json | any JSON value | TEXT (json_encode, unescaped slashes/unicode) |
+| date | string `YYYY-MM-DD` that is a real calendar date | CHAR(10) |
+| json | any JSON value | LONGTEXT (json_encode, unescaped slashes/unicode) |
 
 `enum` → value must be one of the listed strings. `null` is accepted only
 when not `notNull`. Wrong type → `invalid_input` with pointer `/<col>` and
@@ -358,17 +353,17 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   feature consumes/normalizes its options; unknown remaining options fail normal
   query validation.
 - `cli(command, handler)` receives `(argsWithoutCommand, flags)` inside the
-  canonical CLI transaction and receipts, on both standalone and `wp zero`.
+  canonical `wp zero` transaction and receipts.
 - `schemaDescribe(fn)` transforms the public schema description.
 
-`SystemTables::register(name, sqliteStatements, mysqlStatements)` assigns one
-owner per table. Each list contains idempotent SQL strings or guarded
-`callable(Store): void` upgrades (SQLite has no `ADD COLUMN IF NOT EXISTS`).
-`apply(Store)` rejects request transactions before running SQL or guards and
-chooses the dialect; WP replaces `{prefix}` in SQL. Store construction (SQLite) and the existing
-WP migrator apply registrations outside request transactions. `Store` exposes
-`afterCommit(callable)` and `applySystemStatements(list<string>)` for these
-seams. Existing phase-1 tables and generated migrations are unchanged.
+`SystemTables::register(name, statements)` assigns one owner per table. The
+list contains idempotent SQL strings (`{prefix}` is the WordPress table prefix)
+or guarded `callable(Store): void` upgrades (a column check against
+`information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
+transactions before running SQL or guards; the runtime applies registrations
+on activation and on the first request after an update, outside request
+transactions. `Store` exposes `afterCommit(callable)` and
+`applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
 fields, with `(field, definition, column, spec)`. Top-level `spec` is the
@@ -395,37 +390,35 @@ envelope. `Response::raw(string|Closure, status = 200, headers = [])` returns
 bytes or a deferred emitter for downloads. Raw handlers set their content type
 and download/security/cache headers explicitly. Both HTTP transports emit only
 after the operation transaction commits. `App::handle` returns a string or
-closure body; `handleHttp` and the WordPress REST adapter call `Response::emit`.
+closure body; the WordPress REST adapter calls `Response::emit`.
 Stream emitters perform I/O only, with authorization/file readiness already
 checked in the transaction. Streaming errors cannot roll back a committed
 operation or replace an already-started response.
 
 ## class App (HTTP)
 
-`App::boot(string $appRoot): App` loads `zero/app/schema.php`, requires
-`zero/app/functions.php`, opens SQLite at env `ZERO_DB_PATH` or
-`<appRoot>/data/zero.sqlite` (creating the directory), sets
-`PRAGMA foreign_keys = ON`, `PRAGMA journal_mode = WAL`,
-`PRAGMA busy_timeout = 5000`, and applies pending migrations (unless env
-`ZERO_AUTO_MIGRATE=0`).
+`App::boot(string $appRoot, Store $store, Auth $auth, Media $media): App` loads
+`zero/app/schema.php` and requires `zero/app/functions.php`; the plugin passes
+its store, authentication and media services, and migrates on activation and
+on the first request after an update (`Wp\Plugin`).
 
-Routes (everything else → 404 problem):
+Routes, under `/wp-json/zero/v1` (everything else → 404 problem):
 
 | Method + path | Behavior | Success |
 |---|---|---|
-| `GET /api/_schema` | collections, columns, relations, actions (no function names) | 200 `{data}` |
-| `GET /api/{c}` | query params: `where` (JSON filter), `orderBy` (`name` or `-name`, comma-separated), `limit` (default 50, max 200), `offset`, `with` (comma-separated relation names) | 200 `{data: [rows]}` |
-| `GET /api/{c}/{id}` | by primary key, `with` allowed | 200 `{data: row}` / 404 `not_found` |
-| `POST /api/{c}` | JSON body = one row | 201 `{data: row}` |
-| `PATCH /api/{c}/{id}` | JSON body = patch | 200 `{data: row}` / 404 |
-| `DELETE /api/{c}/{id}` | | 200 `{data: deletedRow}` / 404 |
-| `POST /api/actions/{name}` | JSON body validated against `input` (unknown keys rejected, defaults applied, coerced like columns) | 200 `{data: result}` |
-| `OPTIONS *` | CORS preflight | 204 |
+| `GET /_schema` | collections, columns, relations, actions (no function names) | 200 `{data}` |
+| `GET /{c}` | query params: `where` (JSON filter), `orderBy` (`name` or `-name`, comma-separated), `limit` (default 50, max 200), `offset`, `with` (comma-separated relation names) | 200 `{data: [rows]}` |
+| `GET /{c}/{id}` | by primary key, `with` allowed | 200 `{data: row}` / 404 `not_found` |
+| `POST /{c}` | JSON body = one row | 201 `{data: row}` |
+| `PATCH /{c}/{id}` | JSON body = patch | 200 `{data: row}` / 404 |
+| `DELETE /{c}/{id}` | | 200 `{data: deletedRow}` / 404 |
+| `POST /actions/{name}` | JSON body validated against `input` (unknown keys rejected, defaults applied, coerced like columns) | 200 `{data: result}` |
 
 A collection's `api` flags gate list/get/create/update/delete (disabled →
-405 `method_not_allowed`). All responses send
-`Access-Control-Allow-Origin: *` and allow `GET, POST, PATCH, DELETE, OPTIONS`
-and header `content-type`.
+405 `method_not_allowed`). `Wp\Rest` registers one catch-all route and serves
+the body App produced verbatim; WordPress's REST server owns authentication
+(cookie and nonce, or an application password), CORS headers and `OPTIONS`
+preflights.
 
 Success body: `{"data": ...}` with `Content-Type: application/json`.
 Failure body (RFC 9457), `Content-Type: application/problem+json`:
@@ -444,29 +437,37 @@ always logged to `error_log`).
 JSON responses are encoded with `Js::jsonStringify` (so integral floats
 print without `.0`).
 
-## CLI (`zero/bin/zero.php`)
+## CLI (`wp zero`)
 
 ```
-php zero/bin/zero.php migrate
-php zero/bin/zero.php action <name> [json]
-php zero/bin/zero.php find <collection> [opts-json]
-php zero/bin/zero.php insert <collection> <json>
-php zero/bin/zero.php update <collection> <where-json> <set-json>
-php zero/bin/zero.php delete <collection> <where-json>
+wp zero migrate [--mark-applied <id>:<n>]
+wp zero publish-due
+wp zero action <name> [json]
+wp zero find <collection> [opts-json]
+wp zero insert <collection> <json>
+wp zero update <collection> <where-json> <set-json>
+wp zero delete <collection> <where-json>
 ```
 
 Prints `{"data": ...}` on success (exit 0) or `{"error": {problem}}` (exit 1)
-to stdout. Same transaction and pipeline rules as HTTP.
+to stdout. Same transaction and pipeline rules as HTTP. Every command except
+`migrate` first promotes due scheduled rows of custom-table collections
+(`publish-due` does only that; its envelope is `{"data": {"promoted": {collection: [pks]}}}`);
+post-backed collections are scheduled by WordPress itself.
 
 ## Migrations
 
-Files `zero/app/migrations/NNNN_<name>.sql`, applied in filename order.
-Statements are separated by a line `--> statement-breakpoint`. Applied files
-are recorded in `__zero_migrations(id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`.
-Each file runs in its own transaction with `PRAGMA foreign_keys = OFF`
-around it (table rebuilds must not fire cascades), followed by
-`PRAGMA foreign_key_check`; any violation rolls the file back and names the
-table.
+`Wp\Migrator` applies the app plugin's `zero/app/migrations/NNNN_<name>.sql`
+files (MySQL dialect, `{prefix}` replaced by `$wpdb->prefix`) in filename
+order. Statements are separated by a line `--> statement-breakpoint`. The
+ledger is `{prefix}zero__migrations(app, id, applied_at)`, keyed by app so two
+plugins' `0001_init` files stay apart. MySQL DDL commits implicitly, so every
+statement that succeeds is recorded as `<id>:<n>` before the next one runs;
+once a file completes its own id is recorded and the step rows are removed. A
+file that failed half way resumes at the failing statement. A statement that
+committed without its marker fails on the retry ("already exists") until the
+operator records it with `wp zero migrate --mark-applied <id>:<n>`. Writers
+(first request, activation, `wp zero migrate`) serialize on `Connection::locked`.
 
 ## Errors
 

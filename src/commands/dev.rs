@@ -3,33 +3,6 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
-pub(super) fn standalone(out: &Path, port: u16) -> ExitCode {
-    let addr = format!("127.0.0.1:{port}");
-    println!("serving http://{addr}  (Ctrl-C to stop)");
-    let _worker = super::jobs::worker(out).map(KillOnDrop);
-    let status = std::process::Command::new("php")
-        .args(["-S", &addr, "-t"])
-        .arg(out.join("public"))
-        .arg(out.join("public/index.php"))
-        .status();
-    match status {
-        Ok(s) if s.success() => ExitCode::SUCCESS,
-        Ok(_) => ExitCode::from(1),
-        Err(e) => {
-            eprintln!("error: couldn't start php: {e}");
-            ExitCode::from(1)
-        }
-    }
-}
-
-struct KillOnDrop(std::process::Child);
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 /// The WordPress harness files, embedded so an installed binary carries them (paths under the harness root).
 const HARNESS: &[(&str, &str)] = &[
     ("wp/harness.sh", include_str!("../../tests/wp/harness.sh")),

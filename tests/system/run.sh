@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# The system suite: examples/site end to end on both targets. Boots a fresh WordPress that has users
-# and nothing else; tests/system/wp.test.ts installs the `zero build --target wp` artifact into it as
-# a site owner would and walks the whole journey and plugin lifecycle; standalone.test.ts runs the
-# same journey on the PHP + SQLite build. The tests build their own copies of the example under
-# tests/system/.work, so the committed example is never rewritten. Then a second fresh WordPress
+# The system suite: examples/site end to end. Boots a fresh WordPress that has users and nothing
+# else; tests/system/wp.test.ts installs the `zero build --target wp` artifact into it as a site
+# owner would and walks the whole journey and plugin lifecycle. The tests build their own copies of
+# the example under tests/system/.work, so the committed example is never rewritten. Then a second fresh WordPress
 # holds an original Zero 0.8 site, and legacy.test.ts moves it onto the new Zero as the migration
 # guide says (one Zero app per site, so it gets its own). A third holds examples/blog, whose
 # committed Markdown posts sync in.
@@ -35,7 +34,7 @@ rm -rf "$here/.wp-content" && mkdir -p "$here/.wp-content/plugins"
 "$harness" up --wp-content "$here/.wp-content" --bare > "$here/.harness.json"
 cat "$here/.harness.json"
 
-node --test --test-concurrency=1 "$here"/wp.test.ts "$here"/standalone.test.ts
+node --test --test-concurrency=1 "$here"/wp.test.ts
 
 # The original site: a fresh WordPress holding the rows the original kernel wrote
 # (tests/wp/legacy/site.json). legacy.test.ts builds and installs the new app's plugins.

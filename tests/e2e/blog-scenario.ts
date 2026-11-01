@@ -1,19 +1,15 @@
-// The cross-target blog scenario (design §9.1): one function, driven only through the typed client,
-// that the standalone lane (tests/e2e/standalone.test.ts, P) and the WordPress lane
-// (tests/wp/rest.test.ts, W) both run against the phase-1 blog (tests/fixtures/blog). Every assertion is about what a client
-// sees over HTTP, so "same behaviour on both targets" means "this function passes on both".
+// The blog scenario (design §9.1): one function, driven only through the typed client, that the
+// WordPress lane (tests/wp/rest.test.ts) runs against the phase-1 blog (tests/fixtures/blog). Every
+// assertion is about what a client sees over HTTP.
 //
 // What a lane provides (BlogScenarioEnv):
 //   - `client(role)`: a client signed in as that role, or anonymous for "anonymous".
-//       standalone: createClient({ url, token })          tokens minted with `zero.php token create`
-//       wp:         createClient({ url, headers: { Authorization: "Basic " + btoa(`${user}:${appPassword}`) } })
+//       createClient({ url, headers: { Authorization: "Basic " + btoa(`${user}:${appPassword}`) } })
 //     The "author" user must own an `authors` row (its userId = that user's id): the posts.beforeCreate
 //     hook links posts to it, and the posts.update rule grants authors their own posts through it.
 //     `authors` is admin-only over the API, so lanes seed it with a trusted CLI insert.
-//   - `promoteDue(at)`: make every scheduled row whose publishedAt <= `at` visible as published.
-//       standalone: serve a second `php -S` with ZERO_NOW and return a client on it (return value used
-//                   for the reads that follow), or run `zero.php publish-due` under ZERO_NOW.
-//       wp:         set post_date_gmt in the past via WP-CLI, `wp cron event run --due-now`.
+//   - `promoteDue(at)`: make every scheduled row whose publishedAt <= `at` visible as published:
+//     set post_date_gmt in the past via WP-CLI, `wp cron event run --due-now`.
 //     May return the anonymous client to read with afterwards (default: env.client("anonymous")).
 //
 // Each step is a `t.test` subtest when a node:test context is passed, so failures name the step.
@@ -24,7 +20,6 @@ import { ZeroError, type Client, type Media, type Post } from "../wp/app/zero/cl
 export type ScenarioRole = "anonymous" | "subscriber" | "author" | "editor" | "admin";
 
 export interface BlogScenarioEnv {
-  target: "standalone" | "wp";
   client(role: ScenarioRole): Client;
   promoteDue(at: string): Promise<Client | void>;
 }

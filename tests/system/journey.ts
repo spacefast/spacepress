@@ -1,27 +1,22 @@
 // The system journey: one publication site (examples/site) from first post to plugin upgrade, driven
-// only through the generated typed client, so "the product works the same on both targets" means
-// "this function passes on both". tests/system/wp.test.ts runs it on a WordPress built from the
-// installed wp-content artifact; tests/system/standalone.test.ts runs it on the PHP + SQLite build.
+// only through the generated typed client. tests/system/wp.test.ts runs it on a WordPress built from
+// the installed wp-content artifact.
 //
-// What a target provides (SiteJourneyEnv):
-//   origin              the site's origin, for media URLs the target returns relative.
+// What the lane provides (SiteJourneyEnv):
+//   origin              the site's origin, for media URLs returned relative.
 //   client(role)        a client signed in as that role ("anonymous" = no credentials). The "author"
 //                       user owns `authorId` (an authors row whose userId is that user).
-//   editor              how an editor builds a post on that target: WordPress goes through core
-//                       /wp/v2 (media library + the block editor's REST save with SCF `acf` fields),
-//                       exactly as wp-admin does; standalone has no wp-admin, so it uses the client.
-//   runJobs()           run every due background job the target's way (WP: Action Scheduler's queue
-//                       runner, as cron would; standalone: the built app's `jobs work --once`).
+//   editor              how an editor builds a post: through core /wp/v2 (media library + the block
+//                       editor's REST save with SCF `acf` fields), exactly as wp-admin does.
+//   runJobs()           run every due background job (Action Scheduler's queue runner, as cron would).
 //   runRetries()        run every failed job's pending retry now instead of after its backoff.
 //   sync(dir)           run `zero sync` for posts between `dir` and the site, as the editor.
 //   deliveries          the signed webhooks the site's moderation tool (project.ts `receiver`) got.
-//   promoteDue(at)      publish the post scheduled for `at` the target's way (WP: its cron event;
-//                       standalone: a server with a later clock); may return the client to read with.
-//   upgrade()           rebuild the app with project.ts's additive `upgrade`, install it
-//                       the target's way, prove the migration ran, and return clients for the new build.
-//   signIn(email, pw)   a reader signs in the target's way and gets a client holding that session
-//                       (WP: the zero-identity screens' authorization-code flow, finished by the
-//                       client's own handleCallback(); standalone: the client's password login()).
+//   promoteDue(at)      publish the post scheduled for `at` (its cron event); may return the client to read with.
+//   upgrade()           rebuild the app with project.ts's additive `upgrade`, install it, prove the
+//                       migration ran, and return clients for the new build.
+//   signIn(email, pw)   a reader signs in (the zero-identity screens' authorization-code flow,
+//                       finished by the client's own handleCallback()) and gets a client holding that session.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -52,7 +47,6 @@ export interface UpgradedClient {
 }
 
 export interface SiteJourneyEnv {
-  target: "standalone" | "wp";
   origin: string;
   client(role: Role): Client;
   authorId: number;

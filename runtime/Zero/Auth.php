@@ -9,7 +9,7 @@ namespace Zero;
  * GET /{c}/{id}/revisions. Sign-in itself belongs to Auth\Issuer (§6.2).
  */
 
-/** Resolves a request to a User (§5). Standalone: Identity (bearer tokens). WP: Wp\WpAuth. */
+/** Resolves a request to a User (§5): Wp\WpAuth, with zero-identity's bearer tokens when installed. */
 interface Auth
 {
     /**

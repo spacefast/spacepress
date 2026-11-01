@@ -4,25 +4,14 @@ declare(strict_types=1);
 
 namespace Zero;
 
-use Zero\Store\SqliteMedia;
-use Zero\Store\SqliteStore;
-
 /**
- * Boots a generated app and serves its REST API (§4.8) and CLI. Target-agnostic: the standalone
- * front controller uses App::boot($root) (SQLite + bearer tokens + local media); the WP plugin passes
- * its own Store/Auth/Media and calls handle() with the path after its REST prefix.
+ * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
+ * Store/Auth/Media and calls handle() with the path after its REST prefix (`/wp-json/zero/v1`).
  */
 final class App
 {
-    public const PREFIX = '/api';
     private const LIST_LIMIT = 50;
     private const MAX_LIST_LIMIT = 200;
-    private const CORS = [
-        'Access-Control-Allow-Origin' => '*',
-        'Access-Control-Allow-Methods' => 'GET, POST, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers' => 'content-type, authorization, idempotency-key',
-        'Access-Control-Expose-Headers' => 'Idempotent-Replayed',
-    ];
     private const TITLES = [
         'invalid_input' => 'Invalid input',
         'invalid_query' => 'Invalid query',
@@ -48,53 +37,18 @@ final class App
     ) {
     }
 
-    /**
-     * Boot an app root. With no Store/Auth/Media the standalone services are built (SQLite at
-     * env ZERO_DB_PATH or <root>/data/zero.sqlite, bearer tokens, <root>/public/uploads).
-     *
-     * @param ?bool $migrate standalone only; null = apply pending migrations unless ZERO_AUTO_MIGRATE=0
-     */
-    public static function boot(string $appRoot, ?Store $store = null, ?Auth $auth = null, ?Media $media = null, ?bool $migrate = null): self
+    /** Boot an app root (`zero/app/{schema.php,functions.php}`) on the services the plugin provides. */
+    public static function boot(string $appRoot, Store $store, Auth $auth, Media $media): self
     {
         $schema = Schema::load($appRoot . '/zero/app/schema.php');
         $functions = $appRoot . '/zero/app/functions.php';
         if (is_file($functions)) {
             require_once $functions;
         }
-        if ($store === null) {
-            Secret::load($appRoot);
-            $store = new SqliteStore(SqliteStore::connect(getenv('ZERO_DB_PATH') ?: $appRoot . '/data/zero.sqlite'), $schema);
-            $auth ??= new Identity($store, $schema);
-            $media ??= new SqliteMedia($store, $appRoot . '/public');
-            if ($migrate ?? getenv('ZERO_AUTO_MIGRATE') !== '0') {
-                $store->migrate($appRoot . '/zero/app/migrations');
-            }
-        }
-        if ($auth === null || $media === null) {
-            throw new \LogicException('App::boot needs Auth and Media when a Store is given');
-        }
         $db = new Db($store, $schema, $media, $schema->target());
         Db::setInstance($db);
-        if ($auth instanceof Identity) {
-            Auth\Module::use($auth);
-        }
 
         return new self($appRoot, $schema, $db, $store, $auth);
-    }
-
-    /** @return list<string> applied migration ids (standalone) */
-    public function migrate(): array
-    {
-        if (!$this->store instanceof SqliteStore) {
-            throw new \LogicException('migrate is standalone-only; the WP plugin migrates on activation');
-        }
-
-        return $this->store->migrate($this->root . '/zero/app/migrations');
-    }
-
-    public function identity(): Identity
-    {
-        return $this->auth instanceof Identity ? $this->auth : throw new HttpError(404, 'not_found', 'Users and tokens are managed by WordPress on this target');
     }
 
     /** Validate input against an action's schema, check its access, run its handler. */
@@ -149,29 +103,6 @@ final class App
 
     // ================================================================ HTTP
 
-    public function handleHttp(): void
-    {
-        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-        $uri = $_SERVER['REQUEST_URI'] ?? '/';
-        $query = [];
-        parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
-        $path = (string) parse_url($uri, PHP_URL_PATH);
-        $headers = self::requestHeaders();
-        if ($path !== self::PREFIX && !str_starts_with($path, self::PREFIX . '/')) {
-            [$status, $out, $body] = self::respond(HttpError::notFound("No route for $path"));
-        } elseif ($method === 'POST' && $_FILES === [] && $_POST === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > self::iniBytes('post_max_size')
-            && str_starts_with($headers['content-type'] ?? '', 'multipart/')) {
-            [$status, $out, $body] = self::respond(new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts'));
-        } else {
-            [$status, $out, $body] = $this->handle($method, substr($path, strlen(self::PREFIX)), $query, (string) file_get_contents('php://input'), $headers, $_FILES, $_POST);
-        }
-        http_response_code($status);
-        foreach ($out as $name => $value) {
-            header("$name: $value");
-        }
-        Response::emit($body);
-    }
-
     /**
      * One API request. $path is relative to the API prefix ('/posts/1'). $files/$form are the
      * multipart parts (PHP's $_FILES/$_POST shape) for POST /media.
@@ -182,9 +113,6 @@ final class App
      */
     public function handle(string $method, string $path, array $query, string $body, array $headers = [], array $files = [], array $form = []): array
     {
-        if ($method === 'OPTIONS') {
-            return [204, self::CORS, ''];
-        }
         try {
             $response = $this->db->transaction(function () use ($method, $path, $query, $body, $headers, $files, $form): Response {
                 $user = $this->auth->resolve(array_change_key_case($headers, CASE_LOWER));
@@ -193,7 +121,7 @@ final class App
             });
             [$status, $out, $payload] = $response->http();
 
-            return [$status, Response::mergeHeaders(self::CORS, $out), $payload];
+            return [$status, $out, $payload];
         } catch (\Throwable $e) {
             return self::respond($e);
         }
@@ -204,7 +132,7 @@ final class App
     {
         $problem = self::problem($e);
 
-        return [$problem['status'], ['Content-Type' => 'application/problem+json'] + self::CORS, Js::jsonStringify($problem) ?? '{}'];
+        return [$problem['status'], ['Content-Type' => 'application/problem+json'], Js::jsonStringify($problem) ?? '{}'];
     }
 
     /** @return array{int, mixed}|Response */
@@ -213,7 +141,7 @@ final class App
         $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($s) => $s !== '')));
         $n = count($segments);
         $name = $segments[0] ?? '';
-        $notFound = static fn () => HttpError::notFound("No route for " . self::PREFIX . $path);
+        $notFound = static fn () => HttpError::notFound("No route for $path");
 
         if (($handler = Extensions::routeHandler($name)) !== null) {
             return $handler($method, $segments, $query, $body, $viewer, $files, $form);
@@ -448,38 +376,6 @@ final class App
         return $v;
     }
 
-    /** @return array<string, string> lower-cased request headers */
-    private static function requestHeaders(): array
-    {
-        $out = [];
-        foreach (function_exists('getallheaders') ? (getallheaders() ?: []) : [] as $k => $v) {
-            $out[strtolower((string) $k)] = (string) $v;
-        }
-        foreach ($_SERVER as $k => $v) {
-            if (is_string($v) && str_starts_with((string) $k, 'HTTP_')) {
-                $out[strtolower(str_replace('_', '-', substr((string) $k, 5)))] ??= $v;
-            }
-        }
-        if (isset($_SERVER['CONTENT_TYPE'])) {
-            $out['content-type'] ??= (string) $_SERVER['CONTENT_TYPE'];
-        }
-
-        return $out;
-    }
-
-    private static function iniBytes(string $key): int
-    {
-        $v = trim((string) ini_get($key));
-        $n = (int) $v;
-
-        return match (strtolower(substr($v, -1))) {
-            'g' => $n << 30,
-            'm' => $n << 20,
-            'k' => $n << 10,
-            default => $n,
-        } ?: PHP_INT_MAX;
-    }
-
     /** RFC 9457 problem document for any throwable. */
     public static function problem(\Throwable $e): array
     {
@@ -514,7 +410,7 @@ final class App
     // ================================================================ CLI
 
     /**
-     * Run a CLI command (trusted: no access checks). Returns [exit code, stdout JSON].
+     * Run a `wp zero` command (trusted: no access checks). Returns [exit code, stdout JSON].
      *
      * @param list<string> $args arguments after the script name
      * @return array{int, string}
@@ -530,10 +426,8 @@ final class App
         }
     }
 
-    private const USAGE = 'Usage: zero.php migrate | publish-due | action <name> [json] | find <collection> [opts]'
-        . ' | insert <collection> <json> | update <collection> <where> <set> | delete <collection> <where>'
-        . ' | user add <name> --role <role> [--password [value]] | user list | user role <name> <role> | user remove <name> | user suspend|reactivate <name>'
-        . ' | token create <user> [--name <label>] | token list [user] | token revoke <id>';
+    private const USAGE = 'Usage: wp zero migrate | publish-due | action <name> [json] | find <collection> [opts]'
+        . ' | insert <collection> <json> | update <collection> <where> <set> | delete <collection> <where>';
 
     private function cliCommand(array $args): mixed
     {
@@ -546,9 +440,6 @@ final class App
 
             return self::parseBody($pos[$i]);
         };
-        if ($cmd === 'migrate') {
-            return ['applied' => $this->migrate()];
-        }
         $usage = static fn () => new HttpError(400, 'invalid_command', self::USAGE);
 
         return $this->db->transaction(function () use ($cmd, $pos, $flags, $json, $usage) {
@@ -560,29 +451,6 @@ final class App
                 return $handler(array_slice($pos, 1), $flags);
             }
             $sub = $pos[1] ?? null;
-            if ($cmd === 'user' || $cmd === 'users') {
-                $id = $this->identity();
-
-                return match ($sub) {
-                    'add', 'create' => $id->addUser($pos[2] ?? throw $usage(), (string) ($flags['role'] ?? throw HttpError::invalidInput('--role is required', '/role')), self::password($flags)),
-                    'list' => $id->listUsers(),
-                    'role' => $id->setRole($pos[2] ?? throw $usage(), $pos[3] ?? throw $usage()),
-                    'remove' => $id->removeUser($pos[2] ?? throw $usage()),
-                    'suspend' => $id->suspend($pos[2] ?? throw $usage(), true),
-                    'reactivate' => $id->suspend($pos[2] ?? throw $usage(), false),
-                    default => throw $usage(),
-                };
-            }
-            if ($cmd === 'token' || $cmd === 'tokens') {
-                $id = $this->identity();
-
-                return match ($sub) {
-                    'create' => $id->createToken($pos[2] ?? throw $usage(), isset($flags['name']) ? (string) $flags['name'] : null),
-                    'list' => $id->listTokens($pos[2] ?? null),
-                    'revoke' => $id->revokeToken(preg_match('/^\d+$/D', $pos[2] ?? '') ? (int) $pos[2] : throw $usage()),
-                    default => throw $usage(),
-                };
-            }
             if (!in_array($cmd, ['action', 'find', 'insert', 'update', 'delete'], true) || $sub === null) {
                 throw $usage();
             }
@@ -626,21 +494,7 @@ final class App
         return [$pos, $flags];
     }
 
-    /** --password <value> | --password=<value> | --password (read one line from stdin). */
-    private static function password(array $flags): ?string
-    {
-        $p = $flags['password'] ?? null;
-        if ($p === true) {
-            $line = fgets(STDIN);
-            $p = $line === false ? '' : rtrim($line, "\r\n");
-        }
-        if ($p === '') {
-            throw HttpError::invalidInput('password must not be empty', '/password');
-        }
-
-        return $p;
-    }
-
+    /** The row or rows of an insert argument as a list, a top-level `{}` meaning an empty row. */
     private static function rows(mixed $v): array
     {
         $v = $v instanceof JsObject ? [] : $v; // a top-level `{}` row; nested json() values keep theirs

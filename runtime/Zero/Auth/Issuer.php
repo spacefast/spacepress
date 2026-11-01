@@ -22,7 +22,7 @@ interface Issuer
     /** A new guest user (role `guest`) signed in. */
     public function guest(): array;
 
-    /** Turn the signed-in guest into a subscriber in place (standalone); 404 on WordPress (hosted screens). */
+    /** Turn the signed-in guest into a subscriber in place; 404 when hosted screens own sign-up. */
     public function upgrade(?array $user, string $name, string $password): array;
 
     /** End the current session's sign-in. */

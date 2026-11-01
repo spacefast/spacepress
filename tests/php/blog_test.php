@@ -223,7 +223,7 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 // ================================================================ extension seams
 
-\Zero\SystemTables::register('seam', [], [
+\Zero\SystemTables::register('seam', [
     'CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
     static function (\Zero\Store $store): void {
         $db = $store instanceof \Zero\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');

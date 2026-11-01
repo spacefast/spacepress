@@ -600,7 +600,7 @@ final class Schema
         };
     }
 
-    /** Every sub-key present (stores other than SQLite may omit empty sub-fields). */
+    /** Every sub-key present (post-backed stores may omit empty sub-fields). */
     private static function fillFields(array $fields, mixed $obj): mixed
     {
         if ($obj instanceof JsObject) {

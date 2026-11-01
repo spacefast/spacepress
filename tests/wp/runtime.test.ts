@@ -2,7 +2,7 @@
 // proves what Polylang and MySQL add.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { api, http, ok, qs, run, sql, wp } from "./env.ts";
+import { api, auth, http, ok, qs, run, sql, wp } from "./env.ts";
 
 const tree = (rows: any[]) => rows.map((r) => [`${r.locale}:${r.title}`, r.legs.map((l: any) => `${l.locale}:${l.title}`)]);
 
@@ -97,4 +97,17 @@ test("zero.prune-guests deletes stale guests with what they own, per onDelete, a
     echo wp_json_encode([$result, $user->exists(), $user->roles, get_userdata(${id(laterGuest)}) === false]);
   `));
   assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["zero_guest"], true]);
+});
+
+test("compiled arithmetic on stored and input integers past 2^53 matches JS; lookups stay exact", async () => {
+  // MariaDB keeps 9007199254740993 exactly; JS can't even write it, so Node computes from the double.
+  const exact = "9007199254740993";
+  sql(`INSERT INTO wp_zero_big_counts (n) VALUES (${exact})`);
+  const [row] = sql(`SELECT id FROM wp_zero_big_counts WHERE n = ${exact}`);
+  const n = Number(exact), m = 2 ** 53 + 3; // what JS sees: both rounded to doubles
+  const body = `{"id":${row.id},"m":9007199254740995}`;
+  const res = await fetch(`${api}/actions/bigMath`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body });
+  const json = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(json));
+  assert.deepEqual(json.data, [n - 1, n + 1, n - 1, n * 1, -n, n + 1, m + 1, m - n, n + m, String(n + 0), Number(row.id)]);
 });

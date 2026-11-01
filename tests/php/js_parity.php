@@ -34,6 +34,9 @@ $cases = [
     ['String(2 ** 53 + 2)', fn () => Js::numStr(2 ** 53 + 2)],
     // n(): an integer result past ±2^53 rounds to a double; postStep() steps through it.
     ['[2 ** 53 + 1, -(2 ** 53) - 1, 2 ** 53 * 3 + 1, 2 ** 53 - 1, 1 + 2]', fn () => [Js::n(2 ** 53 + 1), Js::n(-(2 ** 53) - 1), Js::n(2 ** 53 * 3 + 1), Js::n(2 ** 53 - 1), Js::n(1 + 2)]],
+    // add/sub/mul/neg/pow: an exact int operand past ±2^53 (stored, or from input) is the double JS holds.
+    ['(() => { const n = 9007199254740993, m = -9007199254740995; let k = n; const old = k++; return [old - 1, n + 1, n - 1, n * 1, -n, m + 2, n - m, n ** 1, k]; })()',
+        function () { $n = 9007199254740993; $m = -9007199254740995; $k = $n; $old = Js::postStep($k, 1); return [$old - 1, Js::add($n, 1), Js::sub($n, 1), Js::mul($n, 1), Js::neg($n), Js::add($m, 2), Js::sub($n, $m), Js::pow($n, 1), $k]; }],
     ['(() => { let i = 2 ** 53; const old = i++; const pre = ++i; return [old, pre, i, i + 1 === i]; })()', function () { $i = 2 ** 53; $old = Js::postStep($i, 1); $pre = Js::preStep($i, 1); return [$old, $pre, $i, Js::n($i + 1) === $i]; }],
     ['String(100 / 3)', fn () => Js::numStr(100 / 3)],
     ['String(NaN) + String(-Infinity)', fn () => Js::numStr(NAN) . Js::numStr(-INF)],

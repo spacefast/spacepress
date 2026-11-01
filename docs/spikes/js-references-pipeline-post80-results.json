@@ -1,0 +1,276 @@
+{
+  "schema": "zero-js-reference-pipeline",
+  "version": 1,
+  "before": "6fb1c9e1e9326a9095ade3f520f3d9f2b7ea902d",
+  "after": "dc97effe50dc913a1566023f557471b8d2c8ce26",
+  "environment": {
+    "loadAverageBefore": [
+      5.6484375,
+      4.90771484375,
+      5.54248046875
+    ],
+    "cores": 24
+  },
+  "runs": [
+    {
+      "run": 1,
+      "representation": "before",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        1.8696114,
+        1.8824203000000002,
+        1.86700345,
+        1.8395819,
+        1.8516193
+      ],
+      "cpuMsPerRequest": [
+        1.869549999999998,
+        1.88245,
+        1.8665999999999996,
+        1.8395500000000027,
+        1.8516500000000007
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 1,
+      "representation": "handles",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        3.2041308500000003,
+        3.21188985,
+        3.2351206,
+        3.3519497,
+        3.8667054
+      ],
+      "cpuMsPerRequest": [
+        3.2039500000000003,
+        3.211999999999995,
+        3.2351499999999986,
+        3.351999999999998,
+        3.8611999999999966
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 2,
+      "representation": "before",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        1.87753605,
+        1.8807239,
+        1.9024828999999999,
+        1.87577745,
+        1.9041941
+      ],
+      "cpuMsPerRequest": [
+        1.8775000000000006,
+        1.8807500000000004,
+        1.9025499999999993,
+        1.8752000000000009,
+        1.9042500000000018
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 2,
+      "representation": "handles",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        3.44473075,
+        3.1585304,
+        3.1602948,
+        3.1426485,
+        3.2612660499999997
+      ],
+      "cpuMsPerRequest": [
+        3.4409999999999967,
+        3.158600000000001,
+        3.1603499999999998,
+        3.1421999999999968,
+        3.2613
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 3,
+      "representation": "before",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        1.89338415,
+        1.93854955,
+        1.8640833,
+        1.85713365,
+        2.17844835
+      ],
+      "cpuMsPerRequest": [
+        1.8930499999999995,
+        1.9383499999999998,
+        1.8638999999999952,
+        1.8568499999999972,
+        2.177249999999998
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 3,
+      "representation": "handles",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        3.3343354,
+        4.9764685,
+        3.82782635,
+        3.160388,
+        3.1683038
+      ],
+      "cpuMsPerRequest": [
+        3.3340000000000005,
+        4.974050000000003,
+        3.826649999999995,
+        3.1604499999999973,
+        3.168349999999998
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 4,
+      "representation": "before",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        1.8724338500000002,
+        1.84786175,
+        1.84485715,
+        1.8321923999999998,
+        1.9362391
+      ],
+      "cpuMsPerRequest": [
+        1.872399999999999,
+        1.8477000000000003,
+        1.8449000000000013,
+        1.832249999999999,
+        1.9364000000000032
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 4,
+      "representation": "handles",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        3.1943441,
+        3.1825032,
+        3.1608635499999997,
+        3.16565345,
+        3.171804
+      ],
+      "cpuMsPerRequest": [
+        3.1942499999999994,
+        3.1825500000000004,
+        3.160849999999999,
+        3.1656499999999994,
+        3.1718500000000005
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 5,
+      "representation": "before",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        1.88923475,
+        1.86645695,
+        1.8510673999999998,
+        1.8476413500000002,
+        1.8668623
+      ],
+      "cpuMsPerRequest": [
+        1.8892500000000012,
+        1.8665500000000008,
+        1.8510999999999966,
+        1.8477499999999965,
+        1.8660500000000013
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    },
+    {
+      "run": 5,
+      "representation": "handles",
+      "rows": 200,
+      "warmups": 1,
+      "requestsPerRound": 20,
+      "requests": 101,
+      "errors": 0,
+      "msPerRequest": [
+        3.5191462000000002,
+        3.17486885,
+        3.1491360499999996,
+        3.1495757,
+        3.1816508999999997
+      ],
+      "cpuMsPerRequest": [
+        3.516599999999997,
+        3.1749000000000023,
+        3.1491000000000042,
+        3.149000000000001,
+        3.1817000000000006
+      ],
+      "responseBytes": 25192,
+      "php": "8.5.10",
+      "opcacheCli": "0"
+    }
+  ]
+}

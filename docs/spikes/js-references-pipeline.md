@@ -1,9 +1,26 @@
 # Reference-handle pipeline measurements
 
 Production impact is inconclusive. On the measured warm WordPress/SQLite CLI
-fixture, the median process result rose from 2.431 to 3.448 ms/request. This
+fixture, the latest median process result rose from 1.867 to 3.175 ms/request. This
 measures the actual compiled action and database pipeline, including conversion
 and response serialization; it does not isolate handle allocation.
+
+The post-integration run measures the checked property-read/write helpers and
+missing-property compound coercions. The baseline is Seam extraction
+`6fb1c9e1`; the switch code is `dc97effe`. Both use the exact fixture and runner
+below. Five alternating processes per side again validate 505 requests, with
+zero errors and 25,192 bytes per response. Baseline process medians are
+1.867, 1.881, 1.893, 1.848, and 1.866 ms/request; handles are 3.235, 3.160,
+3.334, 3.172, and 3.175. Their ranges are 1.848–1.893 and 3.160–3.334.
+The baseline runtime differs from the earlier baseline below only in its
+schema-load error wording. The original direct-member microbenchmarks do not
+measure these checked helpers.
+
+[Post-integration raw results](js-references-pipeline-post80-results.json)
+include every wall/CPU sample, work count, commit, PHP version, opcache setting,
+and host load. This is still a shared-host CLI/SQLite experiment, without an
+isolated profile or MySQL/PHP-FPM limiter measurement. Production impact remains
+inconclusive. The earlier samples are retained below as historical evidence.
 
 The baseline is Seam extraction commit `3b73fa7d`, after the standalone target
 was removed. Both sides use the same fixture and PHP 8.5.10, WordPress 7.1.4,

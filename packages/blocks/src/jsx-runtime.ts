@@ -116,8 +116,15 @@ function sameLocation(a: SourceLocation, b: SourceLocation): boolean {
  */
 function usedAt(error: unknown, loc: SourceLocation | undefined): unknown {
   if (loc === undefined || !(error instanceof ContentError)) return error;
-  if (error.loc !== undefined && (error.loc.usedAt !== undefined || sameLocation(error.loc, loc))) return error;
-  const relocated = new ContentError(error.code, error.message, error.loc === undefined ? loc : { ...error.loc, usedAt: loc });
+  if (error.loc === undefined) {
+    // No position of its own (the classic transform's createElement gets none): the call site must
+    // not stand in for it, or the authored line would be lost. The compiler reads that line from
+    // the stack; the innermost call site waits here to be joined to it.
+    error.calledFrom ??= loc;
+    return error;
+  }
+  if (error.loc.usedAt !== undefined || sameLocation(error.loc, loc)) return error;
+  const relocated = new ContentError(error.code, error.message, { ...error.loc, usedAt: loc });
   if (error.stack !== undefined) relocated.stack = error.stack;
   return relocated;
 }

@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { build, type Plugin } from "esbuild";
 
 import { ContentError, type Diagnostic } from "../diagnostics.ts";
+import { exclusive } from "./exclusive.ts";
 import { toContentNodes } from "../jsx-runtime.ts";
 import type { ContentNode, SourceLocation } from "../nodes.ts";
 
@@ -136,6 +137,9 @@ export async function renderModule(file: string): Promise<ModuleResult> {
     return { nodes: [], diagnostics };
   }
 
+  // Executed inside the process-wide section (see exclusive.ts), so the module never runs while
+  // another compile has the serializer's DOM globals installed.
+  return exclusive(async () => {
   try {
     await writeFile(bundlePath, code);
     let namespace: { default?: unknown };
@@ -160,13 +164,21 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+  });
 }
 
 function failure(error: unknown, entry: string, bundlePath: string, map: SourceMap, scratch: string): Diagnostic {
   // The runtime is bundled into the module, so its ContentError is a copy; match by shape.
   const code = (error as { code?: unknown })?.code;
   const isContent = error instanceof ContentError || (error instanceof Error && error.name === "ContentError" && typeof code === "string");
-  const loc = (isContent ? (error as ContentError).loc : undefined) ?? thrownLocation(error, bundlePath, map, scratch) ?? { file: entry, line: 1, column: 1 };
+  const content = isContent ? (error as ContentError) : undefined;
+  let loc = content?.loc ?? thrownLocation(error, bundlePath, map, scratch) ?? { file: entry, line: 1, column: 1 };
+  // An error with no position of its own kept its component call site aside; now that the stack
+  // has given it the authored position, the two are joined as they are for any located error.
+  const calledFrom = content?.calledFrom;
+  if (calledFrom !== undefined && loc.usedAt === undefined && !(loc.file === calledFrom.file && loc.line === calledFrom.line && loc.column === calledFrom.column)) {
+    loc = { ...loc, usedAt: calledFrom };
+  }
   return {
     code: isContent ? (code as Diagnostic["code"]) : "module_failed",
     severity: "error",

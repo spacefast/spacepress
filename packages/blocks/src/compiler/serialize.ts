@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 
 import { nearest, type Diagnostic } from "../diagnostics.ts";
+import { exclusive } from "./exclusive.ts";
 import { renderRichTextHtml } from "../mapping.ts";
 import type { BlockAttributes, BlockNode, ContentNode, SourceLocation } from "../nodes.ts";
 
@@ -131,9 +132,15 @@ async function createDom(): Promise<Record<string, unknown>> {
   return win;
 }
 
-async function withDom<T>(use: () => Promise<T>): Promise<T> {
+function withDom<T>(use: () => Promise<T>): Promise<T> {
+  // Inside the process-wide section, so no authored module runs while the globals are installed;
+  // nested calls from within re-enter it and share the one installation through the depth count.
+  return exclusive(() => installDom(use));
+}
+
+async function installDom<T>(use: () => Promise<T>): Promise<T> {
   // The window is created once, and the depth is read only after that await,
-  // so two concurrent cold calls cannot both believe they are first.
+  // so two nested cold calls cannot both believe they are first.
   dom ??= createDom();
   const win = await dom;
   if (domDepth === 0) {

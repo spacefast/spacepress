@@ -98,6 +98,15 @@ test("an unlocated node nested under another unlocated node inherits the same po
   assert.deepEqual(p?.kind === "element" ? p.loc : null, { file: "/t/a.tsx", line: 4, column: 5 });
 });
 
+test("an error with no position of its own keeps the call site aside rather than taking it as its position", () => {
+  const source = { fileName: "/t/a.tsx", lineNumber: 7, columnNumber: 5 };
+  const Card = () => createElement("p", null, new Date(0));
+  assert.throws(
+    () => jsxDEV(Card, {}, undefined, false, source),
+    (error: unknown) => error instanceof ContentError && error.code === "not_content" && error.loc === undefined && error.calledFrom?.line === 7,
+  );
+});
+
 test("the classic transform's createElement builds the same node as jsx", () => {
   assert.deepEqual(createElement("p", { class: "lead" }, "a", jsx("em", { children: "b" })), jsx("p", { class: "lead", children: ["a", jsx("em", { children: "b" })] }));
   assert.deepEqual(createElement("hr", null), jsx("hr", {}));

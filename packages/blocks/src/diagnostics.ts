@@ -67,6 +67,12 @@ export function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
 export class ContentError extends Error {
   readonly code: DiagnosticCode;
   readonly loc: SourceLocation | undefined;
+  /**
+   * The component call site, kept aside when the error has no position of its
+   * own to carry it as `usedAt`: the compiler finds the authored position from
+   * the stack and joins the two.
+   */
+  calledFrom: SourceLocation | undefined;
   constructor(code: DiagnosticCode, message: string, loc?: SourceLocation) {
     super(message);
     this.name = "ContentError";

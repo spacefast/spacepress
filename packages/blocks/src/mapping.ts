@@ -356,6 +356,13 @@ class Mapper {
       }
       if (!isElement(child)) continue;
       if (child.props.style !== undefined) this.styleProp(child);
+      // Phrasing tags are written as HTML text, so a value that is not text (a handler, an
+      // object) would be stringified into the markup. Refused here, where every phrasing element passes.
+      for (const [name, value] of Object.entries(child.props)) {
+        if (name === "style" || value === null || value === undefined) continue;
+        if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) continue;
+        this.badValue(child, name, "a string, a number or a boolean");
+      }
       if (!isInlineTag(child.tag)) {
         this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${child.tag}> sits inside rich text, where only phrasing tags (a, strong, em, code, span, …) can go.`, hint: "Move it out of the paragraph, or use a phrasing tag.", loc: child.loc });
         continue;

@@ -21,6 +21,17 @@ test("a paragraph keeps phrasing content as rich text", () => {
   assert.equal(renderRichTextHtml(blocks[0]!.inner), "a <strong>b</strong> c");
 });
 
+test("a prop value that is not text on a phrasing tag is refused rather than stringified into the markup", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsx("p", { children: jsxDEV("a", { href: "/x", onClick: () => "tracked", children: "go" }, undefined, false, at(1)) }),
+    jsx("p", { children: jsxDEV("span", { "data-x": { a: 1 }, children: "s" }, undefined, false, at(2)) }),
+    jsx("p", { children: jsxDEV("em", { title: Number.NaN, children: "e" }, undefined, false, at(3)) }),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2], ["unmappable_element", 3]]);
+  assert.match(diagnostics[0]!.message, /"onClick" prop/);
+});
+
 test("text given to a line break is refused rather than dropped", () => {
   const { diagnostics } = map(jsxs("p", { children: ["before", jsx("br", { children: "LOST" }), "after"] }));
   assert.deepEqual(diagnostics.map((d) => [d.code, d.severity]), [["unmappable_element", "error"]]);
@@ -32,7 +43,7 @@ test("rich text escapes what would otherwise be markup, and className becomes cl
 });
 
 test("an inline boolean value is written as text unless the attribute is an HTML boolean", () => {
-  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { role: "checkbox", "aria-checked": false, draggable: false, contenteditable: false, children: "c" }))), '<span role="checkbox" aria-checked="false" draggable="false" contenteditable="false">c</span>');
+  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { role: "checkbox", "aria-checked": false, draggable: false, contenteditable: false, spellcheck: false, translate: "no", children: "c" }))), '<span role="checkbox" aria-checked="false" draggable="false" contenteditable="false" spellcheck="false" translate="no">c</span>');
   assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: true, children: "h" }))), "<span hidden>h</span>");
   assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: false, children: "h" }))), "<span>h</span>");
 });

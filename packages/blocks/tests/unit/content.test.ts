@@ -30,6 +30,28 @@ test("a mistake on an element the classic fallback built, at any depth, is locat
   assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("spread-key-style.tsx"), line: 4, column: 5 }]);
 });
 
+test("an error from a classic-fallback element inside a component names the component's line and where it was used", async () => {
+  const result = await compileContent(fixture("uses-fallback-card.tsx"));
+  // esbuild gives the classic fallback no position, so the line comes from the stack: the authored line, at the call's column.
+  assert.deepEqual(result.diagnostics.map((d) => [d.code, d.loc?.file, d.loc?.line]), [["not_content", fixture("fallback-card.tsx"), 3]]);
+  assert.deepEqual(result.diagnostics[0]!.loc?.usedAt, { file: fixture("uses-fallback-card.tsx"), line: 7, column: 7 });
+});
+
+test("a module never sees the serializer's DOM, whatever else is compiling at the same time", async () => {
+  const results = await Promise.all([
+    compileContent(fixture("sees-dom.tsx")),
+    compileContent(fixture("pricing.tsx")),
+    compileContent(fixture("sees-dom.tsx")),
+    compileContent(fixture("pricing.tsx")),
+    compileContent(fixture("sees-dom.tsx")),
+  ]);
+  for (const result of [results[0], results[2], results[4]]) {
+    assert.deepEqual(result!.diagnostics, []);
+    assert.match(result!.markup, /<p>undefined\/undefined<\/p>/);
+  }
+  assert.equal("document" in globalThis, false);
+});
+
 test("a mistake inside a component names the component's line and where it was used", async () => {
   const result = await compileContent(fixture("uses-card.tsx"));
   assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("card.tsx"), line: 3, column: 10 }]);

@@ -385,9 +385,9 @@ final class ProfileForm
      *   (a showIf hid and disabled it) keeps its saved value; in a new item, a sub-field the viewer may
      *   not set, posted at its default, is left to the default as the API would.
      */
-    private static function fromForm(array $def, mixed $posted, mixed $stored, ?\Zero\Viewer $viewer, mixed $raw, string $key): mixed
+    private static function fromForm(array $def, mixed $posted, mixed $stored, ?\Zero\Viewer $viewer, mixed $raw, string $key, mixed $baseline = null): mixed
     {
-        $item = static function (array $fields, mixed $obj, mixed $before, mixed $input, string $prefix) use ($viewer): mixed {
+        $item = static function (array $fields, mixed $obj, mixed $before, mixed $input, string $prefix, mixed $defaults = null) use ($viewer): mixed {
             if (!is_array($obj)) {
                 return $obj;
             }
@@ -399,12 +399,9 @@ final class ProfileForm
                     }
                     continue;
                 }
-                $baseline = $before[$name] ?? null;
-                if ($before === null && $sub['type'] === 'timestamp') {
-                    $baseline = $sub['default']['value'] ?? null;
-                }
-                $obj[$name] = self::fromForm($sub, $obj[$name], $baseline, $viewer,
-                    is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
+                $reference = $before === null ? ($defaults[$name] ?? $sub['default']['value'] ?? null) : null;
+                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
+                    is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name, $reference);
                 if ($viewer !== null && $before === null && isset($sub['default'])
                     && !array_key_exists('value', $sub['default'])
                     && self::canonical($sub, $obj[$name]) === self::canonical($sub, null)) {
@@ -425,34 +422,37 @@ final class ProfileForm
 
             return $obj;
         };
+        $defaults = $baseline ?? $def['default']['value'] ?? null;
         $old = is_array($stored) && array_is_list($stored) ? $stored : [];
         $inputs = is_array($raw) ? array_filter($raw, static fn ($k) => $k !== 'acfcloneindex', ARRAY_FILTER_USE_KEY) : [];
         $keys = array_keys($inputs);
         $inputs = array_values($inputs);
-        $row = static function (mixed $value, int $i) use ($def, $old, $viewer, $keys, $inputs, $key, $item): mixed {
+        $row = static function (mixed $value, int $i) use ($def, $old, $defaults, $viewer, $keys, $inputs, $key, $item): mixed {
             // The rendered row key names its saved index even after a deletion or a drag. New rows
             // have generated keys; SCF prefixes the key again on a rejected form. Trusted code uses
             // ordinary list positions.
             $index = $viewer === null ? $i : (preg_match('/^(?:row-)+(\d+)$/D', (string) ($keys[$i] ?? ''), $m) ? (int) $m[1] : null);
             $before = $index === null ? null : ($old[$index] ?? null);
+            $reference = $index === null || !is_array($defaults) ? null : ($defaults[$index] ?? null);
             if ($def['type'] === 'blocks') {
                 $layout = is_array($value) ? ($value['layout'] ?? '') : '';
 
                 return $item($def['layouts'][$layout] ?? [], $value,
-                    ($before['layout'] ?? null) === $layout ? $before : null, $inputs[$i] ?? null, $key . '_' . $layout . '_');
+                    ($before['layout'] ?? null) === $layout ? $before : null, $inputs[$i] ?? null, $key . '_' . $layout . '_',
+                    ($reference['layout'] ?? null) === $layout ? $reference : null);
             }
 
-            return $item($def['fields'] ?? [], $value, $before, $inputs[$i] ?? null, $key . '_');
+            return $item($def['fields'] ?? [], $value, $before, $inputs[$i] ?? null, $key . '_', $reference);
         };
 
         if ($def['type'] === 'group') {
-            $value = $item($def['fields'] ?? [], $posted, $stored, $raw, $key . '_');
+            $value = $item($def['fields'] ?? [], $posted, $stored, $raw, $key . '_', $defaults);
 
             return $viewer !== null && $stored === null && !($def['notNull'] ?? false) && self::canonical($def, $value) === null ? null : $value;
         }
 
         return match ($def['type'] ?? '') {
-            'timestamp' => self::wallToUtc($posted, $stored),
+            'timestamp' => self::wallToUtc($posted, $stored ?? $baseline),
             'repeater', 'blocks' => match (true) {
                 $posted === null => $stored === null && !($def['notNull'] ?? false) ? null : [],
                 !is_array($posted) => $posted,

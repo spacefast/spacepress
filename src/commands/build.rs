@@ -372,6 +372,10 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
                 }
             }
         } else {
+            // The app plugin declares GPL-2.0-or-later like the runtime it extends; carry the text.
+            if let Some(license) = runtime_file("Zero/LICENSE") {
+                write(&directory.join("LICENSE"), license)?;
+            }
             write(&directory.join("zero/app/schema.php"), &schema_php)?;
             if let Some(wpml) = crate::wpml_config::render(&built.schema) {
                 write(&directory.join("wpml-config.xml"), wpml)?;

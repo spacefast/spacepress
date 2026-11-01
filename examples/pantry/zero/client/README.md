@@ -34,9 +34,22 @@ await wp.auth.signIn();                  // leaves the page
 const user = await wp.auth.handleCallback(); // on /callback
 
 // Both: anonymous visitors write as guests, and keep their rows when they sign up.
-const app = createClient({ auth: { guests: true } });
-await app.posts.create({ title: "Draft" }); // starts a guest session on first write
-await app.auth.upgrade("alice", "correct horse battery"); // standalone; WordPress: upgrade() redirects
+// With `guests: true`, a write that is refused as unauthenticated starts a guest session and is
+// retried; a write a collection allows anonymously (create: "anyone") never needs one, so start the
+// session yourself when you want the rows kept. `comments` below stands for a collection of yours
+// whose create rule admits guests. The upgrade login is a name, or an email once the app has an
+// `auth: true` collection.
+const guest = createClient({ auth: { guests: true } });
+await guest.auth.guest();                                                 // role "guest", tokens held
+await guest.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // written by the guest
+await guest.auth.upgrade("alice@example.com", "correct horse battery");   // standalone: the guest becomes this member
+
+// On WordPress the upgrade happens on the zero-identity screens, so the client needs the same
+// clientId and redirectUri as signIn(); upgrade() redirects and handleCallback() finishes it.
+const wpGuest = createClient({ auth: { guests: true, clientId: "app_...", redirectUri: location.origin + "/callback" } });
+await wpGuest.auth.guest();
+await wpGuest.comments.create({ postId: 1, name: "A reader", body: "Hi" });
+await wpGuest.auth.upgrade();
 
 await zero.auth.signOut();
 ```
@@ -46,5 +59,5 @@ Server to server: `token` sends a standalone CLI token (`zt_...`). On WordPress,
 `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.
 
-Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
+This folder is MIT (see its LICENSE). Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs
 `"allowImportingTsExtensions": true` (or `rewriteRelativeImportExtensions`).

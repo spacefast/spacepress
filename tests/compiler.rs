@@ -1242,6 +1242,38 @@ fn rejects_phase2_static_contracts() {
             "const keep = (v: number[]) => v; const a = [1]; const b = keep(a); a.push(2); return b.length === 2;",
             "may be the same object or array as another value here",
         ),
+        (
+            "const read = (p: { x: number }) => { const q = p; p.x = 1; return q.x; }; return read({ x: 0 }) === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 0 }; const f = () => { a.x++; }; const b = a; f(); return b.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; const b = a.map((e) => e); b[0]!.x = 1; return a[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a: { x: number }[] = []; a.push({ x: 0 }); const b = a[0]!; b.x = 1; return a[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 0 }; const list = [a]; for (const item of list) item.x = 1; return a.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 0 }; let b = a; try { JSON.parse('x'); } catch { b = { x: 9 }; } b.x = 1; return a.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 0 }; let b = { x: 5 }; for (let i = 0; i < 2; i++) { b = a; if (i === 0) break; b = { x: 0 }; } b.x = 1; return a.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const fs: (() => number)[] = []; for (let o = { x: 0 }; o.x < 1; o.x++) fs.push(() => o.x); return fs[0]!() === 1;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

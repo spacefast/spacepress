@@ -3,31 +3,30 @@
 //! another live value also holds would show up in JS and silently not in PHP, so it is a build
 //! error with a located fix.
 //!
-//! The walk is flow-sensitive within a compiled function, and nested closures are walked with
-//! their enclosing function's state (they share its bindings). Each local that holds a container
-//! has a set of *tags*; two locals with a common tag may be the same container. A tag is
-//! *shared* when something other than one local may hold it: a second local, a container it was
-//! stored in, a closure that keeps it, a parameter's caller, a module value, an element read. A
-//! tag's *inner* tags are the containers it holds (a literal's members, a stored value).
+//! The check is flow-insensitive over one compiled function, its nested closures included (they
+//! share its bindings): if two values may be the same container anywhere in the function, they
+//! are treated as the same container everywhere. That over-refuses a little (an alias made after
+//! a write still refuses the write) and in exchange holds across branches, loops, `try`/`catch`,
+//! `break`/`continue`, and closures called at any time.
 //!
-//! Writing into a local (`x.k = v`, `x[i] = v`, `x.k++`, `x.push(..)`, `Object.assign(x, ..)`, a
-//! call whose callee writes its parameter) is refused when any of its tags is shared; writing two
-//! or more levels below it (`x.k.j = v`, `x.k.push(..)`) is refused when a tag inner to it is
-//! shared. A parameter itself is exempt from the first rule: compile.rs passes a mutated
-//! parameter by reference, so those writes reach its caller.
+//! Containers form classes (union-find). A class has one *interior* class standing for every
+//! container held inside it, at any depth. A literal's items, a stored value and a pushed value
+//! join the holder's interior; a member or element read is the interior; a shallow copy
+//! (`{ ...a }`, `a.slice()`) is a new class sharing `a`'s interior. A class is *outside* when
+//! something beyond this function's locals may hold it (a module value, an argument a callee
+//! keeps, a value of unknown origin).
 //!
-//! Joins: after `if`/`?:`/`&&`/`switch`/`try`, a local carries every tag any path gave it; a loop
-//! body is walked until the state it leaves stops changing. A closure is walked twice (it may run
-//! more than once) and its effects joined with the state at its creation.
-//!
-//! Only containers take part, by the type compile.rs gave each expression and binding.
+//! A write into a binding (`b.k = v`, `b[i] = v`, `b.k++`, `b.push(v)`, a callee that writes its
+//! parameter `b`) is refused when its class has another binding, is outside, or is the interior
+//! of something observable. A write below its top level (`b.k.j = v`, `b.k.push(v)`) is also
+//! refused when its interior can be seen from anywhere but `b`. A parameter's caller doesn't
+//! count: compile.rs passes a mutated parameter by reference, and the call site checks the place
+//! it passes.
 
 use super::*;
-use std::collections::BTreeSet;
 
 /// Calls whose result is a new value that holds nothing of the receiver.
 const FRESH_METHODS: &[&str] = &[
-    "map",
     "split",
     "keys",
     "toFixed",
@@ -58,6 +57,8 @@ const FRESH_METHODS: &[&str] = &[
     "test",
     "exec",
     "forEach",
+    "push",
+    "unshift",
 ];
 
 /// Calls whose result is a new array holding the receiver's elements (they stay the receiver's).
@@ -66,10 +67,10 @@ const SHALLOW_METHODS: &[&str] = &[
     "slice",
     "concat",
     "flat",
-    "flatMap",
     "toSorted",
     "toReversed",
     "with",
+    "splice",
 ];
 
 /// Calls whose result is one of the receiver's elements.
@@ -115,7 +116,7 @@ pub(super) struct Oracle<'a> {
     pub effects: &'a effects::Effects,
 }
 
-fn container(t: &Ty) -> bool {
+pub(super) fn container(t: &Ty) -> bool {
     match t {
         Ty::Union(ts) => ts.iter().any(container),
         Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) | Ty::Obj(_) | Ty::Map(_) | Ty::Unknown => true,
@@ -127,479 +128,718 @@ fn container(t: &Ty) -> bool {
 pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
     let mut w = Walk {
         oracle,
-        st: State::default(),
-        scopes: Vec::new(),
-        sites: HashMap::new(),
-        passes: 0,
-        callback_of: None,
-        closures: 0,
+        uf: Uf::default(),
+        scopes: vec![HashMap::new()],
+        classes: HashMap::new(),
+        closures: HashMap::new(),
+        returns: Vec::new(),
+        callback_params: HashMap::new(),
+        copies: HashMap::new(),
+        last_callback: Vec::new(),
+        callback_route: HashMap::new(),
+        writes: Vec::new(),
     };
-    w.st.shared.insert(OUTSIDE);
-    w.scopes.push(HashMap::new());
-    for p in &f.params {
-        let v = Val::outside();
-        w.declare_pat(&p.pat, &v, true)?;
-        if let Some(d) = &p.default {
-            w.expr(d)?;
-        }
-    }
-    match &f.body {
-        FnBody::Expr(e) => w.expr(e),
-        FnBody::Block(b) => w.stmts(b),
-    }
+    w.params(&f.params);
+    w.body(&f.body);
+    w.verify()
 }
 
-type Bind = Span;
-type Tag = usize;
+type Class = usize;
 
-/// Something beyond this function's locals: module values, a caller, an element of a value read
-/// from anywhere unknown.
-const OUTSIDE: Tag = 0;
-
-#[derive(Clone, Default, PartialEq, Eq)]
-struct State {
-    of: HashMap<Bind, BTreeSet<Tag>>,
-    shared: BTreeSet<Tag>,
-    inner: HashMap<Tag, BTreeSet<Tag>>,
-    params: HashSet<Bind>,
+/// Union-find over containers.
+#[derive(Default)]
+struct Uf {
+    parent: Vec<Class>,
+    outside: Vec<bool>,
+    /// The class stands for the containers held inside its holders (an interior).
+    is_interior: Vec<bool>,
+    interior: Vec<Option<Class>>,
+    /// For an interior: the classes whose interior it is.
+    holders: Vec<Vec<Class>>,
+    bindings: Vec<Vec<Span>>,
+    /// Containers this class's container was stored into.
+    held_in: Vec<Vec<Class>>,
+    /// For an interior: the containers stored into its holders.
+    contents: Vec<Vec<Class>>,
+    /// A parameter's container: it may hold anything its caller put in it.
+    opaque: Vec<bool>,
 }
 
-impl State {
-    fn join(&mut self, o: &State) {
-        for (b, ts) in &o.of {
-            self.of.entry(*b).or_default().extend(ts);
-        }
-        self.shared.extend(&o.shared);
-        for (t, i) in &o.inner {
-            self.inner.entry(*t).or_default().extend(i);
-        }
-        self.params.extend(o.params.iter().copied());
+impl Uf {
+    fn new_class(&mut self) -> Class {
+        let c = self.parent.len();
+        self.parent.push(c);
+        self.outside.push(false);
+        self.is_interior.push(false);
+        self.interior.push(None);
+        self.holders.push(Vec::new());
+        self.bindings.push(Vec::new());
+        self.held_in.push(Vec::new());
+        self.contents.push(Vec::new());
+        self.opaque.push(false);
+        c
     }
 
-    /// Tags reachable below `ts` (their held containers, transitively).
-    fn below(&self, ts: &BTreeSet<Tag>) -> BTreeSet<Tag> {
-        let mut out = BTreeSet::new();
-        let mut todo: Vec<Tag> = ts.iter().copied().collect();
-        while let Some(t) = todo.pop() {
-            for i in self.inner.get(&t).into_iter().flatten() {
-                if out.insert(*i) {
-                    todo.push(*i);
+    fn outside_class(&mut self) -> Class {
+        let c = self.new_class();
+        self.outside[c] = true;
+        c
+    }
+
+    fn find(&mut self, mut c: Class) -> Class {
+        while self.parent[c] != c {
+            self.parent[c] = self.parent[self.parent[c]];
+            c = self.parent[c];
+        }
+        c
+    }
+
+    /// The class of everything held inside `c` (an interior is its own interior).
+    fn interior(&mut self, c: Class) -> Class {
+        let c = self.find(c);
+        if self.is_interior[c] {
+            return c;
+        }
+        if let Some(i) = self.interior[c] {
+            return self.find(i);
+        }
+        let i = self.new_class();
+        self.is_interior[i] = true;
+        self.holders[i].push(c);
+        // Members of something outside are outside too.
+        self.outside[i] = self.outside[c];
+        self.interior[c] = Some(i);
+        i
+    }
+
+    /// Whether `c` may hold a container: something was stored in it, it's outside, or it's an
+    /// interior (whose members are its own).
+    fn holds_anything(&mut self, c: Class) -> bool {
+        let c = self.find(c);
+        if self.outside[c] || self.is_interior[c] || self.opaque[c] {
+            return true;
+        }
+        match self.interior[c] {
+            Some(i) => {
+                let i = self.find(i);
+                self.outside[i]
+                    || !self.contents[i].is_empty()
+                    || !self.bindings[i].is_empty()
+                    || !self.held_in[i].is_empty()
+            }
+            None => false,
+        }
+    }
+
+    fn existing_interior(&mut self, c: Class) -> Option<Class> {
+        let c = self.find(c);
+        if self.is_interior[c] {
+            return Some(c);
+        }
+        self.interior[c].map(|i| self.find(i))
+    }
+
+    fn unite(&mut self, a: Class, b: Class) {
+        let a = self.find(a);
+        let b = self.find(b);
+        if a == b {
+            return;
+        }
+        self.parent[b] = a;
+        self.outside[a] |= self.outside[b];
+        self.opaque[a] |= self.opaque[b];
+        let hb = std::mem::take(&mut self.holders[b]);
+        self.holders[a].extend(hb);
+        let bb = std::mem::take(&mut self.bindings[b]);
+        self.bindings[a].extend(bb);
+        let hb = std::mem::take(&mut self.held_in[b]);
+        self.held_in[a].extend(hb);
+        let cb = std::mem::take(&mut self.contents[b]);
+        self.contents[a].extend(cb);
+        let ia = self.interior[a].take();
+        let ib = self.interior[b].take();
+        if self.is_interior[a] || self.is_interior[b] {
+            // An interior is its own interior: whatever was held inside either side joins it.
+            self.is_interior[a] = true;
+            for i in [ia, ib].into_iter().flatten() {
+                self.unite(a, i);
+            }
+        } else {
+            match (ia, ib) {
+                (Some(x), Some(y)) => {
+                    self.interior[a] = Some(x);
+                    self.unite(x, y);
+                }
+                (x, y) => self.interior[a] = x.or(y),
+            }
+        }
+        // Outside propagates to what an outside container holds.
+        let a = self.find(a);
+        if self.outside[a]
+            && let Some(i) = self.interior[a]
+        {
+            let i = self.find(i);
+            if !self.outside[i] {
+                self.mark_outside(i);
+            }
+        }
+    }
+
+    fn mark_outside(&mut self, c: Class) {
+        let mut c = self.find(c);
+        loop {
+            self.outside[c] = true;
+            match self.interior[c] {
+                Some(i) => {
+                    let i = self.find(i);
+                    if i == c || self.outside[i] {
+                        return;
+                    }
+                    c = i;
+                }
+                None => return,
+            }
+        }
+    }
+
+    /// Store `v` inside `holder`: `v` is held by it, and reading a member of `holder` may give `v`.
+    fn store(&mut self, holder: Class, v: Class) {
+        let h = self.find(holder);
+        let i = self.interior(h);
+        let v = self.find(v);
+        if v == i || v == h {
+            return;
+        }
+        self.held_in[v].push(h);
+        self.contents[i].push(v);
+        if self.outside[h] {
+            self.mark_outside(v);
+        }
+    }
+
+    /// Whether anything can still see this class's container after the expression that made it:
+    /// a binding, the outside, or an observable container holding it.
+    fn observable(&mut self, c: Class, seen: &mut HashSet<Class>) -> bool {
+        let c = self.find(c);
+        if !seen.insert(c) {
+            return false;
+        }
+        if !self.bindings[c].is_empty() || self.outside[c] {
+            return true;
+        }
+        let mut via: Vec<Class> = self.held_in[c].clone();
+        if self.is_interior[c] {
+            via.extend(self.holders[c].iter().copied());
+        }
+        via.into_iter().any(|h| self.observable(h, seen))
+    }
+
+    /// Whether something other than `binding`, reached other than through `route` (the holder
+    /// a write goes through), can see the container(s) of class `c`.
+    fn seen_elsewhere(&mut self, c: Class, binding: Option<Span>, route: Option<Class>) -> bool {
+        self.seen_elsewhere_in(c, binding, route, &mut HashSet::new())
+    }
+
+    fn seen_elsewhere_in(
+        &mut self,
+        c: Class,
+        binding: Option<Span>,
+        route: Option<Class>,
+        seen: &mut HashSet<Class>,
+    ) -> bool {
+        let c = self.find(c);
+        if !seen.insert(c) {
+            return false;
+        }
+        if self.outside[c] || self.bindings[c].iter().any(|b| Some(*b) != binding) {
+            return true;
+        }
+        let route = route.map(|r| self.find(r));
+        let held_in = self.held_in[c].clone();
+        for h in held_in {
+            let h = self.find(h);
+            if Some(h) != route && self.observable(h, &mut HashSet::new()) {
+                return true;
+            }
+        }
+        if self.is_interior[c] {
+            let holders = self.holders[c].clone();
+            for h in &holders {
+                let h = self.find(*h);
+                if h != c && Some(h) != route && self.observable(h, &mut HashSet::new()) {
+                    return true;
+                }
+            }
+            // The containers actually held here: seen through anything but these holders.
+            let contents = self.contents[c].clone();
+            for k in contents {
+                let k = self.find(k);
+                if k == c {
+                    continue;
+                }
+                if self.outside[k] || !self.bindings[k].is_empty() {
+                    return true;
+                }
+                let other_holders: Vec<Class> = self.held_in[k]
+                    .clone()
+                    .into_iter()
+                    .filter(|h| {
+                        let h = self.find(*h);
+                        self.existing_interior(h).is_none_or(|hi| hi != c)
+                    })
+                    .collect();
+                for h in other_holders {
+                    if self.observable(h, &mut HashSet::new()) {
+                        return true;
+                    }
+                }
+                if self.seen_elsewhere_in(k, None, route, seen) {
+                    return true;
                 }
             }
         }
-        out
-    }
-
-    /// `ts` and everything below them are now held by someone else too.
-    fn share(&mut self, ts: &BTreeSet<Tag>) {
-        let all: BTreeSet<Tag> = ts.iter().copied().chain(self.below(ts)).collect();
-        self.shared.extend(all);
+        false
     }
 }
 
-/// An expression's value, as tags: `tags` it may be, `inner` tags its members may be.
-#[derive(Clone, Default)]
-struct Val {
-    tags: BTreeSet<Tag>,
-    inner: BTreeSet<Tag>,
-    /// A literal that holds containers built in place (no tag yet: only it holds them).
-    holds_fresh: bool,
-    scalar: bool,
+/// What a name resolves to.
+#[derive(Clone, Copy)]
+enum Slot {
+    Local(Span),
+    /// A `for (const e of r...)` element looped by reference: writes through `e` land `depth`
+    /// member steps below the binding `r`.
+    View(Span, usize),
 }
 
-impl Val {
-    fn scalar() -> Self {
-        Val {
-            scalar: true,
-            ..Default::default()
-        }
-    }
-    fn outside() -> Self {
-        Val {
-            tags: BTreeSet::from([OUTSIDE]),
-            ..Default::default()
-        }
-    }
-    fn union(mut self, o: Val) -> Self {
-        if o.scalar {
-            return self;
-        }
-        if self.scalar {
-            return o;
-        }
-        self.tags.extend(o.tags);
-        self.inner.extend(o.inner);
-        self.holds_fresh |= o.holds_fresh;
-        self
-    }
+enum Target {
+    /// A write `depth` steps below this binding (1 = into it).
+    Binding(Span, usize),
+    /// A write into a container value with no binding (a call result, an element of one).
+    Value(Class, usize),
+    /// A module value or a global.
+    Outside,
+}
+
+struct Write {
+    target: Target,
+    name: String,
+    span: Span,
+    /// The write goes through a named function an array method calls with copies.
+    named_callback: Option<String>,
 }
 
 struct Walk<'o, 'a> {
     oracle: &'o Oracle<'a>,
-    st: State,
-    scopes: Vec<HashMap<String, Bind>>,
-    sites: HashMap<(Bind, u8), Tag>,
-    /// Loop-body walks done so far (bounded; see `looped`).
-    passes: usize,
-    /// Inside an inline callback of this array method.
-    callback_of: Option<String>,
-    /// How many closures deep the walk is.
-    closures: usize,
+    uf: Uf,
+    scopes: Vec<HashMap<String, Slot>>,
+    classes: HashMap<Span, Class>,
+    /// Local function bindings → their return class.
+    closures: HashMap<Span, Class>,
+    /// The return class of each function being walked (innermost last).
+    returns: Vec<Class>,
+    /// Inline callback element parameters → the array method passing them.
+    callback_params: HashMap<Span, String>,
+    /// A callback element's class → the receiver element class it copies.
+    copies: HashMap<Class, Class>,
+    /// Callback element parameters declared by the last inline callback.
+    last_callback: Vec<Span>,
+    /// A callback element parameter → the array its callback's results build (`map`).
+    callback_route: HashMap<Span, Class>,
+    writes: Vec<Write>,
 }
 
 impl Walk<'_, '_> {
-    /// The tag for a new container bound at `site` in `role` (0: the container, 1: what a
-    /// literal built inside it). The same site and role always get the same tag, so a loop or a
-    /// closure walked again reaches the same state and the fixpoint converges.
-    fn site(&mut self, site: Bind, role: u8) -> Tag {
-        let next = self.sites.len() + 1;
-        *self.sites.entry((site, role)).or_insert(next)
-    }
-
-    fn lookup(&self, name: &str) -> Option<Bind> {
+    fn lookup(&self, name: &str) -> Option<Slot> {
         self.scopes.iter().rev().find_map(|s| s.get(name).copied())
-    }
-
-    fn tags(&self, b: Bind) -> BTreeSet<Tag> {
-        self.st.of.get(&b).cloned().unwrap_or_default()
     }
 
     fn is_container(&self, e: &Expr) -> bool {
         self.oracle.types.get(&e.span).is_none_or(container)
     }
 
-    // ---- values ----------------------------------------------------------------------------
-
-    /// A member read of `v`: one of the containers `v` holds.
-    fn member(&self, v: &Val) -> Val {
-        if v.scalar {
-            return Val::outside();
+    /// Whether a value of `e`'s type can hold a container inside it.
+    fn holds_containers(&self, e: &Expr) -> bool {
+        fn inner(t: &Ty) -> bool {
+            match t {
+                Ty::Union(ts) => ts.iter().any(inner),
+                Ty::Array(t) | Ty::Map(t) => container(t),
+                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => ts.iter().any(container),
+                Ty::Obj(fields) => fields.values().any(|(t, _)| container(t)),
+                Ty::Unknown => true,
+                _ => false,
+            }
         }
-        let mut tags: BTreeSet<Tag> = v.inner.clone();
-        // A local's members are what was built or stored into it (`store` records each); a
-        // container someone else may also reach can hold anything.
-        tags.extend(self.st.below(&v.tags));
-        if v.tags.iter().any(|t| self.st.shared.contains(t)) {
-            tags.insert(OUTSIDE);
-        }
-        Val {
-            tags,
-            ..Default::default()
-        }
+        self.oracle.types.get(&e.span).is_none_or(inner)
     }
 
-    /// A shallow copy of `v`: a new container whose members are `v`'s members.
-    fn shallow(&self, v: &Val) -> Val {
-        if v.scalar {
-            return Val::default();
-        }
-        Val {
-            inner: self.member(v).tags,
-            ..Default::default()
-        }
-    }
-
-    fn val(&self, e: &Expr) -> Val {
-        if !self.is_container(e) {
-            return Val::scalar();
-        }
-        match &e.kind {
-            ExprKind::Num(_)
-            | ExprKind::Str(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Null
-            | ExprKind::Undefined
-            | ExprKind::Template(..)
-            | ExprKind::Binary(..)
-            | ExprKind::Unary(..)
-            | ExprKind::IsNullish(..)
-            | ExprKind::Update { .. }
-            | ExprKind::Func(_)
-            | ExprKind::Regex { .. } => Val::scalar(),
-            ExprKind::Array(items) => {
-                let mut v = Val::default();
-                for it in items {
-                    match it {
-                        ArrEl::Item(x) => {
-                            let x = self.val(x);
-                            if !x.scalar {
-                                v.holds_fresh |= x.tags.is_empty();
-                                v.inner.extend(x.tags);
-                            }
-                        }
-                        ArrEl::Spread(x) => v.inner.extend(self.shallow(&self.val(x)).inner),
-                    }
-                }
-                v
-            }
-            ExprKind::Object(props) => {
-                let mut v = Val::default();
-                for p in props {
-                    match p {
-                        Prop::KV(_, x) => {
-                            let x = self.val(x);
-                            if !x.scalar {
-                                v.holds_fresh |= x.tags.is_empty();
-                                v.inner.extend(x.tags);
-                            }
-                        }
-                        Prop::Spread(x) => v.inner.extend(self.shallow(&self.val(x)).inner),
-                    }
-                }
-                v
-            }
-            ExprKind::New { .. } => Val::default(),
-            ExprKind::Ident(n) => match self.lookup(n) {
-                Some(b) => Val {
-                    tags: self.tags(b),
-                    ..Default::default()
-                },
-                None => Val::outside(),
-            },
-            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => self.member(&self.val(obj)),
-            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Chain(x) | ExprKind::Await(x) => self.val(x),
-            ExprKind::Cond(_, a, b) | ExprKind::Logical(_, a, b) => self.val(a).union(self.val(b)),
-            ExprKind::Assign { target, value, op } => match op {
-                None => self.val(value),
-                Some(_) => self.val(target).union(self.val(value)),
-            },
-            ExprKind::Call { callee, args, .. } => self.call_val(e, callee, args),
-        }
-    }
-
-    fn args_val(&self, args: &[ArrEl]) -> Val {
-        args.iter().fold(Val::scalar(), |v, a| {
-            let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-            v.union(self.val(x))
-        })
-    }
-
-    fn call_val(&self, call: &Expr, callee: &Expr, args: &[ArrEl]) -> Val {
-        let fx = self.oracle.effects;
-        if fx.resolved(call.span) {
-            if !fx.result_shared(call.span) {
-                return Val::default();
-            }
-            let mut v = Val::outside();
-            for (i, a) in args.iter().enumerate() {
-                let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                if fx.argument_retained(call.span, i) {
-                    v = v.union(self.val(x));
-                    v = v.union(self.member(&self.val(x)));
-                }
-            }
-            return v;
-        }
-        let ExprKind::Member { obj, prop, .. } = &callee.kind else {
-            return Val::outside();
-        };
-        if is_db_chain(obj) {
-            return Val::default();
-        }
-        if let ExprKind::Ident(g) = &obj.kind
-            && self.lookup(g).is_none()
-        {
-            return match (g.as_str(), prop.as_str()) {
-                ("Object", "assign") => self.args_val(args),
-                ("Object", "values" | "entries" | "fromEntries") | ("Array", "from" | "of") => {
-                    let a = self.args_val(args);
-                    if prop == "of" {
-                        Val {
-                            inner: a.tags,
-                            ..Default::default()
-                        }
-                    } else {
-                        self.shallow(&a)
-                    }
-                }
-                ("JSON" | "Math" | "Number" | "String" | "Object" | "Array" | "Date" | "Boolean", _) => Val::default(),
-                _ => Val::outside(),
-            };
-        }
-        let recv = self.val(obj);
-        let p = prop.as_str();
-        if SHALLOW_METHODS.contains(&p) {
-            let mut v = self.shallow(&recv);
-            if p == "concat" {
-                for a in args {
-                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                    let x = self.val(x);
-                    v.inner.extend(self.shallow(&x).inner);
-                    v.inner.extend(x.tags);
-                }
-            }
-            return v;
-        }
-        if ELEMENT_METHODS.contains(&p) {
-            return self.member(&recv);
-        }
-        if p == "reduce" || p == "reduceRight" {
-            // The accumulator: the initial value, an element, or whatever the callback returns.
-            let init = args.get(1).map_or(Val::scalar(), |a| {
-                let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                self.val(x)
-            });
-            return init.union(self.member(&recv)).union(Val::outside());
-        }
-        if matches!(p, "sort" | "reverse" | "fill" | "copyWithin") {
-            return recv;
-        }
-        if FRESH_METHODS.contains(&p) || MUTATORS.contains(&p) {
-            return Val::default();
-        }
-        Val::outside()
+    fn binding_is_container(&self, b: Span) -> bool {
+        self.oracle.bindings.get(&b).is_none_or(container)
     }
 
     // ---- bindings --------------------------------------------------------------------------
 
-    fn bind(&mut self, b: Bind, v: &Val) {
-        if v.scalar || !self.oracle.bindings.get(&b).is_none_or(container) {
-            self.st.of.remove(&b);
+    fn binding_class(&mut self, span: Span) -> Class {
+        if let Some(c) = self.classes.get(&span) {
+            return *c;
+        }
+        let c = self.uf.new_class();
+        self.uf.bindings[c].push(span);
+        self.classes.insert(span, c);
+        c
+    }
+
+    fn declare(&mut self, name: &str, span: Span, value: Option<Class>) {
+        self.scopes
+            .last_mut()
+            .expect("scope")
+            .insert(name.to_string(), Slot::Local(span));
+        if !self.binding_is_container(span) {
             return;
         }
-        // Members of a shallow copy are held by the copy and its source; a literal's members
-        // that came from locals were shared when the literal was built.
-        self.st.share(&v.inner);
-        let mut tags = v.tags.clone();
-        if tags.is_empty() {
-            let t = self.site(b, 0);
-            let mut inner = v.inner.clone();
-            if v.holds_fresh {
-                // The containers built inside the literal: only this local holds them, for now.
-                let held = self.site(b, 1);
-                inner.insert(held);
-            }
-            if !inner.is_empty() {
-                self.st.inner.insert(t, inner);
-            }
-            tags.insert(t);
-        } else {
-            // A second holder of the same container(s).
-            self.st.share(&tags);
-            for t in &tags {
-                if !v.inner.is_empty() {
-                    self.st.inner.entry(*t).or_default().extend(v.inner.iter().copied());
-                }
-            }
-        }
-        self.st.of.insert(b, tags);
-    }
-
-    fn declare_name(&mut self, n: &str, span: Span, param: bool) {
-        self.scopes.last_mut().expect("scope").insert(n.to_string(), span);
-        if param {
-            self.st.params.insert(span);
-        } else {
-            self.st.params.remove(&span);
+        let c = self.binding_class(span);
+        if let Some(v) = value {
+            self.uf.unite(c, v);
         }
     }
 
-    fn declare_pat(&mut self, pat: &Pat, v: &Val, param: bool) -> Result<()> {
+    fn declare_pat(&mut self, pat: &Pat, value: Option<Class>) {
         match pat {
-            Pat::Id(n, span) => {
-                self.declare_name(n, *span, param);
-                self.bind(*span, v);
-            }
+            Pat::Id(n, span) => self.declare(n, *span, value),
             Pat::Default(p, d) => {
-                self.expr(d)?;
-                let dv = self.val(d);
-                self.declare_pat(p, &v.clone().union(dv), param)?;
+                let dv = self.expr(d);
+                let v = self.join(value, dv);
+                self.declare_pat(p, v);
             }
             Pat::Obj { props, rest, .. } => {
-                let m = self.member(v);
+                // A member of a container that never held one (`{}` or `{ n: 1 }` read back
+                // through its declared type): nothing to share, each default stands alone.
+                let member = value.and_then(|v| {
+                    if self.uf.holds_anything(v) {
+                        Some(self.uf.interior(v))
+                    } else {
+                        None
+                    }
+                });
                 for (_, p) in props {
-                    self.declare_pat(p, &m, param)?;
+                    self.declare_pat(p, member);
                 }
                 if let Some((n, span)) = rest {
-                    self.declare_name(n, *span, param);
-                    let s = self.shallow(v);
-                    self.bind(*span, &s);
+                    let copy = value.map(|v| self.shallow(v));
+                    self.declare(n, *span, copy);
                 }
             }
             Pat::Arr { elems, rest, .. } => {
-                let m = self.member(v);
+                let member = value.and_then(|v| {
+                    if self.uf.holds_anything(v) {
+                        Some(self.uf.interior(v))
+                    } else {
+                        None
+                    }
+                });
                 for p in elems.iter().flatten() {
-                    self.declare_pat(p, &m, param)?;
+                    self.declare_pat(p, member);
                 }
                 if let Some((n, span)) = rest {
-                    self.declare_name(n, *span, param);
-                    let s = self.shallow(v);
-                    self.bind(*span, &s);
+                    let copy = value.map(|v| self.shallow(v));
+                    self.declare(n, *span, copy);
                 }
             }
         }
-        Ok(())
     }
 
-    /// The value is now also held by something the walk can't follow.
-    fn escape(&mut self, v: &Val) {
-        if v.scalar {
-            return;
-        }
-        let all: BTreeSet<Tag> = v.tags.iter().chain(&v.inner).copied().collect();
-        self.st.share(&all);
-    }
-
-    /// `v` is now held inside the container(s) of `holder`.
-    fn store(&mut self, holder: &Expr, v: &Val) {
-        if v.scalar {
-            return;
-        }
-        let held: BTreeSet<Tag> = v.tags.iter().chain(&v.inner).copied().collect();
-        // Held by its old holders and now also by this one.
-        self.st.share(&v.tags);
-        let h = self.val(holder);
-        let mut holders: BTreeSet<Tag> = h.tags.clone();
-        holders.extend(h.inner.iter().copied());
-        if holders.is_empty() || holders.contains(&OUTSIDE) {
-            self.escape(v);
-        }
-        for t in holders {
-            self.st.inner.entry(t).or_default().extend(held.iter().copied());
-            if self.st.shared.contains(&t) {
-                self.st.share(&held);
+    /// Function parameters: their own classes (a caller passes them by reference when written),
+    /// which may hold anything the caller put in them.
+    fn params(&mut self, params: &[Param]) {
+        for p in params {
+            let o = self.uf.new_class();
+            self.uf.opaque[o] = true;
+            self.declare_pat(&p.pat, Some(o));
+            if let Some(d) = &p.default {
+                let dv = self.expr(d);
+                self.bind_pat_value(&p.pat, dv);
             }
         }
     }
 
-    // ---- writes ----------------------------------------------------------------------------
-
-    /// A write `depth` member steps below the local `b` (1 = into `b` itself).
-    fn write(&self, name: &str, b: Bind, depth: usize, span: Span) -> Result<()> {
-        let tags = self.tags(b);
-        if depth == 1 && !self.st.params.contains(&b) && tags.iter().any(|t| self.st.shared.contains(t)) {
-            return self.reject(name, span);
+    /// Joins a default value into the bindings of an already declared pattern.
+    fn bind_pat_value(&mut self, pat: &Pat, value: Option<Class>) {
+        let Some(v) = value else { return };
+        match pat {
+            Pat::Id(_, span) => {
+                if let Some(c) = self.classes.get(span).copied() {
+                    self.uf.unite(c, v);
+                }
+            }
+            Pat::Default(p, _) => self.bind_pat_value(p, Some(v)),
+            Pat::Obj { props, .. } => {
+                let m = self.uf.interior(v);
+                for (_, p) in props {
+                    self.bind_pat_value(p, Some(m));
+                }
+            }
+            Pat::Arr { elems, .. } => {
+                let m = self.uf.interior(v);
+                for p in elems.iter().flatten() {
+                    self.bind_pat_value(p, Some(m));
+                }
+            }
         }
-        if depth >= 2 {
-            let below = self.st.below(&tags);
-            let into_param = self.st.params.contains(&b);
-            if below.iter().any(|t| self.st.shared.contains(t))
-                || (!into_param && tags.iter().any(|t| self.st.shared.contains(t)))
+    }
+
+    fn body(&mut self, body: &FnBody) {
+        match body {
+            FnBody::Expr(e) => {
+                let v = self.expr(e);
+                self.returned(v);
+            }
+            FnBody::Block(b) => self.stmts(b),
+        }
+    }
+
+    fn returned(&mut self, v: Option<Class>) {
+        if let (Some(v), Some(r)) = (v, self.returns.last().copied()) {
+            self.uf.unite(r, v);
+        }
+    }
+
+    /// A nested function: walked once with the enclosing scopes. Returns its return class.
+    fn closure(&mut self, f: &Func) -> Class {
+        let r = self.uf.new_class();
+        self.returns.push(r);
+        self.scopes.push(HashMap::new());
+        self.params(&f.params);
+        self.body(&f.body);
+        self.scopes.pop();
+        self.returns.pop();
+        r
+    }
+
+    // ---- values ----------------------------------------------------------------------------
+
+    fn join(&mut self, a: Option<Class>, b: Option<Class>) -> Option<Class> {
+        match (a, b) {
+            (Some(a), Some(b)) => {
+                self.uf.unite(a, b);
+                Some(a)
+            }
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// A new container holding `v`'s members.
+    fn shallow(&mut self, v: Class) -> Class {
+        let n = self.uf.new_class();
+        let ni = self.uf.interior(n);
+        let vi = self.uf.interior(v);
+        self.uf.unite(ni, vi);
+        n
+    }
+
+    /// `v` is now held inside `holder`.
+    fn store(&mut self, holder: Class, v: Option<Class>) {
+        if let Some(v) = v {
+            self.uf.store(holder, v);
+        }
+    }
+
+    fn escape(&mut self, v: Option<Class>) {
+        if let Some(v) = v {
+            self.uf.mark_outside(v);
+        }
+    }
+
+    fn class_of_slot(&mut self, slot: Slot) -> Option<Class> {
+        match slot {
+            Slot::Local(b) => {
+                if self.binding_is_container(b) {
+                    Some(self.binding_class(b))
+                } else {
+                    None
+                }
+            }
+            Slot::View(root, _) => {
+                let c = self.binding_class(root);
+                Some(self.uf.interior(c))
+            }
+        }
+    }
+
+    // ---- statements ------------------------------------------------------------------------
+
+    fn stmts(&mut self, stmts: &[Stmt]) {
+        self.scopes.push(HashMap::new());
+        // Function declarations are hoisted.
+        for s in stmts {
+            let s = match s {
+                Stmt::Exported(s) => &**s,
+                s => s,
+            };
+            if let Stmt::Func(f) = s
+                && let Some(n) = &f.name
             {
-                return self.reject(name, span);
+                self.scopes.last_mut().unwrap().insert(n.clone(), Slot::Local(f.span));
             }
         }
-        Ok(())
+        for s in stmts {
+            self.stmt(s);
+        }
+        self.scopes.pop();
     }
 
-    fn reject(&self, name: &str, span: Span) -> Result<()> {
-        if let Some(method) = &self.callback_of {
-            return err_help(
-                span,
-                format!(
-                    "`{method}` passes each element to the callback as a copy in compiled PHP, so this change would be lost"
-                ),
-                "use `for (const item of list) { item.x = ... }`, which changes the elements themselves",
-            );
+    fn stmt(&mut self, s: &Stmt) {
+        match s {
+            Stmt::Decl { pat, init, .. } => {
+                let v = match init {
+                    Some(Expr {
+                        kind: ExprKind::Func(f),
+                        ..
+                    }) => {
+                        let r = self.closure(f);
+                        if let Pat::Id(_, span) = pat {
+                            self.closures.insert(*span, r);
+                        }
+                        None
+                    }
+                    Some(e) => self.expr(e),
+                    None => None,
+                };
+                self.declare_pat(pat, v);
+            }
+            Stmt::Expr(e) => {
+                self.expr(e);
+            }
+            Stmt::Throw(e) | Stmt::ExportDefault(e) => {
+                let v = self.expr(e);
+                self.escape(v);
+            }
+            Stmt::Return(Some(e), _) => {
+                let v = self.expr(e);
+                self.returned(v);
+            }
+            Stmt::If(t, a, b) => {
+                self.expr(t);
+                self.stmts(a);
+                if let Some(b) = b {
+                    self.stmts(b);
+                }
+            }
+            Stmt::Block(b) => self.stmts(b),
+            Stmt::While(t, b) => {
+                self.expr(t);
+                self.stmts(b);
+            }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+                ..
+            } => {
+                self.scopes.push(HashMap::new());
+                if let Some(i) = init {
+                    self.stmt(i);
+                    // compile.rs gives each iteration a fresh cell for a captured `let`; a cell
+                    // copies a container, so a captured container loop variable is shared.
+                    if let Stmt::Decl { pat, .. } = &**i {
+                        self.cell_bindings(pat);
+                    }
+                }
+                if let Some(t) = test {
+                    self.expr(t);
+                }
+                if let Some(u) = update {
+                    self.expr(u);
+                }
+                self.stmts(body);
+                self.scopes.pop();
+            }
+            Stmt::ForOf { pat, iter, body, .. } => {
+                let it = self.expr(iter);
+                self.scopes.push(HashMap::new());
+                // compile.rs loops over a place by reference when the body writes its element:
+                // writes through the element land inside that place's binding.
+                let view = match pat {
+                    Pat::Id(n, _) if self.oracle.effects.by_ref(pat) => Self::root(iter)
+                        .and_then(|(name, depth)| self.lookup(name).map(|s| (s, depth)))
+                        .map(|(slot, depth)| (n.clone(), slot, depth)),
+                    _ => None,
+                };
+                match view {
+                    Some((n, slot, depth)) => {
+                        let v = match slot {
+                            Slot::Local(root) => Slot::View(root, depth + 1),
+                            Slot::View(root, d) => Slot::View(root, d + depth + 1),
+                        };
+                        self.scopes.last_mut().unwrap().insert(n, v);
+                    }
+                    None => {
+                        let el = Some(match it {
+                            Some(c) => self.uf.interior(c),
+                            None => self.uf.outside_class(),
+                        });
+                        self.declare_pat(pat, el);
+                    }
+                }
+                self.stmts(body);
+                self.scopes.pop();
+            }
+            Stmt::Try {
+                block,
+                param,
+                handler,
+                finalizer,
+            } => {
+                self.stmts(block);
+                if let Some(h) = handler {
+                    self.scopes.push(HashMap::new());
+                    if let Some((n, span)) = param {
+                        let o = self.uf.outside_class();
+                        self.declare(n, *span, Some(o));
+                    }
+                    self.stmts(h);
+                    self.scopes.pop();
+                }
+                if let Some(f) = finalizer {
+                    self.stmts(f);
+                }
+            }
+            Stmt::Switch { disc, cases, .. } => {
+                self.expr(disc);
+                for (t, b) in cases {
+                    if let Some(t) = t {
+                        self.expr(t);
+                    }
+                    self.stmts(b);
+                }
+            }
+            Stmt::Exported(s) => self.stmt(s),
+            Stmt::Func(f) => {
+                let r = self.closure(f);
+                self.closures.insert(f.span, r);
+            }
+            Stmt::Return(None, _)
+            | Stmt::Break(_)
+            | Stmt::Continue(_)
+            | Stmt::TypeAlias { .. }
+            | Stmt::Import { .. }
+            | Stmt::ExportNames { .. }
+            | Stmt::ExportAll { .. } => {}
         }
-        err_help(
-            span,
-            format!(
-                "`{name}` may be the same object or array as another value here, and compiled PHP copies it: this change wouldn't show up there"
-            ),
-            "change the original directly (for example `list[i].x = ...` instead of through a copy), or make an explicit copy first and use it from then on (`const b = { ...a }` / `[...a]`) — note a spread copy only copies the top level",
-        )
     }
+
+    /// Captured `for (let ...)` bindings that hold a container: each iteration's cell is a copy.
+    fn cell_bindings(&mut self, pat: &Pat) {
+        let mut spans = Vec::new();
+        super::pat_bindings(pat, &mut spans);
+        for b in spans {
+            if self.oracle.effects.captured(b) && self.binding_is_container(b) {
+                let c = self.binding_class(b);
+                self.uf.mark_outside(c);
+            }
+        }
+    }
+
+    // ---- expressions -----------------------------------------------------------------------
 
     /// The local an interior write goes into and how many member steps below it.
     fn root(target: &Expr) -> Option<(&str, usize)> {
@@ -611,549 +851,576 @@ impl Walk<'_, '_> {
         }
     }
 
-    /// A write `extra` steps below `target` (0 for `target = v` where target is a member place,
-    /// 1 for `target.push(v)`).
-    fn write_through(&self, target: &Expr, extra: usize, span: Span) -> Result<()> {
-        match Self::root(target) {
-            Some((name, depth)) if depth + extra >= 1 => match self.lookup(name) {
-                Some(b) => self.write(name, b, depth + extra, span),
-                // A module value or a global: compiled code holds a copy.
-                None => self.reject(name, span),
+    /// Record a write `extra` steps below the place `target` (0 for `target = v` with a member
+    /// target, 1 for `target.push(v)` or a call writing its parameter `target`). `value` is the
+    /// class of `target` itself, for targets with no binding.
+    fn write(&mut self, target: &Expr, extra: usize, span: Span, value: Option<Class>) {
+        let (t, name) = match Self::root(target) {
+            Some((name, depth)) => match self.lookup(name) {
+                Some(Slot::Local(b)) => (Target::Binding(b, depth + extra), name.to_string()),
+                Some(Slot::View(root, d)) => (Target::Binding(root, d + depth + extra), name.to_string()),
+                None => (Target::Outside, name.to_string()),
             },
-            Some(_) => Ok(()),
-            // `f().x = 1`, `[a][0].x = 1`: into a temporary, so into whatever it holds.
-            None => {
-                let v = self.val(target);
-                if v.tags.iter().any(|t| self.st.shared.contains(t)) {
-                    return self.reject("this value", span);
-                }
-                Ok(())
-            }
+            None => match value {
+                Some(c) => (Target::Value(c, extra.max(1)), "this value".to_string()),
+                None => return,
+            },
+        };
+        if matches!(t, Target::Binding(_, 0)) {
+            return;
         }
+        self.writes.push(Write {
+            target: t,
+            name,
+            span,
+            named_callback: None,
+        });
     }
 
-    // ---- statements ------------------------------------------------------------------------
-
-    fn stmts(&mut self, stmts: &[Stmt]) -> Result<()> {
-        self.scopes.push(HashMap::new());
-        let r = stmts.iter().try_for_each(|s| self.stmt(s));
-        self.scopes.pop();
-        r
+    fn expr(&mut self, e: &Expr) -> Option<Class> {
+        let container = self.is_container(e);
+        let v = self.expr_inner(e);
+        if container { v } else { None }
     }
 
-    /// Run `body` until the joined state stops changing (zero or more iterations). Tags are
-    /// per site, so the state only grows and the loop converges; the bound is a backstop.
-    fn looped(&mut self, mut body: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
-        let mut acc = self.st.clone();
-        for _ in 0..16 {
-            self.passes += 1;
-            body(self)?;
-            let mut next = acc.clone();
-            next.join(&self.st);
-            if next == acc {
-                break;
-            }
-            acc = next;
-            self.st = acc.clone();
-        }
-        self.st = acc;
-        Ok(())
-    }
-
-    fn branch(
-        &mut self,
-        a: impl FnOnce(&mut Self) -> Result<()>,
-        b: impl FnOnce(&mut Self) -> Result<()>,
-    ) -> Result<()> {
-        let entry = self.st.clone();
-        a(self)?;
-        let after_a = std::mem::replace(&mut self.st, entry);
-        b(self)?;
-        self.st.join(&after_a);
-        Ok(())
-    }
-
-    fn stmt(&mut self, s: &Stmt) -> Result<()> {
-        match s {
-            Stmt::Decl { pat, init, .. } => {
-                let v = match init {
-                    Some(e) => {
-                        self.expr(e)?;
-                        self.val(e)
-                    }
-                    None => Val::scalar(),
-                };
-                self.declare_pat(pat, &v, false)?;
-            }
-            Stmt::Expr(e) => self.expr(e)?,
-            Stmt::Throw(e) | Stmt::ExportDefault(e) => {
-                self.expr(e)?;
-                let v = self.val(e);
-                self.escape(&v);
-            }
-            Stmt::Return(Some(e), _) => {
-                self.expr(e)?;
-                if self.closures > 0 {
-                    // Returned from a closure: its caller in this function now holds it too.
-                    let v = self.val(e);
-                    self.escape(&v);
-                }
-            }
-            Stmt::If(t, a, b) => {
-                self.expr(t)?;
-                self.branch(|w| w.stmts(a), |w| b.as_ref().map_or(Ok(()), |b| w.stmts(b)))?;
-            }
-            Stmt::Block(b) => self.stmts(b)?,
-            Stmt::While(t, b) => {
-                self.expr(t)?;
-                self.looped(|w| {
-                    w.stmts(b)?;
-                    w.expr(t)
-                })?;
-            }
-            Stmt::For {
-                init,
-                test,
-                update,
-                body,
-                ..
-            } => {
-                self.scopes.push(HashMap::new());
-                let r = (|| {
-                    if let Some(i) = init {
-                        self.stmt(i)?;
-                    }
-                    if let Some(t) = test {
-                        self.expr(t)?;
-                    }
-                    self.looped(|w| {
-                        w.stmts(body)?;
-                        if let Some(u) = update {
-                            w.expr(u)?;
-                        }
-                        if let Some(t) = test {
-                            w.expr(t)?;
-                        }
-                        Ok(())
-                    })
-                })();
-                self.scopes.pop();
-                r?;
-            }
-            Stmt::ForOf { pat, iter, body, .. } => {
-                self.expr(iter)?;
-                let src = self.val(iter);
-                // compile.rs loops over a plain local by reference when the body writes its
-                // element, so those writes land in the array itself.
-                let local = matches!(&iter.kind, ExprKind::Ident(n) if self.lookup(n).is_some());
-                self.scopes.push(HashMap::new());
-                let r = self.looped(|w| {
-                    let el = w.member(&src);
-                    match pat {
-                        Pat::Id(n, span) if local => {
-                            // The element itself, through a reference: a write into it is a write
-                            // into the array, which is only safe if the array isn't shared.
-                            w.declare_name(n, *span, false);
-                            let sharing = src.tags.iter().any(|t| w.st.shared.contains(t));
-                            let v = if sharing { el } else { Val::default() };
-                            let tags_inner: BTreeSet<Tag> = w.st.below(&src.tags);
-                            w.bind(*span, &v);
-                            // Its members are the array's members' members.
-                            if !sharing && let Some(ts) = w.st.of.get(span).cloned() {
-                                for t in ts {
-                                    let below = w.st.below(&tags_inner);
-                                    w.st.inner.entry(t).or_default().extend(below.iter().copied());
-                                }
-                            }
-                        }
-                        _ => w.declare_pat(pat, &el, false)?,
-                    }
-                    w.stmts(body)
-                });
-                self.scopes.pop();
-                r?;
-            }
-            Stmt::Try {
-                block,
-                param,
-                handler,
-                finalizer,
-            } => {
-                let entry = self.st.clone();
-                self.stmts(block)?;
-                // The handler may start anywhere in the block.
-                self.st.join(&entry);
-                if let Some(h) = handler {
-                    self.scopes.push(HashMap::new());
-                    if let Some((n, span)) = param {
-                        self.declare_name(n, *span, false);
-                        self.bind(*span, &Val::outside());
-                    }
-                    let r = self.stmts(h);
-                    self.scopes.pop();
-                    r?;
-                }
-                if let Some(f) = finalizer {
-                    self.stmts(f)?;
-                }
-            }
-            Stmt::Switch { disc, cases, .. } => {
-                self.expr(disc)?;
-                let entry = self.st.clone();
-                let mut out = entry.clone();
-                let mut running = entry.clone();
-                for (t, b) in cases {
-                    // A case starts from the entry, or falls through from the previous one.
-                    self.st = running.clone();
-                    self.st.join(&entry);
-                    if let Some(t) = t {
-                        self.expr(t)?;
-                    }
-                    self.stmts(b)?;
-                    out.join(&self.st);
-                    running = self.st.clone();
-                }
-                self.st = out;
-            }
-            Stmt::Exported(s) => self.stmt(s)?,
-            Stmt::Func(f) => {
-                if let Some(n) = &f.name {
-                    self.declare_name(n, f.span, false);
-                }
-                self.closure(f)?;
-            }
-            Stmt::Return(None, _)
-            | Stmt::Break(_)
-            | Stmt::Continue(_)
-            | Stmt::TypeAlias { .. }
-            | Stmt::Import { .. }
-            | Stmt::ExportNames { .. }
-            | Stmt::ExportAll { .. } => {}
-        }
-        Ok(())
-    }
-
-    /// A closure created here. It may run later, any number of times, so it is walked twice on
-    /// the current state and its effects joined in.
-    fn closure(&mut self, f: &Func) -> Result<()> {
-        let saved_cb = self.callback_of.take();
-        let entry = self.st.clone();
-        self.closures += 1;
-        let r = (|| {
-            for _ in 0..2 {
-                self.scopes.push(HashMap::new());
-                for p in &f.params {
-                    self.declare_pat(&p.pat, &Val::outside(), true)?;
-                    if let Some(d) = &p.default {
-                        self.expr(d)?;
-                    }
-                }
-                let body = match &f.body {
-                    FnBody::Expr(e) => self.expr(e).map(|_| {
-                        let v = self.val(e);
-                        self.escape(&v);
-                    }),
-                    FnBody::Block(b) => self.stmts(b),
-                };
-                self.scopes.pop();
-                body?;
-            }
-            Ok(())
-        })();
-        self.closures -= 1;
-        self.callback_of = saved_cb;
-        r?;
-        // A captured local is the same PHP variable in the closure (compile.rs captures it by
-        // reference whenever anything writes it), so capturing alone doesn't copy it.
-        self.st.join(&entry);
-        Ok(())
-    }
-
-    /// An inline callback of an array method: its element parameter is a copy in PHP.
-    fn inline_callback(&mut self, f: &Func, method: &str, el_index: usize, recv: &Val) -> Result<()> {
-        // Elements of a receiver nobody else holds (a literal, a map result): changing them is
-        // invisible either way, so the callback walks like any closure.
-        let fresh = recv.tags.is_empty() && recv.inner.iter().all(|t| !self.st.shared.contains(t));
-        if fresh {
-            return self.closure(f);
-        }
-        let saved = self.callback_of.replace(method.to_string());
-        let entry = self.st.clone();
-        self.closures += 1;
-        let r = (|| {
-            for _ in 0..2 {
-                self.scopes.push(HashMap::new());
-                for (i, p) in f.params.iter().enumerate() {
-                    let v = if i == el_index || (el_index == 1 && i == 0) {
-                        Val::outside()
-                    } else {
-                        Val::scalar()
-                    };
-                    self.declare_pat(&p.pat, &v, false)?;
-                }
-                let body = match &f.body {
-                    FnBody::Expr(e) => self.expr(e),
-                    FnBody::Block(b) => self.stmts(b),
-                };
-                self.scopes.pop();
-                body?;
-            }
-            Ok(())
-        })();
-        self.closures -= 1;
-        self.callback_of = saved;
-        r?;
-        self.st.join(&entry);
-        Ok(())
-    }
-
-    // ---- expressions -----------------------------------------------------------------------
-
-    fn expr(&mut self, e: &Expr) -> Result<()> {
+    fn expr_inner(&mut self, e: &Expr) -> Option<Class> {
         match &e.kind {
-            ExprKind::Assign { target, value, op } => {
-                self.expr(value)?;
-                self.sub_exprs(target)?;
-                let v = self.val(value);
-                if let ExprKind::Ident(n) = &target.kind {
-                    if let Some(b) = self.lookup(n) {
-                        if self.closures > 0 && !self.scopes.last().is_some_and(|s| s.contains_key(n)) {
-                            // A closure rebinding a captured local: the closure holds the value.
-                            self.escape(&v);
-                        }
-                        let v = match op {
-                            None => v,
-                            // `a ??= b` / `a ||= b`: either the old value or the new one.
-                            Some(_) => v.union(Val {
-                                tags: self.tags(b),
-                                ..Default::default()
-                            }),
-                        };
-                        self.bind(b, &v);
-                    }
-                } else {
-                    self.write_through(target, 0, e.span)?;
-                    if let ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } = &target.kind {
-                        self.store(obj, &v);
-                    }
-                }
-            }
-            ExprKind::Update { target, .. } => {
-                self.sub_exprs(target)?;
-                self.write_through(target, 0, e.span)?;
-            }
-            ExprKind::Call { callee, args, .. } => self.call(e, callee, args)?,
-            ExprKind::Array(items) => {
-                for it in items {
-                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
-                    self.expr(x)?;
-                    let v = self.val(x);
-                    // Placed in a new container: held by it too.
-                    if matches!(it, ArrEl::Item(_)) {
-                        self.st.share(&v.tags);
-                    }
-                }
-            }
-            ExprKind::Object(props) => {
-                for p in props {
-                    match p {
-                        Prop::KV(k, x) => {
-                            if let PropKey::Computed(k) = k {
-                                self.expr(k)?;
-                            }
-                            self.expr(x)?;
-                            let v = self.val(x);
-                            self.st.share(&v.tags);
-                        }
-                        Prop::Spread(x) => self.expr(x)?,
-                    }
-                }
-            }
-            ExprKind::Binary(_, a, b) => {
-                self.expr(a)?;
-                self.expr(b)?;
-            }
-            ExprKind::Logical(_, a, b) => {
-                self.expr(a)?;
-                self.branch(|w| w.expr(b), |_| Ok(()))?;
-            }
-            ExprKind::Cond(a, b, c) => {
-                self.expr(a)?;
-                self.branch(|w| w.expr(b), |w| w.expr(c))?;
-            }
-            ExprKind::Unary(_, x)
-            | ExprKind::Await(x)
-            | ExprKind::Chain(x)
-            | ExprKind::As(x, _)
-            | ExprKind::NonNull(x)
-            | ExprKind::IsNullish(x, _)
-            | ExprKind::Member { obj: x, .. } => self.expr(x)?,
-            ExprKind::Index { obj, index, .. } => {
-                self.expr(obj)?;
-                self.expr(index)?;
-            }
-            ExprKind::Template(_, xs) => {
-                for x in xs {
-                    self.expr(x)?;
-                }
-            }
-            ExprKind::New { args, .. } => {
-                for a in args {
-                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                    self.expr(x)?;
-                    let v = self.val(x);
-                    self.escape(&v);
-                }
-            }
-            ExprKind::Func(f) => self.closure(f)?,
             ExprKind::Num(_)
             | ExprKind::Str(_)
             | ExprKind::Bool(_)
             | ExprKind::Null
             | ExprKind::Undefined
-            | ExprKind::Regex { .. }
-            | ExprKind::Ident(_) => {}
-        }
-        Ok(())
-    }
-
-    fn call(&mut self, e: &Expr, callee: &Expr, args: &[ArrEl]) -> Result<()> {
-        self.expr(callee)?;
-        let fx = self.oracle.effects;
-        let resolved = fx.resolved(e.span);
-        let method = match &callee.kind {
-            ExprKind::Member { obj, prop, .. } if !resolved => Some((&**obj, prop.as_str())),
-            _ => None,
-        };
-        let callback = method.and_then(|(obj, m)| {
-            CALLBACK_METHODS
-                .iter()
-                .find(|(n, _)| *n == m)
-                .filter(|_| self.lookup_global(obj).is_none())
-                .map(|(_, i)| (obj, m, *i))
-        });
-        for (i, a) in args.iter().enumerate() {
-            let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-            match (i, callback, &x.kind) {
-                (0, Some((obj, m, el)), ExprKind::Func(f)) => {
-                    let recv = self.val(obj);
-                    self.inline_callback(f, m, el, &recv)?;
+            | ExprKind::Regex { .. } => None,
+            ExprKind::Template(_, xs) => {
+                for x in xs {
+                    self.expr(x);
                 }
-                (0, Some((obj, m, el)), _) => {
-                    self.expr(x)?;
-                    let recv = self.val(obj);
-                    let fresh = recv.tags.is_empty() && recv.inner.iter().all(|t| !self.st.shared.contains(t));
-                    if !fresh && fx.callback_write_depth(e.span, el).is_some() {
-                        return err_help(
-                            x.span,
-                            format!(
-                                "`{m}` passes each element to this function as a copy in compiled PHP, so its changes would be lost"
-                            ),
-                            "use `for (const item of list) { ... }` and change `item` there",
-                        );
-                    }
-                }
-                _ => self.expr(x)?,
+                None
             }
-        }
-        if let Some((obj, m)) = method {
-            if let Some(g) = self.lookup_global(obj) {
-                if (g, m) == ("Object", "assign")
-                    && let Some(ArrEl::Item(target)) = args.first()
-                {
-                    self.write_through(target, 1, e.span)?;
-                    for a in &args[1..] {
-                        let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                        let v = self.member(&self.val(x));
-                        self.store(target, &v);
-                    }
-                }
-                return Ok(());
+            ExprKind::Binary(_, a, b) => {
+                self.expr(a);
+                self.expr(b);
+                None
             }
-            if is_db_chain(obj) {
-                for a in args {
-                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                    let _ = x;
-                }
-                return Ok(());
+            ExprKind::Unary(_, x) | ExprKind::IsNullish(x, _) => {
+                self.expr(x);
+                None
             }
-            if MUTATORS.contains(&m) {
-                self.write_through(obj, 1, e.span)?;
-                if matches!(m, "push" | "unshift" | "splice" | "fill") {
-                    let from = if m == "splice" { 2 } else { 0 };
-                    for a in args.iter().skip(from) {
-                        let v = match a {
-                            ArrEl::Item(x) => self.val(x),
-                            ArrEl::Spread(x) => self.member(&self.val(x)),
-                        };
-                        self.store(obj, &v);
-                    }
-                }
+            ExprKind::Func(f) => {
+                self.closure(f);
+                None
             }
-            return Ok(());
-        }
-        if resolved {
-            for (i, a) in args.iter().enumerate() {
-                let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                if let Some(depth) = fx.argument_write_depth(e.span, i) {
-                    match Self::root(x) {
-                        // By reference (compile.rs passes the place `a` / `a.b[i]`): the callee
-                        // writes `depth` steps below it.
-                        Some((name, d)) => match self.lookup(name) {
-                            Some(b) => {
-                                self.write(name, b, d + depth, x.span)?;
-                                if fx.stores_into_argument(e.span, i) {
-                                    // It may store anything there.
-                                    for t in self.tags(b) {
-                                        self.st.inner.entry(t).or_default().insert(OUTSIDE);
-                                    }
-                                }
-                            }
-                            None => return self.reject(name, x.span),
-                        },
-                        None => {
-                            let v = self.val(x);
-                            if !(v.tags.is_empty() && v.inner.iter().all(|t| !self.st.shared.contains(t))) {
-                                return self.reject("this argument", x.span);
+            ExprKind::Array(items) => {
+                let n = self.uf.new_class();
+                for it in items {
+                    match it {
+                        ArrEl::Item(x) => {
+                            let v = self.expr(x);
+                            self.store(n, v);
+                        }
+                        ArrEl::Spread(x) => {
+                            if let Some(v) = self.expr(x) {
+                                let vi = self.uf.interior(v);
+                                self.store(n, Some(vi));
                             }
                         }
                     }
                 }
-                // Kept by the callee: stored somewhere, or returned as (part of) a container.
-                if fx.argument_stored(e.span, i) || (fx.argument_retained(e.span, i) && self.is_container(e)) {
-                    let v = self.val(x);
-                    self.escape(&v);
-                } else if fx.argument_member_stored(e.span, i) {
-                    // A member of it is kept: whatever it holds is shared from here on.
-                    let v = self.val(x);
-                    let m = self.member(&v);
-                    self.escape(&m);
-                }
+                Some(n)
             }
+            ExprKind::Object(props) => {
+                let n = self.uf.new_class();
+                for p in props {
+                    match p {
+                        Prop::KV(k, x) => {
+                            if let PropKey::Computed(k) = k {
+                                self.expr(k);
+                            }
+                            let v = self.expr(x);
+                            self.store(n, v);
+                        }
+                        Prop::Spread(x) => {
+                            if let Some(v) = self.expr(x) {
+                                let vi = self.uf.interior(v);
+                                self.store(n, Some(vi));
+                            }
+                        }
+                    }
+                }
+                Some(n)
+            }
+            ExprKind::New { callee, args } => {
+                self.expr(callee);
+                for a in args {
+                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
+                    let v = self.expr(x);
+                    self.escape(v);
+                }
+                Some(self.uf.new_class())
+            }
+            ExprKind::Ident(n) => match self.lookup(n) {
+                Some(slot) => self.class_of_slot(slot),
+                // A module value or a global: shared with the config.
+                None => Some(self.uf.outside_class()),
+            },
+            ExprKind::Member { obj, .. } => {
+                let o = self.expr(obj);
+                Some(match o {
+                    Some(o) => self.uf.interior(o),
+                    None => self.uf.outside_class(),
+                })
+            }
+            ExprKind::Index { obj, index, .. } => {
+                let o = self.expr(obj);
+                self.expr(index);
+                Some(match o {
+                    Some(o) => self.uf.interior(o),
+                    None => self.uf.outside_class(),
+                })
+            }
+            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Chain(x) | ExprKind::Await(x) => self.expr(x),
+            ExprKind::Cond(t, a, b) => {
+                self.expr(t);
+                let a = self.expr(a);
+                let b = self.expr(b);
+                self.join(a, b)
+            }
+            ExprKind::Logical(_, a, b) => {
+                let a = self.expr(a);
+                let b = self.expr(b);
+                self.join(a, b)
+            }
+            ExprKind::Assign { target, value, .. } => {
+                let v = self.expr(value);
+                match &target.kind {
+                    ExprKind::Ident(n) => {
+                        if let Some(slot) = self.lookup(n)
+                            && let Some(c) = self.class_of_slot(slot)
+                            && let Some(v) = v
+                        {
+                            self.uf.unite(c, v);
+                        }
+                    }
+                    ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => {
+                        if let ExprKind::Index { index, .. } = &target.kind {
+                            self.expr(index);
+                        }
+                        let holder = self.expr(obj);
+                        self.write(target, 0, e.span, holder);
+                        match holder {
+                            Some(h) => self.store(h, v),
+                            None => self.escape(v),
+                        }
+                    }
+                    _ => {
+                        self.expr(target);
+                    }
+                }
+                v
+            }
+            ExprKind::Update { target, .. } => {
+                if let ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } = &target.kind {
+                    if let ExprKind::Index { index, .. } = &target.kind {
+                        self.expr(index);
+                    }
+                    let holder = self.expr(obj);
+                    self.write(target, 0, e.span, holder);
+                }
+                None
+            }
+            ExprKind::Call { callee, args, .. } => self.call(e, callee, args),
         }
-        Ok(())
     }
 
-    /// `Object`/`Array`/`JSON`/...: a builtin namespace, not a local.
-    fn lookup_global<'e>(&self, obj: &'e Expr) -> Option<&'e str> {
+    fn arg_classes(&mut self, args: &[ArrEl]) -> Vec<Option<Class>> {
+        args.iter()
+            .map(|a| match a {
+                ArrEl::Item(x) => self.expr(x),
+                ArrEl::Spread(x) => self.expr(x).map(|c| self.uf.interior(c)),
+            })
+            .collect()
+    }
+
+    fn global<'e>(&self, obj: &'e Expr) -> Option<&'e str> {
         match &obj.kind {
             ExprKind::Ident(g) if self.lookup(g).is_none() && GLOBALS.contains(&g.as_str()) => Some(g),
             _ => None,
         }
     }
 
-    /// Index expressions inside a write target still run (`a[i++] = 1`).
-    fn sub_exprs(&mut self, target: &Expr) -> Result<()> {
-        match &target.kind {
-            ExprKind::Member { obj, .. } => self.sub_exprs(obj),
-            ExprKind::Index { obj, index, .. } => {
-                self.sub_exprs(obj)?;
-                self.expr(index)
-            }
-            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Chain(x) => self.sub_exprs(x),
-            ExprKind::Ident(_) => Ok(()),
-            _ => self.expr(target),
+    fn call(&mut self, e: &Expr, callee: &Expr, args: &[ArrEl]) -> Option<Class> {
+        if self.oracle.effects.resolved(e.span) {
+            return self.resolved_call(e, callee, args);
         }
+        let ExprKind::Member { obj, prop, .. } = &callee.kind else {
+            self.expr(callee);
+            let argv = self.arg_classes(args);
+            for v in argv {
+                self.escape(v);
+            }
+            return Some(self.uf.outside_class());
+        };
+        if is_db_chain(obj) {
+            self.expr(obj);
+            self.arg_classes(args);
+            return Some(self.uf.new_class());
+        }
+        if let Some(g) = self.global(obj) {
+            let argv = self.arg_classes(args);
+            let n = self.uf.new_class();
+            match (g, prop.as_str()) {
+                ("Object", "values" | "entries") | ("Array", "from") => {
+                    if let Some(Some(a)) = argv.first() {
+                        let ai = self.uf.interior(*a);
+                        self.store(n, Some(ai));
+                    }
+                }
+                ("Object", "fromEntries") => {
+                    if let Some(Some(a)) = argv.first() {
+                        let ai = self.uf.interior(*a);
+                        self.store(n, Some(ai));
+                    }
+                }
+                ("Array", "of") => {
+                    for a in argv {
+                        self.store(n, a);
+                    }
+                }
+                ("JSON" | "Math" | "Number" | "String" | "Object" | "Array" | "Date" | "Boolean", _) => {}
+                _ => self.uf.mark_outside(n),
+            }
+            return Some(n);
+        }
+        let recv = self.expr(obj);
+        let p = prop.as_str();
+        let callback = CALLBACK_METHODS.iter().find(|(m, _)| *m == p).map(|(_, i)| *i);
+        let mut argv: Vec<Option<Class>> = Vec::new();
+        let mut cb_return: Option<Class> = None;
+        let mut cb_params: Vec<Span> = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            if i == 0
+                && let Some(el) = callback
+                && let ArrEl::Item(x) = a
+            {
+                cb_return = self.callback(e, x, p, el, recv);
+                cb_params = std::mem::take(&mut self.last_callback);
+                argv.push(None);
+                continue;
+            }
+            argv.push(match a {
+                ArrEl::Item(x) => self.expr(x),
+                ArrEl::Spread(x) => self.expr(x).map(|c| self.uf.interior(c)),
+            });
+        }
+        if MUTATORS.contains(&p) {
+            self.write(obj, 1, e.span, recv);
+            if let Some(r) = recv
+                && matches!(p, "push" | "unshift" | "splice" | "fill")
+            {
+                let from = if p == "splice" { 2 } else { 0 };
+                for v in argv.iter().skip(from) {
+                    self.store(r, *v);
+                }
+            }
+        }
+        let Some(r) = recv else {
+            return Some(self.uf.new_class());
+        };
+        if matches!(p, "sort" | "reverse" | "fill" | "copyWithin") {
+            return Some(r);
+        }
+        if SHALLOW_METHODS.contains(&p) {
+            let n = self.shallow(r);
+            if p == "concat" {
+                for v in argv.into_iter().flatten() {
+                    self.store(n, Some(v));
+                    let vi = self.uf.interior(v);
+                    self.store(n, Some(vi));
+                }
+            }
+            return Some(n);
+        }
+        if ELEMENT_METHODS.contains(&p) {
+            return Some(self.uf.interior(r));
+        }
+        match p {
+            "map" | "flatMap" => {
+                let n = self.uf.new_class();
+                for p in std::mem::take(&mut cb_params) {
+                    self.callback_route.insert(p, n);
+                }
+                if let Some(c) = cb_return {
+                    self.store(n, Some(c));
+                    if p == "flatMap" {
+                        let ci = self.uf.interior(c);
+                        self.store(n, Some(ci));
+                    }
+                }
+                Some(n)
+            }
+            "reduce" | "reduceRight" => {
+                let ri = self.uf.interior(r);
+                let init = argv.get(1).copied().flatten();
+                let acc = self.join(Some(ri), init);
+                self.join(acc, cb_return)
+            }
+            _ if FRESH_METHODS.contains(&p) => Some(self.uf.new_class()),
+            _ => Some(self.uf.outside_class()),
+        }
+    }
+
+    /// The callback an array method calls with copies of the receiver's elements.
+    fn callback(&mut self, call: &Expr, cb: &Expr, method: &str, el: usize, recv: Option<Class>) -> Option<Class> {
+        let element = recv.map(|r| self.uf.interior(r));
+        match &cb.kind {
+            ExprKind::Func(f) => {
+                self.last_callback.clear();
+                let r = self.uf.new_class();
+                self.returns.push(r);
+                self.scopes.push(HashMap::new());
+                for (i, p) in f.params.iter().enumerate() {
+                    // The element is a copy of one of the receiver's elements: its own class,
+                    // holding what the element holds. A write into it is judged against the
+                    // receiver's element (see `verify`). A reduce accumulator may be an element.
+                    let v = if i == el {
+                        // PHP's copy shares nothing with the element; JS's element is the
+                        // original. A write through the copy (at any depth) is lost exactly when
+                        // the original can be seen again.
+                        element.map(|e| {
+                            let copy = self.uf.new_class();
+                            self.copies.insert(copy, e);
+                            copy
+                        })
+                    } else if el == 1 && i == 0 {
+                        element
+                    } else {
+                        None
+                    };
+                    self.declare_pat(&p.pat, v);
+                    if i == el
+                        && let Pat::Id(_, span) = &p.pat
+                    {
+                        self.callback_params.insert(*span, method.to_string());
+                        self.last_callback.push(*span);
+                    }
+                }
+                let params = std::mem::take(&mut self.last_callback);
+                self.body(&f.body);
+                self.last_callback = params;
+                self.scopes.pop();
+                self.returns.pop();
+                Some(r)
+            }
+            _ => {
+                self.expr(cb);
+                if let Some(depth) = self.oracle.effects.callback_write_depth(call.span, el)
+                    && let Some(element) = element
+                {
+                    self.writes.push(Write {
+                        target: Target::Value(element, depth),
+                        name: method.to_string(),
+                        span: cb.span,
+                        named_callback: Some(method.to_string()),
+                    });
+                }
+                // What a named callback returns may be an element or anything it captured.
+                let o = self.uf.outside_class();
+                if let Some(element) = element {
+                    self.uf.unite(o, element);
+                }
+                Some(o)
+            }
+        }
+    }
+
+    /// A call to a function of this program.
+    fn resolved_call(&mut self, e: &Expr, callee: &Expr, args: &[ArrEl]) -> Option<Class> {
+        let fx = self.oracle.effects;
+        // A local function: its return class. Otherwise unknown sharing inside its result.
+        let local = match &callee.kind {
+            ExprKind::Ident(n) => match self.lookup(n) {
+                Some(Slot::Local(b)) => self.closures.get(&b).copied(),
+                _ => None,
+            },
+            ExprKind::Func(f) => Some(self.closure(f)),
+            _ => None,
+        };
+        if !matches!(callee.kind, ExprKind::Func(_)) {
+            self.expr(callee);
+        }
+        let argv = self.arg_classes(args);
+        let result = self.uf.new_class();
+        match local {
+            Some(r) => self.uf.unite(result, r),
+            None => {
+                // A module helper: its result may be a value it captured, and the containers
+                // inside it may be the same one twice.
+                if fx.result_shared(e.span) {
+                    self.uf.mark_outside(result);
+                } else {
+                    let i = self.uf.interior(result);
+                    self.uf.mark_outside(i);
+                }
+            }
+        }
+        for (i, a) in args.iter().enumerate() {
+            let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
+            let v = argv.get(i).copied().flatten();
+            if let Some(depth) = fx.argument_write_depth(e.span, i) {
+                // compile.rs passes a place by reference; anything else is a copy.
+                self.write(x, depth, x.span, v);
+            }
+            if fx.argument_stored(e.span, i) {
+                self.escape(v);
+            }
+            // A member of it is kept by the callee beyond the call (only matters when the
+            // argument can hold containers).
+            if fx.argument_member_stored(e.span, i) && self.holds_containers(x) {
+                let vi = v.map(|c| self.uf.interior(c));
+                self.escape(vi);
+            }
+            // The callee may store a container it holds (a captured or module value) inside the
+            // argument: reading members of the argument may then give that value.
+            if fx.stores_into_argument(e.span, i)
+                && let Some(v) = v
+            {
+                let o = self.uf.outside_class();
+                self.uf.store(v, o);
+            }
+            // Returned: the result may be the argument itself, or a member of it.
+            if let Some(v) = v
+                && self.is_container(e)
+            {
+                if fx.argument_retained(e.span, i) {
+                    self.uf.unite(result, v);
+                }
+                if fx.argument_member_returned(e.span, i) {
+                    let vi = self.uf.interior(v);
+                    self.uf.unite(result, vi);
+                    let ri = self.uf.interior(result);
+                    self.uf.unite(ri, vi);
+                }
+            }
+        }
+        Some(result)
+    }
+
+    // ---- verdict ---------------------------------------------------------------------------
+
+    fn verify(&mut self) -> Result<()> {
+        let writes = std::mem::take(&mut self.writes);
+        for w in &writes {
+            let unsafe_write = match w.target {
+                Target::Outside => true,
+                // A callback's element is a copy of the receiver's element: lost if anything else
+                // can see that element (another binding, the receiver held anywhere).
+                // A callback's element is a copy: a write into it is lost when the receiver's
+                // element can be seen again (the receiver is observable), or when the copy itself
+                // is shared with something else.
+                Target::Binding(b, depth) if self.callback_params.contains_key(&b) => {
+                    match self.classes.get(&b).copied() {
+                        Some(c) => {
+                            let c = self.uf.find(c);
+                            let element = self
+                                .copies
+                                .clone()
+                                .into_iter()
+                                .find(|(k, _)| self.uf.find(*k) == c)
+                                .map(|(_, e)| e);
+                            // Interiors collapse (an element's members share its class), so the
+                            // copy is excluded when asking who else can see the element.
+                            let lost = match element {
+                                Some(e) => {
+                                    let e = self.uf.find(e);
+                                    e != c && self.uf.observable(e, &mut HashSet::from([c]))
+                                }
+                                None => true,
+                            };
+                            // Returning the changed copy from `map` is what JS returns too.
+                            let route = self.callback_route.get(&b).copied();
+                            lost || self.unsafe_routed(c, b, route, depth)
+                        }
+                        None => false,
+                    }
+                }
+                Target::Binding(b, depth) => match self.classes.get(&b).copied() {
+                    Some(c) => self.unsafe_at(c, Some(b), depth),
+                    None => false,
+                },
+                // A temporary (`[3, 1].sort()`, `f().x = 1`): what it flows into is the same
+                // value in PHP too; it's a copy only of something held elsewhere.
+                Target::Value(c, depth) => self.unsafe_value(c, depth),
+            };
+            if unsafe_write {
+                return Err(self.reject(w));
+            }
+        }
+        Ok(())
+    }
+
+    fn unsafe_at(&mut self, c: Class, binding: Option<Span>, depth: usize) -> bool {
+        let c = self.uf.find(c);
+        if self.uf.seen_elsewhere(c, binding, None) {
+            return true;
+        }
+        if depth >= 2
+            && let Some(i) = self.uf.existing_interior(c)
+            && i != c
+            && self.uf.seen_elsewhere(i, None, Some(c))
+        {
+            return true;
+        }
+        false
+    }
+
+    fn unsafe_routed(&mut self, c: Class, b: Span, route: Option<Class>, depth: usize) -> bool {
+        let c = self.uf.find(c);
+        if self.uf.seen_elsewhere(c, Some(b), route) {
+            return true;
+        }
+        if depth >= 2
+            && let Some(i) = self.uf.existing_interior(c)
+            && i != c
+            && self.uf.seen_elsewhere(i, None, Some(c))
+        {
+            return true;
+        }
+        false
+    }
+
+    fn unsafe_value(&mut self, c: Class, depth: usize) -> bool {
+        let c = self.uf.find(c);
+        let bindings = std::mem::take(&mut self.uf.bindings[c]);
+        let r = self.unsafe_at(c, None, depth);
+        self.uf.bindings[c] = bindings;
+        r
+    }
+
+    fn reject(&self, w: &Write) -> Diag {
+        if let Some(method) = &w.named_callback {
+            return Diag::new(
+                w.span,
+                format!("`{method}` passes each element to this function as a copy in compiled PHP, so its changes would be lost"),
+            )
+            .help("use `for (const item of list) { ... }` and change `item` there");
+        }
+        if let Target::Binding(b, _) = w.target
+            && let Some(method) = self.callback_params.get(&b)
+        {
+            return Diag::new(
+                w.span,
+                format!("`{method}` passes each element to the callback as a copy in compiled PHP, so this change would be lost"),
+            )
+            .help("use `for (const item of list) { item.x = ... }`, which changes the elements themselves");
+        }
+        Diag::new(
+            w.span,
+            format!(
+                "`{}` may be the same object or array as another value here, and compiled PHP copies it: this change wouldn't show up there",
+                w.name
+            ),
+        )
+        .help("change the original directly (for example `list[i].x = ...` instead of through a copy), or make an explicit copy first and use it from then on (`const b = { ...a }` / `[...a]`) — note a spread copy only copies the top level")
     }
 }
 

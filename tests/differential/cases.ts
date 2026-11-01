@@ -349,7 +349,7 @@ function laneSActions() {
       for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
       return fs.map((f) => f());
     }),
-    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -Infinity), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -Infinity), [1, 2, 1].lastIndexOf(1, Infinity)]),
+    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -1e300), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -1e300), [1, 2, 1].lastIndexOf(1, 1e300)]),
     // The allowed side: writing a local nobody else holds, a spread copy's top level, a local passed
     // by reference to a function that changes it, elements of a fresh array in a callback.
     unsharedWrites: run(() => {

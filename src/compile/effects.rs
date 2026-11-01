@@ -87,6 +87,8 @@ pub(super) struct Effects {
     stored_arguments: HashSet<(Span, usize)>,
     /// (call, argument) whose member the callee keeps somewhere beyond its result.
     stored_members: HashSet<(Span, usize)>,
+    /// (call, argument) a member of which the callee may return.
+    returned_members: HashSet<(Span, usize)>,
 }
 
 impl Effects {
@@ -177,8 +179,7 @@ impl Effects {
         self.resolved_calls.contains(&call)
     }
 
-    /// Whether the callee may keep the argument (or part of it) after it returns: returns it, or
-    /// stores it where its caller's other values can see it.
+    /// Whether the callee may return the argument itself.
     pub fn argument_retained(&self, call: Span, index: usize) -> bool {
         self.retained_arguments
             .get(&call)
@@ -204,6 +205,11 @@ impl Effects {
     /// Whether the callee keeps a member of the argument somewhere other than its result.
     pub fn argument_member_stored(&self, call: Span, index: usize) -> bool {
         self.stored_members.contains(&(call, index))
+    }
+
+    /// Whether the callee may return a member of the argument.
+    pub fn argument_member_returned(&self, call: Span, index: usize) -> bool {
+        self.returned_members.contains(&(call, index))
     }
 
     /// Whether the callee stores a value somewhere inside that argument.
@@ -360,6 +366,15 @@ fn widen(ty: &Ty, path: &[Step]) -> Ty {
         (Ty::Map(t), _) => Ty::Map(Box::new(widen(t, rest))),
         _ => ty.clone(),
     }
+}
+
+/// How a function keeps a parameter past the call: stored whole / a member stored elsewhere,
+/// returned whole / a member returned.
+struct Kept {
+    whole: bool,
+    part: bool,
+    returned: bool,
+    returned_part: bool,
 }
 
 struct Call {
@@ -1057,7 +1072,7 @@ impl Graph {
     /// some function. From that: which parameters a function keeps past the call (returns them or
     /// stores them where its caller can see them), and which functions may return a container that
     /// another value holds (a parameter, a captured binding, the shared result of another call).
-    fn retention(&self) -> (HashMap<Span, (bool, bool)>, HashSet<Span>) {
+    fn retention(&self) -> (HashMap<Span, Kept>, HashSet<Span>) {
         #[derive(Clone, Copy, PartialEq, Eq, Hash)]
         enum Sink {
             Result(Span),
@@ -1097,17 +1112,23 @@ impl Graph {
             for (src, dest, edge) in &self.copies {
                 if src.binding == dest.binding
                     || matches!(src.path.last(), Some(Step::Field(f)) if f == "length")
-                    || (self.functions.contains_key(&src.binding) && src.path.is_empty())
+                    || self.functions.contains_key(&src.binding)
                 {
                     continue;
                 }
                 let member = !src.path.is_empty();
-                let mut add: HashSet<(Sink, bool)> = sinks
-                    .get(&dest.binding)
-                    .into_iter()
-                    .flatten()
-                    .map(|(s, m)| (*s, *m || member))
-                    .collect();
+                // Into a function's result: that's the `Result` sink; what the caller then does
+                // with the result is the caller's own business (it joins the argument there).
+                let mut add: HashSet<(Sink, bool)> = if self.functions.contains_key(&dest.binding) {
+                    HashSet::new()
+                } else {
+                    sinks
+                        .get(&dest.binding)
+                        .into_iter()
+                        .flatten()
+                        .map(|(s, m)| (*s, *m || member))
+                        .collect()
+                };
                 if self.functions.contains_key(&dest.binding) {
                     if dest.path.first() == Some(&Step::Result) {
                         add.insert((Sink::Result(dest.binding), member));
@@ -1142,9 +1163,22 @@ impl Graph {
             };
             let whole = ss.iter().any(|(s, m)| !m && store(s));
             let part = ss.iter().any(|(s, m)| *m && store(s));
-            let returned = ss.iter().any(|(s, _)| matches!(s, Sink::Result(f) if f == function));
-            if whole || part || returned {
-                retained.insert(*param, (whole, part));
+            let returned = ss
+                .iter()
+                .any(|(s, m)| !m && matches!(s, Sink::Result(f) if f == function));
+            let returned_part = ss
+                .iter()
+                .any(|(s, m)| *m && matches!(s, Sink::Result(f) if f == function));
+            if whole || part || returned || returned_part {
+                retained.insert(
+                    *param,
+                    Kept {
+                        whole,
+                        part,
+                        returned,
+                        returned_part,
+                    },
+                );
             }
         }
         let sinks: HashMap<Span, HashSet<Sink>> = sinks
@@ -1162,8 +1196,9 @@ impl Graph {
                     }
                     let held = if self.functions.contains_key(src) {
                         shared.contains(src)
-                    } else if let Some(p) = parameters.get(src) {
-                        p == f
+                    } else if parameters.contains_key(src) {
+                        // A parameter returned: the caller joins the argument itself.
+                        false
                     } else if let Some(o) = self.bindings.get(src) {
                         o != f
                     } else {
@@ -1470,6 +1505,7 @@ impl Graph {
         let mut stores_into = HashSet::new();
         let mut stored_arguments = HashSet::new();
         let mut stored_members = HashSet::new();
+        let mut returned_members = HashSet::new();
         let stored: HashSet<Span> = self
             .copies
             .iter()
@@ -1491,10 +1527,20 @@ impl Graph {
                     if stored.contains(&param.binding) && !call.callback {
                         stores_into.insert((call.span, index));
                     }
-                    if let Some((whole, part)) = retained.get(&param.binding)
+                    if let Some(Kept {
+                        whole,
+                        part,
+                        returned,
+                        returned_part,
+                    }) = retained.get(&param.binding)
                         && !call.callback
                     {
-                        retained_arguments.entry(call.span).or_default().insert(index);
+                        if *returned {
+                            retained_arguments.entry(call.span).or_default().insert(index);
+                        }
+                        if *returned_part {
+                            returned_members.insert((call.span, index));
+                        }
                         if *whole {
                             stored_arguments.insert((call.span, index));
                         }
@@ -1549,6 +1595,7 @@ impl Graph {
             stores_into,
             stored_arguments,
             stored_members,
+            returned_members,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

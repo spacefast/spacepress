@@ -4,7 +4,15 @@
 add_filter('pre_wp_mail', static function ($short, array $atts) {
     $dir = WP_CONTENT_DIR . '/zero-test-mail';
     wp_mkdir_p($dir);
+    // Apache and WP-CLI share these disposable captures but can run as different users.
+    if ((fileperms($dir) & 0777) !== 0777) {
+        chmod($dir, 0777);
+    }
     $to = is_array($atts['to']) ? implode(',', $atts['to']) : (string) $atts['to'];
-    file_put_contents($dir . '/' . sanitize_file_name($to) . '.txt', (string) $atts['message']);
+    $path = $dir . '/' . sanitize_file_name($to) . '.txt';
+    file_put_contents($path, (string) $atts['message']);
+    if ((fileperms($path) & 0777) !== 0666) {
+        chmod($path, 0666);
+    }
     return true;
 }, 10, 2);

@@ -107,7 +107,15 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   let tagline!: string;
 
   await t.test("readers sign up for the newsletter", async () => {
-    for (const n of [1, 2, 3]) await anon.subscribers.create({ email: `reader-${n}-${run}@example.test` });
+    const email = `reader-1-${run}@example.test`;
+    const seeded = await admin.subscribers.create({ email: `Seed-${run}@EXAMPLE.TEST` });
+    assert.equal(seeded.email, `seed-${run}@example.test`, "direct creates normalize email before storage");
+    assert.equal((await admin.subscribers.update(seeded.id, { email: email.toUpperCase() })).email, email, "direct updates normalize email before storage");
+    for (const n of [1, 2, 3]) assert.deepEqual(await anon.actions.subscribeNewsletter({ email: `reader-${n}-${run}@example.test` }), { accepted: true });
+    assert.deepEqual(await Promise.all([anon.actions.subscribeNewsletter({ email }), anon.actions.subscribeNewsletter({ email: email.toUpperCase() })]), [{ accepted: true }, { accepted: true }]);
+    await env.runJobs();
+    assert.deepEqual(await anon.actions.subscribeNewsletter({ email }), { accepted: true }, "an existing private subscription has the same acknowledgement");
+    await env.runJobs();
     await rejects(() => anon.subscribers.list(), { status: 401, code: "unauthenticated" });
     assert.equal((await admin.subscribers.list({ where: { email: { like: `reader-%-${run}@example.test` } } })).length, 3);
   });
@@ -151,13 +159,15 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   });
 
   await t.test("publishing tells readers through the background job queue", async () => {
-    const announced = async () => (await editor.announcements.list({ where: { postId: feature } })).map(({ recipients, attempt }) => ({ recipients, attempt }));
+    const announced = async () => (await admin.announcements.list({ where: { postId: feature } })).map(({ recipients, attempt }) => ({ recipients, attempt }));
     assert.deepEqual(await announced(), [], "the job waits for the queue; the publish request didn't run it");
     await rejects(() => anon.announcements.list(), { status: 401, code: "unauthenticated" });
     const readers = (await admin.subscribers.list({ limit: 200 })).length;
     assert.ok(readers >= 3, "the announcement goes to real recipients");
     await env.runJobs();
     assert.deepEqual(await announced(), [{ recipients: readers, attempt: 1 }]);
+    await rejects(() => editor.announcements.list({ where: { recipients: { gt: 0 } } }), { status: 403, code: "forbidden", pointer: "/where/recipients" });
+    assert.equal("recipients" in (await editor.announcements.list({ where: { postId: feature } }))[0], false);
     // Editing a published post isn't publishing it: nothing new is queued.
     await editor.posts.update(feature, { featured: true });
     await env.runJobs();
@@ -167,6 +177,22 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     await editor.posts.update(feature, { status: "published" });
     await env.runJobs();
     assert.deepEqual(await announced(), [{ recipients: readers, attempt: 1 }, { recipients: readers, attempt: 1 }]);
+    let total = readers;
+    for (const [email, added] of [[`reader-1-${run}@example.test`, 0], [`count-probe-${run}@example.test`, 1]] as const) {
+      assert.deepEqual(await editor.actions.subscribeNewsletter({ email }), { accepted: true });
+      await env.runJobs();
+      await editor.posts.update(feature, { status: "draft" });
+      await editor.posts.update(feature, { status: "published" });
+      await env.runJobs();
+      total += added;
+      const receipts = await admin.announcements.list({ where: { postId: feature }, orderBy: { id: "desc" } });
+      assert.equal(receipts[0].recipients, total, "administrators see the actual recipient count");
+      const visible = await editor.announcements.list({ where: { postId: feature } });
+      assert.equal(visible.length, receipts.length, "editors can still see each announcement");
+      for (const row of visible) {
+        assert.deepEqual([row.postId, row.attempt, "recipients" in row], [feature, 1, false], "signup and publication cannot expose membership through recipient counts");
+      }
+    }
   });
 
   await t.test("access holds for anonymous, subscriber, author and editor", async () => {
@@ -182,7 +208,12 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     const desk = await editor.posts.create({ title: `Desk ${run}` });
     await rejects(() => author.posts.update(desk.id, { dek: "mine now" }), { status: 404, code: "not_found" });
     await rejects(() => author.posts.delete(draft.id), { status: 403, code: "forbidden" });
-    assert.equal((await editor.posts.delete(draft.id)).id, draft.id);
+    assert.equal((await editor.actions.removePost({ id: draft.id })).id, draft.id);
+    const linked = await editor.posts.create({ title: `Private subscription ${run}` });
+    const signup = await admin.subscribers.create({ email: `linked-${run}@example.test`, postId: linked.id });
+    await rejects(() => editor.subscribers.get(signup.id), { status: 403, code: "forbidden" });
+    assert.equal((await editor.actions.removePost({ id: linked.id })).id, linked.id, "removal succeeds with or without private subscriptions");
+    assert.equal((await admin.subscribers.get(signup.id)).postId, null, "removal detaches the private subscription without returning it");
   });
 
   await t.test("field access: the desk's notes reach staff only, and only editors write them", async () => {
@@ -222,7 +253,15 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   await t.test("relation filters give anonymous readers no oracle into drafts or admin-only rows", async () => {
     const ghost = await admin.authors.create({ name: `Ghost ${run} key-42`, status: "draft" });
     const post = await editor.posts.create({ title: `By ghost ${run}`, authorId: ghost.id });
-    await anon.subscribers.create({ email: `secret-7-${run}@example.test`, postId: post.id });
+    await anon.actions.subscribeNewsletter({ email: `secret-7-${run}@example.test`, postId: post.id });
+    await env.runJobs();
+    const hidden = await editor.posts.create({ title: `Private signup target ${run}`, status: "draft" });
+    for (const [label, postId] of [["hidden", hidden.id], ["absent", 999_999_997]] as const) {
+      const email = `${label}-7-${run}@example.test`;
+      assert.deepEqual(await anon.actions.subscribeNewsletter({ email, postId }), { accepted: true });
+      await env.runJobs();
+      assert.equal((await admin.subscribers.list({ where: { email } }))[0].postId, null, "private and absent targets are both omitted from the private subscription");
+    }
     const draftProbe = { AND: [{ author: { name: { like: `%key-4%` } } }, { id: post.id }] };
     assert.deepEqual(await anon.posts.list({ where: draftProbe }), [], "a draft author is invisible through the filter");
     assert.deepEqual((await editor.posts.list({ where: draftProbe })).map((p) => p.id), [post.id]);
@@ -337,12 +376,13 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     const password = `mia-${run}-correct-horse`;
     // Admins create members with a write-only password; it never comes back.
     const created = await admin.members.create({ email, name: "Mia", password });
+    assert.deepEqual(await admin.members.get(created.id), created, "the member administrator can read the identities they manage");
     assert.deepEqual([created.role, created.plan, "password" in created], ["subscriber", "free", false]);
     const mia = await env.signIn(email, password);
     const me = await mia.auth.me();
     assert.deepEqual([me?.id, me?.role, me?.member], [created.id, "subscriber", created], "the session is the member, with their row");
     // A member reads and edits only their own row, and can't promote themselves.
-    assert.equal((await mia.members.update(created.id, { name: "Mia Reader", plan: "supporter" })).plan, "supporter");
+    assert.equal((await mia.members.update(created.id, { email, name: "Mia Reader", plan: "supporter" })).plan, "supporter");
     await rejects(() => mia.members.update(created.id, { role: "editor" }), { status: 403, code: "forbidden", pointer: "/role" });
     const other = await admin.members.create({ email: `other-${run}@example.test`, name: "Other", password });
     assert.deepEqual((await mia.members.list()).map((m) => m.id), [created.id]);

@@ -296,7 +296,7 @@ test("an agent works the site over MCP with each user's REST permissions", async
 
   const editor = await mcp("editor");
   const tools: string[] = (await editor("tools/list")).tools.map((t: { name: string }) => t.name);
-  for (const tool of ["site-posts-create", "site-posts-list", "site-moderate-comment"]) assert.ok(tools.includes(tool), tools.join(","));
+  for (const tool of ["site-posts-create", "site-posts-list", "site-moderate-comment", "site-remove-post"]) assert.ok(tools.includes(tool), tools.join(","));
   // The agent drafts a post as the editor; it shows up in the app's API like any other draft.
   const drafted = await editor("tools/call", { name: "site-posts-create", arguments: { title: "Agent draft", status: "draft", topics: ["tech"] } });
   assert.equal(drafted.isError, false, JSON.stringify(drafted));
@@ -308,13 +308,13 @@ test("an agent works the site over MCP with each user's REST permissions", async
   const listed = await subscriber("tools/call", { name: "site-posts-list", arguments: { where: { id } } });
   assert.deepEqual([listed.isError, listed.structuredContent.rows], [false, []]);
   // The tool refuses for the same reason REST does, and the post survives; the editor's agent can delete it.
-  const denied = await subscriber("tools/call", { name: "site-posts-delete", arguments: { id } });
-  const rest = await client("subscriber").posts.delete(id).catch((e: { status: number; code: string; detail: string }) => e);
+  const denied = await subscriber("tools/call", { name: "site-remove-post", arguments: { id } });
+  const rest = await client("subscriber").actions.removePost({ id }).catch((e: { status: number; code: string; detail: string }) => e);
   assert.equal(denied.isError, true, JSON.stringify(denied));
   assert.deepEqual([rest.status, rest.code], [403, "forbidden"]);
   assert.ok(JSON.stringify(denied.content).includes(rest.detail), `${JSON.stringify(denied.content)} lacks "${rest.detail}"`);
   assert.equal((await client("editor").posts.get(id)).id, id);
-  const deleted = await editor("tools/call", { name: "site-posts-delete", arguments: { id } });
+  const deleted = await editor("tools/call", { name: "site-remove-post", arguments: { id } });
   assert.deepEqual([deleted.isError, deleted.structuredContent.id], [false, id]);
   await assertRejects(() => client("editor").posts.get(id), 404);
 });

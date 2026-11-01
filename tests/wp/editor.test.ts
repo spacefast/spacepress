@@ -77,7 +77,7 @@ test("a core REST save with acf fields reads back identically through /zero/v1 a
         unset($row);
       }
       return $rows;
-    });
+    }, constraintSafe: true);
     \\Zero\\Extensions::onWrite(static function (string $op, string $c, array &$row, ?array $previous) use ($db): void {
       if ($c === 'posts' && $op === 'delete' && str_starts_with($row['title'], 'Editor extension')) {
         $db->insert('comments', ['postId' => ${id}, 'name' => 'beforeDelete', 'body' => wp_json_encode([$row['excerpt'], $previous['excerpt']])]);

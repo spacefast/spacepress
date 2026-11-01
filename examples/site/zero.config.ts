@@ -69,30 +69,31 @@ export const comments = collection("comments", {
   access: { read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
-// Newsletter sign-ups from a post. Anyone may sign up; only admins see who did.
+// Newsletter sign-ups are acknowledged by subscribeNewsletter and processed privately on the queue.
+// Direct writes and subscriber identities stay admin-only.
 export const subscribers = collection("subscribers", {
   id: id(),
   email: email().notNull().unique().max(191),
   postId: integer().references(() => posts.id, { onDelete: "set null" }),
   createdAt: timestamp().notNull().defaultNow(),
-}, { editor: false, access: { create: "anyone", read: "admin", update: "admin", delete: "admin" } });
+}, { editor: false, access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
 
-// One row per post announcement the notifyReaders job sent; staff can see what went out.
+// Staff see announcement receipts; exact counts stay with the subscriber administrators.
 export const announcements = collection("announcements", {
   id: id(),
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
-  recipients: integer().notNull(),
+  recipients: integer().notNull().access({ read: "admin", update: "admin" }),
   attempt: integer().notNull(),
 }, { editor: false, access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 // Readers who sign in: WordPress users through the zero-identity screens, or a password on
-// standalone. Each member sees and edits only their own row.
+// standalone. Readers see and edit their own row; administrators can read the identities they manage.
 export const members = collection("members", {
   id: id(),
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),
   plan: select({ options: ["free", "supporter"] }).notNull().default("free"),
-}, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
+}, { auth: true, access: { read: (ctx) => ctx.user?.role === "admin" ? true : ctx.user ? { id: ctx.user.id } : false, update: "self", create: "admin", delete: "admin" } });
 
 export const schema = { authors, posts, comments, subscribers, announcements, members };
 
@@ -134,6 +135,15 @@ export default defineConfig({
   // Every new comment is POSTed, signed, to the moderation tool at SITE_HOOK_URL (retried on failure).
   webhooks: [{ url: env("SITE_HOOK_URL"), secret: env("SITE_HOOK_SECRET"), events: ["comments.created"] }],
   jobs: {
+    subscribeReader: job({
+      input: { email: email().notNull().max(191), postId: integer() },
+      agents: false,
+      async handler({ email, postId }) {
+        if (await db.query.subscribers.findFirst({ where: { email } })) return;
+        const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
+        await db.insert(subscribers).values({ email, postId: post?.id ?? null });
+      },
+    }),
     // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
     notifyReaders: job({
       input: { postId: integer().notNull() },
@@ -145,6 +155,10 @@ export default defineConfig({
     }),
   },
   hooks: {
+    subscribers: {
+      beforeCreate(data) { data.email = data.email.toLowerCase(); },
+      beforeUpdate(data) { const email = data.email; if (email != null) data.email = email.toLowerCase(); },
+    },
     posts: {
       // Each time a post becomes published (through the API or the editor) readers hear about it;
       // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
@@ -179,6 +193,25 @@ export default defineConfig({
     },
   },
   actions: {
+    subscribeNewsletter: action({
+      input: { email: email().notNull().max(191), postId: integer() },
+      access: "anyone",
+      async handler({ email, postId }) {
+        const normalized = email.toLowerCase();
+        await jobs.subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
+        return { accepted: true };
+      },
+    }),
+    // Editors may remove posts and detach private subscriptions; no subscription data is returned.
+    removePost: action({
+      input: { id: integer().notNull() },
+      access: "editor",
+      async handler({ id }) {
+        const [gone] = await db.delete(posts).where({ id }).returning();
+        if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
+        return { id: gone.id };
+      },
+    }),
     moderateComment: action({
       input: { id: integer().notNull(), decision: select({ options: ["approve", "reject"] }).notNull() },
       access: "editor",

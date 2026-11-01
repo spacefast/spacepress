@@ -2,7 +2,7 @@
 // proves what Polylang and MySQL add.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { api, auth, http, ok, qs, run, sql, wp } from "./env.ts";
+import { api, auth, http, ok, qs, run, sql, wp, zero } from "./env.ts";
 
 const tree = (rows: any[]) => rows.map((r) => [`${r.locale}:${r.title}`, r.legs.map((l: any) => `${l.locale}:${l.title}`)]);
 
@@ -59,10 +59,11 @@ const runPrune = () => {
 test("zero.prune-guests deletes stale guests with what they own, per onDelete, and keeps the rest", async () => {
   const [stale, pinned, fresh, author] = [await guest(), await guest(), await guest(), await guest()];
   const id = (g: any) => g.user.id as number;
-  const cart = await ok("POST", "/guest_carts", { as: "admin", body: { memberId: id(stale) } });
-  const note = await ok("POST", "/guest_notes", { as: "admin", body: { body: "mine", memberId: id(stale) } });
+  // Members are readable only to themselves; pruning fixtures use trusted setup.
+  const cart = zero("insert", "guest_carts", JSON.stringify({ memberId: id(stale) }))[0];
+  const note = zero("insert", "guest_notes", JSON.stringify({ body: "mine", memberId: id(stale) }))[0];
   // guestbook.memberId has no onDelete: the row still requires its guest.
-  const entry = await ok("POST", "/guestbook", { as: "admin", body: { message: `pinned ${run}`, memberId: id(pinned) } });
+  const entry = zero("insert", "guestbook", JSON.stringify({ message: `pinned ${run}`, memberId: id(pinned) }))[0];
   // A post the guest authored stays, without an author.
   const post = Number(wp("post", "create", "--post_type=zero_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
   for (const g of [stale, pinned, author]) age(id(g), 40);

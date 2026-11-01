@@ -169,6 +169,101 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
   `));
   assert.deepEqual(deferred, [[true], true], "deferred callbacks retain the registering Db across a shared transaction");
 
+  const referenceScope = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $target = $db->insert('oracle_rows', ['title' => 'Extension target', 'ownerId' => $viewer->user['id']], true)[0];
+    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+      if ($collection === 'oracle_rows' && ($viewer?->user['role'] ?? null) === 'editor') {
+        $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
+      }
+    });
+    try { $db->insert('oracle_refs', ['title' => 'Extension reference', 'rowId' => $target['id']], false, $viewer); }
+    catch (\\Zero\\HttpError $error) { $status = $error->status; $code = $error->errorCode; }
+    echo wp_json_encode([$status ?? null, $code ?? null, $db->findMany('oracle_refs', ['where' => ['title' => 'Extension reference']])]);
+  `));
+  assert.deepEqual(referenceScope, [409, "reference_violation", []], "reference checks retain the viewer for query extensions and persist no hidden link");
+
+  const constraintScope = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'key_roots', 'key_links']));
+    foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
+    unset($spec);
+    $db = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => $specs]), $app->media(), 'wp');
+    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $code = 'extension-' . bin2hex(random_bytes(8));
+    $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
+    $base = random_int(1000000000, 1900000000);
+    $parents = $db->insert('key_roots', [['code' => $base], ['code' => $base + 1]], true);
+    $db->insert('key_links', ['rootCode' => $base]);
+    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+      if ($viewer !== null && isset($opts['where']) && in_array($collection, ['oracle_rows', 'key_links'], true)) {
+        $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
+      }
+    });
+    $result = [];
+    foreach ([$code, $code . '-free'] as $candidate) {
+      try { $db->insert('oracle_rows', ['title' => $code . '-probe', 'code' => $candidate], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    try { $db->update('oracle_rows', ['code' => $code], ['id' => $hidden['id']], false, null, $viewer); $result[] = null; }
+    catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    foreach ($parents as $parent) {
+      try { $db->delete('key_roots', ['id' => $parent['id']], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      try { $db->update('key_roots', ['code' => $parent['code'] + 10], ['id' => $parent['id']], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    $result[] = count($db->findMany('oracle_rows', ['where' => ['title' => $code . '-probe']]));
+    $result[] = array_column($db->findMany('key_roots', ['where' => ['id' => ['in' => array_column($parents, 'id')]], 'orderBy' => ['id' => 'asc']]), 'code') === [$base, $base + 1];
+    echo wp_json_encode($result);
+  `));
+
+
+  const transformScope = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'oracle_refs', 'oracle_sync']));
+    foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
+    unset($spec);
+    $db = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => $specs]), $app->media(), 'wp');
+    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $code = 'transform-' . bin2hex(random_bytes(8));
+    $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
+    $visible = $db->insert('oracle_rows', ['title' => $code . '-visible', 'code' => $code . '-visible', 'publicBadge' => random_int(1000000, 9000000)], true)[0];
+    \\Zero\\Extensions::onRead(static function (array $rows, string $collection, ?\\Zero\\Viewer $viewer) use ($hidden): array {
+      return $collection === 'oracle_rows' && $viewer !== null
+        ? array_map(static fn (array $row): array => array_diff_key($row, ['code' => true, 'publicBadge' => true]),
+          array_values(array_filter($rows, static fn (array $row): bool => $row['id'] !== $hidden['id']))) : $rows;
+    });
+    $result = [];
+    foreach ([$code . '-visible', $code . '-free'] as $candidate) {
+      try { $db->insert('oracle_rows', ['title' => $code . '-probe', 'code' => $candidate], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    foreach ([$hidden['id'], 2147483647] as $target) {
+      try { $db->insert('oracle_refs', ['title' => $code . '-probe', 'rowId' => $target], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    $result[] = $db->findMany('oracle_refs', ['where' => ['title' => $code . '-probe']]);
+    $db->insert('oracle_refs', ['title' => $code . '-visible', 'rowId' => $visible['id']], false, $viewer);
+    $result[] = count($db->findMany('oracle_refs', ['where' => ['title' => $code . '-visible']]));
+    foreach ([$visible['uid'], 'zr_00000000000000000000'] as $uid) {
+      try {
+        $db->current(static fn () => \\Zero\\Sync\\Wire::decode('oracle_sync', ['fields' => ['publicBadgeId' => $uid]], viewer: $viewer));
+        $result[] = null;
+      } catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    echo wp_json_encode($result);
+  `));
+  assert.deepEqual(transformScope, [[403, "forbidden"], [403, "forbidden"], [409, "reference_violation"], [409, "reference_violation"], [], 1, [409, "reference_violation"], [409, "reference_violation"]],
+    "read transforms cannot disclose hidden competitors or accept hidden reference targets; visible references still work");
+  assert.deepEqual(constraintScope, [
+    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"],
+    [409, "reference_violation"], [403, "forbidden"],
+    [409, "reference_violation"], [403, "forbidden"], 0, true,
+  ], "query extensions conceal unique competitors and incoming references, including empty branches and hidden resends");
+
+
 });
 
 // ---- wp-admin and data-dependent rules (review of #38): every save is authorized on its own data
@@ -340,6 +435,18 @@ test("the classic editor neither shows nor erases content hidden from the editor
   const right = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: `<p>classified-${run} C:\\notes</p>` });
   const wrong = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "<p>guess</p>" });
   assert.deepEqual([right.status, wrong.status], [403, 403]);
+  for (const occupied of [false, true]) {
+    const slug = `form-slug-probe-${occupied}-${run}`;
+    const draft = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Form slug probe", slug, status: "draft" } });
+    assert.equal(draft.status, 201, JSON.stringify(draft.json));
+    if (occupied) {
+      assert.equal((await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Occupied form slug", slug, status: "publish" } })).status, 201);
+    }
+    const publish = await editor.save(draft.json.id, { post_type: "zero_dossier", post_status: "publish" });
+    assert.equal(publish.status, 403);
+    assert.match(await publish.text(), /You can.*set slug/);
+    assert.equal(zero("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].status, "draft");
+  }
 });
 
 test("wp-admin's list search doesn't read content hidden from the viewer", async () => {
@@ -386,7 +493,7 @@ test("restoring a hidden group is refused independently of whether its saved val
 });
 
 test("autosaving one's own draft returns it without the fields hidden from the author of the save", async () => {
-  const created = await http("POST", `${core}/zero_dossier`, { as: "editor", body: { title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
+  const created = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { author: harness.users.editor.id, title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   const autosaved = await http("POST", `${core}/zero_dossier/${created.json.id}/autosaves`, { as: "editor", body: { title: `Draft ${run} autosaved`, content: `<p>draftword-${run}</p>` } });
   assert.equal(autosaved.status, 200, JSON.stringify(autosaved.json));

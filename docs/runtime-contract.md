@@ -141,6 +141,57 @@ loop-local declarations receive a fresh binding on each execution.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
+Viewer-bound writes must not answer existence questions about unreadable data.
+Setting a non-null unique value (including an explicit primary key or a generated
+slug) requires an unfiltered collection read rule and visibility of that field
+across rows. Otherwise both taken and free values return 401/403 before any
+uniqueness lookup. A filtered read, including `self` or automatic draft filtering,
+does not authorize new or changed unique values. An unchanged value is accepted
+only when the viewer can read the current row and the column cannot hide values.
+That value is omitted from persistence, and native slug repair preserves it without
+querying competitors. Publishing a WordPress draft is a new uniqueness operation;
+echoing or omitting its slug cannot bypass the full visibility preflight.
+Hidden columns and unreadable rows receive the same refusal
+before equality can affect the response. Trusted CLI/hook writes retain normal
+uniqueness checks; successful public creates retain their ordinary row response.
+System uids remain unguessable sync identities.
+
+Blind intake belongs in a narrow application action, not a public unique-create
+endpoint. The site example acknowledges newsletter requests with a constant
+response and queues private, deduplicated processing; it returns neither a
+subscriber row nor a job identifier. Existing and new subscriptions have the
+same acknowledgement. Exact announcement recipient counts are admin-only,
+including filtering: comparing counts around a signup would otherwise disclose
+membership. Member administrators explicitly have collection read
+access before managing unique identities. Its editor-only removal action
+authorizes detaching private subscription links and returns only the post id;
+private subscriber data never leaves that action. These application policies
+do not exempt viewer-bound CRUD from the checks above.
+
+Every reference in a viewer-bound write, including generated values, must resolve within the target's read filters and use
+a readable target column; an unreadable target and a missing target return the
+same `reference_violation`, without the resolved value in its detail. Knowing a
+sync UID grants no target visibility: primary and non-primary references both
+require a viewer-scoped lookup, and the write pipeline checks visibility again
+after hooks. Hidden and absent translation peers both remain unlinked until a
+visible peer is available. This applies to core WordPress saves too.
+Sync checks target visibility before resolved values reach input rules or validators.
+Potential generated constraints are preflighted before defaults and on-update
+generators run; hook-written references are checked before field validation.
+A delete requires visibility across the referencing collection and
+column before checking for children, so hidden children cannot be discovered by
+trying to delete their parent. The preflight follows cascade branches and covers
+generated values from referential updates even when a branch has no rows. Hidden
+cascade branches are refused before traversal, so recursion limits cannot reveal
+their depth.
+These checks roll back the whole write on refusal.
+Changing a referenced key uses the same relationship visibility preflight,
+following native cascading updates before the database can expose hidden children.
+Native WordPress draft publication preflights slug visibility before collision
+resolution. Wrapped saves and editor forms preserve an omitted slug on an
+already published, scheduled, or private row. Programmatic native writes without
+known input provenance retain collision resolution and require slug visibility.
+
 Create, per row:
 1. Let registered input normalizers consume virtual inputs, then reject unknown keys
    (`invalid_input`, pointer `/<key>`). The original supplied input remains available to write hooks.
@@ -246,6 +297,17 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
 
 - `beforeRead(collection, &opts, ?viewer, pointer)` runs before query validation
   and SQL; its normalized options also govern projection at every relation level.
+  Constraint preflights treat extension narrowing as filtered visibility: unique
+  namespaces, generated references, and incoming relationships must remain fully
+  readable before storage can answer about competitors or children. Unchanged
+  unique values must also survive a viewer-scoped read of the current row.
+  Custom `beforeRead` and `onRead` callbacks conservatively disable viewer-bound
+  namespace checks, since an arbitrary callback can hide values conditionally.
+  A registration may set `constraintSafe: true` only when its visibility policy
+  preserves row membership and constraint columns except for restrictions already
+  represented by schema access rules; built-in transforms do so.
+  Concrete references still require a row and matching column value in the final
+  viewer-visible result, including read transforms. Trusted writes remain available.
   `onLookup(collection, pks)` runs in concrete stores before hydration
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime

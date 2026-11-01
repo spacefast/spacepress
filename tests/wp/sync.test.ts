@@ -311,7 +311,7 @@ test("sync on WordPress", async (t) => {
 
   await t.test("unknown reference uid", async () => {
     await problem("POST", "/sync/guides", { as: "editor", body: { record: { uid: uidOf(2), fields: { title: "Orphan", writerId: uidOf(3) }, body: null }, expect: "absent" } },
-      { status: 422, code: "sync_missing_reference", pointer: "/fields/writerId" });
+      { status: 409, code: "reference_violation", pointer: "/writerId" });
   });
 });
 

@@ -268,10 +268,11 @@ final class ProfileForm
             if ($patch !== []) {
                 // Authorization is complete against the original row. Do not re-select through its
                 // rule after core changes name/email; hooks must read the row core actually wrote.
+                // Keep its viewer for constraint confidentiality on generated/hook-written values.
                 $previous = $plugin->db()->actor();
                 $plugin->db()->setActor(self::$open['viewer']->user);
                 try {
-                    $rows = $plugin->db()->update($collection, $patch, ['id' => $id], true);
+                    $rows = $plugin->db()->update($collection, $patch, ['id' => $id], true, errorViewer: self::$open['viewer']);
                 } finally {
                     $plugin->db()->setActor($previous);
                 }

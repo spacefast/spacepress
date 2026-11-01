@@ -27,7 +27,7 @@ export function auth(role: Role): Record<string, string> {
 
 /** WP-CLI inside the stack; returns trimmed stdout. */
 export function wp(...args: string[]): string {
-  return execFileSync(join(here, "harness.sh"), ["wp", ...args], { encoding: "utf8" }).trim();
+  return execFileSync(join(here, "harness.sh"), ["wp", ...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).trim();
 }
 
 /** WP-CLI that may exit non-zero; returns stdout either way (`wp zero` prints {error} and exits 1). */

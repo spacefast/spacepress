@@ -38,7 +38,7 @@ export interface SubscriberWith { post?: true | { where?: PostFilter; orderBy?: 
 export interface SubscriberFilter { id?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; email?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; postId?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; createdAt?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; isNull?: true; isNotNull?: true }; post?: true | PostFilter; AND?: SubscriberFilter[]; OR?: SubscriberFilter[]; NOT?: SubscriberFilter }
 export type SubscriberOrder = Partial<Record<"id" | "email" | "postId" | "createdAt", "asc" | "desc">> | string;
 
-export interface Announcement { id: number; postId: number; recipients: number; attempt: number }
+export interface Announcement { id: number; postId: number; recipients?: number; attempt: number }
 export interface AnnouncementInsert { postId: number; recipients: number; attempt: number }
 export interface AnnouncementPatch { postId?: number; recipients?: number; attempt?: number }
 export interface AnnouncementWith { post?: true | { where?: PostFilter; orderBy?: PostOrder; limit?: number; offset?: number; with?: PostWith } }
@@ -54,6 +54,12 @@ export type MemberOrder = Partial<Record<"id" | "email" | "name" | "plan" | "rol
 
 export interface Settings { siteTitle: string; tagline: string | null; commentsOpen: boolean; social: { label: string; href: string }[] | null }
 export interface SettingsPatch { siteTitle?: string; tagline?: string | null; commentsOpen?: boolean; social?: { label: string; href: string }[] | null }
+
+export interface SubscribeNewsletterInput { email: string; postId?: number | null }
+export type SubscribeNewsletterOutput = { accepted: boolean };
+
+export interface RemovePostInput { id: number }
+export type RemovePostOutput = { id: number };
 
 export interface ModerateCommentInput { id: number; decision: "approve" | "reject" }
 export type ModerateCommentOutput = { id: number; approved: boolean; removed: boolean } | { id: number; approved: boolean; removed: boolean };
@@ -75,6 +81,8 @@ export interface Globals {
 }
 
 export interface Actions {
+  subscribeNewsletter: { input: SubscribeNewsletterInput; output: SubscribeNewsletterOutput };
+  removePost: { input: RemovePostInput; output: RemovePostOutput };
   moderateComment: { input: ModerateCommentInput; output: ModerateCommentOutput };
   frontPage: { input: FrontPageInput; output: FrontPageOutput };
 }

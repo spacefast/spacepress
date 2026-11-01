@@ -38,8 +38,8 @@ final class Files
         // `file({ bucket })` columns: existence + bucket on write, populate with `with`, null on delete.
         // After before-hooks and persistence, still inside the transaction: hooks can't slip an unchecked id in.
         Extensions::onWritten(self::checkColumns(...));
-        Extensions::beforeRead(self::takeWith(...));
-        Extensions::onRead(self::populate(...));
+        Extensions::beforeRead(self::takeWith(...), constraintSafe: true);
+        Extensions::onRead(self::populate(...), constraintSafe: true);
         Extensions::schemaDescribe(static function (array $description): array {
             if (($description['files'] ?? []) !== []) {
                 try {

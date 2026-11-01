@@ -163,7 +163,7 @@ req('PATCH', "/posts/{$p['id']}", ['title' => 'Rev 2', 'excerpt' => 'second'], '
     }
 
     return $rows;
-});
+}, constraintSafe: true);
 [$s, $list] = req('GET', "/posts/{$p['id']}/revisions", as: 'alice');
 eq('one revision per create/update, newest first, with the user', [$s, count($list), $list[0]['user'] ?? null, $list[0]['id'] > $list[1]['id']], [200, 2, ['id' => $users['alice']['id'], 'name' => 'alice'], true]);
 eq('revision row is the state written then', req('GET', "/posts/{$p['id']}/revisions/{$list[1]['id']}", as: 'alice')[1]['title'] ?? null, 'Rev 1');
@@ -263,7 +263,7 @@ $transformMutationRows = false;
     }
 
     return $rows;
-});
+}, constraintSafe: true);
 \Zero\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
     if ($c === 'posts') {
         unset($data['translationOf']);
@@ -331,14 +331,82 @@ $cache = [];
 \Zero\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
     $cache[$c] = array_fill_keys($pks, 'looked up');
 });
+// Receipt display changes no row membership or constraint values.
+\Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
+    if ($viewer !== null && $c === 'posts') {
+        foreach ($rows as &$row) {
+            if ($row['title'] === 'Replay seam') {
+                $row['excerpt'] = $cache[$c][$row['id']] ?? 'missing cache';
+            }
+        }
+        unset($row);
+    }
+
+    return $rows;
+}, constraintSafe: true);
+
+\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($db): \Zero\Response {
+    if (!isset($headers['idempotency-key'])) {
+        return $next();
+    }
+    $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
+    $stored = $db->store()->run('SELECT extra FROM "__zero_seam" WHERE event = ?', [$key])->fetchColumn();
+    if ($stored !== false) {
+        $receipt = json_decode($stored, true);
+
+        return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
+    }
+    $result = $next();
+    $db->store()->run('INSERT INTO "__zero_seam" (event, extra) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
+    if ($headers['idempotency-key'] === 'fail') {
+        throw new \Zero\JsError('Receipt persistence failed');
+    }
+
+    return $result;
+});
+$receiptHeaders = ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'create'];
+$firstReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+$cache = [];
+$replayReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+eq('create replay primes fresh lookup caches without repeating its write pipeline', [
+    $firstReceipt[0], $replayReceipt[0], $replayReceipt[1]['Idempotent-Replayed'], $firstReceipt[2] === $replayReceipt[2],
+    json_decode($replayReceipt[2], true)['data']['excerpt'],
+    count($db->findMany('posts', ['where' => ['title' => 'Replay seam']])),
+], [201, 201, 'true', true, 'looked up', 1]);
+eq('create authorization still runs before replay middleware', $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', ['Idempotency-Key' => 'create'])[0], 401);
+$failedReceipt = $app->handle('POST', '/posts', [], '{"title":"Rolled back receipt"}', ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'fail']);
+eq('failed operation wrapper rolls back both its result and receipt', [
+    $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
+    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam" WHERE event LIKE ?', ['receipt:%:fail'])->fetchColumn(),
+], [422, [], 0]);
+
+\Zero\Extensions::route('download-proof', static function () use ($db): \Zero\Response {
+    $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download prepared']);
+    \Zero\Extensions::afterCommit(static fn () => $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download committed']));
+
+    return \Zero\Response::raw(static function () use ($db): void {
+        echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
+    }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
+        ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
+            'access-control-allow-origin' => 'https://app.example',
+            'access-control-expose-headers' => 'Content-Disposition']);
+});
+[$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
+ob_start();
+\Zero\Response::emit($downloadBody);
+$emitted = ob_get_clean();
+eq('download response streams raw bytes and headers after commit', [
+    $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
+    $downloadHeaders['access-control-allow-origin'], $downloadHeaders['access-control-expose-headers'],
+    count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
+], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
+
 \Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $viewer) use (&$cache): array {
     if ($viewer === null) {
         return $rows;
     }
     foreach ($rows as &$row) {
-        if ($c === 'posts' && $row['title'] === 'Replay seam') {
-            $row['excerpt'] = $cache[$c][$row['id']] ?? 'missing cache';
-        } elseif ($c === 'posts' && $row['excerpt'] === 'extension revised') {
+        if ($c === 'posts' && $row['excerpt'] === 'extension revised') {
             $row['excerpt'] = $cache[$c][$row['id']] . (isset($row['comments']) ? ' after with' : ' before with');
             unset($row['authorId'], $row['cover']);
         } elseif ($c === 'comments' && in_array($row['name'], ['create', 'update'], true)) {
@@ -404,61 +472,7 @@ $db->setActor(null);
 \Zero\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
 eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
 
-\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($db): \Zero\Response {
-    if (!isset($headers['idempotency-key'])) {
-        return $next();
-    }
-    $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
-    $stored = $db->store()->run('SELECT extra FROM "__zero_seam" WHERE event = ?', [$key])->fetchColumn();
-    if ($stored !== false) {
-        $receipt = json_decode($stored, true);
 
-        return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
-    }
-    $result = $next();
-    $db->store()->run('INSERT INTO "__zero_seam" (event, extra) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
-    if ($headers['idempotency-key'] === 'fail') {
-        throw new \Zero\JsError('Receipt persistence failed');
-    }
-
-    return $result;
-});
-$receiptHeaders = ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'create'];
-$firstReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
-$cache = [];
-$replayReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
-eq('create replay primes fresh lookup caches without repeating its write pipeline', [
-    $firstReceipt[0], $replayReceipt[0], $replayReceipt[1]['Idempotent-Replayed'], $firstReceipt[2] === $replayReceipt[2],
-    json_decode($replayReceipt[2], true)['data']['excerpt'],
-    count($db->findMany('posts', ['where' => ['title' => 'Replay seam']])),
-], [201, 201, 'true', true, 'looked up', 1]);
-eq('create authorization still runs before replay middleware', $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', ['Idempotency-Key' => 'create'])[0], 401);
-$failedReceipt = $app->handle('POST', '/posts', [], '{"title":"Rolled back receipt"}', ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'fail']);
-eq('failed operation wrapper rolls back both its result and receipt', [
-    $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
-    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam" WHERE event LIKE ?', ['receipt:%:fail'])->fetchColumn(),
-], [422, [], 0]);
-
-\Zero\Extensions::route('download-proof', static function () use ($db): \Zero\Response {
-    $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download prepared']);
-    \Zero\Extensions::afterCommit(static fn () => $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download committed']));
-
-    return \Zero\Response::raw(static function () use ($db): void {
-        echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
-    }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
-        ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
-            'access-control-allow-origin' => 'https://app.example',
-            'access-control-expose-headers' => 'Content-Disposition']);
-});
-[$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
-ob_start();
-\Zero\Response::emit($downloadBody);
-$emitted = ob_get_clean();
-eq('download response streams raw bytes and headers after commit', [
-    $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
-    $downloadHeaders['access-control-allow-origin'], $downloadHeaders['access-control-expose-headers'],
-    count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
-], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
 
 \Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);

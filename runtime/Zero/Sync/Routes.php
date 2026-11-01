@@ -10,7 +10,6 @@ use Zero\Extensions;
 use Zero\HttpError;
 use Zero\Js;
 use Zero\Response;
-use Zero\Schema;
 use Zero\Viewer;
 
 use function Zero\db;
@@ -130,7 +129,7 @@ final class Routes
         }
         // Reference lookups answer only after authorization, so they can't probe for uids either.
         $missing = [];
-        $data = Wire::decode($collection, $record, $current === null, $missing, $current['row'] ?? null);
+        $data = Wire::decode($collection, $record, $current === null, $missing, $current['row'] ?? null, $viewer);
         // Authorize with the values the pipeline will see, before answering anything about the row.
         // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {
@@ -146,9 +145,9 @@ final class Routes
             $current = self::current($collection, $uid, $viewer);
             // Decode again against the restored row, so a body it already holds isn't rewritten (and a
             // read-only one doesn't refuse the restore).
-            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null);
+            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
         } elseif ($current === null) {
-            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($spec, ['uid' => $uid] + $data), "create $collection rows");
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows");
             if ($expect !== 'absent') {
                 return self::stale($spec, $viewer, null, "$collection $uid is not on the site");
             }
@@ -298,13 +297,9 @@ final class Routes
     }
 
     /** A create's values as the pipeline's create rule sees them: column defaults and the default status filled. */
-    private static function createData(array $spec, array $data): array
+    private static function createData(string $collection, array $spec, array $data, Viewer $viewer): array
     {
-        foreach ($spec['columns'] as $name => $col) {
-            if (!array_key_exists($name, $data) && isset($col['default'])) {
-                $data[$name] = Schema::generate($col['default'], $col['type']);
-            }
-        }
+        $data = db()->withDefaults($collection, $data, $viewer);
         if ($spec['drafts'] ?? false) {
             // Db::draftRules: an absent status is published, and a published row without a date gets now.
             $data['status'] ??= 'published';

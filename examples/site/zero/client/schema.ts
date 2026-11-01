@@ -134,6 +134,8 @@ export const SCHEMA = {
     "settings"
   ],
   "actions": [
+    "subscribeNewsletter",
+    "removePost",
     "moderateComment",
     "frontPage"
   ],

@@ -19,8 +19,8 @@ final class Module
 {
     public static function register(): void
     {
-        Extensions::beforeRead(Read::query(...));
-        Extensions::onRead(Read::read(...));
+        Extensions::beforeRead(Read::query(...), constraintSafe: true);
+        Extensions::onRead(Read::read(...), constraintSafe: true);
         Extensions::normalizeWrite(GroupSync::normalize(...));
         Extensions::onWrite(GroupSync::write(...));
         Extensions::onWritten(GroupSync::written(...));

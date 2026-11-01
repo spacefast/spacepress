@@ -69,6 +69,7 @@ services:
       - wp:/var/www/html
       - ./cache:/zero-cache:ro
       - ./mu-plugins:/zero-mu-plugins:ro
+      - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
       - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   wp:

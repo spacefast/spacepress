@@ -85,7 +85,8 @@ export interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = {}>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
   get<const W extends Collections[K]["with"] = {}>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
-  create(data: Collections[K]["insert"]): Promise<Row<K>>;
+  /** The stored row; for a collection not everyone may read, the values sent (see `created`). */
+  create(data: Collections[K]["insert"]): Promise<Collections[K]["created"]>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;
   revisions: {

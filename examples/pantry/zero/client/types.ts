@@ -37,9 +37,9 @@ export interface ExpiringSoonInput { days?: number }
 export type ExpiringSoonOutput = ({ name: string; expiresOn: string | null; where: string | "somewhere" })[];
 
 export interface Collections {
-  locations: { row: Location; insert: LocationInsert; patch: LocationPatch; with: LocationWith; filter: LocationFilter; order: LocationOrder };
-  items: { row: Item; insert: ItemInsert; patch: ItemPatch; with: ItemWith; filter: ItemFilter; order: ItemOrder };
-  shoppingList: { row: ShoppingList; insert: ShoppingListInsert; patch: ShoppingListPatch; with: ShoppingListWith; filter: ShoppingListFilter; order: ShoppingListOrder };
+  locations: { row: Location; insert: LocationInsert; created: Location; patch: LocationPatch; with: LocationWith; filter: LocationFilter; order: LocationOrder };
+  items: { row: Item; insert: ItemInsert; created: Item; patch: ItemPatch; with: ItemWith; filter: ItemFilter; order: ItemOrder };
+  shoppingList: { row: ShoppingList; insert: ShoppingListInsert; created: ShoppingList; patch: ShoppingListPatch; with: ShoppingListWith; filter: ShoppingListFilter; order: ShoppingListOrder };
 }
 
 export interface Globals {

@@ -48,10 +48,10 @@ export type PublishedCountInput = Record<string, never>;
 export type PublishedCountOutput = { count: number };
 
 export interface Collections {
-  authors: { row: Author; insert: AuthorInsert; patch: AuthorPatch; with: AuthorWith; filter: AuthorFilter; order: AuthorOrder };
-  posts: { row: Post; insert: PostInsert; patch: PostPatch; with: PostWith; filter: PostFilter; order: PostOrder };
-  comments: { row: Comment; insert: CommentInsert; patch: CommentPatch; with: CommentWith; filter: CommentFilter; order: CommentOrder };
-  members: { row: Member; insert: MemberInsert; patch: MemberPatch; with: MemberWith; filter: MemberFilter; order: MemberOrder };
+  authors: { row: Author; insert: AuthorInsert; created: Author; patch: AuthorPatch; with: AuthorWith; filter: AuthorFilter; order: AuthorOrder };
+  posts: { row: Post; insert: PostInsert; created: Post; patch: PostPatch; with: PostWith; filter: PostFilter; order: PostOrder };
+  comments: { row: Comment; insert: CommentInsert; created: Comment; patch: CommentPatch; with: CommentWith; filter: CommentFilter; order: CommentOrder };
+  members: { row: Member; insert: MemberInsert; created: Member; patch: MemberPatch; with: MemberWith; filter: MemberFilter; order: MemberOrder };
 }
 
 export interface Globals {

@@ -62,12 +62,12 @@ export type FrontPageInput = Record<string, never>;
 export type FrontPageOutput = { featured: number[] };
 
 export interface Collections {
-  authors: { row: Author; insert: AuthorInsert; patch: AuthorPatch; with: AuthorWith; filter: AuthorFilter; order: AuthorOrder };
-  posts: { row: Post; insert: PostInsert; patch: PostPatch; with: PostWith; filter: PostFilter; order: PostOrder };
-  comments: { row: Comment; insert: CommentInsert; patch: CommentPatch; with: CommentWith; filter: CommentFilter; order: CommentOrder };
-  subscribers: { row: Subscriber; insert: SubscriberInsert; patch: SubscriberPatch; with: SubscriberWith; filter: SubscriberFilter; order: SubscriberOrder };
-  announcements: { row: Announcement; insert: AnnouncementInsert; patch: AnnouncementPatch; with: AnnouncementWith; filter: AnnouncementFilter; order: AnnouncementOrder };
-  members: { row: Member; insert: MemberInsert; patch: MemberPatch; with: MemberWith; filter: MemberFilter; order: MemberOrder };
+  authors: { row: Author; insert: AuthorInsert; created: Author; patch: AuthorPatch; with: AuthorWith; filter: AuthorFilter; order: AuthorOrder };
+  posts: { row: Post; insert: PostInsert; created: Post; patch: PostPatch; with: PostWith; filter: PostFilter; order: PostOrder };
+  comments: { row: Comment; insert: CommentInsert; created: Comment; patch: CommentPatch; with: CommentWith; filter: CommentFilter; order: CommentOrder };
+  subscribers: { row: Subscriber; insert: SubscriberInsert; created: Partial<SubscriberInsert>; patch: SubscriberPatch; with: SubscriberWith; filter: SubscriberFilter; order: SubscriberOrder };
+  announcements: { row: Announcement; insert: AnnouncementInsert; created: Partial<AnnouncementInsert>; patch: AnnouncementPatch; with: AnnouncementWith; filter: AnnouncementFilter; order: AnnouncementOrder };
+  members: { row: Member; insert: MemberInsert; created: Member; patch: MemberPatch; with: MemberWith; filter: MemberFilter; order: MemberOrder };
 }
 
 export interface Globals {

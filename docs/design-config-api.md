@@ -260,9 +260,12 @@ What changed and why:
   column is an integer FK to the target's automatic `id`; a target with its
   own `.primaryKey()` column, text or integer, cannot be referenced (build
   error: "`codes` has its own key `code`; references need the automatic
-  `id`"), because the column's TS type (`number`) and its target column are
-  fixed before the target is known. Every reference in the repo targets an
-  automatic integer `id`. A relation with no foreign key behind it (allowed
+  `id`"). That is an API choice, not a typing limit: a text key could not
+  type as `number` when the column's TS type is fixed before the target is
+  known, but an integer custom key could. Allowing only the automatic `id`
+  keeps `ref()` one shape (an integer named `<x>Id`, relation `<x>`), and
+  every reference in the repo targets an automatic integer `id`. A relation
+  with no foreign key behind it (allowed
   by `defineRelations` today, unused in the repo) goes with it: `ref()` is
   both the constraint and the relation. The extractor resolves the key after
   every collection is registered, the
@@ -364,6 +367,13 @@ Modifiers (13, down from 18):
   `email` and `url`, the kinds today's check covers (`src/extract.rs:1224`,
   `is_stringy`). The constant moves into the compiler; an explicit larger
   `.max()` on a unique text column is the build error it is today.
+- **`.unique()` is declared for the kinds the evaluator accepts.** Today
+  the declarations allow it on `boolean` (`UniqueKind`,
+  `types/zero/index.d.ts:91`) and the evaluator rejects it
+  (`src/eval.rs:2070`), so `boolean().unique()` type-checks and then fails
+  the build. `boolean` leaves `UniqueKind`; the kinds otherwise match
+  (integer, real, date, timestamp and the text kinds) and nothing in the
+  repo is affected.
 - **`.access({ write })`** is a shorthand for `create` and `update` together
   (F9); either may still be given alone and the specific one wins.
 
@@ -677,7 +687,15 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   `user_email` (`:261`), and for a natively created account with none) and
   `role` (the WordPress role, mapped as in `WpUserStore.php:25`, admin-only
   to change). So the column types as `string | null` and the uniqueness is
-  the store's, enforced on write, not a SQL constraint Zero owns. The user
+  the store's, enforced on write, not a SQL constraint Zero owns. Making
+  the column nullable moves the requiredness too: today it is the declared
+  `email().notNull()` that the pipeline enforces (`Db.php:442`), and
+  `checkEmail` tests duplicates only (`WpUserStore.php:382`). So the store
+  gains the write rule the declaration carried: a member `create` needs a
+  non-empty, well-formed email (`422 invalid_input` at `/email` as the
+  pipeline would have raised), a guest `create` does not, and an `update`
+  may not set a member's email to `null` or `""`. Reads stay nullable
+  because guests and natively created accounts exist either way. The user
   no longer declares `email` (`src/extract.rs:2402` insisted on it); the
   virtual `password` input stays, write-only, and is the one way the API
   creates a sign-in (`wp_insert_user` with `user_pass`, `WpUserStore.php:266`).
@@ -736,14 +754,18 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   open and the hook joins it, so a later `afterDelete` failure still rolls
   everything back; when it is reached natively (wp-admin, WP-CLI, another
   plugin) the hook asks the connection whether a transaction is open
-  (`SELECT @@in_transaction`, the probe zero-identity already uses,
-  `runtime/identity/src/DB.php:58`): if another plugin's `$wpdb`
+  with the probe zero-identity already uses (`SAVEPOINT` then
+  `RELEASE SAVEPOINT`: under autocommit the release fails because the
+  savepoint was discarded at once, inside a transaction it succeeds and
+  changes nothing, `runtime/identity/src/DB.php:122`). It is portable,
+  which `SELECT @@in_transaction` is not: that variable exists on MariaDB
+  only, and WordPress runs on MySQL too. If another plugin's `$wpdb`
   transaction is open the hook joins it with a savepoint and never issues
   `START TRANSACTION`, which would silently commit that plugin's work; if
   none is open the hook opens one, and only then does it commit on
   `deleted_user` or roll back if core fails in between. `Connection::begin()`
-  gains the same probe, since today it checks Zero's own depth only
-  (`Connection.php:140`). In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
+  gains the same probe (behind `suppress_errors`, as identity runs it),
+  since today it checks Zero's own depth only (`Connection.php:140`). In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
   ID = ? FOR UPDATE`, the same lock a reference write takes on its target
   before it validates existence, which today only checks, `Db.php:705`),
   checks every `"restrict"` column first and refuses the whole deletion
@@ -841,7 +863,11 @@ trip never writes them. On content collections `updatedAt` is
 `post_modified_gmt`, a core column every post already has, and every Zero
 write bumps it: today a meta-only update skips `wp_update_post`
 (`WpPostStore.php:244-255`), so the store sets `post_modified_gmt` itself
-on that path (one `UPDATE` beside `touchPost`), which is what
+on that path, paired with the local `post_modified` WordPress keeps beside
+it (`get_date_from_gmt`, as the store already does for `post_date`,
+`:289`), in one `UPDATE` beside `touchPost`, followed by the
+`clean_post_cache` the path already runs (`:256`) so wp-admin's dates and
+REST's `modified` agree with Zero's `updatedAt`; that paired write is what
 `.onUpdate(() => new Date())` means for this column; `createdAt` is
 post meta like any other column, because `post_date_gmt` is the
 publication time (it already backs `publishedAt`, `WpPostStore.php:84`, and
@@ -1001,8 +1027,17 @@ vocabulary:
   its capabilities earn, and a config rule never names a WordPress role or
   capability directly. On content collections the rules then answer
   `map_meta_cap` for Zero's post capabilities (`CoreAccess.php:43,95`), so
-  wp-admin and the API agree by construction. `contributor` (write, no
-  publish) is an `author` today; open question 12.
+  wp-admin and the API agree by construction. The rules are the authority,
+  not the native capabilities: a capability earns a rung, and from then on
+  the collection's rule decides, so a user with `edit_posts` but not
+  `publish_posts` (a `contributor`, or a custom role built the same way)
+  satisfies `create: "author"` and publishes a Zero post, in the API and
+  in wp-admin alike, because `map_meta_cap` grants `publish_<type>` from
+  the same rule (`CoreAccess.php:157`). That is today's behaviour and the
+  proposal keeps it as a deliberate override: a Zero collection is governed
+  by its config, and a site that wants WordPress's own publish gate for a
+  collection writes it in the rule. Whether to add a `contributor` rung or
+  a capability test to rules is open question 12.
 - **`"self"` is `post_author`.** On a content collection with one `user()`
   column, that column is written to `post_author`, so WordPress's own
   "Mine" views and `edit_others_posts` capability match Zero's `"self"`.
@@ -1430,7 +1465,8 @@ kind-change refusal (§4.9.3), `zero build --explain`.
 ### 6.3 Unchanged
 
 `text`, `integer`, `real`, `boolean`, `date`, `timestamp`, `email`, `url`,
-`slug`, `richText`, `media`, `.notNull`, `.unique`, `.primaryKey`, `.min`,
+`slug`, `richText`, `media`, `.notNull`, `.unique` (its declared kinds lose
+`boolean`, which the evaluator already rejects), `.primaryKey`, `.min`,
 `.max`, `.pattern`, `.validate`, `.access` (shape), `.showIf`, `.localized`,
 `label`, `title`, `sync`, `auth`, `agents` (and its job default),
 `drafts: true`, `revisions`, `access` (semantics; defaults for ordinary
@@ -1699,5 +1735,9 @@ inside the options object are closures found in an object literal, as
     already admit them. Adding `contributor` means a new rung
     (`subscriber < contributor < author`), a capability test on
     `publish_posts` alone for `author`, the `ROLES` map and the `Role`
-    union; leaving it out keeps contributors as authors. Tied to question
-    11.
+    union; leaving it out keeps contributors as authors. A custom role with
+    `edit_posts` but not `publish_posts` has the same standing, so a rung
+    alone does not restore WordPress's publish gate for roles the ladder
+    cannot name. The alternative is a capability test in rules
+    (`ctx.can("publish_posts")`), which lets a site write the native gate
+    without Zero modelling every role. Tied to question 11.

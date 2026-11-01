@@ -75,6 +75,11 @@ test("a content error thrown while a component's JSX is built names the call sit
   );
 });
 
+test("a hole in a returned node's children is refused as not content", () => {
+  assert.throws(() => toContentNodes({ kind: "element", tag: "p", props: {}, children: Array(1) }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
+  assert.throws(() => toContentNodes({ kind: "block", blockName: "core/group", attrs: {}, inner: Array(2) }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
+});
+
 test("a malformed node anywhere in a returned tree is refused as not content", () => {
   assert.throws(() => toContentNodes({ kind: "element", tag: "p", props: {}, children: [{ kind: "text" }] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
   assert.throws(() => toContentNodes({ kind: "block", blockName: "core/group", attrs: {}, inner: [null] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");

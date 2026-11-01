@@ -240,12 +240,27 @@ test("a value JSON would rewrite inside an object attribute is refused rather th
   }
 });
 
-test("a core block inside a third-party wrapper is read back and checked like any other", async () => {
+test("a dropped attribute on a core block inside a third-party wrapper is still refused", async () => {
   const dropped = await serializeBlocks([block("acme/wrapper", {}, [at(block("core/list", { values: "<li>LOST</li>" }), 3)])]);
   assert.equal(dropped.markup, "");
   assert.deepEqual(dropped.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["attribute_dropped", 3]]);
+});
+
+test("invalid markup from a core block inside a third-party wrapper is still refused", async () => {
   const invalid = await serializeBlocks([block("acme/wrapper", {}, [at(block("core/heading", { level: 7, content: "x" }), 4)])]);
   assert.deepEqual(invalid.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["save_failed", 4]]);
+});
+
+test("multiline code survives the round trip, although the editor respells its newlines on the way in", async () => {
+  const { markup, diagnostics } = await serializeBlocks([block("core/code", { content: "first\nsecond" })]);
+  assert.deepEqual(diagnostics, []);
+  const [code] = await reparse(markup);
+  assert.deepEqual([code!.isValid, code!.attributes.content], [true, "first\nsecond"]);
+});
+
+test("an attribute named __proto__ on a third-party block is refused, since no object can carry it", async () => {
+  const { diagnostics } = await serializeBlocks([at(block("acme/proto", Object.fromEntries([["__proto__", { x: 1 }]]) as Record<string, unknown>), 2)]);
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["unknown_attribute", 2]]);
 });
 
 test("a hole in an array attribute is refused, since JSON would write it as null", async () => {

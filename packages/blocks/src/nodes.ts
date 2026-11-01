@@ -67,6 +67,11 @@ export type ContentNode = ElementNode | BlockNode | TextNode;
  * cross from authored code, so each kind's required fields are checked at
  * every depth, not just the tag at the top.
  */
+/** A dense array of content nodes: `every()` would skip a hole, and a hole is not content. */
+function isContentList(value: unknown): value is ContentNode[] {
+  return Array.isArray(value) && Array.from(value).every(isContentNode);
+}
+
 export function isContentNode(value: unknown): value is ContentNode {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -74,9 +79,9 @@ export function isContentNode(value: unknown): value is ContentNode {
     case "text":
       return typeof v.text === "string";
     case "element":
-      return typeof v.tag === "string" && isRecord(v.props) && Array.isArray(v.children) && v.children.every(isContentNode);
+      return typeof v.tag === "string" && isRecord(v.props) && isContentList(v.children);
     case "block":
-      return typeof v.blockName === "string" && isRecord(v.attrs) && Array.isArray(v.inner) && v.inner.every(isContentNode);
+      return typeof v.blockName === "string" && isRecord(v.attrs) && isContentList(v.inner);
     default:
       return false;
   }

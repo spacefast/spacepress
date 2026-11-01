@@ -191,6 +191,9 @@ const PASSTHROUGH_INNER_ATTRIBUTE = "zero-blocks:inner-html";
 /** Blocks we registered ourselves, and the attribute names each has. */
 const passthroughBlocks = new Map<string, Set<string>>();
 
+/** The one attribute name no JavaScript object can carry as data: assigning it sets the prototype, in WordPress's code too. */
+const UNUSABLE_ATTRIBUTE = "__proto__";
+
 /** WordPress's rule for a block name: `namespace/name`, lowercase, digits and dashes. */
 const BLOCK_NAME = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
 
@@ -346,6 +349,10 @@ class Serializer {
         this.error("unknown_attribute", `"${PASSTHROUGH_INNER_ATTRIBUTE}" is reserved.`, "Pass the block's body as children.", node.loc);
         return false;
       }
+      if (Object.hasOwn(node.attrs, UNUSABLE_ATTRIBUTE)) {
+        this.error("unknown_attribute", `"${UNUSABLE_ATTRIBUTE}" cannot be an attribute name; WordPress would drop it.`, "Rename the attribute.", node.loc);
+        return false;
+      }
       // Unchecked against a registry, but still written as JSON in the block comment.
       let writable = true;
       for (const [name, value] of Object.entries(node.attrs)) {
@@ -495,7 +502,10 @@ class Serializer {
       if (origin !== undefined) {
         for (const name of Object.keys(origin.attrs)) {
           if (name === PASSTHROUGH_INNER_ATTRIBUTE || (block.name === "core/html" && name === "content")) continue;
-          if (canonical(block.attributes[name]) !== canonical(parsed.attributes[name])) {
+          // `createBlock` may respell a rich-text value (a newline as <br>) and save() may spell it back
+          // (core/code preserves whitespace); the value counts as kept when the read-back matches either.
+          const read = canonical(parsed.attributes[name]);
+          if (read !== canonical(block.attributes[name]) && read !== canonical(origin.attrs[name])) {
             this.error("attribute_dropped", `${block.name}.${name} is a registered attribute, but the block's save() does not write it into the markup; the editor reads back ${describeValue(normalizeRichText(parsed.attributes[name]))}.`, "Express it another way: as children, or through an attribute the block's current markup carries.", loc);
           }
         }
@@ -568,7 +578,7 @@ function collectUnregistered(api: BlockApi, nodes: readonly BlockNode[], into: M
   for (const node of nodes) {
     if (!node.blockName.startsWith("core/") && BLOCK_NAME.test(node.blockName) && (passthroughBlocks.has(node.blockName) || api.getBlockType(node.blockName) === undefined)) {
       const names = into.get(node.blockName) ?? new Set<string>();
-      for (const key of Object.keys(node.attrs)) if (key !== PASSTHROUGH_INNER_ATTRIBUTE) names.add(key);
+      for (const key of Object.keys(node.attrs)) if (key !== PASSTHROUGH_INNER_ATTRIBUTE && key !== UNUSABLE_ATTRIBUTE) names.add(key);
       into.set(node.blockName, names);
     }
     collectUnregistered(api, node.inner.filter((child): child is BlockNode => child.kind === "block"), into);

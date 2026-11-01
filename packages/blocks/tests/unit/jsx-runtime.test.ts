@@ -86,5 +86,8 @@ test("a value that is not content is refused at the element that holds it", () =
     () => jsxDEV("section", { children: new Date(0) }, undefined, false, source),
     (error: unknown) => error instanceof ContentError && error.code === "not_content" && error.loc?.line === 3 && /Date/.test(error.message),
   );
+});
+
+test("a value that is not a tag, a component or a fragment is refused as an element type", () => {
   assert.throws(() => jsx(42 as unknown as string, {}), (error: unknown) => error instanceof ContentError && error.code === "not_content");
 });

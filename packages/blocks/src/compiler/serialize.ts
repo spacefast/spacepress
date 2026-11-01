@@ -346,6 +346,15 @@ class Serializer {
         this.error("unknown_attribute", `"${PASSTHROUGH_INNER_ATTRIBUTE}" is reserved.`, "Pass the block's body as children.", node.loc);
         return false;
       }
+      // Unchecked against a registry, but still written as JSON in the block comment.
+      let writable = true;
+      for (const [name, value] of Object.entries(node.attrs)) {
+        const unwritable = jsonProblem(value);
+        if (unwritable === null) continue;
+        this.error("attribute_type", `${node.blockName}.${name} holds ${unwritable}, which block markup cannot store.`, "Use JSON values: strings, finite numbers, booleans, arrays and plain objects.", node.loc);
+        writable = false;
+      }
+      if (!writable) return false;
       if (!this.unverified.has(node.blockName)) {
         this.unverified.add(node.blockName);
         const diagnostic: Diagnostic = {
@@ -378,10 +387,11 @@ class Serializer {
         ok = false;
         continue;
       }
-      // The block comment is JSON; a value JSON cannot write (a BigInt inside an object) would throw at the end.
+      // The block comment is JSON; a value JSON cannot write (a BigInt) would throw at the end, and one it
+      // rewrites (NaN to null, a missing key for undefined) would change silently.
       const unwritable = jsonProblem(value);
       if (unwritable !== null) {
-        this.error("attribute_type", `${node.blockName}.${name} holds ${unwritable}, which block markup cannot store.`, "Use JSON values: strings, numbers, booleans, arrays and plain objects.", node.loc);
+        this.error("attribute_type", `${node.blockName}.${name} holds ${unwritable}, which block markup cannot store.`, "Use JSON values: strings, finite numbers, booleans, arrays and plain objects.", node.loc);
         ok = false;
       }
     }
@@ -509,15 +519,34 @@ function canonical(value: unknown): string {
   }) ?? "undefined";
 }
 
-/** What stops a value from being written as JSON, in words, or null when nothing does. */
-function jsonProblem(value: unknown): string | null {
-  try {
-    JSON.stringify(value);
+/**
+ * What stops a value from being written as JSON exactly as it is, in words,
+ * or null when nothing does. `JSON.stringify` throws for some of these and
+ * quietly rewrites the rest; either way the saved block would differ.
+ */
+function jsonProblem(value: unknown, path = "", seen = new Set<object>()): string | null {
+  const at = path === "" ? "" : ` at ${path}`;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? null : `${String(value)}${at}`;
+  if (typeof value === "bigint") return `a BigInt${at}`;
+  if (typeof value === "undefined") return `undefined${at}`;
+  if (typeof value === "function" || typeof value === "symbol") return `a ${typeof value}${at}`;
+  if (typeof value !== "object") return `a ${typeof value}${at}`;
+  if (seen.has(value)) return `a circular reference${at}`;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      const problem = jsonProblem(entry, `${path}[${index}]`, seen);
+      if (problem !== null) return problem;
+    }
     return null;
-  } catch (error) {
-    if (error instanceof TypeError && /circular/i.test(error.message)) return "a circular reference";
-    return /BigInt/.test(error instanceof Error ? error.message : "") ? "a BigInt" : "a value JSON cannot write";
   }
+  if (!isPlainObject(value)) return `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "non-plain object"}${at}`;
+  for (const [key, entry] of Object.entries(value)) {
+    const problem = jsonProblem(entry, path === "" ? key : `${path}.${key}`, seen);
+    if (problem !== null) return problem;
+  }
+  return null;
 }
 
 /** Parse without the parser's console logging: an invalid block is a diagnostic here, not console noise. */

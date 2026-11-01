@@ -87,24 +87,16 @@ export function renderRichTextHtml(nodes: readonly ContentNode[]): string {
     .join("");
 }
 
-/** Read one authored prop as a non-empty string. */
-function stringProp(props: ElementProps, name: string): string | null {
-  const value = props[name];
-  return typeof value === "string" && value !== "" ? value : null;
-}
-
 /** The props every mapped block-level tag accepts: the two that become block attributes, and `style`, refused separately. */
 const COMMON_PROPS = ["class", "className", "id", "style"] as const;
 
-/** The block attributes every mapped tag carries when the author asked for them. */
-function commonAttributes(props: ElementProps): BlockAttributes {
-  const attrs: BlockAttributes = {};
-  const className = stringProp(props, "class") ?? stringProp(props, "className");
-  if (className !== null) attrs.className = className;
-  // `id` is Gutenberg's `anchor`: the same thing an author links a heading by.
-  const anchor = stringProp(props, "id");
-  if (anchor !== null) attrs.anchor = anchor;
-  return attrs;
+/** HTML's `<ol type>` vocabulary, as the CSS `list-style-type` core/list stores. */
+const LIST_TYPES: Record<string, string> = { "1": "decimal", a: "lower-alpha", A: "upper-alpha", i: "lower-roman", I: "upper-roman" };
+
+/** A CSS length for an HTML dimension: a bare number is pixels, as it is on `<img width>`. */
+function cssLength(value: string | number): string {
+  const text = String(value).trim();
+  return /^\d+(\.\d+)?$/.test(text) ? `${text}px` : text;
 }
 
 function isElement(node: ContentNode): node is ElementNode {
@@ -192,6 +184,56 @@ class Mapper {
     return [];
   }
 
+  private badValue(node: ElementNode, name: string, expected: string): void {
+    this.diagnostics.push({
+      code: "unmappable_element",
+      severity: "error",
+      message: `<${node.tag}> has a "${name}" prop that is not ${expected}.`,
+      hint: `Give "${name}" ${expected}, or remove it.`,
+      loc: node.loc,
+    });
+  }
+
+  /** A prop that is text in HTML: a string or a number, nothing when absent, refused when anything else. */
+  private text(node: ElementNode, name: string): string | null {
+    const value = node.props[name];
+    if (value === undefined || value === null || value === false) return null;
+    if (typeof value === "string") return value === "" ? null : value;
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    this.badValue(node, name, "a string");
+    return null;
+  }
+
+  /** An HTML boolean attribute: `true`, the empty string or its own name all mean on, as they do in HTML. */
+  private flag(node: ElementNode, name: string): boolean {
+    const value = node.props[name];
+    if (value === undefined || value === null || value === false) return false;
+    if (value === true || value === "" || value === name) return true;
+    this.badValue(node, name, "a boolean");
+    return false;
+  }
+
+  /** A whole number, as HTML's `start` is. */
+  private integer(node: ElementNode, name: string): number | null {
+    const value = node.props[name];
+    if (value === undefined || value === null || value === false) return null;
+    const number = typeof value === "number" ? value : typeof value === "string" && /^-?\d+$/.test(value.trim()) ? Number(value) : Number.NaN;
+    if (Number.isInteger(number)) return number;
+    this.badValue(node, name, "a whole number");
+    return null;
+  }
+
+  /** The block attributes every mapped tag carries when the author asked for them. */
+  private common(node: ElementNode): BlockAttributes {
+    const attrs: BlockAttributes = {};
+    const className = this.text(node, "class") ?? this.text(node, "className");
+    if (className !== null) attrs.className = className;
+    // `id` is Gutenberg's `anchor`: the same thing an author links a heading by.
+    const anchor = this.text(node, "id");
+    if (anchor !== null) attrs.anchor = anchor;
+    return attrs;
+  }
+
   /**
    * Refuse every prop the tag's block has no attribute for. A `colspan` on a
    * cell or a `start` on a list is mapped; a `data-track` on a paragraph has
@@ -213,7 +255,7 @@ class Mapper {
   /** Map one block-level element. Returns a run, because a div can dissolve. */
   private element(node: ElementNode): BlockNode[] {
     if (node.props.style !== undefined && node.tag !== "img") this.styleProp(node);
-    const attrs = commonAttributes(node.props);
+    const attrs = this.common(node);
 
     const heading = HEADING_TAG.exec(node.tag);
     if (heading !== null) {
@@ -273,11 +315,15 @@ class Mapper {
     this.props(node, [...COMMON_PROPS, "start", "reversed", "type"]);
     const attrs: BlockAttributes = {};
     if (node.tag === "ol") attrs.ordered = true;
-    const { start, reversed, type } = node.props;
-    if (typeof start === "number") attrs.start = start;
-    else if (typeof start === "string" && start !== "") attrs.start = Number(start);
-    if (reversed === true) attrs.reversed = true;
-    if (typeof type === "string" && type !== "") attrs.type = type;
+    const start = this.integer(node, "start");
+    if (start !== null) attrs.start = start;
+    if (this.flag(node, "reversed")) attrs.reversed = true;
+    const type = this.text(node, "type");
+    if (type !== null) {
+      const listStyle = LIST_TYPES[type];
+      if (listStyle === undefined) this.badValue(node, "type", 'one of HTML\'s list types: "1", "a", "A", "i" or "I"');
+      else attrs.type = listStyle;
+    }
     return attrs;
   }
 
@@ -353,16 +399,16 @@ class Mapper {
     if (node.props.style !== undefined) this.styleProp(node);
     this.props(node, [...COMMON_PROPS, "src", "alt", "title", "width", "height"]);
     const attrs: BlockAttributes = {};
-    const url = stringProp(node.props, "src");
+    const url = this.text(node, "src");
     if (url !== null) attrs.url = url;
-    const alt = stringProp(node.props, "alt");
+    const alt = this.text(node, "alt");
     if (alt !== null) attrs.alt = alt;
-    const title = stringProp(node.props, "title");
+    const title = this.text(node, "title");
     if (title !== null) attrs.title = title;
-    // core/image stores both as strings, whatever the author typed.
+    // core/image writes both into an inline style, so they are CSS lengths; HTML's bare pixels get their unit.
     for (const dimension of ["width", "height"] as const) {
-      const value = node.props[dimension];
-      if (typeof value === "number" || (typeof value === "string" && value !== "")) attrs[dimension] = String(value);
+      const value = this.text(node, dimension);
+      if (value !== null) attrs[dimension] = cssLength(value);
     }
     return attrs;
   }
@@ -395,7 +441,14 @@ class Mapper {
       return this.unmappable(node, "A <figure> maps to an image block, so it needs an <img> inside it.", "Put an <img> in the figure, or use a block component.");
     }
     this.onlyChildren(image, [], "an image has no content", "Put a caption in a <figcaption> beside the <img>.");
-    const imageAttrs = { ...this.image(image), ...commonAttributes(image.props), ...attrs };
+    const own = this.common(image);
+    // One image block has one class and one anchor; a figure and its img both carrying one is a collision, not a merge.
+    for (const key of Object.keys(own)) {
+      if (!Object.hasOwn(attrs, key)) continue;
+      const prop = key === "anchor" ? "id" : "class";
+      this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `Both the <figure> and its <img> have a "${prop}"; the image block has one place for it.`, hint: `Keep the "${prop}" on one of them.`, loc: image.loc });
+    }
+    const imageAttrs = { ...this.image(image), ...own, ...attrs };
     const [caption] = elementChildren(node, "figcaption");
     if (caption) imageAttrs.caption = renderRichTextHtml(this.rich(this.structural(caption)));
     this.onlyChildren(node, [image, ...(caption ? [caption] : [])], "a figure is one image block", "Keep only an <img> and an optional <figcaption> in the figure.");
@@ -405,8 +458,8 @@ class Mapper {
   private details(node: ElementNode): BlockAttributes {
     this.props(node, [...COMMON_PROPS, "open", "name"]);
     const attrs: BlockAttributes = {};
-    if (node.props.open === true) attrs.showContent = true;
-    const name = stringProp(node.props, "name");
+    if (this.flag(node, "open")) attrs.showContent = true;
+    const name = this.text(node, "name");
     if (name !== null) attrs.name = name;
     const [summary, ...extra] = elementChildren(node, "summary");
     if (summary) attrs.summary = renderRichTextHtml(this.rich(this.structural(summary)));
@@ -435,10 +488,13 @@ class Mapper {
       return rows;
     };
     const rowsIn = (section: "thead" | "tbody" | "tfoot") => {
-      // Every section of a kind contributes its rows, in order; rows written
-      // straight into the table are body rows, after any tbody's.
-      const rows = elementChildren(node, section).flatMap((container) => rowsOf(container));
-      if (section === "tbody") rows.push(...looseRows);
+      // Every section of a kind contributes its rows, in document order; a row
+      // written straight into the table is a body row where it stands.
+      const rows = node.children.flatMap((child) => {
+        if (!isElement(child)) return [];
+        if (child.tag === section) return rowsOf(child);
+        return section === "tbody" && child.tag === "tr" ? [child] : [];
+      });
       return rows.map((row) => {
         this.structural(row);
         const cells = row.children.filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"));
@@ -455,8 +511,8 @@ class Mapper {
     const cell: Record<string, string> = { content: renderRichTextHtml(this.rich(node)), tag: node.tag };
     for (const [attribute, names] of [["colspan", ["colSpan", "colspan"]], ["rowspan", ["rowSpan", "rowspan"]], ["scope", ["scope"]]] as const) {
       for (const name of names) {
-        const value = node.props[name];
-        if (typeof value === "number" || (typeof value === "string" && value !== "")) cell[attribute] = String(value);
+        const value = this.text(node, name);
+        if (value !== null) cell[attribute] = value;
       }
     }
     return cell;

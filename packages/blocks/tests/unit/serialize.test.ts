@@ -95,9 +95,13 @@ test("an attribute's enum is the whole set of values it accepts", () => {
   assert.equal(fitsAttribute({ type: "string", enum: ["left", "right"] }, "bogus"), false);
 });
 
-test("an attribute's type array is a union, and integer excludes fractions", () => {
+test("an attribute's type array is a union", () => {
   assert.equal(fitsAttribute({ type: ["string", "boolean"] }, false), true);
   assert.equal(fitsAttribute({ type: ["string", "boolean"] }, 1), false);
+});
+
+test("an integer attribute excludes fractions", () => {
+  assert.equal(fitsAttribute({ type: "integer" }, 1), true);
   assert.equal(fitsAttribute({ type: "integer" }, 1.5), false);
 });
 
@@ -226,6 +230,19 @@ test("a value JSON cannot write inside an object attribute is refused before ser
   const circular: Record<string, unknown> = {};
   circular.self = circular;
   assert.deepEqual((await serializeBlocks([at(block("core/group", { metadata: circular }), 4)])).diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 4]]);
+});
+
+test("a value JSON would rewrite inside an object attribute is refused rather than changed", async () => {
+  for (const metadata of [{ n: Number.NaN }, { n: Number.POSITIVE_INFINITY }, { n: undefined }, { when: new Date(0) }]) {
+    const { diagnostics } = await serializeBlocks([at(block("core/group", { metadata }), 5)]);
+    assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 5]], JSON.stringify(Object.keys(metadata)));
+    assert.match(diagnostics[0]!.message, /at n|at when/);
+  }
+});
+
+test("a third-party block's attributes are checked for JSON writability too", async () => {
+  const { diagnostics } = await serializeBlocks([at(block("acme/testimonials", { config: { n: 1n } }), 6)]);
+  assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["attribute_type", 6]]);
 });
 
 test("an unserializable attribute value is still a plain attribute_type error", async () => {

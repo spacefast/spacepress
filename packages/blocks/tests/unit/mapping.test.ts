@@ -40,10 +40,38 @@ test("lists: ordered flag, items as inner blocks, a nested list beside its item'
   assert.deepEqual(map(jsx("ul", { children: jsx("li", {}) })).blocks[0]?.attrs, {});
 });
 
-test("an ordered list's start, reversed and type reach the list block", () => {
-  const { blocks, diagnostics } = map(jsx("ol", { start: 5, reversed: true, type: "a", children: jsx("li", { children: "e" }) }));
+test("an ordered list's start and reversed reach the list block", () => {
+  const { blocks, diagnostics } = map(jsx("ol", { start: "5", reversed: "", children: jsx("li", { children: "e" }) }));
   assert.deepEqual(diagnostics, []);
-  assert.deepEqual(blocks[0]?.attrs, { ordered: true, start: 5, reversed: true, type: "a" });
+  assert.deepEqual(blocks[0]?.attrs, { ordered: true, start: 5, reversed: true });
+});
+
+test("HTML's list types become the CSS list styles the list block stores", () => {
+  const styles = ["1", "a", "A", "i", "I"].map((type) => map(jsx("ol", { type, children: jsx("li", {}) })).blocks[0]?.attrs.type);
+  assert.deepEqual(styles, ["decimal", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman"]);
+});
+
+test("a list type outside HTML's vocabulary is refused", () => {
+  const { diagnostics } = map(jsx("ol", { type: "lower-greek", children: jsx("li", {}) }));
+  assert.deepEqual(diagnostics.map((d) => d.code), ["unmappable_element"]);
+  assert.match(diagnostics[0]!.message, /"type" prop/);
+});
+
+test("a prop with a value of the wrong kind is refused rather than dropped", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { blocks, diagnostics } = map([
+    jsxDEV("ol", { start: "five", children: jsx("li", {}) }, undefined, false, at(1)),
+    jsxDEV("details", { open: "yes", children: jsx("summary", { children: "S" }) }, undefined, false, at(2)),
+    jsxDEV("p", { id: { a: 1 }, children: "x" }, undefined, false, at(3)),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2], ["unmappable_element", 3]]);
+  assert.deepEqual(blocks.map((b) => b.attrs), [{ ordered: true }, { summary: "S" }, {}]);
+});
+
+test("a numeric id is the anchor as text, and an empty open attribute means open", () => {
+  const { blocks, diagnostics } = map([jsx("p", { id: 123, children: "x" }), jsxs("details", { open: "", children: [jsx("summary", { children: "S" }), jsx("p", { children: "b" })] })]);
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual([blocks[0]?.attrs, blocks[1]?.attrs], [{ anchor: "123" }, { showContent: true, summary: "S" }]);
 });
 
 test("text after a nested list in an item is refused rather than moved in front of the list", () => {
@@ -66,10 +94,11 @@ test("a prop the tag's block has no attribute for is refused rather than dropped
   assert.match(diagnostics[3]!.hint ?? "", /class on the <pre>/);
 });
 
-test("an image's title, width and height reach the image block as strings", () => {
+test("an image's title, width and height reach the image block, bare pixels as CSS lengths", () => {
   const { blocks, diagnostics } = map(jsx("img", { src: "/a.png", title: "T", width: 300, height: "20" }));
   assert.deepEqual(diagnostics, []);
-  assert.deepEqual(blocks[0]?.attrs, { url: "/a.png", title: "T", width: "300", height: "20" });
+  assert.deepEqual(blocks[0]?.attrs, { url: "/a.png", title: "T", width: "300px", height: "20px" });
+  assert.equal(map(jsx("img", { src: "/a.png", width: "50%" })).blocks[0]?.attrs.width, "50%");
 });
 
 test("a table cell's colSpan, rowSpan and scope are kept on the cell", () => {
@@ -97,12 +126,29 @@ test("sectioning tags are groups that remember their tag; a bare div dissolves a
   assert.equal(blocks[3]?.attrs.tagName, undefined);
 });
 
-test("a figure with an image and caption is one image block; a figure without an image is refused", () => {
+test("a figure with an image and caption is one image block", () => {
   const { blocks, diagnostics } = map(jsxs("figure", { children: [jsx("img", { src: "/a.png", alt: "A" }), jsx("figcaption", { children: ["cap ", jsx("em", { children: "x" })] })] }));
   assert.deepEqual(diagnostics, []);
   assert.deepEqual(blocks, [{ kind: "block", blockName: "core/image", attrs: { url: "/a.png", alt: "A", caption: "cap <em>x</em>" }, inner: [] }]);
+});
+
+test("a figure without an image is refused", () => {
   const empty = map(jsx("figure", { children: jsx("p", { children: "no image" }) }));
   assert.deepEqual([empty.blocks, empty.diagnostics.map((d) => d.code)], [[], ["unmappable_element"]]);
+});
+
+test("a class or id on both a figure and its img is a collision, not a silent overwrite", () => {
+  const at = { fileName: "/t/page.tsx", lineNumber: 2, columnNumber: 3 };
+  const { diagnostics } = map(jsx("figure", { class: "outer", id: "outer", children: jsxDEV("img", { src: "/a.png", class: "inner", id: "inner" }, undefined, false, at) }));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 2], ["unmappable_element", 2]]);
+  assert.match(diagnostics[0]!.message, /"class"/);
+  assert.match(diagnostics[1]!.message, /"id"/);
+});
+
+test("a class on the img alone reaches the image block", () => {
+  const { blocks, diagnostics } = map(jsx("figure", { children: jsx("img", { src: "/a.png", class: "inner" }) }));
+  assert.deepEqual(diagnostics, []);
+  assert.equal(blocks[0]?.attrs.className, "inner");
 });
 
 test("a quote holds blocks, and loose text inside one becomes a paragraph", () => {
@@ -152,12 +198,12 @@ test("an image or a rule with children, and a second summary, are refused rather
   assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2], ["unmappable_element", 3], ["unmappable_element", 4]]);
 });
 
-test("every table section of a kind contributes its rows, and loose rows follow the body", () => {
+test("every table section of a kind contributes its rows, and loose rows are body rows in document order", () => {
   const row = (cell: string) => jsx("tr", { children: jsx("td", { children: cell }) });
-  const { blocks, diagnostics } = map(jsxs("table", { children: [jsx("tbody", { children: row("a") }), row("loose"), jsx("tbody", { children: row("b") }), jsx("tfoot", { children: row("f") })] }));
+  const { blocks, diagnostics } = map(jsxs("table", { children: [row("first"), jsx("tbody", { children: row("a") }), row("loose"), jsx("tbody", { children: row("b") }), jsx("tfoot", { children: row("f") })] }));
   assert.deepEqual(diagnostics, []);
   type Rows = { cells: { content: string }[] }[];
-  assert.deepEqual((blocks[0]!.attrs.body as Rows).map((r) => r.cells[0]!.content), ["a", "b", "loose"]);
+  assert.deepEqual((blocks[0]!.attrs.body as Rows).map((r) => r.cells[0]!.content), ["first", "a", "loose", "b"]);
   assert.deepEqual((blocks[0]!.attrs.foot as Rows).map((r) => r.cells[0]!.content), ["f"]);
 });
 

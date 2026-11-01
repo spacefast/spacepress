@@ -96,7 +96,8 @@ pricing.tsx:12:7 unknown_attribute: core/heading has no attribute "levl". Did yo
 | `unknown_attribute`, `attribute_type` | an attribute the block does not register, or the wrong type |
 | `local_attribute` | an editor-session attribute (`role: "local"`) WordPress never saves |
 | `content_and_children` | both a `content` attribute and children on one block |
-| `save_failed` | the block's own `save()` threw |
+| `attribute_dropped` | a registered attribute the block's `save()` does not write; the editor would read it back empty |
+| `save_failed` | the block's own `save()` threw, or wrote markup the editor does not accept as that block |
 | `module_failed`, `default_export_missing`, `not_content` | the file could not be bundled or run, has no default export, or rendered a value that is not content |
 
 `--json` prints the same diagnostics as JSON for tools.

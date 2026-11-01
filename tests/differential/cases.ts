@@ -384,6 +384,8 @@ function laneSActions() {
       try { deep[i]!.x.y = ++hits; } catch { hits += 10; }
       const flat: { x: number }[] = [];
       try { flat[2]!.x = ++hits; } catch { hits += 1000; }
+      const byName: Record<string, { list: { x: number }[] }> = {};
+      try { byName["missing"]!.list[hits++]!.x = 1; } catch { hits += 100000; }
       const nulls: ({ x: number } | null)[] = [null];
       try { nulls[0]!.x = ++hits; } catch { hits += 10000; }
       // A compound assignment as a Record key: its PHP has brackets, but it's no array element.

@@ -2893,15 +2893,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// literal key needs no temporary; any expression, even one that starts with a quote
     /// (`'k' . $i++`), gets one. JS reads each container a key is looked up in before evaluating
     /// that key, and throws if a property is read off `undefined`: `a[0].x.y = f()` reads `a[0].x`
-    /// and never calls `f`. Once the path went through an array element, `Js::reach` checks those
-    /// containers exist at the same point. The written key's own container (`a[2]` in
-    /// `a[2].x = f()`) is checked by `Js::write`, after the value, as JS does.
+    /// and never calls `f`. `Js::reach` checks those containers at the same point. The written
+    /// key's own container (`a[2]` in `a[2].x = f()`) is checked by `Js::write`, after the value,
+    /// as JS does.
     fn key_temps(&mut self, root: &str, keys: &[Key]) -> (Vec<String>, Vec<String>) {
         let mut pre = Vec::new();
         let mut ks: Vec<String> = Vec::new();
         for (n, k) in keys.iter().enumerate() {
-            // Reading the container key `n` is looked up in throws if it came off a missing element.
-            if n > 1 && keys[..n - 1].iter().any(|k| matches!(k, Key::Element(_))) {
+            // JS reads the container key `n` is looked up in before evaluating key `n`; that read
+            // throws when the container before it is `undefined` or `null` (a missing Record key or
+            // array element). The root always exists, so this starts at the third key.
+            if n > 1 {
                 pre.push(format!("\\Zero\\Js::reach({root}, [{}])", ks[..n - 1].join(", ")));
             }
             let (php, element) = match k {

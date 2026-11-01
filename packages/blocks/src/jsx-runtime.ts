@@ -31,8 +31,12 @@ function isFragmentNode(node: ContentNode): boolean {
  * gets none from esbuild) takes the nearest one: the element it sits in.
  */
 function nearest(node: ContentNode, loc: SourceLocation | undefined): ContentNode {
-  if (node.kind === "text" || node.loc !== undefined || loc === undefined) return node;
-  return { ...node, loc };
+  if (node.kind === "text" || loc === undefined) return node;
+  // A located node stops the inheritance: its own children already took its position.
+  if (node.loc !== undefined) return node;
+  return node.kind === "element"
+    ? { ...node, loc, children: node.children.map((child) => nearest(child, loc)) }
+    : { ...node, loc, inner: node.inner.map((child) => nearest(child, loc)) };
 }
 
 function appendChild(into: ContentNode[], child: unknown, loc: SourceLocation | undefined): void {

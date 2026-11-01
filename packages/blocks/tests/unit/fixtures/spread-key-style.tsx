@@ -1,10 +1,12 @@
-/** The classic fallback carries no position of its own; its mistake is reported at the enclosing element. */
+/** The classic fallback carries no position of its own; a mistake under it is reported at the nearest located element. */
 export default function SpreadKeyStyle() {
   return (
     <section>
-      <p {...{ style: { color: "red" } }} key="x">
-        Hello
-      </p>
+      <div {...{}} key="d">
+        <p {...{ style: { color: "red" } }} key="p">
+          Hello
+        </p>
+      </div>
     </section>
   );
 }

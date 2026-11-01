@@ -90,6 +90,14 @@ test("a node without a position of its own takes the position of the element it 
   assert.deepEqual(child?.kind === "element" ? child.loc : null, { file: "/t/a.tsx", line: 4, column: 5 });
 });
 
+test("an unlocated node nested under another unlocated node inherits the same position", () => {
+  const source = { fileName: "/t/a.tsx", lineNumber: 4, columnNumber: 5 };
+  const section = jsxDEV("section", { children: createElement("div", null, createElement("p", { style: "x" }, "Hello")) }, undefined, false, source);
+  const div = section.kind === "element" ? section.children[0] : null;
+  const p = div?.kind === "element" ? div.children[0] : null;
+  assert.deepEqual(p?.kind === "element" ? p.loc : null, { file: "/t/a.tsx", line: 4, column: 5 });
+});
+
 test("the classic transform's createElement builds the same node as jsx", () => {
   assert.deepEqual(createElement("p", { class: "lead" }, "a", jsx("em", { children: "b" })), jsx("p", { class: "lead", children: ["a", jsx("em", { children: "b" })] }));
   assert.deepEqual(createElement("hr", null), jsx("hr", {}));

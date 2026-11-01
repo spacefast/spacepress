@@ -91,3 +91,24 @@ test("Zero's explicit status applies to its own write, not to posts written from
   `));
   assert.deepEqual([zeroStatus, nested], ["published", "future"]);
 });
+
+// WordPress sends its CORS headers from `rest_pre_serve_request` (`rest_send_cors_headers`, priority 10).
+// Zero serves its own body from the same filter and must run after it: a body echoed first leaves a
+// cross-origin caller without `Access-Control-Allow-Origin`, `Allow-Credentials` and `Vary: Origin`,
+// so the browser discards the response.
+test("a cross-origin Zero response carries WordPress's CORS headers", async () => {
+  const origin = JSON.parse(wp("eval", "echo wp_json_encode(get_allowed_http_origins());"))[0] as string;
+  for (const [method, path, init] of [
+    ["GET", "/_schema", {}],
+    ["GET", "/posts", {}],
+    ["POST", "/posts", { headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `CORS ${run}` }) }],
+  ] as const) {
+    const res = await fetch(`${api}${path}`, { ...init, method, headers: { ...(init as RequestInit).headers, origin } });
+    const body = await res.json();
+    assert.ok(res.status < 300, `${method} ${path} → ${res.status} ${JSON.stringify(body)}`);
+    assert.ok("data" in body, `${method} ${path}: Zero's own body is served`);
+    assert.equal(res.headers.get("access-control-allow-origin"), origin, `${method} ${path}`);
+    assert.equal(res.headers.get("access-control-allow-credentials"), "true", `${method} ${path}`);
+    assert.match(res.headers.get("vary") ?? "", /Origin/, `${method} ${path}`);
+  }
+});

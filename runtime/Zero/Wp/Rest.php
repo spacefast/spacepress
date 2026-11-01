@@ -11,6 +11,8 @@ use Zero\App;
  * access rules decide; core has already resolved the user (cookie + nonce or application password).
  * The body App produced is served verbatim (problem documents included) instead of being re-encoded
  * through WP_Error/wp_json_encode, so REST and `wp zero` answer byte-for-byte the same shapes.
+ * WordPress still owns the transport: its CORS headers for the request's origin are sent before the
+ * body.
  */
 final class Rest
 {
@@ -49,7 +51,11 @@ final class Rest
 
     public static function boot(): void
     {
-        add_filter('rest_pre_serve_request', [self::class, 'serve'], 10, 2);
+        // After `rest_send_cors_headers` (priority 10, added during rest_api_init): serve() echoes the
+        // body, and a header set after output is lost. Served first, a cross-origin response carried
+        // no `Access-Control-Allow-Origin`, `Allow-Credentials` or `Vary: Origin`, so the browser
+        // discarded it. zero-identity's own CORS callback runs at 20 for its routes only.
+        add_filter('rest_pre_serve_request', [self::class, 'serve'], 11, 2);
     }
 
     public static function dispatch(App $app, \WP_REST_Request $request): \WP_REST_Response

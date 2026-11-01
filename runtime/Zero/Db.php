@@ -21,6 +21,8 @@ final class Db
 
     private int $depth = 0;
     private ?array $actor = null;
+    /** @var list<BulkUpdate> open updates, innermost last */
+    private array $bulk = [];
 
     public function __construct(
         private readonly Store $store,
@@ -75,6 +77,36 @@ final class Db
     public function hookCtx(): array
     {
         return ['user' => $this->actor, 'target' => $this->target];
+    }
+
+    /**
+     * When the update writing row $from right now also covers row $pk and hasn't written it yet, write
+     * $pk now: its own patch (with the update's viewer, access and field rules), plus $values, trusted
+     * values that win over the patch (a translation group's synced values). That update then skips
+     * $pk, so its hooks run once. False when no such update is open.
+     */
+    public function updateWithin(string $collection, int|string $from, int|string $pk, array $values): bool
+    {
+        $bulk = null;
+        foreach (array_reverse($this->bulk) as $open) {
+            if ($open->collection === $collection && $open->current === self::key($from)) {
+                $bulk = $open;
+                break;
+            }
+        }
+        $key = self::key($pk);
+        if ($bulk === null || !isset($bulk->pending[$key])) {
+            return false;
+        }
+        unset($bulk->pending[$key]);
+        $opts = ['where' => [$bulk->spec['primaryKey'] => $pk], 'limit' => 1];
+        $existing = $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
+        if ($existing !== null) {
+            // Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
+            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values)));
+        }
+
+        return true;
     }
 
     /** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
@@ -161,12 +193,9 @@ final class Db
         if ($viewer !== null) {
             array_push($guards, ...$this->readGuards($collection, $viewer));
         }
-        if ($partition !== null && $partition[1] === []) {
-            return [];
-        }
         $filterViewer ??= $viewer;
         // The one point before SQL: query options and access guards are plain arrays, except json()
-        // operands (`{}` and `[]` compare differently).
+        // operands (`{}` and `[]` compare differently). Validate even an empty partition.
         $sqlOpts = $this->plainQuery($collection, $opts);
         $guards = array_map(fn ($g) => $this->plainFilter($collection, $g), $guards);
         $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
@@ -174,6 +203,9 @@ final class Db
                 fn ($g) => $this->plainFilter($target, $g),
                 $this->readGuards($target, $filterViewer),
             ));
+        if ($partition !== null && $partition[1] === []) {
+            return [];
+        }
         return array_map(
             static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
             $this->store->select($collection, $q),
@@ -278,34 +310,73 @@ final class Db
             if (!is_array($opts)) {
                 throw HttpError::invalidQuery('Relation options must be true or an object', $rptr);
             }
-            $keys = [];
+            // A `many` relation between localized collections resolves per parent (§7.3): a parent's
+            // children in that parent row's locale, falling back per translation group like a top-level
+            // read, one query per distinct parent locale (a nested `locale` overrides that). References
+            // name one specific row, so when the relation starts at the parent's primary key, children of
+            // any row in the parent's translation group belong to it, and limit/offset window per group.
+            $parentPk = $spec['primaryKey'];
+            $localizedMany = $rel['kind'] === 'many' && $this->localized($collection) && $this->localized($rel['collection']);
+            $perLocale = $localizedMany && !array_key_exists('locale', $opts);
+            $byGroup = $localizedMany && $rel['from'] === $parentPk;
+            $default = $perLocale ? $this->schema->locales()['default'] : null;
+            $bucketOf = static fn (array $source): string => $perLocale ? (string) ($source['locale'] ?? $default) : '';
+            // A parent's window: its translation group (named by its smallest member), else its own key.
+            $windowOf = static function (array $source) use ($byGroup, $parentPk, $rel): string {
+                if (!$byGroup) {
+                    return self::key($source[$rel['from']]);
+                }
+                $members = array_values(Locale\Module::members($source, $parentPk));
+                usort($members, static fn ($a, $b) => strcmp(self::key($a), self::key($b)));
+
+                return self::key($members[0] ?? $source[$parentPk]);
+            };
+            $buckets = [];
             foreach ($rows as $row) {
                 $source = $sourceFor($row);
-                if ($source[$rel['from']] !== null) {
-                    $keys[self::key($source[$rel['from']])] = $source[$rel['from']];
+                $bucket = $bucketOf($source);
+                $buckets[$bucket] ??= [];
+                $window = $windowOf($source);
+                foreach ($byGroup ? Locale\Module::members($source, $parentPk) : [$source[$rel['from']]] as $v) {
+                    if ($v !== null) {
+                        $buckets[$bucket][self::key($v)] = [$v, $window];
+                    }
                 }
             }
+            if ($buckets === []) {
+                $buckets[$perLocale ? (string) $default : ''] = []; // still checks access and options on the target
+            }
             $targetCols = $this->schema->collection($rel['collection'])['columns'];
-            $values = array_map(
-                static fn ($v) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $v, $rel['to'], ''),
-                array_values($keys),
-            );
-            $children = $this->fetch($rel['collection'], $opts, $rptr, $viewer, [$rel['to'], $values], decoded: $childDecoded);
-            $childSources = array_column($childDecoded, null, $this->schema->collection($rel['collection'])['primaryKey']);
             $childPk = $this->schema->collection($rel['collection'])['primaryKey'];
             $groups = [];
-            foreach ($this->project($children, $rel['collection'], $opts, $rptr) as $i => $child) {
-                $groups[self::key($childSources[$children[$i][$childPk]][$rel['to']])][] = $child;
+            foreach ($buckets as $bucket => $keys) {
+                $bucketOpts = $perLocale ? ['locale' => (string) $bucket] + $opts : $opts;
+                $values = array_map(
+                    static fn (array $k) => Schema::encode(['type' => $targetCols[$rel['to']]['type']], $k[0], $rel['to'], ''),
+                    array_values($keys),
+                );
+                $partition = $byGroup ? [$rel['to'], $values, array_column(array_values($keys), 1)] : [$rel['to'], $values];
+                $children = $this->fetch($rel['collection'], $bucketOpts, $rptr, $viewer, $partition, decoded: $childDecoded);
+                $childSources = array_column($childDecoded, null, $childPk);
+                foreach ($this->project($children, $rel['collection'], $bucketOpts, $rptr) as $i => $child) {
+                    $to = self::key($childSources[$children[$i][$childPk]][$rel['to']]);
+                    $groups[$bucket][$keys[$to][1] ?? $to][] = $child;
+                }
             }
             foreach ($rows as &$row) {
                 $source = $sourceFor($row);
-                $group = $source[$rel['from']] === null ? [] : ($groups[self::key($source[$rel['from']])] ?? []);
+                $group = $source[$rel['from']] === null ? [] : ($groups[$bucketOf($source)][$windowOf($source)] ?? []);
                 $row[$name] = $rel['kind'] === 'many' ? $group : ($group[0] ?? null);
             }
             unset($row);
         }
 
         return $rows;
+    }
+
+    private function localized(string $collection): bool
+    {
+        return $this->schema->locales() !== null && ($this->schema->collection($collection)['localized'] ?? false);
     }
 
     private function populateMedia(array $rows, string $col, bool $list): array
@@ -400,8 +471,23 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
-            foreach ($this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer) as $existing) {
-                $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $pk = $spec['primaryKey'];
+            $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows));
+            $this->bulk[] = $bulk;
+            try {
+                foreach ($rows as $existing) {
+                    $key = self::key($existing[$pk]);
+                    if (isset($bulk->done[$key])) {
+                        $out[] = $bulk->done[$key]; // written early by updateWithin
+                        continue;
+                    }
+                    unset($bulk->pending[$key]);
+                    $bulk->current = $key;
+                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
+                }
+            } finally {
+                array_pop($this->bulk);
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -611,7 +697,8 @@ final class Db
         return $row;
     }
 
-    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer): array
+    /** @param array $values trusted values applied over $patch after access and field rules (updateWithin) */
+    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = []): array
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
@@ -629,6 +716,7 @@ final class Db
         }
         $previous = $existing;
         Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
+        $patch = $values + $patch;
         $this->checkPatch($spec, $previous, $patch);
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {

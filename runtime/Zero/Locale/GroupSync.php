@@ -165,10 +165,12 @@ final class GroupSync
             // Every member as currently committed, locked: a translation created concurrently can't be missed.
             $members = Lock::members($collection, $row, Module::members($row, $pk));
             $siblings = array_values(array_filter($members, static fn ($id) => $id !== $row[$pk]));
-            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $siblings, $changed): void {
+            self::quietly(self::key($collection, $row, $pk), static function () use ($collection, $pk, $row, $siblings, $changed): void {
                 foreach ($siblings === [] ? [] : db()->findMany($collection, ['where' => [$pk => ['in' => $siblings]], 'locale' => '*']) as $sibling) {
                     $patch = array_filter($changed, static fn ($v, $col) => !Module::same($sibling[$col], $v), ARRAY_FILTER_USE_BOTH);
-                    if ($patch !== []) {
+                    // A sibling the same bulk update covers is written now, once, with that update's
+                    // own patch plus the group's values (its hooks then don't run a second time).
+                    if ($patch !== [] && !db()->updateWithin($collection, $row[$pk], $sibling[$pk], $patch)) {
                         db()->update($collection, $patch, [$pk => $sibling[$pk]]);
                     }
                 }

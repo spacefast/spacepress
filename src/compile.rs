@@ -250,6 +250,7 @@ pub struct Compiler<'a, 'p> {
     type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
+    helper_values: HashMap<(usize, bool), String>,
     helper_types: HashMap<usize, Ty>,
     data_helpers: HashMap<(u8, usize), String>,
     effects: effects::Effects,
@@ -285,6 +286,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             type_aliases,
             async_callback: false,
             helpers: HashMap::new(),
+            helper_values: HashMap::new(),
             helper_types: HashMap::new(),
             data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
@@ -2320,10 +2322,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
                         self.helpers.insert(helper_key, name.clone());
                         self.compile_helper_now(c, &name)?;
-                        let _ = writeln!(
-                            self.output,
-                            "function {name}_value(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
-                        );
                         name
                     }
                 };
@@ -2334,7 +2332,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let mut out = Out::atom(format!("\\ZeroApp\\{name}_value()"), ty);
+                let wrapper = match self.helper_values.get(&helper_key) {
+                    Some(wrapper) => wrapper.clone(),
+                    None => {
+                        let wrapper = self.unique_name(&format!("{name}_value"));
+                        self.helper_values.insert(helper_key, wrapper.clone());
+                        let _ = writeln!(
+                            self.output,
+                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
+                        );
+                        wrapper
+                    }
+                };
+                let mut out = Out::atom(format!("\\ZeroApp\\{wrapper}()"), ty);
                 out.helper = Some(format!("\\ZeroApp\\{name}"));
                 Ok(out)
             }
@@ -3070,7 +3080,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
         let o = self.expr(obj)?;
-        let o = self.finish_value(o, obj.span)?;
+        let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
         if o.ty.is_nullable() && !optional {
             return err_help(
@@ -3080,6 +3090,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let base = o.ty.non_null();
+        let receiver = o.php.clone();
+        let guard = optional && o.ty.is_nullable();
+        if guard {
+            o.php = self.tmp_var();
+            o.place = None;
+        }
         let wrap = |t: Ty| {
             if optional && o.ty.is_nullable() {
                 t.nullable()
@@ -3087,7 +3103,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 t
             }
         };
-        Ok(match (&base, &i.ty) {
+        let mut out = match (&base, &i.ty) {
             (Ty::Array(t), it) if it.is_num() => Out::atom(
                 format!("\\Zero\\Js::get({}, {})", o.php, i.php),
                 wrap((**t).clone().nullable()),
@@ -3135,7 +3151,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("can't index {} with {}", base.describe(), i.ty.describe()),
                 );
             }
-        })
+        };
+        if guard {
+            out.php = format!("(({} = {receiver}) === null ? null : {})", o.php, out.php);
+            out.place = None;
+        }
+        Ok(out)
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -3498,7 +3519,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let argv = argv.join(", ");
         let php = match &f.helper {
             Some(name) => format!("{name}({argv})"),
-            None => format!("{}({argv})", f.wrapped()),
+            None => format!("({})({argv})", f.php),
         };
         Ok(Out::new(php, *ret))
     }

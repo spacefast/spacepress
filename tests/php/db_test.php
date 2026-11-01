@@ -1121,7 +1121,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'meta' => ['type' => 'json', 'rules' => ['validate' => 'refs__validate'], 'access' => ['update' => ['allow' => false]]],
         'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json', 'default' => ['json' => '{"1":1,"0":2}']]], 'default' => ['json' => '{}']],
     ];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['refs' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['refs' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_refs', 'columns' => $columns,
         'access' => ['read' => ['allow' => true], 'update' => ['allow' => true]],
         'hooks' => ['beforeCreate' => 'refs__before', 'afterCreate' => 'refs__after'],
@@ -1129,7 +1129,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     ]]]);
     $wp = $GLOBALS['wp'];
     $wp->exec('CREATE TABLE {prefix}zero_refs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `meta` LONGTEXT, `info` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media());
     $previous = \Zero\Db::instance();
     \Zero\Db::setInstance($db);
     $seen = null;
@@ -1221,7 +1221,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $anyone = ['role' => 'anyone'];
     $table = static fn (string $name, array $access, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "zero_$name", 'access' => $access, 'columns' => ['id' => $id] + $columns];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
         // Anyone signs up; only admins see who did.
         'subscribers' => $table('subscribers', ['read' => ['role' => 'admin'], 'create' => $anyone],
             ['email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]),

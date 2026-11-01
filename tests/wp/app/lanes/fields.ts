@@ -33,7 +33,7 @@ export const fieldStaff = collection("field_staff", {
   always: text().showIf({ OR: [{}, { kind: "pro" }] }),
   postId: integer().references(() => posts.id, { onDelete: "set null" }),
   notes: group({ fields: {
-    public: text(),
+    public: text().validate((value, ctx) => ctx.data.notes?.public === value || "Invalid note"),
     private: text().access({ read: "editor" }).showIf({ public: { isNotNull: true } }),
   } }),
   teamId: integer().references(() => fieldTeams.id, { onDelete: "set null" }),

@@ -204,7 +204,7 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
     $schema['jobs']['jsonNative'] = ['handler' => static function (array $input) use (&$seen): void {
         $seen = [is_array($input), \Zero\Js::jsonStringify($input['meta'])];
     }] + $spec;
-    $other = new \Zero\Db($db->store(), new \Zero\Schema($schema), $db->media(), 'wp');
+    $other = new \Zero\Db($db->store(), new \Zero\Schema($schema), $db->media());
     \Zero\Db::setInstance($other);
     try {
         $meta = \Zero\Js::decodeJson('{"1":1,"0":2,"empty":{}}');

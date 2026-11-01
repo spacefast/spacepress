@@ -154,7 +154,16 @@ final class Seam
     }
 
     public static function generated(array $col, mixed $value): mixed { return self::toPhp($value, $col); }
-    public static function toWire(mixed $value): mixed { return Js::jsonTree($value); }
+    public static function toWire(mixed $value): mixed
+    {
+        $tree = Js::jsonTree($value);
+        // MCP consumes native operation envelopes as arrays before it invokes its JSON encoder.
+        if (is_array($value) && $tree instanceof \stdClass) {
+            $members = get_object_vars($tree);
+            if ($members !== [] && !array_is_list($members)) { return $members; }
+        }
+        return $tree;
+    }
 
     public static function findMany(string $collection, mixed $opts = []): JsArray
     {

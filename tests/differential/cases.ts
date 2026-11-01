@@ -80,7 +80,18 @@ const run = (handler: () => unknown) => action({ input: {}, handler });
 const sharedCaptured = { n: 0 };
 const capturedPairs = [sharedCaptured, sharedCaptured];
 const capturedOther = { inner: sharedCaptured };
+function refsRegistered(): number { return 1; }
+function refsCollision(): number { return 2; }
+function refsCollision_value(): number { return 3; }
 const laneRefs = {
+  refsRegisteredRoot: action({ input: {}, handler: refsRegistered }),
+  refsNamedWrappers: run(() => [refsRegistered === refsRegistered, [refsRegistered].includes(refsRegistered), refsCollision(), refsCollision_value()]),
+  refsOptionalIndex: run(() => {
+    let visited = 0;
+    const readArray = (a: number[] | null) => a?.[visited++] ?? 99;
+    const readRecord = (a: Record<string, number> | null) => a?.[(() => { visited++; return "x"; })()] ?? 99;
+    return [readArray(null), readRecord(null), visited, readArray([7]), readRecord({ x: 8 }), visited];
+  }),
   refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
   refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
   refsIndexLogical: run(() => { const values = [true]; values[0] &&= true; return values; }),

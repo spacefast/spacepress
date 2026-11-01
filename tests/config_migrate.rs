@@ -724,23 +724,12 @@ fn json_defaults_keep_numeric_keyed_objects() {
         "emdash.json",
         r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{"1":"b","0":"a"}}}]}]}"#,
     );
-    let out = Command::new("php")
-        .args([
-            "-r",
-            r#"
-        require $argv[1] . '/zero/runtime/bootstrap.php';
-        $app = \Zero\App::boot($argv[1]);
-        echo \Zero\Js::jsonStringify($app->db->insert('notes', ['title' => 't'], true)[0]['data']);
-    "#,
-        ])
-        .arg(&app)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(
-        serde_json::from_slice::<Value>(&out.stdout).unwrap(),
-        json!({"nested": {"0": "a", "1": "b"}})
+    let value = run_php(
+        &app,
+        "echo \\Zero\\Js::jsonStringify($app->db->insert('notes', ['title' => 't'], true)[0]['data']);",
+        &Value::Null,
     );
+    assert_eq!(value, json!({"nested": {"0": "a", "1": "b"}}));
 }
 
 /// A migrated original-Zero app with a required `project` and an optional self `helper` reference,

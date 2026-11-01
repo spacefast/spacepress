@@ -289,7 +289,7 @@ Every recursive walk in the runtime handles both:
 
 Rule: compiled code and `Js::*` speak handles. `Db`, `Schema`, `Sql`, the
 stores, `Scf`, `WpPostStore`, `WpUserStore`, Sync, Abilities, `EditorSave`,
-`Locale`, `SqliteMedia` and every WordPress function speak plain arrays. The
+`Locale`, `WpMedia` and every WordPress function speak plain arrays. The
 two meet in one new file, `runtime/Zero/Seam.php`, which holds every
 conversion. Compiled output never contains a conversion call. `Db` calls
 `Seam` once at each public entry point and nowhere inside.
@@ -783,8 +783,8 @@ What the implementation PR must measure before merge, and record in its
 body: `tests/wp/run.sh` wall time before and after; a hook that reads 200
 rows with one relation and a `json()` column, builds a response, and
 returns it, timed in-process on both representations (this exercises
-`rowToJs`, cloning and `jsonStringify` together); and the standalone
-`tests/php/run.sh` time. The design's claim is that these deltas are small
+`rowToJs`, cloning and `jsonStringify` together); and the
+`tests/php/run.sh` time (WordPress on SQLite, without HTTP). The design's claim is that these deltas are small
 against MySQL and WordPress bootstrap; the PR proves or disproves it with
 numbers.
 

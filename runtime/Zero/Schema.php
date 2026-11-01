@@ -598,6 +598,8 @@ final class Schema
         if ($v === null) {
             return;
         }
+        $dataShape ??= [$name => $col];
+        $path ??= [$name];
         $type = $col['type'];
         $rules = $col['rules'] ?? [];
         if (isset($rules['min']) || isset($rules['max'])) {

@@ -163,6 +163,11 @@ struct Uf {
     contents: Vec<Vec<Class>>,
     /// A parameter's container: it may hold anything its caller put in it.
     opaque: Vec<bool>,
+    /// The containers of this class may sit in more than one place (stored again inside a holder
+    /// that already reaches them, `o.right = o.left`).
+    repeated: Vec<bool>,
+    /// A callee's hold on an argument it keeps: the call that made it.
+    keepers: Vec<Option<Span>>,
 }
 
 impl Uf {
@@ -177,6 +182,8 @@ impl Uf {
         self.held_in.push(Vec::new());
         self.contents.push(Vec::new());
         self.opaque.push(false);
+        self.repeated.push(false);
+        self.keepers.push(None);
         c
     }
 
@@ -248,6 +255,7 @@ impl Uf {
         self.parent[b] = a;
         self.outside[a] |= self.outside[b];
         self.opaque[a] |= self.opaque[b];
+        self.repeated[a] |= self.repeated[b];
         let hb = std::mem::take(&mut self.holders[b]);
         self.holders[a].extend(hb);
         let bb = std::mem::take(&mut self.bindings[b]);
@@ -308,6 +316,8 @@ impl Uf {
         let i = self.interior(h);
         let v = self.find(v);
         if v == i || v == h {
+            // Stored again where it already is (`o.right = o.left`): two places, one container.
+            self.repeated[v] = true;
             return;
         }
         self.held_in[v].push(h);
@@ -317,6 +327,43 @@ impl Uf {
         }
     }
 
+    /// Whether two values may share a container: the same class, or one held (at any depth)
+    /// inside the other.
+    fn overlap(&mut self, a: Class, b: Class) -> bool {
+        let a = self.find(a);
+        let b = self.find(b);
+        a == b || self.reaches(a, b) || self.reaches(b, a)
+    }
+
+    /// Whether `inner` is held somewhere below `outer`.
+    fn reaches(&mut self, outer: Class, inner: Class) -> bool {
+        let mut seen = HashSet::new();
+        let mut todo = vec![outer];
+        while let Some(c) = todo.pop() {
+            let c = self.find(c);
+            if !seen.insert(c) {
+                continue;
+            }
+            if let Some(i) = self.interior[c] {
+                let i = self.find(i);
+                if i == inner {
+                    return true;
+                }
+                todo.push(i);
+                todo.extend(self.contents[i].clone());
+            }
+            if self.is_interior[c] {
+                for k in self.contents[c].clone() {
+                    if self.find(k) == inner {
+                        return true;
+                    }
+                    todo.push(k);
+                }
+            }
+        }
+        false
+    }
+
     /// Whether anything can still see this class's container after the expression that made it:
     /// a binding, the outside, or an observable container holding it.
     fn observable(&mut self, c: Class, seen: &mut HashSet<Class>) -> bool {
@@ -324,7 +371,7 @@ impl Uf {
         if !seen.insert(c) {
             return false;
         }
-        if !self.bindings[c].is_empty() || self.outside[c] {
+        if !self.bindings[c].is_empty() || self.outside[c] || self.keepers[c].is_some() {
             return true;
         }
         let mut via: Vec<Class> = self.held_in[c].clone();
@@ -340,6 +387,22 @@ impl Uf {
         self.seen_elsewhere_in(c, binding, route, &mut HashSet::new())
     }
 
+    /// As `seen_elsewhere`, ignoring what the call `call` keeps (its own writes reach that).
+    fn seen_elsewhere_but(&mut self, c: Class, binding: Option<Span>, call: Span) -> bool {
+        let hidden: Vec<Class> = (0..self.keepers.len())
+            .filter(|k| self.keepers[*k] == Some(call))
+            .collect();
+        for k in &hidden {
+            self.keepers[*k] = None;
+        }
+        let mut seen: HashSet<Class> = hidden.iter().map(|k| self.find(*k)).collect();
+        let r = self.seen_elsewhere_in(c, binding, None, &mut seen);
+        for k in hidden {
+            self.keepers[k] = Some(call);
+        }
+        r
+    }
+
     fn seen_elsewhere_in(
         &mut self,
         c: Class,
@@ -351,14 +414,14 @@ impl Uf {
         if !seen.insert(c) {
             return false;
         }
-        if self.outside[c] || self.bindings[c].iter().any(|b| Some(*b) != binding) {
+        if self.outside[c] || self.repeated[c] || self.bindings[c].iter().any(|b| Some(*b) != binding) {
             return true;
         }
         let route = route.map(|r| self.find(r));
         let held_in = self.held_in[c].clone();
         for h in held_in {
             let h = self.find(h);
-            if Some(h) != route && self.observable(h, &mut HashSet::new()) {
+            if Some(h) != route && !seen.contains(&h) && self.observable(h, &mut HashSet::new()) {
                 return true;
             }
         }
@@ -424,6 +487,8 @@ struct Write {
     target: Target,
     name: String,
     span: Span,
+    /// The write is a callee's by-reference write at this call.
+    call: Option<Span>,
     /// The write goes through a named function an array method calls with copies.
     named_callback: Option<String>,
 }
@@ -874,6 +939,7 @@ impl Walk<'_, '_> {
             name,
             span,
             named_callback: None,
+            call: None,
         });
     }
 
@@ -1066,9 +1132,24 @@ impl Walk<'_, '_> {
             return Some(self.uf.new_class());
         }
         if let Some(g) = self.global(obj) {
-            let argv = self.arg_classes(args);
+            let mapped = (g, prop.as_str()) == ("Array", "from") && args.len() >= 2;
+            let argv = if mapped {
+                self.arg_classes(&args[..1])
+            } else {
+                self.arg_classes(args)
+            };
             let n = self.uf.new_class();
             match (g, prop.as_str()) {
+                ("Array", "from") if args.len() >= 2 => {
+                    // `Array.from(src, fn)` maps: the function gets copies of src's elements.
+                    let src = argv.first().copied().flatten();
+                    if let Some(ArrEl::Item(cb)) = args.get(1) {
+                        let ret = self.callback(e, cb, "Array.from", 0, src);
+                        if let Some(r) = ret {
+                            self.store(n, Some(r));
+                        }
+                    }
+                }
                 ("Object", "values" | "entries") | ("Array", "from") => {
                     if let Some(Some(a)) = argv.first() {
                         let ai = self.uf.interior(*a);
@@ -1149,6 +1230,17 @@ impl Walk<'_, '_> {
                 for p in std::mem::take(&mut cb_params) {
                     self.callback_route.insert(p, n);
                 }
+                // In JS, an element the callback returns is the receiver's element itself: the
+                // result holds it (and so do later reads of the receiver).
+                if let Some(c) = cb_return {
+                    let c2 = self.uf.find(c);
+                    let copies: Vec<Class> = self.copies.keys().copied().collect();
+                    let returns_copy = copies.into_iter().any(|k| self.uf.find(k) == c2);
+                    if returns_copy && let Some(r) = recv {
+                        let ri = self.uf.interior(r);
+                        self.store(n, Some(ri));
+                    }
+                }
                 if let Some(c) = cb_return {
                     self.store(n, Some(c));
                     if p == "flatMap" {
@@ -1178,11 +1270,14 @@ impl Walk<'_, '_> {
                 let r = self.uf.new_class();
                 self.returns.push(r);
                 self.scopes.push(HashMap::new());
+                let comparator = matches!(method, "sort" | "toSorted");
                 for (i, p) in f.params.iter().enumerate() {
                     // The element is a copy of one of the receiver's elements: its own class,
                     // holding what the element holds. A write into it is judged against the
-                    // receiver's element (see `verify`). A reduce accumulator may be an element.
-                    let v = if i == el {
+                    // receiver's element (see `verify`). A reduce accumulator may be an element;
+                    // both comparator parameters are elements.
+                    let is_element = i == el || (comparator && i == 1);
+                    let v = if is_element {
                         // PHP's copy shares nothing with the element; JS's element is the
                         // original. A write through the copy (at any depth) is lost exactly when
                         // the original can be seen again.
@@ -1197,9 +1292,7 @@ impl Walk<'_, '_> {
                         None
                     };
                     self.declare_pat(&p.pat, v);
-                    if i == el
-                        && let Pat::Id(_, span) = &p.pat
-                    {
+                    if is_element && let Pat::Id(_, span) = &p.pat {
                         self.callback_params.insert(*span, method.to_string());
                         self.last_callback.push(*span);
                     }
@@ -1221,6 +1314,7 @@ impl Walk<'_, '_> {
                         name: method.to_string(),
                         span: cb.span,
                         named_callback: Some(method.to_string()),
+                        call: None,
                     });
                 }
                 // What a named callback returns may be an element or anything it captured.
@@ -1263,15 +1357,48 @@ impl Walk<'_, '_> {
                 }
             }
         }
+        // A written argument passed by reference while another argument may be (or hold, or sit
+        // inside) the same container: JS sees one object through both parameters, PHP two.
+        for (i, vi) in argv.iter().enumerate() {
+            let Some(vi) = vi else { continue };
+            if fx.argument_write_depth(e.span, i).is_none() {
+                continue;
+            }
+            for (j, vj) in argv.iter().enumerate() {
+                let Some(vj) = vj else { continue };
+                if i != j && self.uf.overlap(*vi, *vj) {
+                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = &args[j];
+                    let name = Self::root(x).map_or("this argument".to_string(), |(n, _)| n.to_string());
+                    self.writes.push(Write {
+                        target: Target::Outside,
+                        name,
+                        span: x.span,
+                        named_callback: None,
+                        call: None,
+                    });
+                }
+            }
+        }
         for (i, a) in args.iter().enumerate() {
             let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
             let v = argv.get(i).copied().flatten();
             if let Some(depth) = fx.argument_write_depth(e.span, i) {
                 // compile.rs passes a place by reference; anything else is a copy.
                 self.write(x, depth, x.span, v);
+                if let Some(w) = self.writes.last_mut()
+                    && w.span == x.span
+                {
+                    w.call = Some(e.span);
+                }
             }
-            if fx.argument_stored(e.span, i) {
-                self.escape(v);
+            if fx.argument_stored(e.span, i)
+                && let Some(v) = v
+            {
+                // Kept by the callee past the call: held by a keeper only it reaches. The callee's
+                // own writes reach it by reference; anything written later doesn't.
+                let keeper = self.uf.new_class();
+                self.uf.keepers[keeper] = Some(e.span);
+                self.uf.store(keeper, v);
             }
             // A member of it is kept by the callee beyond the call (only matters when the
             // argument can hold containers).
@@ -1329,23 +1456,32 @@ impl Walk<'_, '_> {
                                 .map(|(_, e)| e);
                             // Interiors collapse (an element's members share its class), so the
                             // copy is excluded when asking who else can see the element.
+                            // Returning the changed copy from `map` is what JS returns too: the
+                            // map result doesn't count as seeing the original element.
+                            let route = self.callback_route.get(&b).copied();
                             let lost = match element {
                                 Some(e) => {
                                     let e = self.uf.find(e);
-                                    e != c && self.uf.observable(e, &mut HashSet::from([c]))
+                                    let mut skip = HashSet::from([c]);
+                                    if let Some(r) = route {
+                                        skip.insert(self.uf.find(r));
+                                    }
+                                    e != c && self.uf.observable(e, &mut skip)
                                 }
                                 None => true,
                             };
-                            // Returning the changed copy from `map` is what JS returns too.
-                            let route = self.callback_route.get(&b).copied();
                             lost || self.unsafe_routed(c, b, route, depth)
                         }
                         None => false,
                     }
                 }
-                Target::Binding(b, depth) => match self.classes.get(&b).copied() {
-                    Some(c) => self.unsafe_at(c, Some(b), depth),
-                    None => false,
+                Target::Binding(b, depth) => match (self.classes.get(&b).copied(), w.call) {
+                    (Some(c), Some(call)) => {
+                        let c = self.uf.find(c);
+                        self.uf.seen_elsewhere_but(c, Some(b), call) || depth >= 2 && self.unsafe_at(c, Some(b), depth)
+                    }
+                    (Some(c), None) => self.unsafe_at(c, Some(b), depth),
+                    (None, _) => false,
                 },
                 // A temporary (`[3, 1].sort()`, `f().x = 1`): what it flows into is the same
                 // value in PHP too; it's a copy only of something held elsewhere.

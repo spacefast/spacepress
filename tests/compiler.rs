@@ -53,6 +53,12 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero.config.ts:2:11",
     );
     rejects("reject-infinite-loop", "step budget exceeded", "zero.config.ts:2:");
+    // A helper returning a module container: changing the result changes the config's value in JS.
+    rejects(
+        "reject-aliasing",
+        "`s` may be the same object or array as another value here",
+        "zero.config.ts:15:9",
+    );
 }
 
 #[test]
@@ -1272,6 +1278,34 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "const fs: (() => number)[] = []; for (let o = { x: 0 }; o.x < 1; o.x++) fs.push(() => o.x); return fs[0]!() === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const o: { l: { x: number }, r: { x: number } } = { l: { x: 0 }, r: { x: 0 } }; o.r = o.l; o.l.x = 1; return o.r.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; const b = a.map((e) => e); a[0]!.x = 1; return b[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const both = (a: { x: number }, b: { x: number }) => { a.x = 1; return b.x; }; const o = { x: 0 }; return both(o, o) === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; Array.from(a, (e) => { e.x = 1; return 0; }); return a[0]!.x === 1;",
+            "`Array.from` passes each element to the callback as a copy",
+        ),
+        (
+            "const a = [{ x: 0 }, { x: 0 }]; a.sort((x, y) => { y.x = 1; return 0; }); return a[0]!.x === 1;",
+            "`sort` passes each element to the callback as a copy",
+        ),
+        (
+            "const identity = (p: { x: number }) => p; const forward = (p: { x: number }) => identity(p); const o = { x: 0 }; const r = forward(o); o.x = 1; return r.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const reader = (p: { x: number }) => () => p.x; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1;",
             "may be the same object or array as another value here",
         ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),

@@ -528,19 +528,32 @@ final class Js
     }
 
     /**
-     * UTF-16LE → UTF-8. An index can split an astral character, leaving a lone surrogate
-     * that UTF-8 can't hold; it becomes U+FFFD, which is also what JS emits when such a
-     * string is encoded as UTF-8 (TextEncoder, HTTP output).
+     * UTF-16LE → UTF-8. An index can split an astral character, leaving a lone surrogate that
+     * UTF-8 can't hold. JS keeps it as a distinct value (`"😀".charAt(0) !== "😀".charAt(1)`);
+     * any stand-in here would compare, sort or hash differently, so splitting a pair throws.
      */
     private static function fromUnits(string $u): string
     {
-        $prev = mb_substitute_character();
-        mb_substitute_character(0xFFFD);
-        try {
-            return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
-        } finally {
-            mb_substitute_character($prev);
+        $n = strlen($u);
+        for ($i = 0; $i + 1 < $n; $i += 2) {
+            $c = ord($u[$i]) | (ord($u[$i + 1]) << 8);
+            if ($c >= 0xD800 && $c <= 0xDBFF) {
+                $next = $i + 3 < $n ? (ord($u[$i + 2]) | (ord($u[$i + 3]) << 8)) : 0;
+                if ($next < 0xDC00 || $next > 0xDFFF) {
+                    self::loneSurrogate();
+                }
+                $i += 2;
+            } elseif ($c >= 0xDC00 && $c <= 0xDFFF) {
+                self::loneSurrogate();
+            }
         }
+
+        return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
+    }
+
+    private static function loneSurrogate(): never
+    {
+        throw new JsError('This splits a character in two (a lone UTF-16 surrogate), which compiled code can\'t represent; slice at character boundaries, for example with Array.from(s)', 'RangeError');
     }
 
     /** Units [$from, $to) of a UTF-16LE string, as UTF-8. */

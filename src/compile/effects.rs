@@ -53,6 +53,19 @@ fn projected_suffix<'a>(path: &'a [Step], prefix: &[Step]) -> Option<&'a [Step]>
     path.get(prefix.len()..)
 }
 
+/// A synthetic span standing for the module value `name` (distinct from every source span).
+fn external_span(name: &str) -> Span {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut h);
+    let v = h.finish();
+    Span {
+        file: crate::diag::NO_FILE - 1,
+        start: v as u32,
+        end: (v >> 32) as u32,
+    }
+}
+
 fn callable_at(value: &Place, callee: &Place) -> bool {
     value.binding == callee.binding && projected_suffix(&value.path, &callee.path).is_some_and(<[Step]>::is_empty)
 }
@@ -391,6 +404,10 @@ struct Call {
 #[derive(Default)]
 struct Graph {
     captured: HashSet<Span>,
+    /// Captured binding → the functions that read it from an enclosing scope.
+    captured_by: HashMap<Span, HashSet<Span>>,
+    /// Module-level containers read by functions: a stable synthetic binding per module value.
+    externals: HashSet<Span>,
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
     incoming: HashSet<Place>,
@@ -576,6 +593,12 @@ impl Graph {
         }
         match env.lookup(name)?.value {
             Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
+            // A module container: one external place per name, shared by every function.
+            Value::Array(_) | Value::Object(_) => {
+                let span = external_span(name);
+                self.externals.insert(span);
+                Some(Place::new(span))
+            }
             _ => None,
         }
     }
@@ -607,6 +630,7 @@ impl Graph {
                     .is_some_and(|binding_owner| *binding_owner != owner)
                 {
                     self.captured.insert(place.binding);
+                    self.captured_by.entry(place.binding).or_default().insert(owner);
                 }
                 return Some(place);
             }
@@ -1107,6 +1131,40 @@ impl Graph {
         // Each binding → where its value goes, and whether only a member of it does (`.1`):
         // `list.push(o.count)` keeps a member of `o`, not `o`.
         let mut sinks: HashMap<Span, HashSet<(Sink, bool)>> = HashMap::new();
+        // Function → the places its result is copied into (call results).
+        let mut result_into: HashMap<Span, Vec<(Place, Span)>> = HashMap::new();
+        for (src, dest, edge) in &self.copies {
+            if self.functions.contains_key(&src.binding) && src.path.first() == Some(&Step::Result) {
+                result_into.entry(src.binding).or_default().push((dest.clone(), *edge));
+            }
+        }
+        // Where a value flowing into `dest` ends up (one step).
+        let step = |sinks: &HashMap<Span, HashSet<(Sink, bool)>>, dest: &Place, edge: &Span, member: bool| {
+            let mut add: HashSet<(Sink, bool)> = if self.functions.contains_key(&dest.binding) {
+                HashSet::new()
+            } else {
+                sinks
+                    .get(&dest.binding)
+                    .into_iter()
+                    .flatten()
+                    .map(|(s, m)| (*s, *m || member || !dest.path.is_empty()))
+                    .collect()
+            };
+            if self.functions.contains_key(&dest.binding) {
+                if dest.path.first() == Some(&Step::Result) {
+                    add.insert((Sink::Result(dest.binding), member));
+                }
+            } else if parameters.contains_key(&dest.binding) {
+                // An argument: wherever that parameter ends up. Stored inside it: its caller
+                // holds the container it went into.
+                if !dest.path.is_empty() {
+                    add.insert((Sink::IntoParam, member));
+                }
+            } else if is_binding(&dest.binding) || self.externals.contains(&dest.binding) {
+                add.insert((Sink::Store(owner_of(&dest.binding, edge)), member));
+            }
+            add
+        };
         loop {
             let mut changed = false;
             for (src, dest, edge) in &self.copies {
@@ -1117,34 +1175,49 @@ impl Graph {
                     continue;
                 }
                 let member = !src.path.is_empty();
-                // Into a function's result: that's the `Result` sink; what the caller then does
-                // with the result is the caller's own business (it joins the argument there).
-                let mut add: HashSet<(Sink, bool)> = if self.functions.contains_key(&dest.binding) {
-                    HashSet::new()
-                } else {
-                    sinks
-                        .get(&dest.binding)
-                        .into_iter()
-                        .flatten()
-                        .map(|(s, m)| (*s, *m || member))
-                        .collect()
-                };
-                if self.functions.contains_key(&dest.binding) {
-                    if dest.path.first() == Some(&Step::Result) {
-                        add.insert((Sink::Result(dest.binding), member));
-                    }
-                } else if parameters.contains_key(&dest.binding) {
-                    // An argument: wherever that parameter ends up. Stored inside it: its caller
-                    // holds the container it went into.
-                    if !dest.path.is_empty() {
-                        add.insert((Sink::IntoParam, member));
-                    }
-                } else if is_binding(&dest.binding) {
-                    add.insert((Sink::Store(owner_of(&dest.binding, edge)), member));
-                }
+                let add = step(&sinks, dest, edge, member);
                 let entry = sinks.entry(src.binding).or_default();
                 let before = entry.len();
                 entry.extend(add);
+                changed |= entry.len() != before;
+            }
+            // A function's result flows into its call sites' result places: whatever returned
+            // into it (a parameter, a captured binding) flows on from there too.
+            let returned: Vec<(Span, Span, bool)> = sinks
+                .iter()
+                .flat_map(|(b, ss)| {
+                    ss.iter().filter_map(move |(s, m)| match s {
+                        Sink::Result(f) => Some((*b, *f, *m)),
+                        _ => None,
+                    })
+                })
+                .collect();
+            for (b, f, m) in returned {
+                for (dest, edge) in result_into.get(&f).into_iter().flatten() {
+                    let add = step(&sinks, dest, edge, m);
+                    let entry = sinks.entry(b).or_default();
+                    let before = entry.len();
+                    entry.extend(add);
+                    changed |= entry.len() != before;
+                }
+            }
+            // A closure that captures a binding keeps it: wherever the closure value goes, the
+            // binding goes too (a member of whatever holds the closure).
+            let captures: Vec<(Span, Span)> = self
+                .captured_by
+                .iter()
+                .flat_map(|(b, fs)| fs.iter().map(move |f| (*b, *f)))
+                .collect();
+            for (b, f) in captures {
+                let closure_sinks: Vec<(Sink, bool)> = self
+                    .copies
+                    .iter()
+                    .filter(|(src, dest, _)| src.binding == f && src.path.is_empty() && dest.binding != f)
+                    .flat_map(|(_, dest, edge)| step(&sinks, dest, edge, true))
+                    .collect();
+                let entry = sinks.entry(b).or_default();
+                let before = entry.len();
+                entry.extend(closure_sinks);
                 changed |= entry.len() != before;
             }
             if !changed {
@@ -1153,15 +1226,43 @@ impl Graph {
         }
         // Per parameter: (stored whole, stored a member). Returning counts as retaining (the
         // caller decides by the result's type whether that matters).
+        // Whether a value placed at `dest` leaves `function`: returned from it or stored beyond it.
+        fn sinks_of_value(
+            sinks: &HashMap<Span, HashSet<(Sink, bool)>>,
+            dest: &Place,
+            function: &Span,
+            store: &dyn Fn(&Sink) -> bool,
+        ) -> bool {
+            if dest.binding == *function {
+                return true;
+            }
+            sinks.get(&dest.binding).is_some_and(|ss| {
+                ss.iter()
+                    .any(|(s, _)| store(s) || matches!(s, Sink::Result(f) if f == function))
+            })
+        }
         let mut retained = HashMap::new();
+        let empty = HashSet::new();
         for (param, function) in &parameters {
-            let Some(ss) = sinks.get(param) else { continue };
+            let ss = sinks.get(param).unwrap_or(&empty);
             let store = |s: &Sink| match s {
                 Sink::Result(_) => false,
                 Sink::IntoParam => true,
                 Sink::Store(o) => o != function && !encloses(*function, *o),
             };
-            let whole = ss.iter().any(|(s, m)| !m && store(s));
+            // Captured by a closure that outlives the call (returned or stored): the closure
+            // keeps the container itself.
+            let captured_kept = self.captured_by.get(param).is_some_and(|fs| {
+                fs.iter().any(|f| {
+                    self.copies.iter().any(|(src, dest, _)| {
+                        src.binding == *f
+                            && src.path.is_empty()
+                            && dest.binding != *f
+                            && sinks_of_value(&sinks, dest, function, &store)
+                    })
+                })
+            });
+            let whole = captured_kept || ss.iter().any(|(s, m)| !m && store(s));
             let part = ss.iter().any(|(s, m)| *m && store(s));
             let returned = ss
                 .iter()
@@ -1196,9 +1297,13 @@ impl Graph {
                     }
                     let held = if self.functions.contains_key(src) {
                         shared.contains(src)
-                    } else if parameters.contains_key(src) {
-                        // A parameter returned: the caller joins the argument itself.
-                        false
+                    } else if self.externals.contains(src) {
+                        // A module container: the config holds it too.
+                        true
+                    } else if let Some(p) = parameters.get(src) {
+                        // Its own parameter returned: the caller joins the argument itself. A
+                        // parameter of an enclosing function: captured, held there too.
+                        p != f
                     } else if let Some(o) = self.bindings.get(src) {
                         o != f
                     } else {

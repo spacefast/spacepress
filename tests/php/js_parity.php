@@ -87,9 +87,9 @@ $cases = [
         fn () => [Js::charAt('a🙂b', 0), Js::charAt('a🙂b', -1), Js::charAt('a🙂b', 3), Js::charAt('a🙂b', 4), Js::strAt('a🙂b', -1), Js::strAt('a🙂b', -4), Js::strAt('a🙂b', -5), Js::strAt('a🙂b', 3)]],
     ['((s) => [s.indexOf("aé"), s.indexOf("aé", 3), s.indexOf("🙂", 1), s.indexOf("", 99), s.indexOf("a", -5), s.lastIndexOf("aé"), s.lastIndexOf("aé", 5), s.lastIndexOf("🙂", -3), s.lastIndexOf("x"), s.lastIndexOf(""), s.lastIndexOf("", NaN)])("🙂aé🙂aé")',
         fn () => [Js::indexOf('🙂aé🙂aé', 'aé'), Js::indexOf('🙂aé🙂aé', 'aé', 3), Js::indexOf('🙂aé🙂aé', '🙂', 1), Js::indexOf('🙂aé🙂aé', '', 99), Js::indexOf('🙂aé🙂aé', 'a', -5), Js::lastIndexOf('🙂aé🙂aé', 'aé'), Js::lastIndexOf('🙂aé🙂aé', 'aé', 5), Js::lastIndexOf('🙂aé🙂aé', '🙂', -3), Js::lastIndexOf('🙂aé🙂aé', 'x'), Js::lastIndexOf('🙂aé🙂aé', ''), Js::lastIndexOf('🙂aé🙂aé', '', NAN)]],
-    // Lone surrogates: PHP yields U+FFFD, which is what TextEncoder makes of the JS result.
-    ['["a🙂b".split(""), "a🙂".charAt(1), "🙂".slice(0, 1), "🙂".at(-1), "a🙂".substring(2, 1), "a".padEnd(2, "🙂")].flat().map((x) => new TextDecoder().decode(new TextEncoder().encode(x)))',
-        fn () => [...Js::split('a🙂b', ''), Js::charAt('a🙂', 1), Js::slice('🙂', 0, 1), Js::strAt('🙂', -1), Js::substring('a🙂', 2, 1), Js::padEnd('a', 2, '🙂')]],
+    // Whole characters round-trip through unit indexes.
+    ['["a🙂b".slice(1, 3), "a🙂".charAt(0), "🙂x".slice(2), "a".padEnd(3, "🙂"), "🙂".at(-3) ?? null]',
+        fn () => [Js::slice('a🙂b', 1, 3), Js::charAt('a🙂', 0), Js::slice('🙂x', 2), Js::padEnd('a', 3, '🙂'), Js::strAt('🙂', -3)]],
 
     // ---- split
     ['["a,b,,c".split(",", 2), "abc".split(""), "".split(""), "".split(","), "a,b".split(",", 0), "ab".split("", -1), "a,b".split(",", 2.7)]',
@@ -263,6 +263,11 @@ $deviations = [
     ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
     ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
     ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
+    // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
+    ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
+    ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],
+    ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
 ];
 
 $passed = 0;

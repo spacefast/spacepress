@@ -421,7 +421,7 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
 `int|float`; `string` = PHP `string` (UTF-8; `length` and every index count UTF-16
-code units as in JS, and a lone surrogate becomes U+FFFD); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+code units as in JS; a result that would split a surrogate pair throws a `RangeError`, because UTF-8 can't hold the lone half); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are PHP lists; plain objects are PHP assoc arrays; functions are
 `callable`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
@@ -447,7 +447,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `charAt(string $s, int|float $i): string`, `strAt(string $s, int|float $i): ?string`
 - `indexOf(string $s, string $needle, int|float $from = 0): int`, `lastIndexOf(string $s, string $needle, int|float|null $from = null): int` (lists too: both honor `fromIndex`)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
-- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; a lone surrogate becomes U+FFFD)
+- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; splitting a surrogate pair throws)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
 - `trim(string $s): string`, `trimStart`, `trimEnd` (JS whitespace incl. Unicode spaces and line terminators)
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).

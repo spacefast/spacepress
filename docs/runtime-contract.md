@@ -140,8 +140,11 @@ must use the source index instead. Object spread/rest copy field values, and
 loop-local declarations receive a fresh binding on each execution. A captured
 `for (let …)` header variable gets a fresh `Js::cell` per iteration, which
 copies its value, so it must be primitive; an object or array one is rejected.
-An in-place element update (`list[i] += v`, `list[i]++`) addresses the element
-through `Js::slot`, which throws a RangeError unless `i` is an existing index.
+Every write through an array index other than `=`, `??=` and `||=` (rejected)
+goes through `Js::write`/`Js::at` with the index tagged `[i]`: each index is
+evaluated once, and it must name an element that exists when the write lands
+(after the value ran), else a RangeError for the element itself, or a
+TypeError when writing through it, as JS throws on `undefined`.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

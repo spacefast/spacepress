@@ -352,16 +352,25 @@ function laneSActions() {
       for (let s = "a"; s.length < 4; s += "a") fns.push(() => s);
       return fns.map((f) => f());
     }),
-    // In-place updates of existing elements, an index with a side effect evaluated once.
+    // In-place updates of existing elements and of fields reached through them; every index with a
+    // side effect is evaluated once, outer ones included.
     elementUpdates: run(() => {
       const a: number[] = [1, 2, 3];
       let i = 0;
       a[i++]! += 5;
-      a[2]!++;
+      const step = a[2]!++;
       --a[1]!;
+      a[i++] &&= 9;
       const s: string[] = ["a"];
       s[0] += "x";
-      return [a, i, s];
+      const m: number[][] = [[1], [2]];
+      const ix: number[] = [0, 1];
+      m[ix.pop()!]![0]!++;
+      m[0]![0]! *= 10;
+      const objs: { x: number }[] = [{ x: 1 }];
+      objs[0]!.x = 5;
+      objs[0]!.x += 2;
+      return [a, i, step, s, m, ix, objs];
     }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.

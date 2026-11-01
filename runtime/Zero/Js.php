@@ -262,21 +262,6 @@ final class Js
         return -self::n($a);
     }
 
-    /**
-     * The index of an array element updated in place (`list[i] += v`, `list[i]++`). JS grows the
-     * array past its end, leaving holes; a PHP array would gain a key instead and turn into an
-     * object, so that throws. Evaluates the index once.
-     */
-    public static function slot(array $a, int|float $i): int
-    {
-        $n = count($a);
-        if (!is_finite($i) || $i < 0 || $i >= $n || $i != floor($i)) {
-            throw new JsError("Index {$i} is outside this array (length {$n}); compiled code can't grow an array by index. Use push(), or check the index first", 'RangeError');
-        }
-
-        return (int) $i;
-    }
-
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
     public static function postStep(int|float &$x, int $step): int|float
     {
@@ -1226,10 +1211,24 @@ final class Js
         return $a === $b;
     }
 
-    /** Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). */
-    public static function at(mixed $root, array $path): mixed
+    /**
+     * Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). A step
+     * written `[i]` is an array index (see `element()`): reading through a missing element throws,
+     * as JS does on `undefined`; so does a missing last element when `$existing` (a compound update
+     * reads the element it then writes).
+     */
+    public static function at(mixed $root, array $path, bool $existing = false): mixed
     {
-        foreach ($path as $k) {
+        $last = count($path) - 1;
+        foreach ($path as $n => $k) {
+            if (is_array($k)) {
+                $i = self::element($root, $k[0], $existing || $n < $last, $n < $last);
+                if ($i === null) {
+                    return null;
+                }
+                $root = $root[$i];
+                continue;
+            }
             if (!is_array($root) || !array_key_exists($k, $root)) {
                 return null;
             }
@@ -1240,15 +1239,20 @@ final class Js
     }
 
     /**
-     * Compiled `root.k1[k2]... = value` through objects/Records: the keys and the value were already
-     * evaluated (JS order), and each container on the way that is the empty-object marker becomes a
-     * plain array only now, as it is written into. Returns the value, like a JS assignment.
+     * Compiled `root.k1[k2]... = value`: the keys and the value were already evaluated (JS order),
+     * and each container on the way that is the empty-object marker becomes a plain array only now,
+     * as it is written into. An array step (`[i]`) must name an element that exists now: JS would
+     * grow the array past its end, leaving holes, where a PHP array gains a key and turns into an
+     * object. Returns the value, like a JS assignment.
      */
     public static function write(mixed &$root, array $path, mixed $value): mixed
     {
         $ref = &$root;
-        foreach ($path as $k) {
-            if ($ref instanceof JsObject || $ref === null) {
+        $last = count($path) - 1;
+        foreach ($path as $n => $k) {
+            if (is_array($k)) {
+                $k = self::element($ref, $k[0], true, $n < $last);
+            } elseif ($ref instanceof JsObject || $ref === null) {
                 $ref = [];
             }
             $ref = &$ref[$k];
@@ -1256,6 +1260,36 @@ final class Js
         $ref = $value;
 
         return $value;
+    }
+
+    /** Compiled `place++` / `--place` through a key path: one read, one checked write. */
+    public static function step(mixed &$root, array $path, int $step, bool $prefix): int|float
+    {
+        $old = self::n(self::at($root, $path, true));
+        $new = self::write($root, $path, self::add($old, $step));
+
+        return $prefix ? $new : $old;
+    }
+
+    /**
+     * The PHP key of element `$i` of `$list`, or null when there is none. `$require` throws instead:
+     * a TypeError when something is read through it (as JS does on `undefined`), a RangeError when
+     * it is the element itself (compiled code can't grow an array by index).
+     */
+    private static function element(mixed $list, int|float $i, bool $require, bool $through): ?int
+    {
+        $n = is_array($list) ? count($list) : 0;
+        if (is_finite($i) && $i >= 0 && $i < $n && $i == floor($i)) {
+            return (int) $i;
+        }
+        if (!$require) {
+            return null;
+        }
+        $i = self::numStr($i);
+        if ($through) {
+            throw new JsError("Cannot read or set properties of undefined (array element {$i})", 'TypeError');
+        }
+        throw new JsError("Index {$i} is outside this array (length {$n}); compiled code can't grow an array by index. Use push(), or check the index first", 'RangeError');
     }
 
     /** A JS object value: an empty array that stands for `{}` becomes the marker; anything else as is. */

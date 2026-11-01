@@ -204,11 +204,13 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// An in-place update of an element past the end (`a[2] += 'x'`, `a[5]++`) would make the PHP array
-/// a keyed map that encodes as an object. The index is only known at run time, so compiled code
-/// throws a RangeError there; in-bounds updates match Node (tests/differential `elementUpdates`).
+/// A write through an array index that names no element (`a[2] += 'x'`, `a[5]++`) would make the
+/// PHP array a keyed map that encodes as an object. The index is only known at run time, so compiled
+/// code throws there: a RangeError for the element itself, checked as it writes (after the value
+/// ran), and a TypeError through it, as JS does. In-bounds writes match Node (differential
+/// `elementUpdates`).
 #[test]
-fn element_updates_past_the_end_throw() {
+fn writes_past_an_array_end_throw() {
     let tmp = std::env::temp_dir().join(format!("zero-element-updates-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -221,6 +223,8 @@ export default defineConfig({
   actions: {
     append: action({ input: {}, handler: async () => { const a: string[] = []; a[2] += "x"; return a; } }),
     step: action({ input: {}, handler: async () => { const a: number[] = [1]; a[5]!++; return a; } }),
+    shrunk: action({ input: {}, handler: async () => { const a: number[] = [1, 2, 3]; a[2]! += a.splice(0, 2).length; return a; } }),
+    through: action({ input: {}, handler: async () => { const a: { x: number }[] = []; a[2]!.x = 1; return a; } }),
   },
 });
 "#,
@@ -231,6 +235,8 @@ export default defineConfig({
     for (name, detail) in [
         ("append", "Index 2 is outside this array (length 0)"),
         ("step", "Index 5 is outside this array (length 1)"),
+        ("shrunk", "Index 2 is outside this array (length 1)"),
+        ("through", "Cannot read or set properties of undefined"),
     ] {
         let out = Command::new("php")
             .arg(tmp.join(".zero/app/zero/bin/zero.php"))

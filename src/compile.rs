@@ -156,7 +156,7 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
-    /// `list[i]`: a write here could land past the end (see `index_guard`).
+    /// `list[i]`: the written element itself is an array element (see `index_guard`).
     array_index: bool,
 }
 
@@ -273,8 +273,6 @@ pub struct Compiler<'a, 'p> {
     pub action_results: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
-    /// Set while resolving the place of an in-place element update (see `place_write`).
-    slot_index: bool,
 }
 
 fn closure_key(c: &Rc<Closure>) -> usize {
@@ -298,7 +296,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             collections: &ext.collections,
             type_aliases,
             async_callback: false,
-            slot_index: false,
             helpers: HashMap::new(),
             helper_types: HashMap::new(),
             effects: effects::Effects::default(),
@@ -2195,18 +2192,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
             ExprKind::Update { inc, prefix, target } => {
-                let t = self.place_write(target, IndexWrite::Update)?.read;
+                let AssignmentPlace { read: t, path, .. } = self.place_inner(target, true)?;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
                 // Past ±2^53 the variable becomes a double, as in JS (`Js::add`). Postfix returns the old value.
                 let d = if *inc { "1" } else { "-1" };
-                Out::atom(
-                    format!(
-                        "\\Zero\\Js::{}({}, {d})",
-                        if *prefix { "preStep" } else { "postStep" },
-                        t.php
+                match path.filter(|(_, keys)| !keys.is_empty()) {
+                    // Through the key path, like a compound assignment: each index runs once.
+                    Some((root, keys)) => {
+                        let (pre, ks) = self.key_temps(&keys);
+                        let step = format!("\\Zero\\Js::step({root}, [{}], {d}, {})", ks.join(", "), *prefix);
+                        Out::new(seq(&pre, step), Ty::Num)
+                    }
+                    None => Out::atom(
+                        format!(
+                            "\\Zero\\Js::{}({}, {d})",
+                            if *prefix { "preStep" } else { "postStep" },
+                            t.php
+                        ),
+                        Ty::Num,
                     ),
-                    Ty::Num,
-                )
+                }
             }
             ExprKind::Call {
                 callee, args, optional, ..
@@ -2758,35 +2763,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             constraint,
             path,
             array_index,
-        } = self.place_write(target, IndexWrite::of(op))?;
-        index_guard(array_index, IndexWrite::of(op), span)?;
+        } = self.place_inner(target, true)?;
+        index_guard(array_index, op, span)?;
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
         // it writes. `o["k" + i++] = i` and `o.x = JSON.stringify(o)` behave as in JS.
-        // A compound update reads and writes the place: through the key temporaries too, so an
-        // index with side effects (`a[i++] += 1`) runs once.
-        let object_path = path.filter(|(_, keys)| {
-            !keys.is_empty() && (Self::writes_into_object(&t, keys) || matches!(op, Some(AssignOp::Bin(_))))
-        });
-        let keys_php = object_path.as_ref().map(|(root, keys)| {
-            let mut pre = Vec::new();
-            let mut ks = Vec::new();
-            for k in keys {
-                // Only a lone literal key needs no temporary; any expression (even one that starts
-                // with a quote, like `'k' . $i++`) is evaluated exactly once.
-                let literal =
-                    (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
-                        || (!k.is_empty() && k.chars().all(|c| c.is_ascii_digit()));
-                if literal {
-                    ks.push(k.clone());
-                } else {
-                    let tmp = self.tmp_var();
-                    pre.push(format!("{tmp} = {k}"));
-                    ks.push(tmp);
-                }
-            }
-            (root.clone(), pre, ks)
+        // Array elements go the same way: `Js::write` checks each index against the array as it
+        // writes, after the value ran (see `index_guard`), and each index runs once (`a[i++] += 1`).
+        let keys_php = path.filter(|(_, keys)| !keys.is_empty()).map(|(root, keys)| {
+            let (pre, ks) = self.key_temps(&keys);
+            (root, pre, ks)
         });
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
@@ -2801,7 +2788,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ),
                 );
             }
-            let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
+            // A compound update reads an existing element: `Js::at(…, true)` throws past the end.
+            let read = format!(
+                "\\Zero\\Js::at({root}, [{}]{})",
+                ks.join(", "),
+                if matches!(op, Some(AssignOp::Bin(_))) {
+                    ", true"
+                } else {
+                    ""
+                }
+            );
             let mut bin_ty = None;
             let mut logical_keep = None;
             let new = match op {
@@ -2844,12 +2840,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if let Some(keep) = logical_keep {
                 write = format!("({} ? {read} : {write})", paren(&keep));
             }
-            let php = if pre.is_empty() {
-                write
-            } else {
-                format!("[{}, {write}][{}]", pre.join(", "), pre.len())
-            };
-            return Ok(Out::new(php, ty));
+            return Ok(Out::new(seq(&pre, write), ty));
         }
         if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
             return err(
@@ -2898,20 +2889,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// True when some step of this write path goes through an object/Record value (which may be the
-    /// empty-object marker); array-only paths keep plain PHP writes.
-    fn writes_into_object(_t: &Out, keys: &[String]) -> bool {
-        keys.iter()
-            .any(|k| !k.starts_with("(int) ") && !k.starts_with("\\Zero\\Js::slot("))
-    }
-
-    /// The place a write goes to. An array element updated in place (`+=`, `++`) is addressed
-    /// through `Js::slot`, which throws a RangeError past the end instead of letting PHP add a key.
-    fn place_write(&mut self, target: &Expr, write: IndexWrite) -> Result<AssignmentPlace> {
-        self.slot_index = write == IndexWrite::Update;
-        let r = self.place_inner(target, true);
-        self.slot_index = false;
-        r
+    /// The keys of a write path, each evaluated once into a temporary (JS evaluates the target before
+    /// the value). Only a lone literal key needs none; any expression, even one that starts with a
+    /// quote (`'k' . $i++`), gets one.
+    fn key_temps(&mut self, keys: &[String]) -> (Vec<String>, Vec<String>) {
+        let mut pre = Vec::new();
+        let mut ks = Vec::new();
+        for k in keys {
+            let digits = |k: &str| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
+            let literal =
+                (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
+                    || digits(k)
+                    || k.len() > 2 && k.starts_with('[') && k.ends_with(']') && digits(&k[1..k.len() - 1]);
+            if literal {
+                ks.push(k.clone());
+            } else {
+                let tmp = self.tmp_var();
+                pre.push(format!("{tmp} = {k}"));
+                ks.push(tmp);
+            }
+        }
+        (pre, ks)
     }
 
     fn place_inner(&mut self, target: &Expr, assign_binding: bool) -> Result<AssignmentPlace> {
@@ -3005,15 +3003,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(target.span, "can't index this: it might be null");
                 }
                 let array_index = matches!(o.ty.non_null(), Ty::Array(_));
-                // The written element itself (not one reached through it) of an in-place update.
-                let slot = assign_binding && self.slot_index;
-                let idx = if slot {
-                    format!("\\Zero\\Js::slot({}, {})", o.php, i.php)
-                } else {
-                    format!("(int) {}", i.wrapped())
-                };
                 let (php, ty) = match o.ty.non_null() {
-                    Ty::Array(t) if i.ty.is_num() => (format!("{}[{idx}]", o.php), t.nullable()),
+                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
                     other => {
                         return err(
@@ -3027,8 +3018,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         keys.push(i.php.clone());
                         Some((root, keys))
                     }
+                    // An array step is tagged `[i]` (a PHP key is never an array): `Js::at`/`Js::write`
+                    // only address an element that exists.
                     (Some((root, mut keys)), Ty::Array(_)) => {
-                        keys.push(idx.clone());
+                        keys.push(format!("[{}]", i.php));
                         Some((root, keys))
                     }
                     _ => None,
@@ -5664,34 +5657,13 @@ fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
     }
 }
 
-/// How a write reaches an array element by index.
-#[derive(Clone, Copy, PartialEq)]
-enum IndexWrite {
-    /// `=`, `??=`, `||=`: may create a missing element (the append idiom); refused at build time.
-    Create,
-    /// `+=` and the other compound operators, `++`/`--`: read the element and write the result;
-    /// guarded at runtime by `Js::slot`, which throws past the end.
-    Update,
-    /// `&&=`: a missing element is falsy, so it's never written.
-    Keep,
-}
-
-impl IndexWrite {
-    fn of(op: Option<AssignOp>) -> Self {
-        match op {
-            None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or)) => Self::Create,
-            Some(AssignOp::Log(LogOp::And)) => Self::Keep,
-            Some(AssignOp::Bin(_)) => Self::Update,
-        }
-    }
-}
-
 /// The one gate for writes into an array by index. Past the end JS grows the array (holes read as
 /// `undefined`) while PHP adds a key and the array becomes an object (`[1, , 3]` vs
-/// `{"0":1,"2":3}`). A write that may create an element is refused here; one that updates an
-/// existing element goes through `Js::slot` (see `place_write`).
-fn index_guard(array_index: bool, write: IndexWrite, span: Span) -> Result<()> {
-    if !array_index || write != IndexWrite::Create {
+/// `{"0":1,"2":3}`). `=`, `??=` and `||=` may create the element (the append idiom): refused here.
+/// Every other write through an array index goes through `Js::write`, which throws unless each index
+/// names an element that exists when it writes (`a[i] += v`, `a[i]++`, `a[i] &&= v`, `a[i].x = v`).
+fn index_guard(array_index: bool, op: Option<AssignOp>, span: Span) -> Result<()> {
+    if !array_index || !matches!(op, None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or))) {
         return Ok(());
     }
     err_help(
@@ -5699,4 +5671,13 @@ fn index_guard(array_index: bool, write: IndexWrite, span: Span) -> Result<()> {
         "assigning to an array index can leave holes, which compiled PHP turns into an object",
         "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
     )
+}
+
+/// `[pre…, expr][n]`: run the key temporaries, then the expression, as one PHP expression.
+fn seq(pre: &[String], expr: String) -> String {
+    if pre.is_empty() {
+        expr
+    } else {
+        format!("[{}, {expr}][{}]", pre.join(", "), pre.len())
+    }
 }

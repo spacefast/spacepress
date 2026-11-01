@@ -519,7 +519,7 @@ final class Schema
     private static function json(string $v): mixed
     {
         try {
-            return Js::decodeJson($v);
+            return Js::decodeJson($v, 2147483647);
         } catch (\JsonException) {
             return null;
         }

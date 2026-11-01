@@ -155,6 +155,10 @@ export default defineConfig({
     }),
   },
   hooks: {
+    subscribers: {
+      beforeCreate(data) { data.email = data.email.toLowerCase(); },
+      beforeUpdate(data) { const email = data.email; if (email != null) data.email = email.toLowerCase(); },
+    },
     posts: {
       // Each time a post becomes published (through the API or the editor) readers hear about it;
       // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock

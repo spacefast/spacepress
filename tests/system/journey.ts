@@ -107,9 +107,12 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
   let tagline!: string;
 
   await t.test("readers sign up for the newsletter", async () => {
-    for (const n of [1, 2, 3]) assert.deepEqual(await anon.actions.subscribeNewsletter({ email: `reader-${n}-${run}@example.test` }), { accepted: true });
     const email = `reader-1-${run}@example.test`;
-    assert.deepEqual(await Promise.all([anon.actions.subscribeNewsletter({ email }), anon.actions.subscribeNewsletter({ email })]), [{ accepted: true }, { accepted: true }]);
+    const seeded = await admin.subscribers.create({ email: `Seed-${run}@EXAMPLE.TEST` });
+    assert.equal(seeded.email, `seed-${run}@example.test`, "direct creates normalize email before storage");
+    assert.equal((await admin.subscribers.update(seeded.id, { email: email.toUpperCase() })).email, email, "direct updates normalize email before storage");
+    for (const n of [1, 2, 3]) assert.deepEqual(await anon.actions.subscribeNewsletter({ email: `reader-${n}-${run}@example.test` }), { accepted: true });
+    assert.deepEqual(await Promise.all([anon.actions.subscribeNewsletter({ email }), anon.actions.subscribeNewsletter({ email: email.toUpperCase() })]), [{ accepted: true }, { accepted: true }]);
     await env.runJobs();
     assert.deepEqual(await anon.actions.subscribeNewsletter({ email }), { accepted: true }, "an existing private subscription has the same acknowledgement");
     await env.runJobs();

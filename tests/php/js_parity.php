@@ -97,7 +97,7 @@ $cases = [
     // An explicit null position is ToNumber(null) = 0, not an omitted argument (compiled
     // String.prototype.lastIndexOf gets `undefined` as omitted, decided at build time).
     ['["ab".lastIndexOf("b", null), "ab".lastIndexOf("b"), [1, 2].lastIndexOf(2, null), [1, 2].includes(1, null), "ab".at(null), [1, 2].at(null), "ab".indexOf("b", null)]',
-        fn () => [Js::lastIndexOf('ab', 'b', null), Js::lastIndexOf('ab', 'b'), Js::lastIndexOf([1, 2], 2, null), Js::includes([1, 2], 1, null), Js::strAt('ab', null), Js::arrAt([1, 2], null), Js::indexOf('ab', 'b', null)]],
+        fn () => [Js::lastIndexOf('ab', 'b', null), Js::lastIndexOf('ab', 'b'), Js::lastIndexOf(new JsArray([1, 2]), 2, null), Js::includes(new JsArray([1, 2]), 1, null), Js::strAt('ab', null), Js::arrAt(new JsArray([1, 2]), null), Js::indexOf('ab', 'b', null)]],
     // Whole characters round-trip through unit indexes.
     ['["a🙂b".slice(1, 3), "a🙂".charAt(0), "🙂x".slice(2), "a".padEnd(3, "🙂"), "🙂".at(-3) ?? null]',
         fn () => [Js::slice('a🙂b', 1, 3), Js::charAt('a🙂', 0), Js::slice('🙂x', 2), Js::padEnd('a', 3, '🙂'), Js::strAt('🙂', -3)]],
@@ -344,12 +344,8 @@ function mismatch(mixed $actual, mixed $exp, string $path = ''): ?string
     return $actual === $exp ? null : "$path: expected " . $show($exp) . ', got ' . $show($actual);
 }
 
-// Documented deviations from JS (contract-defined), asserted directly against PHP.
-$deviations = [
-    ['String(undefined): undefined is null in the value model', fn () => Js::str(null), 'null'],
-    ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
-    ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
-    ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
+// UTF-16 subset restrictions complement the dense-array restrictions above.
+$deviations = array_merge($deviations, [
     // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
     ['inserting inside a surrogate pair throws', fn () => [Js::replaceAll('🙂', '', '-'), Js::replace('🙂', Js::re('(?:)', 'g'), '-')], ['$err' => 'RangeError']],
     ['$` inside a surrogate pair throws', fn () => Js::replaceAll('🙂', '', '$`'), ['$err' => 'RangeError']],
@@ -361,14 +357,15 @@ $deviations = [
     ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
     ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
-    ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
+    ['slice ending inside a pair throws', fn () => Js::slice('a🙂b', 0, 2), ['$err' => 'RangeError']],
+    ['slice starting inside a pair throws', fn () => Js::slice('a🙂b', 2), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],
-    ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1), ['a']],
+    ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1)->a, ['a']],
     ['split("", limit) splitting a pair within the limit throws', fn () => Js::split('a🙂b', '', 2), ['$err' => 'RangeError']],
     ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
     ['an unused JSON gap cut through a pair is fine', fn () => [Js::jsonStringify(1, '123456789🙂'), Js::jsonStringify([], '123456789🙂'), Js::jsonStringify(['f' => static fn () => 1], '123456789🙂')], ['1', '[]', '{}']],
     ['a used JSON gap cut through a pair throws', fn () => Js::jsonStringify([1], '123456789🙂'), ['$err' => 'RangeError']],
-];
+]);
 
 $passed = 0;
 $failed = 0;

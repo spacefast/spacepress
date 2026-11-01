@@ -558,15 +558,11 @@ final class Js
     private static function fromUnits(string $u): string
     {
         $n = strlen($u);
-        for ($i = 0; $i + 1 < $n; $i += 2) {
-            $c = ord($u[$i]) | (ord($u[$i + 1]) << 8);
-            if ($c >= 0xD800 && $c <= 0xDBFF) {
-                $next = $i + 3 < $n ? (ord($u[$i + 2]) | (ord($u[$i + 3]) << 8)) : 0;
-                if ($next < 0xDC00 || $next > 0xDFFF) {
-                    self::loneSurrogate();
-                }
-                $i += 2;
-            } elseif ($c >= 0xDC00 && $c <= 0xDFFF) {
+        // The input is a contiguous slice of well-formed UTF-16; only its boundaries can split a pair.
+        if ($n >= 2) {
+            $first = ord($u[0]) | (ord($u[1]) << 8);
+            $last = ord($u[$n - 2]) | (ord($u[$n - 1]) << 8);
+            if (($first >= 0xDC00 && $first <= 0xDFFF) || ($last >= 0xD800 && $last <= 0xDBFF)) {
                 self::loneSurrogate();
             }
         }
@@ -1105,10 +1101,10 @@ final class Js
         }
     }
 
-    public static function includes(JsArray $a, mixed $value, int|float $from = 0): bool
+    public static function includes(JsArray $a, mixed $value, mixed $from = 0): bool
     {
         $len = count($a->a);
-        $from = self::toInteger($from);
+        $from = self::toInteger(self::toNumber($from));
         $start = $from < 0 ? max(0, $len + $from) : min($from, $len);
         for ($i = (int) $start; $i < $len; $i++) {
             if (self::sameValueZero($a->a[$i], $value)) { return true; }
@@ -1148,7 +1144,7 @@ final class Js
         $i = self::toNumber($i);
         $len = count($a->a);
         $i = self::toInteger($i);
-        return self::get($a, $i < 0 ? count($a->a) + $i : $i);
+        return self::get($a, $i < 0 ? $len + $i : $i);
     }
 
     public static function push(JsArray $a, mixed ...$values): int

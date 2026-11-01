@@ -491,8 +491,7 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
-`int|float`; `string` = PHP `string` (UTF-8, indexes count Unicode code
-points); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+`int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
 with identity; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
@@ -526,15 +525,16 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
 - `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
-- `indexOf(string|array $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
+- `indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
-- `split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray` (`""` separator → code points)
+- `split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray` (`""` separator → UTF-16 code units; splitting a pair throws)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
 - `trim(string $s): string`, `trimStart`, `trimEnd` (JS whitespace incl. Unicode spaces and line terminators)
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
 - `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
+- `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
 
 Every runtime and emitted `mb_*` call passes explicit encodings; Zero never

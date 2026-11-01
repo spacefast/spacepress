@@ -120,9 +120,30 @@ const laneRefs = {
   }),
   refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
   refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
-  refsIndexLogical: run(() => { const values = [true]; values[0] &&= true; return values; }),
+  refsIndexLogical: run(() => {
+    const values: (boolean | null)[] = [true, false, null];
+    let calls = 0;
+    const rhs = () => { calls++; return true; };
+    values[0] &&= rhs(); values[1] ||= rhs(); values[2] ??= rhs();
+    values[0] ||= rhs(); values[1] ??= rhs();
+    const empty: true[] = [];
+    const skipped = (empty[0] &&= true);
+    return [values, calls, skipped === true, empty.length];
+  }),
+  refsIndexAppend: run(() => { const a: number[] = []; a[0] = 5; a[a.length] = 6; a[0]!--; return a; }),
+  refsIndexNullishAppend: run(() => { const a: (number | null)[] = [null]; a[0] ??= 5; a[1] ??= 6; return a; }),
   refsIndexMemberWrite: run(() => { const a = [{ x: 0 }, { x: 0 }, { x: 0 }]; a[2]!.x = 1; return a; }),
   refsObjectLoopBinding: run(() => { const fns: (() => number)[] = []; for (let s = { x: 0 }; s.x < 3; s.x++) fns.push(() => s.x); return fns.map(f => f()); }),
+  refsReplacedLoopBinding: run(() => {
+    const objectReaders: (() => number)[] = [];
+    for (let s = { x: 0 }; s.x < 3; s = { x: s.x + 1 }) {
+      objectReaders.push(() => s.x);
+      if (s.x === 1) continue;
+    }
+    const arrayReaders: (() => number)[] = [];
+    for (let s = [0]; s[0]! < 3; s = [s[0]! + 1]) arrayReaders.push(() => s[0]!);
+    return [objectReaders.map(f => f()), arrayReaders.map(f => f())];
+  }),
   refsCaptured: run(() => { capturedPairs[0]!.n = 7; return [capturedPairs[0] === capturedPairs[1], capturedOther.inner === sharedCaptured, capturedOther.inner.n]; }),
   refsCapturedOtherRoot: run(() => { capturedOther.inner.n = 9; return capturedPairs[1]!.n; }),
   refsCallbackArray: run(() => { const a = [1, 2]; return a.map((v, i, source) => { source[1] = 5; return [v, i, source === a]; }); }),

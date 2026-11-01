@@ -1144,38 +1144,10 @@ fn rejects_phase2_static_contracts() {
             "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
             "function expects",
         ),
-        (
-            "const a: number[] = []; a[2] = 5; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: (number | null)[] = []; a[2] ??= 5; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: string[] = []; a[2] += 'x'; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: number[] = [1]; a[5]!++; return a.length === 6;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const values: true[] = []; const value = (values[0] &&= true); return value === true;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: { x: number }[] = []; a[2]!.x = 1; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         (
             "return 'ab'.lastIndexOf('b', Number(undefined)) === 1;",
             "position must be a literal number, null or undefined",
-        ),
-        (
-            "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
-            "holds an object or array",
         ),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

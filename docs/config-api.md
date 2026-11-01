@@ -464,7 +464,10 @@ Optional parameters include null in body reads; defaults supply missing values.
 Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook, `await` on
+`eval`/`Function`, assigning to module-level state from a hook,
+`includes`/`startsWith`/`endsWith` on a string with a position (slice first),
+a string `lastIndexOf` position other than a numeric, null or undefined literal
+(use a literal position or omit it; PHP erases runtime undefined into null), `await` on
 anything that isn't a Zero API call or your own `async` function, an `async`
 call without `await`.
 

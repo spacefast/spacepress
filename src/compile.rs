@@ -1101,9 +1101,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => String::new(),
                 };
                 // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
-                // it saw. PHP closures capture by reference, so a captured primitive loop variable
-                // moves to a fresh cell before each update (earlier closures keep theirs; `continue`
-                // too). A captured object or array loop variable is refused.
+                // it saw. A fresh cell before each update keeps earlier closures on their binding,
+                // including across `continue`; copying a handle preserves the object identity.
                 let fresh: Vec<String> = match init.as_deref() {
                     Some(Stmt::Decl {
                         kind: DeclKind::Let,
@@ -1118,20 +1117,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let mut locals: Vec<&Local> =
                             scope.values().filter(|l| captured.contains(&l.binding)).collect();
                         locals.sort_by(|a, b| a.php.cmp(&b.php));
-                        // A cell copies the value: faithful for primitives only. JS's per-iteration
-                        // bindings of an object all point at one object; PHP copies would diverge.
-                        if let Some(l) = locals.iter().find(|l| !primitive(&l.ty)) {
-                            let name = l.php.trim_start_matches('$');
-                            return err_help(
-                                l.binding,
-                                format!(
-                                    "a closure captures the loop variable `{name}`, which holds an object or array: each iteration would get its own copy in compiled PHP"
-                                ),
-                                format!(
-                                    "loop over a number or string instead, or copy what the closure needs into a `const` inside the loop body (`const snapshot = {name}.x;`)"
-                                ),
-                            );
-                        }
                         locals
                             .into_iter()
                             .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
@@ -2844,7 +2829,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         return err(target.span, format!("can't assign to `{n}`: it's a constant"));
                     }
                     Ok(AssignmentPlace {
-                        through_element: false,
                         constraint: l.constraint,
                         target: None,
                         read: Out::atom(l.php, l.ty),
@@ -2888,7 +2872,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .unwrap_or_else(|| if optional { ft.nullable() } else { ft });
                 let read = Out::atom(format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
-                    through_element,
                     constraint,
                     read,
                     target: Some(WriteTarget {
@@ -5282,25 +5265,6 @@ fn pure_read(e: &Expr) -> bool {
     }
 }
 
-/// Whether every value of `t` is a primitive (copied and shared alike in JS and PHP).
-fn primitive(t: &Ty) -> bool {
-    match t {
-        Ty::Union(ts) => ts.iter().all(primitive),
-        Ty::Num
-        | Ty::NumLit(_)
-        | Ty::FreshNumLit(_)
-        | Ty::Str
-        | Ty::StrLit(_)
-        | Ty::FreshStrLit(_)
-        | Ty::Bool
-        | Ty::BoolLit(_)
-        | Ty::FreshBoolLit(_)
-        | Ty::Null
-        | Ty::Date => true,
-        _ => false,
-    }
-}
-
 /// The binding spans a pattern introduces, in source order.
 fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
     match p {
@@ -5323,22 +5287,6 @@ fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
             }
         }
     }
-}
-
-/// Writes into an array element, or through one (`list[i] = v`, `list[i] += v`, `list[i]++`,
-/// `list[i].x = v`), are refused. Past the end JS grows the array (holes read as `undefined`) while
-/// PHP adds a key and the array becomes an object (`[1, , 3]` vs `{"0":1,"2":3}`); a write through a
-/// missing element must throw a TypeError before the value runs. Doing either faithfully needs the
-/// array to be a handle, not a PHP value: that is the handle switch's job (design #79).
-fn element_write(through_element: bool, span: Span) -> Result<()> {
-    if !through_element {
-        return Ok(());
-    }
-    err_help(
-        span,
-        "changing an array element in place isn't supported: compiled PHP can't grow an array by index",
-        "build the new array instead (`list.map((v, j) => j === i ? next : v)`), or `list.push(value)` to append",
-    )
 }
 
 /// Numeric literals may have signs and erased type annotations, but no runtime computation.

@@ -261,7 +261,9 @@ sure WP-Cron or a real cron reaches the site.
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
 
-[`docs/examples.md`](docs/examples.md) walks through each one and how to run it.
+[`docs/examples.md`](docs/examples.md) walks through each one and how to run it;
+its blog tour still opens with the standalone target and is being rewritten
+with the WordPress-only cut, so follow its WordPress section.
 
 ## Docs
 

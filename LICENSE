@@ -21,7 +21,8 @@ MIT (full text in LICENSE-MIT)
   everything else not listed above
 
 How the two meet. The compiler binary embeds the GPL runtime files as opaque
-bytes and writes them out unchanged into the plugins it emits; it never links
+bytes and writes them into the plugins it emits, the runtime unchanged and the
+plugin headers with their version placeholders filled in; it never links
 against, calls into or derives from them. The runtime is to the compiler what
 an installer's payload is to the installer: distributed together, but
 separate works. The compiler's sources stay MIT, and because the packaged

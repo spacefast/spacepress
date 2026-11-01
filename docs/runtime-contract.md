@@ -497,6 +497,10 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
+Configuration evaluation uses the same UTF-16 units for numeric string indexes,
+`slice` and `split("")`; a result containing a lone surrogate is rejected with a
+located build diagnostic. `split` applies its limit before converting units.
+
 String `lastIndexOf` accepts only literal number/null/undefined positions; a
 runtime position can hide the erased null/undefined distinction behind an alias,
 assertion or call. Omit the position or use a literal instead.

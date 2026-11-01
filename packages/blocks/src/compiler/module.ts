@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire, SourceMap } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, type Plugin } from "esbuild";
 
@@ -72,11 +72,12 @@ function esbuildLocation(root: string, message: EsbuildMessage): SourceLocation 
  */
 function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scratch: string): SourceLocation | undefined {
   if (!(error instanceof Error) || typeof error.stack !== "string") return undefined;
-  const runtimeDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  // fileURLToPath, not URL.pathname: a space in the package or temp path is `%20` in the URL and a space on disk.
+  const runtimeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   for (const line of error.stack.split("\n")) {
     const match = /\(?((?:file:\/\/)?\/[^():]+\.[cm]?[jt]sx?):(\d+):(\d+)\)?\s*$/.exec(line);
     if (!match) continue;
-    const file = match[1]!.startsWith("file://") ? new URL(match[1]!).pathname : match[1]!;
+    const file = match[1]!.startsWith("file://") ? fileURLToPath(match[1]!) : match[1]!;
     if (file !== bundlePath) continue;
     const origin = map.findOrigin(Number(match[2]), Number(match[3]));
     if (!("fileName" in origin) || typeof origin.fileName !== "string") continue;

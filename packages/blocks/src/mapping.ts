@@ -237,7 +237,13 @@ class Mapper {
   /** The block attributes every mapped tag carries when the author asked for them. */
   private common(node: ElementNode): BlockAttributes {
     const attrs: BlockAttributes = {};
-    const className = this.text(node, "class") ?? this.text(node, "className");
+    const spelledClass = this.text(node, "class");
+    const spelledClassName = this.text(node, "className");
+    if (spelledClass !== null && spelledClassName !== null) {
+      // Two spellings of one attribute; the block has one place for it, so the second is not merged or dropped.
+      this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${node.tag}> has both "class" and "className"; they are one attribute.`, hint: "Keep one of them.", loc: node.loc });
+    }
+    const className = spelledClass ?? spelledClassName;
     if (className !== null) attrs.className = className;
     // `id` is Gutenberg's `anchor`: the same thing an author links a heading by.
     const anchor = this.text(node, "id");

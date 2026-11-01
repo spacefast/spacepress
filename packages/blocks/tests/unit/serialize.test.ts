@@ -355,6 +355,30 @@ test("a second document serializes like the first", async () => {
   assert.equal((await serializeBlocks(tree)).markup, (await serializeBlocks(tree)).markup);
 });
 
+test("an outer DOM call does not finish, and the globals stay, until a nested call it left running has ended", async () => {
+  const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let nested!: Promise<void>;
+  let outerDone = false;
+  const outer = withBlockApi(async () => {
+    nested = withBlockApi(async () => {
+      await hold;
+      assert.equal(typeof (globalThis as Record<string, unknown>).document, "object");
+    });
+  }).then(() => {
+    outerDone = true;
+  });
+  await turn();
+  assert.equal(outerDone, false);
+  assert.equal(typeof (globalThis as Record<string, unknown>).document, "object");
+  release();
+  await Promise.all([outer, nested]);
+  assert.equal("document" in globalThis, false);
+});
+
 test("the DOM globals exist only while serializing, and nested calls share one installation", async () => {
   assert.equal("document" in globalThis, false);
   await withBlockApi(async () => {

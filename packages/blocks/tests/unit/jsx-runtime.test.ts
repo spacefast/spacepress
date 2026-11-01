@@ -107,6 +107,28 @@ test("an error with no position of its own keeps the call site aside rather than
   );
 });
 
+test("the same error thrown from two call sites names each call site, not the first", () => {
+  let cached: unknown;
+  const Card = () => {
+    try {
+      return createElement("p", null, new Date(0));
+    } catch (error) {
+      cached ??= error;
+      throw cached;
+    }
+  };
+  const at = (line: number) => ({ fileName: "/page.tsx", lineNumber: line, columnNumber: 3 });
+  const calledFrom = (line: number) => {
+    try {
+      jsxDEV(Card, {}, undefined, false, at(line));
+    } catch (error) {
+      return (error as ContentError).calledFrom?.line;
+    }
+    return undefined;
+  };
+  assert.deepEqual([calledFrom(7), calledFrom(19)], [7, 19]);
+});
+
 test("the classic transform's createElement builds the same node as jsx", () => {
   assert.deepEqual(createElement("p", { class: "lead" }, "a", jsx("em", { children: "b" })), jsx("p", { class: "lead", children: ["a", jsx("em", { children: "b" })] }));
   assert.deepEqual(createElement("hr", null), jsx("hr", {}));

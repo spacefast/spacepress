@@ -119,9 +119,13 @@ function usedAt(error: unknown, loc: SourceLocation | undefined): unknown {
   if (error.loc === undefined) {
     // No position of its own (the classic transform's createElement gets none): the call site must
     // not stand in for it, or the authored line would be lost. The compiler reads that line from
-    // the stack; the innermost call site waits here to be joined to it.
-    error.calledFrom ??= loc;
-    return error;
+    // the stack; the innermost call site waits on a copy to be joined to it. A copy, because the
+    // same error object may be thrown again from another call site.
+    if (error.calledFrom !== undefined) return error;
+    const kept = new ContentError(error.code, error.message);
+    kept.calledFrom = loc;
+    if (error.stack !== undefined) kept.stack = error.stack;
+    return kept;
   }
   if (error.loc.usedAt !== undefined || sameLocation(error.loc, loc)) return error;
   const relocated = new ContentError(error.code, error.message, { ...error.loc, usedAt: loc });

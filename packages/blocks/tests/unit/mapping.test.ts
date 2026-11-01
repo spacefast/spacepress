@@ -168,6 +168,13 @@ test("a class or id on both a figure and its img is a collision, not a silent ov
   assert.match(diagnostics[1]!.message, /"id"/);
 });
 
+test("class and className on one element are a collision, not a silent choice", () => {
+  const at = { fileName: "/t/page.tsx", lineNumber: 3, columnNumber: 1 };
+  const { diagnostics } = map(jsxDEV("p", { class: "a", className: "b", children: "x" }, undefined, false, at));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 3]]);
+  assert.match(diagnostics[0]!.message, /both "class" and "className"/);
+});
+
 test("a class on the img alone reaches the image block", () => {
   const { blocks, diagnostics } = map(jsx("figure", { children: jsx("img", { src: "/a.png", class: "inner" }) }));
   assert.deepEqual(diagnostics, []);

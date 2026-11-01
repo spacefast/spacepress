@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { compileContent } from "../../src/compiler/content.ts";
 import { allValid, brief, fixture, names, reparse } from "./helpers.ts";
@@ -35,6 +37,26 @@ test("an error from a classic-fallback element inside a component names the comp
   // esbuild gives the classic fallback no position, so the line comes from the stack: the authored line, at the call's column.
   assert.deepEqual(result.diagnostics.map((d) => [d.code, d.loc?.file, d.loc?.line]), [["not_content", fixture("fallback-card.tsx"), 3]]);
   assert.deepEqual(result.diagnostics[0]!.loc?.usedAt, { file: fixture("uses-fallback-card.tsx"), line: 7, column: 7 });
+});
+
+test("a thrown error is located in the author's file when the author's and the scratch paths contain a space", async () => {
+  const base = mkdtempSync(path.join(tmpdir(), "zero blocks "));
+  const authored = path.join(base, "my site");
+  const scratch = path.join(base, "tmp dir");
+  cpSync(fixture("throws.tsx"), path.join(authored, "throws.tsx"), { recursive: true });
+  mkdirSync(scratch);
+  const before = process.env.TMPDIR;
+  process.env.TMPDIR = scratch;
+  try {
+    const result = await compileContent(path.join(authored, "throws.tsx"));
+    assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: path.join(authored, "throws.tsx"), line: 2, column: 9 }]);
+    const fallback = await compileContent(fixture("uses-fallback-card.tsx"));
+    assert.deepEqual(fallback.diagnostics.map((d) => [d.code, d.loc?.file, d.loc?.usedAt?.line]), [["not_content", fixture("fallback-card.tsx"), 7]]);
+  } finally {
+    if (before === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = before;
+    rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test("a module never sees the serializer's DOM, whatever else is compiling at the same time", async () => {

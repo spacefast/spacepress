@@ -570,15 +570,6 @@ final class Js
         return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
     }
 
-    /** A stand-in for one half of a surrogate pair (a noncharacter: never in real text, see splitPair). */
-    public const HALF = "\u{FDD0}";
-
-    /** `$s` with the 4-byte character at byte `$pos` replaced by two HALF stand-ins. */
-    public static function splitPair(string $s, int $pos): string
-    {
-        return substr($s, 0, $pos) . self::HALF . self::HALF . substr($s, $pos + 4);
-    }
-
     /** A result would hold a lone surrogate: see loneSurrogate(). */
     public static function splitsPair(): never
     {
@@ -708,16 +699,18 @@ final class Js
         $n = self::units(self::str($needle));
         $len = intdiv(strlen($u), 2);
         $start = $from === null || is_nan($from) ? $len : self::clampIndex($from, $len);
-        // Only matches starting at or before unit $start; skip odd (unit-straddling) offsets.
-        $hay = substr($u, 0, 2 * $start + strlen($n));
-        while (($found = strrpos($hay, $n)) !== false) {
+        if ($n === '') {
+            return $start;
+        }
+        // Walk the original buffer once, retaining the last aligned match within the bound.
+        $last = -1;
+        for ($at = 0; ($found = strpos($u, $n, $at)) !== false && $found <= 2 * $start; $at = $found + 1) {
             if ($found % 2 === 0) {
-                return intdiv($found, 2);
+                $last = intdiv($found, 2);
             }
-            $hay = substr($hay, 0, $found + strlen($n) - 1);
         }
 
-        return -1;
+        return $last;
     }
 
     /** @return list<?string> */
@@ -881,13 +874,11 @@ final class Js
             [$start, $end, $groups, $names] = $match;
             // An empty match between the two halves of a surrogate pair (see RegExp::insidePair),
             // one unit past the character's start: anything inserted there splits the pair. A
-            // template expands against the split string, so `` $` `` and `$'` carry a half.
+            // template's `` $` `` and `$'` would carry a half too.
             $between = $match[4] ?? false;
             $matched = substr($s, $start, $end - $start);
             if (is_string($replacement)) {
-                $rep = $between
-                    ? self::expandReplacement($replacement, self::splitPair($s, $start), $start + strlen(self::HALF), $start + strlen(self::HALF), $groups, $named ? $names : null)
-                    : self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
+                $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null, $between);
             } else {
                 $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s]));
             }
@@ -907,20 +898,20 @@ final class Js
      * @param list<?string> $groups
      * @param ?array<string, ?string> $names null when the pattern has no named groups
      */
-    private static function expandReplacement(string $tpl, string $s, int $start, int $end, array $groups, ?array $names): string
+    private static function expandReplacement(string $tpl, string $s, int $start, int $end, array $groups, ?array $names, bool $between = false): string
     {
         if (!str_contains($tpl, '$')) {
             return $tpl;
         }
         $m = count($groups);
 
-        return preg_replace_callback('/\$(?:(\$)|(&)|(`)|(\')|(\d\d?)|<([^>]*)>)/', static function (array $x) use ($s, $start, $end, $groups, $names, $m): string {
+        return preg_replace_callback('/\$(?:(\$)|(&)|(`)|(\')|(\d\d?)|<([^>]*)>)/', static function (array $x) use ($s, $start, $end, $groups, $names, $m, $between): string {
             $tok = $x[0];
             return match (true) {
                 $tok === '$$' => '$',
                 $tok === '$&' => substr($s, $start, $end - $start),
-                $tok === '$`' => substr($s, 0, $start),
-                $tok === "\$'" => substr($s, $end),
+                $tok === '$`' => $between ? self::loneSurrogate() : substr($s, 0, $start),
+                $tok === "\$'" => $between ? self::loneSurrogate() : substr($s, $end),
                 $tok[1] === '<' => $names === null ? $tok : ($names[$x[6]] ?? ''),
                 default => self::numberedGroup($x[5], $groups, $m),
             };

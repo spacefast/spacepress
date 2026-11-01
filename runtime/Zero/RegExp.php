@@ -16,12 +16,14 @@ final class RegExp implements \Stringable
 {
     private const LINE_TERMINATORS = '\n\r\x{2028}\x{2029}';
     private const WORD = 'A-Za-z0-9_';
+    private const HALF = "\u{FDD0}";
 
     public readonly string $source;
     public readonly string $flags;
     public readonly bool $global;
     /** The compiled PCRE pattern, including delimiters and modifiers. */
     public readonly string $pattern;
+    private readonly string $anchoredPattern;
     /** @var list<string> named groups, in declaration order */
     private array $names = [];
     private int $groupCount = 0;
@@ -63,6 +65,9 @@ final class RegExp implements \Stringable
         $this->pos = 0;
         $body = $this->translate();
         $this->pattern = '/' . $body . '/u' . (in_array('i', $chars, true) ? 'i' : '');
+        $this->anchoredPattern = $this->pattern . 'A';
+        $this->requiresUnicodeOnAstral = $this->requiresUnicodeOnAstral
+            || preg_match('/[\x{10000}-\x{10FFFF}]/u', $source) === 1;
 
         set_error_handler(static fn () => true);
         try {
@@ -95,9 +100,9 @@ final class RegExp implements \Stringable
      *
      * @return ?array{int, int, list<?string>, array<string, ?string>} [start, end, groups, named groups]
      */
-    public function matchAt(string $s, int $offset): ?array
+    public function matchAt(string $s, int $offset, bool $anchored = false): ?array
     {
-        $r = preg_match($this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset);
+        $r = preg_match($anchored ? $this->anchoredPattern : $this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset);
         if ($r === false) {
             throw new JsError('RegExp execution failed: ' . preg_last_error_msg());
         }
@@ -132,19 +137,39 @@ final class RegExp implements \Stringable
     {
         if (!$this->unicode && $this->requiresUnicodeOnAstral
             && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
-            throw new JsError('Character classes, lookarounds and lone-surrogate escapes on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError');
+            throw new JsError('Character classes, lookarounds and surrogate or astral literals on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError');
+        }
+        // Expand once; every probe then runs anchored against this shared buffer. Mapping the
+        // original byte positions keeps callback offsets and ordinary matches on the real string.
+        $insideOffsets = [];
+        $shadow = $this->unicode ? $s : preg_replace_callback(
+            '/[\x{10000}-\x{10FFFF}]/u',
+            static function (array $m) use (&$insideOffsets): string {
+                $pos = $m[0][1];
+                $insideOffsets[$pos] = $pos + (2 * strlen(self::HALF) - 4) * count($insideOffsets) + strlen(self::HALF);
+
+                return self::HALF . self::HALF;
+            },
+            $s,
+            -1,
+            $count,
+            PREG_OFFSET_CAPTURE,
+        );
+        // Starting at zero lets PHP cache UTF-8 validity across the interior probes.
+        if ($shadow === null || preg_match('//u', $shadow) === false) {
+            throw new JsError('RegExp execution failed: ' . preg_last_error_msg());
         }
         $out = [];
         $offset = 0;
         $size = strlen($s);
         while ($offset <= $size) {
             $m = $this->matchAt($s, $offset);
-            if (!$this->unicode) {
+            if ($insideOffsets !== []) {
                 // PCRE may find no boundary match at the astral character's start. Try every
                 // in-pair position before the next ordinary match, including when none exists.
                 $until = $m[0] ?? $size;
                 for ($scan = $offset; $scan < $until; $scan += Js::charLenAt($s, $scan)) {
-                    if (Js::charLenAt($s, $scan) === 4 && ($in = $this->insidePair($s, $scan)) !== null) {
+                    if (isset($insideOffsets[$scan]) && ($in = $this->insidePair($shadow, $insideOffsets[$scan], $scan)) !== null) {
                         $out[] = $in;
                     }
                 }
@@ -154,7 +179,7 @@ final class RegExp implements \Stringable
             }
             $out[] = $m;
             $offset = $m[1] > $m[0] ? $m[1] : $m[1] + Js::charLenAt($s, $m[1]);
-            if ($m[1] === $m[0] && !$this->unicode && $offset - $m[1] === 4 && ($in = $this->insidePair($s, $m[1])) !== null) {
+            if ($m[1] === $m[0] && isset($insideOffsets[$m[1]]) && ($in = $this->insidePair($shadow, $insideOffsets[$m[1]], $m[1])) !== null) {
                 $out[] = $in;
             }
         }
@@ -165,19 +190,19 @@ final class RegExp implements \Stringable
     /**
      * The match JS finds between the two halves of the surrogate pair at byte `$pos`, if any: an
      * empty match there, flagged with a fifth element. PCRE can't stand inside a UTF-8 character,
-     * so the pattern runs on `Js::splitPair($s, $pos)`, where the halves are two noncharacter
+     * so the pattern runs on a shared shadow string, where every pair becomes two noncharacter
      * stand-ins. An empty match only looks at its neighbours through anchors, `\b`/`\B` (a half
-     * and a stand-in are both non-word, non-line-terminator) and literals. Character classes, lookarounds and lone-surrogate escapes could
-     * tell the stand-in from the half, so matchAll refuses those before trying any stand-in.
+     * and a stand-in are both non-word, non-line-terminator) and literals. Character classes,
+     * lookarounds and surrogate or astral literals could distinguish the representation, so
+     * matchAll refuses those before trying any stand-in.
      * A match that consumes a half
      * would make a lone surrogate, which throws (the documented deviation).
      *
      * @return ?array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4: true}
      */
-    private function insidePair(string $s, int $pos): ?array
+    private function insidePair(string $shadow, int $at, int $pos): ?array
     {
-        $at = $pos + strlen(Js::HALF);
-        $m = $this->matchAt(Js::splitPair($s, $pos), $at);
+        $m = $this->matchAt($shadow, $at, true);
         if ($m === null || $m[0] !== $at) {
             return null;
         }
@@ -345,6 +370,7 @@ final class RegExp implements \Stringable
         if ($cp >= 0xD800 && $cp <= 0xDBFF && preg_match('/\G\\\\u([dD][c-fC-F][0-9A-Fa-f]{2})/A', $this->src, $lo, 0, $this->pos)) {
             $this->pos += 6;
             $cp = 0x10000 + (($cp - 0xD800) << 10) + (hexdec($lo[1]) - 0xDC00);
+            $this->requiresUnicodeOnAstral = true;
         } elseif ($cp >= 0xD800 && $cp <= 0xDFFF) {
             $this->requiresUnicodeOnAstral = true;
             return '(?!)'; // a lone surrogate can never occur in UTF-8 input

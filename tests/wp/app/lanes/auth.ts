@@ -24,6 +24,8 @@ export const members = collection("members", {
   address: group({ fields: {
     city: text().max(40),
     source: text().notNull().default("signup").access({ update: "admin" }),
+    channel: text().notNull().$default(() => "member").access({ update: "admin" }),
+    since: timestamp().notNull().default("2026-07-01T12:30:00.000Z").access({ update: "admin" }),
     verified: boolean().notNull().default(false).access({ update: "admin" }),
     optional: boolean().default(true).access({ update: "admin" }),
     prefs: group({ fields: { bio: text() } }).access({ update: "admin" }),

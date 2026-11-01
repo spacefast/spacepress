@@ -149,9 +149,11 @@ final class ProfileForm
     public static function begin(mixed $userId): void
     {
         $plugin = Plugin::instance();
-        if ($plugin === null || ($plugin->schema->auth()['collection'] ?? null) === null || $plugin->unavailable() !== null
-            || $plugin->connection()->busy() || $plugin->connection()->inTransaction()) {
+        if ($plugin === null || ($plugin->schema->auth()['collection'] ?? null) === null) {
             return;
+        }
+        if ($plugin->unavailable() !== null || $plugin->connection()->busy() || $plugin->connection()->inTransaction()) {
+            wp_die(esc_html(Plugin::UNAVAILABLE), 'Zero', ['response' => 503, 'back_link' => true]);
         }
         $plugin->connection()->begin();
         self::$open = ['user' => (int) $userId, 'patch' => []];
@@ -397,13 +399,19 @@ final class ProfileForm
                     }
                     continue;
                 }
+                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
+                    is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
+                if ($viewer !== null && $before === null && isset($sub['default'])
+                    && !array_key_exists('value', $sub['default'])
+                    && self::canonical($sub, $obj[$name]) === self::canonical($sub, null)) {
+                    unset($obj[$name]); // generated defaults are filled by the write, never while rendering
+                    continue;
+                }
                 if ($viewer !== null && $before === null
                     && FieldAccess::unwritable('update', $sub, $viewer) && self::isDefault($sub, $obj[$name])) {
                     unset($obj[$name]);
                     continue;
                 }
-                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
-                    is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
                 if ($viewer !== null && $before !== null && array_key_exists($name, $before) && $before[$name] === null
                     && (($sub['type'] === 'boolean' && $obj[$name] === false)
                         || (in_array($sub['type'], self::STRUCTURED, true) && !($sub['notNull'] ?? false) && self::canonical($sub, $obj[$name]) === null))) {

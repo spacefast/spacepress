@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
+import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
 import { createClient } from "./app/zero/client/index.ts";
 import { api, auth, harness, http, run, sql, wp } from "./env.ts";
@@ -431,13 +433,13 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     assert.equal(saved.status, 302, saved.text.slice(0, 400));
     const row = memberRow(hu.id);
     assert.deepEqual([row.address, row.links, row.sections], [
-      { city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null },
+      { city: "Oslo", source: "signup", channel: "member", since: "2026-07-01T12:30:00.000Z", verified: false, optional: true, prefs: null, district: null },
       [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail", metadata: { bio: null } }],
       [{ layout: "bio", body: "Hello" }],
     ]);
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
     assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
-      { city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
+      { city: "Oslo", source: "signup", channel: "member", since: "2026-07-01T12:30:00.000Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");
     assert.match(again.html, /value="2026-07-01 14:30:00"/);
@@ -470,7 +472,7 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     wp("option", "update", "timezone_string", "");
   }
   assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links], [
-    { city: "Bergen", source: "signup", verified: false, optional: null, prefs: null, district: "Sentrum" },
+    { city: "Bergen", source: "signup", channel: "member", since: "2026-07-01T12:30:00.000Z", verified: false, optional: null, prefs: null, district: "Sentrum" },
     [{ label: "dst", at: "2026-10-25T01:30:00.000Z", detail: "DST detail", metadata: { bio: null } }],
   ]);
   // Removing the last repeater row empties the list.
@@ -514,7 +516,32 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   const thrown = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Throw", nickname: "Thrown" });
   assert.deepEqual([thrown.status, /address hook refused/.test(thrown.text)], [409, true]);
   assert.deepEqual([name(), wp("user", "meta", "get", String(iu.id), "nickname")], [before, nickname], "core's user update rolled back with it");
-  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
+  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", source: "signup", channel: "member", since: "2026-07-01T12:30:00.000Z", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
+  // A real failed upgrade must refuse the form, never fall through to the trusted-code write path.
+  const rendered = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: iu.cookie } })).text();
+  const appDir = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/zero/app/`, import.meta.url));
+  const schema = readFileSync(appDir + "schema.php");
+  writeFileSync(appDir + "migrations/9998_profile_probe.sql", "INSERT INTO `{prefix}missing_profile_table` (`n`) VALUES (1);\n");
+  appendFileSync(appDir + "schema.php", "\n// profile upgrade probe\n");
+  const waitForStatus = async (status: number) => {
+    const deadline = Date.now() + 30_000;
+    while ((await fetch(`${api}/posts?limit=1`)).status !== status) {
+      assert.ok(Date.now() < deadline, `upgrade did not reach HTTP ${status}`);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  try {
+    await waitForStatus(503);
+    const unavailable = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_verified")]: "1", nickname: "Unavailable" }, () => false, rendered);
+    assert.equal(unavailable.status, 503);
+    assert.match(unavailable.text, /Storage is being upgraded/);
+  } finally {
+    rmSync(appDir + "migrations/9998_profile_probe.sql");
+    writeFileSync(appDir + "schema.php", schema);
+    await waitForStatus(200);
+  }
+  assert.deepEqual([memberRow(iu.id).address.verified, wp("user", "meta", "get", String(iu.id), "nickname")], [false, nickname]);
+
 });
 
 test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
@@ -550,7 +577,7 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address.city], ["Locked again", "Gated"], "authorization uses the original row even when the saved row no longer matches");
   const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
   assert.equal(own.status, 302, own.text.slice(0, 400));
-  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", source: "signup", verified: true, optional: true, prefs: null, district: null });
+  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", source: "signup", channel: "member", since: "2026-07-01T12:30:00.000Z", verified: true, optional: true, prefs: null, district: null });
 });
 
 test("update_field on a structured member field is a trusted Zero write; get_field reads it back by name", () => {

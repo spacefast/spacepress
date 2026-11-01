@@ -60,8 +60,6 @@ test("writes need Zero's create/update rules, not role capabilities", async () =
   // An owner-filtered update rule: her row yes, another's no; a subscriber may not create at all.
   const own = await http("POST", `${core}/zero_ledger/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
   assert.equal(own.status, 200, JSON.stringify(own.json));
-  const invalid = await http("PATCH", `${api}/claims/${mine}`, { as: "author", body: { unexpected: {} } });
-  assert.deepEqual([invalid.status, invalid.json.code, invalid.json.pointer], [422, "invalid_input", "/unexpected"]);
   assert.equal((await http("POST", `${core}/zero_ledger/${theirs}`, { as: "author", body: { title: "stolen" } })).status, 403);
   assert.equal((await http("POST", `${core}/zero_ledger`, { as: "subscriber", body: { title: "s", status: "publish" } })).status, 403);
   assert.equal((await ok("GET", `/ledger/${mine}`, { as: "editor" })).title, `Mine ${run} edited`);

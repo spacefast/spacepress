@@ -37,8 +37,8 @@ final class FieldAccess
 
     public static function register(): void
     {
-        Extensions::beforeRead(self::checkQuery(...));
-        Extensions::onRead(self::strip(...));
+        Extensions::beforeRead(self::checkQuery(...), constraintSafe: true);
+        Extensions::onRead(self::strip(...), constraintSafe: true);
         Extensions::onWrite(self::checkWrite(...));
         Extensions::schemaDescribe(self::describe(...));
         if (function_exists('add_filter') && class_exists(Wp\Scf::class)) { // the WordPress target only

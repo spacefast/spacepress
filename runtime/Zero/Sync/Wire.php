@@ -286,6 +286,10 @@ final class Wire
             $target = Module::find($ref['collection'], $opts)[0] ?? null;
         }
         $target ??= throw new HttpError(422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer);
+        if ($viewer !== null && (!isset($target[$ref['column']])
+            || (!is_int($target[$ref['column']]) && !is_string($target[$ref['column']])))) {
+            throw $denied;
+        }
 
         return $target[$ref['column']];
     }

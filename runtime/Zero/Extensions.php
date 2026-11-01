@@ -13,17 +13,32 @@ final class Extensions
     private static array $routes = [];
     /** @var array<string, callable> */
     private static array $commands = [];
+    private static bool $unprovenReadScope = false;
 
-    /** @param callable(string $collection, array &$opts, ?Viewer $viewer, string $pointer): void $fn before option validation and SQL */
-    public static function beforeRead(callable $fn): void
+    /**
+     * @param callable(string $collection, array &$opts, ?Viewer $viewer, string $pointer): void $fn before option validation and SQL
+     * @param bool $constraintSafe true only when row membership and constraint columns are preserved except for schema access rules
+     */
+    public static function beforeRead(callable $fn, bool $constraintSafe = false): void
     {
         self::$hooks['query'][] = $fn;
+        self::$unprovenReadScope = self::$unprovenReadScope || !$constraintSafe;
     }
 
-    /** @param callable(array $rows, string $collection, ?Viewer $viewer): array $fn after decode, before `with`; keep primary keys intact */
-    public static function onRead(callable $fn): void
+    /**
+     * @param callable(array $rows, string $collection, ?Viewer $viewer): array $fn after decode, before `with`; keep primary keys intact
+     * @param bool $constraintSafe true only when row membership and constraint columns are preserved except for schema access rules
+     */
+    public static function onRead(callable $fn, bool $constraintSafe = false): void
     {
         self::$hooks['read'][] = $fn;
+        self::$unprovenReadScope = self::$unprovenReadScope || !$constraintSafe;
+    }
+
+    /** Custom read callbacks may hide arbitrary rows/values unless their policy is already guarded. */
+    public static function constraintReadsSafe(): bool
+    {
+        return !self::$unprovenReadScope;
     }
 
     /** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void $fn */

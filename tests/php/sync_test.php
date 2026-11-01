@@ -226,7 +226,7 @@ eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.
 \Zero\Extensions::onRead(static fn (array $rows, string $c, ?\Zero\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
-    ? array_map(static fn (array $r) => ($r['title'] ?? null) === 'Hidden' ? array_diff_key($r, ['meta' => true]) : $r, $rows) : $rows);
+    ? array_map(static fn (array $r) => ($r['title'] ?? null) === 'Hidden' ? array_diff_key($r, ['meta' => true]) : $r, $rows) : $rows, constraintSafe: true);
 $hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden ', 'slug' => 'hidden', 'meta' => ['secret' => 1]], 'body' => null];
 [, $answer] = req('POST', '/sync/notes', ['record' => $hidden, 'expect' => 'absent']);
 check('a normalized answer carries only what the viewer reads', !array_key_exists('meta', $answer['record']['fields']), $answer['record']);

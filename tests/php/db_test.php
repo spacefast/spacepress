@@ -1569,7 +1569,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $hidePrice = true;
     \Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $v) use (&$hidePrice): array {
         return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
-    });
+    }, constraintSafe: true);
     $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];
     $hidePrice = false;
     $hidePrice = true;
@@ -1697,7 +1697,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         if ($collection === 'people' && !\Zero\db()->schema()->hasCollection('people')) {
             throw new \RuntimeException('wrong query Db');
         }
-    });
+    }, constraintSafe: true);
     eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
     eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
     eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');

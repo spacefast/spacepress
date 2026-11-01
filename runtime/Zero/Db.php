@@ -1088,7 +1088,11 @@ final class Db
                 $opts['locale'] = '*';
             }
             try {
-                if ($this->selectDecoded($ref['collection'], $opts, '', $viewer) === []) {
+                $row = $viewer === null
+                    ? ($this->selectDecoded($ref['collection'], $opts, '', null)[0] ?? null)
+                    : $this->findFirst($ref['collection'], $opts, $viewer);
+                if ($row === null || !array_key_exists($ref['column'], $row)
+                    || !Js::strictEq($row[$ref['column']], $v)) {
                     throw $missing;
                 }
             } catch (HttpError $error) {
@@ -1128,7 +1132,7 @@ final class Db
     /** Prove a complete namespace without reading its rows; extension narrowing is a read filter too. */
     private function readsAllRows(string $collection, Viewer $viewer): bool
     {
-        if ($this->readGuards($collection, $viewer) !== []) {
+        if (!Extensions::constraintReadsSafe() || $this->readGuards($collection, $viewer) !== []) {
             return false;
         }
         // Constraints span every locale. Sorting is harmless; any other query rewrite may hide

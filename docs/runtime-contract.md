@@ -301,6 +301,13 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   namespaces, generated references, and incoming relationships must remain fully
   readable before storage can answer about competitors or children. Unchanged
   unique values must also survive a viewer-scoped read of the current row.
+  Custom `beforeRead` and `onRead` callbacks conservatively disable viewer-bound
+  namespace checks, since an arbitrary callback can hide values conditionally.
+  A registration may set `constraintSafe: true` only when its visibility policy
+  preserves row membership and constraint columns except for restrictions already
+  represented by schema access rules; built-in transforms do so.
+  Concrete references still require a row and matching column value in the final
+  viewer-visible result, including read transforms. Trusted writes remain available.
   `onLookup(collection, pks)` runs in concrete stores before hydration
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime

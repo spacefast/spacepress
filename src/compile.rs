@@ -155,7 +155,7 @@ struct AssignmentPlace {
     constraint: Ty,
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
-    path: Option<(String, Vec<String>)>,
+    path: Option<(String, Vec<Key>)>,
     /// `list[i]`: the written element itself is an array element (see `index_guard`).
     array_index: bool,
 }
@@ -2896,33 +2896,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// and never calls `f`. Once the path went through an array element, `Js::reach` checks those
     /// containers exist at the same point. The written key's own container (`a[2]` in
     /// `a[2].x = f()`) is checked by `Js::write`, after the value, as JS does.
-    fn key_temps(&mut self, root: &str, keys: &[String]) -> (Vec<String>, Vec<String>) {
+    fn key_temps(&mut self, root: &str, keys: &[Key]) -> (Vec<String>, Vec<String>) {
         let mut pre = Vec::new();
         let mut ks: Vec<String> = Vec::new();
         for (n, k) in keys.iter().enumerate() {
             // Reading the container key `n` is looked up in throws if it came off a missing element.
-            if n > 1 && keys[..n - 1].iter().any(|k| k.starts_with('[')) {
+            if n > 1 && keys[..n - 1].iter().any(|k| matches!(k, Key::Element(_))) {
                 pre.push(format!("\\Zero\\Js::reach({root}, [{}])", ks[..n - 1].join(", ")));
             }
-            let digits = |k: &str| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
-            // An array step `[i]` keeps its tag around the temporary: `[$t]`.
-            let (inner, element) = match k.strip_prefix('[').and_then(|k| k.strip_suffix(']')) {
-                Some(i) => (i, true),
-                None => (k.as_str(), false),
+            let (php, element) = match k {
+                Key::Prop(php) => (php, false),
+                Key::Element(php) => (php, true),
             };
-            let literal = digits(inner)
-                || !element
-                    && inner.len() >= 2
-                    && inner.starts_with('\'')
-                    && inner.ends_with('\'')
-                    && !inner[1..inner.len() - 1].contains('\'');
-            let key = if literal {
-                inner.to_string()
+            let digits = !php.is_empty() && php.chars().all(|c| c.is_ascii_digit());
+            let quoted = !element
+                && php.len() >= 2
+                && php.starts_with('\'')
+                && php.ends_with('\'')
+                && !php[1..php.len() - 1].contains('\'');
+            let key = if digits || quoted {
+                php.clone()
             } else {
                 let tmp = self.tmp_var();
-                pre.push(format!("{tmp} = {inner}"));
+                pre.push(format!("{tmp} = {php}"));
                 tmp
             };
+            // An array step is passed as `[i]`: a PHP key is never an array, so `Js::write` can tell.
             ks.push(if element { format!("[{key}]") } else { key });
         }
         (pre, ks)
@@ -2991,7 +2990,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .map(|(t, _)| t)
                     .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
                 let path = path.map(|(root, mut keys)| {
-                    keys.push(php_str(prop));
+                    keys.push(Key::Prop(php_str(prop)));
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
@@ -3031,13 +3030,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let path = match (path, o.ty.non_null()) {
                     (Some((root, mut keys)), Ty::Map(_)) => {
-                        keys.push(i.php.clone());
+                        keys.push(Key::Prop(i.php.clone()));
                         Some((root, keys))
                     }
-                    // An array step is tagged `[i]` (a PHP key is never an array): `Js::at`/`Js::write`
-                    // only address an element that exists.
+                    // `Js::at`/`Js::write` only address an array element that exists.
                     (Some((root, mut keys)), Ty::Array(_)) => {
-                        keys.push(format!("[{}]", i.php));
+                        keys.push(Key::Element(i.php.clone()));
                         Some((root, keys))
                     }
                     _ => None,
@@ -5687,6 +5685,13 @@ fn index_guard(array_index: bool, op: Option<AssignOp>, span: Span) -> Result<()
         "assigning to an array index can leave holes, which compiled PHP turns into an object",
         "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
     )
+}
+
+/// One step of a write path: a property or Record key, or an array element (which must exist).
+#[derive(Clone)]
+enum Key {
+    Prop(String),
+    Element(String),
 }
 
 /// `[pre…, expr][n]`: run the key temporaries, then the expression, as one PHP expression.

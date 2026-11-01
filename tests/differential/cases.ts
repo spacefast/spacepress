@@ -384,7 +384,13 @@ function laneSActions() {
       try { deep[i]!.x.y = ++hits; } catch { hits += 10; }
       const flat: { x: number }[] = [];
       try { flat[2]!.x = ++hits; } catch { hits += 1000; }
-      return hits;
+      const nulls: ({ x: number } | null)[] = [null];
+      try { nulls[0]!.x = ++hits; } catch { hits += 10000; }
+      // A compound assignment as a Record key: its PHP has brackets, but it's no array element.
+      const keys: string[] = ["a"];
+      const byKey: Record<string, number> = {};
+      byKey[keys[0]! += "b"] = hits;
+      return [hits, nulls, byKey];
     }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.

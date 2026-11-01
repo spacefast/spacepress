@@ -1212,47 +1212,69 @@ final class Js
     }
 
     /**
-     * Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). A step
-     * written `[i]` is an array index (see `element()`): reading through a missing element throws,
-     * as JS does on `undefined`; so does a missing last element when `$existing` (a compound update
-     * reads the element it then writes).
+     * Read `$root[k1][k2]...` for a compiled assignment that reads its place (`+=`, `++`, `&&=`).
+     * A missing last key reads as null (`undefined`); so does a missing last array element (a step
+     * `[i]`, see `element()`) unless `$existing`, which throws. Reading through a missing or null
+     * container throws a TypeError, as JS does on `undefined`.
      */
     public static function at(mixed $root, array $path, bool $existing = false): mixed
     {
         $last = count($path) - 1;
         foreach ($path as $n => $k) {
+            $inner = $n < $last;
+            if ($root instanceof JsObject) {
+                $root = [];
+            } elseif (!is_array($root)) {
+                throw self::throughUndefined($path[$n - 1] ?? null);
+            }
             if (is_array($k)) {
-                $i = self::element($root, $k[0], $existing || $n < $last, $n < $last);
+                $i = self::element($root, $k[0], $existing || $inner, $inner);
                 if ($i === null) {
                     return null;
                 }
                 $root = $root[$i];
-                continue;
-            }
-            if (!is_array($root) || !array_key_exists($k, $root)) {
+            } elseif (array_key_exists($k, $root)) {
+                $root = $root[$k];
+            } elseif ($inner) {
+                throw self::throughUndefined($k);
+            } else {
                 return null;
             }
-            $root = $root[$k];
         }
 
         return $root;
     }
 
     /**
-     * Compiled `root.k1[k2]... = value`: the keys and the value were already evaluated (JS order),
-     * and each container on the way that is the empty-object marker becomes a plain array only now,
-     * as it is written into. An array step (`[i]`) must name an element that exists now: JS would
-     * grow the array past its end, leaving holes, where a PHP array gains a key and turns into an
-     * object. Returns the value, like a JS assignment.
+     * Compiled `root.k1[k2]... = value`: the keys and the value were already evaluated (JS order).
+     * The containers on the way must exist (JS throws a TypeError writing through `undefined` or
+     * `null`); the empty-object marker becomes a plain array only now, as it is written into. An
+     * array step (`[i]`) must name an element that exists now: JS would grow the array past its
+     * end, leaving holes, where a PHP array gains a key and turns into an object. Every check runs
+     * before anything is written. Returns the value, like a JS assignment.
      */
     public static function write(mixed &$root, array $path, mixed $value): mixed
     {
-        $ref = &$root;
+        $keys = [];
+        $cur = $root;
         $last = count($path) - 1;
         foreach ($path as $n => $k) {
+            if ($cur instanceof JsObject) {
+                $cur = [];
+            } elseif (!is_array($cur)) {
+                throw self::throughUndefined($path[$n - 1] ?? null);
+            }
             if (is_array($k)) {
-                $k = self::element($ref, $k[0], true, $n < $last);
-            } elseif ($ref instanceof JsObject || $ref === null) {
+                $k = self::element($cur, $k[0], true, $n < $last);
+            } elseif ($n < $last && !array_key_exists($k, $cur)) {
+                throw self::throughUndefined($k);
+            }
+            $keys[] = $k;
+            $cur = $cur[$k] ?? null;
+        }
+        $ref = &$root;
+        foreach ($keys as $k) {
+            if ($ref instanceof JsObject) {
                 $ref = [];
             }
             $ref = &$ref[$k];
@@ -1268,18 +1290,7 @@ final class Js
      */
     public static function reach(mixed $root, array $path): null
     {
-        foreach ($path as $k) {
-            if (is_array($k)) {
-                $root = $root[self::element($root, $k[0], true, true)];
-            } elseif (is_array($root) && array_key_exists($k, $root)) {
-                $root = $root[$k];
-            } else {
-                $root = null;
-            }
-            if ($root === null) {
-                throw new JsError('Cannot read or set properties of undefined (' . (is_array($k) ? 'array element ' . self::numStr($k[0]) : "reading '{$k}'") . ')', 'TypeError');
-            }
-        }
+        self::at($root, [...$path, '']);
 
         return null;
     }
@@ -1298,20 +1309,32 @@ final class Js
      * a TypeError when something is read through it (as JS does on `undefined`), a RangeError when
      * it is the element itself (compiled code can't grow an array by index).
      */
-    private static function element(mixed $list, int|float $i, bool $require, bool $through): ?int
+    private static function element(array $list, int|float $i, bool $require, bool $through): ?int
     {
-        $n = is_array($list) ? count($list) : 0;
+        $n = count($list);
         if (is_finite($i) && $i >= 0 && $i < $n && $i == floor($i)) {
             return (int) $i;
         }
         if (!$require) {
             return null;
         }
-        $i = self::numStr($i);
         if ($through) {
-            throw new JsError("Cannot read or set properties of undefined (array element {$i})", 'TypeError');
+            throw self::throughUndefined([$i]);
         }
+        $i = self::numStr($i);
         throw new JsError("Index {$i} is outside this array (length {$n}); compiled code can't grow an array by index. Use push(), or check the index first", 'RangeError');
+    }
+
+    /** JS's TypeError for reading or setting a property of `undefined`/`null` reached by `$key`. */
+    private static function throughUndefined(mixed $key): JsError
+    {
+        $what = match (true) {
+            is_array($key) => 'array element ' . self::numStr($key[0]),
+            $key === null => 'the value',
+            default => "'{$key}'",
+        };
+
+        return new JsError("Cannot read or set properties of undefined ({$what})", 'TypeError');
     }
 
     /** A JS object value: an empty array that stands for `{}` becomes the marker; anything else as is. */

@@ -1186,6 +1186,22 @@ fn rejects_phase2_static_contracts() {
             "position might be null or undefined",
         ),
         (
+            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p!) === 1;",
+            "position might be null or undefined",
+        ),
+        (
+            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', Number(p)) === 1;",
+            "numeric conversion might receive null or undefined",
+        ),
+        (
+            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', +p) === 1;",
+            "numeric conversion might receive null or undefined",
+        ),
+        (
+            "const p: unknown = undefined; return 'ab'.lastIndexOf('b', Number(p)) === 1;",
+            "numeric conversion might receive null or undefined",
+        ),
+        (
             "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
             "holds an object or array",
         ),

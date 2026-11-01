@@ -454,7 +454,9 @@ use `push`, or build the new array with `map`; PHP turns a hole into a key), a c
 capturing a `for (let …)` variable that holds an object or array (copy what it
 needs into a `const` inside the loop body),
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
-a `lastIndexOf` position that may be null or undefined, reassigning a
+a `lastIndexOf` position that may be null or undefined, numeric conversion of a
+nullable binding (`Number(value)` or `+value`; choose a default such as
+`Number(value ?? 0)` first), reassigning a
 parameter that also mutates its object or array (use a separate local
 binding for the replacement), mutating a nested container through a
 destructured parameter (accept the whole parameter), replacing an earlier

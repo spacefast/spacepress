@@ -2111,13 +2111,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
                         }
                     }
-                    UnOp::Plus => {
-                        if v.ty.is_num() {
-                            v
-                        } else {
-                            Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
-                        }
-                    }
+                    UnOp::Plus => self.number_conversion(x, &v)?,
                     UnOp::TypeOf => Out::atom(format!("\\Zero\\Js::typeOf({})", v.php), Ty::Str),
                 }
             }
@@ -3311,6 +3305,46 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// Null and undefined convert to different numbers. Decide literals before their shared PHP
+    /// representation erases the distinction; a nullable binding must choose its default first.
+    fn number_conversion(&mut self, source: &Expr, value: &Out) -> Result<Out> {
+        let original_span = source.span;
+        let mut source = source;
+        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &source.kind {
+            source = x;
+        }
+        match source.kind {
+            ExprKind::Undefined => return Ok(Out::atom("NAN", Ty::Num)),
+            ExprKind::Null => return Ok(Out::atom("0", Ty::Num)),
+            _ => {}
+        }
+        // JSON.parse returns unknown but never undefined. Other unknown values need narrowing;
+        // an assertion alone cannot recover the erased null/undefined distinction.
+        let json_parse = if let ExprKind::Call { callee, .. } = &source.kind
+            && let ExprKind::Member { obj, prop, .. } = &callee.kind
+            && prop == "parse"
+            && let ExprKind::Ident(name) = &obj.kind
+        {
+            matches!(self.resolve(name, obj.span), Ok(Resolved::Global(g)) if g == "JSON")
+        } else {
+            false
+        };
+        let asserted_nullable =
+            source.span != original_span && self.argument_constraint(source).is_some_and(|ty| ty.is_nullable());
+        if (!json_parse && value.ty.is_nullable()) || asserted_nullable {
+            return err_help(
+                source.span,
+                "numeric conversion might receive null or undefined, which JS converts two different ways",
+                "choose a default first (`Number(value ?? 0)`); narrow unknown values with `typeof` before converting",
+            );
+        }
+        Ok(if value.ty.is_num() {
+            value.clone()
+        } else {
+            Out::atom(format!("\\Zero\\Js::toNumber({})", value.php), Ty::Num)
+        })
+    }
+
     /// `s.lastIndexOf(x, pos)`: JS reads an `undefined` position as omitted (search from the end)
     /// and `null` as 0, but compiled PHP has one null for both. A literal decides it here; a
     /// value that may be null or undefined at runtime is refused. Returns the compiled arguments.
@@ -3326,7 +3360,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &e.kind {
             ExprKind::Undefined => argv.truncate(position),
             ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
-            _ if argv[position].ty.is_nullable() => {
+            _ if argv[position].ty.is_nullable() || self.argument_constraint(e).is_some_and(|ty| ty.is_nullable()) => {
                 return err_help(
                     p.span,
                     format!("`{m}()`'s position might be null or undefined here, which JS reads two different ways"),
@@ -3657,13 +3691,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a0 = argv.first();
         Ok(match (g, a0) {
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
-            ("Number", Some(v)) => {
-                if v.ty.is_num() {
-                    v.clone()
-                } else {
-                    Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
-                }
-            }
+            ("Number", Some(v)) => self.number_conversion(self.arg(args, 0, span, "a value")?, v)?,
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
             ("encodeURI" | "encodeURIComponent", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?

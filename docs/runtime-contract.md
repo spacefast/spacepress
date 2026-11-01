@@ -144,7 +144,9 @@ Every write through an array index other than `=`, `??=` and `||=` (rejected)
 goes through `Js::write`/`Js::at` with the index tagged `[i]`: each index is
 evaluated once, and it must name an element that exists when the write lands
 (after the value ran), else a RangeError for the element itself, or a
-TypeError when writing through it, as JS throws on `undefined`.
+TypeError when writing through it, as JS throws on `undefined`. A container
+read through a missing element (`a[0].x` in `a[0].x.y = f()`) is checked by
+`Js::reach` before the later keys and the value run, so `f` is never called.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

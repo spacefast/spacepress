@@ -372,6 +372,18 @@ function laneSActions() {
       objs[0]!.x += 2;
       return [a, i, step, s, m, ix, objs];
     }),
+    // Writing through a missing element throws a TypeError, like JS: before the value runs when a
+    // property is read off it, after when it's the object being written.
+    writeThroughMissing: run(() => {
+      let hits = 0;
+      const deep: { x: { y: number } }[] = [];
+      try { deep[0]!.x.y = ++hits; } catch { hits += 10; }
+      const lists: { x: number[] }[] = [];
+      try { lists[0]!.x[hits++]!++; } catch { hits += 100; }
+      const flat: { x: number }[] = [];
+      try { flat[2]!.x = ++hits; } catch { hits += 1000; }
+      return hits;
+    }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.
     nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),

@@ -1262,6 +1262,28 @@ final class Js
         return $value;
     }
 
+    /**
+     * Compiled code is about to read or write through `$root[k1]...[kn]`: JS throws a TypeError
+     * when that is `undefined` or `null`, before the rest of the target and the value run.
+     */
+    public static function reach(mixed $root, array $path): null
+    {
+        foreach ($path as $k) {
+            if (is_array($k)) {
+                $root = $root[self::element($root, $k[0], true, true)];
+            } elseif (is_array($root) && array_key_exists($k, $root)) {
+                $root = $root[$k];
+            } else {
+                $root = null;
+            }
+            if ($root === null) {
+                throw new JsError('Cannot read or set properties of undefined (' . (is_array($k) ? 'array element ' . self::numStr($k[0]) : "reading '{$k}'") . ')', 'TypeError');
+            }
+        }
+
+        return null;
+    }
+
     /** Compiled `place++` / `--place` through a key path: one read, one checked write. */
     public static function step(mixed &$root, array $path, int $step, bool $prefix): int|float
     {

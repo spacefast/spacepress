@@ -2199,7 +2199,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match path.filter(|(_, keys)| !keys.is_empty()) {
                     // Through the key path, like a compound assignment: each index runs once.
                     Some((root, keys)) => {
-                        let (pre, ks) = self.key_temps(&keys);
+                        let (pre, ks) = self.key_temps(&root, &keys);
                         let step = format!("\\Zero\\Js::step({root}, [{}], {d}, {})", ks.join(", "), *prefix);
                         Out::new(seq(&pre, step), Ty::Num)
                     }
@@ -2772,7 +2772,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Array elements go the same way: `Js::write` checks each index against the array as it
         // writes, after the value ran (see `index_guard`), and each index runs once (`a[i++] += 1`).
         let keys_php = path.filter(|(_, keys)| !keys.is_empty()).map(|(root, keys)| {
-            let (pre, ks) = self.key_temps(&keys);
+            let (pre, ks) = self.key_temps(&root, &keys);
             (root, pre, ks)
         });
         let v = self.expr(value)?;
@@ -2889,13 +2889,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// The keys of a write path, each evaluated once into a temporary (JS evaluates the target before
-    /// the value). Only a lone literal key needs none; any expression, even one that starts with a
-    /// quote (`'k' . $i++`), gets one.
-    fn key_temps(&mut self, keys: &[String]) -> (Vec<String>, Vec<String>) {
+    /// The keys of a write path, each evaluated once into a temporary, in JS order. Only a lone
+    /// literal key needs no temporary; any expression, even one that starts with a quote
+    /// (`'k' . $i++`), gets one. JS reads each container a key is looked up in before evaluating
+    /// that key, and throws if a property is read off `undefined`: `a[0].x.y = f()` reads `a[0].x`
+    /// and never calls `f`. Once the path went through an array element, `Js::reach` checks those
+    /// containers exist at the same point. The written key's own container (`a[2]` in
+    /// `a[2].x = f()`) is checked by `Js::write`, after the value, as JS does.
+    fn key_temps(&mut self, root: &str, keys: &[String]) -> (Vec<String>, Vec<String>) {
         let mut pre = Vec::new();
-        let mut ks = Vec::new();
-        for k in keys {
+        let mut ks: Vec<String> = Vec::new();
+        for (n, k) in keys.iter().enumerate() {
+            if n > 1 && ks[..n - 1].iter().any(|k| k.starts_with('[')) {
+                pre.push(format!("\\Zero\\Js::reach({root}, [{}])", ks[..n - 1].join(", ")));
+            }
             let digits = |k: &str| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
             let literal =
                 (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))

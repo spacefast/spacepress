@@ -1086,6 +1086,8 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. Ignored by standalone output. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
+  /** Ship the optional admin screens (`zero-admin`) with the build. Default `false`. */
+  admin?: boolean;
 }
 
 export interface ZeroConfig<

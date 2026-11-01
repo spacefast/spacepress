@@ -232,9 +232,11 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, target?, schema, relations?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins? })`. `name` (a slug,
+jobs?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`;
-`target` (`"standalone"` or `"wp"`) is the default for `zero build`.
+`target` (`"standalone"` or `"wp"`) is the default for `zero build`. `admin:
+true` ships the optional admin screens as a fourth plugin, `zero-admin`; by
+default the build emits none.
 
 ## Relations
 

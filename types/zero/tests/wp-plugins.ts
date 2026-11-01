@@ -15,6 +15,10 @@ const plugins = {
 } satisfies Readonly<Record<string, WordPressPlugin>>;
 
 defineConfig({ schema: {}, plugins });
+// The optional admin screens are a boolean opt-in.
+defineConfig({ schema: {}, admin: true });
+// @ts-expect-error admin is a boolean, not a settings object
+defineConfig({ schema: {}, admin: { menu: true } });
 
 // @ts-expect-error URL archives require an authored checksum.
 const unpinned: WordPressPlugin = { version: "1.0", pluginData: { resource: "url", url: "https://example.org/plugin.zip" } };

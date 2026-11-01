@@ -391,6 +391,19 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
         if let Some(rest) = rel.strip_prefix("identity/") {
             write(&plugins.join("zero-identity").join(rest), bytes)?;
         }
+        // The optional admin screens: only when the config opted in. The embedded tree is the
+        // committed plugin (PHP, routes.js, notices, the built modules); its header carries the
+        // same version placeholders as the generated plugins.
+        if built.schema.admin
+            && let Some(rest) = rel.strip_prefix("admin/")
+        {
+            let target = plugins.join("zero-admin").join(rest);
+            if rest == "zero-admin.php" {
+                write(&target, substitute(&String::from_utf8_lossy(bytes), &vars))?;
+            } else {
+                write(&target, bytes)?;
+            }
+        }
     }
     Ok(())
 }
@@ -498,11 +511,15 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     }
     emit_generated(project, &plugins, built)?;
     let mut versions = serde_json::Map::new();
-    for slug in [
+    let mut generated = vec![
         "zero-runtime".to_string(),
         "zero-identity".to_string(),
         format!("zero-app-{}", built.schema.name),
-    ] {
+    ];
+    if built.schema.admin {
+        generated.push("zero-admin".to_string());
+    }
+    for slug in generated {
         let directory = plugins.join(&slug);
         php_lint_tree(&directory)?;
         zip_plugin(&directory)?;

@@ -59,6 +59,7 @@ const laneConfig = merge("config option", lanes.map((l) => l.config));
 export default defineConfig({
   ...laneConfig,
   name: "blog",
+  admin: true, // the suite proves the opt-in path; examples/blog keeps proving the default
   schema: appSchema,
   relations: appRelations,
   globals: merge("global", [{ settings }, ...lanes.map((l) => l.globals)]),

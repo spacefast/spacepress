@@ -127,6 +127,10 @@ impl Project {
         Self { _temp: temp, root, out }
     }
     fn config(&self, plugins: &[Value]) {
+        self.config_with(plugins, "");
+    }
+    /// `extra` is spliced into the defineConfig literal after `plugins`, e.g. `, admin: true`.
+    fn config_with(&self, plugins: &[Value], extra: &str) {
         let plugins: serde_json::Map<String, Value> = plugins
             .iter()
             .map(|p| {
@@ -136,7 +140,7 @@ impl Project {
             })
             .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', target: 'wp', schema: {{}}, plugins: {} }});\n",
+            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', target: 'wp', schema: {{}}, plugins: {}{extra} }});\n",
             serde_json::to_string(&plugins).unwrap()
         );
         std::fs::write(self.root.join("zero.config.ts"), body).unwrap();
@@ -482,5 +486,76 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     p.config(&[org("alpha")]);
     let out = p.run("check", &[]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(!p.root.join(".zero").exists());
+}
+
+/// `admin: true` ships the optional admin screens as a fourth plugin, complete and versioned like
+/// the generated ones; the default ships nothing, and a build that drops the flag removes it.
+#[test]
+fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
+    let routes = routes();
+    let server = Server::new(routes.clone());
+    let p = Project::new();
+    let plugins = platform(&server, &routes);
+    let manifest =
+        || -> Value { serde_json::from_slice(&std::fs::read(p.out.join("zero-manifest.json")).unwrap()).unwrap() };
+    let admin = p.out.join("plugins/zero-admin");
+
+    p.config(&plugins);
+    p.build();
+    assert!(!admin.exists(), "no admin without the opt-in");
+    assert!(!p.out.join("plugins/zero-admin.zip").exists());
+    assert!(manifest()["plugins"].get("zero-admin").is_none());
+
+    p.config_with(&plugins, ", admin: true");
+    p.build();
+    let version = env!("CARGO_PKG_VERSION");
+    let header = std::fs::read_to_string(admin.join("zero-admin.php")).unwrap();
+    assert!(header.contains(&format!("Version: {version}")), "{header}");
+    assert!(header.contains("Requires Plugins: zero-runtime"), "{header}");
+    assert!(!header.contains("{{"), "every placeholder is substituted:\n{header}");
+    for rel in [
+        "lib/load-libs.php",
+        "build/index.php",
+        "build/packages/boot/index.js",
+        "routes.js",
+        "LICENSE",
+        "NOTICE",
+        "build/THIRD-PARTY-LICENSES.txt",
+    ] {
+        assert!(admin.join(rel).is_file(), "zero-admin is missing {rel}");
+    }
+    assert!(!admin.join("apps").exists(), "the JS workspace never ships");
+    let archive = std::fs::File::open(p.out.join("plugins/zero-admin.zip")).unwrap();
+    let mut archive = zip::ZipArchive::new(archive).unwrap();
+    assert!(archive.by_name("zero-admin/zero-admin.php").is_ok());
+    assert!(archive.by_name("zero-admin/build/index.php").is_ok());
+    assert_eq!(manifest()["plugins"]["zero-admin"], version);
+    // schema.php records the flag as a value, read back by PHP like the runtime reads it.
+    let schema = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(p.out.join("plugins/zero-app-fixtures/zero/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
+    let schema: Value = serde_json::from_slice(&schema.stdout).unwrap();
+    assert_eq!(schema["admin"], Value::Bool(true));
+    let before = tree(&p.out);
+    p.build();
+    assert_eq!(before, tree(&p.out), "the admin plugin is emitted deterministically");
+
+    p.config(&plugins);
+    p.build();
+    assert!(!admin.exists(), "opting out removes the admin plugin");
+    assert!(!p.out.join("plugins/zero-admin.zip").exists());
+    assert!(manifest()["plugins"].get("zero-admin").is_none());
+}
+
+/// The flag is a boolean; anything else is refused before any output exists.
+#[test]
+fn admin_must_be_a_boolean() {
+    let p = Project::new();
+    p.config_with(&[], ", admin: 'yes'");
+    p.rejects("check", "admin must be true or false");
     assert!(!p.root.join(".zero").exists());
 }

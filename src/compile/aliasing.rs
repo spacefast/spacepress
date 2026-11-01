@@ -684,10 +684,11 @@ impl Walk<'_, '_> {
                             let l = self.st.entry(b).or_default();
                             l.owner &= new;
                             l.holds_shared |= !fresh;
+                        } else if self.captured(n) && self.holds_container(value) && !self.fresh(value) {
+                            // A closure rebinding a captured local to a container another value
+                            // holds: the enclosing function can't see when that happens.
+                            return self.refuse(e.span, n, None);
                         }
-                        // A captured binding reassigned in a closure: closures capture by
-                        // reference, so the outer binding sees the new value (not a write into
-                        // a container).
                     }
                     ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => {
                         if let ExprKind::Index { index, .. } = &target.kind {
@@ -883,7 +884,9 @@ impl Walk<'_, '_> {
                 if roots[i].is_some() && roots.iter().enumerate().any(|(j, r)| j != i && *r == roots[i]) {
                     return self.refuse(x.span, Self::root(x).map_or("this value", |r| r.0), None);
                 }
-                self.write(x, 1, x.span)?;
+                // The callee may write anywhere below its parameter (`o.inner.x = 1`): judged as
+                // a deep write, so nothing shared may have been placed into the argument.
+                self.write(x, 2, x.span)?;
             }
         }
         for (i, a) in args.iter().enumerate() {

@@ -1420,6 +1420,14 @@ fn rejects_phase2_static_contracts() {
             "const rows = [{ x: 1 }]; const keep: { x?: number }[] = []; rows.map((r) => { const o: { x?: number } = {}; keep.push(o); o.x = r.x; return o; }); return keep[0]!.x === 1;",
             "runs this callback on copies in compiled PHP",
         ),
+        (
+            "const deep = (o: { inner: { x: number } }) => { o.inner.x = 1; }; const shared = { x: 0 }; const o = { inner: { x: 0 } }; o.inner = shared; deep(o); return shared.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 0 }; let b = { x: 5 }; const f = () => { b = a; }; f(); b.x = 1; return a.x === 1;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

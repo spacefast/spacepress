@@ -327,10 +327,18 @@ Three rules apply to every row of the table:
    relation's kind; a populated `media` column is a media row. A `[]`
    reaching `toJs` with no shape throws `LogicException`; there is no
    default.
-3. **Every callback gets its own graph.** `rowToJs`, `toJs` and `ctx` build
-   fresh handles on each call, and a `json()` value inside them is
-   `Js::clone`d, so a hook, rule or validator can't change what the pipeline
-   validated or stored by mutating a shared leaf. The exception is a
+3. **Ownership changes hands by copy.** A `json()` handle that crosses into
+   runtime ownership is detached: `toPhp` on a write input, a `fn`
+   default's or `onUpdate`'s result, and an accepted `before*` hook result
+   each `Js::clone` the `json()` leaves they keep (aliases inside one leaf
+   survive; aliases to compiled-code locals do not). Otherwise a validator
+   that captured the same object the action passed as `meta` could write
+   through its capture after validation and before storage, and the stored
+   value would not be the validated one. In the other direction every
+   callback gets its own graph: `rowToJs`, `toJs` and `ctx` build fresh
+   handles on each call and clone the `json()` leaves inside them, so a hook,
+   rule or validator can't change what the pipeline validated or stored by
+   mutating a shared leaf. The exception is a
    `before*` hook's `data`/`patch`, which is read back on purpose. Within one
    invocation, arguments that are one object in JS are one handle in PHP:
    `.validate(value, ctx)` receives `value` as the very handle at
@@ -343,7 +351,7 @@ Three rules apply to every row of the table:
 |---|---|---|
 | Request body, query `where`/`with`/`orderBy` JSON | wire → runtime | `App::parseBody`/`queryJson` call `Js::decodeJson`, which returns handles. `App::object()` then calls `Seam::toPhp($v, $inputShape)` for action inputs and write bodies, and `Db` applies `Seam::query`/`filter` to query options at its own entry (next row). Replaces today's marker checks in `App.php` (`withOption`, `object`, the row flattening at line 646). |
 | `Db::findMany/findFirst/insert/update/delete/globalUpdate` | any caller → runtime | Each public `Db` method starts with one `Seam` call on its container arguments (`Seam::query`, `Seam::filter`, `Seam::toPhp($values, $columns)`) and returns plain rows. REST, CLI, EditorSave, Sync and compiled code all enter here, so a filter an access rule returns, a `with` from a query string and a `where` from compiled code are normalized by the same code. `Db` has no other conversion. |
-| Compiled `db.*` calls | JS → runtime → JS | The compiler emits `\Zero\Seam::findMany(...)` and friends: thin static facades that call `Db` and convert the result with `rowToJs($collection, $row, $with)` (relations recursively, media rows as objects) or `toJs($value, $globalFields)`. `insert`/`update` with `returning` convert the returned row the same way. |
+| Compiled `db.*` calls | JS → runtime → JS | The compiler emits `\Zero\Seam::findMany(...)` and friends: thin static facades that call `Db` and convert the result with `rowToJs($collection, $row, $with)` (relations recursively, media rows as objects) or `toJs($value, $globalFields)`. `insert`/`update` with `returning` convert the returned row the same way. On the way in, `Seam::toPhp($values, $columns)` detaches `json()` leaves by `Js::clone` (rule 3). |
 | Stored `json()` text → row value | storage → runtime | `Schema::decode` for `'json'` calls `Js::decodeJson` and returns a handle. This is the one runtime-land value that is a handle, by rule, for **user** `json()` columns. The runtime treats it as opaque: `Sql` filters call `Js::jsonStringify($arg)`, `Scf::scfValue` calls `Js::jsonStringify`, `Response` encodes it. |
 | System JSON structures: media `sizes`/`focal`, locale `translations` | storage ↔ runtime ↔ JS | These are `'json'`-typed but the runtime indexes into them. `SqliteMedia` and `Locale\{Module,Read}` call `Seam::toPhp` right after decode where they read them and build plain arrays where they write them (`Locale\Read` replaces `translations` with a plain array today; that array is a runtime value). When a media row or a localized row reaches compiled code, `rowToJs` boxes `sizes`, `focal` and `translations` as objects by a system-column shape list in `Seam`. `WpMedia` keeps `json_decode(..., true)` for its own meta. |
 | Column defaults and `onUpdate` | compile time → runtime | `schema_php::generator` emits `'json' => <text>` for every literal default of a container-typed column (`json`, `group`, `repeater`, `blocks`, and any subfield tree containing a `json()` leaf), not only when the literal contains `{}`. `Schema::generate($spec, $col)` takes the full column spec, decodes the text to handles and converts with `Seam::toPhp($v, $col)`, which leaves `json()` leaves as handles and makes structured parts arrays, so a `{}` or `{"1":1}` nested in a `group` default survives. A `fn` default's return value goes through `Seam::generated($col, $r)` at the same place. Every `default`/`onUpdate` caller passes the column. `extract.rs`'s refusal of list-shaped object defaults (`has_list_shaped_object`) is deleted: its premise was the array representation. |
@@ -418,7 +426,10 @@ missing-element rule (`map` writes `undefined` at that index and keeps
 it; all four `find`/`findIndex`/`findLast`/`findLastIndex` visit it as
 `undefined`, so `[1, 2].findIndex((v, i) => { if (i === 0) a.pop(); return i === 1; })`
 is 1 as in Node; `some` stops delegating to `findIndex` and gets its own
-loop); otherwise the callback gets the element read live. Each helper
+loop; because of this the compiler types the `value` parameter of the four
+`find*` callbacks as `T | undefined`, so `value + 1` inside one is the
+existing "might be null" compile error and the user guards it, where JS
+would compute `NaN`); otherwise the callback gets the element read live. Each helper
 keeps the element it read in a local and collects or returns that local,
 never re-reading `->a` after the callback. Callback shapes are the JS ones
 and the compiler types them so: `(value, index, array)` for `map`, `filter`,
@@ -743,7 +754,9 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    reassigns `o`, `(o.x ??= (n = 1))` observing the write to `n`,
    `o.s += "b"` on a string field, `take ? (o.x += 1) : 0` with `take`
    false and `[o.x, o.x += 1]`, a validator that writes through
-   `ctx.data.<field>` and reads `value`, `findIndex` with a `pop` in the
+   `ctx.data.<field>` and reads `value`, a validator that writes through a
+   captured object the action passed as the column value and a check that
+   the stored value is the validated one, `findIndex` with a `pop` in the
    predicate,
    and the alias-refinement program from §4.2 plus its `alias = root.child`
    variant.
@@ -761,8 +774,12 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    table whose signature changed, using the existing "JS expression versus
    PHP call" format.
 8. **Harness.** `run-php.php` builds its arguments the way production does:
-   `Seam::ctx` for contexts, `Seam::toJs($value, $columnSpec)` for validator
-   values, so the harness can't pass a shape the runtime never would. State
+   for a validator it installs the fixture value at the column's full path
+   inside the fixture `ctx.data`, builds one invocation graph with
+   `Seam::ctx`, and reads `value` out of that graph at the same path, so
+   `value` and `ctx.data.<field>` are one handle as in production;
+   `run-node.mjs` does the same in JS. The harness can't pass a shape or an
+   alias structure the runtime never would. State
    isolation is stated in `cases.ts`: Node runs every action in one module
    instance and PHP runs each in its own process, so no case may depend on
    another action having run; a case may mutate captured module data only

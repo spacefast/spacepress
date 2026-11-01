@@ -79,7 +79,7 @@ $functions = <<<'PHP'
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return new \Zero\JsObject(['title' => trim($data->p['title'])] + $data->p); }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
-    // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
+    // A compiled hook returning `{}` replaces the patch with nothing to change.
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \Zero\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
 
@@ -170,7 +170,7 @@ check('pull includes drafts', $pulled[$noteUid]['record']['fields']['status'] ==
 
 eq('same record again is unchanged', req('POST', '/sync/notes', ['record' => $record, 'expect' => $created['digest']])[1]['status'], 'unchanged');
 isProblem('expect absent on an existing uid is stale', req('POST', '/sync/notes', ['record' => $record, 'expect' => 'absent']), 409, 'sync_stale');
-// `fields: {}` (an object on the wire, the marker once decoded) is an empty field set, not a type error.
+// `fields: {}` is an empty field set, not a type error.
 [$s, $empty] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_0e0e0e0e0e0e0e0e0e0e', 'fields' => new stdClass(), 'body' => null], 'expect' => 'absent']);
 check('a push with fields: {} is accepted as an object (then the required title is what is missing)', $s === 422 && ($empty['pointer'] ?? null) === '/title', $empty);
 $stale = req('POST', '/sync/notes', ['record' => ['fields' => ['title' => 'Later']] + $record, 'expect' => 'sha256:' . str_repeat('0', 64)]);

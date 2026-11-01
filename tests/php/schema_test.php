@@ -117,7 +117,7 @@ eq('group: absent optional → null, absent defaulted → default, every sub-key
     Schema::decode($posts['seo'], Schema::encode($posts['seo'], ['metaTitle' => 'T'], 'seo', '/seo')),
     ['metaTitle' => 'T', 'metaDescription' => null, 'noindex' => false]);
 problem('group: unknown sub-field', fn () => Schema::encode($posts['seo'], ['nope' => 1], 'seo', '/seo'), 422, 'invalid_input', '/seo/nope');
-// `{}` (the JsObject marker) survives only in json() values, nested ones included; generated defaults too.
+// json() values preserve object/list shape, including nested values and generated defaults.
 $box = ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'extra' => ['type' => 'json']]];
 $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson('{"a":{}}')], 'box', '/box');
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],

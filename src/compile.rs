@@ -3318,9 +3318,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Null => return Ok(Out::atom("0", Ty::Num)),
             _ => {}
         }
-        // JSON.parse returns unknown but never undefined. Other unknown values need narrowing;
+        // JSON.parse without a reviver returns unknown but never undefined. Other unknown values need narrowing;
         // an assertion alone cannot recover the erased null/undefined distinction.
-        let json_parse = if let ExprKind::Call { callee, .. } = &source.kind
+        let json_parse = if let ExprKind::Call { callee, args, .. } = &source.kind
+            && args.len() == 1
             && let ExprKind::Member { obj, prop, .. } = &callee.kind
             && prop == "parse"
             && let ExprKind::Ident(name) = &obj.kind

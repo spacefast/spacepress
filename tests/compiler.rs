@@ -1202,6 +1202,10 @@ fn rejects_phase2_static_contracts() {
             "numeric conversion might receive null or undefined",
         ),
         (
+            "return 'ab'.lastIndexOf('b', Number(JSON.parse('0', () => undefined))) === 1;",
+            "numeric conversion might receive null or undefined",
+        ),
+        (
             "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
             "holds an object or array",
         ),

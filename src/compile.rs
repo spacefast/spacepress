@@ -1156,15 +1156,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let fresh: Vec<String> = match init.as_deref() {
                     Some(Stmt::Decl {
                         kind: DeclKind::Let,
-                        pat: Pat::Id(_, binding),
+                        pat,
                         ..
-                    }) if self.effects.captured(*binding) => self
-                        .fx()
-                        .scopes
-                        .last()
-                        .and_then(|s| s.values().find(|l| l.binding == *binding))
-                        .map(|l| vec![format!("{php} = &\\Zero\\Js::cell({php})", php = l.php)])
-                        .unwrap_or_default(),
+                    }) => {
+                        // Every binding the declaration introduces (`let { i } = ...` too).
+                        let mut bindings = Vec::new();
+                        pat_bindings(pat, &mut bindings);
+                        let captured: Vec<Span> =
+                            bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        let scope = self.fx().scopes.last().cloned().unwrap_or_default();
+                        let mut cells: Vec<String> = scope
+                            .values()
+                            .filter(|l| captured.contains(&l.binding))
+                            .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
+                            .collect();
+                        cells.sort();
+                        cells
+                    }
                     _ => Vec::new(),
                 };
                 let update_php = fresh
@@ -5323,6 +5331,30 @@ fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, Strin
             }
             Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out),
             _ => {}
+        }
+    }
+}
+
+/// The binding spans a pattern introduces, in source order.
+fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
+    match p {
+        Pat::Id(_, span) => out.push(*span),
+        Pat::Default(p, _) => pat_bindings(p, out),
+        Pat::Obj { props, rest, .. } => {
+            for (_, p) in props {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
+        }
+        Pat::Arr { elems, rest, .. } => {
+            for p in elems.iter().flatten() {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
         }
     }
 }

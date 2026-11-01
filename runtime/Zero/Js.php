@@ -625,7 +625,13 @@ final class Js
     public static function lastIndexOf(string|array $s, mixed $needle, int|float|null $from = null): int
     {
         if (is_array($s)) {
-            for ($i = count($s) - 1; $i >= 0; $i--) {
+            // fromIndex: relative to the end when negative, clamped to the last element.
+            $last = count($s) - 1;
+            if ($from !== null) {
+                $f = self::toInteger($from);
+                $last = (int) ($f < 0 ? count($s) + $f : min($f, $last));
+            }
+            for ($i = $last; $i >= 0; $i--) {
                 if (self::strictEq($s[$i], $needle)) {
                     return $i;
                 }
@@ -976,10 +982,11 @@ final class Js
         return $out;
     }
 
-    public static function includes(array $a, mixed $v): bool
+    public static function includes(array $a, mixed $v, int|float $from = 0): bool
     {
-        foreach ($a as $item) {
-            if (self::sameValueZero($item, $v)) {
+        $a = array_values($a);
+        for ($i = self::relIndex($from, count($a)), $n = count($a); $i < $n; $i++) {
+            if (self::sameValueZero($a[$i], $v)) {
                 return true;
             }
         }

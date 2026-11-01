@@ -678,7 +678,10 @@ final class Js
         }
         if (is_string($sep)) {
             if ($sep === '') {
-                $parts = array_map(self::fromUnits(...), str_split(self::units($s), 2));
+                // Stop at the limit before converting, as JS does: a pair split past it never
+                // becomes a returned element.
+                $units = $s === '' ? [] : str_split(self::units($s), 2);
+                $parts = array_map(self::fromUnits(...), array_slice($units, 0, $lim));
             } else {
                 $parts = explode($sep, $s);
             }

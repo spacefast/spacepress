@@ -1308,6 +1308,26 @@ fn rejects_phase2_static_contracts() {
             "const reader = (p: { x: number }) => () => p.x; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1;",
             "may be the same object or array as another value here",
         ),
+        (
+            "const a = [{ x: 0 }]; const r = a.map((e) => { a[0]!.x = 1; return e.x; }); return r[0] === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; const b = a.map((e) => ({ e })); b[0]!.e.x = 1; return a[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const cmp = (x: { x: number }, y: { x: number }) => { y.x = 1; return 0; }; const a = [{ x: 0 }, { x: 0 }]; a.sort(cmp); return a[1]!.x === 1;",
+            "`sort` passes each element to this function as a copy",
+        ),
+        (
+            "const acc = (a: { x: number }, e: number) => { a.x += e; return a; }; const init = { x: 0 }; [1, 2].reduce(acc, init); return init.x === 3;",
+            "`reduce` passes each element to this function as a copy",
+        ),
+        (
+            "const reader = (p: { x: number }) => { const q = p; return () => q.x; }; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

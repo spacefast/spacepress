@@ -267,6 +267,8 @@ $deviations = [
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
     ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],
+    ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1), ['a']],
+    ['split("", limit) splitting a pair within the limit throws', fn () => Js::split('a🙂b', '', 2), ['$err' => 'RangeError']],
     ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
 ];
 

@@ -136,6 +136,7 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         callback_params: HashMap::new(),
         copies: HashMap::new(),
         last_callback: Vec::new(),
+        reduce_init: None,
         callback_route: HashMap::new(),
         writes: Vec::new(),
     };
@@ -508,6 +509,8 @@ struct Walk<'o, 'a> {
     copies: HashMap<Class, Class>,
     /// Callback element parameters declared by the last inline callback.
     last_callback: Vec<Span>,
+    /// The class of a reduce call's initial value, while its callback is walked.
+    reduce_init: Option<Option<Class>>,
     /// A callback element parameter → the array its callback's results build (`map`).
     callback_route: HashMap<Span, Class>,
     writes: Vec<Write>,
@@ -688,6 +691,22 @@ impl Walk<'_, '_> {
                 Some(a)
             }
             (a, b) => a.or(b),
+        }
+    }
+
+    /// A member read of `o`. A callback element's copy reads the element's members (in JS they
+    /// are the element's own).
+    fn member_of(&mut self, o: Class) -> Class {
+        let oc = self.uf.find(o);
+        let element = self
+            .copies
+            .clone()
+            .into_iter()
+            .find(|(k, _)| self.uf.find(*k) == oc)
+            .map(|(_, e)| e);
+        match element {
+            Some(e) => self.uf.interior(e),
+            None => self.uf.interior(o),
         }
     }
 
@@ -1032,7 +1051,7 @@ impl Walk<'_, '_> {
             ExprKind::Member { obj, .. } => {
                 let o = self.expr(obj);
                 Some(match o {
-                    Some(o) => self.uf.interior(o),
+                    Some(o) => self.member_of(o),
                     None => self.uf.outside_class(),
                 })
             }
@@ -1040,7 +1059,7 @@ impl Walk<'_, '_> {
                 let o = self.expr(obj);
                 self.expr(index);
                 Some(match o {
-                    Some(o) => self.uf.interior(o),
+                    Some(o) => self.member_of(o),
                     None => self.uf.outside_class(),
                 })
             }
@@ -1178,7 +1197,23 @@ impl Walk<'_, '_> {
         let mut argv: Vec<Option<Class>> = Vec::new();
         let mut cb_return: Option<Class> = None;
         let mut cb_params: Vec<Span> = Vec::new();
+        // A reducer's accumulator starts as the initial value (or the first element).
+        self.reduce_init = if matches!(p, "reduce" | "reduceRight") {
+            match args.get(1) {
+                Some(ArrEl::Item(x)) => Some(self.expr(x)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let walked_init = self.reduce_init;
         for (i, a) in args.iter().enumerate() {
+            if i == 1
+                && let Some(init) = walked_init
+            {
+                argv.push(init);
+                continue;
+            }
             if i == 0
                 && let Some(el) = callback
                 && let ArrEl::Item(x) = a
@@ -1280,25 +1315,72 @@ impl Walk<'_, '_> {
                     let v = if is_element {
                         // PHP's copy shares nothing with the element; JS's element is the
                         // original. A write through the copy (at any depth) is lost exactly when
-                        // the original can be seen again.
+                        // the original can be seen again. A copy stored anywhere (a wrapped
+                        // return `({ e })`) stores the element itself (see below).
                         element.map(|e| {
                             let copy = self.uf.new_class();
                             self.copies.insert(copy, e);
                             copy
                         })
                     } else if el == 1 && i == 0 {
-                        element
+                        // The accumulator: a copy of the initial value (or an element) on the
+                        // first call, then whatever the callback returned. Writing into it is
+                        // faithful while nothing else can see what it copies.
+                        let init = self.reduce_init.flatten();
+                        let original = init.or(element);
+                        original.map(|o| {
+                            let copy = self.uf.new_class();
+                            let ci = self.uf.interior(copy);
+                            let oi = self.uf.interior(o);
+                            self.uf.unite(ci, oi);
+                            self.copies.insert(copy, o);
+                            copy
+                        })
                     } else {
                         None
                     };
                     self.declare_pat(&p.pat, v);
-                    if is_element && let Pat::Id(_, span) = &p.pat {
+                    if (is_element || (el == 1 && i == 0))
+                        && let Pat::Id(_, span) = &p.pat
+                    {
                         self.callback_params.insert(*span, method.to_string());
                         self.last_callback.push(*span);
                     }
                 }
                 let params = std::mem::take(&mut self.last_callback);
+                let writes_before = self.writes.len();
+                let copies_before: Vec<(Class, Class)> = params
+                    .iter()
+                    .filter_map(|p| self.classes.get(p).copied())
+                    .filter_map(|c| self.copies.get(&c).map(|e| (c, *e)))
+                    .collect();
                 self.body(&f.body);
+                // A copy placed anywhere but straight back as the callback's result (stored in
+                // a literal or container, captured, passed on) is, in JS, the element itself.
+                for (copy, element) in copies_before {
+                    let cc = self.uf.find(copy);
+                    if !self.uf.held_in[cc].is_empty() {
+                        let holders = self.uf.held_in[cc].clone();
+                        for h in holders {
+                            self.uf.store(h, element);
+                        }
+                    }
+                }
+                // Inside the callback the element is two values in PHP (the copy and the
+                // original): a write into the receiver's elements while it runs is a write the copy
+                // doesn't see, as JS would.
+                if let Some(element) = element {
+                    let e = self.uf.find(element);
+                    for w in &mut self.writes[writes_before..] {
+                        if let Target::Binding(b, _) = w.target
+                            && !self.callback_params.contains_key(&b)
+                            && let Some(c) = self.classes.get(&b).copied()
+                            && (self.uf.find(c) == e || self.uf.overlap(c, e))
+                        {
+                            w.target = Target::Outside;
+                        }
+                    }
+                }
                 self.last_callback = params;
                 self.scopes.pop();
                 self.returns.pop();
@@ -1306,16 +1388,26 @@ impl Walk<'_, '_> {
             }
             _ => {
                 self.expr(cb);
-                if let Some(depth) = self.oracle.effects.callback_write_depth(call.span, el)
-                    && let Some(element) = element
-                {
-                    self.writes.push(Write {
-                        target: Target::Value(element, depth),
-                        name: method.to_string(),
-                        span: cb.span,
-                        named_callback: Some(method.to_string()),
-                        call: None,
-                    });
+                // Every parameter that receives an element (both comparator arguments; a
+                // reducer's element and its accumulator, which may be the initial value or an
+                // element).
+                let params: &[usize] = match method {
+                    "sort" | "toSorted" => &[0, 1],
+                    "reduce" | "reduceRight" => &[0, 1],
+                    _ => std::slice::from_ref(&el),
+                };
+                for p in params {
+                    if let Some(depth) = self.oracle.effects.callback_write_depth(call.span, *p)
+                        && let Some(element) = element
+                    {
+                        self.writes.push(Write {
+                            target: Target::Value(element, depth),
+                            name: method.to_string(),
+                            span: cb.span,
+                            named_callback: Some(method.to_string()),
+                            call: None,
+                        });
+                    }
                 }
                 // What a named callback returns may be an element or anything it captured.
                 let o = self.uf.outside_class();
@@ -1499,12 +1591,35 @@ impl Walk<'_, '_> {
         if self.uf.seen_elsewhere(c, binding, None) {
             return true;
         }
-        if depth >= 2
-            && let Some(i) = self.uf.existing_interior(c)
-            && i != c
-            && self.uf.seen_elsewhere(i, None, Some(c))
-        {
-            return true;
+        depth >= 2 && self.unsafe_below(c, depth)
+    }
+
+    /// A write `depth` steps below `c` passes through every container between: each one, at
+    /// each level down to the written one, must be seen only through `c`.
+    fn unsafe_below(&mut self, c: Class, depth: usize) -> bool {
+        let mut level: Vec<(Class, Class)> = vec![(c, c)];
+        for _ in 1..depth {
+            let mut next = Vec::new();
+            for (holder, _) in level {
+                let Some(i) = self.uf.existing_interior(holder) else {
+                    continue;
+                };
+                let i = self.uf.find(i);
+                if i != holder && self.uf.seen_elsewhere(i, None, Some(holder)) {
+                    return true;
+                }
+                next.push((i, holder));
+                for k in self.uf.contents[i].clone() {
+                    let k = self.uf.find(k);
+                    if k != i {
+                        next.push((k, holder));
+                    }
+                }
+            }
+            if next.is_empty() {
+                return false;
+            }
+            level = next;
         }
         false
     }
@@ -1514,14 +1629,7 @@ impl Walk<'_, '_> {
         if self.uf.seen_elsewhere(c, Some(b), route) {
             return true;
         }
-        if depth >= 2
-            && let Some(i) = self.uf.existing_interior(c)
-            && i != c
-            && self.uf.seen_elsewhere(i, None, Some(c))
-        {
-            return true;
-        }
-        false
+        depth >= 2 && self.unsafe_below(c, depth)
     }
 
     fn unsafe_value(&mut self, c: Class, depth: usize) -> bool {

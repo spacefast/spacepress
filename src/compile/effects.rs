@@ -1250,15 +1250,31 @@ impl Graph {
                 Sink::IntoParam => true,
                 Sink::Store(o) => o != function && !encloses(*function, *o),
             };
-            // Captured by a closure that outlives the call (returned or stored): the closure
-            // keeps the container itself.
-            let captured_kept = self.captured_by.get(param).is_some_and(|fs| {
-                fs.iter().any(|f| {
-                    self.copies.iter().any(|(src, dest, _)| {
-                        src.binding == *f
-                            && src.path.is_empty()
-                            && dest.binding != *f
-                            && sinks_of_value(&sinks, dest, function, &store)
+            // Captured by a closure that outlives the call (returned or stored), directly or
+            // through a local it was copied into: the closure keeps the container itself.
+            let mut aliases = vec![*param];
+            let mut seen_alias = HashSet::from([*param]);
+            while let Some(b) = aliases.pop() {
+                for (src, dest, _) in &self.copies {
+                    if src.binding == b
+                        && src.path.is_empty()
+                        && dest.path.is_empty()
+                        && self.bindings.get(&dest.binding) == Some(function)
+                        && seen_alias.insert(dest.binding)
+                    {
+                        aliases.push(dest.binding);
+                    }
+                }
+            }
+            let captured_kept = seen_alias.iter().any(|b| {
+                self.captured_by.get(b).is_some_and(|fs| {
+                    fs.iter().any(|f| {
+                        self.copies.iter().any(|(src, dest, _)| {
+                            src.binding == *f
+                                && src.path.is_empty()
+                                && dest.binding != *f
+                                && sinks_of_value(&sinks, dest, function, &store)
+                        })
                     })
                 })
             });

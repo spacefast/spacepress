@@ -188,7 +188,8 @@
                     ],
                     "notNull": true,
                     "default": {
-                        "value": []
+                        "value": [],
+                        "json": "[]"
                     }
                 },
                 "authorId": {

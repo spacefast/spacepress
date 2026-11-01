@@ -539,31 +539,31 @@ final class Js
 
     public static function slice(string $s, int|float $start = 0, int|float|null $end = null): string
     {
-        $len = mb_strlen($s);
+        $len = mb_strlen($s, 'UTF-8');
         $from = self::relIndex($start, $len);
         $to = $end === null ? $len : self::relIndex($end, $len);
 
-        return $from >= $to ? '' : mb_substr($s, $from, $to - $from);
+        return $from >= $to ? '' : mb_substr($s, $from, $to - $from, 'UTF-8');
     }
 
     public static function substring(string $s, int|float $start, int|float|null $end = null): string
     {
-        $len = mb_strlen($s);
+        $len = mb_strlen($s, 'UTF-8');
         $a = self::clampIndex($start, $len);
         $b = $end === null ? $len : self::clampIndex($end, $len);
         [$from, $to] = $a <= $b ? [$a, $b] : [$b, $a];
 
-        return mb_substr($s, $from, $to - $from);
+        return mb_substr($s, $from, $to - $from, 'UTF-8');
     }
 
     public static function charAt(string $s, int|float $i): string
     {
         $i = self::toInteger($i);
-        if ($i < 0 || $i >= mb_strlen($s)) {
+        if ($i < 0 || $i >= mb_strlen($s, 'UTF-8')) {
             return '';
         }
 
-        return mb_substr($s, (int) $i, 1);
+        return mb_substr($s, (int) $i, 1, 'UTF-8');
     }
 
     /** `String.prototype.length`: UTF-16 code units (astral characters count twice). */
@@ -574,14 +574,14 @@ final class Js
 
     public static function strAt(string $s, int|float $i): ?string
     {
-        $len = mb_strlen($s);
+        $len = mb_strlen($s, 'UTF-8');
         $i = self::toInteger($i);
         $i = $i < 0 ? $len + $i : $i;
         if ($i < 0 || $i >= $len) {
             return null;
         }
 
-        return mb_substr($s, (int) $i, 1);
+        return mb_substr($s, (int) $i, 1, 'UTF-8');
     }
 
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
@@ -598,8 +598,8 @@ final class Js
             return -1;
         }
         $needle = self::str($needle);
-        $pos = self::clampIndex($from, mb_strlen($s));
-        $found = mb_strpos($s, $needle, $pos);
+        $pos = self::clampIndex($from, mb_strlen($s, 'UTF-8'));
+        $found = mb_strpos($s, $needle, $pos, 'UTF-8');
 
         return $found === false ? -1 : $found;
     }
@@ -616,7 +616,7 @@ final class Js
 
             return -1;
         }
-        $found = mb_strrpos($s, self::str($needle));
+        $found = mb_strrpos($s, self::str($needle), 0, 'UTF-8');
 
         return $found === false ? -1 : $found;
     }
@@ -630,7 +630,7 @@ final class Js
         }
         if (is_string($sep)) {
             if ($sep === '') {
-                $parts = mb_str_split($s);
+                $parts = mb_str_split($s, 1, 'UTF-8');
             } else {
                 $parts = explode($sep, $s);
             }
@@ -700,7 +700,7 @@ final class Js
     private static function pad(string $s, int|float $len, string $fill, bool $start): string
     {
         $target = max(0, self::toInteger($len));
-        $cur = mb_strlen($s);
+        $cur = mb_strlen($s, 'UTF-8');
         if ($target <= $cur || $fill === '') {
             return $s;
         }
@@ -708,8 +708,8 @@ final class Js
             throw new JsError('Invalid string length', 'RangeError');
         }
         $need = (int) $target - $cur;
-        $fillLen = mb_strlen($fill);
-        $padding = mb_substr(str_repeat($fill, intdiv($need, $fillLen) + 1), 0, $need);
+        $fillLen = mb_strlen($fill, 'UTF-8');
+        $padding = mb_substr(str_repeat($fill, intdiv($need, $fillLen) + 1), 0, $need, 'UTF-8');
 
         return $start ? $padding . $s : $s . $padding;
     }
@@ -776,7 +776,7 @@ final class Js
             if (is_string($replacement)) {
                 $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
             } else {
-                $rep = self::str($replacement($matched, ...[...$groups, mb_strlen(substr($s, 0, $start)), $s]));
+                $rep = self::str($replacement($matched, ...[...$groups, mb_strlen(substr($s, 0, $start), 'UTF-8'), $s]));
             }
             $out .= substr($s, $last, $start - $last) . $rep;
             $last = $end;
@@ -1288,7 +1288,7 @@ final class Js
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
         if (is_string($indent)) {
-            $gap = mb_substr($indent, 0, 10);
+            $gap = mb_substr($indent, 0, 10, 'UTF-8');
         } elseif ($indent !== null) {
             $gap = str_repeat(' ', (int) min(10, max(0, self::toInteger($indent))));
         } else {

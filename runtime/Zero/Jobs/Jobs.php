@@ -22,7 +22,7 @@ final class Jobs
      */
     public static function enqueue(string $name, mixed $input, array|\Zero\JsObject|null $opts = null): array
     {
-        $opts = $opts === null ? null : \Zero\Js::plain($opts);
+        $opts = $opts === null ? null : \Zero\Seam::toPhp($opts);
         $db = db();
         $spec = self::spec($name);
         $ctx = $db->hookCtx();
@@ -33,7 +33,7 @@ final class Jobs
             throw HttpError::invalidInput('delay must be a non-negative number of seconds', '/delay');
         }
         $key = $opts['key'] ?? null;
-        if ($key !== null && (!is_string($key) || $key === '' || mb_strlen($key) > self::MAX_KEY)) {
+        if ($key !== null && (!is_string($key) || $key === '' || mb_strlen($key, 'UTF-8') > self::MAX_KEY)) {
             throw HttpError::invalidInput('key must be a string of 1 to ' . self::MAX_KEY . ' characters', '/key');
         }
 

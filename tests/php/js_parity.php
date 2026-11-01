@@ -17,6 +17,9 @@ require __DIR__ . '/../../runtime/Zero/bootstrap.php';
 use Zero\Js;
 use Zero\JsError;
 
+// Other WordPress plugins may change this setting; Zero strings remain UTF-8.
+mb_internal_encoding('ISO-8859-1');
+
 $re = Js::re(...);
 
 $cases = [
@@ -111,7 +114,7 @@ $cases = [
     ['["abc".replace(/(b)/g, "$1$1$2$<x>"), "abc".replace(/(b)/, "$10"), "abcabc".replace(/b/, "X"), "abcabc".replace(/B/gi, "X"), "aaa".replace(/a*?/g, "-")]',
         fn () => [Js::replace('abc', $re('(b)', 'g'), '$1$1$2$<x>'), Js::replace('abc', $re('(b)', ''), '$10'), Js::replace('abcabc', $re('b', ''), 'X'), Js::replace('abcabc', $re('B', 'gi'), 'X'), Js::replace('aaa', $re('a*?', 'g'), '-')]],
     ['["a1b22".replace(/\d+/g, (m, off) => `[${m}@${off}]`), "x=1,y=2".replace(/(\w)=(\d)/g, (m, k, v) => v + k), "é1é2".replace(/\d/g, (m, o, s) => o + s.length), "ab".replace(/(x)?b/, (m, g) => g ?? "unset")]',
-        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('é1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + mb_strlen($s)), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => $g ?? 'unset')]],
+        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('é1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + Js::length($s)), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => $g ?? 'unset')]],
     ['["a.b.c".replaceAll(".", "-"), "aaa".replaceAll("", "-"), "aXbX".replaceAll(/x/gi, (m) => m.toLowerCase())]',
         fn () => [Js::replaceAll('a.b.c', '.', '-'), Js::replaceAll('aaa', '', '-'), Js::replaceAll('aXbX', $re('x', 'gi'), fn ($m) => strtolower($m))]],
     ['"a".replaceAll(/a/, "b")', fn () => Js::replaceAll('a', $re('a', ''), 'b')],

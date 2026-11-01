@@ -74,7 +74,7 @@ final class Receipts
 
     private static function key(string $key, string $pointer): string
     {
-        if ($key === '' || mb_strlen($key) > self::MAX_KEY) {
+        if ($key === '' || mb_strlen($key, 'UTF-8') > self::MAX_KEY) {
             throw new HttpError(400, 'invalid_idempotency_key', 'Idempotency keys are 1 to ' . self::MAX_KEY . ' characters', $pointer === '' ? null : $pointer);
         }
 

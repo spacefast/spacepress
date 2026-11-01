@@ -1164,7 +1164,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Array(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    t if t.is_str() => (Ty::Str, format!("mb_str_split({})", it.php)),
+                    t if t.is_str() => (Ty::Str, format!("mb_str_split({}, 1, 'UTF-8')", it.php)),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 if it.ty.is_nullable() {
@@ -3899,8 +3899,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Out::atom(format!("\\Zero\\Js::{f}({})", parts.join(", ")), Ty::Str)
         };
         Ok(match m {
-            "toLowerCase" => Out::atom(format!("mb_strtolower({})", s.php), Ty::Str),
-            "toUpperCase" => Out::atom(format!("mb_strtoupper({})", s.php), Ty::Str),
+            "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
+            "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
             "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),

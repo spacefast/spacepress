@@ -121,7 +121,7 @@ final class Wire
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
-        $fields = $fields instanceof \Zero\JsObject ? [] : $fields; // `fields: {}`; nested json() values keep theirs
+        $fields = \Zero\Seam::container($fields); // `fields: {}`; nested json() values keep theirs
         if (!is_array($fields) || ($fields !== [] && array_is_list($fields))) {
             throw HttpError::invalidInput('fields must be an object', '/fields');
         }
@@ -167,7 +167,7 @@ final class Wire
         // Authorization preflights and the pipeline see plain arrays outside json() values.
         foreach ($data as $name => $v) {
             if (isset($spec['columns'][$name])) {
-                $data[$name] = \Zero\Schema::plainOutsideJson($spec['columns'][$name], $v);
+                $data[$name] = \Zero\Seam::toPhp($v, $spec['columns'][$name]);
             }
         }
 
@@ -176,7 +176,7 @@ final class Wire
 
     private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self, ?\Zero\Viewer $viewer): int|string|null
     {
-        $translations = $translations instanceof \Zero\JsObject ? [] : $translations;
+        $translations = \Zero\Seam::container($translations);
         if (!is_array($translations)) {
             throw HttpError::invalidInput('translations must map locales to uids', '/fields/translations');
         }

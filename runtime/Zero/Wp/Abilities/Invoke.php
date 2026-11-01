@@ -140,9 +140,7 @@ final class Invoke
     /** An omitted input is `{}`; anything but an object is not an operation input. */
     public static function object(mixed $input): ?array
     {
-        if ($input instanceof \Zero\JsObject) {
-            return [];
-        }
+        $input = \Zero\Seam::container($input);
 
         return $input === null || is_array($input) && ($input === [] || !array_is_list($input)) ? ($input ?? []) : null;
     }

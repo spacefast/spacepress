@@ -34,7 +34,7 @@ final class RegExp implements \Stringable
     private bool $dotAll;
     private bool $multiline;
     private bool $unicode;
-    /** These atoms can distinguish a real UTF-8 stand-in from a UTF-16 surrogate. */
+    /** These atoms can consume a surrogate half or distinguish it from a UTF-8 stand-in. */
     private bool $requiresUnicodeOnAstral = false;
 
     public function __construct(string $source, string $flags = '')
@@ -137,7 +137,7 @@ final class RegExp implements \Stringable
     {
         if (!$this->unicode && $this->requiresUnicodeOnAstral
             && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
-            throw new JsError('Character classes, lookarounds and surrogate or astral literals on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError');
+            throw new JsError('Dots, complemented shorthands, character classes, lookarounds and surrogate or astral literals on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError');
         }
         // Expand once; every probe then runs anchored against this shared buffer. Mapping the
         // original byte positions keeps callback offsets and ordinary matches on the real string.
@@ -192,8 +192,8 @@ final class RegExp implements \Stringable
      * empty match there, flagged with a fifth element. PCRE can't stand inside a UTF-8 character,
      * so the pattern runs on a shared shadow string, where every pair becomes two noncharacter
      * stand-ins. An empty match only looks at its neighbours through anchors, `\b`/`\B` (a half
-     * and a stand-in are both non-word, non-line-terminator) and literals. Character classes,
-     * lookarounds and surrogate or astral literals could distinguish the representation, so
+     * and a stand-in are both non-word, non-line-terminator) and literals. Dots, complemented
+     * shorthands, character classes, lookarounds and surrogate or astral literals could distinguish the representation, so
      * matchAll refuses those before trying any stand-in.
      * A match that consumes a half
      * would make a lone surrogate, which throws (the documented deviation).
@@ -222,6 +222,9 @@ final class RegExp implements \Stringable
         $len = strlen($this->src);
         while ($this->pos < $len) {
             $c = $this->src[$this->pos++];
+            if ($c === '.') {
+                $this->requiresUnicodeOnAstral = true;
+            }
             $out .= match ($c) {
                 '\\' => $this->escape(false),
                 '[' => $this->charClass(),
@@ -256,6 +259,9 @@ final class RegExp implements \Stringable
     private function escape(bool $inClass): string
     {
         $c = $this->src[$this->pos++] ?? '\\';
+        if (in_array($c, ['D', 'W', 'S'], true)) {
+            $this->requiresUnicodeOnAstral = true;
+        }
 
         switch ($c) {
             case 'd': return $inClass ? '0-9' : '[0-9]';

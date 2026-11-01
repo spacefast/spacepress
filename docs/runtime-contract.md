@@ -537,7 +537,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
-- Global regex character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. UTF-8 stand-ins cannot safely decide those atoms at an interior surrogate position.
+- Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
 Arrays (lists):
 - `find(array $a, callable $f): mixed` (null when none), `findIndex(array $a, callable $f): int`, `findLast`, `findLastIndex`

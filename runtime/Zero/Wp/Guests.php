@@ -96,16 +96,16 @@ final class Guests
         if ($db->run(self::staleSql($db, true), [$cutoff, $id]) === []) {
             return false;
         }
+        $db->onRollback(static function () use ($id): void {
+            clean_user_cache($id);
+            wp_cache_delete($id, 'user_meta');
+        });
         $collection = db()->schema()->auth()['collection'] ?? null;
         if ($collection !== null && db()->findFirst($collection, ['where' => ['id' => $id]]) !== null) {
             db()->delete($collection, ['id' => $id]); // onDelete, hooks, webhooks; then the user
         } else {
             WpUserStore::deleteUser($db, $id);
         }
-        $db->onRollback(static function () use ($id): void {
-            clean_user_cache($id);
-            wp_cache_delete($id, 'user_meta');
-        });
 
         return true;
     }

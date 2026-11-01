@@ -76,4 +76,23 @@ test("zero.prune-guests deletes stale guests with what they own, per onDelete, a
   assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_zero_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
   const me = await fetch(`${api}/me`, { headers: { authorization: `Bearer ${stale.accessToken}` } });
   assert.equal(me.status, 401, "the pruned guest's token no longer signs in");
+  // Without an auth collection, a core deletion hook can fail after priming empty metadata.
+  // Rollback must restore the guest's roles in the same request, as well as its SQL rows.
+  age(id(pinned), -40);
+  const rollbackGuest = await guest();
+  age(id(rollbackGuest), 40);
+  const restored = JSON.parse(wp("eval", `
+    $original = \\Zero\\db();
+    \\Zero\\Db::setInstance(new \\Zero\\Db($original->store(), new \\Zero\\Schema([]), $original->media(), 'wp'));
+    add_action('deleted_user', static function ($userId): void {
+      if ($userId === ${id(rollbackGuest)}) {
+        get_user_meta($userId);
+        throw new \\Zero\\JsError('keep guest');
+      }
+    });
+    $result = \\Zero\\Wp\\Guests::prune();
+    $user = new WP_User(${id(rollbackGuest)});
+    echo wp_json_encode([$result, $user->exists(), $user->roles]);
+  `));
+  assert.deepEqual(restored, [{ pruned: [], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["zero_guest"]]);
 });

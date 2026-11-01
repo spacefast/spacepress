@@ -25,10 +25,11 @@ export const members = collection("members", {
     city: text().max(40),
     verified: boolean().notNull().default(false).access({ update: "admin" }),
     optional: boolean().default(true).access({ update: "admin" }),
+    prefs: group({ fields: { bio: text() } }).access({ update: "admin" }),
     // Hidden (and so not posted by SCF) unless the city is Oslo.
     district: text().showIf({ city: "Oslo" }),
   } }),
-  links: repeater({ fields: { label: text().notNull(), at: timestamp(), detail: text().notNull().showIf({ label: "visible" }) } }).max(3),
+  links: repeater({ fields: { label: text().notNull(), at: timestamp(), detail: text().notNull().showIf({ label: "visible" }), metadata: group({ fields: { bio: text() } }).notNull() } }).max(3),
   sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text().showIf({ text: "visible" }) } } }).showIf({ plan: "pro" }),
   notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
   addressBy: integer(),

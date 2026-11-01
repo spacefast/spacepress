@@ -39,6 +39,14 @@ final class ProfileForm
 
     public static function register(): void
     {
+        // Requiredness is checked by Zero after omitted controls have been reconciled with storage.
+        Scf::fieldFilter(static function (array $field): array {
+            if (str_starts_with($field['key'], 'field_zero_member_')) {
+                $field['required'] = 0;
+            }
+
+            return $field;
+        });
         add_action('personal_options_update', [self::class, 'begin'], 0);
         add_action('edit_user_profile_update', [self::class, 'begin'], 0);
         // Core rejected the user (edit_user returns before profile_update): nothing of the save stays open.
@@ -366,25 +374,24 @@ final class ProfileForm
             }
             $before = is_array($before) ? $before : null;
             foreach ($fields as $name => $sub) {
-                $structured = in_array($sub['type'] ?? '', self::STRUCTURED, true);
                 if (!array_key_exists($name, $obj)) {
                     if ($viewer !== null && $before !== null && array_key_exists($name, $before)) {
                         $obj[$name] = $before[$name];
                     }
                     continue;
                 }
-                if ($viewer !== null && $before !== null && array_key_exists($name, $before)
-                    && $sub['type'] === 'boolean' && $before[$name] === null && $obj[$name] === false) {
-                    $obj[$name] = $before[$name];
-                    continue;
-                }
-                if ($viewer !== null && $before === null && !$structured
+                if ($viewer !== null && $before === null
                     && FieldAccess::unwritable('update', $sub, $viewer) && self::isDefault($sub, $obj[$name])) {
                     unset($obj[$name]);
                     continue;
                 }
                 $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
                     is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
+                if ($viewer !== null && $before !== null && array_key_exists($name, $before) && $before[$name] === null
+                    && (($sub['type'] === 'boolean' && $obj[$name] === false)
+                        || (in_array($sub['type'], self::STRUCTURED, true) && !($sub['notNull'] ?? false) && self::canonical($sub, $obj[$name]) === null))) {
+                    $obj[$name] = null;
+                }
             }
 
             return $obj;
@@ -409,9 +416,14 @@ final class ProfileForm
             return $item($def['fields'] ?? [], $value, $before, $inputs[$i] ?? null, $key . '_');
         };
 
+        if ($def['type'] === 'group') {
+            $value = $item($def['fields'] ?? [], $posted, $stored, $raw, $key . '_');
+
+            return $viewer !== null && $stored === null && !($def['notNull'] ?? false) && self::canonical($def, $value) === null ? null : $value;
+        }
+
         return match ($def['type'] ?? '') {
             'timestamp' => self::wallToUtc($posted, $stored),
-            'group' => $item($def['fields'] ?? [], $posted, $stored, $raw, $key . '_'),
             'repeater', 'blocks' => match (true) {
                 $posted === null => $stored === null && !($def['notNull'] ?? false) ? null : [],
                 !is_array($posted) => $posted,

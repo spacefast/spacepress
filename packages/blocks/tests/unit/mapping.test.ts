@@ -79,6 +79,34 @@ test("a horizontal rule is a separator", () => {
   assert.deepEqual(map(jsx("hr", {})).blocks, [{ kind: "block", blockName: "core/separator", attrs: {}, inner: [] }]);
 });
 
+test("structural children (figcaption, summary, table sections, rows) are checked for style props too", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsxs("figure", { children: [jsx("img", { src: "/a.png" }), jsxDEV("figcaption", { style: "x", children: "c" }, undefined, false, at(1))] }),
+    jsx("details", { children: jsxDEV("summary", { style: "x", children: "s" }, undefined, false, at(2)) }),
+    jsx("table", { children: jsxDEV("tbody", { style: "x", children: jsxDEV("tr", { style: "x", children: jsx("td", { children: "c" }) }, undefined, false, at(4)) }, undefined, false, at(3)) }),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["style_prop_unsupported", 1], ["style_prop_unsupported", 2], ["style_prop_unsupported", 3], ["style_prop_unsupported", 4]]);
+});
+
+test("a child that a construct has no place for is refused rather than dropped", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsxs("pre", { children: [jsx("code", { children: "A" }), "B", jsxDEV("span", { children: "C" }, undefined, false, at(1))] }),
+    jsxs("figure", { children: [jsx("img", { src: "/a.png" }), jsxDEV("p", { children: "stray" }, undefined, false, at(2))] }),
+    jsxs("table", { children: [jsxDEV("caption", { children: "cap" }, undefined, false, at(3)), jsx("tbody", { children: [jsx("tr", { children: [jsx("td", { children: "c" }), jsxDEV("div", {}, undefined, false, at(4))] }), jsxDEV("p", {}, undefined, false, at(5))] })] }),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line ?? "pre"]), [
+    ["unmappable_element", "pre"],
+    ["unmappable_element", 1],
+    ["unmappable_element", 2],
+    ["unmappable_element", 3],
+    ["unmappable_element", 5],
+    ["unmappable_element", 4],
+  ]);
+  assert.match(diagnostics[0]!.message, /Text inside a <pre>/);
+});
+
 test("every element in a tree is checked: a style prop or a block-level tag deep inside rich text is reported", () => {
   const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
   const { diagnostics } = map([

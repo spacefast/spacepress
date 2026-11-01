@@ -276,10 +276,13 @@ class Mapper {
     return [...text, ...nested];
   }
 
-  /** `<pre><code>` is the code block; a bare `<pre>` is still code. */
+  /** `<pre><code>` is the code block; a bare `<pre>` is still code. Anything beside the `<code>` is refused. */
   private code(node: ElementNode): ContentNode[] {
     const [code] = elementChildren(node, "code");
-    if (code?.props.style !== undefined) this.styleProp(code);
+    if (code) {
+      this.structural(code);
+      this.onlyChildren(node, [code], "a code block holds one <code>", "Put everything inside the <code>.");
+    }
     const body = code ? code.children : node.children;
     this.checkInline(body);
     return [...body];
@@ -295,6 +298,22 @@ class Mapper {
     return attrs;
   }
 
+  /** A structural child (figcaption, summary, thead, tr, td, …): checked for a style prop like any element. */
+  private structural(node: ElementNode): ElementNode {
+    if (node.props.style !== undefined) this.styleProp(node);
+    return node;
+  }
+
+  /** Refuse every child that is not one of the accepted ones, so nothing is dropped silently. */
+  private onlyChildren(parent: ElementNode, accepted: readonly ContentNode[], what: string, hint: string): void {
+    for (const child of parent.children) {
+      if (accepted.includes(child)) continue;
+      if (child.kind === "text" && child.text.trim() === "") continue;
+      const message = child.kind === "element" ? `<${child.tag}> inside a <${parent.tag}> has nowhere to go: ${what}.` : child.kind === "block" ? `${child.blockName} inside a <${parent.tag}> has nowhere to go: ${what}.` : `Text inside a <${parent.tag}> has nowhere to go: ${what}.`;
+      this.diagnostics.push({ code: "unmappable_element", severity: "error", message, hint, loc: child.kind === "text" ? parent.loc : child.loc });
+    }
+  }
+
   private figure(node: ElementNode, attrs: BlockAttributes): BlockNode[] {
     const [image] = elementChildren(node, "img");
     if (!image) {
@@ -302,17 +321,15 @@ class Mapper {
     }
     const imageAttrs = { ...this.image(image), ...commonAttributes(image.props), ...attrs };
     const [caption] = elementChildren(node, "figcaption");
-    if (caption) imageAttrs.caption = renderRichTextHtml(this.rich(caption));
-    for (const child of node.children) {
-      if (isElement(child) && child !== image && child !== caption) this.unmappable(child, `<${child.tag}> inside a <figure> has nowhere to go: a figure is one image block.`, "Keep only an <img> and an optional <figcaption> in the figure.");
-    }
+    if (caption) imageAttrs.caption = renderRichTextHtml(this.rich(this.structural(caption)));
+    this.onlyChildren(node, [image, ...(caption ? [caption] : [])], "a figure is one image block", "Keep only an <img> and an optional <figcaption> in the figure.");
     return [block("core/image", imageAttrs, [], node.loc)];
   }
 
   private details(node: ElementNode): BlockAttributes {
     const attrs: BlockAttributes = {};
     const [summary] = elementChildren(node, "summary");
-    if (summary) attrs.summary = renderRichTextHtml(this.rich(summary));
+    if (summary) attrs.summary = renderRichTextHtml(this.rich(this.structural(summary)));
     return attrs;
   }
 
@@ -326,18 +343,25 @@ class Mapper {
    * re-parsing markup.
    */
   private table(node: ElementNode): BlockAttributes {
+    const sections = ["thead", "tbody", "tfoot"].flatMap((tag) => elementChildren(node, tag));
+    const looseRows = elementChildren(node, "tr");
+    this.onlyChildren(node, [...sections, ...looseRows], "a table holds thead, tbody, tfoot or rows", "Put cells in <tr> rows inside a section.");
+    const rowsOf = (container: ElementNode): ElementNode[] => {
+      this.structural(container);
+      const rows = elementChildren(container, "tr");
+      this.onlyChildren(container, rows, "a table section holds rows", "Put cells in <tr> rows.");
+      return rows;
+    };
     const rowsIn = (section: "thead" | "tbody" | "tfoot") => {
       const [container] = elementChildren(node, section);
       // A table written without a tbody still has rows; they are body rows.
-      const rows = container ? elementChildren(container, "tr") : section === "tbody" ? elementChildren(node, "tr") : [];
-      return rows.map((row) => ({
-        cells: row.children
-          .filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"))
-          .map((cell) => {
-            if (cell.props.style !== undefined) this.styleProp(cell);
-            return { content: renderRichTextHtml(this.rich(cell)), tag: cell.tag };
-          }),
-      }));
+      const rows = container ? rowsOf(container) : section === "tbody" ? looseRows : [];
+      return rows.map((row) => {
+        this.structural(row);
+        const cells = row.children.filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"));
+        this.onlyChildren(row, cells, "a row holds td and th cells", "Put content inside a cell.");
+        return { cells: cells.map((cell) => ({ content: renderRichTextHtml(this.rich(this.structural(cell))), tag: cell.tag })) };
+      });
     };
     return { head: rowsIn("thead"), body: rowsIn("tbody"), foot: rowsIn("tfoot") };
   }

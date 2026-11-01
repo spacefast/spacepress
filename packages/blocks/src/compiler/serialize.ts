@@ -108,7 +108,7 @@ function patchNamedNodeMap(win: Record<string, unknown>): void {
   });
 }
 
-let dom: Record<string, unknown> | null = null;
+let dom: Promise<Record<string, unknown>> | null = null;
 let domDepth = 0;
 let restoreDom: (() => void) | null = null;
 
@@ -119,18 +119,24 @@ let restoreDom: (() => void) | null = null;
  * the globals are present only while this package is working, so an authored
  * module executed later sees the same environment as one executed first.
  */
+async function createDom(): Promise<Record<string, unknown>> {
+  const { Window } = await import("happy-dom");
+  const win = new Window({ url: "https://localhost/" }) as unknown as Record<string, unknown>;
+  patchNamedNodeMap(win);
+  return win;
+}
+
 async function withDom<T>(use: () => Promise<T>): Promise<T> {
+  // The window is created once, and the depth is read only after that await,
+  // so two concurrent cold calls cannot both believe they are first.
+  dom ??= createDom();
+  const win = await dom;
   if (domDepth === 0) {
-    if (dom === null) {
-      const { Window } = await import("happy-dom");
-      dom = new Window({ url: "https://localhost/" }) as unknown as Record<string, unknown>;
-      patchNamedNodeMap(dom);
-    }
     const previous = new Map<string, PropertyDescriptor | undefined>();
     for (const name of DOM_GLOBAL_NAMES) {
-      if (dom[name] === undefined) continue;
+      if (win[name] === undefined) continue;
       previous.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
-      Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: dom[name] });
+      Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: win[name] });
     }
     restoreDom = () => {
       for (const [name, before] of previous) {
@@ -180,6 +186,9 @@ const PASSTHROUGH_INNER_ATTRIBUTE = "zero-blocks:inner-html";
 /** Blocks we registered ourselves, and the attribute names each has. */
 const passthroughBlocks = new Map<string, Set<string>>();
 
+/** WordPress's rule for a block name: `namespace/name`, lowercase, digits and dashes. */
+const BLOCK_NAME = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
+
 /**
  * Teach `@wordpress/blocks` about a block it has never heard of, so a
  * third-party block serializes with its attributes and children instead of
@@ -197,7 +206,7 @@ async function registerPassthrough(blockName: string, attributeNames: Set<string
   passthroughBlocks.set(blockName, new Set(attributeNames));
   const attributes: Record<string, AttributeSchema> = { [PASSTHROUGH_INNER_ATTRIBUTE]: { type: "string", source: "html" } };
   for (const name of attributeNames) attributes[name] = {};
-  bundle.blocks.registerBlockType(blockName, {
+  const registered = bundle.blocks.registerBlockType(blockName, {
     apiVersion: 3,
     title: blockName,
     category: "widgets",
@@ -206,6 +215,10 @@ async function registerPassthrough(blockName: string, attributeNames: Set<string
     save: (props: { attributes: BlockAttributes }) =>
       bundle.element.createElement(bundle.element.RawHTML, null, String(props.attributes[PASSTHROUGH_INNER_ATTRIBUTE] ?? "")),
   });
+  if (registered === undefined) {
+    passthroughBlocks.delete(blockName);
+    throw new Error(`WordPress refused to register ${blockName}`);
+  }
 }
 
 function splitInner(inner: readonly ContentNode[]) {
@@ -257,6 +270,20 @@ export function fitsAttribute(schema: AttributeSchema, value: unknown): boolean 
   return types.some((type) => JSON_TYPE_CHECKS[type]?.(value) ?? true);
 }
 
+/** A short, never-throwing rendering of an authored value for a message. */
+function describeValue(value: unknown): string {
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value === "function") return "a function";
+  if (typeof value === "symbol") return value.toString();
+  try {
+    const json = JSON.stringify(value);
+    if (json !== undefined) return json.length > 80 ? `${json.slice(0, 77)}...` : json;
+  } catch {
+    /* circular or otherwise unserializable */
+  }
+  return typeof value === "object" && value !== null ? `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "object"}` : String(value);
+}
+
 function describeType(schema: AttributeSchema): string {
   if (schema.enum && schema.enum.length > 0) return schema.enum.map((v) => JSON.stringify(v)).join(" | ");
   const types = schema.type === undefined ? [] : Array.isArray(schema.type) ? schema.type : [schema.type];
@@ -290,6 +317,10 @@ class Serializer {
     if (type === undefined && node.blockName.startsWith("core/")) {
       const candidate = nearest(node.blockName, this.api.getBlockTypes().map((t) => t.name));
       this.error("unknown_block", `${node.blockName} is not a block WordPress 7.1 registers.`, candidate ? `Did you mean ${candidate}?` : undefined, node.loc);
+      return false;
+    }
+    if (type === undefined && !BLOCK_NAME.test(node.blockName)) {
+      this.error("unknown_block", `"${node.blockName}" is not a valid block name.`, "Block names are namespace/name in lowercase letters, digits and dashes, like acme/testimonials.", node.loc);
       return false;
     }
     // One body per block: `content` names the whole body for a paragraph, a heading, a Custom HTML
@@ -331,7 +362,7 @@ class Serializer {
         continue;
       }
       if (!fitsAttribute(schema, value)) {
-        this.error("attribute_type", `${node.blockName}.${name} expects ${describeType(schema)}, got ${JSON.stringify(value) ?? typeof value}.`, undefined, node.loc);
+        this.error("attribute_type", `${node.blockName}.${name} expects ${describeType(schema)}, got ${describeValue(value)}.`, undefined, node.loc);
         ok = false;
       }
     }
@@ -384,10 +415,19 @@ class Serializer {
 
     const block = this.api.createBlock(node.blockName, attrs, innerBlocks);
     // `serialize()` swallows a throwing save() and writes an empty block; ask first.
+    let saved: string;
     try {
-      this.api.getSaveContent(type, block.attributes, block.innerBlocks);
+      saved = this.api.getSaveContent(type, block.attributes, block.innerBlocks);
     } catch (error) {
       this.error("save_failed", `${node.blockName} could not be rendered by its own save(): ${error instanceof Error ? error.message : String(error)}`, undefined, node.loc);
+      return null;
+    }
+    // A block whose save() has no InnerBlocks slot (a paragraph, an image) drops
+    // its inner blocks on the floor; the author would never know. If saving with
+    // the children gives the same markup as saving without, they were dropped.
+    if (innerBlocks.length > 0 && saved === this.api.getSaveContent(type, block.attributes, [])) {
+      const first = childBlocks[0] ?? node;
+      this.error("unmappable_element", `${node.blockName} cannot hold inner blocks; ${innerBlocks.length === 1 ? "its child" : "its children"} would be dropped.`, "Put the child blocks beside it, or inside a group.", first.loc ?? node.loc);
       return null;
     }
     return block;
@@ -396,7 +436,7 @@ class Serializer {
 
 function collectUnregistered(api: BlockApi, nodes: readonly BlockNode[], into: Map<string, Set<string>>): void {
   for (const node of nodes) {
-    if (!node.blockName.startsWith("core/") && (passthroughBlocks.has(node.blockName) || api.getBlockType(node.blockName) === undefined)) {
+    if (!node.blockName.startsWith("core/") && BLOCK_NAME.test(node.blockName) && (passthroughBlocks.has(node.blockName) || api.getBlockType(node.blockName) === undefined)) {
       const names = into.get(node.blockName) ?? new Set<string>();
       for (const key of Object.keys(node.attrs)) if (key !== PASSTHROUGH_INNER_ATTRIBUTE) names.add(key);
       into.set(node.blockName, names);

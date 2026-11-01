@@ -79,21 +79,30 @@ test("an unknown core block is a located error naming the nearest block", async 
   assert.equal(diagnostics[0]!.hint, "Did you mean core/paragraph?");
 });
 
-test("an unknown attribute is a located error naming the nearest attribute, and inherited object keys are not attributes", async () => {
+test("an unknown attribute is a located error naming the nearest attribute", async () => {
   const typo = await serializeBlocks([at(block("core/heading", { levl: 2 }, [text("y")]), 2)]);
   assert.deepEqual(typo.diagnostics.map(brief), [{ code: "unknown_attribute", severity: "error", file: "/t/page.tsx", line: 2, column: 5 }]);
   assert.equal(typo.diagnostics[0]!.hint, 'Did you mean "level"?');
+});
+
+test("inherited object keys are not registered attributes", async () => {
   const inherited = await serializeBlocks([at(block("core/paragraph", { toString: "lost", constructor: "lost" }, [text("y")]), 3)]);
   assert.deepEqual(inherited.diagnostics.map((d) => d.code), ["unknown_attribute", "unknown_attribute"]);
 });
 
-test("a value outside an attribute's enum or type is a located error, including non-plain objects", async () => {
+test("a value of the wrong type is a located error that names both types", async () => {
   const wrongType = await serializeBlocks([at(block("core/heading", { level: "2" }, [text("z")]), 3)]);
   assert.deepEqual(wrongType.diagnostics.map(brief), [{ code: "attribute_type", severity: "error", file: "/t/page.tsx", line: 3, column: 5 }]);
   assert.match(wrongType.diagnostics[0]!.message, /expects number, got "2"/);
+});
+
+test("a value outside an attribute's enum is an error that lists the enum", async () => {
   const outsideEnum = await serializeBlocks([at(block("core/paragraph", { align: "bogus" }, [text("z")]), 4)]);
   assert.deepEqual(outsideEnum.diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 4]]);
   assert.match(outsideEnum.diagnostics[0]!.message, /"left" \| "center" \| "right"/);
+});
+
+test("a non-plain object is not an object attribute", async () => {
   const notPlain = await serializeBlocks([at(block("core/paragraph", { style: new Date(0) }, [text("z")]), 5)]);
   assert.deepEqual(notPlain.diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 5]]);
 });
@@ -114,6 +123,35 @@ test("a block with both a content attribute and children is refused, whatever th
   assert.deepEqual(html.diagnostics.map((d) => [d.code, d.loc?.line]), [["content_and_children", 7]]);
   const thirdParty = await serializeBlocks([at(block("acme/x", { content: "a" }, [text("b")]), 8)]);
   assert.deepEqual(thirdParty.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["content_and_children", 8]]);
+});
+
+test("a child block the parent's save() cannot hold is refused rather than dropped", async () => {
+  const paragraph = await serializeBlocks([block("core/paragraph", {}, [text("p"), at(block("core/heading", { level: 2 }, [text("h")]), 3)])]);
+  assert.equal(paragraph.markup, "");
+  assert.deepEqual(paragraph.diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 3]]);
+  assert.match(paragraph.diagnostics[0]!.message, /core\/paragraph cannot hold inner blocks/);
+  const image = await serializeBlocks([block("core/image", { url: "/a.png" }, [at(block("core/paragraph", {}, [text("x")]), 4)])]);
+  assert.deepEqual(image.diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 4]]);
+  // A block with an InnerBlocks slot keeps them.
+  assert.deepEqual((await serializeBlocks([block("core/group", {}, [block("core/paragraph", {}, [text("x")])])])).diagnostics, []);
+});
+
+test("an unserializable attribute value is still a plain attribute_type error", async () => {
+  const big = await serializeBlocks([at(block("core/heading", { level: 1n as unknown as number }), 2)]);
+  assert.deepEqual(big.diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 2]]);
+  assert.match(big.diagnostics[0]!.message, /got 1n/);
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const loop = await serializeBlocks([at(block("core/heading", { level: circular }), 3)]);
+  assert.deepEqual(loop.diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 3]]);
+});
+
+test("a name WordPress would refuse to register is an error, not an empty document", async () => {
+  for (const [name, line] of [["Acme/Bad", 1], ["acme", 2], ["acme/Thing_x", 3]] as const) {
+    const { markup, diagnostics } = await serializeBlocks([at(block(name), line)]);
+    assert.equal(markup, "", name);
+    assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unknown_block", line]], name);
+  }
 });
 
 test("every problem in a tree is reported in one pass, and nothing is written", async () => {
@@ -178,5 +216,11 @@ test("the DOM globals exist only while serializing, and nested calls share one i
   assert.equal("document" in globalThis, false);
   assert.equal("window" in globalThis, false);
   await assert.rejects(withBlockApi(() => Promise.reject(new Error("inner"))), /inner/);
+  assert.equal("document" in globalThis, false);
+  // Two concurrent calls: both see the DOM, and it is gone when both are done.
+  await Promise.all([
+    withBlockApi(() => assert.equal(typeof (globalThis as Record<string, unknown>).document, "object")),
+    withBlockApi(() => assert.equal(typeof (globalThis as Record<string, unknown>).document, "object")),
+  ]);
   assert.equal("document" in globalThis, false);
 });

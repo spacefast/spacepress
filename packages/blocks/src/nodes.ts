@@ -57,8 +57,25 @@ export interface TextNode {
 
 export type ContentNode = ElementNode | BlockNode | TextNode;
 
+/**
+ * Whether a value is a well-formed content node. Values cross from authored
+ * code, so each kind's required fields are checked, not just the tag.
+ */
 export function isContentNode(value: unknown): value is ContentNode {
   if (typeof value !== "object" || value === null) return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return kind === "element" || kind === "block" || kind === "text";
+  const v = value as Record<string, unknown>;
+  switch (v.kind) {
+    case "text":
+      return typeof v.text === "string";
+    case "element":
+      return typeof v.tag === "string" && isRecord(v.props) && Array.isArray(v.children);
+    case "block":
+      return typeof v.blockName === "string" && isRecord(v.attrs) && Array.isArray(v.inner);
+    default:
+      return false;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

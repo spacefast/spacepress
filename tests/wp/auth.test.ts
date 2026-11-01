@@ -396,6 +396,7 @@ test("structured member fields render on the member's own profile, but not on th
   const gu = await profileMember("gu");
   const page = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: gu.cookie } })).text();
   for (const name of ["zero_address", "zero_links", "zero_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
+  assert.deepEqual(successfulControls(page).find(([name]) => name === acf("address", "address_source")), [acf("address", "address_source"), "signup"], "new groups render their non-boolean defaults");
   assert.doesNotMatch(page, /data-name="zero_notes"/, "a group holding a sub-field the member can't read isn't rendered");
   // The collection's read rule ("self") decides the form too: an admin editing this member sees none of its fields.
   wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Oslo']], ['id' => ${gu.id}]);`);
@@ -430,13 +431,13 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     assert.equal(saved.status, 302, saved.text.slice(0, 400));
     const row = memberRow(hu.id);
     assert.deepEqual([row.address, row.links, row.sections], [
-      { city: "Oslo", verified: false, optional: true, prefs: null, district: null },
+      { city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null },
       [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail", metadata: { bio: null } }],
       [{ layout: "bio", body: "Hello" }],
     ]);
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
     assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
-      { city: "Oslo", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
+      { city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");
     assert.match(again.html, /value="2026-07-01 14:30:00"/);
@@ -469,7 +470,7 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     wp("option", "update", "timezone_string", "");
   }
   assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links], [
-    { city: "Bergen", verified: false, optional: null, prefs: null, district: "Sentrum" },
+    { city: "Bergen", source: "signup", verified: false, optional: null, prefs: null, district: "Sentrum" },
     [{ label: "dst", at: "2026-10-25T01:30:00.000Z", detail: "DST detail", metadata: { bio: null } }],
   ]);
   // Removing the last repeater row empties the list.
@@ -513,7 +514,7 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   const thrown = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Throw", nickname: "Thrown" });
   assert.deepEqual([thrown.status, /address hook refused/.test(thrown.text)], [409, true]);
   assert.deepEqual([name(), wp("user", "meta", "get", String(iu.id), "nickname")], [before, nickname], "core's user update rolled back with it");
-  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
+  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", source: "signup", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
 });
 
 test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
@@ -549,7 +550,7 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address.city], ["Locked again", "Gated"], "authorization uses the original row even when the saved row no longer matches");
   const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
   assert.equal(own.status, 302, own.text.slice(0, 400));
-  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true, optional: true, prefs: null, district: null });
+  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", source: "signup", verified: true, optional: true, prefs: null, district: null });
 });
 
 test("update_field on a structured member field is a trusted Zero write; get_field reads it back by name", () => {

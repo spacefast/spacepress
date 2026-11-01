@@ -23,6 +23,7 @@ export const members = collection("members", {
   // may set, a validated sub-field, a showIf on a scalar sibling, a timestamp in a repeater row.
   address: group({ fields: {
     city: text().max(40),
+    source: text().notNull().default("signup").access({ update: "admin" }),
     verified: boolean().notNull().default(false).access({ update: "admin" }),
     optional: boolean().default(true).access({ update: "admin" }),
     prefs: group({ fields: { bio: text() } }).access({ update: "admin" }),

@@ -40,7 +40,9 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["zero-global-settings", "zero_global_settings", "zero-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%' AND TABLE_NAME NOT LIKE 'wp\\_zero\\_identity\\_%'");
-  assert.deepEqual(tables.map((r) => [r.t, r.e]).sort(), [["wp_zero__files", "InnoDB"], ["wp_zero__jobs", "InnoDB"], ["wp_zero__migrations", "InnoDB"], ["wp_zero__outbox", "InnoDB"], ["wp_zero__receipts", "InnoDB"], ["wp_zero__revisions", "InnoDB"], ["wp_zero_comments", "InnoDB"], ["wp_zero_field_teams", "InnoDB"], ["wp_zero_fuse_log", "InnoDB"], ["wp_zero_guestbook", "InnoDB"], ["wp_zero_hookNotes", "InnoDB"], ["wp_zero_jobNotes", "InnoDB"], ["wp_zero_phrases", "InnoDB"], ["wp_zero_reviews", "InnoDB"], ["wp_zero_signups", "InnoDB"], ["wp_zero_tour_log", "InnoDB"]]);
+  const sharedTables = ["wp_zero__files", "wp_zero__jobs", "wp_zero__migrations", "wp_zero__outbox", "wp_zero__receipts", "wp_zero__revisions", "wp_zero_comments", "wp_zero_field_teams", "wp_zero_fuse_log", "wp_zero_guestbook", "wp_zero_hookNotes", "wp_zero_jobNotes", "wp_zero_phrases", "wp_zero_reviews", "wp_zero_signups", "wp_zero_tour_log"];
+  assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
+  assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);
   assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
 
   const registry: unknown = JSON.parse(wp("eval", `

@@ -430,23 +430,23 @@ collection({ ...columns }, {
   separate value: `const itemFields = { … }`, `collection(itemFields, {
   hooks: { afterCreate: restock } })`, `function restock(item:
   Row<typeof itemFields>)`. `Row<F>` accepts a columns object as well as a
-  collection. For a columns object it is the row of a *default* collection
-  over those columns: the authored columns plus `id`, `createdAt` and
-  `updatedAt`, and nothing that an option adds (`status`/`publishedAt`
-  from `content`, `uid` from `sync`, `role`/`email` from `auth`, `locale`
-  from `.localized()` columns is in the columns themselves). A collection
-  whose options change the row (`content: true`, `sync`, `auth`,
-  `timestamps: false`) therefore cannot type a named helper this way; the
-  compiler checks a declared hook parameter against the collection's real
-  row (`src/compile.rs:468`, exact keys at `:4938`) and reports the
-  mismatch with the one fix: `Row<typeof itemFields, { content: true }>`,
-  a second type argument that is the same options object the collection
-  was given (`const itemOptions = { content: true } as const`, passed to
-  both). That keeps the row derivation in one place, the `.d.ts`'s
-  `Collection<TCols, TOptions>` type, which `Row` of a columns object
-  calls with the given options or `{}`. The pantry rewrite needs no options
-  (§5.2); it is the one pattern the move costs, and only for named helpers
-  of non-default collections. A hook that needs another collection
+  collection. For a columns object it is the row `collection(F, O)` would
+  have, with `O` an optional second type argument defaulting to `{}`:
+  exactly one derivation, the `.d.ts`'s `Collection<TCols, TOptions>`
+  type, applied to the same inputs the collection was given. That
+  derivation includes the inference of §4.9: `{ title: text().notNull() }`
+  with no options is a content collection, so `Row<typeof thoseFields>`
+  has `status` and `publishedAt`, as the collection's row does. A
+  collection whose *options* change the row (`content: false` on a
+  titled table, `sync`, `auth`, `timestamps: false`) types its named
+  helper with the same options object: `const itemOptions = { sync:
+  "content/items/*.md" } as const`, passed to both `collection()` and
+  `Row<typeof itemFields, typeof itemOptions>`; the compiler checks a
+  declared hook parameter against the collection's real row
+  (`src/compile.rs:468`, exact keys at `:4938`) and names that fix when
+  the options were left out. The pantry rewrite needs no options (§5.2);
+  it is the one pattern the move costs, and only for named helpers of
+  collections with row-changing options. A hook that needs another collection
   references it by name as today (module scope, hoisted). Open question 9
   asks whether this cost is worth the move.
 - **`uid` goes** (F8): a synced collection and every collection a synced
@@ -716,19 +716,27 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   has no foreign keys and users are deleted from wp-admin, WP-CLI and other
   plugins, so the rule runs on core's `delete_user` action (which fires
   before the row goes, with the reassignment target core offers), inside
-  one transaction that also contains core's own deletion: the hook opens
-  it on `$wpdb`, locks the account row (`SELECT … FROM wp_users WHERE ID = ?
-  FOR UPDATE`, the same lock a reference write takes on its target before
-  it validates existence, which today only checks, `Db.php:705`), checks
-  every `"restrict"` column first and refuses the whole deletion with a
-  `wp_die` naming the rows if any owns one (the existing `delete_user`
-  hook only guards storage availability today), then runs `"set null"`
-  (clear, or rewrite to the reassignment target core was given) and
-  `"cascade"` through the pipeline, and leaves the transaction open for
-  core to delete the user, committing on `deleted_user` and rolling back
-  if core fails in between. A concurrent reference write therefore either
-  commits before the lock and is seen by the restrict check, or waits on
-  the lock and then fails its existence check. Without an auth collection
+  one transaction that also contains core's own deletion. Transaction
+  ownership follows the rule the editor-save path already uses
+  (`Connection::begin()` is the outermost transaction and refuses to nest,
+  `Connection.php:140`; Zero's own transactions join an open one): when
+  `wp_delete_user` is reached from Zero's pipeline (an API delete of an
+  auth row, `Db.php:768` → `WpUserStore.php:320`) a transaction is already
+  open and the hook joins it, so a later `afterDelete` failure still rolls
+  everything back; when it is reached natively (wp-admin, WP-CLI, another
+  plugin) no transaction is open, the hook opens one, and only then does
+  it commit on `deleted_user` or roll back if core fails in between. In
+  both cases the hook locks the account row (`SELECT … FROM wp_users WHERE
+  ID = ? FOR UPDATE`, the same lock a reference write takes on its target
+  before it validates existence, which today only checks, `Db.php:705`),
+  checks every `"restrict"` column first and refuses the whole deletion
+  (an `HttpError` inside the pipeline, a `wp_die` naming the rows
+  natively; the existing `delete_user` hook only guards storage
+  availability today), then runs `"set null"` (clear, or rewrite to the
+  reassignment target core was given) and `"cascade"` through the
+  pipeline. A concurrent reference write therefore either commits before
+  the lock and is seen by the restrict check, or waits on the lock and
+  then fails its existence check. Without an auth collection
   the same hook applies; `Db::referentialActions()` keys on a registered
   target today and gains the built-in users as one, with the restrict
   check split out of its in-order loop. It is what
@@ -739,7 +747,15 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   column stores that column *as* `post_author` (a core column, like `slug`
   is `post_name`), not as meta; wp-admin's author box, "Mine" views,
   `edit_others_posts` and Zero's `"self"` therefore read the same value and
-  cannot disagree. A content collection with two `user()` columns must say
+  cannot disagree. The contract is the same on content collections and
+  tables: an omitted value on create is the current user's id when there
+  is one, else `null` (today's `post_author => get_current_user_id()`,
+  `WpPostStore.php:221`, made explicit and extended to tables); an
+  explicit `null` is stored and reads back `null`, which on a post is
+  `post_author = 0` (WordPress's "no author"), so `{ userId: { isNull:
+  true } }` filters `post_author = 0`; a native editor save keeps whatever
+  the author box set; and a `.notNull()` author column refuses `null` and
+  `0` alike on both storages. A content collection with two `user()` columns must say
   which is the author (`author: "assignedToId"`, a new designation beside
   `title` and `body`), or `author: false` for meta-only user columns; adding
   a second `user()` column without it is a build error, whether or not any
@@ -805,7 +821,11 @@ API or `db`. Sync treats them like today's `$onUpdate` columns: left out of
 the record (`Sync/Wire.php:27` keys on `onUpdate`; `createdAt` joins that
 list as a system column), so a Markdown file carries neither and a round
 trip never writes them. On content collections `updatedAt` is
-`post_modified_gmt`, a core column every post already has; `createdAt` is
+`post_modified_gmt`, a core column every post already has, and every Zero
+write bumps it: today a meta-only update skips `wp_update_post`
+(`WpPostStore.php:244-255`), so the store sets `post_modified_gmt` itself
+on that path (one `UPDATE` beside `touchPost`), which is what
+`.onUpdate(() => new Date())` means for this column; `createdAt` is
 post meta like any other column, because `post_date_gmt` is the
 publication time (it already backs `publishedAt`, `WpPostStore.php:84`, and
 moves when a post is scheduled or re-dated, `:282`). On tables both are
@@ -932,7 +952,7 @@ reconciled.
 | the standalone job worker (`zero jobs work`, the dev worker) | standalone queue | Action Scheduler is the queue; `job()` is unchanged, the CLI shrinks |
 | `files` bucket storage choice | standalone wrote to disk under the app | buckets are uploads under `wp-content/uploads/zero-private/` streamed through PHP, as today on WP; `bucket()` is unchanged |
 | the standalone GD image pipeline | standalone had no `wp_get_image_editor` | `media.sizes` is unchanged: on WordPress Zero registers the sizes (`add_image_size`, `WpMedia.php:80`), keeps core from rendering them (`:83`) and renders each focal crop itself through `wp_get_image_editor` (`:201-210`); that renderer stays, only its GD twin goes |
-| `zero users add`, bearer tokens, `zt_` CLI tokens | standalone identity | application passwords and zero-identity; no config surface |
+| `zero users add`, the standalone issuer's `za_` access and refresh tokens and `__zero_sessions`, `zt_` CLI tokens | standalone identity | application passwords and zero-identity's bearer tokens (which stay: `WpAuth.php:12,21` resolves them); no config surface |
 | the standalone half of `sync`, `webhooks`, `once`, `env` | same feature, second runtime | `env()` reads `wp-config.php` constants; config unchanged |
 
 Not removed, because it was never standalone-only: `drafts: true` and
@@ -1569,7 +1589,11 @@ inside the options object are closures found in an object literal, as
   backfill rules in §6.4, which it doesn't have today.
 - **Snake-case keys.** Today `collection("shopping_list")` with key
   `shoppingList` gives a snake-case table and a camel-case query key. Dropping
-  the name argument makes the key both, and renames the pantry's table.
+  the name argument makes the key both, renames the pantry's table, and
+  changes its derived label: `title_case` splits on underscores and hyphens
+  only (`src/schema.rs:526`), so `shopping_list` was "Shopping List" and
+  `shoppingList` is "ShoppingList". The derivation splits camel case too
+  (`shoppingList` → "Shopping List"), so no example needs a `label`.
   Open question 4.
 
 ---
@@ -1600,7 +1624,8 @@ inside the options object are closures found in an object literal, as
    (`zero_shopping_list`)? The proposal picks verbatim (no second naming to
    learn, and MySQL accepts it); snake-casing is a one-line change in the
    extractor if the owner prefers SQL-looking tables, and content
-   collections are lowercase either way (§4.2).
+   collections are lowercase either way (§4.2). Either way the derived
+   label splits camel case (§7.4).
 5. **`"self"` on `create`.** Should `"self"` be allowed on `create` for a
    collection with a `user()` column, meaning "any signed-in viewer, and the
    row's `user()` column is set to them (filled when absent, 403 when

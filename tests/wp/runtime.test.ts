@@ -109,5 +109,5 @@ test("compiled arithmetic on stored and input integers past 2^53 matches JS; loo
   const res = await fetch(`${api}/actions/bigMath`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body });
   const json = await res.json();
   assert.equal(res.status, 200, JSON.stringify(json));
-  assert.deepEqual(json.data, [n + 1, n - 1, n * 1, -n, n + 1, m + 1, m - n, n + m, String(n + 0), Number(row.id)]);
+  assert.deepEqual(json.data, [n - 1, n + 1, n - 1, n * 1, -n, n + 1, m + 1, m - n, n + m, String(n + 0), Number(row.id)]);
 });

@@ -117,7 +117,7 @@ final class Wire
      * @param ?array $current the stored row being updated: a body that reads back as the same text is
      *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
      */
-    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?array &$resolvedReferences = null, ?\Zero\Viewer $viewer = null): array
+    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?\Zero\Viewer $viewer = null): array
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
@@ -135,7 +135,7 @@ final class Wire
             if (self::isTranslations($spec, $name)) {
                 // Derived, so never written. A new row joins the group of the first peer that already
                 // exists (lane H's translationOf); a peer pushed later links itself the same way.
-                if ($create && ($peer = self::firstPeer($collection, $spec, $value, $record['uid'] ?? null)) !== null) {
+                if ($create && ($peer = self::firstPeer($collection, $spec, $value, $record['uid'] ?? null, $viewer)) !== null) {
                     $data['translationOf'] = $peer;
                 }
                 continue;
@@ -143,11 +143,8 @@ final class Wire
             $ref = $spec['columns'][$name]['references'] ?? null;
             try {
                 $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value, $viewer);
-                if ($ref !== null && $value !== null && $resolvedReferences !== null) {
-                    $resolvedReferences[$name] = $data[$name];
-                }
             } catch (HttpError $e) {
-                if ($missing === null || $e->errorCode !== 'sync_missing_reference') {
+                if ($missing === null || !in_array($e->errorCode, ['sync_missing_reference', 'reference_violation'], true)) {
                     throw $e;
                 }
                 $missing[] = $e;
@@ -177,16 +174,23 @@ final class Wire
         return $data;
     }
 
-    private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self): int|string|null
+    private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self, ?\Zero\Viewer $viewer): int|string|null
     {
         $translations = $translations instanceof \Zero\JsObject ? [] : $translations;
         if (!is_array($translations)) {
             throw HttpError::invalidInput('translations must map locales to uids', '/fields/translations');
         }
         foreach ($translations as $uid) {
-            if ($uid !== $self && Uid::valid($uid)
-                && ($peer = Module::find($collection, ['where' => ['uid' => $uid], 'limit' => 1])[0] ?? null) !== null) {
-                return $peer[$spec['primaryKey']];
+            if ($uid === $self || !Uid::valid($uid)) {
+                continue;
+            }
+            try {
+                return self::resolve(['collection' => $collection, 'column' => $spec['primaryKey']], 'translations', $uid, $viewer);
+            } catch (HttpError $e) {
+                if (!in_array($e->errorCode, ['sync_missing_reference', 'reference_violation'], true)) {
+                    throw $e;
+                }
+                // Hidden and absent peers both wait for a later visible translation to join them.
             }
         }
 
@@ -269,7 +273,7 @@ final class Wire
             throw $denied; // no hidden value may reach input rules or validators
         }
         $opts = ['where' => ['uid' => $uid], 'limit' => 1];
-        if ($viewer !== null && $ref['column'] !== $spec['primaryKey']) {
+        if ($viewer !== null) {
             if ($spec['localized'] ?? false) {
                 $opts['locale'] = '*';
             }

@@ -170,8 +170,11 @@ do not exempt viewer-bound CRUD from the checks above.
 
 Every reference in a viewer-bound write, including generated values, must resolve within the target's read filters and use
 a readable target column; an unreadable target and a missing target return the
-same `reference_violation`, without the resolved value in its detail. A known sync UID authorizes only the exact primary-key
-reference resolved for that operation; hooks changing it receive no exemption. This applies to core WordPress saves too.
+same `reference_violation`, without the resolved value in its detail. Knowing a
+sync UID grants no target visibility: primary and non-primary references both
+require a viewer-scoped lookup, and the write pipeline checks visibility again
+after hooks. Hidden and absent translation peers both remain unlinked until a
+visible peer is available. This applies to core WordPress saves too.
 Sync checks target visibility before resolved values reach input rules or validators.
 Potential generated constraints are preflighted before defaults and on-update
 generators run; hook-written references are checked before field validation.

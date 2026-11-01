@@ -126,15 +126,27 @@ test("unique fields, filtered references and restrictive deletes hide competing 
     const coreDelete = await http("DELETE", `${core}/zero_oracle_rows/${id}?force=true`, { as: "editor" });
     assert.deepEqual([coreDelete.status, coreDelete.json.code], [409, "reference_violation"]);
   }
-  const synced = await ok("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_12341234123412341234", fields: { title: "Known UID", rowId: privateRow.uid }, body: null }, expect: "absent" } });
-  assert.equal(synced.uid, "zr_12341234123412341234", "a known UID authorizes its exact target even without collection read access");
+  const privatePeer = zero("insert", "oracle_peers", JSON.stringify({ title: "Private peer", ownerId: harness.users.admin.id, locale: "en" }))[0];
+  for (const [uid, targetUid] of [["zr_12121212121212121212", privatePeer.uid], ["zr_13131313131313131313", "zr_99999999999999999999"]]) {
+    await ok("POST", "/sync/oracle_peers", { as: "editor", body: { record: { uid, fields: { title: "Unlinked peer", ownerId: harness.users.editor.id, locale: "fr", translations: { en: targetUid } }, body: null }, expect: "absent" } });
+    const row = zero("find", "oracle_peers", JSON.stringify({ where: { uid }, locale: "*" }))[0];
+    assert.deepEqual(row.translations, { fr: row.id }, "hidden and absent translation peers both stay unlinked");
+  }
+  assert.deepEqual(zero("find", "oracle_peers", JSON.stringify({ where: { id: privatePeer.id }, locale: "*" }))[0].translations, { en: privatePeer.id });
+  for (const targetUid of [privateRow.uid, "zr_99999999999999999999"]) {
+    const denied = await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_12341234123412341234", fields: { title: "Primary target", rowId: targetUid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/rowId" });
+    assert.equal(denied.detail, "No referenced oracle_rows row for rowId", "hidden and absent primary targets return the same generic refusal");
+    assert.deepEqual(zero("find", "oracle_sync", JSON.stringify({ where: { uid: "zr_12341234123412341234" } })), [], "a refused reference never creates or links a row");
+  }
+  const synced = await ok("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_12341234123412341234", fields: { title: "Readable UID", rowId: own.uid }, body: null }, expect: "absent" } });
+  assert.equal(zero("find", "oracle_sync", JSON.stringify({ where: { uid: synced.uid } }))[0].rowId, own.id, "a readable primary target still links");
   const hiddenTarget = await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_34563456345634563456", fields: { title: "Hidden badge", badgeId: privateRow.uid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/badgeId" });
   assert.equal(hiddenTarget.detail, "No referenced oracle_rows row for badgeId", "a UID refusal never prints its resolved hidden value");
   for (const targetUid of [privateRow.uid, "zr_99999999999999999999"]) {
     const filteredTarget = await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_78787878787878787878", fields: { title: "Filtered public badge", publicBadgeId: targetUid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/publicBadgeId" });
     assert.equal(filteredTarget.detail, "No referenced oracle_rows row for publicBadgeId", "filtered and absent non-primary targets have the same generic error");
   }
-  await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_23452345234523452345", fields: { title: "Swap reference", rowId: privateRow.uid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/rowId" });
+  await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_23452345234523452345", fields: { title: "Swap reference", rowId: own.uid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/rowId" });
   assert.equal(zero("find", "payroll", JSON.stringify({ where: { id: person.id } }))[0].badge, 778001);
   assert.equal((await http("GET", `${api}/oracle_rows/${own.id}`, { as: "editor" })).status, 200);
 });

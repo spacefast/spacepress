@@ -96,6 +96,12 @@ export const oracleRefs = collection("oracle_refs", {
 export const oracleSync = collection("oracle_sync", {
   id: id(), title: text().notNull(), rowId: integer().references(() => oracleRows.id), badgeId: integer().references(() => oracleRows.badge).min(889002), publicBadgeId: integer().references(() => oracleRows.publicBadge),
 }, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
+export const oraclePeers = collection("oracle_peers", {
+  id: id(), title: text().notNull().localized(), ownerId: integer(),
+}, { sync: "content/oracle-peers/*.json", access: {
+  read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
+  create: "editor", update: "editor", delete: "admin",
+} });
 export const oracleParents = collection("oracle_parents", { id: id(), title: text().notNull() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleChildren = collection("oracle_children", {
@@ -169,7 +175,7 @@ export const keyRoots = collection("key_roots", { id: id(), code: integer().uniq
 export const keyLinks = collection("key_links", { id: id(), rootCode: integer().references(() => keyRoots.code) },
   { editor: false, access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
-export const schema = { vault, ledger, payroll, gated, dossier, claims, fuses, fuseLog, oracleRows, oracleRefs, oracleSync, oracleParents, oracleChildren, oracleGrandchildren, oracleDefaults, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, keyRoots, keyLinks, roundTrips };
+export const schema = { vault, ledger, payroll, gated, dossier, claims, fuses, fuseLog, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleChildren, oracleGrandchildren, oracleDefaults, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, keyRoots, keyLinks, roundTrips };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};

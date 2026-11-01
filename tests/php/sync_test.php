@@ -235,7 +235,7 @@ eq('and the digest a pull by that viewer returns', $answer['digest'], pull('note
 // ================================================================ references and validation
 
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];
-isProblem('unknown reference uid', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent']), 422, 'sync_missing_reference', '/fields/authorId');
+isProblem('unknown reference uid', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent']), 409, 'reference_violation', '/authorId');
 isProblem('references are not resolved for a caller who may not write', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent'], as: null), 401, 'unauthenticated');
 isProblem('generated columns are not writable', req('POST', '/sync/notes', ['record' => ['fields' => ['updatedAt' => '2000-01-01T00:00:00Z']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/fields/updatedAt');
 isProblem('validation runs through the pipeline', req('POST', '/sync/notes', ['record' => ['fields' => ['status' => 'bogus', 'title' => 'x']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/status');

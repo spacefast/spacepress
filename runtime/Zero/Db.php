@@ -121,7 +121,7 @@ final class Db
         $existing = $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
         if ($existing !== null) {
             // Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
-            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->resolvedReferences, $bulk->errorViewer)));
+            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->errorViewer)));
         }
 
         return true;
@@ -463,13 +463,13 @@ final class Db
      * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
      * @return ?list<array>
      */
-    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null, array $resolvedReferences = []): ?array
+    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
         // Only the row containers unwrap here: a json() value inside a row keeps its `{}`.
         $values = $values instanceof JsObject ? [] : $values;
         $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values) : [$values];
 
-        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around, $resolvedReferences) {
+        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
             $out = [];
             foreach ($rows as $data) {
@@ -477,7 +477,7 @@ final class Db
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
                 // One instant per row: every `now` default, nested ones and publishedAt included.
-                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around, $resolvedReferences));
+                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -485,19 +485,19 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, array $resolvedReferences = [], ?Viewer $errorViewer = null): ?array
+    public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, ?Viewer $errorViewer = null): ?array
     {
         [$set, $where] = [$set instanceof JsObject ? [] : $set, $this->plainFilter($collection, $where)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
         $set = self::plainOutsideJson($this->schema->collection($collection)['columns'], $set);
-        return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $resolvedReferences, $errorViewer) {
+        return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $errorViewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             $pk = $spec['primaryKey'];
-            $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows), $resolvedReferences, $errorViewer);
+            $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows), $errorViewer);
             $this->bulk[] = $bulk;
             try {
                 foreach ($rows as $existing) {
@@ -508,7 +508,7 @@ final class Db
                     }
                     unset($bulk->pending[$key]);
                     $bulk->current = $key;
-                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer, resolvedReferences: $resolvedReferences, errorViewer: $errorViewer));
+                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer, errorViewer: $errorViewer));
                 }
             } finally {
                 array_pop($this->bulk);
@@ -657,7 +657,7 @@ final class Db
         });
     }
 
-    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null, array $resolvedReferences = []): array
+    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
         $data = self::plainOutsideJson($columns, $data);
@@ -681,12 +681,12 @@ final class Db
         if ($viewer !== null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
         }
-        $write = fn (): array => $this->persistCreate($collection, $spec, $data, $viewer, $resolvedReferences);
+        $write = fn (): array => $this->persistCreate($collection, $spec, $data, $viewer);
 
         return $around === null ? $write() : $around($write);
     }
 
-    private function persistCreate(string $collection, array $spec, array $data, ?Viewer $viewer, array $resolvedReferences): array
+    private function persistCreate(string $collection, array $spec, array $data, ?Viewer $viewer): array
     {
         $columns = $spec['columns'];
         $ctx = $this->hookCtx();
@@ -717,7 +717,7 @@ final class Db
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm, null);
         }
         $full = $norm + array_fill_keys(array_keys($columns), null);
-        $this->checkValues($columns, $norm, $full, $viewer, $resolvedReferences);
+        $this->checkValues($columns, $norm, $full, $viewer);
         $this->requireUniqueVisibility($collection, $norm, $viewer);
 
         $insert = [];
@@ -740,7 +740,7 @@ final class Db
     }
 
     /** @param array $values trusted values applied over $patch after access and field rules (updateWithin) */
-    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = [], array $resolvedReferences = [], ?Viewer $errorViewer = null): array
+    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = [], ?Viewer $errorViewer = null): array
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
@@ -802,7 +802,7 @@ final class Db
         if ($slugCol !== null && array_key_exists($slugCol, $patch) && !array_key_exists($slugCol, $norm)) {
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm + $previous, $pkValue);
         }
-        $this->checkValues($columns, $norm, $norm + $previous, $viewer ?? $errorViewer, $resolvedReferences);
+        $this->checkValues($columns, $norm, $norm + $previous, $viewer ?? $errorViewer);
         $this->requireUniqueVisibility($collection, $norm, $viewer ?? $errorViewer, existing: $previous);
         $set = [];
         foreach ($norm as $name => $v) {
@@ -1032,9 +1032,9 @@ final class Db
     }
 
     /** Rules (min/max/pattern/validate, nested) + media and reference existence for written values. */
-    private function checkValues(array $columns, array $norm, array $full, ?Viewer $viewer = null, array $resolvedReferences = []): void
+    private function checkValues(array $columns, array $norm, array $full, ?Viewer $viewer = null): void
     {
-        $this->checkReferences($columns, $norm, $viewer, $resolvedReferences);
+        $this->checkReferences($columns, $norm, $viewer);
         $ctx = ['data' => $full, 'user' => $this->actor, 'target' => $this->target];
         foreach ($norm as $name => $v) {
             Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx);
@@ -1069,7 +1069,7 @@ final class Db
         });
     }
 
-    private function checkReferences(array $columns, array $norm, ?Viewer $viewer, array $resolvedReferences = []): void
+    private function checkReferences(array $columns, array $norm, ?Viewer $viewer): void
     {
         foreach ($norm as $name => $v) {
             $ref = $columns[$name]['references'] ?? null;
@@ -1084,11 +1084,7 @@ final class Db
                     throw $missing;
                 }
                 try {
-                    // A sync UID authorizes only its exact resolved primary-key reference, for this
-                    // operation. Hook-added/changed references never inherit it.
-                    if (($resolvedReferences[$name] ?? null) !== $v || $ref['column'] !== $target['primaryKey']) {
-                        $guards = $this->readGuards($ref['collection'], $viewer);
-                    }
+                    $guards = $this->readGuards($ref['collection'], $viewer);
                 } catch (HttpError) {
                     throw $missing;
                 }

@@ -129,8 +129,7 @@ final class Routes
         }
         // Reference lookups answer only after authorization, so they can't probe for uids either.
         $missing = [];
-        $resolvedReferences = [];
-        $data = Wire::decode($collection, $record, $current === null, $missing, $current['row'] ?? null, $resolvedReferences, $viewer);
+        $data = Wire::decode($collection, $record, $current === null, $missing, $current['row'] ?? null, $viewer);
         // Authorize with the values the pipeline will see, before answering anything about the row.
         // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {
@@ -146,8 +145,7 @@ final class Routes
             $current = self::current($collection, $uid, $viewer);
             // Decode again against the restored row, so a body it already holds isn't rewritten (and a
             // read-only one doesn't refuse the restore).
-            $resolvedReferences = [];
-            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $resolvedReferences, $viewer);
+            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
         } elseif ($current === null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows");
             if ($expect !== 'absent') {
@@ -169,8 +167,8 @@ final class Routes
         }
         // The pipeline authorizes the write itself again.
         $current === null
-            ? db()->insert($collection, ['uid' => $uid] + $data, false, $viewer, resolvedReferences: $resolvedReferences)
-            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer, $resolvedReferences)[0] ?? throw HttpError::notFound("No such $collection row"));
+            ? db()->insert($collection, ['uid' => $uid] + $data, false, $viewer)
+            : (db()->update($collection, $data, [$pk => $current['row'][$pk]], true, $viewer)[0] ?? throw HttpError::notFound("No such $collection row"));
         // The answer is what a pull by this viewer returns: same read transforms, same digest.
         $stored = self::current($collection, $uid, $viewer) ?? throw new \RuntimeException("$collection $uid vanished after write");
         if (!isset($stored['record'])) {

@@ -17,7 +17,6 @@ final class Sql
 {
     private const CMP = ['eq' => '=', 'ne' => '<>', 'gt' => '>', 'gte' => '>=', 'lt' => '<', 'lte' => '<='];
     private const FIELD_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
-    private const MYSQL_NO_LIMIT = '18446744073709551615';
 
     private readonly Dialect $d;
     private int $aliases = 0;
@@ -121,7 +120,7 @@ final class Sql
         } else {
             $sql = 'SELECT ' . implode(', ', $select) . $from . ($order === [] ? '' : ' ORDER BY ' . implode(', ', $order));
             if ($limit !== null || $offset !== null) {
-                $sql .= ' LIMIT ' . ($limit ?? ($this->d->name === 'mysql' ? self::MYSQL_NO_LIMIT : '-1')) . ' OFFSET ' . ($offset ?? 0);
+                $sql .= ' LIMIT ' . ($limit ?? $this->d->noLimit) . ' OFFSET ' . ($offset ?? 0);
             }
         }
 
@@ -414,9 +413,7 @@ final class Sql
         }
         $this->params[] = $pattern;
         $ci = $op === 'ilike' || $op === 'notIlike';
-        $expr = $this->ref($collection, $name, $alias, false);
-        $arg = $this->d->name === 'mysql' ? ($ci ? $this->d->ciCollation : 'utf8mb4_bin') : ($ci ? '1' : '0');
-        $sql = sprintf($this->d->likeFn, $expr, $arg);
+        $sql = $this->d->like($this->ref($collection, $name, $alias, false), $ci);
 
         return str_starts_with($op, 'not') ? "NOT ($sql)" : $sql;
     }

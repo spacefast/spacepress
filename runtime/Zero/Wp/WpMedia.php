@@ -59,7 +59,7 @@ final class WpMedia implements Media
             'filename' => new ColumnRef("SUBSTRING_INDEX({j}.meta_value, '/', -1)", $file, '', 'scalar'),
             'mime' => new ColumnRef('{a}.post_mime_type', '', '', 'scalar'),
             'alt' => new ColumnRef("NULLIF({j}.meta_value, '')", $alt, '', 'scalar'),
-            'createdAt' => new ColumnRef("DATE_FORMAT({a}.post_date_gmt, '%Y-%m-%dT%H:%i:%s.000Z')", '', '', 'scalar'),
+            'createdAt' => new ColumnRef($dialect->isoTimestamp('{a}.post_date_gmt'), '', '', 'scalar'),
         ]);
         $this->view = new MediaView($dialect, $source);
     }

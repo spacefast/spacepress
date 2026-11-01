@@ -102,15 +102,7 @@ final class Migrator
      */
     public static function locked(Connection $db, string $name, callable $fn): mixed
     {
-        $lock = 'zero:' . substr(hash('sha256', DB_NAME . ':' . $db->prefix() . ':' . $name), 0, 40);
-        if ((int) ($db->run('SELECT GET_LOCK(?, 30) AS held', [$lock])[0]['held'] ?? 0) !== 1) {
-            throw new \RuntimeException('another request is still applying migrations; try again shortly');
-        }
-        try {
-            return $fn();
-        } finally {
-            $db->run('SELECT RELEASE_LOCK(?) AS released', [$lock]);
-        }
+        return $db->locked('zero:' . substr(hash('sha256', DB_NAME . ':' . $db->prefix() . ':' . $name), 0, 40), 30, $fn);
     }
 
     /**

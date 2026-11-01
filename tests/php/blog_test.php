@@ -3,44 +3,37 @@
 declare(strict_types=1);
 
 /*
- * The v2 pipeline on the blog fixture, in-process through App::handle against a real SQLite file:
- * access (role ladder, filter rules, 401/403/404 masking, nested `with`), drafts transitions, lazy
- * promotion, slug derivation, revisions, hook ctx, globals, media (+ delete nulling), FK actions.
+ * The v2 pipeline on the blog fixture (tests/fixtures/blog: authors and posts are post-backed, comments
+ * a custom table), in-process through App::handle on WordPress (tests/php/wp.php): access (role
+ * ladder, filter rules, 401/403/404 masking, nested `with`), drafts transitions, lazy promotion, slug
+ * derivation, revisions, hook ctx, globals, media (+ delete nulling), FK actions, extension seams.
  */
 
 use Zero\App;
 
-require __DIR__ . '/blog_app.php';
+require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$root = blogApp(sys_get_temp_dir() . '/zero-blog-test-' . bin2hex(random_bytes(4)));
-putenv('ZERO_DB_PATH');
-putenv('ZERO_AUTO_MIGRATE');
-putenv('ZERO_NOW');
-ini_set('error_log', "$root/error.log");
-register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($root)));
-
-require "$root/zero/runtime/bootstrap.php";
-$app = App::boot($root);
+$wp = wpSite('blog', [
+    'schema' => require dirname(__DIR__) . '/fixtures/blog/schema.php',
+    'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
+    'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
+]);
+$app = $wp->app();
 $db = \Zero\db();
-$ids = $app->identity();
 
-$tokens = [];
 $users = [];
-foreach (['admin' => 'admin', 'ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'] as $name => $role) {
-    $users[$name] = $ids->addUser($name, $role, null);
-    $tokens[$name] = $ids->createToken($name, null)['token'];
+foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
+    $users[$name] = $wp->user($name);
 }
 
 /** @return array{int, mixed} [status, data or problem] */
 function req(string $method, string $path, mixed $body = null, ?string $as = null, array $query = [], array $files = [], array $form = []): array
 {
-    global $app, $tokens;
-    $headers = $as === null ? [] : ['authorization' => 'Bearer ' . $tokens[$as]];
-    [$status, , $out] = $app->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers, $files, $form);
-    $json = json_decode($out, true);
+    global $wp;
+    [$status, $data] = $wp->call($method, $path, $body, $as, $query, $files, $form);
 
-    return [$status, $status < 300 ? ($json['data'] ?? null) : $json];
+    return [$status, $data];
 }
 
 function isProblem(string $label, array $r, int $status, string $code, ?string $pointer = null): void
@@ -135,18 +128,15 @@ $staff = req('POST', '/comments', ['postId' => $pub['id'], 'name' => 'Ed', 'body
 eq('staff comment approved on sight (afterCreate saw ctx.user)', $db->findFirst('comments', ['where' => ['id' => $staff['id']]])['approved'], true);
 eq('action access "anyone"; the handler\'s db is trusted and filters status itself', req('POST', '/actions/publishedCount')[1], ['count' => 4]);
 
-// ================================================================ lazy promotion (§6.3)
+// ================================================================ scheduling (§6.3)
 
+// Posts are WordPress posts: a scheduled row is a `future` post, hidden until WP cron publishes it
+// (promotion itself is proven in tests/wp/rest.test.ts, where cron runs).
 $future = '2031-01-01T00:00:00.000Z';
 [$s, $sched] = req('POST', '/posts', ['title' => 'Later', 'status' => 'scheduled', 'publishedAt' => $future], 'ed');
-eq('editor schedules', [$s, $sched['status'] ?? null], [201, 'scheduled']);
+eq('editor schedules', [$s, $sched['status'] ?? null, get_post_status($sched['id'])], [201, 'scheduled', 'future']);
 check('scheduled is invisible to anonymous', !in_array('Later', $titles(req('GET', '/posts')[1]), true));
-$revsBefore = count($db->revisions('posts', $sched['id']));
-putenv('ZERO_NOW=2031-01-01T00:00:01Z');
-eq('first request after the time promotes it', in_array('Later', $titles(req('GET', '/posts')[1]), true), true);
-putenv('ZERO_NOW');
-$row = $db->findFirst('posts', ['where' => ['id' => $sched['id']]]);
-eq('promotion keeps publishedAt, writes no revision', [$row['status'], $row['publishedAt'], count($db->revisions('posts', $sched['id']))], ['published', $future, $revsBefore]);
+eq('… and listed for editors with its date', [in_array('Later', $titles(req('GET', '/posts', as: 'ed')[1]), true), $db->findFirst('posts', ['where' => ['id' => $sched['id']]])['publishedAt']], [true, $future]);
 
 // ================================================================ revisions (§6.4)
 
@@ -204,9 +194,9 @@ $upload = static fn (string $path, string $name, ?string $as, array $form = []) 
 
 isProblem('upload needs author: anonymous', $upload($png, 'a.png', null), 401, 'unauthenticated');
 [$s, $img] = $upload($png, 'cover.png', 'alice', ['alt' => 'A cover']);
-check('upload → 201 media row, file under public/uploads', $s === 201 && $img['mime'] === 'image/png' && [$img['width'], $img['height']] === [3, 2]
-    && $img['alt'] === 'A cover' && $img['filename'] === 'cover.png' && preg_match('#^/uploads/\d{4}/\d{2}/[0-9a-f-]{36}\.png$#', $img['url']) === 1
-    && is_file("$root/public" . $img['url']), $img);
+check('upload → 201 media row, an attachment under wp-content/uploads', $s === 201 && $img['mime'] === 'image/png' && [$img['width'], $img['height']] === [3, 2]
+    && $img['alt'] === 'A cover' && $img['filename'] === 'cover.png' && preg_match('#/wp-content/uploads/\d{4}/\d{2}/cover\.png$#', $img['url']) === 1
+    && is_file($wp->uploadPath($img['url'])) && get_post_type($img['id']) === 'attachment', $img);
 $doc = $upload($txt, 'notes.txt', 'alice')[1];
 isProblem('missing file part', req('POST', '/media', as: 'alice'), 422, 'invalid_input', '/file');
 isProblem('accept: image rejects other mimes', req('PATCH', "/posts/{$mine['id']}", ['cover' => $doc['id']], 'alice'), 422, 'invalid_input', '/cover');
@@ -221,7 +211,7 @@ $revs = count($db->revisions('posts', $mine['id']));
 eq('editor deletes', req('DELETE', "/media/{$img['id']}", as: 'ed')[1]['id'] ?? null, $img['id']);
 $after = $db->findFirst('posts', ['where' => ['id' => $mine['id']]]);
 eq('referencing media columns nulled through the pipeline (revision written)', [$after['cover'], count($db->revisions('posts', $mine['id']))], [null, $revs + 1]);
-check('file removed after commit', !is_file("$root/public" . $img['url']));
+check('file removed after commit', !is_file($wp->uploadPath($img['url'])));
 isProblem('deleted media is gone', req('GET', "/media/{$img['id']}"), 404, 'not_found');
 
 // ================================================================ FK actions in the pipeline (§4.2)
@@ -233,24 +223,20 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 // ================================================================ extension seams
 
-\Zero\SystemTables::register('seam', [
-    'CREATE TABLE IF NOT EXISTS "__zero_seam" ("id" integer PRIMARY KEY, "event" text NOT NULL)',
+\Zero\SystemTables::register('seam', [], [
+    'CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
     static function (\Zero\Store $store): void {
-        if (!$store instanceof \Zero\Store\SqliteStore) {
-            throw new \LogicException('SQLite upgrade needs the SQLite store');
-        }
-        if (!in_array('extra', array_column($store->run('PRAGMA table_info("__zero_seam")')->fetchAll(), 'name'), true)) {
-            $store->applySystemStatements(['ALTER TABLE "__zero_seam" ADD COLUMN "extra" text']);
+        $db = $store instanceof \Zero\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
+        $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'zero__seam', 'extra']);
+        if ($have === []) {
+            $store->applySystemStatements(['ALTER TABLE `{prefix}zero__seam` ADD COLUMN `extra` LONGTEXT']);
         }
     },
-], ['CREATE TABLE IF NOT EXISTS `{prefix}zero__seam` (`id` bigint PRIMARY KEY, `event` text NOT NULL) ENGINE=InnoDB']);
-$systemStore = new \Zero\Store\SqliteStore(\Zero\Store\SqliteStore::connect(':memory:'), $app->schema);
-$systemStore->run('INSERT INTO "__zero_seam" ("id", "event") VALUES (1, ?)', ['automatic']);
-eq('registered tables are installed during standalone store construction', $systemStore->run('SELECT event FROM "__zero_seam"')->fetchColumn(), 'automatic');
+]);
 \Zero\SystemTables::apply($db->store());
-$db->store()->run('INSERT INTO "__zero_seam" ("id", "event", "extra") VALUES (1, ?, ?)', ['kept', 'upgraded']);
+$wp->exec('INSERT INTO {prefix}zero__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
 \Zero\SystemTables::apply($db->store());
-eq('idempotent system DDL and guarded ALTER preserve data', $db->store()->run('SELECT event, extra FROM "__zero_seam"')->fetch(), ['event' => 'kept', 'extra' => 'upgraded']);
+eq('idempotent system DDL and guarded ALTER preserve data', $wp->sql('SELECT `event`, `extra` FROM {prefix}zero__seam')[0], ['event' => 'kept', 'extra' => 'upgraded']);
 problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \Zero\SystemTables::apply($db->store())), 500, 'internal');
 
 $transformMutationRows = false;
@@ -298,7 +284,7 @@ $transformMutationRows = false;
         throw new \Zero\JsError('extension rolled back');
     }
     \Zero\Extensions::afterCommit(static function () use ($db, $op, $row): void {
-        $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$op . ':' . $row['excerpt']]);
+        $GLOBALS['wp']->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', [$op . ':' . $row['excerpt']]);
     });
 });
 $seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
@@ -314,13 +300,13 @@ isProblem('normalization still rejects unconsumed create inputs', req('POST', '/
 isProblem('normalization still rejects unconsumed update inputs', req('PATCH', '/posts/' . $seam['id'], ['unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
 eq('written extension can nest writes and schedule durable effects', [
     array_column($db->findMany('comments', ['where' => ['postId' => $seam['id']], 'orderBy' => ['id' => 'asc']]), 'body'),
-    $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id')->fetchAll(\PDO::FETCH_COLUMN),
+    array_column($wp->sql('SELECT `event` FROM {prefix}zero__seam ORDER BY `id`'), 'event'),
 ], [['created', 'extension'], ['kept', 'create:extension', 'update:extension revised']]);
 isProblem('written extension failure rolls back row and nested effects', req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'extension fail'], 'ed'), 422, 'rejected');
 eq('failed write preserves row and nested data', [
     $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
     count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
-    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam"')->fetchColumn(),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__seam'),
 ], ['extension revised', 2, 3]);
 $transformMutationRows = true;
 isProblem('delete extension receives stored data before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
@@ -345,53 +331,55 @@ $cache = [];
     return $rows;
 }, constraintSafe: true);
 
-\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($db): \Zero\Response {
+// The receipt and download proofs run before the linkage-hiding read transform below is registered:
+// that transform is not constraint-safe, so viewer-bound unique writes are refused once it exists (#72).
+\Zero\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\Zero\Viewer $viewer, callable $next) use ($wp): \Zero\Response {
     if (!isset($headers['idempotency-key'])) {
         return $next();
     }
     $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
-    $stored = $db->store()->run('SELECT extra FROM "__zero_seam" WHERE event = ?', [$key])->fetchColumn();
-    if ($stored !== false) {
+    $stored = $wp->scalar('SELECT `extra` FROM {prefix}zero__seam WHERE `event` = ?', [$key]);
+    if ($stored !== null) {
         $receipt = json_decode($stored, true);
 
         return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
     }
     $result = $next();
-    $db->store()->run('INSERT INTO "__zero_seam" (event, extra) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
+    $wp->exec('INSERT INTO {prefix}zero__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
     if ($headers['idempotency-key'] === 'fail') {
         throw new \Zero\JsError('Receipt persistence failed');
     }
 
     return $result;
 });
-$receiptHeaders = ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'create'];
-$firstReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+$receiptHeaders = ['Idempotency-Key' => 'create'];
+$firstReceipt = $wp->handle('POST', '/posts', '{"title":"Replay seam"}', 'ed', $receiptHeaders);
 $cache = [];
-$replayReceipt = $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', $receiptHeaders);
+$replayReceipt = $wp->handle('POST', '/posts', '{"title":"Replay seam"}', 'ed', $receiptHeaders);
 eq('create replay primes fresh lookup caches without repeating its write pipeline', [
     $firstReceipt[0], $replayReceipt[0], $replayReceipt[1]['Idempotent-Replayed'], $firstReceipt[2] === $replayReceipt[2],
     json_decode($replayReceipt[2], true)['data']['excerpt'],
     count($db->findMany('posts', ['where' => ['title' => 'Replay seam']])),
 ], [201, 201, 'true', true, 'looked up', 1]);
-eq('create authorization still runs before replay middleware', $app->handle('POST', '/posts', [], '{"title":"Replay seam"}', ['Idempotency-Key' => 'create'])[0], 401);
-$failedReceipt = $app->handle('POST', '/posts', [], '{"title":"Rolled back receipt"}', ['Authorization' => 'Bearer ' . $tokens['ed'], 'Idempotency-Key' => 'fail']);
+eq('create authorization still runs before replay middleware', $wp->handle('POST', '/posts', '{"title":"Replay seam"}', null, ['Idempotency-Key' => 'create'])[0], 401);
+$failedReceipt = $wp->handle('POST', '/posts', '{"title":"Rolled back receipt"}', 'ed', ['Idempotency-Key' => 'fail']);
 eq('failed operation wrapper rolls back both its result and receipt', [
     $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
-    $db->store()->run('SELECT COUNT(*) FROM "__zero_seam" WHERE event LIKE ?', ['receipt:%:fail'])->fetchColumn(),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__seam WHERE `event` LIKE ?', ['receipt:%:fail']),
 ], [422, [], 0]);
 
-\Zero\Extensions::route('download-proof', static function () use ($db): \Zero\Response {
-    $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download prepared']);
-    \Zero\Extensions::afterCommit(static fn () => $db->store()->run('INSERT INTO "__zero_seam" (event) VALUES (?)', ['download committed']));
+\Zero\Extensions::route('download-proof', static function () use ($wp): \Zero\Response {
+    $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', ['download prepared']);
+    \Zero\Extensions::afterCommit(static fn () => $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', ['download committed']));
 
-    return \Zero\Response::raw(static function () use ($db): void {
-        echo "file\0bytes:" . $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn();
+    return \Zero\Response::raw(static function () use ($wp): void {
+        echo "file\0bytes:" . $wp->scalar('SELECT `event` FROM {prefix}zero__seam ORDER BY `id` DESC LIMIT 1');
     }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
         ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
             'access-control-allow-origin' => 'https://app.example',
             'access-control-expose-headers' => 'Content-Disposition']);
 });
-[$downloadStatus, $downloadHeaders, $downloadBody] = $app->handle('GET', '/download-proof', [], '');
+[$downloadStatus, $downloadHeaders, $downloadBody] = $wp->handle('GET', '/download-proof');
 ob_start();
 \Zero\Response::emit($downloadBody);
 $emitted = ob_get_clean();
@@ -454,7 +442,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
 eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
     'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
 ]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
-problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'standalone')), 403, 'forbidden', '/orderBy/excerpt');
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'wp')), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
     req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['locale' => 'de'])[1]['id'],
@@ -463,16 +451,14 @@ isProblem('feature query validation reaches item REST', req('GET', '/posts/' . $
 isProblem('unconsumed feature options remain invalid on other collections', req('GET', '/authors', query: ['locale' => 'de']), 400, 'invalid_query', '/locale');
 
 $db->setActor($users['sub']);
-$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed'], 'standalone'));
+$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed'], 'wp'));
 eq('operation invocation uses explicit authority and restores its caller actor', [$db->findFirst('comments', ['where' => ['id' => $invoked['id']]])['approved'], $db->actor()], [true, $users['sub']]);
-problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'], 'standalone')), 403, 'forbidden');
+problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'], 'wp')), 403, 'forbidden');
 eq('throwing operation invocation also restores the caller actor', $db->actor(), $users['sub']);
 $db->setActor(null);
 
 \Zero\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
 eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
-
-
 
 \Zero\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \Zero\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);
@@ -495,20 +481,20 @@ isProblem('prefix dispatch matches complete segments', req('GET', '/postsExtra')
 });
 $seamComment = $db->findFirst('comments', ['where' => ['postId' => $seam['id']]]);
 $raw = '{ "id": ' . $seamComment['id'] . ' }';
-[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['Authorization' => 'Bearer ' . $tokens['ed'], 'X-Proof' => hash('sha256', $raw)]);
+[$s, , $out] = $wp->handle('POST', '/actions/approveComment', $raw, 'ed', ['X-Proof' => hash('sha256', $raw)]);
 eq('action invocation extension gets exact raw body and normalized headers', [$s, json_decode($out, true)['data']['id']], [200, $seamComment['id']]);
-[$s, , $out] = $app->handle('POST', '/actions/approveComment', [], $raw, ['authorization' => 'Bearer ' . $tokens['ed']]);
+[$s, , $out] = $wp->handle('POST', '/actions/approveComment', $raw, 'ed');
 eq('action extension may reject before handler execution', [$s, json_decode($out, true)['code']], [403, 'forbidden']);
-$actionHeaders = ['authorization' => 'Bearer ' . $tokens['ed'], 'x-proof' => hash('sha256', $raw), 'idempotency-key' => 'action'];
-$app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders);
-[$s, $replayedHeaders, $out] = $app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders);
+$actionHeaders = ['x-proof' => hash('sha256', $raw), 'idempotency-key' => 'action'];
+$wp->handle('POST', '/actions/approveComment', $raw, 'ed', $actionHeaders);
+[$s, $replayedHeaders, $out] = $wp->handle('POST', '/actions/approveComment', $raw, 'ed', $actionHeaders);
 eq('action middleware receives result and can replay it with response metadata', [$s, $replayedHeaders['Idempotent-Replayed'], json_decode($out, true)['data']['id']], [200, 'true', $seamComment['id']]);
 $actionHeaders['x-proof'] = 'invalid';
-eq('action signature guard still runs before replay middleware', $app->handle('POST', '/actions/approveComment', [], $raw, $actionHeaders)[0], 403);
+eq('action signature guard still runs before replay middleware', $wp->handle('POST', '/actions/approveComment', $raw, 'ed', $actionHeaders)[0], 403);
 [$code, $out] = $app->cli(['action', 'publishedCount', '{"reject":true}']);
 eq('trusted CLI actions share the invocation extension', [$code, json_decode($out, true)['error']['code']], [1, 'rejected']);
-\Zero\Extensions::cli('seam', static function (array $args, array $flags) use ($db): array {
-    $db->store()->run('INSERT INTO "__zero_seam" ("event") VALUES (?)', [$args[0]]);
+\Zero\Extensions::cli('seam', static function (array $args, array $flags) use ($wp): array {
+    $wp->exec('INSERT INTO {prefix}zero__seam (`event`) VALUES (?)', [$args[0]]);
     if (isset($flags['fail'])) {
         throw new \Zero\JsError('CLI extension rollback');
     }
@@ -518,10 +504,10 @@ eq('trusted CLI actions share the invocation extension', [$code, json_decode($ou
 [$code, $out] = $app->cli(['seam', 'saved', '--mode=local']);
 eq('CLI extension runs through the canonical envelope', [$code, json_decode($out, true)['data']], [0, ['args' => ['saved'], 'flags' => ['mode' => 'local']]]);
 $app->cli(['seam', 'discarded', '--fail']);
-eq('CLI extension effects join the command transaction', $db->store()->run('SELECT event FROM "__zero_seam" ORDER BY id DESC LIMIT 1')->fetchColumn(), 'saved');
+eq('CLI extension effects join the command transaction', $wp->scalar('SELECT `event` FROM {prefix}zero__seam ORDER BY `id` DESC LIMIT 1'), 'saved');
 
 try {
-    \Zero\Extensions::route('auth', static fn (): array => [200, null]);
+    \Zero\Extensions::route('sync', static fn (): array => [200, null]);
     check('a second owner for an extension route is refused', false);
 } catch (\LogicException) {
     check('a second owner for an extension route is refused', true);

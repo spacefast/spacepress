@@ -19,7 +19,7 @@ eq('PHP platform policy matches the shared golden', \Zero\Wp\Platform::requireme
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];
-$ctx = ['data' => [], 'user' => null, 'target' => 'standalone'];
+$ctx = ['data' => [], 'user' => null, 'target' => 'wp'];
 
 /** normalize + rules, like the write pipeline does for one column. */
 $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed {
@@ -60,7 +60,7 @@ eq('v3 describes field rules without function names', $phase2->describe()['colle
 eq('v3 describes safe file metadata', $phase2->describe()['files']['decks'], ['accept' => ['application/pdf', 'image/*'], 'maxBytes' => 20000000]);
 eq('v3 self summary', $phase2->describe()['collections']['members']['access']['read'], 'self');
 $described = $phase2->describe();
-eq('standalone /_schema omits agents: false entries (§7.1)', [array_keys($described['collections']), array_keys($described['globals']), array_keys($described['actions'])],
+eq('/_schema omits agents: false entries (§7.1)', [array_keys($described['collections']), array_keys($described['globals']), array_keys($described['actions'])],
     [['authors', 'posts', 'members'], [], ['widened']]);
 
 $described = json_encode($schema->describe());

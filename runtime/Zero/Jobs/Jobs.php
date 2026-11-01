@@ -43,7 +43,8 @@ final class Jobs
             $row = [$id, $name, Js::jsonStringify((object) $input), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
             // The job row claims UNIQUE(job, dedupe) inside this transaction. A concurrent same-key insert
             // waits for it, then is ignored and returns this job; a rollback removes the row and its claim.
-            Storage::run(Storage::insertIgnore() . ' INTO {jobs} ("id", "job", "input", "key", "runAt", "createdAt", "dedupe", "state", "attempts") VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', 0)', [...$row, $key]);
+            $bytes = $key === null ? null : Storage::bytes($key);
+            Storage::run(Storage::insertIgnore() . ' INTO {jobs} ("id", "job", "input", "key", "runAt", "createdAt", "dedupe", "state", "attempts") VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', 0)', [$id, $name, $row[2], $bytes, $row[4], $row[5], $bytes]);
             if (Storage::changes() === 0) {
                 return ['id' => self::holder($name, (string) $key) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished")];
             }
@@ -61,7 +62,7 @@ final class Jobs
      */
     private static function holder(string $name, string $key): ?string
     {
-        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . Storage::forShare(), [$name, $key])[0] ?? null;
+        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "job" = ? AND "dedupe" = ?' . Storage::forShare(), [$name, Storage::bytes($key)])[0] ?? null;
 
         return $row === null ? null : (string) $row['id'];
     }

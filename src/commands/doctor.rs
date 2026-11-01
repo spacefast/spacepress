@@ -286,16 +286,16 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
         }
         let database = &versions["database"];
         let found = database["version"].as_str().unwrap_or("0");
-        let minimum = if database["kind"] == "mariadb" {
-            platform::MARIADB
-        } else {
-            platform::MYSQL
+        let (name, minimum) = match database["kind"].as_str() {
+            Some("mariadb") => ("MariaDB", platform::MARIADB),
+            Some("sqlite") => ("SQLite Database Integration", platform::SQLITE),
+            _ => ("MySQL", platform::MYSQL),
         };
         check(
             checks,
             "database",
             version::at_least(found, minimum),
-            format!("{found}; requires {minimum}+"),
+            format!("{name} {found}; requires {minimum}+"),
         );
         let pending = runtime["pendingMigrations"].as_array();
         check(

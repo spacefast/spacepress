@@ -88,10 +88,11 @@ final class Receipts
             $where = 'WHERE "scope" = ? AND "key" = ? AND "userId" = ?';
             // Claim first: the primary key decides a race (the loser waits, then is ignored), and no
             // locking read ever runs on an absent key, so two first uses can't deadlock on gap locks.
+            [$scopeBytes, $keyBytes] = [Storage::bytes($scope), Storage::bytes($key)];
             Storage::run(Storage::insertIgnore() . ' INTO {receipts} ("scope", "key", "userId", "inputHash", "state", "createdAt") VALUES (?, ?, ?, ?, \'started\', ?)',
-                [$scope, $key, $userId, $hash, Js::iso(Js::now())]);
+                [$scopeBytes, $keyBytes, $userId, $hash, Js::iso(Js::now())]);
             $existing = Storage::changes() === 1 ? null
-                : Storage::run("SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forShare(), [$scope, $key, $userId])[0] ?? null;
+                : Storage::run("SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forShare(), [$scopeBytes, $keyBytes, $userId])[0] ?? null;
             if ($existing !== null) {
                 if (!hash_equals((string) $existing['inputHash'], $hash)) {
                     throw new HttpError(409, 'idempotency_mismatch', 'This idempotency key was used with a different request');
@@ -106,7 +107,7 @@ final class Receipts
             }
             $result = $run();
             // serialize() keeps empty objects and lists apart, so a replay is byte-identical.
-            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($result), $scope, $key, $userId]);
+            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($result), $scopeBytes, $keyBytes, $userId]);
 
             return $result;
         });

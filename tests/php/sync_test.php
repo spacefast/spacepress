@@ -3,22 +3,21 @@
 declare(strict_types=1);
 
 /*
- * Content sync runtime (design §5.3) on standalone, in-process through App::handle against a real
- * SQLite file: canonical JSON golden, uid minting, /sync reads/writes/trash, reference uids, body
- * conversion fixtures and the server-side merge. WordPress behaviour is proven by tests/wp/sync.test.ts.
+ * Content sync runtime (design §5.3) on WordPress, in-process through App::handle (tests/php/wp.php):
+ * canonical JSON golden, uid minting, /sync reads/writes/trash, reference uids, body conversion
+ * fixtures and the server-side merge. Notes are posts (Markdown sync needs a content designation),
+ * people a custom table; sync over HTTP against WordPress is proven by tests/wp/sync.test.ts.
  */
 
-use Zero\App;
 use Zero\Sync\Canon;
 
-require __DIR__ . '/blog_app.php';
+require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$root = sys_get_temp_dir() . '/zero-sync-test-' . bin2hex(random_bytes(4));
 $editor = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']];
 $api = ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true];
 $schema = [
-    'version' => 3, 'runtime' => '0.2', 'name' => 'notes', 'target' => 'standalone', 'site' => ['uidPrefix' => 'zr_'],
+    'name' => 'notes',
     'collections' => [
         'people' => [
             'primaryKey' => 'id', 'uid' => true, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
@@ -29,7 +28,7 @@ $schema = [
             ],
         ],
         'notes' => [
-            'primaryKey' => 'id', 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
+            'primaryKey' => 'id', 'editor' => true, 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
             'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
             'hooks' => ['beforeCreate' => 'notes__beforeCreate', 'beforeUpdate' => 'notes__beforeUpdate'],
             'columns' => [
@@ -77,48 +76,18 @@ $functions = <<<'PHP'
     // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
     function notes__beforeUpdate($patch, $existing) { return match ($patch['title'] ?? null) { 'steal uid' => $patch + ['uid' => 'zr_99999999999999999999'], 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
-$migration = <<<'SQL'
-    CREATE TABLE "people" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "name" text NOT NULL, "uid" text);
-    --> statement-breakpoint
-    CREATE UNIQUE INDEX "people_uid_unique" ON "people" ("uid");
-    --> statement-breakpoint
-    CREATE TABLE "notes" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "body" text, "meta" text,
-      "authorId" integer REFERENCES "people"("id") ON DELETE set null, "updatedAt" text NOT NULL,
-      "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "uid" text);
-    --> statement-breakpoint
-    CREATE UNIQUE INDEX "notes_slug_unique" ON "notes" ("slug");
-    --> statement-breakpoint
-    CREATE UNIQUE INDEX "notes_uid_unique" ON "notes" ("uid");
-    SQL;
-@mkdir("$root/zero/app/migrations", 0777, true);
-@mkdir("$root/data", 0777, true);
-file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
-file_put_contents("$root/zero/app/functions.php", $functions);
-file_put_contents("$root/zero/app/migrations/0001_init.sql", $migration);
-copyRuntime($root);
-putenv('ZERO_DB_PATH');
-putenv('ZERO_AUTO_MIGRATE');
-ini_set('error_log', "$root/error.log");
-register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($root)));
 
-require "$root/zero/runtime/bootstrap.php";
-$app = App::boot($root);
+$wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
+$app = $wp->app();
 $db = \Zero\db();
-$tokens = [];
-foreach (['ed' => 'editor', 'au' => 'author'] as $name => $role) {
-    $app->identity()->addUser($name, $role, null);
-    $tokens[$name] = $app->identity()->createToken($name, null)['token'];
-}
 
 /** @return array{int, mixed} [status, data or problem] */
 function req(string $method, string $path, mixed $body = null, ?string $as = 'ed', array $query = []): array
 {
-    global $app, $tokens;
-    $headers = $as === null ? [] : ['authorization' => 'Bearer ' . $tokens[$as]];
-    [$status, , $out] = $app->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
-    $json = json_decode($out, true);
+    global $wp;
+    [$status, $data] = $wp->call($method, $path, $body, $as, $query);
 
-    return [$status, $status < 300 ? ($json['data'] ?? null) : $json];
+    return [$status, $data];
 }
 
 function isProblem(string $label, array $r, int $status, string $code, ?string $pointer = null): void
@@ -214,13 +183,13 @@ eq('normalized digest is the stored record', $normalized['digest'], Canon::diges
 // write is applied as sent and the digest a client holds is one a pull reproduces.
 $shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []], 'authorId' => null, 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
-[, , $raw] = $app->handle('GET', '/sync/notes', ['after' => '0', 'first' => '100'], '', ['authorization' => 'Bearer ' . $tokens['ed']]);
+[, , $raw] = $wp->handle('GET', '/sync/notes', '', 'ed', [], ['after' => '0', 'first' => '100']);
 eq('{} and [] in a json() value are kept apart: applied as sent, pulled back apart',
     [$shaped['status'], str_contains($raw, '"meta":{"list":[],"nested":{}}') || str_contains($raw, '"meta":{"nested":{},"list":[]}')], ['applied', true]);
 eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
 // Re-push the pulled record as the wire carried it (decoding it to PHP arrays would turn {} into []).
 $pulled = array_values(array_filter(json_decode($raw, false)->data->records, static fn ($r) => ($r->uid ?? $r->record->uid) === 'zr_ffffffffffffffffffff'))[0];
-[, , $out] = $app->handle('POST', '/sync/notes', [], json_encode(['record' => $pulled->record, 'expect' => $shaped['digest']]), ['authorization' => 'Bearer ' . $tokens['ed']]);
+[, , $out] = $wp->handle('POST', '/sync/notes', json_encode(['record' => $pulled->record, 'expect' => $shaped['digest']]), 'ed');
 eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['status'] ?? $out, 'unchanged');
 
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
@@ -241,7 +210,7 @@ isProblem('generated columns are not writable', req('POST', '/sync/notes', ['rec
 isProblem('validation runs through the pipeline', req('POST', '/sync/notes', ['record' => ['fields' => ['status' => 'bogus', 'title' => 'x']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/status');
 
 $unsynced = $db->insert('people', ['name' => 'Legacy'], true)[0];
-$db->store()->update('people', $unsynced['id'], ['uid' => null]);
+$wp->exec('UPDATE {prefix}zero_people SET `uid` = NULL WHERE `id` = ?', [$unsynced['id']]);
 $db->update('notes', ['authorId' => $unsynced['id']], ['uid' => $noteUid]);
 $legacyUid = pull('notes')[$noteUid]['record']['fields']['authorId'];
 eq('a referenced row without a uid gets one on pull', $legacyUid, $db->findFirst('people', ['where' => ['id' => $unsynced['id']]])['uid']);
@@ -300,8 +269,13 @@ check('rows created outside sync get uids on read', count(array_filter(array_key
 $current = pull('notes')[$noteUid];
 isProblem('trash with a stale digest', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => 'sha256:' . str_repeat('1', 64)]), 409, 'sync_stale');
 eq('trash applies', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => $current['digest']])[1]['status'], 'applied');
-check('standalone trash deletes the row (revisions keep it)', $db->findFirst('notes', ['where' => ['uid' => $noteUid]]) === null && !isset(pull('notes')[$noteUid]));
-eq('trash of an absent uid is unchanged', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => $current['digest']])[1]['status'], 'unchanged');
+$trashedId = (int) $wp->scalar('SELECT `ID` FROM {prefix}posts WHERE `post_status` = ? AND `post_type` = ?', ['trash', 'zero_notes']);
+check('trash moves the post to the WordPress trash: outside every read, listed by pull as trashed', $db->findFirst('notes', ['where' => ['uid' => $noteUid]]) === null
+    && $trashedId > 0 && (pull('notes')[$noteUid]['trashed'] ?? null) === true, pull('notes')[$noteUid] ?? null);
+eq('trash of a trashed uid is unchanged', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => $current['digest']])[1]['status'], 'unchanged');
+// A push of the trashed uid with `expect: absent` restores the post in place (same id), under the delete-and-update rules.
+[$s, $restored] = req('POST', '/sync/notes', ['record' => $current['record'], 'expect' => 'absent']);
+eq('pushing a trashed uid restores the post', [$s, $restored['status'] ?? null, $db->findFirst('notes', ['where' => ['uid' => $noteUid]])['id'] ?? null], [200, 'applied', $trashedId]);
 
 // ================================================================ convert (fixtures) and merge
 

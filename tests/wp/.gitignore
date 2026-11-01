@@ -1,4 +1,5 @@
 cache/*.zip
+cache/*/
 .harness.json
 .harness-state
 .wp-content/

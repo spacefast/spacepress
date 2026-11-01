@@ -115,6 +115,9 @@ $cases = [
     // ---- replace / replaceAll
     ['["aaa".replace("a", "b"), "abc".replace("b", "[$&|$`|$\'|$$|$1]"), "abc".replace("x", "y"), "abc".replace("", "_")]',
         fn () => [Js::replace('aaa', 'a', 'b'), Js::replace('abc', 'b', '[$&|$`|$\'|$$|$1]'), Js::replace('abc', 'x', 'y'), Js::replace('abc', '', '_')]],
+    ['((seen) => ["🙂a".replaceAll("", (m, i) => { seen.push(i); return ""; }), "🙂".replace(/(?:)/g, (m, i) => { seen.push(i); return ""; }), "🙂a".match(/x*/g), seen])([])',
+        function () use ($re) { $seen = []; $f = function (string $m, int $i) use (&$seen) { $seen[] = $i; return ''; };
+            return [Js::replaceAll('🙂a', '', $f), Js::replace('🙂', $re('(?:)', 'g'), $f), Js::strMatch('🙂a', $re('x*', 'g')), $seen]; }],
     ['"2020-01-02".replace(/(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)/, "$<d>.$<m>.$<y> $<nope>|$2")',
         fn () => Js::replace('2020-01-02', $re('(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)', ''), '$<d>.$<m>.$<y> $<nope>|$2')],
     ['["abc".replace(/(b)/g, "$1$1$2$<x>"), "abc".replace(/(b)/, "$10"), "abcabc".replace(/b/, "X"), "abcabc".replace(/B/gi, "X"), "aaa".replace(/a*?/g, "-")]',
@@ -271,6 +274,7 @@ $deviations = [
     ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
     ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
     // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
+    ['inserting inside a surrogate pair throws', fn () => [Js::replaceAll('🙂', '', '-'), Js::replace('🙂', Js::re('(?:)', 'g'), '-')], ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
     ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],

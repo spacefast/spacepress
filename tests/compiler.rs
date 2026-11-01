@@ -1042,10 +1042,6 @@ fn rejects_phase2_static_contracts() {
             "field rules must return a boolean on every path",
         ),
         (
-            "const values: true[] = []; const value = (values[0] &&= true); switch (value) { case true: return true; }",
-            "field rules must return a boolean on every path",
-        ),
-        (
             "const values: ['a', 'b'] = ['a', 'b']; values.pop(); switch (values[1]) { case 'b': return true; }",
             "field rules must return a boolean on every path",
         ),
@@ -1157,25 +1153,41 @@ fn rejects_phase2_static_contracts() {
             "can't insert",
         ),
         (
-            "let values: (0 | 1)[] = [1]; values[0]!++; values.push(2); return true;",
-            "can't insert",
-        ),
-        (
             "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
             "function expects",
         ),
         (
             "const a: number[] = []; a[2] = 5; return a.length === 3;",
-            "assigning to an array index can leave holes",
+            "changing an array element in place isn't supported",
         ),
         (
             "const a: (number | null)[] = []; a[2] ??= 5; return a.length === 3;",
-            "assigning to an array index can leave holes",
+            "changing an array element in place isn't supported",
+        ),
+        (
+            "const a: string[] = []; a[2] += 'x'; return a.length === 3;",
+            "changing an array element in place isn't supported",
+        ),
+        (
+            "const a: number[] = [1]; a[5]!++; return a.length === 6;",
+            "changing an array element in place isn't supported",
+        ),
+        (
+            "const values: true[] = []; const value = (values[0] &&= true); return value === true;",
+            "changing an array element in place isn't supported",
+        ),
+        (
+            "const a: { x: number }[] = []; a[2]!.x = 1; return a.length === 3;",
+            "changing an array element in place isn't supported",
         ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         (
             "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p) === 1;",
             "position might be null or undefined",
+        ),
+        (
+            "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
+            "holds an object or array",
         ),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (
@@ -1371,7 +1383,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let nullable_arguments = serde_json::json!({"local": 1, "module": 2, "absent": null, "sibling": 3, "stable": "a", "unchecked": {"empty": null, "shortened": null, "tail": [null], "reversed": "b", "captured": "b", "forwarded": "b", "grown": "a", "optional": null, "present": true, "defaulted": true, "moduleDefaulted": true, "moduleProvided": false, "destructuredDefault": true, "destructuredProvided": false, "early": null, "late": "b"}, "ordered": 4, "looped": "b", "earlier": 0});
     assert_eq!(
         result,
-        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 0, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
+        serde_json::json!([false, true, false, true, true, true, {"finite": ["a", "b"], "callbacks": [null], "tuples": ["aa"], "finiteDefaults": ["a", "b"], "defaultTuple": "aa", "numeric": {"value": 2, "count": 2, "item": 1, "keep": 0}, "effects": {"captured": 2, "invoked": 2, "loop": 2, "helper": {"count": 3, "captured": 3, "keep": 0}, "maybeCaptured": null, "maybeHelper": null, "shadow": 1, "early": 0, "byValue": 1, "passed": {"scalar": null, "member": null, "object": {"maybe": null, "keep": 0}, "destructured": {"maybe": null, "keep": 0}}, "callback": 2, "defaulted": 2, "localDefaulted": 2, "logical": {"nullish": 2, "or": 2, "and": 1, "guarded": 3, "absent": 0, "nested": 4}, "nullableArguments": nullable_arguments}, "formatted": "-1", "inferredNumber": "0", "functionMaybe": null, "defaultMaybe": null, "maybe": null}, [true, false], false, [{"id": 1, "note": "typed:job-test:2:nested"}]])
     );
     let _ = std::fs::remove_dir_all(tmp);
 }

@@ -83,10 +83,10 @@ export default defineConfig({
       const after = ++i;
       let j = -(2 ** 53) + 1;
       j -= 2;
-      // Prefix/postfix on an index with a side effect evaluate the place once.
-      const a = [10, 20];
+      // Prefix/postfix on a key with a side effect evaluate the place once.
+      const a: Record<string, number> = { k0: 10, k1: 20 };
       let k = 0;
-      const pre = ++a[k++]!;
+      const pre = ++a["k" + k++]!;
       // Integer powers past 2^53 are doubles; exactly representable ones (2 ** 60) agree to the bit.
       let p = 2;
       p **= 60;
@@ -349,6 +349,12 @@ function laneSActions() {
         seen = read();
       }
       return seen;
+    }),
+    // A captured primitive loop binding of any kind (here a string) gets its own per-iteration cell.
+    stringLoopClosures: run(() => {
+      const fns: (() => string)[] = [];
+      for (let s = "a"; s.length < 4; s += "a") fns.push(() => s);
+      return fns.map((f) => f());
     }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.

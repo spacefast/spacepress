@@ -120,9 +120,11 @@ final class RegExp implements \Stringable
     }
 
     /**
-     * All matches left to right; empty matches advance one code point.
+     * All matches left to right; empty matches advance one code point, or one UTF-16 unit without
+     * the u flag, as in JS: then an empty match also sits between the halves of a surrogate pair
+     * (flagged by a fifth element, see Js::applyReplacements), if the pattern matches empty there.
      *
-     * @return list<array{int, int, list<?string>, array<string, ?string>}>
+     * @return list<array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4?: true}>
      */
     public function matchAll(string $s): array
     {
@@ -132,9 +134,27 @@ final class RegExp implements \Stringable
         while ($offset <= $size && ($m = $this->matchAt($s, $offset)) !== null) {
             $out[] = $m;
             $offset = $m[1] > $m[0] ? $m[1] : $m[1] + Js::charLenAt($s, $m[1]);
+            if ($m[1] === $m[0] && !$this->unicode && $offset - $m[1] === 4 && $this->matchesEmptyInsidePair()) {
+                $out[] = [$m[1], $m[1], array_fill(0, $this->groupCount, null), [], true];
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * Whether the pattern matches empty between the two halves of a surrogate pair. PCRE can't see
+     * that position, so only the always-empty patterns (`(?:)`, `x*`, ...) that match anywhere are
+     * answered: they match the empty string with nothing around it. Anything else that matches
+     * empty (anchors, lookarounds) can't be decided here and throws.
+     */
+    private function matchesEmptyInsidePair(): bool
+    {
+        if (preg_match('/[\\^$]|\(\?[=!<]/', $this->src) === 1) {
+            throw new JsError('An empty match inside a character outside the Basic Multilingual Plane (an emoji, say) can\'t be checked in compiled code; add the u flag', 'RangeError');
+        }
+
+        return $this->matchAt('', 0) !== null;
     }
 
     // ---------------------------------------------------------------- translation

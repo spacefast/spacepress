@@ -124,7 +124,13 @@ object with optional fields is rejected with a located diagnostic; capture the
 needed scalar values instead. Mutating `for…of` bindings use the same fixed
 object representation; array/record/optional-field and destructured mutations
 must use the source index instead. Object spread/rest copy field values, and
-loop-local declarations receive a fresh binding on each execution.
+loop-local declarations receive a fresh binding on each execution. A captured
+`for (let …)` header variable gets a fresh `Js::cell` per iteration, which
+copies its value, so it must be primitive; an object or array one is rejected.
+Every write into or through an array element (`list[i] = v`, `list[i] += v`,
+`list[i]++`, `list[i].x = v`) is rejected: writing past the end would turn the
+PHP array into an object, and writing through a missing element must throw
+before the value runs. Both wait for arrays as handles (design #79).
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

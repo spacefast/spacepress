@@ -156,8 +156,9 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
-    /// `list[i]`: a plain `=` here could write past the end (see `index_write`).
-    array_index: bool,
+    /// The place is, or is reached through, an array element (`list[i]`, `list[i].x`): see
+    /// `element_write`.
+    through_element: bool,
 }
 
 impl Out {
@@ -1150,8 +1151,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => String::new(),
                 };
                 // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
-                // it saw. PHP closures capture by reference, so a captured loop variable moves to a
-                // fresh cell before each update (earlier closures keep theirs; `continue` too).
+                // it saw. PHP closures capture by reference, so a captured primitive loop variable
+                // moves to a fresh cell before each update (earlier closures keep theirs; `continue`
+                // too). A captured object or array loop variable is refused.
                 let fresh: Vec<String> = match init.as_deref() {
                     Some(Stmt::Decl {
                         kind: DeclKind::Let,
@@ -1163,13 +1165,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         pat_bindings(pat, &mut bindings);
                         let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
                         let scope = self.fx().scopes.last().cloned().unwrap_or_default();
-                        let mut cells: Vec<String> = scope
-                            .values()
-                            .filter(|l| captured.contains(&l.binding))
+                        let mut locals: Vec<&Local> =
+                            scope.values().filter(|l| captured.contains(&l.binding)).collect();
+                        locals.sort_by(|a, b| a.php.cmp(&b.php));
+                        // A cell copies the value: faithful for primitives only. JS's per-iteration
+                        // bindings of an object all point at one object; PHP copies would diverge.
+                        if let Some(l) = locals.iter().find(|l| !primitive(&l.ty)) {
+                            let name = l.php.trim_start_matches('$');
+                            return err_help(
+                                l.binding,
+                                format!(
+                                    "a closure captures the loop variable `{name}`, which holds an object or array: each iteration would get its own copy in compiled PHP"
+                                ),
+                                format!(
+                                    "loop over a number or string instead, or copy what the closure needs into a `const` inside the loop body (`const snapshot = {name}.x;`)"
+                                ),
+                            );
+                        }
+                        locals
+                            .into_iter()
                             .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
-                            .collect();
-                        cells.sort();
-                        cells
+                            .collect()
                     }
                     _ => Vec::new(),
                 };
@@ -2177,7 +2193,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
             ExprKind::Update { inc, prefix, target } => {
-                let t = self.place(target)?.read;
+                let place = self.place(target)?;
+                element_write(place.through_element, target.span)?;
+                let t = place.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
                 // Past ±2^53 the variable becomes a double, as in JS (`Js::add`). Postfix returns the old value.
                 let d = if *inc { "1" } else { "-1" };
@@ -2737,13 +2755,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             read: t,
             constraint,
             path,
-            array_index,
+            through_element,
         } = self.place(target)?;
-        // `??=` and `||=` write when the element is missing (undefined), so past the end too;
-        // `&&=` never writes a missing element.
-        if array_index && matches!(op, None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or))) {
-            index_write(span)?;
-        }
+        element_write(through_element, span)?;
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
@@ -2911,7 +2925,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         l.ty
                     };
                     Ok(AssignmentPlace {
-                        array_index: false,
+                        through_element: false,
                         constraint: l.constraint,
                         path: Some((l.php.clone(), Vec::new())),
                         read: Out {
@@ -2937,7 +2951,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
-                    ..
+                    through_element,
                 } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
@@ -2956,7 +2970,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
-                    array_index: false,
+                    through_element,
                     constraint,
                     path,
                     read: Out {
@@ -2973,13 +2987,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
-                    ..
+                    through_element,
                 } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
-                let array_index = matches!(o.ty.non_null(), Ty::Array(_));
+                let through_element = through_element || matches!(o.ty.non_null(), Ty::Array(_));
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
@@ -3006,7 +3020,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
-                    array_index,
+                    through_element,
                     constraint,
                     path,
                     read: Out {
@@ -5594,6 +5608,25 @@ fn check_aliasing(f: &Func) -> Result<()> {
     }
 }
 
+/// Whether every value of `t` is a primitive (copied and shared alike in JS and PHP).
+fn primitive(t: &Ty) -> bool {
+    match t {
+        Ty::Union(ts) => ts.iter().all(primitive),
+        Ty::Num
+        | Ty::NumLit(_)
+        | Ty::FreshNumLit(_)
+        | Ty::Str
+        | Ty::StrLit(_)
+        | Ty::FreshStrLit(_)
+        | Ty::Bool
+        | Ty::BoolLit(_)
+        | Ty::FreshBoolLit(_)
+        | Ty::Null
+        | Ty::Date => true,
+        _ => false,
+    }
+}
+
 /// The binding spans a pattern introduces, in source order.
 fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
     match p {
@@ -5618,14 +5651,18 @@ fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
     }
 }
 
-/// `list[i] = v` past the end leaves holes JS fills with `undefined` but a PHP array turns into a
-/// keyed map (`[1, , , 2]` vs `{"0":1,"3":2}`). A plain `=`, `??=` or `||=` into an array by index
-/// is refused; changing an existing element (`list[i]++`, `list[i] += 1`, `list[i].x = ...`) is not
-/// a write past the end and stays.
-fn index_write(span: Span) -> Result<()> {
+/// Writes into an array element, or through one (`list[i] = v`, `list[i] += v`, `list[i]++`,
+/// `list[i].x = v`), are refused. Past the end JS grows the array (holes read as `undefined`) while
+/// PHP adds a key and the array becomes an object (`[1, , 3]` vs `{"0":1,"2":3}`); a write through a
+/// missing element must throw a TypeError before the value runs. Doing either faithfully needs the
+/// array to be a handle, not a PHP value: that is the handle switch's job (design #79).
+fn element_write(through_element: bool, span: Span) -> Result<()> {
+    if !through_element {
+        return Ok(());
+    }
     err_help(
         span,
-        "assigning to an array index can leave holes, which compiled PHP turns into an object",
-        "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
+        "changing an array element in place isn't supported: compiled PHP can't grow an array by index",
+        "build the new array instead (`list.map((v, j) => j === i ? next : v)`), or `list.push(value)` to append",
     )
 }

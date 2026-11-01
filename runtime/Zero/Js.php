@@ -836,6 +836,10 @@ final class Js
         for ($pos = strpos($s, $pattern); $pos !== false; $pos = $next <= $size ? strpos($s, $pattern, $next) : false) {
             $matches[] = [$pos, $pos + $plen, [], []];
             $next = $pos + ($plen > 0 ? $plen : self::charLenAt($s, $pos));
+            // `""` also matches between the two UTF-16 units of a character outside the BMP.
+            if ($plen === 0 && $next - $pos === 4) {
+                $matches[] = [$pos, $pos, [], [], true];
+            }
         }
 
         return self::applyReplacements($s, $matches, $replacement, false);
@@ -848,12 +852,19 @@ final class Js
     {
         $out = '';
         $last = 0;
-        foreach ($matches as [$start, $end, $groups, $names]) {
+        foreach ($matches as $match) {
+            [$start, $end, $groups, $names] = $match;
+            // An empty match between the two halves of a surrogate pair (see replaceAll): one unit
+            // past the character's start; anything inserted there would split the pair.
+            $between = $match[4] ?? false;
             $matched = substr($s, $start, $end - $start);
             if (is_string($replacement)) {
-                $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
+                $rep = $between ? $replacement : self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
             } else {
-                $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)), $s]));
+                $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s]));
+            }
+            if ($between && $rep !== '') {
+                self::loneSurrogate();
             }
             $out .= substr($s, $last, $start - $last) . $rep;
             $last = $end;

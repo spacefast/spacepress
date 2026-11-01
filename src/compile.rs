@@ -1238,7 +1238,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 return err_help(
                                     pat.span(),
                                     "a mutating loop binding needs an object with required fields",
-                                    "change arrays, records, or optional fields through their source index instead",
+                                    "rebuild the array instead, for example with `map`",
                                 );
                             }
                             let source = match &it.place {

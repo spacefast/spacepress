@@ -123,6 +123,10 @@ $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
 eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], 'json')), '{"a":{}}');
+$deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
+eq('container defaults preserve values deeper than request JSON', \Zero\Js::jsonStringify(Schema::validateInput([
+    'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],
+], [])['deep']), $deepDefault);
 problem('group: sub-field type', fn () => Schema::encode($posts['seo'], ['noindex' => 'yes'], 'seo', '/seo'), 422, 'invalid_input', '/seo/noindex');
 problem('group: sub-field rule (max), nested pointer', fn () => $write($posts['seo'], ['metaTitle' => str_repeat('x', 71)], 'seo'), 422, 'invalid_input', '/seo/metaTitle');
 

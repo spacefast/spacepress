@@ -247,7 +247,8 @@ final class Schema
     public static function generate(array $spec, string $type): mixed
     {
         if (isset($spec['json'])) {
-            return Js::decodeJson($spec['json']); // a literal holding `{}` (see schema_php::generator)
+            // Compiler-produced literals have already been validated; the request depth limit does not apply.
+            return Js::decodeJson($spec['json'], 2147483647);
         }
         if (array_key_exists('value', $spec)) {
             return $spec['value'];

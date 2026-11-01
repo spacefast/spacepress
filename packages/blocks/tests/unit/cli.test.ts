@@ -93,3 +93,56 @@ test("the JSON report carries the component's call site as usedAt", async () => 
   const json = await run(["content", fixture("uses-card.tsx"), "--json"]);
   assert.deepEqual((JSON.parse(json.stderr) as { usedAt: unknown }[])[0]!.usedAt, { file: "tests/unit/fixtures/uses-card.tsx", line: 7, column: 7 });
 });
+
+test("build writes <out>/<slug> and prints what it wrote", () =>
+  withDir(async (dir) => {
+    const ok = await run(["build", fixture("theme"), "--out", dir]);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.match(ok.stdout, /fixture-theme\/ \(17 files\)/);
+    assert.deepEqual(readdirSync(path.join(dir, "fixture-theme")).sort(), ["assets", "parts", "patterns", "readme.txt", "screenshot.png", "style.css", "styles", "templates", "theme.json"]);
+    assert.match(ok.stderr, /unused_part/);
+  }));
+
+test("build --zip also writes <out>/<slug>.zip", () =>
+  withDir(async (dir) => {
+    const ok = await run(["build", fixture("theme"), "--out", dir, "--zip"]);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.ok(readdirSync(dir).includes("fixture-theme.zip"));
+    assert.match(ok.stdout, /fixture-theme\.zip/);
+  }));
+
+test("check reports the diagnostics a build would and writes nothing", () =>
+  withDir(async (dir) => {
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const ok = await run(["check", fixture("theme")]);
+      assert.equal(ok.code, 0, ok.stderr);
+      assert.match(ok.stderr, /unused_part/);
+      assert.deepEqual(readdirSync(dir), []);
+    } finally {
+      process.chdir(cwd);
+    }
+  }));
+
+test("a theme with an error exits 1 from build and check, with file:line:col, and build writes nothing", () =>
+  withDir(async (dir) => {
+    const theme = path.join(dir, "broken");
+    const { cpSync, rmSync } = await import("node:fs");
+    cpSync(fixture("theme"), theme, { recursive: true });
+    rmSync(path.join(theme, "templates", "index.tsx"));
+    const out = path.join(dir, "out");
+    const built = await run(["build", theme, "--out", out]);
+    assert.equal(built.code, 1);
+    assert.match(built.stderr, /templates\/index\.tsx:1:1 index_template_missing: /);
+    assert.equal(readdirSync(dir).includes("out"), false);
+    const checked = await run(["check", theme, "--json"]);
+    assert.equal(checked.code, 1);
+    assert.equal((JSON.parse(checked.stderr) as { code: string }[]).some((d) => d.code === "index_template_missing"), true);
+  }));
+
+test("check refuses --out and --zip, and content refuses --zip, with usage and exit 2", async () => {
+  assert.equal((await run(["check", fixture("theme"), "--zip"])).code, 2);
+  assert.equal((await run(["check", fixture("theme"), "--out", "x"])).code, 2);
+  assert.equal((await run(["content", fixture("pricing.tsx"), "--zip"])).code, 2);
+});

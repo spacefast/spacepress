@@ -28,14 +28,15 @@ import type { ContentNode, SourceLocation } from "../nodes.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 
-const RUNTIME_SPECIFIER = /^@spacefast\/zero-blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
+const RUNTIME_SPECIFIER = /^@spacefast\/zero-blocks(?:\/(?:jsx-runtime|jsx-dev-runtime|theme))?$/;
 
 function runtimePlugin(): Plugin {
   return {
     name: "zero-blocks-runtime",
     setup(b) {
       b.onResolve({ filter: RUNTIME_SPECIFIER }, (args) => {
-        const sub = args.path === "@spacefast/zero-blocks" ? "index" : args.path.slice("@spacefast/zero-blocks/".length);
+        const requested = args.path === "@spacefast/zero-blocks" ? "index" : args.path.slice("@spacefast/zero-blocks/".length);
+        const sub = requested === "theme" ? "theme/index" : requested;
         // During development the sources are .ts beside this file; a built package has .js.
         for (const ext of [".ts", ".js"]) {
           try {
@@ -98,8 +99,26 @@ function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scra
   return undefined;
 }
 
-/** Bundle, execute, and return whatever the module's default export rendered. */
-export async function renderModule(file: string): Promise<ModuleResult> {
+/** An authored module, bundled and imported, for as long as the callback runs. */
+export interface LoadedModule {
+  /** The absolute path of the entry file. */
+  entry: string;
+  /** Everything the module exported. */
+  namespace: Record<string, unknown>;
+  /** A located diagnostic for an error thrown by the module's code (a component call, a getter). */
+  failure(error: unknown): Diagnostic;
+}
+
+export type ModuleOutcome<T> = { ok: true; value: T } | { ok: false; diagnostics: Diagnostic[] };
+
+/**
+ * Bundle and import an authored module, then run `use` with its namespace.
+ * The whole of `use` runs inside the module section (see exclusive.ts), so
+ * code the module exported can be called from it without ever seeing the
+ * serializer's DOM. A throw from `use` is reported through `failure()` as a
+ * diagnostic located in the author's file.
+ */
+export async function withModule<T>(file: string, use: (loaded: LoadedModule) => T | Promise<T>): Promise<ModuleOutcome<T>> {
   const entry = path.resolve(file);
   const root = path.dirname(entry);
   const scratch = await mkdtemp(path.join(tmpdir(), "zero-blocks-"));
@@ -145,40 +164,49 @@ export async function renderModule(file: string): Promise<ModuleResult> {
           return d;
         })
       : [{ code: "module_failed", severity: "error", message: error instanceof Error ? error.message : String(error), loc: { file: entry, line: 1, column: 1 } }];
-    return { nodes: [], diagnostics };
+    return { ok: false, diagnostics };
   }
 
+  const fail = (error: unknown): Diagnostic => failure(error, entry, bundlePath, map, scratch);
   // Module work (see exclusive.ts): never while any caller has the serializer's DOM globals installed.
   // A refused admission never runs the callback, so the scratch directory is removed out here.
-  return exclusive("module", async (): Promise<ModuleResult> => {
-  try {
-    await writeFile(bundlePath, code);
-    let namespace: { default?: unknown };
+  return exclusive("module", async (): Promise<ModuleOutcome<T>> => {
     try {
-      namespace = (await import(pathToFileURL(bundlePath).href)) as { default?: unknown };
-    } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
+      await writeFile(bundlePath, code);
+      let namespace: Record<string, unknown>;
+      try {
+        namespace = (await import(pathToFileURL(bundlePath).href)) as Record<string, unknown>;
+      } catch (error) {
+        return { ok: false, diagnostics: [fail(error)] };
+      }
+      try {
+        return { ok: true, value: await use({ entry, namespace, failure: fail }) };
+      } catch (error) {
+        return { ok: false, diagnostics: [fail(error)] };
+      }
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
     }
-    if (typeof namespace.default !== "function") {
-      return {
-        nodes: [],
-        diagnostics: [{ code: "default_export_missing", severity: "error", message: `${path.basename(entry)} has no default export.`, hint: "Export a function component as the default export.", loc: { file: entry, line: 1, column: 1 } }],
-      };
-    }
-    try {
-      // Normalizing here keeps a non-content return value (`() => new Date()`) inside the
-      // same diagnostic boundary as a throw from inside the JSX.
-      return { nodes: toContentNodes((namespace.default as () => unknown)(), { file: entry, line: 1, column: 1 }), diagnostics: [] };
-    } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
-    }
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
   }).catch(async (error: unknown) => {
     await rm(scratch, { recursive: true, force: true });
     throw error;
   });
+}
+
+/** The diagnostic for a module whose default export is not a function. */
+export function defaultExportMissing(entry: string, hint = "Export a function component as the default export."): Diagnostic {
+  return { code: "default_export_missing", severity: "error", message: `${path.basename(entry)} has no default export.`, hint, loc: { file: entry, line: 1, column: 1 } };
+}
+
+/** Bundle, execute, and return whatever the module's default export rendered. */
+export async function renderModule(file: string): Promise<ModuleResult> {
+  const outcome = await withModule(file, (loaded): ModuleResult => {
+    if (typeof loaded.namespace.default !== "function") return { nodes: [], diagnostics: [defaultExportMissing(loaded.entry)] };
+    // Normalizing here keeps a non-content return value (`() => new Date()`) inside the
+    // same diagnostic boundary as a throw from inside the JSX.
+    return { nodes: toContentNodes((loaded.namespace.default as () => unknown)(), { file: loaded.entry, line: 1, column: 1 }), diagnostics: [] };
+  });
+  return outcome.ok ? outcome.value : { nodes: [], diagnostics: outcome.diagnostics };
 }
 
 function failure(error: unknown, entry: string, bundlePath: string, map: SourceMap, scratch: string): Diagnostic {

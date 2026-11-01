@@ -7,30 +7,21 @@
  * is `core/paragraph`), and this module adds only what HTML cannot spell:
  * naming a block directly.
  */
-import { toContentNodes } from "./jsx-runtime.ts";
-import type { BlockAttributes, BlockNode } from "./nodes.ts";
-
 export { Fragment, createElement } from "./jsx-runtime.ts";
 export type { JSX } from "./jsx-runtime.ts";
-export type { BlockAttributes, BlockNode, ContentNode, ElementNode, ElementProps, SourceLocation, TextNode } from "./nodes.ts";
+export type { BlockAttributes, BlockNode, BlockObjectAttribute, ContentNode, ElementNode, ElementProps, SourceLocation, TextNode } from "./nodes.ts";
 export type { Diagnostic, DiagnosticCode, Severity } from "./diagnostics.ts";
+export { blockComponent, type BlockComponent } from "./component.ts";
+export { Core } from "./blocks.generated.ts";
+export * from "./blocks-popular.ts";
+
+import { namedBlock } from "./component.ts";
+import { Core } from "./blocks.generated.ts";
 
 /**
- * Build a typed component for one block name. Props become the block's
- * attributes; children become its inner content.
+ * Name a block directly. `<Block name="vendor/thing" attrs={…}>` is the escape
+ * hatch for a block the registry does not know, written as authored and
+ * reported once as unverified. `Block.Core.<Name>` is every core block
+ * WordPress 7.1 registers, with its attributes typed from the registry.
  */
-export function blockComponent<A extends BlockAttributes>(blockName: string): (props: A & { children?: unknown }) => BlockNode {
-  return (props) => {
-    const { children, ...attrs } = props;
-    return { kind: "block", blockName, attrs, inner: toContentNodes(children) };
-  };
-}
-
-/**
- * The escape hatch: name any block, registered or not. A third-party block
- * serializes with its attributes and children as written; the compiler cannot
- * check those and says so once per build.
- */
-export function Block(props: { name: string; attrs?: BlockAttributes; children?: unknown }): BlockNode {
-  return { kind: "block", blockName: props.name, attrs: props.attrs ?? {}, inner: toContentNodes(props.children) };
-}
+export const Block: typeof namedBlock & { readonly Core: typeof Core } = Object.assign(namedBlock, { Core });

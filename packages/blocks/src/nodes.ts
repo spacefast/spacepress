@@ -32,6 +32,13 @@ export type ElementProps = Record<string, unknown>;
 /** A block's attribute bag. Whose keys and shapes belong to the block. */
 export type BlockAttributes = Record<string, unknown>;
 
+/**
+ * A structured block attribute (`style`, `layout`, `lock`, `metadata`,
+ * `query`): a plain object whose shape belongs to WordPress. The serializer
+ * checks that it is a plain JSON object and nothing deeper.
+ */
+export type BlockObjectAttribute = Record<string, unknown>;
+
 /** An HTML tag as authored, pre-mapping. */
 export interface ElementNode {
   kind: "element";

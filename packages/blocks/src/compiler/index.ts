@@ -1,6 +1,11 @@
 export { compileContent, type ContentResult } from "./content.ts";
-export { renderModule, type ModuleResult } from "./module.ts";
+export { renderModule, withModule, type ModuleResult, type LoadedModule, type ModuleOutcome } from "./module.ts";
 export { serializeBlocks, withBlockApi, type BlockApi, type SerializeResult } from "./serialize.ts";
+export { buildTheme, writeTheme, styleCss, type ThemeBuild, type ThemeFile, type WriteOptions } from "./theme.ts";
+export { validateThemeJson, THEME_JSON_SCHEMA_URL, type SchemaProblem } from "./theme-json.ts";
+export { readPatternHeader, patternHeader, renderPatternFile } from "./pattern-file.ts";
+export { classifyTemplate, type TemplateKind } from "../theme/hierarchy.ts";
+export { zip, type ZipEntry } from "./zip.ts";
 export { mapToBlocks, renderRichTextHtml, type MappingResult } from "../mapping.ts";
 export { toContentNodes } from "../jsx-runtime.ts";
 export { formatDiagnostic, hasErrors, type Diagnostic, type DiagnosticCode } from "../diagnostics.ts";

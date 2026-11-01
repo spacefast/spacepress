@@ -15,6 +15,7 @@
     "bin",
     "dist",
     "vendor",
+    "schemas",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -31,6 +32,10 @@
       "types": "./dist/jsx-dev-runtime.d.ts",
       "default": "./dist/jsx-dev-runtime.js"
     },
+    "./theme": {
+      "types": "./dist/theme/index.d.ts",
+      "default": "./dist/theme/index.js"
+    },
     "./compiler": {
       "types": "./dist/compiler/index.d.ts",
       "default": "./dist/compiler/index.js"
@@ -43,12 +48,15 @@
     "prepack": "pnpm build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test tests/unit/*.test.ts",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test && pnpm codegen:check",
+    "codegen": "node scripts/codegen-blocks.ts --write && node scripts/codegen-theme-json.ts --write",
+    "codegen:check": "node scripts/codegen-blocks.ts && node scripts/codegen-theme-json.ts"
   },
   "dependencies": {
     "@wordpress/block-library": "10.2.0",
     "@wordpress/blocks": "15.24.0",
     "@wordpress/element": "8.3.0",
+    "ajv": "8.20.0",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
     "react": "18.3.1",
@@ -56,6 +64,7 @@
   },
   "devDependencies": {
     "@types/node": "22.19.3",
+    "json-schema-to-typescript": "16.0.0",
     "typescript": "5.9.3"
   }
 }

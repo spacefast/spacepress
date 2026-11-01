@@ -22,7 +22,19 @@ export type DiagnosticCode =
   // module execution
   | "module_failed"
   | "default_export_missing"
-  | "not_content";
+  | "not_content"
+  // theme compiler
+  | "index_template_missing"
+  | "unknown_template"
+  | "unknown_template_part"
+  | "unknown_pattern"
+  | "query_mode_required"
+  | "unknown_preset"
+  | "theme_json_invalid"
+  | "declared_file_missing"
+  | "duplicate_slug"
+  | "theme_config_invalid"
+  | "unused_part";
 
 export type Severity = "error" | "warning" | "info";
 

@@ -20,6 +20,8 @@
     "baseUrl": ".",
     "paths": {
       "@spacefast/zero-blocks": ["./src/index.ts"],
+      "@spacefast/zero-blocks/theme": ["./src/theme/index.ts"],
+      "@spacefast/zero-blocks/compiler": ["./src/compiler/index.ts"],
       "@spacefast/zero-blocks/*": ["./src/*.ts"]
     }
   },

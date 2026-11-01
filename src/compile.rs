@@ -1173,6 +1173,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     _ => Vec::new(),
                 };
+                // JS also copies the initializer's bindings into the first iteration's: a closure
+                // made in the initializer keeps the initializer's binding.
+                for cell in &fresh {
+                    let _ = writeln!(out, "{p}{cell};");
+                }
                 let update_php = fresh
                     .into_iter()
                     .chain((!update_php.is_empty()).then_some(update_php))

@@ -337,6 +337,15 @@ function laneSActions() {
       for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
       return fs.map((f) => f());
     }),
+    // A closure made in the initializer keeps the initializer's binding, not the first iteration's.
+    initializerClosure: run(() => {
+      let seen = -1;
+      for (let { i, read = () => i }: { i: number; read?: () => number } = { i: 0 }; i < 1; i++) {
+        i = 5;
+        seen = read();
+      }
+      return seen;
+    }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.
     nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),

@@ -265,8 +265,8 @@ final class Js
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
     public static function postStep(int|float &$x, int $step): int|float
     {
-        $old = $x;
-        $x = self::add($x, $step);
+        $old = self::n($x);
+        $x = self::add($old, $step);
 
         return $old;
     }

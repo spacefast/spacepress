@@ -46,9 +46,9 @@ export const actions = {
       if (!row) return null;
       const n = row.n;
       let k = n;
-      k++;
+      const old = k++;
       const again = await db.query.bigCounts.findFirst({ where: { n } });
-      return [n + 1, n - 1, n * 1, -n, k, m + 1, m - n, n + m, String(n + 0), again ? again.id : null];
+      return [old - 1, n + 1, n - 1, n * 1, -n, k, m + 1, m - n, n + m, String(n + 0), again ? again.id : null];
     },
   }),
   bulkTourPrice: action({

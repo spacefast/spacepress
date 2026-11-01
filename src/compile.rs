@@ -307,14 +307,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
             .collect();
-        if self.used_names.contains(&name) {
+        if self.used_names.contains(&name.to_ascii_lowercase()) {
             let mut i = 2;
-            while self.used_names.contains(&format!("{name}_{i}")) {
+            while self.used_names.contains(&format!("{name}_{i}").to_ascii_lowercase()) {
                 i += 1;
             }
             name = format!("{name}_{i}");
         }
-        self.used_names.insert(name.clone());
+        self.used_names.insert(name.to_ascii_lowercase());
         name
     }
 
@@ -1584,9 +1584,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if element(&ty, 0).is_none() {
                     return err(*span, format!("can't destructure {} as an array", ty.describe()));
                 }
+                let done = self.tmp_var();
+                let _ = writeln!(out, "{p}{done} = false;");
                 for (i, e) in elems.iter().enumerate() {
+                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
-                        let access = format!("\\Zero\\Js::get({src}, {i})");
+                        let access = format!("({done} ? null : \\Zero\\Js::get({src}, {i}))");
                         let types = BindingTypes {
                             read: element(&ty, i).expect("array read"),
                             constraint: element(&constraint, i).expect("authored array"),
@@ -1608,7 +1611,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
                     self.fresh_binding(&php, *span, out, indent);
-                    let _ = writeln!(out, "{p}{php} = \\Zero\\Js::arrSlice({src}, {});", elems.len());
+                    let _ = writeln!(
+                        out,
+                        "{p}{php} = {done} ? new \\Zero\\JsArray() : \\Zero\\Js::arrSlice({src}, {});",
+                        elems.len()
+                    );
                 }
             }
         }

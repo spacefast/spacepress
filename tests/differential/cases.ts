@@ -83,15 +83,18 @@ const capturedOther = { inner: sharedCaptured };
 function refsRegistered(): number { return 1; }
 function refsCollision(): number { return 2; }
 function refsCollision_value(): number { return 3; }
+function REFSCOLLISION_VALUE(): number { return 4; }
 const laneRefs = {
   refsRegisteredRoot: action({ input: {}, handler: refsRegistered }),
-  refsNamedWrappers: run(() => [refsRegistered === refsRegistered, [refsRegistered].includes(refsRegistered), refsCollision(), refsCollision_value()]),
+  refsNamedWrappers: run(() => [refsRegistered === refsRegistered, [refsRegistered].includes(refsRegistered), refsCollision(), refsCollision_value(), REFSCOLLISION_VALUE()]),
   refsOptionalIndex: run(() => {
     let visited = 0;
     const readArray = (a: number[] | null) => a?.[visited++] ?? 99;
     const readRecord = (a: Record<string, number> | null) => a?.[(() => { visited++; return "x"; })()] ?? 99;
     return [readArray(null), readRecord(null), visited, readArray([7]), readRecord({ x: 8 }), visited];
   }),
+  refsDestructureExhaustion: run(() => { const a = [1]; const [head, next = a.push(2, 3), last = 9, ...rest] = a; return [head, next, last, rest, a]; }),
+  refsDestructureGrowth: run(() => { const a: number[] = []; const [next = a.push(2, 3), , last = 9, ...rest] = a; return [next, last, rest, a]; }),
   refsGuardedUpdates: run(() => { const bump = (o: { n: number | null; s: string | null }) => { if (o.n !== null) o.n++; if (o.n !== null) o.n += 2; if (o.s !== null) o.s += "b"; return [o.n, o.s]; }; return [bump({ n: 1, s: "a" }), bump({ n: null, s: null })]; }),
   refsCloneError: run(() => { const e = new Error("x"); const cloned = structuredClone([e, e]); return [cloned[0] === e, cloned[0] === cloned[1], cloned[0]!.message]; }),
   refsOnceError: run(async () => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; }),

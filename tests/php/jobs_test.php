@@ -199,15 +199,16 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
 
 // Both registered handler contracts consume the same validated, persisted JSON payload.
 (static function () use ($schema, $db): void {
-    eval('namespace ZeroApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \Zero\Js::jsonStringify($input->p["meta"])]; }');
+    eval('namespace ZeroApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \Zero\Js::jsonStringify($input->p["meta"])]; } function refs__jobValidate($value, $ctx) { return $ctx->p["user"] !== null || "enqueue requires a user"; }');
     $seen = null;
-    $spec = ['input' => ['meta' => ['type' => 'json', 'notNull' => true]], 'handler' => 'refs__job', 'retries' => 1];
+    $spec = ['input' => ['meta' => ['type' => 'json', 'notNull' => true, 'rules' => ['validate' => 'refs__jobValidate']]], 'handler' => 'refs__job', 'retries' => 1];
     $schema['jobs']['jsonCompiled'] = $spec;
     $schema['jobs']['jsonNative'] = ['handler' => static function (array $input) use (&$seen): void {
         $seen = [is_array($input), \Zero\Js::jsonStringify($input['meta'])];
     }] + $spec;
     $other = new \Zero\Db($db->store(), new \Zero\Schema($schema), $db->media());
     \Zero\Db::setInstance($other);
+    $other->setActor(['id' => 1, 'name' => 'Editor', 'role' => 'editor']);
     try {
         $meta = \Zero\Js::decodeJson('{"1":1,"0":2,"empty":{}}');
         foreach (['jsonCompiled', 'jsonNative'] as $name) {

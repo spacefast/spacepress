@@ -139,7 +139,7 @@ fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations(
 const notes = collection("notes", {
   id: id(), title: text().notNull(),
   seo: group({ fields: { summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }) } }).ui({ label: "SEO" }),
-  rows: repeater({ fields: { value: text().ui({ label: "Row value" }) } }),
+  rows: repeater({ fields: { value: text().ui({ label: "Row value", help: undefined, placeholder: undefined, width: undefined }) } }),
   content: blocks({ layouts: { hero: { heading: text().ui({ label: "Heading" }) } } }),
   metadata: json(),
 }, { title: "title" });
@@ -161,7 +161,10 @@ export default defineConfig({ name: "presentation", schema: { notes } });"#;
     let ui = json!({"label": "Display name", "help": "<b>Plain text</b>", "placeholder": "Jane", "width": 50});
     assert_eq!(got["columns"]["seo"]["fields"]["summary"]["ui"], ui);
     assert_eq!(got["public"]["seo"]["fields"]["summary"]["ui"], ui);
-    assert_eq!(got["public"]["rows"]["fields"]["value"]["ui"]["label"], "Row value");
+    assert_eq!(
+        got["public"]["rows"]["fields"]["value"]["ui"],
+        json!({"label": "Row value"})
+    );
     assert_eq!(
         got["public"]["content"]["layouts"]["hero"]["heading"]["ui"]["label"],
         "Heading"

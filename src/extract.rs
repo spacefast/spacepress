@@ -1375,7 +1375,10 @@ fn column(
         b.ui.as_ref()
             .map(|value| {
                 let span = b.span_of("ui");
-                let value = plain_json(value, span, "ui")?;
+                let mut options = object(value, span, "ui")?;
+                keys(&options, &["label", "help", "placeholder", "width"], span, "ui")?;
+                options.retain(|_, value| !matches!(value, Value::Undef));
+                let value = plain_json(&Value::object(options), span, "ui")?;
                 if !value.is_object() || value.as_object().is_some_and(|obj| obj.values().any(|v| v.is_null())) {
                     return Err(Diag::new(
                         span,

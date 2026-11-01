@@ -8,13 +8,11 @@ use Zero\Access;
 use Zero\App;
 use Zero\Extensions;
 use Zero\HttpError;
-use Zero\Store\SqliteMedia;
-use Zero\SystemTables;
 use Zero\Viewer;
 
 use function Zero\db;
 
-/** The media routes, shared by both targets (phase-1 §4.6 + phase-2 §7.2 `PATCH /media/{id}`). */
+/** The media routes (phase-1 §4.6 + phase-2 §7.2 `PATCH /media/{id}`). */
 final class Module
 {
     /** Fixed like the rest of media: editors change alt text and focal points. */
@@ -23,7 +21,6 @@ final class Module
     public static function register(): void
     {
         Extensions::route('media', self::dispatch(...));
-        SystemTables::register(SqliteMedia::TABLE, [SqliteMedia::upgrade(...)], []);
         Files::register();
         if (defined('ABSPATH') && function_exists('add_action')) {
             \Zero\Wp\WpMedia::boot();

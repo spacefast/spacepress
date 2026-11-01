@@ -22,7 +22,7 @@ final class Outbox
 
     public static function queue(): Queue
     {
-        return self::$queue ??= new SqliteQueue();
+        return self::$queue ?? throw new \LogicException('no job queue is registered (the runtime registers Action Scheduler when it boots)');
     }
 
     /**

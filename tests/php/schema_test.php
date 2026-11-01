@@ -60,8 +60,9 @@ eq('v3 describes field rules without function names', $phase2->describe()['colle
 eq('v3 describes safe file metadata', $phase2->describe()['files']['decks'], ['accept' => ['application/pdf', 'image/*'], 'maxBytes' => 20000000]);
 eq('v3 self summary', $phase2->describe()['collections']['members']['access']['read'], 'self');
 $described = $phase2->describe();
-eq('/_schema omits agents: false entries (§7.1)', [array_keys($described['collections']), array_keys($described['globals']), array_keys($described['actions'])],
-    [['authors', 'posts', 'members'], [], ['widened']]);
+eq('/_schema lists every entry; `agents: false` is carried for the agent surfaces to read (§7.1)', [array_keys($described['collections']), array_keys($described['globals']), array_keys($described['actions']),
+    array_filter(array_map(static fn (array $c): bool => $c['agents'], $described['collections']))],
+    [['audit', 'authors', 'posts', 'members'], ['settings'], ['inbound', 'widened'], ['authors' => true, 'posts' => true, 'members' => true]]);
 
 $described = json_encode($schema->describe());
 check('describe hides function names, hooks and wp identifiers',

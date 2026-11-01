@@ -56,7 +56,7 @@ struct Args {
     json: bool,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero check [project-dir] [--json]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
+const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero check [project-dir] [--json]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);

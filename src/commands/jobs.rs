@@ -24,22 +24,3 @@ pub(super) fn run(args: &Args, project: &Path) -> ExitCode {
         }
     }
 }
-
-/// `zero dev` runs the standalone worker next to the server; it idles at one poll per second.
-pub(super) fn worker(out: &Path) -> Option<std::process::Child> {
-    match std::process::Command::new("php")
-        .arg(out.join("zero/bin/zero.php"))
-        .args(["jobs", "work"])
-        .stdout(std::process::Stdio::null())
-        .spawn()
-    {
-        Ok(child) => {
-            println!("jobs worker running (zero jobs list to inspect)");
-            Some(child)
-        }
-        Err(e) => {
-            eprintln!("warning: couldn't start the jobs worker: {e}");
-            None
-        }
-    }
-}

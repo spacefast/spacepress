@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /*
- * Sql compiler (§3.5) per dialect. MySQL: SQL text + params pinned against a hand-built post-backed
- * Source that follows §3.5.1 exactly (what WpPostStore must return) and a plain custom-table Source
- * (WpTableStore); executed for real only in tests/wp. SQLite: compiled and executed in memory.
+ * Sql compiler (§3.5): SQL text + params pinned against a hand-built post-backed Source that follows
+ * §3.5.1 exactly (what WpPostStore must return) and a plain custom-table Source (WpTableStore).
+ * Executed for real in tests/wp (MariaDB) and tests/php/db_test.php (the SQLite translator).
  */
 
 require __DIR__ . '/../../runtime/Zero/bootstrap.php';
@@ -17,7 +17,6 @@ use Zero\Schema;
 use Zero\Source;
 use Zero\Sql;
 use Zero\Store;
-use Zero\Store\SqliteStore;
 
 $columns = [
     'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -206,32 +205,6 @@ $reject('orderBy a JSON column', ['orderBy' => ['steps' => 'asc']], '`orderBy` i
 $reject('orderBy the content column of an editor collection', ['orderBy' => ['body' => 'asc']], '`orderBy` on `body` isn\'t supported on editor collections', '/orderBy/body');
 $reject('has on a scalar', ['where' => ['note' => ['has' => 'x']]], '`has` is only supported on list columns', '/where/note/has');
 
-// ================================================================ SQLite, executed
-
-$pdo = SqliteStore::connect(':memory:');
-$lite = new SqliteStore($pdo, $schema);
-$pdo->exec('CREATE TABLE "notes" ("id" integer PRIMARY KEY, "title" text, "body" text, "slug" text, "rating" integer, "score" real, "pinned" integer, "note" text, "due" text, "seenAt" text, "tags" text, "photos" text, "seo" text, "steps" text, "extra" text, "status" text, "publishedAt" text)');
-$pdo->exec('CREATE TABLE "logs" ("id" integer PRIMARY KEY, "noteId" integer, "level" text, "labels" text)');
-$pdo->exec(<<<'SQL'
-    INSERT INTO "notes" ("id", "title", "rating", "tags", "photos", "seo", "extra", "status") VALUES
-      (1, 'One', 5, '["news","guide"]', '[3,12]', '{"metaTitle":"m"}', '{"a":1}', 'published'),
-      (2, 'Two', 1, '[]', NULL, NULL, '[1,2]', 'draft'),
-      (3, 'Three', 3, '["guide"]', '[120]', NULL, NULL, 'published');
-    INSERT INTO "logs" ("id", "noteId", "level") VALUES (1, 1, 'a'), (2, 1, 'b'), (3, 1, 'c'), (4, 3, 'a');
-    SQL);
-$ids = static fn (array $opts, ?array $partition = null, string $c = 'notes') => array_map(
-    static fn ($r) => $r['id'],
-    $lite->select($c, Sql::select($schema, $lite, $c, $opts, $partition)),
-);
-eq('SQLite has: json_each exact element', [$ids(['where' => ['tags' => ['has' => 'news']]]), $ids(['where' => ['photos' => ['has' => 12]]])], [[1], [1]]);
-eq('SQLite eq [] and isNull on lists', [$ids(['where' => ['tags' => []]]), $ids(['where' => ['photos' => ['isNull' => true]]])], [[2], [2]]);
-eq('SQLite JSON whole-value eq compares canonical text', [$ids(['where' => ['extra' => ['a' => 1]]]), $ids(['where' => ['extra' => [1, 2]]]), $ids(['where' => ['seo' => ['ne' => ['metaTitle' => 'm']]]])], [[1], [2], []]);
-eq('SQLite per-parent window', $ids(['orderBy' => ['level' => 'desc'], 'limit' => 2, 'offset' => 0], ['noteId', [1, 3]], 'logs'), [3, 4, 2]);
-eq('SQLite relation filter + NOT', $ids(['where' => ['NOT' => ['logs' => true]], 'orderBy' => ['id' => 'asc']]), [2]);
-$q = Sql::select($schema, $lite, 'notes', ['where' => ['title' => ['ilike' => 'o%']]]);
-check('SQLite like uses zero_like with the ci flag', str_ends_with($q['sql'], 'WHERE zero_like(t0."title", ?, 1)'), $q['sql']);
-check('SQLite offset without limit', str_ends_with(Sql::select($schema, $lite, 'logs', ['offset' => 3])['sql'], ' LIMIT -1 OFFSET 3'));
-
 // ================================================================ locale rule (§7.3)
 
 // The locale rule compiles the same on every store: a plain `locale`/`translationGroup` column pair,
@@ -276,20 +249,5 @@ $lang = static fn (string $a) => "CASE (SELECT {$a}_pll_n.slug FROM `wp_term_rel
 $group = static fn (string $a) => "(SELECT {$a}_pll_t.term_taxonomy_id FROM `wp_term_relationships` {$a}_pll_r JOIN `wp_term_taxonomy` {$a}_pll_t ON {$a}_pll_t.term_taxonomy_id = {$a}_pll_r.term_taxonomy_id WHERE {$a}_pll_r.object_id = {$a}.ID AND {$a}_pll_t.taxonomy = 'post_translations' LIMIT 1)";
 eq('post-backed: the same rule over Polylang\'s language and post_translations terms', substr($q['sql'], strrpos($q['sql'], ' FROM `wp_posts` t0 WHERE ') + 26),
     "t0.post_type = 'zero_docs' AND ({$lang('t0')} = ? OR ({$lang('t0')} = ? AND ({$group('t0')} IS NULL OR {$group('t0')} NOT IN (SELECT {$group('t1')} FROM `wp_posts` t1 WHERE t1.post_type = 'zero_docs' AND {$lang('t1')} = ? AND {$group('t1')} IS NOT NULL))))");
-
-// Executed on SQLite: groups 1 (en+de), 2 (en only), 3 (en + a draft de), and a row from before the
-// collection was localized (no group).
-$locPdo = SqliteStore::connect(':memory:');
-$locLite = new SqliteStore($locPdo, $locSchema);
-$locPdo->exec('CREATE TABLE "docs" ("id" integer PRIMARY KEY, "title" text, "status" text, "locale" text, "translationGroup" text)');
-$locPdo->exec("INSERT INTO docs VALUES (1, 'One', 'published', 'en', 'g1'), (2, 'Eins', 'published', 'de', 'g1'), (3, 'Two', 'published', 'en', 'g2'), (4, 'Three', 'published', 'en', 'g3'), (5, 'Drei', 'draft', 'de', 'g3'), (6, 'Legacy', 'published', 'en', NULL)");
-$locRows = static fn (array $opts, ?Closure $guards = null) => array_map(
-    static fn ($r) => [$r['id'], json_decode((string) $r['translations'], true)],
-    $locLite->select('docs', Sql::select($locSchema, $locLite, 'docs', $opts + ['orderBy' => ['id' => 'asc']], guards: $guards === null ? [] : $guards('docs'), guardsFor: $guards)),
-);
-eq('SQLite: fallback per group, legacy rows fall back too, translations per row', $locRows($byLocale('en')),
-    [[2, ['en' => 1, 'de' => 2]], [3, ['en' => 3]], [5, ['en' => 4, 'de' => 5]], [6, ['en' => 6]]]);
-eq('SQLite: a guarded viewer falls back past a hidden translation', array_column($locRows($byLocale('en'), $published), 0), [2, 3, 4, 6]);
-eq('SQLite: pinned to a group', array_column($locRows($byLocale('en', 4)), 0), [5]);
 
 finish('sql_test');

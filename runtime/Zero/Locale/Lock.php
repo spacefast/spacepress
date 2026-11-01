@@ -15,8 +15,8 @@ use function Zero\db;
  * snapshot, so a value copied from a group, or the set of rows a change is propagated to, could be
  * stale by the time this request commits. Locking reads see the latest committed state and hold it:
  * when that differs from the request's snapshot, another request changed the group first and this
- * one fails with 409 `conflict` (retry) instead of committing a divergent group. SQLite serializes
- * writers (BEGIN IMMEDIATE), so it needs none of this.
+ * one fails with 409 `conflict` (retry) instead of committing a divergent group. The SQLite
+ * translator serializes writers (one transaction at a time), so there the locking read is a plain one.
  */
 final class Lock
 {

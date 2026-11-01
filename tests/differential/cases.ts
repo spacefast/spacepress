@@ -7,11 +7,11 @@ const n = collection("n", { id: id() }, { editor: false });
 
 // Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
 export const ACCESS_CTXS = [
-  { user: null, target: "standalone" },
+  { user: null, target: "wp" },
   { user: { id: 7, name: "Sub", role: "subscriber" }, target: "wp" },
-  { user: { id: 3, name: "Ed", role: "editor" }, target: "standalone", data: { title: "Hi", ownerId: 3 } },
-  { user: { id: 9, name: "Al", role: "author" }, target: "standalone", data: { title: "", ownerId: 9 } },
-  { user: { id: 1, name: "Root", role: "admin" }, target: "standalone", data: { title: "Mine", ownerId: 1 } },
+  { user: { id: 3, name: "Ed", role: "editor" }, target: "wp", data: { title: "Hi", ownerId: 3 } },
+  { user: { id: 9, name: "Al", role: "author" }, target: "wp", data: { title: "", ownerId: 9 } },
+  { user: { id: 1, name: "Root", role: "admin" }, target: "wp", data: { title: "Mine", ownerId: 1 } },
 ];
 export const VALIDATE_VALUES = {
   "docs.title": ["Hello", "http://spam", "  ", "Ärtsoppa är god"],
@@ -329,10 +329,10 @@ function laneDActions() {
 // ---- lane B: field access (phase 2 §4). A field rule compiles through the access-fn path; data is
 // the row on read, the incoming data on create/update, the enclosing item for sub-fields.
 export const FIELD_CTXS = [
-  { user: null, target: "standalone", data: { ownerId: 1, salary: 10 } },
+  { user: null, target: "wp", data: { ownerId: 1, salary: 10 } },
   { user: { id: 1, name: "Owner", role: "author" }, target: "wp", data: { ownerId: 1, salary: 10 } },
-  { user: { id: 2, name: "Other", role: "author" }, target: "standalone", data: { ownerId: 1, salary: null } },
-  { user: { id: 3, name: "Ed", role: "editor" }, target: "standalone", data: { ownerId: 1, salary: 5 } },
+  { user: { id: 2, name: "Other", role: "author" }, target: "wp", data: { ownerId: 1, salary: null } },
+  { user: { id: 3, name: "Ed", role: "editor" }, target: "wp", data: { ownerId: 1, salary: 5 } },
 ];
 
 // A hoisted function, so the collection can live in this block below the default export.

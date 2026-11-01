@@ -122,16 +122,8 @@ final class Runner
         }
     }
 
-    /** The next due job id (standalone worker). */
-    public static function next(): ?string
-    {
-        $row = Storage::run('SELECT "id" FROM {jobs} WHERE "state" IN (\'pending\', \'failed\') AND "runAt" <= ? ORDER BY "runAt", "createdAt" LIMIT 1', [Js::iso(Js::now())])[0] ?? null;
-
-        return $row === null ? null : (string) $row['id'];
-    }
-
     /**
-     * Housekeeping, run by every worker pass and Action Scheduler's daily action: drain the outbox,
+     * Housekeeping, run by Action Scheduler's daily action: drain the outbox,
      * re-queue jobs whose runner died mid-run, sweep receipts older than 7 days.
      *
      * @return array{dispatched: int, requeued: int, swept: int}

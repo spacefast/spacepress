@@ -11,7 +11,7 @@ namespace Zero;
  */
 
 /**
- * The built-in media collection (§3.6, §4.6). Standalone: Store\SqliteMedia; WP: Wp\WpMedia.
+ * The built-in media collection (§3.6, §4.6), implemented by Wp\WpMedia (attachments).
  * A media row is ['id' => int, 'url' => string, 'mime' => string, 'size' => int, 'width' => ?int,
  * 'height' => ?int, 'alt' => ?string, 'filename' => string, 'createdAt' => ISO string,
  * 'sizes' => array<name, {url, width, height}> (an empty object for non-images), 'focal' => ?{x, y}]

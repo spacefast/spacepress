@@ -7,14 +7,14 @@ namespace Zero;
 /*
  * CHANGED vs design §3.2 (additive only; every §3.2 signature is unchanged):
  *  - Dialect gains a 6th constructor parameter `ciCollation` (default 'utf8mb4_0900_ai_ci') and the
- *    factories Dialect::sqlite() / Dialect::mysql($ciCollation). §3.5 says Dialect carries the
+ *    factories Dialect::mysql($ciCollation) / Dialect::mysqlOnSqlite(). §3.5 says Dialect carries the
  *    case-insensitive collation chosen from $wpdb->db_version(); §3.2 had no field for it.
- *  - `likeFn` is a sprintf template applied as sprintf($likeFn, <expr>, <ci arg>): SQLite gets 1/0,
- *    MySQL gets the collation name ('utf8mb4_bin' for like, ciCollation for ilike). The MySQL form is
- *    `<expr> LIKE ? COLLATE <c> ESCAPE '\\'`: the collation sits on the utf8mb4 parameter so it is
- *    valid even when the column is utf8mb3.
+ *  - `likeFn` is a sprintf template applied as sprintf($likeFn, <expr>, <ci arg>): MySQL gets the
+ *    collation name ('utf8mb4_bin' for like, ciCollation for ilike), the SQLite translator BINARY or
+ *    nothing. The MySQL form is `<expr> LIKE ? COLLATE <c> ESCAPE '\\'`: the collation sits on the
+ *    utf8mb4 parameter so it is valid even when the column is utf8mb3.
  *  - SQL from Sql uses positional `?` params and may contain literal `%` (DATE_FORMAT): bind with
- *    mysqli/PDO prepared statements, never pass it through $wpdb->prepare().
+ *    mysqli prepared statements (or the translator's literal binding), never pass it through $wpdb->prepare().
  *
  * Conventions Sql reads from a ColumnRef (so a store only has to produce the mapping):
  *  - cmpExpr non-empty means "compare in the WordPress meta form": params for timestamp columns are
@@ -23,7 +23,7 @@ namespace Zero;
  *    `has` compiles to `<cmpExpr> LIKE ?` with '%' . esc_like(serialize(v)) . '%' (integers: also the
  *    serialized-string form, since SCF's gallery stores ids as strings), `eq: []` to
  *    COALESCE(NULLIF(<cmpExpr>, ''), 'a:0:{}') = 'a:0:{}'.
- *    Without cmpExpr the list is JSON text: SQLite json_each(expr), MySQL JSON_CONTAINS(expr, ?).
+ *    Without cmpExpr the list is JSON text: JSON_CONTAINS(expr, ?).
  *  - A Source with a non-empty baseWhere is post-backed: `eq`/`ne` on group/repeater/blocks columns
  *    are rejected there. For kind 'json', `isNull`/`isNotNull` test `cmpExpr` when given, else `expr`
  *    (post-backed group/repeater/blocks: expr 'NULL', cmpExpr e.g. "NULLIF(NULLIF({j}.meta_value, ''), '0')"
@@ -32,7 +32,7 @@ namespace Zero;
  *    whose expr is 'NULL' costs no join.
  */
 
-/** Storage for collections, globals and revisions. Implemented by Store\SqliteStore and Wp\*Store. */
+/** Storage for collections, globals and revisions. Implemented by the Wp\*Store classes. */
 interface Store
 {
     /** Open a transaction (or join one). Any Throwable rolls back everything written inside. */
@@ -69,7 +69,7 @@ interface Store
 
     /**
      * How Sql reads this collection: the base table, its primary-key expression, and one ColumnRef per
-     * column. SqliteStore/WpTableStore return a plain table where every ColumnRef is `<alias>.<col>`;
+     * column. WpTableStore returns a plain table where every ColumnRef is `<alias>.<col>`;
      * WpPostStore returns wp_posts with core columns as expressions and meta columns as joins (§3.5.1).
      * System tables ('__zero_revisions', '__zero_tokens', '__zero_globals', '__zero_media') are plain.
      */
@@ -89,7 +89,7 @@ interface Store
     public function revision(string $collection, int|string $pk, int $revisionId): ?array;
 
     /**
-     * Scheduled publishing. Standalone/WpTable: UPDATE ... SET status='published' WHERE status='scheduled'
+     * Scheduled publishing. WpTable: UPDATE ... SET status='published' WHERE status='scheduled'
      * AND publishedAt <= $nowIso; returns pks. WpPost: no-op (WP cron does it). Fires no hooks, writes no revision.
      *
      * @return list<int|string>

@@ -168,7 +168,7 @@ pub fn extract(
         }
     };
     let config_target = match cfg_map.get("target") {
-        None | Some(Value::Undef) => Target::Standalone,
+        None | Some(Value::Undef) => Target::Wp,
         Some(Value::Str(s)) if Target::parse(s).is_some() => Target::parse(s).expect("target"),
         Some(other) => {
             return Err(Diag::new(
@@ -178,6 +178,14 @@ pub fn extract(
         }
     };
     out.schema.target = target_override.unwrap_or(config_target);
+    if config_target == Target::Standalone || out.schema.target == Target::Standalone {
+        // The standalone runtime is gone. Refused here, in the pipeline every command shares, so
+        // `check`, `check --json`, `build` and `dev` all report it and nothing is written.
+        return Err(Diag::new(
+            span_of(ev, config, "target", config_span),
+            "the standalone target has been removed; build for WordPress (remove `target` from defineConfig)",
+        ));
+    }
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {

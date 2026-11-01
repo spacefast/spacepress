@@ -8,24 +8,6 @@ use crate::{
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const INDEX_PHP: &str = r#"<?php
-declare(strict_types=1);
-// `php -S` (zero dev): static files are served as they are, and a directory by its index.html.
-if (PHP_SAPI === 'cli-server') {
-    $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    if (is_file(__DIR__ . $path) && !str_ends_with($path, '.php')) {
-        return false;
-    }
-    if (str_ends_with($path, '/') && is_file(__DIR__ . $path . 'index.html')) {
-        header('Content-Type: text/html; charset=utf-8');
-        readfile(__DIR__ . $path . 'index.html');
-        return true;
-    }
-}
-require __DIR__ . '/../zero/runtime/bootstrap.php';
-\Zero\App::boot(dirname(__DIR__))->handleHttp();
-"#;
-
 struct Built {
     plugins: Option<wp_plugins::Config>,
     client_files: Vec<(String, Vec<u8>)>,
@@ -275,24 +257,6 @@ fn copy_sql(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// The runtime files a target ships, as (path inside the app, bytes).
-fn runtime_for(target: Target) -> Vec<(String, &'static [u8])> {
-    let mut out = Vec::new();
-    for (rel, bytes) in runtime_files::FILES {
-        if let Some(rest) = rel.strip_prefix("Zero/") {
-            if target == Target::Standalone && rest.starts_with("Wp/") {
-                continue;
-            }
-            out.push((format!("zero/runtime/{rest}"), *bytes));
-        } else if let Some(rest) = rel.strip_prefix("bin/")
-            && target == Target::Standalone
-        {
-            out.push((format!("zero/bin/{rest}"), *bytes));
-        }
-    }
-    out
-}
-
 fn runtime_file(rel: &str) -> Option<&'static [u8]> {
     runtime_files::FILES.iter().find(|(p, _)| *p == rel).map(|(_, b)| *b)
 }
@@ -313,31 +277,6 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let client_dir = project.join("zero").join("client");
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
-    }
-    Ok(())
-}
-
-/// Standalone app: `.zero/app` (disposable).
-fn emit_standalone(project: &Path, out: &Path, built: &Built) -> std::io::Result<()> {
-    std::fs::create_dir_all(out.join("data"))?;
-    std::fs::create_dir_all(out.join("private"))?;
-    let app_runtime = out.join("zero");
-    if app_runtime.exists() {
-        std::fs::remove_dir_all(&app_runtime)?;
-    }
-    for (rel, content) in runtime_for(Target::Standalone) {
-        write(&out.join(rel), content)?;
-    }
-    write(&out.join("public/index.php"), INDEX_PHP)?;
-    write(&out.join("zero/app/schema.php"), schema_php::render(&built.schema))?;
-    write(&out.join("zero/app/functions.php"), &built.functions_php)?;
-    copy_sql(
-        &migrations_dir(project).join("sqlite"),
-        &out.join("zero/app/migrations"),
-    )?;
-    let public = project.join("public");
-    if public.is_dir() {
-        copy_dir(&public, &out.join("public"))?;
     }
     Ok(())
 }
@@ -650,13 +589,10 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-fn check_json(project: &Path) -> ExitCode {
+fn check_json(project: &Path, target: Option<Target>) -> ExitCode {
     let diagnostics = match loader::load_all(&project.join("zero.config.ts")) {
         Err(diagnostics) => diagnostics,
-        Ok(program) => build_program(project, Some(Target::Wp), &program)
-            .err()
-            .into_iter()
-            .collect(),
+        Ok(program) => build_program(project, target, &program).err().into_iter().collect(),
     };
     println!(
         "{}",
@@ -675,11 +611,11 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         eprintln!("unknown command {}\n{USAGE}", args.command);
         return ExitCode::from(2);
     }
+    let target = if args.wp { Some(Target::Wp) } else { args.target };
     if args.command == "check" && args.json {
-        return check_json(&project);
+        return check_json(&project, target);
     }
     let started = std::time::Instant::now();
-    let target = if args.wp { Some(Target::Wp) } else { args.target };
     let built = match build(&project, target) {
         Ok(b) => b,
         Err(d) => {
@@ -688,17 +624,6 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         }
     };
     if args.command == "check" {
-        // The config is target-independent: one evaluation covers both targets' rules. Building the
-        // other target too proves both schema.php variants render.
-        let other = if built.schema.target == Target::Wp {
-            Target::Standalone
-        } else {
-            Target::Wp
-        };
-        if let Err(d) = build(&project, Some(other)) {
-            eprint!("{}", diag::render(&d, &project));
-            return ExitCode::from(1);
-        }
         if !args.quiet {
             for h in &built.hints {
                 eprintln!("hint: {h}");
@@ -738,31 +663,14 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         eprintln!("error: {e}");
         return ExitCode::from(1);
     }
-    let (out, lint) = match built.schema.target {
-        Target::Standalone => {
-            let out = args.out.clone().unwrap_or_else(|| project.join(".zero").join("app"));
-            if let Err(e) = emit_standalone(&project, &out, &built) {
-                eprintln!("error: couldn't write the app: {e}");
-                return ExitCode::from(1);
-            }
-            let lint = vec![out.join("zero/app/schema.php"), out.join("zero/app/functions.php")];
-            (out, lint)
-        }
-        Target::Wp => {
-            let root = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
-            match emit_wp_content(&project, &root, &built) {
-                Ok(directory) => (directory, Vec::new()),
-                Err(error) => {
-                    eprintln!("error: couldn't write wp-content: {error}");
-                    return ExitCode::from(1);
-                }
-            }
+    let root = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
+    let out = match emit_wp_content(&project, &root, &built) {
+        Ok(directory) => directory,
+        Err(error) => {
+            eprintln!("error: couldn't write wp-content: {error}");
+            return ExitCode::from(1);
         }
     };
-    if let Err(e) = php_lint(&lint) {
-        eprintln!("error: generated PHP failed `php -l` (this is a Zero bug):\n{e}");
-        return ExitCode::from(1);
-    }
     for w in &built.warnings {
         eprintln!("warning: this migration {w}");
     }
@@ -792,11 +700,7 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         started.elapsed()
     );
     if args.command == "dev" {
-        return if built.schema.target == Target::Wp {
-            super::dev::wp(&out, args.port)
-        } else {
-            super::dev::standalone(&out, args.port)
-        };
+        return super::dev::wp(&out, args.port);
     }
     ExitCode::SUCCESS
 }

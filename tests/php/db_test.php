@@ -399,6 +399,37 @@ eq('field-level NOT', names($find(['where' => ['qty' => ['NOT' => ['lte' => 3]]]
 eq('isNull', names($find(['where' => ['seenAt' => ['isNull' => true]], 'orderBy' => ['id' => 'asc']])), ['Hammer', 'Box']);
 eq('relation one: filter', names($find(['where' => ['location' => ['name' => 'Garage']], 'orderBy' => ['id' => 'asc']])), ['Hammer', 'Nails']);
 eq('relation one: exists', count($find(['where' => ['location' => true]])), 3);
+eq('relation many: NOT exists', names($find(['where' => ['NOT' => ['items' => true]]], 'locations')), ['Basement']);
+// JSON-text list and object columns on a custom table (the postmeta forms are proven in tests/wp).
+$db->update('locations', ['meta' => ['tags' => ['news', 'guide'], 'ids' => [3, 12]]], ['id' => $garage['id']]);
+eq('json whole-value eq compares the stored text: the same document matches, a different one does not', [
+    names($find(['where' => ['meta' => ['tags' => ['news', 'guide'], 'ids' => [3, 12]]]], 'locations')),
+    names($find(['where' => ['meta' => ['tags' => ['news'], 'ids' => [3, 12]]]], 'locations')),
+    names($find(['where' => ['meta' => ['ne' => ['tags' => ['news', 'guide'], 'ids' => [3, 12]], 'isNotNull' => true]]], 'locations')),
+], [['Garage'], [], []]);
+
+// List columns stored as JSON text on a custom table: `has` matches one whole element (an id of 12
+// is not found by 120, nor "news" by "new"), `eq: []` matches only the empty list, and a NULL list
+// is neither empty nor a member of anything.
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['listed' => [
+        'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_listed',
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['news', 'new', 'guide']],
+            'photos' => ['type' => 'mediaList'],
+        ],
+    ]]]);
+    $wp->exec('CREATE TABLE {prefix}zero_listed (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `photos` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('INSERT INTO {prefix}zero_listed (`id`, `tags`, `photos`) VALUES (1, \'["news","guide"]\', \'[12,7]\'), (2, \'["new"]\', \'[120]\'), (3, \'[]\', \'[]\'), (4, NULL, NULL)');
+    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media(), 'wp');
+    $ids = static fn (array $where): array => array_column($db->findMany('listed', ['where' => $where, 'orderBy' => ['id' => 'asc']]), 'id');
+    eq('has on a media list matches the whole id 12, not 120', $ids(['photos' => ['has' => 12]]), [1]);
+    eq('has on a select list matches the whole string "new", not "news"', $ids(['tags' => ['has' => 'new']]), [2]);
+    eq('eq [] matches the empty list only, never the NULL list', $ids(['tags' => []]), [3]);
+    eq('isNull on a list is the NULL row only; isNotNull includes the empty list', [$ids(['photos' => ['isNull' => true]]), $ids(['photos' => ['isNotNull' => true]])], [[4], [1, 2, 3]]);
+})();
 eq('relation many: filter', names($find(['where' => ['items' => ['qty' => ['gt' => 50]]]], 'locations')), ['Garage']);
 eq('boolean filter coerced', names($find(['where' => ['active' => false]], 'locations')), ['Attic']);
 eq('timestamp filter normalized', count($find(['where' => ['updatedAt' => ['lt' => '2001-01-01']]], 'locations')), 1);

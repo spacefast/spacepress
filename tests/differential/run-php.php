@@ -1,13 +1,14 @@
 <?php
 
-// Usage: php run-php.php <app-root> <case> <args-json>
-// Calls one compiled function from <app-root>/zero/app/functions.php the way the runtime does
+// Usage: php run-php.php <runtime plugin dir> <app plugin dir> <case> <args-json>
+// Calls one compiled function from <app>/zero/app/functions.php the way the runtime does
 // (§2 calling conventions) and prints {"data": ...} or {"error": message}, like run-node.mjs.
+// Pure PHP: the runtime's bootstrap and the compiled functions, no WordPress and no store.
 
 declare(strict_types=1);
 
-[, $root, $case, $argsJson] = $argv;
-require $root . '/zero/runtime/bootstrap.php';
+[, $runtime, $root, $case, $argsJson] = $argv;
+require $runtime . '/zero/bootstrap.php';
 $schema = require $root . '/zero/app/schema.php';
 require_once $root . '/zero/app/functions.php';
 $args = json_decode($argsJson, true, 512, JSON_THROW_ON_ERROR);

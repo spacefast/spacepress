@@ -276,13 +276,6 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
             .join(".zero/wp/custom-content/plugins/feature/feature.php")
             .is_file()
     );
-
-    // Standalone emission never acquires or bundles WordPress plugins, even with a cold cache.
-    std::fs::remove_dir_all(p.root.join(".zero/cache")).unwrap();
-    let out = p.run("build", &["--target", "standalone"]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(p.root.join(".zero/app/public/index.php").is_file());
-    assert!(!p.root.join(".zero/app/plugins").exists());
 }
 
 #[test]

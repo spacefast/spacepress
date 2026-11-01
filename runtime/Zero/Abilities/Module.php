@@ -10,9 +10,9 @@ use Zero\Wp\Abilities\Invoke;
 use Zero\Wp\Abilities\Register;
 
 /**
- * Feature 5 (§7.1). On WordPress: abilities, their category, the app's MCP server and
- * `wp zero run|abilities` (all in Zero\Wp\Abilities, which standalone builds don't ship).
- * On standalone, `agents: false` only hides entries from `/_schema`.
+ * Feature 5 (§7.1): abilities, their category, the app's MCP server and `wp zero run|abilities`
+ * (all in Zero\Wp\Abilities). `agents: false` keeps an entry out of those surfaces; `/_schema` still
+ * describes it, with the flag.
  */
 final class Module
 {
@@ -37,7 +37,6 @@ final class Module
 
     public static function register(): void
     {
-        Extensions::schemaDescribe(self::describe(...));
         if (!function_exists('wp_register_ability')) {
             return;
         }
@@ -50,19 +49,6 @@ final class Module
         add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0);
         Extensions::cli('abilities', static fn (): array => array_map(Register::describe(...), Register::operations()));
         Extensions::cli('run', self::run(...));
-    }
-
-    /** Standalone has no agent surface, so entries hidden from agents leave its description. */
-    public static function describe(array $d): array
-    {
-        if (($d['target'] ?? null) !== 'standalone') {
-            return $d;
-        }
-        foreach (['collections', 'globals', 'actions'] as $kind) {
-            $d[$kind] = array_filter($d[$kind] ?? [], static fn (array $entry): bool => $entry['agents'] ?? true);
-        }
-
-        return $d;
     }
 
     /**

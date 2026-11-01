@@ -10,7 +10,7 @@ use Zero\App;
  * `/wp-json/zero/v1/*` (§4.8): one catch-all route that hands the request to App::handle(). Zero's
  * access rules decide; core has already resolved the user (cookie + nonce or application password).
  * The body App produced is served verbatim (problem documents included) instead of being re-encoded
- * through WP_Error/wp_json_encode, so both targets answer byte-for-byte the same shapes.
+ * through WP_Error/wp_json_encode, so REST and `wp zero` answer byte-for-byte the same shapes.
  */
 final class Rest
 {

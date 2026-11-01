@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Zero\Sync;
 
 /**
- * Block markup parsing and serialization with the bundled WordPress block parser, so both targets read
- * and write delimiters the same way. The toolkit's Markdown producer and HTML processor call a few
- * WordPress functions; WordPress provides them, and standalone loads the small shim beside this file.
+ * Block markup parsing and serialization with the bundled WordPress block parser, so sync reads and
+ * writes delimiters exactly as core does. The toolkit's Markdown producer and HTML processor call a
+ * few WordPress functions, which the loaded WordPress provides.
  */
 final class Blocks
 {
     public static function boot(): void
     {
         if (!function_exists('parse_blocks')) {
-            require_once __DIR__ . '/wordpress-functions.php';
+            throw new \LogicException('Zero\\Sync\\Blocks needs WordPress loaded (parse_blocks)');
         }
     }
 

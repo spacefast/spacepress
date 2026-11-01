@@ -8,11 +8,11 @@ use Zero\Extensions;
 use Zero\HttpError;
 use Zero\Js;
 
-/** Feature 3 (§6.1): system tables, the Idempotency-Key wrapper and the `jobs` CLI on both targets. */
+/** Feature 3 (§6.1): system tables, the Idempotency-Key wrapper and the `zero__*` job tables. */
 final class Module
 {
     public const STATES = ['pending', 'running', 'done', 'failed', 'dead'];
-    private const USAGE = 'Usage: jobs list [--state s] | jobs run <id> | jobs retry <id> | jobs cancel <id> | jobs work [--once] [--idle-exit] | jobs maintain';
+    private const USAGE = 'Usage: jobs list [--state s] | jobs run <id> | jobs retry <id> | jobs cancel <id> | jobs maintain';
 
     public static function register(): void
     {
@@ -27,7 +27,7 @@ final class Module
         }
     }
 
-    /** `zero.php jobs …` / `wp zero jobs …`, inside the CLI transaction (except `work`, which owns its loop). */
+    /** `wp zero jobs …`, inside the CLI transaction. */
     public static function cli(array $args, array $flags): mixed
     {
         $usage = static fn () => new HttpError(400, 'invalid_command', self::USAGE);
@@ -39,7 +39,6 @@ final class Module
             'retry' => self::retry($id()),
             'cancel' => self::cancel($id()),
             'maintain' => self::afterCommit(Runner::maintain(...)),
-            'work' => self::afterCommit(static fn () => self::work(isset($flags['once']) || isset($flags['idle-exit']))),
             default => throw $usage(),
         };
     }
@@ -63,37 +62,6 @@ final class Module
         });
 
         return $result;
-    }
-
-    /**
-     * The standalone worker: drain the outbox, run due jobs, poll every second. With `--once`
-     * (or `--idle-exit`) it exits as soon as nothing is due.
-     *
-     * @return array{ran: int, done: int, failed: int, dead: int}
-     */
-    public static function work(bool $exitWhenIdle): array
-    {
-        $stats = ['ran' => 0, 'done' => 0, 'failed' => 0, 'dead' => 0];
-        $maintained = 0;
-        while (true) {
-            if (Js::now() - $maintained >= 60_000) {
-                Runner::maintain();
-                $maintained = Js::now();
-            }
-            $id = Runner::next();
-            if ($id !== null) {
-                $result = Runner::run($id);
-                if ($result !== null) {
-                    $stats['ran']++;
-                    $stats[$result['state']]++;
-                }
-                continue;
-            }
-            if ($exitWhenIdle) {
-                return $stats;
-            }
-            usleep(1_000_000);
-        }
     }
 
     /** @return list<array<string, mixed>> */

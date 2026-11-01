@@ -430,7 +430,7 @@ final class Sql
         } elseif (!is_string($v)) {
             throw HttpError::invalidQuery('has expects a string', $ptr);
         }
-        if ($ref->cmpExpr !== '' && $this->d->name === 'mysql') {
+        if ($ref->cmpExpr !== '') {
             // PHP-serialized array in postmeta: match one complete element (type-length-value can't
             // produce a false substring hit). Ids may be stored as ints or numeric strings
             // (SCF's gallery field stores strings), so ids match either form.
@@ -446,20 +446,15 @@ final class Sql
             return "$expr LIKE ?";
         }
         $expr = $this->ref($collection, $name, $alias, false);
-        if ($this->d->name === 'mysql') {
-            $this->params[] = Js::jsonStringify($v);
+        $this->params[] = Js::jsonStringify($v);
 
-            return "JSON_CONTAINS($expr, ?)";
-        }
-        $this->params[] = $v;
-
-        return "EXISTS (SELECT 1 FROM json_each($expr) WHERE value = ?)";
+        return "JSON_CONTAINS($expr, ?)";
     }
 
     private function emptyList(string $collection, string $name, string $alias): string
     {
         $ref = $this->source($collection)->columns[$name];
-        if ($ref->cmpExpr !== '' && $this->d->name === 'mysql') {
+        if ($ref->cmpExpr !== '') {
             // Post-backed: no row, '' and an empty serialized array all mean "empty".
             return 'COALESCE(NULLIF(' . $this->ref($collection, $name, $alias, true) . ", ''), 'a:0:{}') = 'a:0:{}'";
         }
@@ -575,15 +570,12 @@ final class Sql
         $conds[] = $this->cmpRef($collection, 'translationGroup', $inner) . ' = ' . $this->cmpRef($collection, 'translationGroup', $alias);
         $innerLocale = $this->ref($collection, 'locale', $inner, false);
         $conds[] = "$innerLocale IS NOT NULL";
-        [$agg, $one] = $this->d->name === 'mysql' ? ['JSON_OBJECTAGG', 'JSON_OBJECT'] : ['json_group_object', 'json_object'];
-        $members = "(SELECT $agg($innerLocale, " . $this->ref($collection, $pk, $inner, false) . ') FROM ' . $src->table . ' ' . $inner
+        // JSON_OBJECTAGG aggregates an empty group to NULL, so the row's own pair is the fallback.
+        $members = "(SELECT JSON_OBJECTAGG($innerLocale, " . $this->ref($collection, $pk, $inner, false) . ') FROM ' . $src->table . ' ' . $inner
             . $this->joins($collection, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
-        if ($this->d->name !== 'mysql') {
-            $members = "NULLIF($members, '{}')"; // SQLite aggregates an empty group to '{}', MySQL to NULL
-        }
         $locale = $this->ref($collection, 'locale', $alias, false);
 
-        return "CASE WHEN $locale IS NULL THEN NULL ELSE COALESCE($members, $one($locale, " . $this->ref($collection, $pk, $alias, false) . ')) END';
+        return "CASE WHEN $locale IS NULL THEN NULL ELSE COALESCE($members, JSON_OBJECT($locale, " . $this->ref($collection, $pk, $alias, false) . ')) END';
     }
 
     // ================================================================ values

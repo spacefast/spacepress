@@ -34,8 +34,17 @@ fn migrations_dir(project: &Path) -> PathBuf {
 /// The last build, from `zero/migrations/`: the snapshot and everything beside it.
 fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
     let dir = migrations_dir(project);
+    // Only a missing file is a first build. A snapshot that is there but cannot be read (permissions,
+    // a directory in its place, not UTF-8) is an error: diffing against an empty schema would plan a
+    // migration that recreates every table.
     let snapshot = match std::fs::read_to_string(dir.join("snapshot.json")) {
-        Err(_) => None,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("can't read zero/migrations/snapshot.json: {e}"),
+            ));
+        }
         Ok(text) => Some(serde_json::from_str(&text).map_err(|e| {
             Diag::new(
                 Span::NONE,
@@ -43,13 +52,13 @@ fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
             )
         })?),
     };
-    let names: Vec<String> = std::fs::read_dir(&dir)
-        .map(|entries| {
-            entries
-                .filter_map(|e| Some(e.ok()?.file_name().to_str()?.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
+    let names: Vec<String> = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries
+            .filter_map(|e| Some(e.ok()?.file_name().to_str()?.to_string()))
+            .collect(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(Diag::new(Span::NONE, format!("can't read zero/migrations/: {e}"))),
+    };
     pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
 }
 
@@ -521,4 +530,30 @@ fn php_lint_tree(directory: &Path) -> std::io::Result<()> {
     }
     collect(directory, &mut php)?;
     php_lint(&php).map_err(std::io::Error::other)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_previous;
+
+    #[test]
+    fn a_snapshot_that_cannot_be_read_is_an_error_not_a_first_build() {
+        let project = tempfile::tempdir().unwrap();
+        // A directory where the file should be: readable as a path, not as a snapshot.
+        std::fs::create_dir_all(project.path().join("zero/migrations/snapshot.json")).unwrap();
+        let error = read_previous(project.path()).unwrap_err();
+        assert!(
+            error.message.starts_with("can't read zero/migrations/snapshot.json: "),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn a_missing_snapshot_is_a_first_build() {
+        let project = tempfile::tempdir().unwrap();
+        let previous = read_previous(project.path()).unwrap();
+        assert_eq!(previous.next_migration, 1);
+        assert_eq!(previous.snapshot["tables"], serde_json::json!({}));
+    }
 }

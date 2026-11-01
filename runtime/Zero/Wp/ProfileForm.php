@@ -20,10 +20,10 @@ use Zero\Schema;
  *   the member and who may read everything the field holds; structured fields appear only on an
  *   existing user's edit screen (never the add or register forms).
  * - save: a wp-admin profile save (`profile.php`, `user-edit.php`) is one transaction opened before
- *   core updates the user. SCF runs before core writes the user, staging member fields; the values
- *   that changed are written in one `Db::update` with the signed-in viewer, so the collection's update
- *   rule, field write rules, validation and hooks decide, as on `/zero/v1`. A refusal rolls the whole
- *   save back (core's user changes included) and answers with Zero's status and message; a save core
+ *   core updates the user. SCF stages member fields and Zero authorizes their changes against the
+ *   original row with the signed-in viewer. After core writes, one `Db::update` applies the checked
+ *   patch, validation and hooks. Hook changes to core-backed columns win over the form's values.
+ *   A refusal rolls the whole save back (core's user changes included) and answers with Zero's status and message; a save core
  *   itself rejects (mismatched passwords) is rolled back before the form is shown again. A posted
  *   structured value is read back the way the form wrote it (fromForm): sub-fields SCF left out (a
  *   showIf hid them) keep their saved values, an unchanged time control keeps its saved instant.
@@ -34,7 +34,7 @@ final class ProfileForm
 {
     private const STRUCTURED = ['group', 'repeater', 'blocks'];
 
-    /** @var ?array{user: int, patch: array<string, mixed>} the open profile save */
+    /** @var ?array{user: int, patch: array<string, mixed>, viewer: ?\Zero\Viewer} the open profile save */
     private static ?array $open = null;
 
     public static function register(): void
@@ -156,18 +156,18 @@ final class ProfileForm
             wp_die(esc_html(Plugin::UNAVAILABLE), 'Zero', ['response' => 503, 'back_link' => true]);
         }
         $plugin->connection()->begin();
-        self::$open = ['user' => (int) $userId, 'patch' => []];
+        self::$open = ['user' => (int) $userId, 'patch' => [], 'viewer' => null];
         // Use SCF's real user-save path (nonce, allowed field keys, validation and codecs), once.
         // It consumes its nonce, so its later profile_update callback does not save again.
         // Zero must select and authorize the member while core still holds the original row.
         if (function_exists('acf_get_instance')) {
             acf_get_instance('ACF_Form_User')->save_user((int) $userId);
         }
-        self::write();
+        self::authorize();
     }
 
     /**
-     * acf/pre_update_value: inside a profile save, a member field is staged for write(); outside
+     * acf/pre_update_value: inside a profile save, a member field is staged for end(); outside
      * one, a structured member field is a trusted Zero write. Either way SCF writes nothing itself.
      */
     public static function update(mixed $check, mixed $value, mixed $postId, mixed $field): mixed
@@ -217,8 +217,8 @@ final class ProfileForm
             $rendered || !$form ? ($row[$ctx['col']] ?? null) : null, $rendered ? $viewer : null, $raw, (string) $field['key']);
     }
 
-    /** Write the changed member fields against the original row, before core changes it. */
-    private static function write(): void
+    /** Select and authorize the patch while core still holds the original member row. */
+    private static function authorize(): void
     {
         $plugin = self::plugin();
         $collection = (string) $plugin->schema->auth()['collection'];
@@ -227,41 +227,62 @@ final class ProfileForm
             $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
             $patch = self::changed($collection, $id, self::$open['patch'], $viewer);
             if ($patch !== []) {
-                // Hooks and validators see the signed-in user as ctx.user, as on /zero/v1.
+                if (!$plugin->db()->permits($collection, 'update', $id, $viewer, $patch)) {
+                    throw Access::deny($viewer->user, "update $collection rows");
+                }
+                FieldAccess::checkWrite('update', $collection, $patch, $plugin->db()->editorRow($collection, $id), $viewer, $patch);
+            }
+            self::$open['patch'] = $patch;
+            self::$open['viewer'] = $viewer;
+        } catch (\Throwable $e) {
+            self::fail($e);
+        }
+    }
+
+    /** profile_update: core accepted and wrote the user; apply the checked patch and commit together. */
+    public static function end(mixed $userId): void
+    {
+        $plugin = self::plugin();
+        if (self::$open === null || self::$open['user'] !== (int) $userId || $plugin->connection()->busy()) {
+            return;
+        }
+        $id = self::$open['user'];
+        $patch = self::$open['patch'];
+        $collection = (string) $plugin->schema->auth()['collection'];
+        try {
+            if ($patch !== []) {
+                // Authorization is complete against the original row. Do not re-select through its
+                // rule after core changes name/email; hooks must read the row core actually wrote.
                 $previous = $plugin->db()->actor();
-                $plugin->db()->setActor($viewer->user);
+                $plugin->db()->setActor(self::$open['viewer']->user);
                 try {
-                    $rows = $plugin->db()->update($collection, $patch, ['id' => $id], true, $viewer);
+                    $rows = $plugin->db()->update($collection, $patch, ['id' => $id], true);
                 } finally {
                     $plugin->db()->setActor($previous);
                 }
                 if ($rows === []) {
-                    throw Access::deny($viewer->user, "update $collection rows");
+                    throw new HttpError(404, 'not_found', 'The member no longer exists');
                 }
                 foreach (array_keys($patch) as $col) {
                     acf_flush_value_cache("user_$id", WpUserStore::META . $col);
                 }
             }
+            self::$open = null;
+            try {
+                $plugin->connection()->commit();
+            } finally {
+                self::forget($id);
+            }
         } catch (\Throwable $e) {
-            self::rollback();
-            $problem = \Zero\App::problem($e);
-            wp_die(esc_html($problem['detail']), '', ['response' => $problem['status'], 'code' => $problem['code'], 'back_link' => true]);
+            self::fail($e);
         }
     }
 
-    /** profile_update: core accepted the user; commit both writes together. */
-    public static function end(mixed $userId): void
+    private static function fail(\Throwable $e): void
     {
-        if (self::$open === null || self::$open['user'] !== (int) $userId || self::plugin()->connection()->busy()) {
-            return;
-        }
-        $id = self::$open['user'];
-        self::$open = null;
-        try {
-            self::plugin()->connection()->commit();
-        } finally {
-            self::forget($id);
-        }
+        self::rollback();
+        $problem = \Zero\App::problem($e);
+        wp_die(esc_html($problem['detail']), '', ['response' => $problem['status'], 'code' => $problem['code'], 'back_link' => true]);
     }
 
     /** user_profile_update_errors: core refused the user, so the form shows again; end the save first. */

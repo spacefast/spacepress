@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks } from "zero";
+import { blocks, boolean, collection, date, db, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks } from "zero";
 
 export const members = collection("members", {
   id: id(),
@@ -50,7 +50,11 @@ export const reviews = collection("reviews", {
   body: text().notNull(),
 }, { editor: false, access: { read: "anyone", create: "subscriber" } });
 
-export const schema = { members, guestbook, reviews };
+export const memberUpdates = collection("member_updates", {
+  id: id(), memberId: integer().notNull(), name: text().notNull(), city: text(),
+}, { editor: false });
+
+export const schema = { members, guestbook, reviews, memberUpdates };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: any) => ({
   guestbook: { member: r.one.members({ from: r.guestbook.memberId, to: r.members.id }) },
@@ -66,7 +70,11 @@ export const hooks = {
       if (patch.address !== undefined) {
         if (patch.address?.city === "Throw") throw new HttpError(409, "conflict", "address hook refused");
         patch.addressBy = ctx.user?.id ?? 0;
+        if (patch.address?.city === "Hooked") patch.name = "Name from hook";
       }
+    },
+    async afterUpdate(row) {
+      await db.insert(memberUpdates).values({ memberId: row.id, name: row.name, city: row.address?.city ?? null });
     },
   },
 } satisfies Hooks<{ members: typeof members }>;

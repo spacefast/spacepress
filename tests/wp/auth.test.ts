@@ -421,6 +421,7 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
   wp("option", "update", "timezone_string", "Europe/Berlin");
   try {
     const saved = await saveProfile(hu.cookie, "profile.php", {
+      display_name: "Profile name",
       [acf("address", "address_city")]: "Oslo",
       [acf("links", "row-0", "links_label")]: "visible",
       [acf("links", "row-0", "links_detail")]: "Site detail",
@@ -437,6 +438,8 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
       [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail", metadata: { bio: null } }],
       [{ layout: "bio", body: "Hello" }],
     ]);
+    assert.deepEqual(JSON.parse(wp("zero", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id } }))).data.map(({ name, city }: { name: string; city: string | null }) => ({ name, city })),
+      [{ name: "Profile name", city: "Oslo" }], "afterUpdate sees the new core and structured fields together");
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
     assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
       { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
@@ -479,6 +482,11 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
   const emptied = await saveProfile(hu.cookie, "profile.php", { [acf("links")]: "" }, (name) => name.startsWith(acf("links") + "["));
   assert.equal(emptied.status, 302, emptied.text.slice(0, 400));
   assert.deepEqual(memberRow(hu.id).links, []);
+  const hooked = await saveProfile(hu.cookie, "profile.php", { display_name: "Name from form", [acf("address", "address_city")]: "Hooked" });
+  assert.equal(hooked.status, 302, hooked.text.slice(0, 400));
+  assert.equal(memberRow(hu.id).name, "Name from hook", "beforeUpdate core-field mutations apply after core's form write");
+  const updates = JSON.parse(wp("zero", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id }, orderBy: { id: "asc" } }))).data;
+  assert.deepEqual([updates.at(-1).name, updates.at(-1).city], ["Name from hook", "Hooked"], "afterUpdate observes the hook's final core value too");
 });
 
 test("a refused profile save keeps nothing, core's user fields included, and answers with Zero's reason", async () => {

@@ -199,12 +199,12 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
 
 // Both registered handler contracts consume the same validated, persisted JSON payload.
 (static function () use ($schema, $db): void {
-    eval('namespace ZeroApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \Zero\Js::jsonStringify($input->p["meta"])]; } function refs__jobValidate($value, $ctx) { return $ctx->p["user"] !== null || "enqueue requires a user"; }');
+    eval('namespace ZeroApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \Zero\Js::jsonStringify($input->p["meta"]), $input->p["info"] instanceof \Zero\JsObject, $input->p["rows"]->a[0] instanceof \Zero\JsObject]; } function refs__jobValidate($value, $ctx) { return $ctx->p["user"] !== null || "enqueue requires a user"; }');
     $seen = null;
-    $spec = ['input' => ['meta' => ['type' => 'json', 'notNull' => true, 'rules' => ['validate' => 'refs__jobValidate']]], 'handler' => 'refs__job', 'retries' => 1];
+    $spec = ['input' => ['meta' => ['type' => 'json', 'notNull' => true, 'rules' => ['validate' => 'refs__jobValidate']], 'info' => ['type' => 'group', 'fields' => []], 'rows' => ['type' => 'repeater', 'fields' => []]], 'handler' => 'refs__job', 'retries' => 1];
     $schema['jobs']['jsonCompiled'] = $spec;
     $schema['jobs']['jsonNative'] = ['handler' => static function (array $input) use (&$seen): void {
-        $seen = [is_array($input), \Zero\Js::jsonStringify($input['meta'])];
+        $seen = [is_array($input), \Zero\Js::jsonStringify($input['meta']), is_array($input['info']), is_array($input['rows'][0])];
     }] + $spec;
     $other = new \Zero\Db($db->store(), new \Zero\Schema($schema), $db->media());
     \Zero\Db::setInstance($other);
@@ -212,10 +212,10 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
     try {
         $meta = \Zero\Js::decodeJson('{"1":1,"0":2,"empty":{}}');
         foreach (['jsonCompiled', 'jsonNative'] as $name) {
-            $queued = \Zero\Seam::enqueue($name, new \Zero\JsObject(['meta' => $meta]));
+            $queued = \Zero\Seam::enqueue($name, new \Zero\JsObject(['meta' => $meta, 'info' => new \Zero\JsObject(), 'rows' => new \Zero\JsArray([new \Zero\JsObject()])]));
             eq("$name completes", \Zero\Jobs\Runner::run($queued->p['id'])['state'], 'done');
         }
-        eq('compiled and native jobs receive their own container contracts with identical JSON', [$GLOBALS['refsJob'], $seen], [[true, '{"0":2,"1":1,"empty":{}}'], [true, '{"0":2,"1":1,"empty":{}}']]);
+        eq('compiled and native jobs receive their own container contracts with identical JSON', [$GLOBALS['refsJob'], $seen], [[true, '{"0":2,"1":1,"empty":{}}', true, true], [true, '{"0":2,"1":1,"empty":{}}', true, true]]);
     } finally { \Zero\Db::setInstance($db); unset($GLOBALS['refsJob']); }
 })();
 

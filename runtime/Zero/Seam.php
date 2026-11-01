@@ -44,6 +44,7 @@ final class Seam
         if ($type === 'query') { return self::query($shape['collection'], $value); }
         if ($type === 'sync') { return self::sync($shape['collection'], $value); }
         if ($shape !== null && ($type === null || $type === 'group') && $value instanceof JsArray) { return $value; }
+        if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select'], true) && ($value instanceof JsObject || $value instanceof \stdClass)) { return self::jsonJs($value); }
         $value = self::container($value);
         if (!is_array($value)) { return $value; }
         if ($shape === null) {
@@ -86,20 +87,39 @@ final class Seam
 
     public static function toJs(mixed $value, ?array $shape = null): mixed
     {
+        return self::jsValue($value, $shape, false);
+    }
+
+    /** Input can still contain invalid or unknown fields; retain them for normal validation. */
+    public static function inputToJs(mixed $value, ?array $shape): mixed
+    {
+        return self::jsValue($value, $shape, true);
+    }
+
+    private static function jsValue(mixed $value, ?array $shape, bool $input): mixed
+    {
         if ($value === null) { return null; }
         $type = is_string($shape['type'] ?? null) ? $shape['type'] : null;
+        if ($input && $type === 'sync') {
+            $record = ['fields' => Db::instance()->schema()->collection($shape['collection'])['columns']];
+            $shape = ['record' => $record, 'base' => $record, 'local' => $record, 'remote' => $record,
+                'records' => ['type' => 'repeater', 'fields' => $shape]];
+            $type = null;
+        }
         if ($type === 'json' || $value instanceof JsObject || $value instanceof JsArray) { return Js::detach(self::jsonJs($value)); }
         if ($type === 'media' && is_array($value)) { return self::media($value); }
         if (!is_array($value) && !$value instanceof \stdClass) { return $value; }
         $value = self::container($value);
         if ($shape === null) {
+            if ($input) { return Js::detach(self::jsonJs($value)); }
             if ($value === []) { throw new \LogicException('An empty runtime array needs a shape'); }
             throw new \LogicException('A runtime container needs a shape');
         }
         if ($type === 'row') { return self::rowToJs($shape['collection'], $value); }
         if ($type === 'rows') { return new JsArray(array_map(static fn ($row) => self::rowToJs($shape['collection'], $row), $value)); }
-        if ($type === 'group') { return self::toJs($value, $shape['fields'] ?? []); }
+        if ($type === 'group') { return self::jsValue($value, $shape['fields'] ?? [], $input); }
         if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select'], true)) {
+            if ($input && !array_is_list($value)) { return Js::detach(self::jsonJs($value)); }
             $out = new JsArray();
             foreach ($value as $item) {
                 $itemShape = match ($type) {
@@ -108,44 +128,15 @@ final class Seam
                     'mediaList' => ['type' => 'media'],
                     default => null,
                 };
-                $out->a[] = self::toJs($item, $itemShape);
+                $out->a[] = self::jsValue($item, $itemShape, $input);
             }
             return $out;
         }
+        if ($input && $type !== null && $type !== 'record') { return Js::detach(self::jsonJs($value)); }
         $out = new JsObject();
         foreach (Js::ownKeys($value) as $key) {
-            $out->p[$key] = self::toJs($value[$key], $type === 'record' ? ($shape['value'] ?? null) : ($shape[$key] ?? null));
+            $out->p[$key] = self::jsValue($value[$key], $type === 'record' ? ($shape['value'] ?? null) : ($shape[$key] ?? null), $input);
         }
-        return $out;
-    }
-
-    /** Restore a forwarded request's schema-shaped objects without changing invalid unknown values. */
-    public static function inputToJs(mixed $value, ?array $shape): mixed
-    {
-        if ($value instanceof JsObject || $value instanceof JsArray) { return Js::detach($value); }
-        if (!is_array($value) && !$value instanceof \stdClass) { return $value; }
-        $value = self::container($value);
-        $type = is_string($shape['type'] ?? null) ? $shape['type'] : null;
-        if ($type === 'sync') {
-            $record = ['fields' => Db::instance()->schema()->collection($shape['collection'])['columns']];
-            $shape = ['record' => $record, 'base' => $record, 'local' => $record, 'remote' => $record,
-                'records' => ['type' => 'repeater', 'fields' => $shape]];
-            $type = null;
-        }
-        if ($shape === null || $type === 'json') { return Js::detach(self::jsonJs($value)); }
-        if ($type === 'group') { return self::inputToJs($value, $shape['fields'] ?? []); }
-        if ($type === 'repeater' || $type === 'blocks') {
-            $out = new JsArray();
-            foreach ($value as $item) {
-                $layout = self::container($item)['layout'] ?? null;
-                $fields = $type === 'repeater' ? ($shape['fields'] ?? []) : (is_string($layout) ? ($shape['layouts'][$layout] ?? []) : []);
-                $out->a[] = self::inputToJs($item, $fields);
-            }
-            return $out;
-        }
-        if ($type !== null) { return Js::detach(self::jsonJs($value)); }
-        $out = new JsObject();
-        foreach (Js::ownKeys($value) as $key) { $out->p[$key] = self::inputToJs($value[$key], $shape[$key] ?? null); }
         return $out;
     }
 
@@ -180,7 +171,7 @@ final class Seam
     {
         $shape = ['user' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'text'], 'role' => ['type' => 'text']]];
         if (array_key_exists('data', $ctx)) { $shape['data'] = $dataShape; }
-        return self::toJs($ctx, $shape);
+        return self::inputToJs($ctx, $shape);
     }
 
     public static function generated(array $col, mixed $value): mixed { return self::toPhp($value, $col); }

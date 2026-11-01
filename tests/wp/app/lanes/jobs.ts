@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, env, HttpError, id, integer, job, jobs, json, once, text } from "zero";
+import { action, boolean, collection, db, env, group, HttpError, id, integer, job, jobs, json, once, repeater, text } from "zero";
 
 export const jobNotes = collection("jobNotes", {
   id: id(),
@@ -22,7 +22,7 @@ export const actions = {
   refsEnqueue: action({
     input: { noteId: integer().notNull(), meta: json().notNull() }, access: "editor",
     handler: async (input) => {
-      const queued = await jobs.stamp.enqueue({ noteId: input.noteId, meta: input.meta });
+      const queued = await jobs.stamp.enqueue({ noteId: input.noteId, meta: input.meta, info: {}, rows: [{}] });
       return { id: queued.id, sent: JSON.stringify(input.meta) };
     },
   }),
@@ -64,10 +64,12 @@ export const config = {
   webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hookNotes.created"] }],
   jobs: {
     stamp: job({
-      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json() },
+      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json(), info: group({ fields: {} }), rows: repeater({ fields: {} }) },
       retries: 2,
       agents: true, // also the `blog/job-stamp` ability (lane F)
       handler: async (input, ctx) => {
+        if (input.info !== null && Object.keys(input.info!).length !== 0) throw new Error("empty group changed");
+        if (input.rows !== null && input.rows.length > 0 && Object.keys(input.rows![0]!).length !== 0) throw new Error("empty repeater item changed");
         if (input.fail) {
           // Write first: the failure must roll this back on WordPress's connection.
           await db.update(jobNotes).set({ stamped: `partial ${ctx.attempt}` }).where({ id: input.noteId });

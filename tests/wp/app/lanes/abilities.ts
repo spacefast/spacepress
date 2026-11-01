@@ -1,6 +1,6 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
-import { action, db, group, json, text } from "zero";
+import { action, db, group, json, repeater, text } from "zero";
 import { comments } from "../../../fixtures/blog/zero.config.ts";
 
 export const schema = {};
@@ -12,7 +12,7 @@ export const actions = {
   refsEmpty: action({ input: {}, access: "editor", handler: () => ({}) }),
   refsWire: action({ input: {}, access: "editor", handler: () => ({ f: refsHelper, a: [refsHelper, NaN] }) }),
   refsEcho: action({
-    input: { meta: json(), info: group({ fields: { tag: text() } }) },
+    input: { meta: json(), info: group({ fields: { tag: text() } }), items: repeater({ fields: { tag: text() } }) },
     access: (ctx) => { refsSaved.f = refsHelper; return ctx.user?.role === "editor" || ctx.user?.role === "admin"; },
     handler: (input) => {
       if (refsSaved.f && refsSaved.f !== refsHelper) throw new Error("named function identity changed across callbacks");

@@ -1033,8 +1033,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 
 // ================================================================ JSON identity at query boundaries
 
-// An access rule sees the patch as plain arrays: a list column sent as `{}` (the marker once decoded)
-// reaches the rule as [], never as a JsObject its array code can't handle.
+// An access rule sees a list-typed patch as a handle; JSON columns retain nested object shape.
 (static function (): void {
     eval('namespace ZeroApp; function marked__update($ctx) { return !\Zero\Js::includes($ctx->p["data"]->p["tags"], "locked"); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
@@ -1059,14 +1058,14 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     try {
         $row = $db->insert('marked', ['tags' => ['open']], true)[0];
         $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
-        $patch = \Zero\Js::decodeJson('{"tags":{},"meta":{"a":{}}}');
+        $patch = \Zero\Js::decodeJson('{"tags":[],"meta":{"a":{}}}');
         try {
             $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
             $got = [$updated['tags'], \Zero\Js::jsonStringify($updated['meta'])];
         } catch (\Throwable $e) {
             $got = $e::class . ': ' . $e->getMessage();
         }
-        eq('an update rule gets plain arrays; the json() value keeps {}', $got, [[], '{"a":{}}']);
+        eq('an update rule gets list handles; the json() value keeps {}', $got, [[], '{"a":{}}']);
         // A json() filter operand keeps `{}`: deleting rows whose meta is {} leaves the one holding [].
         $db->insert('marked', [['meta' => \Zero\Js::decodeJson('{}')], ['meta' => []]]);
         $db->delete('marked', \Zero\Js::decodeJson('{"meta":{"eq":{}}}'));

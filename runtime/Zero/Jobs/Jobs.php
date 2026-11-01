@@ -37,10 +37,10 @@ final class Jobs
             throw HttpError::invalidInput('key must be a string of 1 to ' . self::MAX_KEY . ' characters', '/key');
         }
 
-        return $db->transaction(static function () use ($name, $input, $delay, $key): array {
+        return $db->transaction(static function () use ($name, $input, $delay, $key, $spec): array {
             $id = self::uuid();
             $now = Js::now();
-            $row = [$id, $name, Js::jsonStringify((object) $input), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
+            $row = [$id, $name, Js::jsonStringify(\Zero\Seam::toJs($input, $spec['input'] ?? [])), $key, Js::iso($now + (int) round($delay * 1000)), Js::iso($now)];
             // The job row claims UNIQUE(job, dedupe) inside this transaction. A concurrent same-key insert
             // waits for it, then is ignored and returns this job; a rollback removes the row and its claim.
             $bytes = $key === null ? null : Storage::bytes($key);

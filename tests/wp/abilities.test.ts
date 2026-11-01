@@ -68,6 +68,13 @@ test("abilities convert empty input, JSON inputs and function-valued results at 
   const groupId = zero("insert", "gated", JSON.stringify({ title: `Ability group ${run}`, notes: { open: "old", sealed: "old" } }))[0].id;
   const groupPatch = await runAbility("blog/gated-update", { id: groupId, patch: { notes: {} } }, "admin");
   assert.deepEqual([groupPatch.status, groupPatch.json.notes], [200, { open: null, sealed: null }]);
+  for (const items of [{}, { oops: { tag: "kept" } }]) {
+    const invalid = { meta: {}, items };
+    const viaAbility = await runAbility("blog/refs-echo", invalid, "editor");
+    const viaRest = await http("POST", api + "/actions/refsEcho", { as: "editor", body: invalid });
+    assert.deepEqual(outcome(viaAbility), { status: 422, code: "invalid_input" });
+    assert.deepEqual(outcome(viaAbility), outcome(viaRest));
+  }
   for (const meta of [{}, { "1": 1, "0": 2 }, { "\u0000": 1 }]) {
     const echo = await runAbility("blog/refs-echo", { meta }, "editor");
     assert.deepEqual([echo.status, echo.json], [200, { meta }]);

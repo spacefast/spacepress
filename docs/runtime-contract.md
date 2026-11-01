@@ -528,11 +528,13 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
 - `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
+- `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?array` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
 
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
+- Global regex lookarounds on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. UTF-8 stand-ins cannot safely decide lookarounds at an interior surrogate position.
 
 Arrays (lists):
 - `find(array $a, callable $f): mixed` (null when none), `findIndex(array $a, callable $f): int`, `findLast`, `findLastIndex`

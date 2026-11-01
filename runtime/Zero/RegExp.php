@@ -121,17 +121,35 @@ final class RegExp implements \Stringable
 
     /**
      * All matches left to right; empty matches advance one code point, or one UTF-16 unit without
-     * the u flag, as in JS. So without it, after an empty match at the start of a character outside
-     * the BMP, JS also tries the position between its two halves (see insidePair()).
+     * the u flag, as in JS. Without it, JS also tries the position between a surrogate pair's two
+     * halves, including where PCRE finds no match at the character's start (see insidePair()).
      *
      * @return list<array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4?: true}>
      */
     public function matchAll(string $s): array
     {
+        if (!$this->unicode && preg_match('/\(\?<?[=!]/', $this->src) === 1
+            && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
+            throw new JsError('A lookaround on text outside the Basic Multilingual Plane (an emoji, say) can\'t be checked without Unicode mode; add the u flag', 'RangeError');
+        }
         $out = [];
         $offset = 0;
         $size = strlen($s);
-        while ($offset <= $size && ($m = $this->matchAt($s, $offset)) !== null) {
+        while ($offset <= $size) {
+            $m = $this->matchAt($s, $offset);
+            if (!$this->unicode) {
+                // PCRE may find no boundary match at the astral character's start. Try every
+                // in-pair position before the next ordinary match, including when none exists.
+                $until = $m[0] ?? $size;
+                for ($scan = $offset; $scan < $until; $scan += Js::charLenAt($s, $scan)) {
+                    if (Js::charLenAt($s, $scan) === 4 && ($in = $this->insidePair($s, $scan)) !== null) {
+                        $out[] = $in;
+                    }
+                }
+            }
+            if ($m === null) {
+                break;
+            }
             $out[] = $m;
             $offset = $m[1] > $m[0] ? $m[1] : $m[1] + Js::charLenAt($s, $m[1]);
             if ($m[1] === $m[0] && !$this->unicode && $offset - $m[1] === 4 && ($in = $this->insidePair($s, $m[1])) !== null) {
@@ -148,7 +166,8 @@ final class RegExp implements \Stringable
      * so the pattern runs on `Js::splitPair($s, $pos)`, where the halves are two noncharacter
      * stand-ins. An empty match only looks at its neighbours through anchors, `\b`/`\B` (a half
      * and a stand-in are both non-word, non-line-terminator) and lookarounds; a lookaround could
-     * tell the stand-in from the half, so a pattern with one throws. A match that consumes a half
+     * tell the stand-in from the half, so matchAll refuses those before trying any stand-in.
+     * A match that consumes a half
      * would make a lone surrogate, which throws (the documented deviation).
      *
      * @return ?array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4: true}
@@ -162,9 +181,6 @@ final class RegExp implements \Stringable
         }
         if ($m[1] !== $at) {
             Js::splitsPair();
-        }
-        if (preg_match('/\(\?<?[=!]/', $this->src) === 1) {
-            throw new JsError('A lookaround matching inside a character outside the Basic Multilingual Plane (an emoji, say) can\'t be checked in compiled code; add the u flag', 'RangeError');
         }
 
         return [$pos, $pos, $m[2], $m[3], true];

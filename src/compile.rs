@@ -3234,7 +3234,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
-                format!("\\Zero\\Js::strAt({}, {})", o.php, i.php),
+                format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
                 wrap(Ty::Str.nullable()),
             ),
             _ => {
@@ -3318,8 +3318,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Null => return Ok(Out::atom("0", Ty::Num)),
             _ => {}
         }
-        // JSON.parse without a reviver returns unknown but never undefined. Other unknown values need narrowing;
-        // an assertion alone cannot recover the erased null/undefined distinction.
+        // JSON.parse without a reviver returns unknown but never undefined. Other unknown values
+        // need narrowing; an assertion alone cannot recover the erased null/undefined distinction.
         let json_parse = if let ExprKind::Call { callee, args, .. } = &source.kind
             && args.len() == 1
             && let ExprKind::Member { obj, prop, .. } = &callee.kind
@@ -3403,9 +3403,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Resolved::Local(local) => Some(local.constraint),
                 _ => None,
             },
-            ExprKind::Member { obj, prop, .. } => {
-                self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
-            }
+            ExprKind::Member { obj, prop, .. } => self
+                .argument_constraint(obj)?
+                .non_null()
+                .field(prop)
+                .map(|(ty, optional)| if optional { ty.nullable() } else { ty }),
             ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
                 Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
@@ -3415,7 +3417,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => Some(Ty::union(ts).nullable()),
                 },
                 Ty::Obj(fields) => match &index.kind {
-                    ExprKind::Str(key) => fields.get(key).map(|(t, _)| t.clone()),
+                    ExprKind::Str(key) => fields
+                        .get(key)
+                        .map(|(ty, optional)| if *optional { ty.clone().nullable() } else { ty.clone() }),
                     _ => None,
                 },
                 _ => None,

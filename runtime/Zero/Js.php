@@ -644,6 +644,16 @@ final class Js
         return self::unitSlice($u, (int) $i, (int) $i + 1);
     }
 
+    /** Numeric bracket access names a property, so only nonnegative integer indexes exist. */
+    public static function strIndex(string $s, int|float $i): ?string
+    {
+        if (!is_finite($i) || $i < 0 || floor($i) !== (float) $i) {
+            return null;
+        }
+
+        return self::strAt($s, $i);
+    }
+
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
     public static function indexOf(string|array $s, mixed $needle, mixed $from = 0): int
     {

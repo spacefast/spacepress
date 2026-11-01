@@ -1,8 +1,7 @@
 # The examples
 
-Each example builds for both targets. Its committed `zero/client/` and
-`zero/migrations/` are what `zero build` produces, so a fresh build changes
-nothing.
+Each example's committed `zero/client/` and `zero/migrations/` are what
+`zero build` produces, so a fresh build changes nothing.
 
 | Example | What it shows |
 | --- | --- |
@@ -20,58 +19,45 @@ that:
   only shows up for published posts.
 - **Sync:** posts sync with `content/posts/*.md`, and two sample posts are
   committed.
-- **Members:** readers sign in as `members`, with a password on standalone or
-  through the zero-identity screens on WordPress.
+- **Members:** readers sign in as `members` through the zero-identity screens.
 - **Media:** every image gets a 600×400 `card` crop, and slide decks are
   private files (`posts.deck`).
 - **Jobs and webhooks:** a reader's comment queues `notifyEditors`, and every
   post change goes out as a signed webhook to `BLOG_HOOK_URL`.
 - **Translations:** posts are in English and German.
 
-Run it on standalone. Build for the target you'll serve, turn the generated
-client into browser JS, then serve:
+Build it, turn the generated client into browser JS, build again so the
+plugin ships that page, then boot the artifact in the test harness and
+register the page with zero-identity:
 
 ```sh
-./target/release/zero build examples/blog --target standalone
+./target/release/zero build examples/blog
 node examples/blog/build-client.mjs
-./target/release/zero dev examples/blog       # http://127.0.0.1:8787/, with the job worker
-echo "a-long-password" | ./target/release/zero users add you@example.com --role editor --password --dir examples/blog
-```
-
-The page signs you in, switches between English and German, and takes
-comments. Send its posts to the site with
-`zero sync examples/blog --site http://127.0.0.1:8787 --token <token>`, where
-`zero tokens create you@example.com --dir examples/blog` prints the token.
-
-On WordPress, build for WordPress first so the browser client talks to
-`/wp-json/zero/v1`, then boot the artifact in the test harness:
-
-```sh
-./target/release/zero build examples/blog --target wp
-node examples/blog/build-client.mjs
-./target/release/zero build examples/blog --target wp   # ships public/client/ with the plugin
-./target/release/zero dev examples/blog --wp            # WordPress on http://127.0.0.1:8787
+./target/release/zero build examples/blog        # ships public/client/ with the plugin
+./target/release/zero dev examples/blog          # WordPress on http://127.0.0.1:8787
 tests/wp/harness.sh wp zero-identity app add --name=Blog --id=app_blog \
   --redirect=http://127.0.0.1:8787/wp-content/plugins/zero-app-blog/public/ --origin=http://127.0.0.1:8787
 ```
 
-The page is at `http://127.0.0.1:8787/wp-content/plugins/zero-app-blog/public/`,
-and its Sign in button goes through the zero-identity screens.
+The page is at `http://127.0.0.1:8787/wp-content/plugins/zero-app-blog/public/`.
+Its Sign in button goes through the zero-identity screens; it switches between
+English and German and takes comments. Send its committed posts to the site with
+`zero sync examples/blog --site http://127.0.0.1:8787 --app-password editor:<application password>`,
+using a password from the receipt `zero dev` printed.
 
 ## Suites
 
 ```sh
-cargo test                     # compiler; the pantry and blog examples built and run on standalone
-tests/php/run.sh               # the PHP runtime
+cargo test                     # compiler; the pantry and blog examples built and run on WordPress-on-SQLite
+tests/php/run.sh               # the PHP runtime, on an in-process WordPress
 tests/wp/run.sh                # the runtime on real WordPress (Docker)
-tests/system/run.sh            # examples/site on WordPress and standalone, a 0.8 site migration, the blog's sync
+tests/system/run.sh            # examples/site on WordPress, a 0.8 site migration, the blog's sync
 ```
 
 `tests/system/run.sh` boots three fresh WordPress sites, one at a time:
 
 1. `examples/site`, installed as a site owner would and walked through the
-   whole journey, then upgraded, deactivated and reinstalled. The same
-   journey also runs on the standalone build.
+   whole journey, then upgraded, deactivated and reinstalled.
 2. An original Zero 0.8 site, moved over as
    [migrating from Zero 0.8](migrating-from-zero.md) describes.
 3. `examples/blog`, whose committed Markdown posts sync in.

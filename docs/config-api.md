@@ -116,27 +116,31 @@ export default defineConfig({
 
 ## Columns
 
+The SQL column is the one a custom table (`editor: false`) gets in the
+generated MySQL migration; a collection with an editor stores the same values
+as post fields and meta.
+
 | builder | SQL | TS select type |
 |---|---|---|
-| `id()` | INTEGER PRIMARY KEY AUTOINCREMENT | `number` |
-| `integer()` | INTEGER | `number` |
-| `real()` | REAL | `number` |
-| `text()` / `text({ enum: [...] })` | TEXT | `string` / union of the enum |
-| `boolean()` | INTEGER 0/1 | `boolean` |
-| `timestamp()` | TEXT (UTC ISO-8601 with ms); writes take epoch ms or ISO 8601 with `Z`/`±HH:MM` (a bare `YYYY-MM-DD` is UTC midnight) | `string` |
-| `date()` | TEXT `YYYY-MM-DD`, a real calendar day | `string` |
-| `json()` / `json().$type<T>()` | TEXT (JSON; an object keyed exactly `"0"`, `"1"`, ... reads back as a list, so a `.default()` can't contain one) | `unknown` / `T` |
-| `text({ multiline: true })` | TEXT | `string` (textarea in wp-admin) |
-| `email()` / `url()` | TEXT, validated | `string` |
-| `slug({ source? })` | TEXT, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, derived from `source` when omitted | `string` |
-| `richText()` | TEXT (HTML) | `string` |
-| `media({ accept? })` | INTEGER media id | `number` (a media row with `with: { col: true }`) |
-| `media({ multiple: true })` | TEXT (JSON ids) | `number[]` |
+| `id()` | BIGINT UNSIGNED AUTO_INCREMENT, primary key | `number` |
+| `integer()` | BIGINT | `number` |
+| `real()` | DOUBLE | `number` |
+| `text()` / `text({ enum: [...] })` | LONGTEXT (VARCHAR when unique, when `.max()` is 191 or less, or for an enum) | `string` / union of the enum |
+| `boolean()` | TINYINT(1) 0/1 | `boolean` |
+| `timestamp()` | CHAR(24) (UTC ISO-8601 with ms); writes take epoch ms or ISO 8601 with `Z`/`±HH:MM` (a bare `YYYY-MM-DD` is UTC midnight) | `string` |
+| `date()` | CHAR(10) `YYYY-MM-DD`, a real calendar day | `string` |
+| `json()` / `json().$type<T>()` | LONGTEXT (JSON; an object keyed exactly `"0"`, `"1"`, ... reads back as a list, so a `.default()` can't contain one) | `unknown` / `T` |
+| `text({ multiline: true })` | LONGTEXT | `string` (textarea in wp-admin) |
+| `email()` / `url()` | VARCHAR or LONGTEXT as `text()`, validated | `string` |
+| `slug({ source? })` | VARCHAR(200), unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, derived from `source` when omitted | `string` |
+| `richText()` | LONGTEXT (HTML) | `string` |
+| `media({ accept? })` | BIGINT media id | `number` (a media row with `with: { col: true }`) |
+| `media({ multiple: true })` | LONGTEXT (JSON ids) | `number[]` |
 | `select({ options })` | same as `text({ enum })` | union of the options |
-| `select({ options, multiple: true })` | TEXT (JSON) | `option[]` |
-| `group({ fields })` | TEXT (JSON) | `{ ...fields }` |
-| `repeater({ fields })` | TEXT (JSON) | `{ ...fields }[]` |
-| `blocks({ layouts })` | TEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
+| `select({ options, multiple: true })` | LONGTEXT (JSON) | `option[]` |
+| `group({ fields })` | LONGTEXT (JSON) | `{ ...fields }` |
+| `repeater({ fields })` | LONGTEXT (JSON) | `{ ...fields }[]` |
+| `blocks({ layouts })` | LONGTEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
 
 Modifiers (each returns a new builder; builders are immutable so shared field
 sets are safe): `.notNull()`, `.default(value)`, `.defaultNow()`
@@ -153,7 +157,7 @@ Phase-2 modifiers:
 
 - `.access({ read?, create?, update? })`: who may see or write this field, with
   the same shorthands as collection access or `(ctx) => boolean` (`ctx` has
-  `user`, `target`, `op`, `data`). A hidden field is absent from the row (not
+  `user`, `op`, `data`). A hidden field is absent from the row (not
   `null`), and filtering or ordering by it is refused (403). Omitted
   operations follow the collection. On WordPress it holds in wp-admin and
   core `/wp/v2` too (see [Access](#access)).
@@ -183,7 +187,7 @@ Column keys are the SQL column names.
 ## Collections
 
 `collection(name, columns, options?)`. `name` is the table name and the
-REST path segment (`/api/<name>`); the key under `schema` is the name used in
+REST path segment (`/wp-json/zero/v1/<name>`); the key under `schema` is the name used in
 `db.query.<key>` and in `hooks`/`relations`. A collection with no primary key
 is a build error.
 
@@ -215,7 +219,7 @@ and user columns named `status`/`publishedAt` on drafts collections.
 "subscriber" < "author" < "editor" < "admin"`, that role or higher), `"self"`
 (on an `auth` collection: the signed-in user's own row), or
 `(ctx) => boolean | filter` with `ctx = {
-user, target, op, data? }`. Functions are compiled to PHP like hooks; they
+user, op, data? }`. Functions are compiled to PHP like hooks; they
 can't use `db`. A returned filter is checked against the collection like any
 literal filter and is ANDed into reads, updates and deletes; create rules
 return a boolean. Actions take `access` too (default `"editor"`).
@@ -234,16 +238,15 @@ on the saved data before they commit.
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in
 `defineConfig({ globals: { name } })`. One record per global; fields use the
 sub-field rules, and notNull fields need a default. `GET`/`PATCH
-/api/globals/<name>`.
+/wp-json/zero/v1/globals/<name>`.
 
 ## defineConfig
 
-`defineConfig({ name?, target?, schema, relations?, globals?, hooks?, actions?,
+`defineConfig({ name?, schema, relations?, globals?, hooks?, actions?,
 jobs?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
-default: the project directory) names the WordPress plugin `zero-app-<name>`;
-`target` (`"standalone"` or `"wp"`) is the default for `zero build`. `admin:
-true` ships the optional admin screens as a fourth plugin, `zero-admin`; by
-default the build emits none.
+default: the project directory) names the WordPress plugin `zero-app-<name>`.
+`admin: true` ships the optional admin screens as a fourth plugin,
+`zero-admin`; by default the build emits none.
 
 ## Relations
 
@@ -264,14 +267,14 @@ the single `one` relation pointing back.
 | `afterUpdate` | `(row: Row, previous: Row, ctx)` | |
 | `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
 
-`ctx` is `{ user: { id, name, role } | null, target: "standalone" | "wp" }`.
+`ctx` is `{ user: { id, name, role } | null }`.
 
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 
 ## Actions
 
-`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /api/actions/<name>`.
+`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /wp-json/zero/v1/actions/<name>`.
 `input` uses column builders for validation; the return value is the response `data`.
 
 - `idempotent: true`: a request with an `Idempotency-Key` header runs once per
@@ -296,15 +299,14 @@ webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.c
 job; it runs after the request commits, never inside it. `key` collapses
 duplicates still waiting. A handler that throws is retried with backoff up to
 `retries`, then marked dead; `ctx.attempt` and `ctx.jobId` say which run this
-is. Standalone runs the queue with `zero jobs work` (`zero dev` starts a
-worker); `zero jobs list|retry|cancel` manage it. WordPress hands each job to
-Action Scheduler (cron, or `wp action-scheduler run`).
+is. Each job is handed to Action Scheduler (cron, or `wp action-scheduler run`);
+`wp zero jobs list|retry|cancel` manage the queue.
 
 A webhook POSTs `{ id, event, collection, at, data: { row, previous? } }` for
 each matching write (`<collection>.created|updated|deleted`, or `"*"`), signed
 in the `zero-signature` header as `t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`.
 Deliveries are jobs, so a failing endpoint is retried. `env(name)` reads the
-process environment, or on WordPress a `wp-config.php` constant of that name.
+process environment first, then a `wp-config.php` constant of that name.
 
 ## Media and files
 
@@ -347,16 +349,13 @@ fields translate.
 
 ## Sign-in
 
-One collection may be `auth: true`: its rows are the app's users (WordPress
-users on WordPress, the app's own table on standalone). It needs a unique
-`email`, gets a write-only `password` and an admin-only `role`, and can't be
-an editor collection. Members sign in through the typed client:
-`auth.login(email, password)` on standalone, or `auth.signIn()` and
-`auth.handleCallback()` on WordPress, which redirect through the
-zero-identity screens (register the frontend once with
+One collection may be `auth: true`: its rows are the app's users, which are
+WordPress users. It needs a unique `email`, gets a write-only `password` and
+an admin-only `role`, and can't be an editor collection. Members sign in
+through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
+through the zero-identity screens (register the frontend once with
 `wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
-`GET /me` returns the user with their `member` row. With no auth collection,
-standalone users are named by `zero users add`; with one, they're its emails.
+`GET /me` returns the user with their `member` row.
 
 Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
 the first rejected write starts a guest session, and `auth.upgrade()` keeps the
@@ -368,7 +367,7 @@ guest's rows when they sign up.
 { sync: "content/posts/*.md" }
 ```
 
-`zero sync --site <url> --token <t>` (or `--app-password user:pass`) keeps
+`zero sync --site <url> --app-password user:pass` (or `--bearer <jwt>`) keeps
 `content/posts/<slug>.md` and the site in step: front matter for fields, the
 body as Markdown for the `content` column. Both sides may change; it merges
 per field, and writes `.zero/conflicts/<uid>.md` when the same field changed on
@@ -415,8 +414,6 @@ These are build errors with the same message the runtime returns.
 
 What the design specifies and this build doesn't do yet:
 
-- Adding an auth collection to an existing standalone app doesn't move the
-  users `zero users add` created before it: recreate them as members.
 - `zero sync --watch` isn't available; run `zero sync` again, or from a scheduler.
 - Sync skips the columns listed under [Sync](#sync); edit those through the site.
 

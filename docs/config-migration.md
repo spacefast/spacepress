@@ -6,7 +6,7 @@ and the original `@spacefast/zero` capsule API (0.8.1). It writes a new
 
 ```sh
 zero migrate config --from payload payload.config.ts --out migrated/zero.config.ts
-zero build migrated --target wp
+zero build migrated
 ```
 
 Use `--from emdash`, `payload`, `sanity` or `zero`. Input can be a JSON schema
@@ -124,8 +124,8 @@ claim that the source CMS's authentication model has been migrated.
 The command prints JSON to stdout with `version: 1`, `source`, `status`,
 `entries` and `errors`. Each entry contains an RFC 6901 `pointer`, an `outcome`
 (`mapped`, `metadata` or `review`) and a `reason`. `written` means the config
-compiled for both WordPress and standalone; review entries still require source
-and target behavior to be compared. It does not mean a complete app was migrated.
+compiled; review entries still require source and target behavior to be
+compared. It does not mean a complete app was migrated.
 Pointers address the expanded default-export object, including references to
 constants. File-level errors and invalid unused declarations use the root pointer
 `""`; their reason names the affected binding when applicable.
@@ -163,8 +163,8 @@ needs the runtime and data work listed in the
 [compatibility inventory](zero-compatibility.md).
 
 Tests are owned by `tests/config_migrate.rs`. They run the actual command for
-all four formats, build its output for both targets and load the emitted PHP
-schema. The Payload fixture also boots the generated PHP application against
-SQLite to verify defaults, validation and REST access. Refusal tests cover
+all four formats, build its output and load the emitted PHP schema. The
+imported apps also boot on a WordPress-on-SQLite site to verify defaults,
+validation and REST access. Refusal tests cover
 callbacks, unknown features, dynamic code, duplicate names, invalid generated
 defaults and unchanged destinations.

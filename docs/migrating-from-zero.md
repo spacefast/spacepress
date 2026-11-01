@@ -62,7 +62,7 @@ collection, for example:
 ## 3. Build and activate
 
 ```sh
-zero build app --target wp
+zero build app
 ```
 
 Deactivate the original runtime, upload `app/.zero/wp-content/plugins/`, and

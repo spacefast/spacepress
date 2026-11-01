@@ -1,0 +1,25 @@
+---
+import Page from "../../layouts/Page.astro";
+import { tours } from "../../tour/stops.ts";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Page title="Tour" description="A walk through Zero's examples: each piece of a zero.config.ts next to what zero build turns it into.">
+  <main class="prose">
+    <h1>The tour</h1>
+    <p class="lede">
+      Each page walks through one of the examples committed in the repository, a piece of its
+      <code>zero.config.ts</code> next to what <code>zero build</code> turned it into. The outputs are produced
+      when this site is built, by the same compiler that runs in your browser on the front page.
+    </p>
+    {tours.map((tour) => (
+      <section>
+        <h2><a href={`${base}/tour/${tour.example}`}>{tour.title}</a></h2>
+        {tour.intro.slice(0, 1).map((p) => <p>{p}</p>)}
+        <ol>
+          {tour.stops.map((stop) => <li><a href={`${base}/tour/${tour.example}#${stop.slug}`}>{stop.title}</a></li>)}
+        </ol>
+      </section>
+    ))}
+  </main>
+</Page>

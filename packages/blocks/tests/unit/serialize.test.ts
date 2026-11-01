@@ -240,6 +240,14 @@ test("a value JSON would rewrite inside an object attribute is refused rather th
   }
 });
 
+test("one object reached twice in an attribute is shared, not circular", async () => {
+  const shared = { color: "red" };
+  const { diagnostics, markup } = await serializeBlocks([block("core/group", { metadata: { a: shared, b: shared } })]);
+  assert.deepEqual(diagnostics, []);
+  const [group] = await reparse(markup);
+  assert.deepEqual(group!.attributes.metadata, { a: { color: "red" }, b: { color: "red" } });
+});
+
 test("a third-party block's attributes are checked for JSON writability too", async () => {
   const { diagnostics } = await serializeBlocks([at(block("acme/testimonials", { config: { n: 1n } }), 6)]);
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["attribute_type", 6]]);

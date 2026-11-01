@@ -53,13 +53,23 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"]/g, (character) => HTML_ESCAPES.get(character)!);
 }
 
+/**
+ * HTML's boolean attributes on phrasing tags: present or absent, never a value.
+ * Every other attribute keeps its value as text, so `aria-checked={false}` and
+ * `draggable={false}` write the "false" they mean instead of vanishing.
+ */
+const BOOLEAN_ATTRIBUTES = new Set(["hidden", "inert", "autofocus", "disabled", "download", "contenteditable", "spellcheck", "translate"]);
+
 function attributeString(props: ElementProps): string {
   return Object.entries(props)
     .flatMap(([name, value]) => {
       // `class` is HTML's spelling and `className` is JSX's; both reach the markup as `class`.
       const attribute = name === "className" ? "class" : name;
-      if (value === null || value === undefined || value === false) return [];
-      if (value === true) return [` ${attribute}`];
+      if (value === null || value === undefined) return [];
+      if (typeof value === "boolean") {
+        if (BOOLEAN_ATTRIBUTES.has(attribute)) return value ? [` ${attribute}`] : [];
+        return [` ${attribute}="${value}"`];
+      }
       return [` ${attribute}="${escapeHtml(String(value))}"`];
     })
     .join("");

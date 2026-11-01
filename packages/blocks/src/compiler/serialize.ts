@@ -524,7 +524,7 @@ function canonical(value: unknown): string {
  * or null when nothing does. `JSON.stringify` throws for some of these and
  * quietly rewrites the rest; either way the saved block would differ.
  */
-function jsonProblem(value: unknown, path = "", seen = new Set<object>()): string | null {
+function jsonProblem(value: unknown, path = "", ancestors = new Set<object>()): string | null {
   const at = path === "" ? "" : ` at ${path}`;
   if (value === null || typeof value === "string" || typeof value === "boolean") return null;
   if (typeof value === "number") return Number.isFinite(value) ? null : `${String(value)}${at}`;
@@ -532,21 +532,20 @@ function jsonProblem(value: unknown, path = "", seen = new Set<object>()): strin
   if (typeof value === "undefined") return `undefined${at}`;
   if (typeof value === "function" || typeof value === "symbol") return `a ${typeof value}${at}`;
   if (typeof value !== "object") return `a ${typeof value}${at}`;
-  if (seen.has(value)) return `a circular reference${at}`;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const [index, entry] of value.entries()) {
-      const problem = jsonProblem(entry, `${path}[${index}]`, seen);
+  // Only an object that contains itself is circular; the same object reached twice by different paths is fine.
+  if (ancestors.has(value)) return `a circular reference${at}`;
+  if (!Array.isArray(value) && !isPlainObject(value)) return `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "non-plain object"}${at}`;
+  ancestors.add(value);
+  try {
+    const entries = Array.isArray(value) ? value.map((entry, index) => [`${path}[${index}]`, entry] as const) : Object.entries(value).map(([key, entry]) => [path === "" ? key : `${path}.${key}`, entry] as const);
+    for (const [entryPath, entry] of entries) {
+      const problem = jsonProblem(entry, entryPath, ancestors);
       if (problem !== null) return problem;
     }
     return null;
+  } finally {
+    ancestors.delete(value);
   }
-  if (!isPlainObject(value)) return `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "non-plain object"}${at}`;
-  for (const [key, entry] of Object.entries(value)) {
-    const problem = jsonProblem(entry, path === "" ? key : `${path}.${key}`, seen);
-    if (problem !== null) return problem;
-  }
-  return null;
 }
 
 /** Parse without the parser's console logging: an invalid block is a diagnostic here, not console noise. */

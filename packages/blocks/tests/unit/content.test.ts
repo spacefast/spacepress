@@ -24,9 +24,12 @@ test("a mistake inside a component names the component's line and where it was u
   assert.deepEqual(result.diagnostics[0]!.loc?.usedAt, { file: fixture("uses-card.tsx"), line: 7, column: 7 });
 });
 
-test("a malformed node a module hands back, at the top or nested, is refused as not content, not a crash", async () => {
+test("a malformed node a module hands back at the top is refused as not content, at the file", async () => {
   const top = await compileContent(fixture("malformed-node.tsx"));
   assert.deepEqual(top.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("malformed-node.tsx"), line: 1, column: 1 }]);
+});
+
+test("a malformed node nested in JSX is refused as not content, at the element holding it", async () => {
   const nested = await compileContent(fixture("nested-malformed.tsx"));
   assert.deepEqual(nested.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("nested-malformed.tsx"), line: 2, column: 10 }]);
 });

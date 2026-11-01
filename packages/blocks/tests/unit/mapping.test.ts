@@ -31,6 +31,12 @@ test("rich text escapes what would otherwise be markup, and className becomes cl
   assert.equal(renderRichTextHtml(toContentNodes(["5 < 6 & ", jsx("em", { className: "x", children: '"q"' }), jsx("br", {})])), '5 &lt; 6 &amp; <em class="x">&quot;q&quot;</em><br>');
 });
 
+test("an inline boolean value is written as text unless the attribute is an HTML boolean", () => {
+  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { role: "checkbox", "aria-checked": false, draggable: false, children: "c" }))), '<span role="checkbox" aria-checked="false" draggable="false">c</span>');
+  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: true, children: "h" }))), "<span hidden>h</span>");
+  assert.equal(renderRichTextHtml(toContentNodes(jsx("span", { hidden: false, children: "h" }))), "<span>h</span>");
+});
+
 test("lists: ordered flag, items as inner blocks, a nested list beside its item's text", () => {
   const { blocks } = map(jsxs("ol", { children: [jsx("li", { children: "one" }), jsxs("li", { children: ["two", jsx("ul", { children: jsx("li", { children: "child" }) })] })] }));
   assert.deepEqual(blocks[0]?.attrs, { ordered: true });
@@ -68,10 +74,16 @@ test("a prop with a value of the wrong kind is refused rather than dropped", () 
   assert.deepEqual(blocks.map((b) => b.attrs), [{ ordered: true }, { summary: "S" }, {}]);
 });
 
-test("a numeric id is the anchor as text, and an empty open attribute means open", () => {
-  const { blocks, diagnostics } = map([jsx("p", { id: 123, children: "x" }), jsxs("details", { open: "", children: [jsx("summary", { children: "S" }), jsx("p", { children: "b" })] })]);
+test("a numeric id is the anchor as text", () => {
+  const { blocks, diagnostics } = map(jsx("p", { id: 123, children: "x" }));
   assert.deepEqual(diagnostics, []);
-  assert.deepEqual([blocks[0]?.attrs, blocks[1]?.attrs], [{ anchor: "123" }, { showContent: true, summary: "S" }]);
+  assert.deepEqual(blocks[0]?.attrs, { anchor: "123" });
+});
+
+test("an empty open attribute means open, as it does in HTML", () => {
+  const { blocks, diagnostics } = map(jsxs("details", { open: "", children: [jsx("summary", { children: "S" }), jsx("p", { children: "b" })] }));
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(blocks[0]?.attrs, { showContent: true, summary: "S" });
 });
 
 test("text after a nested list in an item is refused rather than moved in front of the list", () => {

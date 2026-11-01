@@ -134,9 +134,9 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         closures: HashMap::new(),
         returns: Vec::new(),
         callback_params: HashMap::new(),
-        copies: HashMap::new(),
         last_callback: Vec::new(),
         reduce_init: None,
+        accumulators: HashSet::new(),
         callback_route: HashMap::new(),
         writes: Vec::new(),
     };
@@ -328,6 +328,54 @@ impl Uf {
         }
     }
 
+    /// Whether a write `depth` member steps below a binding of class `c` lands in the container
+    /// of class `e` or in one `e` holds.
+    fn write_reaches(&mut self, c: Class, depth: usize, e: Class) -> bool {
+        let e = self.find(e);
+        let mut level = vec![self.find(c)];
+        for _ in 1..depth {
+            let mut next = Vec::new();
+            for h in level {
+                if let Some(i) = self.existing_interior(h) {
+                    next.push(i);
+                    for k in self.contents[i].clone() {
+                        next.push(self.find(k));
+                    }
+                }
+            }
+            level = next;
+        }
+        // The written container is `e`'s, or one `e` holds (a write into an element's member).
+        // A container that merely holds the element (`out.push(r)`) is written at its own top
+        // level, not inside the element.
+        level.into_iter().any(|t| t == e || self.reaches(e, t))
+    }
+
+    /// For a write through a callback's element parameter `b` (class `c`): whether the element
+    /// can be seen other than through `b` itself and `route` (the array `map` builds from the
+    /// callback's results). The receiver holding it counts when anything can see the receiver.
+    fn seen_beyond(&mut self, c: Class, b: Span, route: Option<Class>) -> bool {
+        let c = self.find(c);
+        if self.outside[c] || self.repeated[c] || self.keepers[c].is_some() {
+            return true;
+        }
+        if self.bindings[c].iter().any(|x| *x != b) {
+            return true;
+        }
+        let mut skip = HashSet::from([c]);
+        if let Some(r) = route {
+            skip.insert(self.find(r));
+        }
+        let mut via: Vec<Class> = self.held_in[c].clone();
+        if self.is_interior[c] {
+            via.extend(self.holders[c].iter().copied());
+        }
+        via.into_iter().any(|h| {
+            let h = self.find(h);
+            !skip.contains(&h) && self.observable(h, &mut skip.clone())
+        })
+    }
+
     /// Whether two values may share a container: the same class, or one held (at any depth)
     /// inside the other.
     fn overlap(&mut self, a: Class, b: Class) -> bool {
@@ -505,12 +553,12 @@ struct Walk<'o, 'a> {
     returns: Vec<Class>,
     /// Inline callback element parameters → the array method passing them.
     callback_params: HashMap<Span, String>,
-    /// A callback element's class → the receiver element class it copies.
-    copies: HashMap<Class, Class>,
     /// Callback element parameters declared by the last inline callback.
     last_callback: Vec<Span>,
     /// The class of a reduce call's initial value, while its callback is walked.
     reduce_init: Option<Option<Class>>,
+    /// Reducer accumulator parameters whose initial value is fresh.
+    accumulators: HashSet<Span>,
     /// A callback element parameter → the array its callback's results build (`map`).
     callback_route: HashMap<Span, Class>,
     writes: Vec<Write>,
@@ -694,20 +742,8 @@ impl Walk<'_, '_> {
         }
     }
 
-    /// A member read of `o`. A callback element's copy reads the element's members (in JS they
-    /// are the element's own).
     fn member_of(&mut self, o: Class) -> Class {
-        let oc = self.uf.find(o);
-        let element = self
-            .copies
-            .clone()
-            .into_iter()
-            .find(|(k, _)| self.uf.find(*k) == oc)
-            .map(|(_, e)| e);
-        match element {
-            Some(e) => self.uf.interior(e),
-            None => self.uf.interior(o),
-        }
+        self.uf.interior(o)
     }
 
     /// A new container holding `v`'s members.
@@ -945,12 +981,23 @@ impl Walk<'_, '_> {
                 Some(Slot::View(root, d)) => (Target::Binding(root, d + depth + extra), name.to_string()),
                 None => (Target::Outside, name.to_string()),
             },
+            // A temporary: a new container made right here (`[3, 1].sort()`, `f().push(1)` on a
+            // fresh result) is the same value whatever reads it next. One that may be an
+            // existing container (`(c ? a : b).reverse()`, `pick(a).x = 1`) is a copy in PHP.
             None => match value {
-                Some(c) => (Target::Value(c, extra.max(1)), "this value".to_string()),
-                None => return,
+                Some(c) if !Self::builds_new(target) => (Target::Value(c, extra.max(1)), "this value".to_string()),
+                _ => return,
             },
         };
         if matches!(t, Target::Binding(_, 0)) {
+            return;
+        }
+        // A reducer's accumulator is the value array_reduce carries: a write into it at the top
+        // level is a write into that carried value (it's the accumulator's own container in PHP
+        // too). Only a write below it can reach something it holds.
+        if let Target::Binding(b, 1) = t
+            && self.accumulators.contains(&b)
+        {
             return;
         }
         self.writes.push(Write {
@@ -960,6 +1007,15 @@ impl Walk<'_, '_> {
             named_callback: None,
             call: None,
         });
+    }
+
+    /// Whether `e` evaluates to a container made by this very expression.
+    fn builds_new(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Array(_) | ExprKind::Object(_) | ExprKind::New { .. } => true,
+            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Chain(x) => Self::builds_new(x),
+            _ => false,
+        }
     }
 
     fn expr(&mut self, e: &Expr) -> Option<Class> {
@@ -1164,6 +1220,9 @@ impl Walk<'_, '_> {
                     let src = argv.first().copied().flatten();
                     if let Some(ArrEl::Item(cb)) = args.get(1) {
                         let ret = self.callback(e, cb, "Array.from", 0, src);
+                        for p in std::mem::take(&mut self.last_callback) {
+                            self.callback_route.insert(p, n);
+                        }
                         if let Some(r) = ret {
                             self.store(n, Some(r));
                         }
@@ -1265,17 +1324,6 @@ impl Walk<'_, '_> {
                 for p in std::mem::take(&mut cb_params) {
                     self.callback_route.insert(p, n);
                 }
-                // In JS, an element the callback returns is the receiver's element itself: the
-                // result holds it (and so do later reads of the receiver).
-                if let Some(c) = cb_return {
-                    let c2 = self.uf.find(c);
-                    let copies: Vec<Class> = self.copies.keys().copied().collect();
-                    let returns_copy = copies.into_iter().any(|k| self.uf.find(k) == c2);
-                    if returns_copy && let Some(r) = recv {
-                        let ri = self.uf.interior(r);
-                        self.store(n, Some(ri));
-                    }
-                }
                 if let Some(c) = cb_return {
                     self.store(n, Some(c));
                     if p == "flatMap" {
@@ -1286,10 +1334,14 @@ impl Walk<'_, '_> {
                 Some(n)
             }
             "reduce" | "reduceRight" => {
-                let ri = self.uf.interior(r);
+                // The result is the last accumulator: the initial value when given (or the first
+                // element otherwise), as the callback carried it.
                 let init = argv.get(1).copied().flatten();
-                let acc = self.join(Some(ri), init);
-                self.join(acc, cb_return)
+                let start = match init {
+                    Some(i) => Some(i),
+                    None => Some(self.uf.interior(r)),
+                };
+                self.join(start, cb_return)
             }
             _ if FRESH_METHODS.contains(&p) => Some(self.uf.new_class()),
             _ => Some(self.uf.outside_class()),
@@ -1297,6 +1349,15 @@ impl Walk<'_, '_> {
     }
 
     /// The callback an array method calls with copies of the receiver's elements.
+    ///
+    /// In JS each element parameter *is* the receiver's element; in PHP it's a copy. Reads and
+    /// stores of it behave the same either way (a copy pushed elsewhere still holds the same
+    /// values, and holding the receiver's element is recorded by uniting the parameter with the
+    /// element's class). Only a write *through* it differs: it reaches the element in JS and is
+    /// lost in PHP. That write is refused unless the element is never seen again (a fresh
+    /// receiver, or `map` returning the changed element as its result). A reducer's accumulator
+    /// is the value PHP's array_reduce carries from call to call, so writing into it is faithful
+    /// when it starts as a fresh initial value.
     fn callback(&mut self, call: &Expr, cb: &Expr, method: &str, el: usize, recv: Option<Class>) -> Option<Class> {
         let element = recv.map(|r| self.uf.interior(r));
         match &cb.kind {
@@ -1306,76 +1367,59 @@ impl Walk<'_, '_> {
                 self.returns.push(r);
                 self.scopes.push(HashMap::new());
                 let comparator = matches!(method, "sort" | "toSorted");
+                let reducer = el == 1;
                 for (i, p) in f.params.iter().enumerate() {
-                    // The element is a copy of one of the receiver's elements: its own class,
-                    // holding what the element holds. A write into it is judged against the
-                    // receiver's element (see `verify`). A reduce accumulator may be an element;
-                    // both comparator parameters are elements.
                     let is_element = i == el || (comparator && i == 1);
                     let v = if is_element {
-                        // PHP's copy shares nothing with the element; JS's element is the
-                        // original. A write through the copy (at any depth) is lost exactly when
-                        // the original can be seen again. A copy stored anywhere (a wrapped
-                        // return `({ e })`) stores the element itself (see below).
-                        element.map(|e| {
-                            let copy = self.uf.new_class();
-                            self.copies.insert(copy, e);
-                            copy
-                        })
-                    } else if el == 1 && i == 0 {
-                        // The accumulator: a copy of the initial value (or an element) on the
-                        // first call, then whatever the callback returned. Writing into it is
-                        // faithful while nothing else can see what it copies.
+                        element
+                    } else if reducer && i == 0 {
+                        // The accumulator: the initial value (or the first element), then what
+                        // the callback returns. A fresh initial value nobody else holds is
+                        // array_reduce's own carry in PHP as in JS.
                         let init = self.reduce_init.flatten();
-                        let original = init.or(element);
-                        original.map(|o| {
-                            let copy = self.uf.new_class();
-                            let ci = self.uf.interior(copy);
-                            let oi = self.uf.interior(o);
-                            self.uf.unite(ci, oi);
-                            self.copies.insert(copy, o);
-                            copy
-                        })
+                        if let Some(a) = init
+                            && !self.uf.observable(a, &mut HashSet::new())
+                            && let Pat::Id(_, span) = &p.pat
+                        {
+                            self.accumulators.insert(*span);
+                        }
+                        match init {
+                            Some(a) => Some(a),
+                            None => element,
+                        }
                     } else {
                         None
                     };
                     self.declare_pat(&p.pat, v);
-                    if (is_element || (el == 1 && i == 0))
-                        && let Pat::Id(_, span) = &p.pat
-                    {
+                    if is_element && let Pat::Id(_, span) = &p.pat {
                         self.callback_params.insert(*span, method.to_string());
                         self.last_callback.push(*span);
+                        // The parameter lives only while the callback runs: it isn't another
+                        // holder of the element, unless a closure keeps it.
+                        if !self.oracle.effects.captured(*span)
+                            && let Some(c) = self.classes.get(span).copied()
+                        {
+                            let c = self.uf.find(c);
+                            self.uf.bindings[c].retain(|x| x != span);
+                        }
                     }
                 }
                 let params = std::mem::take(&mut self.last_callback);
                 let writes_before = self.writes.len();
-                let copies_before: Vec<(Class, Class)> = params
-                    .iter()
-                    .filter_map(|p| self.classes.get(p).copied())
-                    .filter_map(|c| self.copies.get(&c).map(|e| (c, *e)))
-                    .collect();
                 self.body(&f.body);
-                // A copy placed anywhere but straight back as the callback's result (stored in
-                // a literal or container, captured, passed on) is, in JS, the element itself.
-                for (copy, element) in copies_before {
-                    let cc = self.uf.find(copy);
-                    if !self.uf.held_in[cc].is_empty() {
-                        let holders = self.uf.held_in[cc].clone();
-                        for h in holders {
-                            self.uf.store(h, element);
-                        }
-                    }
-                }
-                // Inside the callback the element is two values in PHP (the copy and the
-                // original): a write into the receiver's elements while it runs is a write the copy
-                // doesn't see, as JS would.
-                if let Some(element) = element {
-                    let e = self.uf.find(element);
+                // While the callback runs, PHP's parameter is a copy of the element: a write
+                // into the receiver's elements by any other route (`a[0].x = 1`) is a change the
+                // copy doesn't see, though JS's parameter would. Refused when the callback reads
+                // its element at all (it has one).
+                if let Some(e) = element
+                    && !params.is_empty()
+                {
                     for w in &mut self.writes[writes_before..] {
-                        if let Target::Binding(b, _) = w.target
+                        if let Target::Binding(b, depth) = w.target
                             && !self.callback_params.contains_key(&b)
                             && let Some(c) = self.classes.get(&b).copied()
-                            && (self.uf.find(c) == e || self.uf.overlap(c, e))
+                            && depth >= 1
+                            && self.uf.write_reaches(c, depth, e)
                         {
                             w.target = Target::Outside;
                         }
@@ -1384,6 +1428,13 @@ impl Walk<'_, '_> {
                 self.last_callback = params;
                 self.scopes.pop();
                 self.returns.pop();
+                // The accumulator flows back in as the next call's first argument.
+                if reducer
+                    && let Some(Pat::Id(_, span)) = f.params.first().map(|p| &p.pat)
+                    && let Some(acc) = self.classes.get(span).copied()
+                {
+                    self.uf.unite(acc, r);
+                }
                 Some(r)
             }
             _ => {
@@ -1471,6 +1522,28 @@ impl Walk<'_, '_> {
                 }
             }
         }
+        // The callee writes a captured binding while an argument may be (or hold, or sit inside)
+        // that binding's container: in JS the parameter sees the write, in PHP it holds a copy.
+        let captured: Vec<Span> = fx.captured_writes(e.span).collect();
+        for b in captured {
+            let Some(cb) = self.classes.get(&b).copied() else {
+                continue;
+            };
+            for (j, vj) in argv.iter().enumerate() {
+                let Some(vj) = vj else { continue };
+                if self.uf.overlap(cb, *vj) {
+                    let (ArrEl::Item(x) | ArrEl::Spread(x)) = &args[j];
+                    let name = Self::root(x).map_or("this argument".to_string(), |(n, _)| n.to_string());
+                    self.writes.push(Write {
+                        target: Target::Outside,
+                        name,
+                        span: x.span,
+                        named_callback: None,
+                        call: None,
+                    });
+                }
+            }
+        }
         for (i, a) in args.iter().enumerate() {
             let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
             let v = argv.get(i).copied().flatten();
@@ -1536,37 +1609,17 @@ impl Walk<'_, '_> {
                 // A callback's element is a copy: a write into it is lost when the receiver's
                 // element can be seen again (the receiver is observable), or when the copy itself
                 // is shared with something else.
-                Target::Binding(b, depth) if self.callback_params.contains_key(&b) => {
-                    match self.classes.get(&b).copied() {
-                        Some(c) => {
-                            let c = self.uf.find(c);
-                            let element = self
-                                .copies
-                                .clone()
-                                .into_iter()
-                                .find(|(k, _)| self.uf.find(*k) == c)
-                                .map(|(_, e)| e);
-                            // Interiors collapse (an element's members share its class), so the
-                            // copy is excluded when asking who else can see the element.
-                            // Returning the changed copy from `map` is what JS returns too: the
-                            // map result doesn't count as seeing the original element.
-                            let route = self.callback_route.get(&b).copied();
-                            let lost = match element {
-                                Some(e) => {
-                                    let e = self.uf.find(e);
-                                    let mut skip = HashSet::from([c]);
-                                    if let Some(r) = route {
-                                        skip.insert(self.uf.find(r));
-                                    }
-                                    e != c && self.uf.observable(e, &mut skip)
-                                }
-                                None => true,
-                            };
-                            lost || self.unsafe_routed(c, b, route, depth)
-                        }
-                        None => false,
+                // A write through a callback's element parameter reaches the receiver's element
+                // in JS and a copy in PHP: lost unless the element is never seen again (`map`
+                // returning it as its result is that same value in both).
+                Target::Binding(b, _) if self.callback_params.contains_key(&b) => match self.classes.get(&b).copied() {
+                    Some(c) => {
+                        let c = self.uf.find(c);
+                        let route = self.callback_route.get(&b).copied().map(|r| self.uf.find(r));
+                        self.uf.seen_beyond(c, b, route)
                     }
-                }
+                    None => false,
+                },
                 Target::Binding(b, depth) => match (self.classes.get(&b).copied(), w.call) {
                     (Some(c), Some(call)) => {
                         let c = self.uf.find(c);
@@ -1624,20 +1677,11 @@ impl Walk<'_, '_> {
         false
     }
 
-    fn unsafe_routed(&mut self, c: Class, b: Span, route: Option<Class>, depth: usize) -> bool {
-        let c = self.uf.find(c);
-        if self.uf.seen_elsewhere(c, Some(b), route) {
-            return true;
-        }
-        depth >= 2 && self.unsafe_below(c, depth)
-    }
-
+    /// A write into a temporary (`f().x = 1`, `(c ? a : b).reverse()`): PHP writes a copy, so
+    /// it's lost whenever anything can see the container again.
     fn unsafe_value(&mut self, c: Class, depth: usize) -> bool {
         let c = self.uf.find(c);
-        let bindings = std::mem::take(&mut self.uf.bindings[c]);
-        let r = self.unsafe_at(c, None, depth);
-        self.uf.bindings[c] = bindings;
-        r
+        self.uf.observable(c, &mut HashSet::new()) || depth >= 2 && self.unsafe_below(c, depth)
     }
 
     fn reject(&self, w: &Write) -> Diag {

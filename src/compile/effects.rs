@@ -102,6 +102,8 @@ pub(super) struct Effects {
     stored_members: HashSet<(Span, usize)>,
     /// (call, argument) a member of which the callee may return.
     returned_members: HashSet<(Span, usize)>,
+    /// Call → bindings of enclosing functions the callee (or what it calls) writes into.
+    captured_writes: HashMap<Span, HashSet<Span>>,
 }
 
 impl Effects {
@@ -218,6 +220,11 @@ impl Effects {
     /// Whether the callee keeps a member of the argument somewhere other than its result.
     pub fn argument_member_stored(&self, call: Span, index: usize) -> bool {
         self.stored_members.contains(&(call, index))
+    }
+
+    /// Bindings of enclosing functions the callee writes into (through a capture).
+    pub fn captured_writes(&self, call: Span) -> impl Iterator<Item = Span> + '_ {
+        self.captured_writes.get(&call).into_iter().flatten().copied()
     }
 
     /// Whether the callee may return a member of the argument.
@@ -1147,7 +1154,9 @@ impl Graph {
                     .get(&dest.binding)
                     .into_iter()
                     .flatten()
-                    .map(|(s, m)| (*s, *m || member || !dest.path.is_empty()))
+                    // `member`: only part of the source flows on. Storing the source inside a
+                    // member of `dest` keeps the whole source.
+                    .map(|(s, m)| (*s, *m || member))
                     .collect()
             };
             if self.functions.contains_key(&dest.binding) {
@@ -1635,6 +1644,20 @@ impl Graph {
             .collect();
         let mut resolved_calls = HashSet::new();
         let mut retained_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
+        let mut captured_writes: HashMap<Span, HashSet<Span>> = HashMap::new();
+        for call in &self.calls {
+            if call.callback {
+                continue;
+            }
+            for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                for p in self.function_writes.get(function).into_iter().flatten() {
+                    // A member write into a binding the callee doesn't own (a capture).
+                    if !p.path.is_empty() && self.bindings.get(&p.binding).is_some_and(|o| o != function) {
+                        captured_writes.entry(call.span).or_default().insert(p.binding);
+                    }
+                }
+            }
+        }
         let mut reference_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
         for call in &self.calls {
             for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
@@ -1717,6 +1740,7 @@ impl Graph {
             stored_arguments,
             stored_members,
             returned_members,
+            captured_writes,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

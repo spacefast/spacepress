@@ -1328,6 +1328,34 @@ fn rejects_phase2_static_contracts() {
             "const reader = (p: { x: number }) => { const q = p; return () => q.x; }; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1;",
             "may be the same object or array as another value here",
         ),
+        (
+            "const a = [1, 2]; (a.length > 0 ? a : a).reverse(); return a[0] === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const wrap = (p: { x: number }) => ({ p }); const a = { x: 0 }; const b = wrap(a); a.x = 1; return b.p.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; const b = a.map((e) => ({ e })); a[0]!.x = 1; return b[0]!.e.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const o = { x: 0 }; const f = (p: { x: number }) => { o.x = 1; return p.x; }; return f(o) === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 0 }]; const b = Array.from(a, (e) => e); a[0]!.x = 1; return b[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const rows = [{ x: 1 }]; const out: { x: number }[] = []; rows.forEach((r) => { out.push(r); }); out[0]!.x = 9; return rows[0]!.x === 9;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const rows = [{ x: 1 }]; const out = rows.reduce((acc, r) => { acc.push(r); return acc; }, [] as { x: number }[]); out[0]!.x = 9; return rows[0]!.x === 9;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

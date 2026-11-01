@@ -363,7 +363,13 @@ function laneSActions() {
       const counts: { n: number }[] = [];
       for (let i = 0; i < 2; i++) counts.push({ n: i });
       for (const c of counts) c.n += 5;
-      return [o, copy, built, counts];
+      // Collecting rows into a fresh accumulator or array, the idiom every hook writes.
+      const rows = [{ x: 1 }, { x: 2 }];
+      const collected = rows.reduce((acc, r) => { acc.push(r); return acc; }, [] as { x: number }[]);
+      const pushed: { x: number }[] = [];
+      rows.forEach((r) => { pushed.push(r); });
+      const totals = rows.reduce((acc, r) => { acc.sum += r.x; return acc; }, { sum: 0 });
+      return [o, copy, built, counts, collected, pushed, totals];
     }),
     utf16Units: run(() => {
       const s = "\u{1F600}a\u00e9";

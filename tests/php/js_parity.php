@@ -87,6 +87,9 @@ $cases = [
         fn () => [Js::charAt('a🙂b', 0), Js::charAt('a🙂b', -1), Js::charAt('a🙂b', 3), Js::charAt('a🙂b', 4), Js::strAt('a🙂b', -1), Js::strAt('a🙂b', -4), Js::strAt('a🙂b', -5), Js::strAt('a🙂b', 3)]],
     ['((s) => [s.indexOf("aé"), s.indexOf("aé", 3), s.indexOf("🙂", 1), s.indexOf("", 99), s.indexOf("a", -5), s.lastIndexOf("aé"), s.lastIndexOf("aé", 5), s.lastIndexOf("🙂", -3), s.lastIndexOf("x"), s.lastIndexOf(""), s.lastIndexOf("", NaN)])("🙂aé🙂aé")',
         fn () => [Js::indexOf('🙂aé🙂aé', 'aé'), Js::indexOf('🙂aé🙂aé', 'aé', 3), Js::indexOf('🙂aé🙂aé', '🙂', 1), Js::indexOf('🙂aé🙂aé', '', 99), Js::indexOf('🙂aé🙂aé', 'a', -5), Js::lastIndexOf('🙂aé🙂aé', 'aé'), Js::lastIndexOf('🙂aé🙂aé', 'aé', 5), Js::lastIndexOf('🙂aé🙂aé', '🙂', -3), Js::lastIndexOf('🙂aé🙂aé', 'x'), Js::lastIndexOf('🙂aé🙂aé', ''), Js::lastIndexOf('🙂aé🙂aé', '', NAN)]],
+    // An explicit null position is ToNumber(null) = 0, not an omitted argument.
+    ['["ab".lastIndexOf("b", null), "ab".lastIndexOf("b"), [1, 2].lastIndexOf(2, null), [1, 2].includes(1, null), "ab".at(null), [1, 2].at(null), "ab".indexOf("b", null)]',
+        fn () => [Js::lastIndexOf('ab', 'b', null), Js::lastIndexOf('ab', 'b'), Js::lastIndexOf([1, 2], 2, null), Js::includes([1, 2], 1, null), Js::strAt('ab', null), Js::arrAt([1, 2], null), Js::indexOf('ab', 'b', null)]],
     // Whole characters round-trip through unit indexes.
     ['["a🙂b".slice(1, 3), "a🙂".charAt(0), "🙂x".slice(2), "a".padEnd(3, "🙂"), "🙂".at(-3) ?? null]',
         fn () => [Js::slice('a🙂b', 1, 3), Js::charAt('a🙂', 0), Js::slice('🙂x', 2), Js::padEnd('a', 3, '🙂'), Js::strAt('🙂', -3)]],

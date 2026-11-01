@@ -596,8 +596,9 @@ final class Js
     }
 
     /** `s.at(i)` and `s[i]`: one code unit, relative indexes allowed. */
-    public static function strAt(string $s, int|float $i): ?string
+    public static function strAt(string $s, mixed $i = 0): ?string
     {
+        $i = self::toNumber($i);
         $u = self::units($s);
         $len = intdiv(strlen($u), 2);
         $i = self::toInteger($i);
@@ -610,8 +611,9 @@ final class Js
     }
 
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
-    public static function indexOf(string|array $s, mixed $needle, int|float $from = 0): int
+    public static function indexOf(string|array $s, mixed $needle, mixed $from = 0): int
     {
+        $from = self::toNumber($from);
         if (is_array($s)) {
             $len = count($s);
             for ($i = self::relIndex($from, $len); $i < $len; $i++) {
@@ -635,8 +637,13 @@ final class Js
     }
 
     /** String.prototype.lastIndexOf for strings, Array.prototype.lastIndexOf for lists. */
-    public static function lastIndexOf(string|array $s, mixed $needle, int|float|null $from = null): int
+    /**
+     * An omitted `fromIndex` searches from the end; a given one (even `null`, which JS turns
+     * into 0) is a number. Omission is the default argument, never `null`.
+     */
+    public static function lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int
     {
+        $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
         if (is_array($s)) {
             // fromIndex: relative to the end when negative, clamped to the last element.
             $last = count($s) - 1;
@@ -999,8 +1006,9 @@ final class Js
         return $out;
     }
 
-    public static function includes(array $a, mixed $v, int|float $from = 0): bool
+    public static function includes(array $a, mixed $v, mixed $from = 0): bool
     {
+        $from = self::toNumber($from);
         $a = array_values($a);
         for ($i = self::relIndex($from, count($a)), $n = count($a); $i < $n; $i++) {
             if (self::sameValueZero($a[$i], $v)) {
@@ -1030,8 +1038,9 @@ final class Js
         return $from >= $to ? [] : array_slice($a, $from, $to - $from);
     }
 
-    public static function arrAt(array $a, int|float $i): mixed
+    public static function arrAt(array $a, mixed $i = 0): mixed
     {
+        $i = self::toNumber($i);
         $len = count($a);
         $i = self::toInteger($i);
         $i = $i < 0 ? $len + $i : $i;

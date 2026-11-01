@@ -37,8 +37,8 @@ Three sentences of the result:
   in the config exists to make a second runtime behave the same.
 
 The before/after rewrite of the two examples is in §5: `examples/site` goes
-from 205 to 168 lines (170 to 136 non-comment), `examples/pantry` from 117
-to 100 (105 to 88) and loses most of its helper module, each with the same
+from 205 to 169 lines (170 to 137 non-comment), `examples/pantry` from 117
+to 102 (105 to 89) and loses most of its helper module, each with the same
 features as on `main`.
 
 ---
@@ -249,10 +249,11 @@ What changed and why:
 - **`json<T>()`** replaces `json().$type<T>()`, and `$type` goes. The
   evaluator already reads call type arguments for `$type` (`src/eval.rs:891`);
   the same `type_args` on `json` is one line. `$type` on any other column
-  has no compiler effect today (`src/types.rs:260` consults the annotation
-  for JSON columns only) and a scalar brand like `number & { __brand }` does
-  not lower (`src/lower.rs:944` merges object intersections only), so there
-  is nothing to keep. All 4 uses in the repo are on `json()`.
+  is already a build error (`src/eval.rs:2073` allows it on `json` only,
+  whatever the declaration says), and a scalar brand like `number &
+  { __brand }` does not lower (`src/lower.rs:944` merges object
+  intersections only), so there is nothing to keep. All 4 uses in the repo
+  are on `json()`.
 - **`ref("authors")`** replaces `integer().references(() => authors.id, …)`
   (F6). The argument is the target's key under `defineConfig.collections`,
   the same name `db.query.authors`, `hooks` and webhook events use. The
@@ -294,11 +295,12 @@ What changed and why:
   `ref` target. Today's `{ bucket: "name" }` object becomes the one string
   it carries.
 - **`id()` goes** (F3, see §4.9.1). A collection gets `id` automatically.
-  `.primaryKey()` stays for the rare text key (`code: text().primaryKey()`,
-  which implies `.max(191)` like `.unique()` does, so MySQL gets a
-  `VARCHAR` it can key; today the renderer emits an unkeyable `LONGTEXT`
-  for it, `src/migrate.rs:246`),
-  which suppresses the automatic `id` (F29).
+  `.primaryKey()` stays for the rare custom key and is allowed on
+  `integer`, `text`, `email`, `url` and `slug` only (today every builder
+  accepts it, `src/eval.rs:2064`, so `json().primaryKey()` extracts and
+  then renders an unkeyable `LONGTEXT` key, `src/migrate.rs:250`); a text
+  key implies `.max(191)` like `.unique()` does, so MySQL gets a `VARCHAR`
+  it can key. A custom key suppresses the automatic `id` (F29).
 
 Modifiers (13, down from 18):
 
@@ -453,10 +455,14 @@ collection({ ...columns }, {
   collection references get a `uid` column automatically; the compiler can see
   the reference graph. `uid: true` for its own sake has no use in the repo.
 - **`api` goes** (F27). Access rules are the one way to close an endpoint;
-  a closed endpoint answers 403 instead of today's 405. What this loses is
-  independent control of `list` and `get`, in either direction (unlisted but
-  fetchable rows, or a list with no by-id route); nothing in the repo uses
-  it; open question 10 asks whether to keep `api` for it.
+  a closed endpoint answers 403 instead of today's 405. What this loses:
+  independent control of `list` and `get`, in either direction (unlisted
+  but fetchable rows, or a list with no by-id route), and per-channel
+  control, since `api.update: false` closes Zero's own route
+  (`App.php:325`) while wp-admin and core REST still edit, whereas
+  `access.update: false` closes every channel (`CoreAccess`,
+  `EditorSave.php:245`). Nothing in the repo uses either; open question 10
+  asks whether to keep `api` for them.
 - **`target` goes** (F26, §4.12): there is one target. `name` stays (it is
   the plugin slug).
 
@@ -536,12 +542,17 @@ Rules, all enforced at build time:
   explicit.
 - A relation name colliding with a column (`author: text()` beside
   `authorId: ref()`) stays the error it is today.
-- `zero.gen.ts` registers the config's default export (`import type config
-  from "./zero.config"; interface Register { config: typeof config }`),
-  which `Register` already supports for globals and jobs (`index.d.ts:810`);
-  `db.query`, `with` and relation types derive from `config.collections`.
-  The `schema`/`relations` named-export registration goes, so a config need
-  not export its collections map (the rewritten examples don't).
+- `zero.gen.ts` registers the collections map on its own, as today's
+  `schema` registration does (`import type { collections } from
+  "./zero.config"; interface Register { collections: typeof collections }`),
+  and `db.query`, `with` and relation types derive from it. Registering
+  the *config* for this would be circular: an action's return type is
+  inferred from `db.query.posts.findMany()`, `db.query` reads `Register`,
+  and `Register.config` would contain that action. So the config carries
+  only what nothing inside it reads back (globals and jobs, as today,
+  `index.d.ts:810`), and the collections map is a named export the config
+  also passes to `defineConfig` (the rewritten examples export
+  `collections` for this reason; the `relations` registration goes).
 
 ### 4.4 Access
 
@@ -724,9 +735,15 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   auth row, `Db.php:768` → `WpUserStore.php:320`) a transaction is already
   open and the hook joins it, so a later `afterDelete` failure still rolls
   everything back; when it is reached natively (wp-admin, WP-CLI, another
-  plugin) no transaction is open, the hook opens one, and only then does
-  it commit on `deleted_user` or roll back if core fails in between. In
-  both cases the hook locks the account row (`SELECT … FROM wp_users WHERE
+  plugin) the hook asks the connection whether a transaction is open
+  (`SELECT @@in_transaction`, the probe zero-identity already uses,
+  `runtime/identity/src/DB.php:58`): if another plugin's `$wpdb`
+  transaction is open the hook joins it with a savepoint and never issues
+  `START TRANSACTION`, which would silently commit that plugin's work; if
+  none is open the hook opens one, and only then does it commit on
+  `deleted_user` or roll back if core fails in between. `Connection::begin()`
+  gains the same probe, since today it checks Zero's own depth only
+  (`Connection.php:140`). In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
   ID = ? FOR UPDATE`, the same lock a reference write takes on its target
   before it validates existence, which today only checks, `Db.php:705`),
   checks every `"restrict"` column first and refuses the whole deletion
@@ -870,8 +887,17 @@ one, `uid` is a hidden system column: the sync wire carries it
 (`Sync/Wire.php:215`), and the API, hooks and `Row<typeof t>` do not see
 it. The generated client already drops hidden columns (`src/client.rs:388`);
 the compiler's row type does not yet (`columns_row`, `src/types.rs:354`,
-takes every column), so it gains the same filter, listed in §7.3. That
-keeps the editor and the compiler exact without typing anything by
+takes every column), so it gains the same filter, listed in §7.3. The
+runtime needs the matching projection: today hidden columns are stripped
+for API viewers but kept on trusted reads (`Auth/Module.php:255`), and
+hooks receive the decoded storage row as is (`Db.php:736`), so an
+inherited `uid` would reach a hook or an action's returned rows and
+contradict the types. The pipeline therefore strips hidden columns from
+every row it hands to application code (hook arguments, `db.query`
+results in actions and jobs) and keeps them only on its internal reads
+(sync, translation groups, the auth issuer), which is the distinction
+`strip()` already draws between viewers and internal callers. That keeps
+the editor, the compiler and the runtime exact without typing anything by
 registration key, which §4.2 shows would be circular for hook helpers.
 Nothing in the repo reads a reference target's uid, so no form of `Row`
 needs to expose it.
@@ -1016,8 +1042,8 @@ only.
 
 | example | before | after | before (code) | after (code) |
 |---|---|---|---|---|
-| `examples/site/zero.config.ts` | 205 | 168 | 170 | 136 |
-| `examples/pantry/zero.config.ts` | 117 | 100 | 105 | 88 |
+| `examples/site/zero.config.ts` | 205 | 169 | 170 | 137 |
+| `examples/pantry/zero.config.ts` | 117 | 102 | 105 | 89 |
 | `examples/pantry/lib/fields.ts` | 16 | 4 | 12 | 2 |
 
 Beyond the counts, the site example loses: its `STAFF` array, the
@@ -1155,9 +1181,11 @@ export const settings = global({
   social: repeater({ label: text().notNull().max(40), href: url().notNull() }),
 }, { label: "Site settings" });
 
+export const collections = { authors, posts, comments, subscribers, announcements, members };
+
 export default defineConfig({
   name: "site",
-  collections: { authors, posts, comments, subscribers, announcements, members },
+  collections,
   globals: { settings },
   files: { manuscripts },
   locales: ["en", "de"],
@@ -1274,8 +1302,10 @@ async function restock(item: Row<typeof itemFields>) {
   }
 }
 
+export const collections = { locations, items, shoppingList };
+
 export default defineConfig({
-  collections: { locations, items, shoppingList },
+  collections,
   jobs: {
     // A real pantry would push a notification here; this one stamps the list entry.
     notifyLowStock: job({
@@ -1461,11 +1491,12 @@ them.
   `Column.table`; `RelationsOf` derives from `ref` columns' phantom target
   keys instead of `Register.relations`; `One` loses `TOptional`;
   `WriteStructured` treats defaulted sub-fields as optional; `zero.gen.ts`
-  registers `config`, and `locales` separately as today
-  (`Register.locales`, `index.d.ts:1139`): localized collections already
-  contain `Locale` (`LocaleColumns`, `:485`) and the config contains those
-  collections, so deriving `Locale` from the config would be circular.
-  `zero.gen.ts` writes the union from the extracted schema, as it does now.
+  registers `collections`, `config` (globals and jobs) and `locales` as
+  three separate entries (§4.3; `Register.locales`, `index.d.ts:1139`):
+  localized collections already contain `Locale` (`LocaleColumns`, `:485`)
+  and actions read `db.query`, so neither may be derived from the config
+  that contains them. `zero.gen.ts` writes the locale union from the
+  extracted schema, as it does now.
 - **Generated client** (`src/client.rs`): relation names come from the
   column name; `with` typing follows.
 - **Fixtures**: 114 `tests/fixtures/*/zero.config.ts`, the three examples,
@@ -1638,7 +1669,8 @@ inside the options object are closures found in an object literal, as
 7. **`revisions` on tables.** Two fixtures turn revisions on for a
    non-content table. If that is a real need, `revisions: true` stays as
    proposed; if not, `revisions` can fold into `content` entirely and go.
-8. **Branded ids?** `$type` goes because it did nothing outside `json`.
+8. **Branded ids?** `$type` goes because the compiler never allowed it
+   outside `json`.
    Drizzle users sometimes brand scalars (`integer().$type<UserId>()`); that
    would need the subset to lower `number & { __brand }` to `number`. The
    proposal does not add it; say so if branded ids matter.

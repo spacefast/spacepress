@@ -33,7 +33,7 @@ export const members = collection("members", {
   sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text().showIf({ text: "visible" }) } } }).showIf({ plan: "pro" }),
   notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
   addressBy: integer(),
-}, { auth: true, access: { read: "self", update: "self", create: "admin", delete: "admin" } });
+}, { auth: true, access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } });
 
 export const guestbook = collection("guestbook", {
   id: id(),

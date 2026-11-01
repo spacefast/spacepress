@@ -20,7 +20,7 @@ use Zero\Schema;
  *   the member and who may read everything the field holds; structured fields appear only on an
  *   existing user's edit screen (never the add or register forms).
  * - save: a wp-admin profile save (`profile.php`, `user-edit.php`) is one transaction opened before
- *   core updates the user. Each member field the form posts is staged instead of written; the values
+ *   core updates the user. SCF runs before core writes the user, staging member fields; the values
  *   that changed are written in one `Db::update` with the signed-in viewer, so the collection's update
  *   rule, field write rules, validation and hooks decide, as on `/zero/v1`. A refusal rolls the whole
  *   save back (core's user changes included) and answers with Zero's status and message; a save core
@@ -51,7 +51,7 @@ final class ProfileForm
         add_action('edit_user_profile_update', [self::class, 'begin'], 0);
         // Core rejected the user (edit_user returns before profile_update): nothing of the save stays open.
         add_action('user_profile_update_errors', [self::class, 'rejected'], PHP_INT_MAX, 1);
-        // After SCF's own save_user (10), which stages every posted field through pre_update_value.
+        // Core completed the user save; the member write and core changes can commit together.
         add_action('profile_update', [self::class, 'end'], 1000, 1);
         add_filter('acf/pre_load_value', [self::class, 'load'], 20, 3);
         add_filter('acf/pre_update_value', [self::class, 'update'], 5, 4);
@@ -151,10 +151,17 @@ final class ProfileForm
         }
         $plugin->connection()->begin();
         self::$open = ['user' => (int) $userId, 'patch' => []];
+        // Use SCF's real user-save path (nonce, allowed field keys, validation and codecs), once.
+        // It consumes its nonce, so its later profile_update callback does not save again.
+        // Zero must select and authorize the member while core still holds the original row.
+        if (function_exists('acf_get_instance')) {
+            acf_get_instance('ACF_Form_User')->save_user((int) $userId);
+        }
+        self::write();
     }
 
     /**
-     * acf/pre_update_value: inside a profile save, a member field is staged (written by end()); outside
+     * acf/pre_update_value: inside a profile save, a member field is staged for write(); outside
      * one, a structured member field is a trusted Zero write. Either way SCF writes nothing itself.
      */
     public static function update(mixed $check, mixed $value, mixed $postId, mixed $field): mixed
@@ -204,12 +211,9 @@ final class ProfileForm
             $rendered || !$form ? ($row[$ctx['col']] ?? null) : null, $rendered ? $viewer : null, $raw, (string) $field['key']);
     }
 
-    /** profile_update: write the changed member fields through Zero with the viewer, then commit. */
-    public static function end(mixed $userId): void
+    /** Write the changed member fields against the original row, before core changes it. */
+    private static function write(): void
     {
-        if (self::$open === null || self::$open['user'] !== (int) $userId || self::plugin()->connection()->busy()) {
-            return;
-        }
         $plugin = self::plugin();
         $collection = (string) $plugin->schema->auth()['collection'];
         $id = self::$open['user'];
@@ -237,9 +241,18 @@ final class ProfileForm
             $problem = \Zero\App::problem($e);
             wp_die(esc_html($problem['detail']), '', ['response' => $problem['status'], 'code' => $problem['code'], 'back_link' => true]);
         }
+    }
+
+    /** profile_update: core accepted the user; commit both writes together. */
+    public static function end(mixed $userId): void
+    {
+        if (self::$open === null || self::$open['user'] !== (int) $userId || self::plugin()->connection()->busy()) {
+            return;
+        }
+        $id = self::$open['user'];
         self::$open = null;
         try {
-            $plugin->connection()->commit();
+            self::plugin()->connection()->commit();
         } finally {
             self::forget($id);
         }

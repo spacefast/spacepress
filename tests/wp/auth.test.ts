@@ -539,6 +539,14 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.match(other.text, /update members rows/);
   assert.equal((await http("PATCH", `${api}/members/${ju.id}`, { as: "admin", body: { address: { city: "Bergen" } } })).status, 404, "the API's answer to the same write");
   assert.equal(memberRow(ju.id).address, null);
+  // The same request cannot change a core column to make the original row pass its update rule.
+  const denied = await saveProfile(ju.cookie, "profile.php", { display_name: "Unlocked", [acf("address", "address_city")]: "Gated" });
+  assert.equal(denied.status, 403);
+  assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address], ["ju", null]);
+  wp("user", "update", String(ju.id), "--display_name=Unlocked");
+  const allowed = await saveProfile(ju.cookie, "profile.php", { display_name: "Locked again", [acf("address", "address_city")]: "Gated" });
+  assert.equal(allowed.status, 302, allowed.text.slice(0, 400));
+  assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address.city], ["Locked again", "Gated"], "authorization uses the original row even when the saved row no longer matches");
   const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
   assert.equal(own.status, 302, own.text.slice(0, 400));
   assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true, optional: true, prefs: null, district: null });

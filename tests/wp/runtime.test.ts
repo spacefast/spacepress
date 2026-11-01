@@ -80,19 +80,21 @@ test("zero.prune-guests deletes stale guests with what they own, per onDelete, a
   // Rollback must restore the guest's roles in the same request, as well as its SQL rows.
   age(id(pinned), -40);
   const rollbackGuest = await guest();
+  const laterGuest = await guest();
   age(id(rollbackGuest), 40);
+  age(id(laterGuest), 40);
   const restored = JSON.parse(wp("eval", `
-    $original = \\Zero\\db();
+    $original = \\Zero\\Wp\\Runtime::plugin()->app()->db;
     \\Zero\\Db::setInstance(new \\Zero\\Db($original->store(), new \\Zero\\Schema([]), $original->media(), 'wp'));
     add_action('deleted_user', static function ($userId): void {
       if ($userId === ${id(rollbackGuest)}) {
         get_user_meta($userId);
-        throw new \\Zero\\JsError('keep guest');
+        throw new RuntimeException('keep guest');
       }
     });
     $result = \\Zero\\Wp\\Guests::prune();
     $user = new WP_User(${id(rollbackGuest)});
-    echo wp_json_encode([$result, $user->exists(), $user->roles]);
+    echo wp_json_encode([$result, $user->exists(), $user->roles, get_userdata(${id(laterGuest)}) === false]);
   `));
-  assert.deepEqual(restored, [{ pruned: [], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["zero_guest"]]);
+  assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["zero_guest"], true]);
 });

@@ -3,7 +3,15 @@
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/collections"
+		"path": "/"
+	},
+	"dependencies": {
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/schema": "workspace:*",
+		"@zero-admin/zero-client": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

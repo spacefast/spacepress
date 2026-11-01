@@ -1,0 +1,25 @@
+{
+	"name": "@zero-admin/zero-client",
+	"version": "1.0.0",
+	"description": "The admin's access to Zero's REST surface: the boot schema, the viewer, /zero/v1 requests and problem documents.",
+	"type": "module",
+	"wpModule": true,
+	"private": true,
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@wordpress/api-fetch": "catalog:",
+		"@wordpress/block-editor": "catalog:",
+		"@wordpress/core-data": "catalog:",
+		"@wordpress/data": "catalog:",
+		"@wordpress/element": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@wordpress/url": "catalog:",
+		"@zero-admin/boot": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
+		"@zero-admin/schema": "workspace:*"
+	},
+	"license": "GPL-2.0-or-later"
+}

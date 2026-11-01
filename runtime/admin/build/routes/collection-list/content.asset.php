@@ -1,1 +1,1 @@
-<?php return array('name' => 'collection-list', 'dependencies' => array(), 'moduleDependencies' => array(), 'version' => 'b412ba32fd7ced131586');
+<?php return array('name' => 'collection-list', 'dependencies' => array('react', 'react-dom', 'wp-compose', 'wp-element', 'wp-i18n', 'wp-primitives', 'wp-private-apis', 'wp-theme', 'wp-warning'), 'moduleDependencies' => array('@wordpress/a11y', '@wordpress/route', '@zero-admin/admin-toolkit', '@zero-admin/views', '@zero-admin/zero-client'), 'version' => '3a971060a65bcd7f67a3');

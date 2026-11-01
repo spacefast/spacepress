@@ -1,0 +1,1 @@
+<?php return array('name' => 'globals', 'dependencies' => array('react', 'react-dom', 'wp-compose', 'wp-element', 'wp-i18n', 'wp-primitives', 'wp-private-apis', 'wp-theme', 'wp-warning'), 'moduleDependencies' => array('@wordpress/a11y', '@wordpress/route', '@zero-admin/admin-toolkit', '@zero-admin/zero-client'), 'version' => '08bbc7df64bcb830a229');

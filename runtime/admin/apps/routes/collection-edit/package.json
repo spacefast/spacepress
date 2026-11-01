@@ -3,7 +3,20 @@
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/collections/$collection/$slug"
+		"path": "/collections/$collection/$id"
+	},
+	"dependencies": {
+		"@wordpress/core-data": "catalog:",
+		"@wordpress/data": "catalog:",
+		"@wordpress/editor": "catalog:",
+		"@wordpress/element": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/route": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/boot": "workspace:*",
+		"@zero-admin/schema": "workspace:*",
+		"@zero-admin/zero-client": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

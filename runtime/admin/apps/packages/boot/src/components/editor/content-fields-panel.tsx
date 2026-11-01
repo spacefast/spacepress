@@ -5,10 +5,10 @@ import CollectionDocument from '../../../../../routes/collection-edit/stage';
 
 function ContentFieldsPanel() {
 	const params = useParams({
-		from: '/collections/$collection/$slug',
+		from: '/collections/$collection/$id',
 		shouldThrow: false,
 	});
-	if (!params?.collection || !params.slug) return null;
+	if (!params?.collection || !params.id) return null;
 	return (
 		<PluginDocumentSettingPanel
 			name="zero-admin-content-fields"

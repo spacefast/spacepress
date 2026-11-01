@@ -1,0 +1,1 @@
+<?php return array('name' => 'collection-edit', 'dependencies' => array('wp-core-data', 'wp-data', 'wp-editor'), 'moduleDependencies' => array('@zero-admin/admin-toolkit', '@zero-admin/boot', '@zero-admin/zero-client'), 'version' => 'e2b06c9a6fc691cc4acc');

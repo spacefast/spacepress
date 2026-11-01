@@ -1,0 +1,18 @@
+{
+	"name": "@zero-admin/route-globals",
+	"version": "1.0.0",
+	"private": true,
+	"route": {
+		"path": "/globals/$global"
+	},
+	"dependencies": {
+		"@wordpress/element": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/route": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/schema": "workspace:*",
+		"@zero-admin/zero-client": "workspace:*"
+	},
+	"license": "GPL-2.0-or-later"
+}

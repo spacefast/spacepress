@@ -713,6 +713,12 @@ importers:
         specifier: 1.54.1-next.v.202608281122.0
         version: 1.54.1-next.v.202608281122.0
 
+  packages/schema:
+    dependencies:
+      '@zero-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+
   packages/theme:
     dependencies:
       '@wordpress/theme':
@@ -772,6 +778,42 @@ importers:
       sass-embedded:
         specifier: 'catalog:'
         version: 1.103.1
+
+  packages/zero-client:
+    dependencies:
+      '@wordpress/api-fetch':
+        specifier: 7.54.1-next.v.202608281122.0
+        version: 7.54.1-next.v.202608281122.0
+      '@wordpress/block-editor':
+        specifier: 17.0.2-next.v.202608281122.0
+        version: 17.0.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/core-data':
+        specifier: 7.54.2-next.v.202608281122.0
+        version: 7.54.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/data':
+        specifier: 10.54.2-next.v.202608281122.0
+        version: 10.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/element':
+        specifier: 8.6.2-next.v.202608281122.0
+        version: 8.6.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/url':
+        specifier: 4.54.1-next.v.202608281122.0
+        version: 4.54.1-next.v.202608281122.0
+      '@zero-admin/boot':
+        specifier: workspace:*
+        version: link:../boot
+      '@zero-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   routes/attachment:
     dependencies:
@@ -842,13 +884,140 @@ importers:
         specifier: 'catalog:'
         version: 2.1.1
 
-  routes/collection-edit: {}
+  routes/collection-edit:
+    dependencies:
+      '@wordpress/core-data':
+        specifier: 7.54.2-next.v.202608281122.0
+        version: 7.54.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/data':
+        specifier: 10.54.2-next.v.202608281122.0
+        version: 10.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/editor':
+        specifier: 14.54.2-next.v.202608281122.0
+        version: 14.54.2-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/element':
+        specifier: 8.6.2-next.v.202608281122.0
+        version: 8.6.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zero-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@zero-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@zero-admin/zero-client':
+        specifier: workspace:*
+        version: link:../../packages/zero-client
 
-  routes/collection-index: {}
+  routes/collection-index:
+    dependencies:
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zero-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@zero-admin/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@zero-admin/zero-client':
+        specifier: workspace:*
+        version: link:../../packages/zero-client
 
-  routes/collection-list: {}
+  routes/collection-list:
+    dependencies:
+      '@wordpress/element':
+        specifier: 8.6.2-next.v.202608281122.0
+        version: 8.6.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/icons':
+        specifier: 15.5.1-next.v.202608281122.0
+        version: 15.5.1-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zero-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@zero-admin/dataviews':
+        specifier: workspace:*
+        version: link:../../packages/dataviews
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@zero-admin/views':
+        specifier: workspace:*
+        version: link:../../packages/views
+      '@zero-admin/zero-client':
+        specifier: workspace:*
+        version: link:../../packages/zero-client
 
-  routes/collection-new: {}
+  routes/collection-new:
+    dependencies:
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zero-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@zero-admin/zero-client':
+        specifier: workspace:*
+        version: link:../../packages/zero-client
+
+  routes/globals:
+    dependencies:
+      '@wordpress/element':
+        specifier: 8.6.2-next.v.202608281122.0
+        version: 8.6.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/ui':
+        specifier: 0.22.1-next.v.202608281122.0
+        version: 0.22.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zero-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@zero-admin/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@zero-admin/zero-client':
+        specifier: workspace:*
+        version: link:../../packages/zero-client
 
   routes/legacy-admin:
     dependencies:

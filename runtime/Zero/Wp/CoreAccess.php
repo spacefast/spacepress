@@ -173,6 +173,16 @@ final class CoreAccess
     }
 
     /**
+     * Could the viewer's read rule allow anything in this collection? The same test the type-wide
+     * capabilities use; the admin's menu asks it so a collection the viewer can never read has no
+     * entry. A filter or function rule may, and its list may then be empty. Navigation, not the guard.
+     */
+    public static function mayRead(string $collection, Viewer $viewer): bool
+    {
+        return self::ruleMayAllow($collection, 'read', $viewer);
+    }
+
+    /**
      * True unless the rule denies this viewer outright. A filter may allow some rows, and a function
      * rule may allow given the save's data, which EditorSave checks before commit.
      */

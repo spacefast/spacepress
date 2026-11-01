@@ -34,7 +34,10 @@ require_once __DIR__ . '/i18n.php';
 // Legacy routes support in Zero Admin.
 require_once __DIR__ . '/legacy-route.php';
 
-// Default Zero Admin menu registration.
+// The Zero menu (collections, media, globals, classic admin) and the schema in the boot context.
+require_once __DIR__ . '/zero-menu.php';
+
+// Legacy wp-admin menu entries.
 require_once __DIR__ . '/menu.php';
 
 // Build output: registers the modules, routes and fields. Absent until the build is committed.

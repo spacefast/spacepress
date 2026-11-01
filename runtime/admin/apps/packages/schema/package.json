@@ -1,0 +1,14 @@
+{
+	"name": "@zero-admin/schema",
+	"version": "1.0.0",
+	"description": "Zero's schema description (GET /zero/v1/_schema) as DataViews fields, forms, menu entries and visibility rules.",
+	"type": "module",
+	"private": true,
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@zero-admin/dataviews": "workspace:*"
+	},
+	"license": "GPL-2.0-or-later"
+}

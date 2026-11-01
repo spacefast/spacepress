@@ -5,5 +5,13 @@
 	"route": {
 		"path": "/collections/$collection/-/new"
 	},
+	"dependencies": {
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/route": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/schema": "workspace:*",
+		"@zero-admin/zero-client": "workspace:*"
+	},
 	"license": "GPL-2.0-or-later"
 }

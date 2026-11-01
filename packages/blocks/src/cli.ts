@@ -52,7 +52,8 @@ export async function main(argv: readonly string[], io: { stdout: (s: string) =>
   const shown = result.diagnostics.filter((d) => options.verbose || d.severity !== "info");
   const cwd = process.cwd();
   if (options.json) {
-    io.stderr(`${JSON.stringify(shown.map((d) => ({ code: d.code, severity: d.severity, message: d.message, hint: d.hint ?? null, file: d.loc ? path.relative(cwd, d.loc.file) : null, line: d.loc?.line ?? null, column: d.loc?.column ?? null })), null, 2)}\n`);
+    const place = (loc: { file: string; line: number; column: number } | undefined) => (loc ? { file: path.relative(cwd, loc.file), line: loc.line, column: loc.column } : null);
+    io.stderr(`${JSON.stringify(shown.map((d) => ({ code: d.code, severity: d.severity, message: d.message, hint: d.hint ?? null, ...(place(d.loc) ?? { file: null, line: null, column: null }), usedAt: place(d.loc?.usedAt) })), null, 2)}\n`);
   } else {
     for (const diagnostic of shown) io.stderr(`${formatDiagnostic(diagnostic, cwd)}\n`);
   }

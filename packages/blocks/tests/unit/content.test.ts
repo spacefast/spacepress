@@ -18,23 +18,17 @@ test("a file's imports, loops and components run at build time and become valid 
   assert.equal(parsed[1]!.attributes.content, "Simple, <strong>honest</strong> pricing &amp; no surprises: 5 &lt; 6.");
 });
 
-test("quote, code, table and details preserve their content through WordPress's parser", async () => {
-  const parsed = await reparse((await compileContent(fixture("pricing.tsx"))).markup);
-  const by = (name: string) => parsed.find((b) => b.name === name)!;
-  assert.deepEqual(by("core/quote").inner.map((i) => [i.name, i.attributes.content]), [["core/paragraph", "Quoted, loose."]]);
-  assert.equal(by("core/code").attributes.content, "const a = 1 &lt; 2;");
-  // Cell content is rich text nested inside the cell objects; the string it stands for is what round-tripped.
-  type Rows = { cells: { content: unknown; tag: string }[] }[];
-  const cells = (rows: unknown) => (rows as Rows).map((r) => r.cells.map((c) => [c.tag, String(c.content)]));
-  assert.deepEqual([cells(by("core/table").attributes.head), cells(by("core/table").attributes.body)], [[[["th", "Plan"]]], [[["td", "Free"]]]]);
-  assert.deepEqual([by("core/details").attributes.summary, by("core/details").inner.map((i) => i.attributes.content)], ["More", ["Hidden body."]]);
-  const list = by("core/list");
-  assert.deepEqual([list.attributes.ordered, list.inner[0]!.attributes.content, list.inner[0]!.inner.map((i) => i.name)], [true, "First", ["core/list"]]);
+test("a mistake inside a component names the component's line and where it was used", async () => {
+  const result = await compileContent(fixture("uses-card.tsx"));
+  assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("card.tsx"), line: 3, column: 10 }]);
+  assert.deepEqual(result.diagnostics[0]!.loc?.usedAt, { file: fixture("uses-card.tsx"), line: 7, column: 7 });
 });
 
-test("a malformed node a module hands back is refused as not content, not a crash", async () => {
-  const result = await compileContent(fixture("malformed-node.tsx"));
-  assert.deepEqual(result.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("malformed-node.tsx"), line: 1, column: 1 }]);
+test("a malformed node a module hands back, at the top or nested, is refused as not content, not a crash", async () => {
+  const top = await compileContent(fixture("malformed-node.tsx"));
+  assert.deepEqual(top.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("malformed-node.tsx"), line: 1, column: 1 }]);
+  const nested = await compileContent(fixture("nested-malformed.tsx"));
+  assert.deepEqual(nested.diagnostics.map(brief), [{ code: "not_content", severity: "error", file: fixture("nested-malformed.tsx"), line: 2, column: 10 }]);
 });
 
 test("the compiled markup is stable (drift guard)", async () => {

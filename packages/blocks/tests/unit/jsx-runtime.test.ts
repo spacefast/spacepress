@@ -44,11 +44,19 @@ test("jsxDEV attaches the source position to the node, and a component's result 
   const Cover = blockComponent<{ url?: string }>("core/cover");
   const fromComponent = jsxDEV(Cover, { url: "/a" }, undefined, false, source);
   assert.deepEqual(fromComponent.kind === "block" ? fromComponent.loc : null, { file: "/t/a.tsx", line: 7, column: 5 });
-  // A node the component itself located keeps its own, more precise, position.
+  // A node the component itself located keeps its own, more precise, position and remembers the call site.
   const inner = { fileName: "/t/card.tsx", lineNumber: 2, columnNumber: 3 };
-  const Card = () => jsxDEV("section", {}, undefined, false, inner);
+  const Card = () => jsxDEV("section", { children: jsxDEV("p", {}, undefined, false, { ...inner, lineNumber: 3 }) }, undefined, false, inner);
   const fromCard = jsxDEV(Card, {}, undefined, false, source);
-  assert.deepEqual(fromCard.kind === "element" ? fromCard.loc : null, { file: "/t/card.tsx", line: 2, column: 3 });
+  const usedAt = { file: "/t/a.tsx", line: 7, column: 5 };
+  assert.deepEqual(fromCard.kind === "element" ? fromCard.loc : null, { file: "/t/card.tsx", line: 2, column: 3, usedAt });
+  const child = fromCard.kind === "element" ? fromCard.children[0] : null;
+  assert.deepEqual(child?.kind === "element" ? child.loc : null, { file: "/t/card.tsx", line: 3, column: 3, usedAt });
+});
+
+test("a malformed node anywhere in a returned tree is refused as not content", () => {
+  assert.throws(() => toContentNodes({ kind: "element", tag: "p", props: {}, children: [{ kind: "text" }] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
+  assert.throws(() => toContentNodes({ kind: "block", blockName: "core/group", attrs: {}, inner: [null] }), (e: unknown) => e instanceof ContentError && e.code === "not_content");
 });
 
 test("a value that is not content is refused at the element that holds it", () => {

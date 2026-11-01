@@ -89,6 +89,26 @@ test("structural children (figcaption, summary, table sections, rows) are checke
   assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["style_prop_unsupported", 1], ["style_prop_unsupported", 2], ["style_prop_unsupported", 3], ["style_prop_unsupported", 4]]);
 });
 
+test("an image or a rule with children, and a second summary, are refused rather than dropped", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsx("img", { src: "/a.png", children: jsxDEV("span", { children: "lost" }, undefined, false, at(1)) }),
+    jsx("figure", { children: jsx("img", { src: "/a.png", children: jsxDEV("b", {}, undefined, false, at(2)) }) }),
+    jsx("hr", { children: jsxDEV("em", {}, undefined, false, at(3)) }),
+    jsxs("details", { children: [jsx("summary", { children: "one" }), jsxDEV("summary", { style: "x", children: "two" }, undefined, false, at(4)), jsx("p", { children: "body" })] }),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2], ["unmappable_element", 3], ["unmappable_element", 4]]);
+});
+
+test("every table section of a kind contributes its rows, and loose rows follow the body", () => {
+  const row = (cell: string) => jsx("tr", { children: jsx("td", { children: cell }) });
+  const { blocks, diagnostics } = map(jsxs("table", { children: [jsx("tbody", { children: row("a") }), row("loose"), jsx("tbody", { children: row("b") }), jsx("tfoot", { children: row("f") })] }));
+  assert.deepEqual(diagnostics, []);
+  type Rows = { cells: { content: string }[] }[];
+  assert.deepEqual((blocks[0]!.attrs.body as Rows).map((r) => r.cells[0]!.content), ["a", "b", "loose"]);
+  assert.deepEqual((blocks[0]!.attrs.foot as Rows).map((r) => r.cells[0]!.content), ["f"]);
+});
+
 test("a child that a construct has no place for is refused rather than dropped", () => {
   const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
   const { diagnostics } = map([

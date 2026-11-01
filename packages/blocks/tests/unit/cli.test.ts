@@ -57,23 +57,36 @@ test("info diagnostics (an unverified third-party block) show only with --verbos
   assert.match(verbose.stderr, /unverified_block: acme\/testimonials/);
 });
 
-test("usage mistakes exit 2 with the usage text", async () => {
-  assert.equal((await run([])).code, 2);
+test("a missing command or file exits 2 with the usage text", async () => {
+  const none = await run([]);
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /^usage:/);
   assert.equal((await run(["content"])).code, 2);
+});
+
+test("an unknown flag exits 2 and names the flag", async () => {
   const unknown = await run(["content", "x.tsx", "--nope"]);
   assert.equal(unknown.code, 2);
   assert.match(unknown.stderr, /unknown flag --nope/);
-  // `--out` followed by another flag has no path; it must not write a file named "--json".
-  const dir = mkdtempSync(path.join(tmpdir(), "zero-blocks-cli-"));
-  const cwd = process.cwd();
-  try {
+});
+
+test("--out followed by another flag has no path: exit 2 and no file named after the flag", () =>
+  withDir(async (dir) => {
+    const cwd = process.cwd();
     process.chdir(dir);
-    const missing = await run(["content", fixture("pricing.tsx"), "--out", "--json"]);
-    assert.equal(missing.code, 2);
-    assert.match(missing.stderr, /--out needs a path/);
-    assert.deepEqual(readdirSync(dir), []);
-  } finally {
-    process.chdir(cwd);
-    rmSync(dir, { recursive: true, force: true });
-  }
+    try {
+      const missing = await run(["content", fixture("pricing.tsx"), "--out", "--json"]);
+      assert.equal(missing.code, 2);
+      assert.match(missing.stderr, /--out needs a path/);
+      assert.deepEqual(readdirSync(dir), []);
+    } finally {
+      process.chdir(cwd);
+    }
+  }));
+
+test("a diagnostic from inside a component prints where the component was used", async () => {
+  const text = await run(["content", fixture("uses-card.tsx")]);
+  assert.match(text.stderr, /card\.tsx:3:10 style_prop_unsupported: .* \(used at tests\/unit\/fixtures\/uses-card\.tsx:7:7\)/);
+  const json = await run(["content", fixture("uses-card.tsx"), "--json"]);
+  assert.deepEqual((JSON.parse(json.stderr) as { usedAt: unknown }[])[0]!.usedAt, { file: "tests/unit/fixtures/uses-card.tsx", line: 7, column: 7 });
 });

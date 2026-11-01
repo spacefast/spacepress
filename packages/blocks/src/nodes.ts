@@ -15,6 +15,11 @@ export interface SourceLocation {
   file: string;
   line: number;
   column: number;
+  /**
+   * When the node came out of a component, where that component was used.
+   * A diagnostic inside `Card` then reads `card.tsx:2:3 … (used at page.tsx:12:7)`.
+   */
+  usedAt?: SourceLocation | undefined;
 }
 
 /**
@@ -58,8 +63,9 @@ export interface TextNode {
 export type ContentNode = ElementNode | BlockNode | TextNode;
 
 /**
- * Whether a value is a well-formed content node. Values cross from authored
- * code, so each kind's required fields are checked, not just the tag.
+ * Whether a value is a well-formed content node, all the way down. Values
+ * cross from authored code, so each kind's required fields are checked at
+ * every depth, not just the tag at the top.
  */
 export function isContentNode(value: unknown): value is ContentNode {
   if (typeof value !== "object" || value === null) return false;
@@ -68,9 +74,9 @@ export function isContentNode(value: unknown): value is ContentNode {
     case "text":
       return typeof v.text === "string";
     case "element":
-      return typeof v.tag === "string" && isRecord(v.props) && Array.isArray(v.children);
+      return typeof v.tag === "string" && isRecord(v.props) && Array.isArray(v.children) && v.children.every(isContentNode);
     case "block":
-      return typeof v.blockName === "string" && isRecord(v.attrs) && Array.isArray(v.inner);
+      return typeof v.blockName === "string" && isRecord(v.attrs) && Array.isArray(v.inner) && v.inner.every(isContentNode);
     default:
       return false;
   }

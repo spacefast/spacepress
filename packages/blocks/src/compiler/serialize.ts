@@ -281,7 +281,12 @@ function describeValue(value: unknown): string {
   } catch {
     /* circular or otherwise unserializable */
   }
-  return typeof value === "object" && value !== null ? `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "object"}` : String(value);
+  try {
+    return typeof value === "object" && value !== null ? `a ${Object.getPrototypeOf(value)?.constructor?.name ?? "object"}` : String(value);
+  } catch {
+    // Even naming it threw (a getter on the prototype); the kind is all that is safe to say.
+    return `a ${typeof value}`;
+  }
 }
 
 function describeType(schema: AttributeSchema): string {

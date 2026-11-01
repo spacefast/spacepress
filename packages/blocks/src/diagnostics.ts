@@ -37,9 +37,14 @@ export interface Diagnostic {
 
 /** `templates/index.tsx:14:9 unknown_attribute: … Did you mean "format"?` */
 export function formatDiagnostic(diagnostic: Diagnostic, relativeTo?: string): string {
-  const where = diagnostic.loc ? `${displayPath(diagnostic.loc.file, relativeTo)}:${diagnostic.loc.line}:${diagnostic.loc.column} ` : "";
+  const where = diagnostic.loc ? `${formatLocation(diagnostic.loc, relativeTo)} ` : "";
   const hint = diagnostic.hint ? ` ${diagnostic.hint}` : "";
-  return `${where}${diagnostic.code}: ${diagnostic.message}${hint}`;
+  const usedAt = diagnostic.loc?.usedAt ? ` (used at ${formatLocation(diagnostic.loc.usedAt, relativeTo)})` : "";
+  return `${where}${diagnostic.code}: ${diagnostic.message}${hint}${usedAt}`;
+}
+
+export function formatLocation(loc: SourceLocation, relativeTo?: string): string {
+  return `${displayPath(loc.file, relativeTo)}:${loc.line}:${loc.column}`;
 }
 
 function displayPath(file: string, relativeTo?: string): string {

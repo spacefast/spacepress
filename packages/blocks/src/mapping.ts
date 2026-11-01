@@ -217,12 +217,14 @@ class Mapper {
       case "pre":
         return [block("core/code", attrs, this.code(node), node.loc)];
       case "img":
+        this.onlyChildren(node, [], "an image has no content", "Remove the children, or use a <figure> with a <figcaption>.");
         return [block("core/image", { ...this.image(node), ...attrs }, [], node.loc)];
       case "figure":
         return this.figure(node, attrs);
       case "table":
         return [block("core/table", { ...this.table(node), ...attrs }, [], node.loc)];
       case "hr":
+        this.onlyChildren(node, [], "a separator has no content", "Remove the children.");
         return [block("core/separator", attrs, [], node.loc)];
       case "details":
         return [block("core/details", { ...this.details(node), ...attrs }, this.detailsBody(node), node.loc)];
@@ -319,6 +321,7 @@ class Mapper {
     if (!image) {
       return this.unmappable(node, "A <figure> maps to an image block, so it needs an <img> inside it.", "Put an <img> in the figure, or use a block component.");
     }
+    this.onlyChildren(image, [], "an image has no content", "Put a caption in a <figcaption> beside the <img>.");
     const imageAttrs = { ...this.image(image), ...commonAttributes(image.props), ...attrs };
     const [caption] = elementChildren(node, "figcaption");
     if (caption) imageAttrs.caption = renderRichTextHtml(this.rich(this.structural(caption)));
@@ -328,11 +331,13 @@ class Mapper {
 
   private details(node: ElementNode): BlockAttributes {
     const attrs: BlockAttributes = {};
-    const [summary] = elementChildren(node, "summary");
+    const [summary, ...extra] = elementChildren(node, "summary");
     if (summary) attrs.summary = renderRichTextHtml(this.rich(this.structural(summary)));
+    for (const duplicate of extra) this.unmappable(duplicate, "A <details> has one <summary>; this second one has nowhere to go.", "Merge the summaries into one.");
     return attrs;
   }
 
+  /** The body is everything but the summaries: the first became the attribute, the rest were refused in details(). */
   private detailsBody(node: ElementNode): ContentNode[] {
     return this.blocks(node.children.filter((child) => !(isElement(child) && child.tag === "summary")));
   }
@@ -353,9 +358,10 @@ class Mapper {
       return rows;
     };
     const rowsIn = (section: "thead" | "tbody" | "tfoot") => {
-      const [container] = elementChildren(node, section);
-      // A table written without a tbody still has rows; they are body rows.
-      const rows = container ? rowsOf(container) : section === "tbody" ? looseRows : [];
+      // Every section of a kind contributes its rows, in order; rows written
+      // straight into the table are body rows, after any tbody's.
+      const rows = elementChildren(node, section).flatMap((container) => rowsOf(container));
+      if (section === "tbody") rows.push(...looseRows);
       return rows.map((row) => {
         this.structural(row);
         const cells = row.children.filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"));

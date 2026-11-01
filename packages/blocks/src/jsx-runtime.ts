@@ -21,7 +21,8 @@ export const Fragment: unique symbol = Symbol.for("@spacefast/zero-blocks#Fragme
 /** The tag a fragment parks its children under until something splices them. */
 const FRAGMENT_TAG = "";
 
-function isFragmentNode(node: ContentNode): node is ElementNode {
+// A plain boolean on purpose: a type predicate's false branch would exclude every ElementNode.
+function isFragmentNode(node: ContentNode): boolean {
   return node.kind === "element" && node.tag === FRAGMENT_TAG;
 }
 
@@ -42,7 +43,7 @@ function appendChild(into: ContentNode[], child: unknown, loc: SourceLocation | 
     return;
   }
   if (isContentNode(child)) {
-    if (isFragmentNode(child)) into.push(...child.children);
+    if (child.kind === "element" && isFragmentNode(child)) into.push(...child.children);
     else into.push(child);
     return;
   }
@@ -71,13 +72,26 @@ function collapse(nodes: ContentNode[]): ContentNode {
   return { kind: "element", tag: FRAGMENT_TAG, props: {}, children: nodes };
 }
 
-/** Give nodes a component returned the call site's location when they have none. */
+/**
+ * Record the call site on everything a component returned: as the location
+ * of nodes that have none, and as `usedAt` on nodes that already have their
+ * own (the JSX inside the component), so a diagnostic can name both.
+ */
 function locate(node: ContentNode, loc: SourceLocation | undefined): ContentNode {
   if (loc === undefined || node.kind === "text") return node;
-  if (isFragmentNode(node)) {
+  if (node.kind === "element" && isFragmentNode(node)) {
     return { ...node, children: node.children.map((child) => locate(child, loc)) };
   }
-  return node.loc === undefined ? { ...node, loc } : node;
+  if (node.loc === undefined) return { ...node, loc };
+  if (node.loc.usedAt !== undefined || sameLocation(node.loc, loc)) return node;
+  const at = { ...node.loc, usedAt: loc };
+  return node.kind === "element"
+    ? { ...node, loc: at, children: node.children.map((child) => locate(child, loc)) }
+    : { ...node, loc: at, inner: node.inner.map((child) => locate(child, loc)) };
+}
+
+function sameLocation(a: SourceLocation, b: SourceLocation): boolean {
+  return a.file === b.file && a.line === b.line && a.column === b.column;
 }
 
 /** What the TSX transform passes as the fifth argument of `jsxDEV`. */

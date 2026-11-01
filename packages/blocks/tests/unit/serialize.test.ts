@@ -47,6 +47,36 @@ test("a query loop with inherit and post blocks (no save of their own) is valid 
   assert.deepEqual([q!.attributes.query, q!.inner[0]!.inner.map((i) => [i.name, i.attributes.level])], [{ inherit: true }, [["core/post-title", 1]]]);
 });
 
+test("a quote's inner paragraph survives the round trip", async () => {
+  const [q] = await reparse((await serializeBlocks([block("core/quote", {}, [block("core/paragraph", {}, [text("Quoted.")])])])).markup);
+  assert.deepEqual([q!.isValid, q!.inner.map((i) => [i.name, i.attributes.content])], [true, [["core/paragraph", "Quoted."]]]);
+});
+
+test("a code block keeps its text with markup characters escaped", async () => {
+  const [c] = await reparse((await serializeBlocks([block("core/code", {}, [text("const a = 1 < 2;")])])).markup);
+  assert.deepEqual([c!.isValid, c!.attributes.content], [true, "const a = 1 &lt; 2;"]);
+});
+
+test("a table's head and body cells survive as structured attributes", async () => {
+  const table = block("core/table", { head: [{ cells: [{ content: "Plan", tag: "th" }] }], body: [{ cells: [{ content: "Free", tag: "td" }] }], foot: [] });
+  const [t] = await reparse((await serializeBlocks([table])).markup);
+  type Rows = { cells: { content: unknown; tag: string }[] }[];
+  const cells = (rows: unknown) => (rows as Rows).map((r) => r.cells.map((c) => [c.tag, String(c.content)]));
+  assert.deepEqual([t!.isValid, cells(t!.attributes.head), cells(t!.attributes.body)], [true, [[["th", "Plan"]]], [[["td", "Free"]]]]);
+});
+
+test("a details block keeps its summary attribute and its body blocks", async () => {
+  const [d] = await reparse((await serializeBlocks([block("core/details", { summary: "More" }, [block("core/paragraph", {}, [text("Hidden.")])])])).markup);
+  assert.deepEqual([d!.isValid, d!.attributes.summary, d!.inner.map((i) => i.attributes.content)], [true, "More", ["Hidden."]]);
+});
+
+test("a nested list rides inside its list item beside the item's text", async () => {
+  const tree = block("core/list", { ordered: true }, [block("core/list-item", {}, [text("First"), block("core/list", {}, [block("core/list-item", {}, [text("Nested")])])])]);
+  const [l] = await reparse((await serializeBlocks([tree])).markup);
+  const item = l!.inner[0]!;
+  assert.deepEqual([l!.isValid, item.isValid, item.attributes.content, item.inner.map((i) => [i.name, i.inner[0]!.attributes.content])], [true, true, "First", [["core/list", "Nested"]]]);
+});
+
 test("rich text given to a block with no body becomes a paragraph inside it", async () => {
   const [cover] = await reparse((await serializeBlocks([block("core/cover", { url: "/bg.png" }, [text("Over")])])).markup);
   assert.equal(cover!.isValid, true);

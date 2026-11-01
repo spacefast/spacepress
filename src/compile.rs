@@ -2019,11 +2019,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     UnOp::Neg => {
                         self.need_num(&v, x.span, "`-`")?;
-                        let ty = match v.ty {
-                            Ty::NumLit(n) | Ty::FreshNumLit(n) => Ty::FreshNumLit(-n),
-                            _ => Ty::Num,
-                        };
-                        Out::new(format!("-{}", v.wrapped()), ty)
+                        match v.ty {
+                            Ty::NumLit(n) | Ty::FreshNumLit(n) => {
+                                Out::new(format!("-{}", v.wrapped()), Ty::FreshNumLit(-n))
+                            }
+                            // Js::neg: the operand as a JS number, like the binary operators.
+                            _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
+                        }
                     }
                     UnOp::Plus => {
                         if v.ty.is_num() {
@@ -2109,7 +2111,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Update { inc, prefix, target } => {
                 let t = self.place(target)?.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
-                // Past ±2^53 the variable becomes a double, as in JS (`Js::n`). Postfix returns the old value.
+                // Past ±2^53 the variable becomes a double, as in JS (`Js::add`). Postfix returns the old value.
                 let d = if *inc { "1" } else { "-1" };
                 Out::atom(
                     format!(
@@ -2197,8 +2199,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match op {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
-                    // Js::n: an integer result beyond ±2^53 rounds to a double, as JS numbers do.
-                    Out::atom(format!("\\Zero\\Js::n({} + {})", a.wrapped(), b.wrapped()), Ty::Num)
+                    // Js::add: operands and result as JS numbers (exact ints past ±2^53 round, as in JS).
+                    Out::atom(format!("\\Zero\\Js::add({}, {})", a.php, b.php), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
                     let (x, y) = (self.to_string_php(&a, span)?, self.to_string_php(&b, span)?);
                     Out::new(format!("{x} . {y}"), Ty::Str)
@@ -2224,7 +2226,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Exp => Out::atom(format!("\\Zero\\Js::pow({}, {})", a.php, b.php), Ty::Num),
-                    _ => Out::atom(format!("\\Zero\\Js::n({} {sym} {})", a.wrapped(), b.wrapped()), Ty::Num),
+                    BinOp::Sub => Out::atom(format!("\\Zero\\Js::sub({}, {})", a.php, b.php), Ty::Num),
+                    _ => Out::atom(format!("\\Zero\\Js::mul({}, {})", a.php, b.php), Ty::Num),
                 }
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {

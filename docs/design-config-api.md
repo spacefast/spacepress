@@ -18,7 +18,11 @@ This proposal is written for that Zero: every default below is a WordPress
 primitive (post status, roles and capabilities, SCF field types,
 attachments, `wp_users`), and §4.12 lists what having one target lets the
 config drop outright. Line references to the compiler are to `main` at
-`b45e586`, before the removal.
+`b45e586`, before the removal. References to the runtime (`runtime/Zero`,
+`runtime/identity`) were each checked against `main` when the passage was
+written and name the function beside the line; `main` moved during review,
+so numbers in the earlier sections are from `b45e586` and in the later
+ones from up to `1de1fae2`.
 
 Three sentences of the result:
 
@@ -343,7 +347,16 @@ Modifiers (13, down from 18):
   over the implication, in either order (`.nullable().default(x)` and
   `.default(x).nullable()` are the same column: nullable, default `x` when
   absent). `.default(null)` is a build error ("a null default is the
-  absence of one; drop it or use `.nullable()`"). `.notNull().default(x)`
+  absence of one; drop it or use `.nullable()`"), and so is `.default("")`
+  on a text kind of a content or auth collection: WordPress meta has no
+  empty string, the reads fold it to `null` (`NULLIF(meta_value, '')`,
+  `WpPostStore.php:70`, `WpUserStore.php:185`; `Scf::fromScf`,
+  `Scf.php:370`), so such a column would type non-null and read `null`,
+  and no backfill can write a value the codec will not return. The error
+  says so ("an empty text default is read as null on WordPress meta; use a
+  non-empty default or `.nullable()`"); on a table, whose columns store
+  `""` as `""`, it is accepted. No config in the repo uses it.
+  `.notNull().default(x)`
   stays valid and means the same as `.default(x)`. The explicit words never
   resolve by order: `.nullable()` together with `.notNull()` or
   `.primaryKey()` in one chain is a build error at the second of them
@@ -1591,7 +1604,13 @@ checked; the reverse move (`author: false` on a column that was
 designation (§4.9.5) is recorded in the snapshot the same way, an
 inferred change is refused, and an explicit change generates the copy
 between `post_content` and the column's meta in the direction the config
-moved; `ref()`
+moved, for the live posts and for their revisions and autosaves alike
+(the children of the post type with `post_parent` in the collection; a
+revision carries both its own `post_content` and the copied meta,
+`WpPostStore.php:539`, and revision reads apply the collection's current
+mapping, `:190`, so an uncopied revision would show the old body under
+the new column's name and `restoreRevision` would write it into the live
+row); `ref()`
 columns keep their names but the inferred `onDelete` (`"restrict"` on a
 NOT NULL FK that had none) is a changed constraint; `.default()` implying
 NOT NULL turns a nullable column NOT NULL, which is new migration work:
@@ -1608,16 +1627,16 @@ format (`DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')` trimmed to
 milliseconds, through `UPDATE … WHERE col IS NULL`), then constrained; the
 generated SQL is the same for the same schema change whenever it is built,
 and the value is right whenever it is applied. MySQL's bare
-`CURRENT_TIMESTAMP` is not Zero's timestamp format (`Schema.php:527` does
+`CURRENT_TIMESTAMP` is not Zero's timestamp format (`Schema::decode`, `Schema.php:574`, does
 not normalize it), which is why the expression formats it. The SQL form
 covers table columns only; the same nullable-to-NOT NULL transition also
 reaches storage the snapshot does not constrain: a content collection's
 postmeta and an auth collection's usermeta (where a missing or `NULL` meta
-reads as `null`, `Schema.php:521` returns stored nulls unchanged), the
+reads as `null`, `Schema::decode` returns stored nulls unchanged, `Schema.php:576`), the
 options row a global lives in, and sub-fields of `group`, `repeater` and
 `blocks`, whose constraints the snapshot omits (`src/migrate.rs:103` keeps
 the parent column only) and which `fillFields` reads back as `null` when
-absent (`:548`). Without more, a `.default(x)` sub-field types as non-null
+absent (`:604`). Without more, a `.default(x)` sub-field types as non-null
 while old rows still return `null`. So the migration step compares the
 full declared shape, not the SQL snapshot alone: the snapshot gains the
 nullability of meta-backed columns, global fields and structured
@@ -1806,8 +1825,12 @@ Three places, all small:
   `src/types.rs:354`, matching the client's at `src/client.rs:388`), and
   enum columns type as the union of their literals (`select(["a","b"])` is
   `"a" | "b"`, a multiple select `("a" | "b")[]`) instead of `string` and
-  `string[]` (`col_base`, `src/types.rs:260`); the `Ty` model already has
-  `StrLit` and unions, so this is the one place that widens.
+  `string[]` (`col_base`, `src/types.rs:260`), and a block item's `layout`
+  types as the literal layout name, which the declarations already give it
+  (`BlockValue`, `index.d.ts:314`) and the compiler widens to `string`
+  (`src/types.rs:285`, beside the marker it already adds so
+  `item.layout === "hero"` narrows); the `Ty` model already has `StrLit`
+  and unions, so these are the two places that widen.
 
 Nothing else is new to the evaluator: `select(array, opts)` is positional
 arguments it already handles; `collection(cols, opts)` drops an argument;

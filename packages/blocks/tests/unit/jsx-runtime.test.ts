@@ -83,6 +83,13 @@ test("a key that stays in props after a spread is ignored, as a lifted key is", 
   assert.deepEqual(fromComponent.kind === "block" ? fromComponent.attrs : null, {});
 });
 
+test("a node without a position of its own takes the position of the element it sits in", () => {
+  const source = { fileName: "/t/a.tsx", lineNumber: 4, columnNumber: 5 };
+  const section = jsxDEV("section", { children: createElement("p", { style: "x" }, "Hello") }, undefined, false, source);
+  const child = section.kind === "element" ? section.children[0] : null;
+  assert.deepEqual(child?.kind === "element" ? child.loc : null, { file: "/t/a.tsx", line: 4, column: 5 });
+});
+
 test("the classic transform's createElement builds the same node as jsx", () => {
   assert.deepEqual(createElement("p", { class: "lead" }, "a", jsx("em", { children: "b" })), jsx("p", { class: "lead", children: ["a", jsx("em", { children: "b" })] }));
   assert.deepEqual(createElement("hr", null), jsx("hr", {}));

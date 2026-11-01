@@ -25,6 +25,11 @@ test("a key after a spread compiles like any other paragraph", async () => {
   assert.deepEqual([paragraph!.name, paragraph!.attributes.className, paragraph!.attributes.content], ["core/paragraph", "lead", "Row a"]);
 });
 
+test("a mistake on an element the classic fallback built is located at the enclosing element", async () => {
+  const result = await compileContent(fixture("spread-key-style.tsx"));
+  assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("spread-key-style.tsx"), line: 4, column: 5 }]);
+});
+
 test("a mistake inside a component names the component's line and where it was used", async () => {
   const result = await compileContent(fixture("uses-card.tsx"));
   assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("card.tsx"), line: 3, column: 10 }]);

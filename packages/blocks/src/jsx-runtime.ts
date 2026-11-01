@@ -26,6 +26,15 @@ function isFragmentNode(node: ContentNode): boolean {
   return node.kind === "element" && node.tag === FRAGMENT_TAG;
 }
 
+/**
+ * A node with no position of its own (the classic transform's `createElement`
+ * gets none from esbuild) takes the nearest one: the element it sits in.
+ */
+function nearest(node: ContentNode, loc: SourceLocation | undefined): ContentNode {
+  if (node.kind === "text" || node.loc !== undefined || loc === undefined) return node;
+  return { ...node, loc };
+}
+
 function appendChild(into: ContentNode[], child: unknown, loc: SourceLocation | undefined): void {
   // Nullish and booleans are how JSX spells "nothing here". Numbers are
   // content and stringify; `0` is a real character, not a falsy hole.
@@ -43,8 +52,8 @@ function appendChild(into: ContentNode[], child: unknown, loc: SourceLocation | 
     return;
   }
   if (isContentNode(child)) {
-    if (child.kind === "element" && isFragmentNode(child)) into.push(...child.children);
-    else into.push(child);
+    if (child.kind === "element" && isFragmentNode(child)) for (const entry of child.children) into.push(nearest(entry, loc));
+    else into.push(nearest(child, loc));
     return;
   }
   const what = typeof child === "object" ? (Object.getPrototypeOf(child)?.constructor?.name ?? "object") : typeof child;
@@ -82,10 +91,11 @@ function locate(node: ContentNode, loc: SourceLocation | undefined): ContentNode
   if (node.kind === "element" && isFragmentNode(node)) {
     return { ...node, children: node.children.map((child) => locate(child, loc)) };
   }
-  if (node.loc !== undefined && (node.loc.usedAt !== undefined || sameLocation(node.loc, loc))) return node;
-  // A root the component built without JSX (`Block({...})`) takes the call site as its own
-  // location; the JSX under it still has positions of its own, which get the call site as `usedAt`.
-  const at = node.loc === undefined ? loc : { ...node.loc, usedAt: loc };
+  if (node.loc?.usedAt !== undefined) return node;
+  // A root the component built without JSX (`Block({...})`) has the call site as its own location
+  // (none, or the nearest one); the JSX under it still has positions of its own, which get the
+  // call site as `usedAt`.
+  const at = node.loc === undefined || sameLocation(node.loc, loc) ? loc : { ...node.loc, usedAt: loc };
   return node.kind === "element"
     ? { ...node, loc: at, children: node.children.map((child) => locate(child, loc)) }
     : { ...node, loc: at, inner: node.inner.map((child) => locate(child, loc)) };

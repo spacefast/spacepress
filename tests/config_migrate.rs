@@ -861,3 +861,45 @@ export default capsule({ collections: { notes: { fields: { title: { kind: "text"
     );
     assert_eq!(error["pointer"], "/collections/notes/fields/related/multiple");
 }
+
+#[test]
+fn payload_presentation_metadata_is_preserved_and_unknown_admin_behavior_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let input = tmp.path().join("payload.json");
+    let document = json!({"collections": [{"slug": "notes", "fields": [{
+        "name": "title", "type": "text", "required": true, "label": "Headline",
+        "admin": {"description": "Shown in search", "placeholder": "Write a title", "width": "50%"}
+    }]}]});
+    std::fs::write(&input, document.to_string()).unwrap();
+    let project = tmp.path().join("imported");
+    let out = migrate("payload", &input, &project.join("zero.config.ts"));
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| { e["pointer"] == "/collections/0/fields/0/admin/width" && e["outcome"] == "mapped" })
+    );
+    let built = build_fixture(&project, "wp");
+    let schema = schema(&built.join("plugins/zero-app-imported/zero/app/schema.php"));
+    assert_eq!(
+        schema["collections"]["notes"]["columns"]["title"]["ui"],
+        json!({"label": "Headline", "help": "Shown in search", "placeholder": "Write a title", "width": 50})
+    );
+
+    for admin in [
+        json!({"readOnly": true}),
+        json!({"width": "calc(50%)"}),
+        json!({"width": "0%"}),
+        json!({"description": false}),
+    ] {
+        let mut invalid = document.clone();
+        invalid["collections"][0]["fields"][0]["admin"] = admin;
+        std::fs::write(&input, invalid.to_string()).unwrap();
+        let out = migrate("payload", &input, &tmp.path().join("refused/zero.config.ts"));
+        assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+        assert!(!tmp.path().join("refused/zero.config.ts").exists());
+    }
+}

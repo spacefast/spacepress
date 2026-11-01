@@ -41,6 +41,25 @@ final class Js
         };
     }
 
+    /** URI table adapted from ts2php; see URI-ENCODING-NOTICE.txt. */
+    public static function encodeURI(string $value): string
+    {
+        return strtr(self::encodeURIComponent($value), [
+            '%3B' => ';', '%2C' => ',', '%2F' => '/', '%3F' => '?', '%3A' => ':',
+            '%40' => '@', '%26' => '&', '%3D' => '=', '%2B' => '+', '%24' => '$', '%23' => '#',
+        ]);
+    }
+
+    public static function encodeURIComponent(string $value): string
+    {
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            throw new JsError('URI malformed', 'URIError');
+        }
+
+        // rawurlencode alone incorrectly escapes these JavaScript URI marks.
+        return strtr(rawurlencode($value), ['%21' => '!', '%27' => "'", '%28' => '(', '%29' => ')', '%2A' => '*']);
+    }
+
     public static function numStr(int|float $n): string
     {
         if (is_int($n)) {

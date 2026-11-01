@@ -126,12 +126,11 @@ final class Scf
         $type = $def['type'];
         $field = [
             'key' => $key,
-            'label' => self::label($col),
+            'label' => $def['ui']['label'] ?? self::label($col),
             'name' => $name,
-            'instructions' => '',
             'required' => Schema::isRequired($def) ? 1 : 0,
             'conditional_logic' => 0,
-            'wrapper' => ['width' => '', 'class' => '', 'id' => ''],
+            'wrapper' => ['width' => $def['ui']['width'] ?? '', 'class' => '', 'id' => ''],
             'zero' => $def + ['name' => $col],
         ];
         $choices = static fn (array $values) => array_combine($values, $values);
@@ -171,6 +170,13 @@ final class Scf
                 'layouts' => self::layouts($key, $def['layouts'] ?? [], $sub)],
             default => throw new \LogicException("No SCF field for column type '$type'"),
         };
+        if (isset($def['ui']['help'])) {
+            $field['instructions'] = htmlspecialchars($def['ui']['help'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+        $field['instructions'] ??= '';
+        if (isset($def['ui']['placeholder']) && in_array($field['type'], ['text', 'textarea', 'email', 'url', 'number', 'select'], true)) {
+            $field['placeholder'] = $def['ui']['placeholder'];
+        }
         foreach (self::$fieldFilters as $fn) {
             $field = $fn($field, $def, $col, $spec);
         }

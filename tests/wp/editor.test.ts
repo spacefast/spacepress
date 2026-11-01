@@ -168,3 +168,27 @@ test("core /wp/v2 saves follow the field access /zero/v1 enforces", async () => 
   assert.equal(allowed.status, 200, JSON.stringify(allowed.json));
   assert.equal((await ok("GET", `/field_staff/${id}`, { as: "admin" })).salary, 42);
 });
+
+test("presentation metadata survives native SCF registration with stable nested keys", () => {
+  const result: unknown = JSON.parse(wp("eval", `
+    $schema = \\Zero\\Wp\\Plugin::instance()->schema;
+    $def = ['type' => 'group', 'ui' => ['label' => 'Search preview'], 'fields' => [
+      'summary' => ['type' => 'text', 'ui' => [
+        'label' => 'Search title', 'help' => '<b>Plain text</b>', 'placeholder' => 'Write a title', 'width' => 50
+      ]]
+    ]];
+    $field = \\Zero\\Wp\\Scf::fieldFor($schema, 'field_zero_ui_probe', 'zero_ui_probe', 'probe', $def, []);
+    acf_add_local_field_group(['key' => 'group_zero_ui_probe', 'title' => 'Presentation test', 'fields' => [$field]]);
+    $parent = acf_get_field('field_zero_ui_probe');
+    $child = acf_get_field('field_zero_ui_probe_summary');
+    echo wp_json_encode([
+      'parentLabel' => $parent['label'], 'key' => $child['key'], 'name' => $child['name'],
+      'label' => $child['label'], 'help' => $child['instructions'],
+      'placeholder' => $child['placeholder'], 'width' => (int) $child['wrapper']['width']
+    ]);
+  `));
+  assert.deepEqual(result, {
+    parentLabel: "Search preview", key: "field_zero_ui_probe_summary", name: "summary",
+    label: "Search title", help: "&lt;b&gt;Plain text&lt;/b&gt;", placeholder: "Write a title", width: 50,
+  });
+});

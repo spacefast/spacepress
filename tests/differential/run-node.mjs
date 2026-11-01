@@ -1,5 +1,5 @@
 // Usage: node run-node.mjs <config.ts>
-// Prints {"<case>": {"data": ...} | {"error": message}} as JSON for every action (called with
+// Prints a versioned completion envelope containing {"<case>": {"data": ...} | {"error": message}} for every action (called with
 // input {} and HookCtx CTXS.hook) and every collection access rule, column `.access` rule and
 // `.validate` closure (called with each fake ctx in ACCESS_CTXS / FIELD_CTXS / each value in VALUES).
 import { register } from "node:module";
@@ -40,4 +40,5 @@ for (const c of Object.values(config.schema ?? {})) {
     }
   }
 }
-process.stdout.write(JSON.stringify(out));
+if (Object.keys(out).length === 0) throw new Error("differential oracle executed no cases");
+process.stdout.write(JSON.stringify({ schema: "zero-differential", version: 1, complete: true, cases: out }));

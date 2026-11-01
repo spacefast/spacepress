@@ -1,0 +1,9 @@
+[
+  "https://mozilla.org/?x=шеллы",
+  ";,/?:@&=+$#",
+  "-_.!~*'()",
+  "ABC abc 123",
+  "https://example.test/é😀?q=a%20b#part",
+  "",
+  "\u0000\n\t"
+]

@@ -2385,11 +2385,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Value::Builtin(Builtin::Db) => {
                 if self.fx().no_db {
-                    return err_help(
-                        span,
-                        "access rules can't query; put that in a hook",
-                        "return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`",
-                    );
+                    return Err(Diag::new(span, "access rules can't query; put that in a hook")
+                        .code(crate::diag::Code::AccessQuery)
+                        .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
                 }
                 Ok(Out::atom("\\Zero\\db()", Ty::Db))
             }
@@ -3561,6 +3559,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let argv = self.plain_args(args)?;
+        if matches!(g, "encodeURI" | "encodeURIComponent") && argv.len() != 1 {
+            return err(span, format!("`{g}` needs exactly one string argument"));
+        }
         let a0 = argv.first();
         Ok(match (g, a0) {
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
@@ -3572,6 +3573,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
+            ("encodeURI" | "encodeURIComponent", Some(v)) => {
+                Out::atom(format!("\\Zero\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
+            }
             ("parseInt", Some(v)) => Out::atom(
                 format!(
                     "\\Zero\\Js::parseInt({})",
@@ -5297,7 +5301,6 @@ fn check_aliasing(f: &Func) -> Result<()> {
             _ => None,
         }
     }
-    const MUTATORS: &[&str] = &["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill"];
     impl Walk {
         fn mutated(&self, name: &str, span: Span) -> Result<()> {
             if let Some(at) = self.stored.get(name) {
@@ -5358,7 +5361,7 @@ fn check_aliasing(f: &Func) -> Result<()> {
                 }
                 ExprKind::Call { callee, args, .. } => {
                     if let ExprKind::Member { obj, prop, .. } = &callee.kind
-                        && MUTATORS.contains(&prop.as_str())
+                        && crate::builtins::array_mutation(prop).is_some()
                         && let Some(r) = root(obj)
                     {
                         self.mutated(r, e.span)?;

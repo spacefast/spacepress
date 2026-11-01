@@ -12,6 +12,7 @@ pub type P<T> = Box<T>;
 #[derive(Debug)]
 pub struct Module {
     pub id: usize,
+    pub file: u32,
     pub path: std::path::PathBuf,
     pub body: Vec<Stmt>,
 }

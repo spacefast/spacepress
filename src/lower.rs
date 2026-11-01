@@ -29,7 +29,11 @@ impl Lowerer {
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}"));
+        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}")).code(if what == "classes" {
+            crate::diag::Code::Classes
+        } else {
+            crate::diag::Code::Unsupported
+        });
         if !help.is_empty() {
             d = d.help(help);
         }
@@ -42,6 +46,21 @@ impl Lowerer {
             self.top_stmt(s, &mut out)?;
         }
         Ok(out)
+    }
+
+    /// Recovery is for diagnostics only. Callers must reject the whole program
+    /// if any declaration failed; an incomplete declaration is never retained.
+    pub fn program_diagnostics(&self, p: &a::Program<'_>) -> (Vec<Stmt>, Vec<Diag>) {
+        let mut out = Vec::new();
+        let mut diagnostics = Vec::new();
+        for statement in &p.body {
+            let mut declaration = Vec::new();
+            match self.top_stmt(statement, &mut declaration) {
+                Ok(()) => out.extend(declaration),
+                Err(diag) => diagnostics.push(diag.phase(crate::diag::Code::Unsupported)),
+            }
+        }
+        (out, diagnostics)
     }
 
     fn top_stmt(&self, s: &a::Statement<'_>, out: &mut Vec<Stmt>) -> Result<()> {

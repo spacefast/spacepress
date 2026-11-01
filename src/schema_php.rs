@@ -144,6 +144,12 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if !c.access.is_empty() {
         parts.push(format!("'access' => {}", access_map(&c.access)));
     }
+    if let Some(ui) = &c.ui {
+        parts.push(format!(
+            "'ui' => {}",
+            php_json(&serde_json::to_value(ui).expect("field UI serializes"))
+        ));
+    }
     if let Some(f) = &c.show_if {
         parts.push(format!("'showIf' => {}", php_json(f)));
     }

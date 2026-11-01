@@ -379,7 +379,7 @@ fn reference(
     let required = boolean(o, "required", at)?.unwrap_or(false);
     let column = format!("{name}Id");
     ident(&column, at)?;
-    let builder = if required {
+    let mut builder = if required {
         format!(
             "integer().notNull().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"restrict\" }})"
         )
@@ -392,10 +392,11 @@ fn reference(
         if !label.is_string() {
             return Err(fail(&pointer(at, "label"), "expected editor text"));
         }
+        builder.push_str(&format!(".ui({{ label: {label} }})"));
         report.push(entry(
             &pointer(at, "label"),
-            "review",
-            "Field editor text needs a target admin mapping; the stored field is preserved.",
+            "mapped",
+            "Reference presentation label -> .ui()",
         ));
     }
     report.push(entry(
@@ -460,7 +461,7 @@ fn field(
     let base = match source {
         Source::Zero => vec!["kind", "label", "required"],
         Source::Emdash => vec!["slug", "type", "label", "required", "defaultValue", "unique"],
-        Source::Payload => vec!["name", "type", "label", "required", "defaultValue", "unique"],
+        Source::Payload => vec!["name", "type", "label", "admin", "required", "defaultValue", "unique"],
         Source::Sanity => vec!["name", "type", "title", "description", "initialValue", "validation"],
     };
     let mut allowed = base;
@@ -648,18 +649,63 @@ fn field(
     if matches!(source, Source::Payload) && kind == "email" && !required {
         report.push(entry(at, "review", "Zero email validation rejects optional empty strings that Payload accepts; use null/absence or port the empty-value behavior before deployment."));
     }
-    // Field labels/description affect editor UI, not stored values; report them.
+    let mut ui = Map::new();
     for key in ["label", "title", "description"] {
         if let Some(value) = o.get(key) {
             if !value.is_string() {
                 return Err(fail(&pointer(at, key), "expected editor text"));
             }
+            ui.insert(
+                if key == "description" { "help" } else { "label" }.into(),
+                value.clone(),
+            );
             report.push(entry(
                 &pointer(at, key),
-                "review",
-                "Field editor text needs a target admin mapping; the stored field is preserved.",
+                "mapped",
+                "Field presentation metadata -> .ui()",
             ));
         }
+    }
+    if let Some(admin) = o.get("admin") {
+        let admin_at = pointer(at, "admin");
+        let admin = object(admin, &admin_at)?;
+        keys(admin, &["description", "placeholder", "width"], &admin_at)?;
+        for key in ["description", "placeholder", "width"] {
+            if let Some(value) = admin.get(key) {
+                let value = value
+                    .as_str()
+                    .ok_or_else(|| fail(&pointer(&admin_at, key), "expected a string"))?;
+                let target = match key {
+                    "description" => "help",
+                    "width" => "width",
+                    _ => "placeholder",
+                };
+                let value = if key == "width" {
+                    let width = value
+                        .strip_suffix('%')
+                        .and_then(|v| v.parse::<u8>().ok())
+                        .filter(|n| (1..=100).contains(n))
+                        .ok_or_else(|| {
+                            fail(
+                                &pointer(&admin_at, key),
+                                "width must be an integer percentage from 1% to 100%",
+                            )
+                        })?;
+                    json!(width)
+                } else {
+                    json!(value)
+                };
+                ui.insert(target.into(), value);
+                report.push(entry(
+                    &pointer(&admin_at, key),
+                    "mapped",
+                    "Field presentation metadata -> .ui()",
+                ));
+            }
+        }
+    }
+    if !ui.is_empty() {
+        builder.push_str(&format!(".ui({})", Value::Object(ui)));
     }
     report.push(entry(at, "mapped", format!("{kind} -> {builder}")));
     Ok((builder, required && matches!(kind, "string" | "text" | "textarea")))

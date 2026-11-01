@@ -70,6 +70,10 @@ const run = (handler: () => unknown) => action({ input: {}, handler });
 export default defineConfig({
   schema: { n, docs, fieldDocs: fieldDocs() },
   actions: {
+    uriEncoding: run(() => {
+      const values = ["https://mozilla.org/?x=шеллы", ";,/?:@&=+$#", "-_.!~*'()", "ABC abc 123", "é😀", "%20"];
+      return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
+    }),
     hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.target] }),
     numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
     // JS numbers are doubles: integer arithmetic past ±2^53 rounds, where PHP ints would stay exact.

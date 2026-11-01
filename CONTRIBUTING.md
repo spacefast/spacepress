@@ -2,7 +2,11 @@
 
 This is the developer's view of the repo: how the compiler works, how to run
 the suites, and where things live. The [README](README.md) is the front page.
-Zero is WordPress-only; document and test only what runs there.
+
+Zero ships for WordPress only. The compiler still carries a second, never
+released target that a separate change is removing; until it lands, that
+code is not documented here, and new work should neither depend on it nor
+extend it.
 
 ## Toolchain
 

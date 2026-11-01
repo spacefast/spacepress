@@ -29,7 +29,6 @@ final class Db
         private readonly Store $store,
         private readonly Schema $schema,
         private readonly Media $media,
-        private readonly string $target = 'standalone',
     ) {
     }
 
@@ -75,11 +74,6 @@ final class Db
         return $this->media;
     }
 
-    public function target(): string
-    {
-        return $this->target;
-    }
-
     /** The user hooks and validators see as ctx.user for the rest of this request/command. */
     public function setActor(?array $user): void
     {
@@ -91,10 +85,10 @@ final class Db
         return $this->actor;
     }
 
-    /** @return array{user: ?array, target: string} */
+    /** @return array{user: ?array} */
     public function hookCtx(): array
     {
-        return ['user' => $this->actor, 'target' => $this->target];
+        return ['user' => $this->actor];
     }
 
     /**
@@ -787,7 +781,7 @@ final class Db
         }
         $slugCol = $spec['slug'] ?? null;
         $pkValue = $this->pkValue($spec, $previous);
-        $publishing = $this->target === 'wp' && ($spec['drafts'] ?? false)
+        $publishing = ($spec['drafts'] ?? false)
             && ($previous['status'] ?? null) === 'draft'
             && in_array($norm['status'] ?? null, ['published', 'scheduled'], true);
         if ($publishing && $slugCol !== null) {
@@ -1035,7 +1029,7 @@ final class Db
     private function checkValues(array $columns, array $norm, array $full, ?Viewer $viewer = null): void
     {
         $this->checkReferences($columns, $norm, $viewer);
-        $ctx = ['data' => $full, 'user' => $this->actor, 'target' => $this->target];
+        $ctx = ['data' => $full, 'user' => $this->actor];
         foreach ($norm as $name => $v) {
             Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx);
         }
@@ -1324,7 +1318,7 @@ final class Db
             $existing = $row;
             Extensions::write('delete', $collection, $row, $existing, null, $existing);
             $this->hook($spec, 'beforeDelete', $row);
-            $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user, $this->target));
+            $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user));
         });
     }
 

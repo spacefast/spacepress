@@ -1,10 +1,6 @@
 use crate::{Args, platform, wp_plugins::version};
 use serde_json::{Value, json};
-use std::{
-    path::Path,
-    process::{Command, ExitCode},
-    time::Duration,
-};
+use std::{process::ExitCode, time::Duration};
 
 fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String>) {
     checks.push(json!({"name":name,"ok":ok,"detail":detail.into()}));
@@ -12,21 +8,7 @@ fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String
 
 pub(super) fn run(args: &Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
-    let wp = args.wp
-        || args.target.map_or_else(
-            || {
-                args.out
-                    .clone()
-                    .unwrap_or_else(|| project.join(".zero/wp-content"))
-                    .join("zero-manifest.json")
-                    .is_file()
-            },
-            |target| target == crate::schema::Target::Wp,
-        );
-    let out = args
-        .out
-        .clone()
-        .unwrap_or_else(|| project.join(if wp { ".zero/wp-content" } else { ".zero/app" }));
+    let out = args.out.clone().unwrap_or_else(|| project.join(".zero/wp-content"));
     let mut checks = Vec::new();
     let mut manifest = Value::Null;
     check(
@@ -35,7 +17,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
         env!("CARGO_PKG_VERSION").starts_with(&format!("{}.", platform::SERIES)),
         platform::SERIES,
     );
-    if wp {
+    {
         match std::fs::read(out.join("zero-manifest.json"))
             .and_then(|bytes| serde_json::from_slice(&bytes).map_err(std::io::Error::other))
         {
@@ -65,14 +47,12 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 &mut checks,
                 "wp-content artifact",
                 false,
-                format!("{error}; run zero build --target wp"),
+                format!("{error}; run zero build"),
             ),
         }
-    } else {
-        local(&out, &mut checks);
     }
     if let Some(site) = &args.site
-        && let Err(error) = remote(site, args.token.as_deref(), wp, &manifest, &mut checks)
+        && let Err(error) = remote(site, args.token.as_deref(), &manifest, &mut checks)
     {
         check(&mut checks, "site", false, error);
     }
@@ -95,75 +75,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
     if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
 }
 
-fn local(out: &Path, checks: &mut Vec<Value>) {
-    let script = r#"
-$root = $argv[1];
-$schema = is_file($root . '/zero/app/schema.php') ? require $root . '/zero/app/schema.php' : [];
-$database = getenv('ZERO_DB_PATH') ?: $root . '/data/zero.sqlite';
-$pending = [];
-$applied = [];
-if (extension_loaded('pdo_sqlite') && is_file($database)) {
-    $db = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    if ($db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='__zero_migrations'")->fetchColumn()) {
-        $applied = $db->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN);
-    }
-}
-foreach (glob($root . '/zero/app/migrations/*.sql') ?: [] as $file) {
-    if (!in_array(basename($file, '.sql'), $applied, true)) {
-        $pending[] = basename($file);
-    }
-}
-echo json_encode(['php' => PHP_VERSION, 'extensions' => get_loaded_extensions(),
-    'runtime' => $schema['runtime'] ?? null, 'identity' => ($schema['auth']['collection'] ?? null) !== null,
-    'migrations' => $pending]);
-"#;
-    let result = Command::new("php").args(["-r", script]).arg(out).output();
-    match result {
-        Ok(output) if output.status.success() => {
-            if let Ok(info) = serde_json::from_slice::<Value>(&output.stdout) {
-                let php = info["php"].as_str().unwrap_or("0");
-                check(checks, "PHP", version::at_least(php, platform::PHP), php);
-                let extensions = info["extensions"].as_array().cloned().unwrap_or_default();
-                let mut required = vec!["pdo_sqlite", "gd"];
-                if info["identity"] == true {
-                    required.push("sodium");
-                }
-                for extension in required {
-                    check(
-                        checks,
-                        extension,
-                        extensions.iter().any(|name| name == extension),
-                        "PHP extension",
-                    );
-                }
-                let series = info["runtime"].as_str().unwrap_or("missing");
-                check(checks, "built runtime series", series == platform::SERIES, series);
-                let pending = info["migrations"].as_array().cloned().unwrap_or_default();
-                check(
-                    checks,
-                    "pending migrations",
-                    pending.is_empty(),
-                    format!("{}; run the built app's migrate command", pending.len()),
-                );
-            } else {
-                check(checks, "PHP diagnostics", false, "invalid PHP diagnostic output");
-            }
-        }
-        Ok(output) => check(checks, "PHP", false, String::from_utf8_lossy(&output.stderr).trim()),
-        Err(error) => check(checks, "PHP", false, error.to_string()),
-    }
-    for name in ["data", "private"] {
-        let directory = out.join(name);
-        check(
-            checks,
-            &format!("writable {name}"),
-            directory.is_dir() && tempfile::NamedTempFile::new_in(&directory).is_ok(),
-            directory.display().to_string(),
-        );
-    }
-}
-
-fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
+fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
     let mut url = url::Url::parse(site).map_err(|error| error.to_string())?;
     if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
         return Err("site must be an HTTP(S) URL without credentials".into());
@@ -172,7 +84,7 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
         .query_pairs()
         .find(|(key, _)| key == "rest_route")
         .map(|(_, value)| value.into_owned());
-    if wp && let Some(route) = rest_route {
+    if let Some(route) = rest_route {
         let pairs: Vec<_> = url
             .query_pairs()
             .filter(|(key, _)| key != "rest_route")
@@ -184,10 +96,10 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
             .append_pair("rest_route", &format!("{}/_schema", route.trim_end_matches('/')));
     } else {
         let path = url.path().trim_end_matches('/');
-        let path = if path.ends_with("/api") || path.ends_with("/wp-json/zero/v1") {
+        let path = if path.ends_with("/wp-json/zero/v1") {
             format!("{path}/_schema")
         } else {
-            format!("{path}{}/_schema", if wp { "/wp-json/zero/v1" } else { "/api" })
+            format!("{path}/wp-json/zero/v1/_schema")
         };
         url.set_path(&path);
     }
@@ -213,7 +125,7 @@ fn remote(site: &str, token: Option<&str>, wp: bool, manifest: &Value, checks: &
     let runtime = &description["data"]["runtime"];
     let series = runtime["series"].as_str().unwrap_or("missing");
     check(checks, "site runtime series", series == platform::SERIES, series);
-    if wp {
+    {
         let versions = &runtime["wp"];
         let identity = versions["identity"].as_bool();
         let identity_required = !description["data"]["auth"]["collection"].is_null();

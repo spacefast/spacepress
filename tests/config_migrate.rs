@@ -43,19 +43,10 @@ fn migrate_fixture(from: &str, file: &str) -> (tempfile::TempDir, Value) {
     (dir, serde_json::from_slice(&out.stdout).unwrap())
 }
 
-fn build_fixture(dir: &Path, target: &str) -> PathBuf {
-    let out = dir.join(target);
-    let build = zero()
-        .args(["build", "--target", target, "--out"])
-        .arg(&out)
-        .arg(dir)
-        .output()
-        .unwrap();
-    assert!(
-        build.status.success(),
-        "{target}: {}",
-        String::from_utf8_lossy(&build.stderr)
-    );
+fn build_fixture(dir: &Path) -> PathBuf {
+    let out = dir.join("wp-content");
+    let build = zero().args(["build", "--out"]).arg(&out).arg(dir).output().unwrap();
+    assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
     out
 }
 
@@ -77,7 +68,7 @@ fn each_source_compiles_with_its_storage_and_access() {
                 .any(|e| e["outcome"] == "review")
         );
         {
-            let data = schema(&build_fixture(dir.path(), "wp").join(format!("plugins/{plugin}/zero/app/schema.php")));
+            let data = schema(&build_fixture(dir.path()).join(format!("plugins/{plugin}/zero/app/schema.php")));
             let notes = &data["collections"]["notes"];
             assert_eq!(notes["editor"], true, "{from}");
             assert_eq!(notes["columns"]["title"]["notNull"], true);
@@ -107,7 +98,7 @@ fn required_emdash_and_sanity_strings_reject_empty_values() {
         ("sanity", "sanity.ts", vec!["title"]),
     ] {
         let (dir, _) = migrate_fixture(from, file);
-        let app = build_fixture(dir.path(), "wp");
+        let app = build_fixture(dir.path());
         let base: serde_json::Map<String, Value> = fields.iter().map(|f| (f.to_string(), json!("Value"))).collect();
         let cases = json!(fields.iter().map(|f| json!([f, ""])).collect::<Vec<_>>());
         let expected = json!(fields.iter().map(|f| json!(format!("/{f}"))).collect::<Vec<_>>());
@@ -132,7 +123,7 @@ fn payload_optional_email_is_reported_for_empty_strings() {
 /// The Payload fixture built for WordPress, plus a valid row's base values.
 fn payload_app() -> (tempfile::TempDir, PathBuf, Value) {
     let (dir, _) = migrate_fixture("payload", "payload.ts");
-    let app = build_fixture(dir.path(), "wp");
+    let app = build_fixture(dir.path());
     (dir, app, json!({"title": "Title", "body": "Body", "tags": ["one"]}))
 }
 
@@ -437,7 +428,7 @@ fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, Pat
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     let app = dir.path().join("wp-content");
     let build = zero()
-        .args(["build", "--target", "wp", "--out"])
+        .args(["build", "--out"])
         .arg(&app)
         .arg(dir.path().join("app"))
         .output()
@@ -552,22 +543,13 @@ fn imported_datetimes_are_timestamp_columns() {
                 .status
                 .success()
         );
-        {
-            let (target, schema_php) = ("wp", "plugins/zero-app-imported/zero/app/schema.php");
-            let built = dir.path().join(target);
-            let build = zero()
-                .args(["build", "--target", target, "--out"])
-                .arg(&built)
-                .arg(dir.path().join("app"))
-                .output()
-                .unwrap();
-            assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
-            assert_eq!(
-                schema(&built.join(schema_php))["collections"]["notes"]["columns"]["at"]["type"],
-                "timestamp",
-                "{from}/{target}"
-            );
-        }
+        let built = build_fixture(&dir.path().join("app"));
+        assert_eq!(
+            schema(&built.join("plugins/zero-app-imported/zero/app/schema.php"))["collections"]["notes"]["columns"]["at"]
+                ["type"],
+            "timestamp",
+            "{from}"
+        );
     }
 }
 
@@ -888,7 +870,7 @@ fn payload_presentation_metadata_is_preserved_and_unknown_admin_behavior_is_refu
             .iter()
             .any(|e| { e["pointer"] == "/collections/0/fields/0/admin/width" && e["outcome"] == "mapped" })
     );
-    let built = build_fixture(&project, "wp");
+    let built = build_fixture(&project);
     let schema = schema(&built.join("plugins/zero-app-imported/zero/app/schema.php"));
     assert_eq!(
         schema["collections"]["notes"]["columns"]["title"]["ui"],

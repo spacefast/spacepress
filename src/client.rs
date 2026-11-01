@@ -585,8 +585,6 @@ pub fn schema_ts(schema: &Schema) -> String {
     let actions: Vec<serde_json::Value> = schema.actions.keys().map(|a| serde_json::json!(a)).collect();
     let descriptor = serde_json::json!({
         "name": schema.name,
-        "target": schema.target.name(),
-        "basePath": schema.target.base_path(),
         "collections": collections,
         "globals": globals,
         "actions": actions,
@@ -611,9 +609,7 @@ pub fn files(
     // The copied runtime half of the client is MIT; its notice travels with it.
     for f in ["index.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
-            let text = String::from_utf8_lossy(bytes)
-                .replace("{{name}}", &schema.name)
-                .replace("{{basePath}}", schema.target.base_path());
+            let text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
             out.push((f.to_string(), text.into_bytes()));
         }
     }

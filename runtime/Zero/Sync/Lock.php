@@ -19,9 +19,6 @@ final class Lock
     /** Lock the row; true when this transaction's snapshot still shows its latest committed state. */
     public static function fresh(string $collection, int|string $pk): bool
     {
-        if (db()->target() !== 'wp') {
-            return true;
-        }
         $queries = self::rowQueries($collection);
         $connection = Plugin::instance()->connection();
         $locked = array_map(static fn (string $sql): array => $connection->run("$sql FOR UPDATE", [$pk]), $queries);
@@ -34,9 +31,6 @@ final class Lock
     public static function uid(string $collection, int|string $pk): ?string
     {
         $spec = db()->schema()->collection($collection);
-        if (db()->target() !== 'wp') {
-            return Module::find($collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1])[0]['uid'] ?? null;
-        }
         $connection = Plugin::instance()->connection();
         foreach (self::rowQueries($collection) as $sql) {
             $connection->run("$sql FOR UPDATE", [$pk]);

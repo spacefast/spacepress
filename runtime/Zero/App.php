@@ -45,7 +45,7 @@ final class App
         if (is_file($functions)) {
             require_once $functions;
         }
-        $db = new Db($store, $schema, $media, $schema->target());
+        $db = new Db($store, $schema, $media);
         Db::setInstance($db);
 
         return new self($appRoot, $schema, $db, $store, $auth);
@@ -60,7 +60,7 @@ final class App
             // A `signature` action authenticates by HMAC in the beforeAction seam instead of an access
             // rule (§6.1): whoever is logged in, the verified caller is anonymous for everything after.
             Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
-            $viewer = new Viewer(null, $viewer->target);
+            $viewer = new Viewer(null);
             $this->db->setActor(null);
         } else {
             if ($viewer !== null) {
@@ -69,7 +69,7 @@ final class App
             Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         }
         $ctx = $this->db->hookCtx();
-        $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
+        $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user']);
         $fn = '\\ZeroApp\\' . $action['handler'];
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
@@ -117,7 +117,7 @@ final class App
             $response = $this->db->transaction(function () use ($method, $path, $query, $body, $headers, $files, $form): Response {
                 $user = $this->auth->resolve(array_change_key_case($headers, CASE_LOWER));
 
-                return $this->dispatch($method, $path, $query, $body, new Viewer($user, $this->schema->target()), $headers, $files, $form);
+                return $this->dispatch($method, $path, $query, $body, new Viewer($user), $headers, $files, $form);
             });
             [$status, $out, $payload] = $response->http();
 

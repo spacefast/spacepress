@@ -34,7 +34,7 @@ fn php(script: &str, args: &[&Path]) -> Value {
 
 fn build_wp(project: &Path) -> PathBuf {
     let output = project.join(".zero/wp-content");
-    let out = zero().args(["build", "--target", "wp"]).arg(project).output().unwrap();
+    let out = zero().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
 }
@@ -191,10 +191,12 @@ export default defineConfig({ name: "presentation", schema: { notes } });"#;
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("zero/migrations/sqlite"))
+        std::fs::read_dir(tmp.path().join("zero/migrations"))
             .unwrap()
+            .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
             .count(),
-        1
+        1,
+        "a presentation change planned a migration"
     );
 }
 

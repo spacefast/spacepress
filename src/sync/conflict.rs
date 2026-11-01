@@ -18,8 +18,6 @@ pub struct Conflict<'a> {
     pub ours: Side<'a>,
     pub base: Side<'a>,
     pub theirs: Side<'a>,
-    /// The site's side in the marker line: `wordpress` or `site`.
-    pub site: &'a str,
 }
 
 /// The conflict file: a header naming the fields and both digests it was computed from, then
@@ -37,7 +35,7 @@ pub fn render(c: Conflict) -> String {
     out.push_str(&format!("<<<<<<< files\n{}", rendered(uid, c.ours.record)));
     out.push_str(&format!("||||||| base\n{}", rendered(uid, c.base.record)));
     out.push_str(&format!("=======\n{}", rendered(uid, c.theirs.record)));
-    out.push_str(&format!(">>>>>>> {}\n", c.site));
+    out.push_str(">>>>>>> wordpress\n");
     out
 }
 

@@ -52,7 +52,7 @@ async function restock(item: Item) {
   const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
   if (!existing) {
     await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
-    // Off the request: runs after this write commits (`zero jobs work`, or the dev worker).
+    // Off the request: runs after this write commits (Action Scheduler delivers it).
     await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
   }
 }

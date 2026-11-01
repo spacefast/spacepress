@@ -262,7 +262,6 @@ final class Scf
             Schema::checkRules($def, $norm, $name, HttpError::seg($name), [
                 'data' => [$name => $norm],
                 'user' => WpAuth::current(),
-                'target' => 'wp',
             ]);
         } catch (HttpError $e) {
             return $e->getMessage();

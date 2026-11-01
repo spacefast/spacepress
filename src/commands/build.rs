@@ -1,7 +1,7 @@
 use crate::USAGE;
 use crate::diag::{Diag, Span};
 use crate::extract::Slot;
-use crate::schema::{Access, DefaultKind, Owner, Target};
+use crate::schema::{Access, DefaultKind, Owner};
 use crate::{
     client, compile, diag, eval, extract, loader, migrate, platform, runtime_files, schema, schema_php, wp_plugins,
 };
@@ -14,18 +14,18 @@ struct Built {
     schema: schema::Schema,
     functions_php: String,
     snapshot: serde_json::Value,
-    migrations: Vec<(&'static str, String, String)>,
+    migrations: Vec<(String, String)>,
     gen_ts: String,
     warnings: Vec<String>,
     hints: Vec<String>,
 }
 
-pub(crate) fn validate_config(project: &Path, target: Target) -> Result<(), Diag> {
-    build(project, Some(target)).map(|_| ())
+pub(crate) fn validate_config(project: &Path) -> Result<(), Diag> {
+    build(project).map(|_| ())
 }
 
 /// Runs the whole pipeline in memory.
-fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
+fn build(project: &Path) -> Result<Built, Diag> {
     let entry = project.join("zero.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -34,10 +34,10 @@ fn build(project: &Path, target: Option<Target>) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
-    build_program(project, target, &program)
+    build_program(project, &program)
 }
 
-fn build_program(project: &Path, target: Option<Target>, program: &loader::Program) -> Result<Built, Diag> {
+fn build_program(project: &Path, program: &loader::Program) -> Result<Built, Diag> {
     let mut ev = eval::Evaluator::new(program);
     let config = ev.run().map_err(|d| d.phase(diag::Code::Evaluation))?;
     let config_span = Span {
@@ -50,7 +50,7 @@ fn build_program(project: &Path, target: Option<Target>, program: &loader::Progr
         .map(|n| extract::slugify_name(&n.to_string_lossy()))
         .unwrap_or_else(|| "app".into());
     let mut ext =
-        extract::extract(&config, &mut ev, config_span, &dir_name, target).map_err(|d| d.phase(diag::Code::Schema))?;
+        extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -113,22 +113,14 @@ fn build_program(project: &Path, target: Option<Target>, program: &loader::Progr
         functions
     );
     let snapshot = migrate::snapshot(&schema);
-    let prev = read_snapshot(project);
+    let prev = read_snapshot(project)?;
     let mut migrations = Vec::new();
     let warnings = migrate::destructive(&prev, &snapshot);
-    for dialect in [migrate::Dialect::Sqlite, migrate::Dialect::Mysql] {
-        let statements = migrate::plan(&prev, &snapshot, dialect);
-        if statements.is_empty() {
-            continue;
-        }
-        let dir = migrations_dir(project).join(dialect.dir());
-        let n = next_migration_number(&dir);
+    let statements = migrate::plan(&prev, &snapshot);
+    if !statements.is_empty() {
+        let n = next_migration_number(&migrations_dir(project));
         let name = if n == 1 { "init" } else { "update" };
-        migrations.push((
-            dialect.dir(),
-            format!("{n:04}_{name}.sql"),
-            migrate::render(&statements),
-        ));
+        migrations.push((format!("{n:04}_{name}.sql"), migrate::render(&statements)));
     }
     let client_files = client::files(&schema, &action_results, runtime_file);
     let gen_ts = schema_php::gen_ts(
@@ -166,47 +158,39 @@ fn migrations_dir(project: &Path) -> PathBuf {
     project.join("zero").join("migrations")
 }
 
-/// Moves v1's `zero/migrations/*.sql` into `zero/migrations/sqlite/` and upgrades its
-/// snapshot to the shared v2 shape. Runs once: afterwards no `.sql` sits at the top level.
-fn migrate_layout(project: &Path) -> std::io::Result<bool> {
+/// The last build's snapshot. `zero/migrations/` holds the MySQL files directly; a checkout from
+/// before this layout (`wp/` and `sqlite/` subdirectories, or a version 1 snapshot) is refused rather
+/// than read as "no migrations yet", which would restart the numbering at 0001 and ship an app plugin
+/// without its earlier files.
+fn read_snapshot(project: &Path) -> Result<serde_json::Value, Diag> {
     let dir = migrations_dir(project);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Ok(false);
+    for legacy in ["wp", "sqlite"] {
+        if dir.join(legacy).is_dir() {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "zero/migrations/{legacy}/ is from an earlier layout; move zero/migrations/wp/*.sql into zero/migrations/, then delete the zero/migrations/wp/ and zero/migrations/sqlite/ directories (or delete zero/migrations/ to start over)"
+                ),
+            ));
+        }
+    }
+    let path = dir.join("snapshot.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(serde_json::json!({ "version": 2, "tables": {} }));
     };
-    let old_sql: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "sql"))
-        .collect();
-    if old_sql.is_empty() {
-        return Ok(false);
-    }
-    let sqlite = dir.join("sqlite");
-    std::fs::create_dir_all(&sqlite)?;
-    for p in old_sql {
-        std::fs::rename(&p, sqlite.join(p.file_name().expect("file name")))?;
-    }
-    let snapshot = dir.join("snapshot.json");
-    if let Some(v1) = std::fs::read_to_string(&snapshot)
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        && v1["version"] != 2
-    {
-        std::fs::write(
-            &snapshot,
-            serde_json::to_string_pretty(&migrate::upgrade_v1_snapshot(&v1))? + "\n",
-        )?;
-    }
-    Ok(true)
-}
-
-fn read_snapshot(project: &Path) -> serde_json::Value {
-    let raw: Option<serde_json::Value> = std::fs::read_to_string(migrations_dir(project).join("snapshot.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok());
-    match raw {
-        Some(v) if v["version"] == 2 => v,
-        Some(v) => migrate::upgrade_v1_snapshot(&v),
-        None => serde_json::json!({ "version": 2, "tables": {} }),
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) if v["version"] == 2 => Ok(v),
+        Ok(v) => Err(Diag::new(
+            Span::NONE,
+            format!(
+                "zero/migrations/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete zero/migrations/ to start over)",
+                v["version"]
+            ),
+        )),
+        Err(e) => Err(Diag::new(
+            Span::NONE,
+            format!("zero/migrations/snapshot.json is not valid JSON: {e}"),
+        )),
     }
 }
 
@@ -264,8 +248,8 @@ fn runtime_file(rel: &str) -> Option<&'static [u8]> {
 /// Writes migrations, the snapshot, zero.gen.ts and the typed client into the project (committed).
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
-    for (dir, name, sql) in &built.migrations {
-        write(&migrations.join(dir).join(name), sql)?;
+    for (name, sql) in &built.migrations {
+        write(&migrations.join(name), sql)?;
     }
     if !built.migrations.is_empty() || !migrations.join("snapshot.json").is_file() {
         write(
@@ -311,9 +295,6 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
                 if let Some(rest) = rel.strip_prefix("Zero/") {
                     write(&directory.join("zero").join(rest), bytes)?;
                 }
-                if let Some(rest) = rel.strip_prefix("bin/") {
-                    write(&directory.join("zero/bin").join(rest), bytes)?;
-                }
             }
         } else {
             // The app plugin declares GPL-2.0-or-later like the runtime it extends; carry the text.
@@ -325,10 +306,7 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
                 write(&directory.join("wpml-config.xml"), wpml)?;
             }
             write(&directory.join("zero/app/functions.php"), &built.functions_php)?;
-            copy_sql(
-                &migrations_dir(project).join("wp"),
-                &directory.join("zero/app/migrations"),
-            )?;
+            copy_sql(&migrations_dir(project), &directory.join("zero/app/migrations"))?;
             let public = project.join("public");
             if public.is_dir() {
                 copy_dir(&public, &directory.join("public"))?;
@@ -589,10 +567,10 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-fn check_json(project: &Path, target: Option<Target>) -> ExitCode {
+fn check_json(project: &Path) -> ExitCode {
     let diagnostics = match loader::load_all(&project.join("zero.config.ts")) {
         Err(diagnostics) => diagnostics,
-        Ok(program) => build_program(project, target, &program).err().into_iter().collect(),
+        Ok(program) => build_program(project, &program).err().into_iter().collect(),
     };
     println!(
         "{}",
@@ -611,12 +589,11 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         eprintln!("unknown command {}\n{USAGE}", args.command);
         return ExitCode::from(2);
     }
-    let target = if args.wp { Some(Target::Wp) } else { args.target };
     if args.command == "check" && args.json {
-        return check_json(&project, target);
+        return check_json(&project);
     }
     let started = std::time::Instant::now();
-    let built = match build(&project, target) {
+    let built = match build(&project) {
         Ok(b) => b,
         Err(d) => {
             eprint!("{}", diag::render(&d, &project));
@@ -633,25 +610,6 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let migrated_layout = match migrate_layout(&project) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("error: couldn't move zero/migrations into zero/migrations/sqlite: {e}");
-            return ExitCode::from(1);
-        }
-    };
-    // Rebuild after moving the layout: the snapshot is read from the new place.
-    let built = if migrated_layout {
-        match build(&project, target) {
-            Ok(b) => b,
-            Err(d) => {
-                eprint!("{}", diag::render(&d, &project));
-                return ExitCode::from(1);
-            }
-        }
-    } else {
-        built
-    };
     if let Err(e) = emit_project(&project, &built) {
         eprintln!("error: couldn't write migrations or the client: {e}");
         return ExitCode::from(1);
@@ -679,14 +637,11 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
             eprintln!("hint: {h}");
         }
     }
-    if migrated_layout {
-        println!("moved zero/migrations/*.sql to zero/migrations/sqlite/");
-    }
     let shown = out.strip_prefix(&project).unwrap_or(&out).display().to_string();
     let new: Vec<String> = built
         .migrations
         .iter()
-        .map(|(d, n, _)| format!("zero/migrations/{d}/{n}"))
+        .map(|(n, _)| format!("zero/migrations/{n}"))
         .collect();
     let suffix = if new.is_empty() {
         String::new()
@@ -694,9 +649,8 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         format!(" (new migrations {})", new.join(", "))
     };
     println!(
-        "built {} for {} -> {shown}{suffix} in {:.0?}",
+        "built {} -> {shown}{suffix} in {:.0?}",
         built.summary(),
-        built.schema.target.name(),
         started.elapsed()
     );
     if args.command == "dev" {

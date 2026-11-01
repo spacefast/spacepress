@@ -6,7 +6,7 @@ any frontend or import it by path. Don't edit it: `zero build` rewrites it.
 ```ts
 import { createClient, ZeroError } from "./zero/client/index.ts";
 
-const zero = createClient({ url: "https://example.test{{basePath}}", token: "zt_..." });
+const zero = createClient({ url: "https://example.test/wp-json/zero/v1" });
 
 const posts = await zero.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
 const post = await zero.posts.create({ title: "Hello" });
@@ -24,39 +24,28 @@ every request. An expired access token is refreshed once and the request retried
 Tokens live in memory, or in `sessionStorage` with `auth: { storage: "session" }`.
 
 ```ts
-// Standalone: password sign-in.
-const zero = createClient({ auth: { storage: "session" } });
-const me = await zero.auth.login("alice", "correct horse battery");
+// Redirect to the zero-identity screens (PKCE), back on redirectUri.
+const zero = createClient({ auth: { clientId: "app_...", redirectUri: location.origin + "/callback", storage: "session" } });
+await zero.auth.signIn();                  // leaves the page
+const user = await zero.auth.handleCallback(); // on /callback
 
-// WordPress: redirect to the zero-identity screens (PKCE), back on redirectUri.
-const wp = createClient({ auth: { clientId: "app_...", redirectUri: location.origin + "/callback" } });
-await wp.auth.signIn();                  // leaves the page
-const user = await wp.auth.handleCallback(); // on /callback
-
-// Both: anonymous visitors write as guests, and keep their rows when they sign up.
+// Anonymous visitors write as guests, and keep their rows when they sign up.
 // With `guests: true`, a write that is refused as unauthenticated starts a guest session and is
 // retried; a write a collection allows anonymously (create: "anyone") never needs one, so start the
 // session yourself when you want the rows kept. `comments` below stands for a collection of yours
-// whose create rule admits guests. The upgrade login is a name, or an email once the app has an
-// `auth: true` collection.
-const guest = createClient({ auth: { guests: true } });
+// whose create rule admits guests. The upgrade happens on the zero-identity screens, so the client
+// needs the same clientId and redirectUri as signIn(); upgrade() redirects and handleCallback()
+// finishes it.
+const guest = createClient({ auth: { guests: true, clientId: "app_...", redirectUri: location.origin + "/callback" } });
 await guest.auth.guest();                                                 // role "guest", tokens held
 await guest.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // written by the guest
-await guest.auth.upgrade("alice@example.com", "correct horse battery");   // standalone: the guest becomes this member
-
-// On WordPress the upgrade happens on the zero-identity screens, so the client needs the same
-// clientId and redirectUri as signIn(); upgrade() redirects and handleCallback() finishes it.
-const wpGuest = createClient({ auth: { guests: true, clientId: "app_...", redirectUri: location.origin + "/callback" } });
-await wpGuest.auth.guest();
-await wpGuest.comments.create({ postId: 1, name: "A reader", body: "Hi" });
-await wpGuest.auth.upgrade();
+await guest.auth.upgrade();
 
 await zero.auth.signOut();
 ```
 
-Server to server: `token` sends a standalone CLI token (`zt_...`). On WordPress,
-`nonce` (from `wpApiSettings.nonce`) uses the logged-in cookie, or pass
-`headers: { Authorization: "Basic " + btoa("user:application password") }`.
+Server to server, or from a logged-in page: `nonce` (from `wpApiSettings.nonce`) uses the
+WordPress cookie, or pass `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.
 
 This folder is MIT (see its LICENSE). Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs

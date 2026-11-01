@@ -22,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT
 rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero.gen.ts' "$here/app/" "$build_app/"
-"$zero" build "$build_app" --target wp --quiet >/dev/null
+"$zero" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.
 mkdir -p "$here/app/zero/client"
 rsync -a --delete "$build_app/zero/client/" "$here/app/zero/client/"

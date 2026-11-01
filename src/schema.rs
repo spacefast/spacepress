@@ -398,37 +398,6 @@ pub struct Global {
     pub access: IndexMap<String, Access>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
-    Standalone,
-    Wp,
-}
-
-impl Target {
-    pub fn name(self) -> &'static str {
-        match self {
-            Target::Standalone => "standalone",
-            Target::Wp => "wp",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Target> {
-        match s {
-            "standalone" => Some(Target::Standalone),
-            "wp" => Some(Target::Wp),
-            _ => None,
-        }
-    }
-
-    /// Default REST prefix (§4.8).
-    pub fn base_path(self) -> &'static str {
-        match self {
-            Target::Standalone => "/api",
-            Target::Wp => "/wp-json/zero/v1",
-        }
-    }
-}
-
 /// Where a column lives, for attaching compiled functions after evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Owner {
@@ -450,7 +419,6 @@ pub struct ColPath {
 #[derive(Debug, Clone)]
 pub struct Schema {
     pub name: String,
-    pub target: Target,
     pub collections: IndexMap<String, Collection>,
     pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
@@ -467,7 +435,6 @@ impl Default for Schema {
     fn default() -> Self {
         Schema {
             name: String::new(),
-            target: Target::Standalone,
             collections: IndexMap::new(),
             globals: IndexMap::new(),
             actions: IndexMap::new(),

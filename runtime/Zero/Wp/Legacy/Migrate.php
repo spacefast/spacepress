@@ -262,7 +262,7 @@ final class Migrate
         foreach ($spec['columns'] as $column => $col) {
             $column = (string) $column;
             if (array_key_exists($column, $row) && $column !== $spec['primaryKey'] && !($col['system'] ?? false)) {
-                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null, 'target' => 'wp']);
+                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null]);
             }
         }
 

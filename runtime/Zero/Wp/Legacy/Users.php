@@ -161,7 +161,7 @@ final class Users
         // Validators see the row the user store will read, the user's role included.
         $full = $row + [$spec['primaryKey'] => $id] + (isset($spec['columns']['role']) ? ['role' => $role] : []) + array_fill_keys(array_keys($spec['columns']), null);
         foreach ($row as $col => $value) {
-            Schema::checkRules($spec['columns'][$col], $value, (string) $col, $at . HttpError::seg((string) $col), ['data' => $full, 'user' => null, 'target' => 'wp']);
+            Schema::checkRules($spec['columns'][$col], $value, (string) $col, $at . HttpError::seg((string) $col), ['data' => $full, 'user' => null]);
             // References and media carry integrity rules of their own (Db::checkValues); a default
             // of one can't be checked here, so it waits until after the move, as in site migration.
             $def = $spec['columns'][$col];

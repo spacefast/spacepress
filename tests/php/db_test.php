@@ -413,7 +413,7 @@ eq('json whole-value eq compares the stored text: the same document matches, a d
 // is neither empty nor a member of anything.
 (static function (): void {
     $wp = $GLOBALS['wp'];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['listed' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['listed' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_listed',
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -423,7 +423,7 @@ eq('json whole-value eq compares the stored text: the same document matches, a d
     ]]]);
     $wp->exec('CREATE TABLE {prefix}zero_listed (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `photos` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $wp->exec('INSERT INTO {prefix}zero_listed (`id`, `tags`, `photos`) VALUES (1, \'["news","guide"]\', \'[12,7]\'), (2, \'["new"]\', \'[120]\'), (3, \'[]\', \'[]\'), (4, NULL, NULL)');
-    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media());
     $ids = static fn (array $where): array => array_column($db->findMany('listed', ['where' => $where, 'orderBy' => ['id' => 'asc']]), 'id');
     eq('has on a media list matches the whole id 12, not 120', $ids(['photos' => ['has' => 12]]), [1]);
     eq('has on a select list matches the whole string "new", not "news"', $ids(['tags' => ['has' => 'new']]), [2]);
@@ -754,7 +754,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $one = static fn (string $c, string $from) => ['kind' => 'one', 'collection' => $c, 'from' => $from, 'to' => 'id'];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
         'accounts' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin']],
             'columns' => ['id' => $id, 'apiKey' => ['type' => 'text', 'notNull' => true]]],
         'articles' => ['primaryKey' => 'id', 'drafts' => true,
@@ -766,7 +766,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     ]]);
     // Its own custom tables on the site, read through a Db over the same connection.
     $wp = $GLOBALS['wp'];
-    $raw = ['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => []];
+    $raw = ['version' => 3, 'runtime' => '0.2', 'collections' => []];
     foreach (['accounts', 'articles', 'comments'] as $t) {
         $raw['collections'][$t] = $schema->collection($t) + ['editor' => false, 'table' => "zero_rf_$t"];
     }
@@ -778,10 +778,10 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $wp->exec("INSERT INTO {prefix}zero_rf_articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z')");
     $wp->exec('INSERT INTO {prefix}zero_rf_comments VALUES (1, 1, 1), (2, 2, NULL)');
     $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
-    $anon = new \Zero\Viewer(null, 'wp');
-    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'wp');
-    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'wp');
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media());
+    $anon = new \Zero\Viewer(null);
+    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
     $ids = static fn (string $c, array $where, ?\Zero\Viewer $v) => array_column($db->findMany($c, ['where' => $where, 'orderBy' => ['id' => 'asc']], $v), 'id');
     $key = ['owner' => ['apiKey' => ['like' => 'sk_live_7%']]];
 
@@ -858,9 +858,9 @@ $faProblem('with across a hidden link column (target end)', $as('fa_alice', 'GET
 $faProblem('relation filter across a hidden link column (target end)', $as('fa_alice', 'GET', '/profiles', query: ['where' => '{"mentees":{"name":"Bob"}}']), 403, 'forbidden', '/where/mentees');
 eq('editors may follow the link', $as('fa_ed', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'mentor'])[1]['mentor'], null);
 $faProblem('orderBy on a hidden column', $as(null, 'GET', '/profiles', query: ['orderBy' => '-email']), 403, 'forbidden', '/orderBy/email');
-problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null, 'wp')), 403, 'forbidden', '/columns/email');
-problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'], 'wp')), 403, 'forbidden', '/columns/salary');
-eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'wp'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
+problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null)), 403, 'forbidden', '/columns/email');
+problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'])), 403, 'forbidden', '/columns/salary');
+eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
 eq('a readable column filters normally; trusted filters see everything', [
     array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
@@ -955,9 +955,9 @@ $faProblem('a merged hidden value is not incoming data (group first)', $as('fa_a
 $faProblem('… nor with the keys reversed', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['cleared' => true, 'notes' => ['public' => 'n']]), 403, 'forbidden', '/cleared');
 eq('… and nothing was stored', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['cleared'], false);
 // Update/delete selectors run as the viewer: they can't filter on a column hidden from it.
-$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user'], 'wp');
+$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user']);
 problem('an update selector on a hidden column is refused', fn () => $db->update('profiles', ['name' => 'x'], ['email' => 'alice@example.test'], true, $aliceViewer), 403, 'forbidden', '/where/email');
-problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'], 'wp')), 403, 'forbidden', '/where/salary');
+problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'])), 403, 'forbidden', '/where/salary');
 // An unchanged resend must be the same value: a list resent as an object is a change.
 $db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
 $faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
@@ -1008,7 +1008,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 (static function (): void {
     $now = ['now' => true];
     $wp = $GLOBALS['wp'];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [], 'globals' => ['site' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [], 'globals' => ['site' => [
         'label' => 'site', 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
         'wp' => ['postId' => 'zero_global_site', 'menuSlug' => 'zero-global-site', 'groupKey' => 'group_zero_global_site', 'fieldKeyPrefix' => 'field_zero_global_site_', 'optionPrefix' => 'zero_global_site_'],
         'fields' => [
@@ -1019,7 +1019,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     // Globals are SCF option fields: SCF must know this global's fields to write them.
     \Zero\Wp\Scf::register($schema);
     $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media());
     putenv('ZERO_NOW=2030-01-01T00:00:00.000Z');
     putenv('ZERO_NOW_STEP=1');
     try {
@@ -1041,7 +1041,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
     eval('namespace ZeroApp; function marked__read($ctx) { return ["AND" => [new \\Zero\\JsObject()]]; }');
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['marked' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_marked', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -1055,12 +1055,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp = $GLOBALS['wp'];
     $wp->exec('CREATE TABLE {prefix}zero_marked (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `meta` LONGTEXT, `info` LONGTEXT, `parentId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media());
     $previous = \Zero\Db::instance();
     \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
     try {
         $row = $db->insert('marked', ['tags' => ['open']], true)[0];
-        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'wp');
+        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
         $patch = \Zero\Js::decodeJson('{"tags":{},"meta":{"a":{}}}');
         try {
             $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
@@ -1081,10 +1081,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             ['parentId' => $parent['id'], 'meta' => [], 'info' => ['extra' => []]]]);
         $kids = $db->findFirst('marked', \Zero\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
         $byInfo = $db->findMany('marked', \Zero\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
-        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'wp'));
+        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null));
         eq('permission checks run a rule filter holding {} like reads do', [
-            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null, 'wp')),
-            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null, 'wp')) ?? []),
+            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null)),
+            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null)) ?? []),
         ], [true, 4]);
         eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
             array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']), $kids),
@@ -1104,7 +1104,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     eval('namespace ZeroApp; function scoped__rule($ctx) { return \\Zero\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\Zero\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
         'people' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'zero_scoped_people', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
             'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
     ], 'globals' => ['scope' => ['label' => 'scope', 'agents' => true, 'fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
@@ -1112,11 +1112,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     \Zero\Wp\Scf::register($schema);
     $wp->exec('CREATE TABLE {prefix}zero_scoped_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media());
     $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
-    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'wp'))), false);
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null))), false);
     eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
-    $viewer = new \Zero\Viewer(['id' => 1, 'role' => 'admin'], 'wp');
+    $viewer = new \Zero\Viewer(['id' => 1, 'role' => 'admin']);
     eq('direct permission rules query the secondary schema', [$db->permits('people', 'read', 1, $viewer), $db->permittedKeys('people', 'update', $viewer)], [true, null]);
     $revisions = $db->revisions('people', 1, $viewer);
     eq('revision authorization queries the secondary schema', count($revisions), 1);
@@ -1129,7 +1129,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
     eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
     eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');
-    $shared = new \Zero\Db($store, new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => []]), $db->media(), 'wp');
+    $shared = new \Zero\Db($store, new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => []]), $db->media());
     $committed = [];
     $shared->transaction(function () use ($db, &$committed): void {
         $db->transaction(function () use ($db, &$committed): void {
@@ -1170,13 +1170,13 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp->exec('CREATE TABLE {prefix}zero_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}zero_tags (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `zero_tags_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}zero_notes (`id`)) ENGINE=InnoDB');
     $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media());
     $previous = \Zero\Db::instance();
     \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
-    $anon = new \Zero\Viewer(null, 'wp');
-    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber'], 'wp');
-    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'wp');
-    $editor = new \Zero\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor'], 'wp');
+    $anon = new \Zero\Viewer(null);
+    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber']);
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
+    $editor = new \Zero\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor']);
     $count = static fn (string $c) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}zero_$c");
     try {
         // Unique writes require visibility across the collection, before any value is looked up.

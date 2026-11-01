@@ -179,7 +179,7 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     let tmp = std::env::temp_dir().join(format!("zero-db-globals-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
-    let built = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     // One site, three trusted CLI actions in a row (the global's first write, its second, a json filter).
     let out = wp_eval_json(
@@ -360,18 +360,18 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let _ = std::fs::remove_dir_all(project.join(".zero"));
     let _ = std::fs::remove_dir_all(project.join("zero"));
 
-    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
+    let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(
         out.status.success(),
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let wp = std::fs::read_to_string(project.join("zero/migrations/wp/0001_init.sql")).unwrap();
-    assert!(wp.contains("CREATE TABLE `{prefix}zero_items`"), "{wp}");
+    let init = std::fs::read_to_string(project.join("zero/migrations/0001_init.sql")).unwrap();
+    assert!(init.contains("CREATE TABLE `{prefix}zero_items`"), "{init}");
     // A second build with no changes adds no migration.
-    let again = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
+    let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("zero/migrations/wp/0002_update.sql").exists());
+    assert!(!project.join("zero/migrations/0002_update.sql").exists());
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -534,7 +534,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(dir.join("cases.ts"), tmp.join("zero.config.ts")).unwrap();
-    let built = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(
         built.status.success(),
         "build failed:\n{}",
@@ -650,9 +650,9 @@ fn localized_generated_client_types() {
 }
 
 /// §9.1 golden: the frozen phase-1 blog (tests/fixtures/blog/zero.config.ts) compiles to a schema.php
-/// equal, as data, to the fixture the runtime and the PHP suites code against, on both targets.
-/// examples/blog, which carries every phase-2 feature, builds the §4.9 plugin with the §7.3
-/// wpml-config.xml golden, and its standalone build migrates and passes doctor.
+/// equal, as data, to the fixture the runtime and the PHP suites code against. examples/blog, which
+/// carries every phase-2 feature, builds the §4.9 plugin with the §7.3 wpml-config.xml golden, passes
+/// doctor, and syncs its committed posts into a served site.
 #[test]
 fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let tmp = std::env::temp_dir().join(format!("zero-blog-{}", std::process::id()));
@@ -680,7 +680,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     };
 
     let golden = as_json(&root().join("tests/fixtures/blog/schema.php"));
-    let out = zero().args(["build", "--target", "wp"]).arg(&frozen).output().unwrap();
+    let out = zero().arg("build").arg(&frozen).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
         as_json(&frozen.join(".zero/wp-content/plugins/zero-app-blog/zero/app/schema.php")),
@@ -688,7 +688,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "schema.php drifted from tests/fixtures/blog/schema.php"
     );
 
-    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
+    let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     // §3.5.1: post-backed columns that only postmeta can filter get a one-line hint.
     assert!(
@@ -718,11 +718,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         assert!(archive.by_name(&format!("{slug}/{slug}.php")).is_ok());
     }
     assert!(content.join("plugins/zero-runtime/zero/bootstrap.php").is_file());
-    let doctor = zero()
-        .args(["doctor", "--json", "--wp"])
-        .arg(&project)
-        .output()
-        .unwrap();
+    let doctor = zero().args(["doctor", "--json"]).arg(&project).output().unwrap();
     assert!(doctor.status.success(), "{}", String::from_utf8_lossy(&doctor.stdout));
     let doctor: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
     let platform: serde_json::Value =
@@ -972,25 +968,22 @@ fn rejects_phase2_static_contracts() {
         ),
     ];
     for (fixture, message) in cases {
-        {
-            let target = "wp";
-            let out = zero()
-                .args(["check", "--target", target])
-                .arg(root().join("tests/fixtures").join(fixture))
-                .output()
-                .unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert_eq!(out.status.code(), Some(1), "{fixture} ({target}): {stderr}");
-            assert!(
-                stderr.contains(message),
-                "{fixture} ({target}): expected {message:?}, got {stderr}"
-            );
-            assert!(
-                stderr.contains("--> zero.config.ts:"),
-                "{fixture} has no source location: {stderr}"
-            );
-            assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
-        }
+        let out = zero()
+            .arg("check")
+            .arg(root().join("tests/fixtures").join(fixture))
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{fixture}: {stderr}");
+        assert!(
+            stderr.contains(message),
+            "{fixture}: expected {message:?}, got {stderr}"
+        );
+        assert!(
+            stderr.contains("--> zero.config.ts:"),
+            "{fixture} has no source location: {stderr}"
+        );
+        assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
     }
     // Mutations must not make a partial field predicate look exhaustive.
     let tmp = std::env::temp_dir().join(format!("zero-phase2-mutations-{}", std::process::id()));
@@ -1180,13 +1173,10 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        {
-            let target = "wp";
-            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert_eq!(out.status.code(), Some(1), "{target}: {stderr}");
-            assert!(stderr.contains(diagnostic), "{target}: {stderr}");
-        }
+        let out = zero().arg("check").arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains(diagnostic), "{stderr}");
     }
     for invocation in [
         "[1, 2].reduce((acc, item) => { value++; return acc; }, 0)",
@@ -1203,16 +1193,13 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        {
-            let target = "wp";
-            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert_eq!(out.status.code(), Some(1), "{invocation} ({target}): {stderr}");
-            assert!(
-                stderr.contains("field rules must return a boolean on every path"),
-                "{invocation} ({target}): {stderr}"
-            );
-        }
+        let out = zero().arg("check").arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{invocation}: {stderr}");
+        assert!(
+            stderr.contains("field rules must return a boolean on every path"),
+            "{invocation}: {stderr}"
+        );
     }
     for extraction in [
         "const write = writers.at(0)!; write()",
@@ -1233,16 +1220,13 @@ fn rejects_phase2_static_contracts() {
         std::fs::write(tmp.join("zero.config.ts"), format!(
             "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
         )).unwrap();
-        {
-            let target = "wp";
-            let out = zero().args(["check", "--target", target]).arg(&tmp).output().unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert_eq!(out.status.code(), Some(1), "{extraction} ({target}): {stderr}");
-            assert!(
-                stderr.contains("field rules must return a boolean on every path"),
-                "{extraction} ({target}): {stderr}"
-            );
-        }
+        let out = zero().arg("check").arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{extraction}: {stderr}");
+        assert!(
+            stderr.contains("field rules must return a boolean on every path"),
+            "{extraction}: {stderr}"
+        );
     }
     let _ = std::fs::remove_dir_all(tmp);
 }
@@ -1265,7 +1249,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
-    let out = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let out = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
@@ -1276,10 +1260,10 @@ fn phase2_schema_and_closures_match_the_contract() {
     let actual: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(actual, golden, "v3 metadata drifted");
     // A second build with no changes plans no migration.
-    let again = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let again = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert!(
-        !tmp.join("zero/migrations/wp/0002_update.sql").exists(),
+        !tmp.join("zero/migrations/0002_update.sql").exists(),
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
@@ -1322,18 +1306,18 @@ fn phase2_schema_and_closures_match_the_contract() {
         $schema = $db->schema();
         $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
-        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
-        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
-        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'wp', 'op' => 'read']);
+        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read']);
+        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read']);
+        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read']);
         $fieldThrows = false;
         try {
-            $fn(['data' => ['label' => 'error'], 'user' => null, 'target' => 'wp', 'op' => 'read']);
+            $fn(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read']);
         } catch (\Zero\JsError $error) {
             $fieldThrows = $error->getMessage() === 'denied';
         }
         $action = $schema->action('inbound');
         $fn = '\\ZeroApp\\' . $action['handler'];
-        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'target' => 'wp'];
+        $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor']];
         $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
         $actionThrows = false;
         try {
@@ -1348,17 +1332,17 @@ fn phase2_schema_and_closures_match_the_contract() {
         unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(['data' => [], 'op' => 'update', 'target' => 'standalone'] + $actor);
-        $wpUpdate = $fn(['data' => [], 'op' => 'update', 'target' => 'wp'] + $actor);
+        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
+        $subscriberUpdate = $fn(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']]);
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
-        $bucketGuest = $fn(['user' => null, 'target' => 'wp', 'op' => 'create']);
+        $bucketGuest = $fn(['user' => null, 'op' => 'create']);
         $job = $schema->jobs()['sendWelcome'];
         $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
-        $ctx = ['user' => null, 'target' => 'wp', 'attempt' => 2, 'jobId' => 'job-test'];
+        $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $wpUpdate], $bucketGuest, $db->findMany('audit')]);
+        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
         &serde_json::Value::Null,
     );
@@ -1379,66 +1363,97 @@ fn phase2_schema_and_closures_match_the_contract() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// The standalone runtime is gone: a config without `target` builds the WordPress plugins, and asking
-/// for the standalone target is refused before anything is written.
+/// There is one target: `--target` is no longer a flag and `target` no longer a config option, and
+/// a plain `zero build` writes the WordPress plugins.
 #[test]
-fn builds_wordpress_by_default_and_refuses_the_standalone_target() {
-    let tmp = std::env::temp_dir().join(format!("zero-no-standalone-{}", std::process::id()));
+fn builds_wordpress_and_knows_no_target_option() {
+    let tmp = std::env::temp_dir().join(format!("zero-no-target-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
-    for args in [["build", "--target", "standalone"], ["dev", "--target", "standalone"]] {
-        let refused = zero().args(args).arg(&tmp).output().unwrap();
-        let stderr = String::from_utf8_lossy(&refused.stderr);
-        assert_eq!(refused.status.code(), Some(1), "{args:?}: {stderr}");
-        assert!(
-            stderr.contains("the standalone target has been removed"),
-            "{args:?}: {stderr}"
-        );
-    }
-    // The same refusal for a config that names the target itself.
-    let standalone = std::env::temp_dir().join(format!("zero-config-standalone-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&standalone);
-    copy(&tmp, &standalone);
-    let config = std::fs::read_to_string(standalone.join("zero.config.ts")).unwrap();
+    let refused = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("unknown flag --target"), "{stderr}");
+    let config = std::fs::read_to_string(tmp.join("zero.config.ts")).unwrap();
     std::fs::write(
-        standalone.join("zero.config.ts"),
-        config.replacen("defineConfig({", "defineConfig({ target: \"standalone\",", 1),
+        tmp.join("zero.config.ts"),
+        config.replacen("defineConfig({", "defineConfig({ target: \"wp\",", 1),
     )
     .unwrap();
-    let refused = zero().arg("build").arg(&standalone).output().unwrap();
+    let refused = zero().arg("check").arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
-    assert!(stderr.contains("the standalone target has been removed"), "{stderr}");
-    // The JSON check reports the same refusal as a diagnostic, never a clean envelope: for the config
-    // option, and for the flag on a config that names no target.
-    for (project, flags) in [(&standalone, vec![]), (&tmp, vec!["--target", "standalone"])] {
-        let json = zero()
-            .args(["check", "--json"])
-            .args(&flags)
-            .arg(project)
-            .output()
-            .unwrap();
-        assert_eq!(json.status.code(), Some(1), "{}", String::from_utf8_lossy(&json.stdout));
-        let envelope: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
-        assert_eq!(envelope["ok"], false, "{envelope}");
-        assert!(
-            envelope["diagnostics"].as_array().unwrap().iter().any(|d| d["message"]
-                .as_str()
-                .unwrap_or("")
-                .contains("the standalone target has been removed")),
-            "{envelope}"
-        );
-    }
+    assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".zero").exists() && !tmp.join("zero").exists() && !standalone.join(".zero").exists(),
+        !tmp.join(".zero").exists() && !tmp.join("zero").exists(),
         "a refusal wrote files"
     );
+    std::fs::write(tmp.join("zero.config.ts"), config).unwrap();
     let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert!(tmp.join(".zero/wp-content/zero-manifest.json").is_file());
-    assert!(!tmp.join(".zero/app").exists());
+    assert!(tmp.join("zero/migrations/0001_init.sql").is_file());
     let _ = std::fs::remove_dir_all(tmp);
-    let _ = std::fs::remove_dir_all(standalone);
+}
+
+/// A checkout from before the one-directory migration layout is refused, never read as empty: a
+/// `wp/` subdirectory, a `sqlite/` subdirectory or a version 1 snapshot each stop the build before it
+/// writes, so the numbering cannot restart at 0001 and the plugin cannot ship without its files.
+#[test]
+fn refuses_the_earlier_migration_layout_instead_of_renumbering() {
+    let tmp = std::env::temp_dir().join(format!("zero-legacy-layout-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/db-globals"), &tmp);
+    let built = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let migrations = tmp.join("zero/migrations");
+    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
+    let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
+    /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
+    fn tree(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                out.extend(tree(&path));
+            } else {
+                out.insert(path.clone(), std::fs::read(&path).unwrap());
+            }
+        }
+        out
+    }
+    let refused = |message: &str| {
+        let before = tree(&tmp);
+        let out = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains(message), "expected {message:?} in {stderr}");
+        assert!(tree(&tmp) == before, "the refusal changed the project");
+    };
+    for legacy in ["wp", "sqlite"] {
+        std::fs::create_dir_all(migrations.join(legacy)).unwrap();
+        std::fs::write(migrations.join(legacy).join("0001_init.sql"), &init).unwrap();
+        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
+        // Following the message: the SQL moved out, the directory deleted. An emptied directory
+        // left behind is still the earlier layout.
+        std::fs::remove_file(migrations.join(legacy).join("0001_init.sql")).unwrap();
+        refused(&format!("zero/migrations/{legacy}/ is from an earlier layout"));
+        std::fs::remove_dir(migrations.join(legacy)).unwrap();
+    }
+    let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    v1["version"] = serde_json::json!(1);
+    std::fs::write(
+        migrations.join("snapshot.json"),
+        serde_json::to_string_pretty(&v1).unwrap() + "\n",
+    )
+    .unwrap();
+    refused("is a version 1 snapshot");
+    // Restored, the project builds again and plans nothing new.
+    std::fs::write(migrations.join("snapshot.json"), &snapshot).unwrap();
+    let again = zero().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert!(!migrations.join("0002_update.sql").exists());
+    let _ = std::fs::remove_dir_all(tmp);
 }
 
 /// The auth-collection fixture the PHP suites run on is exactly what the compiler emits for it.
@@ -1449,7 +1464,7 @@ fn auth_fixture_matches_the_compiler() {
     std::fs::create_dir_all(&tmp).unwrap();
     let fixture = root().join("tests/fixtures/auth");
     std::fs::copy(fixture.join("zero.config.ts"), tmp.join("zero.config.ts")).unwrap();
-    let out = zero().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
+    let out = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])

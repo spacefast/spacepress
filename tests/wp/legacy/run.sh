@@ -29,7 +29,7 @@ sed -i 's|  "cover": media(),|  "cover": media({ accept: "image" }),|' "$app/zer
 # A compiled validator on a migrated field that reads the rest of the row: published task notes
 # must not shout (drafts may).
 sed -i 's|  "notes": text({ multiline: true }),|  "notes": text({ multiline: true }).validate((value, ctx) => value === null \|\| ctx.data.status !== "published" \|\| value !== value.toUpperCase() \|\| "Don'"'"'t shout"),|' "$app/zero.config.ts"
-"$zero" build "$app" --target wp --quiet >/dev/null
+"$zero" build "$app" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-legacy"
 rsync -a --delete "$app/.zero/wp-content/" "$wp/.wp-content-legacy/"
 

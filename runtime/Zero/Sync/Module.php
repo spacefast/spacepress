@@ -16,7 +16,6 @@ use function Zero\db;
 final class Module
 {
     private const SITE_OPTION = 'zero_runtime_site_id';
-    private const SITE_GLOBAL = '__site';
 
     public static function register(): void
     {
@@ -119,23 +118,13 @@ final class Module
     /** This site's identity, minted once: base files are keyed by it (§5.4). */
     public static function siteId(): string
     {
-        if (db()->target() === 'wp') {
-            // add_option() overwrites on a concurrent first boot; the first id written must win.
-            $connection = Plugin::instance()->connection();
-            $options = $connection->wpdb()->options;
-            $connection->run("INSERT IGNORE INTO `$options` (option_name, option_value, autoload) VALUES (?, ?, 'off')", [self::SITE_OPTION, Js::uuid()]);
-            $connection->touchOption(self::SITE_OPTION);
+        // add_option() overwrites on a concurrent first boot; the first id written must win.
+        $connection = Plugin::instance()->connection();
+        $options = $connection->wpdb()->options;
+        $connection->run("INSERT IGNORE INTO `$options` (option_name, option_value, autoload) VALUES (?, ?, 'off')", [self::SITE_OPTION, Js::uuid()]);
+        $connection->touchOption(self::SITE_OPTION);
 
-            return (string) $connection->run("SELECT option_value FROM `$options` WHERE option_name = ?", [self::SITE_OPTION])[0]['option_value'];
-        }
-        $store = db()->store();
-        $id = $store->globalRead(self::SITE_GLOBAL)['id'] ?? null;
-        if (!is_string($id)) {
-            $id = Js::uuid();
-            $store->globalWrite(self::SITE_GLOBAL, ['id' => $id]);
-        }
-
-        return $id;
+        return (string) $connection->run("SELECT option_value FROM `$options` WHERE option_name = ?", [self::SITE_OPTION])[0]['option_value'];
     }
 
     public static function describe(array $describe): array

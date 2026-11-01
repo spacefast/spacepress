@@ -223,13 +223,13 @@ final class CoreAccess
     {
         $user = $userId > 0 ? get_userdata($userId) : false;
         if (!$user instanceof \WP_User) {
-            return new Viewer(null, 'wp');
+            return new Viewer(null);
         }
         if (IdentityBridge::suspended($userId)) {
             return null;
         }
 
-        return new Viewer(WpAuth::map($user), 'wp');
+        return new Viewer(WpAuth::map($user));
     }
 
     // ================================================================ reads

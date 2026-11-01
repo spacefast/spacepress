@@ -139,7 +139,10 @@ WordPress plus `zero-identity`. Noted for later, not in the cut: folding
    WordPress-on-SQLite site served or loaded by `tests/php/wp.php`; the
    differential rules run as pure PHP over the runtime plugin.
 3. **Compiler and CLI cut**: `Target`, `--target`, `--wp`, `users`, `tokens`,
-   `jobs`, SQLite migrations, doctor, client prefix; standalone tests go.
+   `jobs`, SQLite migrations (`zero/migrations/` holds the MySQL files
+   directly), the standalone half of doctor, the client's `/api` prefix and
+   `token` option, `ctx.target`, the examples' committed output; the
+   standalone legs of the compiler, importer and client tests go.
 4. **Public text**: README, docs, types, client README and regenerated
    examples, CI.
 

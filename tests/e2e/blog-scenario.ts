@@ -172,7 +172,7 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
     assert.ok(count >= 1);
   });
 
-  await step("validation problems carry the same code and pointer on both targets", async () => {
+  await step("validation problems carry a code and a pointer", async () => {
     const bad = await rejects(
       () => editor.posts.create({ title: "Bad", sections: [{ layout: "quote", text: "ok" }, { layout: "hero", heading: "x".repeat(81) }] }),
       { status: 422, code: "invalid_input", pointer: "/sections/1/heading" },

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The system suite: examples/site end to end. Boots a fresh WordPress that has users and nothing
-# else; tests/system/wp.test.ts installs the `zero build --target wp` artifact into it as a site
+# else; tests/system/wp.test.ts installs the `zero build` artifact into it as a site
 # owner would and walks the whole journey and plugin lifecycle. The tests build their own copies of
 # the example under tests/system/.work, so the committed example is never rewritten. Then a second fresh WordPress
 # holds an original Zero 0.8 site, and legacy.test.ts moves it onto the new Zero as the migration
@@ -19,10 +19,10 @@ export ZERO_WP_PLUGIN_CACHE="${ZERO_WP_PLUGIN_CACHE:-$repo/.zero/cache/plugins}"
 
 cargo build -q
 # The committed client and migrations must be what this compiler produces: the journey imports them.
-"${CARGO_TARGET_DIR:-target}/debug/zero" build examples/site --target wp --out "$here/.work/check" --quiet >/dev/null
+"${CARGO_TARGET_DIR:-target}/debug/zero" build examples/site --out "$here/.work/check" --quiet >/dev/null
 if [[ -n $(git status --porcelain -- examples/site) ]]; then
   git status --short -- examples/site >&2
-  echo 'examples/site is stale: commit the output of `zero build examples/site --target wp`' >&2
+  echo 'examples/site is stale: commit the output of `zero build examples/site`' >&2
   exit 1
 fi
 

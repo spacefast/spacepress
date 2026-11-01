@@ -442,7 +442,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
 eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
     'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
 ]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
-problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'], 'wp')), 403, 'forbidden', '/orderBy/excerpt');
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \Zero\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
     req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['locale' => 'de'])[1]['id'],
@@ -451,9 +451,9 @@ isProblem('feature query validation reaches item REST', req('GET', '/posts/' . $
 isProblem('unconsumed feature options remain invalid on other collections', req('GET', '/authors', query: ['locale' => 'de']), 400, 'invalid_query', '/locale');
 
 $db->setActor($users['sub']);
-$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed'], 'wp'));
+$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \Zero\Viewer($users['ed']));
 eq('operation invocation uses explicit authority and restores its caller actor', [$db->findFirst('comments', ['where' => ['id' => $invoked['id']]])['approved'], $db->actor()], [true, $users['sub']]);
-problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'], 'wp')), 403, 'forbidden');
+problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \Zero\Viewer($users['sub'])), 403, 'forbidden');
 eq('throwing operation invocation also restores the caller actor', $db->actor(), $users['sub']);
 $db->setActor(null);
 

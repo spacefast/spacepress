@@ -399,7 +399,6 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         .as_str()
         .ok_or("the site's /_schema has no site id; is it running zero 0.2?")?
         .to_string();
-    let label = if schema["target"] == "wp" { "wordpress" } else { "site" };
     let mut bases = Bases::load(project)?;
     let known = bases.knows_site(&site);
     if !known {
@@ -408,7 +407,7 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
     let all = collections(&schema, project, &options.only)?;
     // Every base change is made only after both sides landed, so whatever the run did is recorded
     // even when a later step fails: a run that stops early never leaves an older base behind.
-    let outcome = run_collections(client, &all, &site, label, known, &mut bases, options, report);
+    let outcome = run_collections(client, &all, &site, known, &mut bases, options, report);
     if !options.check {
         bases.touch(&site);
         if bases.save()? {
@@ -423,14 +422,13 @@ fn run_collections(
     client: &Client,
     all: &[Collection],
     site: &str,
-    label: &str,
     known: bool,
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
 ) -> Result<(), String> {
     for c in all {
-        collection(client, c, site, label, known, bases, options, report, None)?;
+        collection(client, c, site, known, bases, options, report, None)?;
     }
     // Records whose references weren't on the site yet (cycles, self-references): once more, now that
     // every collection's records have been pushed. Their bases only move when they land.
@@ -448,7 +446,7 @@ fn run_collections(
                 .map(|d| (d.uid.clone(), d.clone()))
                 .collect();
             if !records.is_empty() {
-                collection(client, c, site, label, known, bases, options, report, Some(&records))?;
+                collection(client, c, site, known, bases, options, report, Some(&records))?;
             }
         }
         // Progress is anything the site gained this pass: a record completing, or an identity created
@@ -476,7 +474,6 @@ fn collection(
     client: &Client,
     c: &Collection,
     site: &str,
-    label: &str,
     known: bool,
     bases: &mut Bases,
     options: &Options,
@@ -591,7 +588,6 @@ fn collection(
                 base.as_ref(),
                 &r,
                 site,
-                label,
                 bases,
                 options,
                 report,
@@ -639,7 +635,6 @@ fn perform(
     base: Option<&Item>,
     remote: &Remote,
     site: &str,
-    label: &str,
     bases: &mut Bases,
     options: &Options,
     report: &mut Report,
@@ -837,7 +832,6 @@ fn perform(
                     theirs: Side {
                         record: theirs.map(|t| &t.record),
                     },
-                    site: label,
                 });
                 // An existing draft is the user's, edited or not: never rewrite it. If either side
                 // moved since it was written, `resolve` says so (its header digests no longer match),

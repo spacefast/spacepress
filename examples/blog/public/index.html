@@ -10,7 +10,6 @@
     article { border-top: 1px solid #ddd; padding: 1rem 0; } .meta { color: #666; font-size: .875rem; }
     form { display: grid; gap: .5rem; margin-top: .5rem; } textarea { min-height: 4rem; }
     .error { color: #b00020; } .who { float: right; font-size: .875rem; }
-    #signin { display: grid; gap: .5rem; max-width: 20rem; } #signin[hidden] { display: none; }
   </style>
 </head>
 <body>
@@ -21,24 +20,17 @@
     </span>
     <h1 id="title">Blog</h1><p class="tagline" id="tagline"></p>
   </header>
-  <!-- Standalone signs in with a password here; WordPress sends readers to its /identity screens. -->
-  <form id="signin" hidden>
-    <input name="email" type="email" placeholder="Email" autocomplete="username" required>
-    <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-    <button>Sign in</button><span class="error"></span>
-  </form>
   <main id="posts"><p>Loading…</p></main>
   <script type="module">
     // The generated typed client, type-stripped to JS by `node build-client.mjs` (no bundler).
     import { createClient, ZeroError } from "./client/index.js";
-    import { SCHEMA } from "./client/schema.js";
 
-    // Sessions survive reloads (sessionStorage). On WordPress, register this page once with
+    // Sessions survive reloads (sessionStorage). Readers sign in on the site's /identity screens:
+    // register this page once with
     // `wp zero-identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
-    const wp = SCHEMA.target === "wp";
     const zero = createClient({
-      url: wp ? "/wp-json/zero/v1" : "/api",
-      auth: { storage: "session", ...(wp ? { clientId: "app_blog", redirectUri: location.origin + location.pathname } : {}) },
+      url: "/wp-json/zero/v1",
+      auth: { storage: "session", clientId: "app_blog", redirectUri: location.origin + location.pathname },
     });
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -53,23 +45,8 @@
       if (await zero.auth.me()) {
         await zero.auth.signOut();
         await Promise.all([renderMe(), render()]);
-      } else if (wp) {
-        await zero.auth.signIn({ returnTo: location.href }); // leaves the page
       } else {
-        $("signin").hidden = !$("signin").hidden;
-      }
-    });
-
-    $("signin").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const form = e.target, out = form.querySelector(".error");
-      try {
-        await zero.auth.login(form.email.value, form.password.value);
-        form.reset();
-        form.hidden = true;
-        await Promise.all([renderMe(), render()]);
-      } catch (err) {
-        out.textContent = err instanceof ZeroError ? err.detail : "Couldn't reach the server.";
+        await zero.auth.signIn({ returnTo: location.href }); // leaves the page
       }
     });
 
@@ -128,9 +105,9 @@
       }
     });
 
-    // Back from the WordPress sign-in screens: finish the sign-in, then drop ?code&state from the URL.
+    // Back from the sign-in screens: finish the sign-in, then drop ?code&state from the URL.
     async function start() {
-      if (wp && new URLSearchParams(location.search).has("code")) {
+      if (new URLSearchParams(location.search).has("code")) {
         await zero.auth.handleCallback();
         history.replaceState(null, "", location.pathname);
       }

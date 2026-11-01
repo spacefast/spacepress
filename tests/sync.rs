@@ -263,7 +263,7 @@ fn setup() -> (PathBuf, Site) {
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
     std::fs::write(project.join("zero.config.ts"), CONFIG).unwrap();
-    let out = zero().args(["build", "--target", "wp"]).arg(&project).output().unwrap();
+    let out = zero().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
     // A fresh WordPress on SQLite with the built plugins active, served by php -S: one JSON line with
     // its url and the users' application passwords, then it serves until it's told to stop.

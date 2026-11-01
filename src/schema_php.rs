@@ -291,7 +291,6 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'version' => 3,");
     let _ = writeln!(out, "    'runtime' => '0.2',");
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
-    let _ = writeln!(out, "    'target' => {},", php_str(schema.target.name()));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
     out.push_str("    'site' => ['uidPrefix' => 'zr_'],\n");
     let _ = writeln!(

@@ -93,7 +93,7 @@ final class WpSite
         ));
         $activate = [];
         if (isset($fixture['wpContent'])) {
-            // A `zero build --target wp` artifact: its plugins as built, activated in the manifest's order.
+            // A `zero build` artifact: its plugins as built, activated in the manifest's order.
             $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/zero-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
             foreach (array_keys($manifest['plugins']) as $slug) {
                 if (is_dir($fixture['wpContent'] . "/plugins/$slug") && ($slug !== 'zero-identity' || ($fixture['identity'] ?? false))) {
@@ -190,7 +190,6 @@ final class WpSite
     public function writeSchema(array $schema): void
     {
         $name = (string) ($schema['name'] ?? 'app');
-        $schema['target'] = 'wp';
         $schema += ['version' => 3, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/Zero/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
             'locales' => null, 'media' => ['sizes' => []], 'files' => [], 'jobs' => [], 'webhooks' => [], 'globals' => [], 'actions' => []];
         $schema['auth'] ??= ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
@@ -777,7 +776,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 //   php tests/php/wp.php eval <wp-content dir> <php code> [json argument] [name=role ...]
 //
-// Installs a site from a `zero build --target wp` artifact, loads it with the app active, and runs
+// Installs a site from a `zero build` artifact, loads it with the app active, and runs
 // the code with `$app` (the Zero\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
 // `$site` bound; the site goes when the process ends. For Rust tests that drive compiled PHP.
 
@@ -799,7 +798,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 //   php tests/php/wp.php serve <wp-content dir> [name=role ...]
 //
-// Installs a site from a `zero build --target wp` artifact, starts its web server, prints one JSON
+// Installs a site from a `zero build` artifact, starts its web server, prints one JSON
 // line ({url, dir, users: {name: {id, appPassword}}}) and serves until killed (tests/sync.rs).
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'serve') {

@@ -126,8 +126,8 @@ $functions = <<<'PHP'
 
 $wp = wpSite('locales', ['schema' => $schema, 'functions' => $functions]);
 $db = \Zero\db();
-$anon = new \Zero\Viewer(null, 'wp');
-$editor = new \Zero\Viewer($wp->user('editor'), 'wp');
+$anon = new \Zero\Viewer(null);
+$editor = new \Zero\Viewer($wp->user('editor'));
 // Reads are anonymous; writes are the editor's: a unique slug may only be written by a viewer who can
 // read the whole collection (#72), and the public read rule gives everyone that for pages.
 $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($wp): array {

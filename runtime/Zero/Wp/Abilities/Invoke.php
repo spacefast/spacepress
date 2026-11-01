@@ -20,7 +20,7 @@ final class Invoke
 {
     public static function viewer(): Viewer
     {
-        return new Viewer(WpAuth::current(), 'wp');
+        return new Viewer(WpAuth::current());
     }
 
     /**

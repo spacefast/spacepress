@@ -131,7 +131,6 @@ const ZERO_TYPES: &[&str] = &[
     "FieldAccessCtx",
     "SiblingFilter",
     "AccessShorthand",
-    "Target",
     "Job",
     "AnyJob",
     "JobCtx",

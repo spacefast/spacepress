@@ -140,7 +140,7 @@ impl Project {
             })
             .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', target: 'wp', schema: {{}}, plugins: {}{extra} }});\n",
+            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', schema: {{}}, plugins: {}{extra} }});\n",
             serde_json::to_string(&plugins).unwrap()
         );
         std::fs::write(self.root.join("zero.config.ts"), body).unwrap();

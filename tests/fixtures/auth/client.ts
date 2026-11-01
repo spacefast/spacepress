@@ -2,7 +2,7 @@
 // allow and refuse for an auth collection (§6.2).
 import { createClient, type Member, type Role, type User } from "./zero/client/index.ts";
 
-const zero = createClient({ url: "http://localhost/api" });
+const zero = createClient({ url: "http://localhost/wp-json/zero/v1" });
 const roles: Role[] = ["guest", "subscriber", "author", "editor", "admin"];
 const me: User | null = await zero.auth.me();
 const member: Member | null | undefined = me?.member;

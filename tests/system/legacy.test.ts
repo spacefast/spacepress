@@ -40,7 +40,7 @@ before(async () => {
   const config = join(project, "zero.config.ts");
   writeFileSync(config, readFileSync(config, "utf8").replaceAll(`"create":false,"update":false,"delete":false`, `"create":"editor","update":"editor","delete":"editor"`));
   // Step 3: build, upload the plugins, activate dependencies, then the runtime, then the app.
-  zero("build", project, "--target", "wp", "--quiet");
+  zero("build", project, "--quiet");
   const built = join(project, ".zero/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
   wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "zero-runtime", "zero-identity", "zero-app-legacy");

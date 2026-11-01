@@ -7,24 +7,24 @@ const n = collection("n", { id: id() }, { editor: false });
 
 // Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
 export const ACCESS_CTXS = [
-  { user: null, target: "wp" },
-  { user: { id: 7, name: "Sub", role: "subscriber" }, target: "wp" },
-  { user: { id: 3, name: "Ed", role: "editor" }, target: "wp", data: { title: "Hi", ownerId: 3 } },
-  { user: { id: 9, name: "Al", role: "author" }, target: "wp", data: { title: "", ownerId: 9 } },
-  { user: { id: 1, name: "Root", role: "admin" }, target: "wp", data: { title: "Mine", ownerId: 1 } },
+  { user: null },
+  { user: { id: 7, name: "Sub", role: "subscriber" } },
+  { user: { id: 3, name: "Ed", role: "editor" }, data: { title: "Hi", ownerId: 3 } },
+  { user: { id: 9, name: "Al", role: "author" }, data: { title: "", ownerId: 9 } },
+  { user: { id: 1, name: "Root", role: "admin" }, data: { title: "Mine", ownerId: 1 } },
 ];
 export const VALIDATE_VALUES = {
   "docs.title": ["Hello", "http://spam", "  ", "Ärtsoppa är god"],
   "docs.score": [0, 7, 11, 2.5],
 };
-export const VALIDATE_CTX = { data: { title: "x", score: 1 }, user: { id: 1, name: "A", role: "admin" }, target: "wp" };
+export const VALIDATE_CTX = { data: { title: "x", score: 1 }, user: { id: 1, name: "A", role: "admin" } };
 
 const RANK = ["subscriber", "author", "editor", "admin"];
 
 export const docs = collection("docs", {
   id: id(),
   title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
-  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.target}` : undefined)),
+  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)),
   ownerId: integer(),
 }, {
   title: "title",
@@ -36,7 +36,7 @@ export const docs = collection("docs", {
       if (RANK.indexOf(ctx.user.role) >= 2) return true;
       return (ctx.data?.title ?? "").length > 0 && ctx.data?.ownerId === ctx.user.id;
     },
-    delete: (ctx) => ctx.target === "wp" ? false : ctx.user?.role === "admin",
+    delete: (ctx) => ctx.user?.role === "admin",
   },
 });
 
@@ -74,7 +74,7 @@ export default defineConfig({
       const values = ["https://mozilla.org/?x=шеллы", ";,/?:@&=+$#", "-_.!~*'()", "ABC abc 123", "é😀", "%20"];
       return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
     }),
-    hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.target] }),
+    hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null] }),
     numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
     // JS numbers are doubles: integer arithmetic past ±2^53 rounds, where PHP ints would stay exact.
     bigIntegers: run(() => {
@@ -329,10 +329,10 @@ function laneDActions() {
 // ---- lane B: field access (phase 2 §4). A field rule compiles through the access-fn path; data is
 // the row on read, the incoming data on create/update, the enclosing item for sub-fields.
 export const FIELD_CTXS = [
-  { user: null, target: "wp", data: { ownerId: 1, salary: 10 } },
-  { user: { id: 1, name: "Owner", role: "author" }, target: "wp", data: { ownerId: 1, salary: 10 } },
-  { user: { id: 2, name: "Other", role: "author" }, target: "wp", data: { ownerId: 1, salary: null } },
-  { user: { id: 3, name: "Ed", role: "editor" }, target: "wp", data: { ownerId: 1, salary: 5 } },
+  { user: null, data: { ownerId: 1, salary: 10 } },
+  { user: { id: 1, name: "Owner", role: "author" }, data: { ownerId: 1, salary: 10 } },
+  { user: { id: 2, name: "Other", role: "author" }, data: { ownerId: 1, salary: null } },
+  { user: { id: 3, name: "Ed", role: "editor" }, data: { ownerId: 1, salary: 5 } },
 ];
 
 // A hoisted function, so the collection can live in this block below the default export.
@@ -342,7 +342,7 @@ function fieldDocs() {
     ownerId: integer(),
     salary: integer().access({
       read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
-      update: (ctx) => ctx.target === "wp" ? ctx.user?.role === "admin" : ctx.data.salary !== null && ctx.op === "update",
+      update: (ctx) => ctx.user?.role === "admin" || (ctx.data.salary !== null && ctx.op === "update"),
     }),
   }, { editor: false });
 }

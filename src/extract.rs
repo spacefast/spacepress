@@ -47,7 +47,6 @@ pub struct Extracted {
 
 const CONFIG_KEYS: &[&str] = &[
     "name",
-    "target",
     "schema",
     "relations",
     "globals",
@@ -112,13 +111,7 @@ impl Place {
     }
 }
 
-pub fn extract(
-    config: &Value,
-    ev: &mut Evaluator<'_>,
-    config_span: Span,
-    default_name: &str,
-    target_override: Option<Target>,
-) -> Result<Extracted> {
+pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, default_name: &str) -> Result<Extracted> {
     let Value::Object(cfg) = config else {
         return Err(Diag::new(
             config_span,
@@ -167,25 +160,6 @@ pub fn extract(
             .help("it becomes the WordPress plugin slug `zero-<name>`"));
         }
     };
-    let config_target = match cfg_map.get("target") {
-        None | Some(Value::Undef) => Target::Wp,
-        Some(Value::Str(s)) if Target::parse(s).is_some() => Target::parse(s).expect("target"),
-        Some(other) => {
-            return Err(Diag::new(
-                span_of(ev, config, "target", config_span),
-                format!("`target` must be \"standalone\" or \"wp\", not {}", other.describe()),
-            ));
-        }
-    };
-    out.schema.target = target_override.unwrap_or(config_target);
-    if config_target == Target::Standalone || out.schema.target == Target::Standalone {
-        // The standalone runtime is gone. Refused here, in the pipeline every command shares, so
-        // `check`, `check --json`, `build` and `dev` all report it and nothing is written.
-        return Err(Diag::new(
-            span_of(ev, config, "target", config_span),
-            "the standalone target has been removed; build for WordPress (remove `target` from defineConfig)",
-        ));
-    }
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
@@ -2498,7 +2472,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
             let mut translations = system_column("translations", ColType::Json);
             translations.derived = true;
             c.columns.insert("translations".into(), translations);
-            if !c.editor || out.schema.target == Target::Standalone {
+            if !c.editor {
                 let mut group = system_column("translationGroup", ColType::Text);
                 group.hidden = true;
                 c.columns.insert("translationGroup".into(), group);

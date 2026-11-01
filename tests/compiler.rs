@@ -436,7 +436,12 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "node failed:\n{}",
         String::from_utf8_lossy(&node.stderr)
     );
-    let expected: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    let oracle: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(oracle["schema"], "zero-differential");
+    assert_eq!(oracle["version"], 1);
+    assert_eq!(oracle["complete"], true, "oracle must finish every case");
+    let expected = &oracle["cases"];
+    assert!(!expected.as_object().expect("oracle case map").is_empty());
     // The fake ctxs/values Node used, read from the same config (see run-node.mjs).
     let fixtures = Command::new("node")
         .args(["--input-type=module", "-e"])
@@ -492,8 +497,19 @@ fn compiled_php_matches_node_on_every_differential_case() {
                 .output()
                 .unwrap(),
         };
+        assert!(
+            out.stderr.is_empty(),
+            "{name}: PHP emitted diagnostics: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let got: serde_json::Value = serde_json::from_slice(&out.stdout)
             .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&out.stdout) }));
+        assert!(
+            out.status.success()
+                || (out.status.code() == Some(1) && want.get("error").is_some() && got.get("error").is_some()),
+            "{name}: unexpected PHP process exit: {:?}: {got}",
+            out.status.code()
+        );
         let got = match got.get("error") {
             Some(e) if e.is_object() => serde_json::json!({ "error": e["detail"] }),
             _ => got,

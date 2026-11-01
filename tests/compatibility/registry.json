@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "classes",
+      "status": "refused",
+      "code": "Z1101",
+      "fixture": "tests/fixtures/reject-class",
+      "message": "Zero code doesn't support classes",
+      "guidance": "Use plain objects and functions."
+    },
+    {
+      "id": "npm-imports",
+      "status": "refused",
+      "code": "Z1102",
+      "fixture": "tests/fixtures/reject-npm-import",
+      "message": "npm packages aren't supported yet",
+      "guidance": "Import from zero or a relative TypeScript module."
+    },
+    {
+      "id": "build-time-clock",
+      "status": "refused",
+      "code": "Z2101",
+      "fixture": "tests/fixtures/reject-build-time-clock",
+      "message": "Date.now()",
+      "guidance": "Use the clock in a handler or timestamp().defaultNow(). Configuration evaluation stays pure."
+    },
+    {
+      "id": "access-database-query",
+      "status": "refused",
+      "code": "Z4101",
+      "fixture": "tests/fixtures/reject-access-query",
+      "message": "access rules can't query",
+      "guidance": "Return a row filter; put database effects in a hook or action."
+    },
+    {
+      "id": "field-ui-width",
+      "status": "refused",
+      "code": "Z3101",
+      "fixture": "tests/fixtures/reject-field-ui",
+      "message": "width must be an integer from 1 to 100",
+      "guidance": "Use an integer percentage from 1 to 100 for .ui({ width })."
+    },
+    {
+      "id": "undefined-as-null",
+      "status": "divergence",
+      "evidence": "tests/compiler_contracts.rs",
+      "guidance": "Compiled PHP represents undefined as null (including typeof); pure configuration evaluation still distinguishes undefined. The differential oracle normalizes undefined results explicitly.",
+      "test": "documented_runtime_differences_are_measured_in_evaluation_and_compiled_php"
+    },
+    {
+      "id": "unicode-codepoint-indexing",
+      "status": "divergence",
+      "evidence": "tests/compiler_contracts.rs",
+      "guidance": "At this revision string slicing/indexing uses Unicode code points, while .length counts UTF-16 code units. Astral-string parity cases adapt the Node oracle for indexing. Diagnostic columns also count UTF-16 code units.",
+      "test": "documented_runtime_differences_are_measured_in_evaluation_and_compiled_php"
+    },
+    {
+      "id": "uri-encoding",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "guidance": "encodeURI and encodeURIComponent accept one string in configuration and handlers. Component punctuation is preserved; whole-URI delimiters are preserved only by encodeURI. Values must be valid Unicode scalar strings.",
+      "test": "uri_vectors_agree_in_node_pure_evaluation_and_generated_php"
+    },
+    {
+      "id": "field-presentation",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "guidance": "Field .ui() metadata survives nested schema emission and schema description and maps to native SCF. It does not affect data paths, validation or access.",
+      "test": "nested_presentation_reaches_scf_and_public_schema_without_storage_migrations"
+    }
+  ]
+}

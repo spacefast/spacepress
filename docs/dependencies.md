@@ -66,3 +66,12 @@ Markdown producer and HTML processor call a few WordPress functions
 standalone `runtime/Zero/Sync/wordpress-functions.php` defines them over the
 bundled block parser, loaded only when sync converts a body and only when
 WordPress is absent.
+
+## URI helper provenance
+
+`Zero\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table
+at revision `104b497d558d112c5b80cd370b7bcc0f43a29d51`. The component helper
+corrects JavaScript punctuation escaping and both require valid UTF-8. The
+runtime carries `URI-ENCODING-NOTICE.txt`; four copied test inputs carry their
+own notice in `tests/differential/URI-NOTICE.txt`. Node independently computes
+expected results. This adds no runtime package dependency.

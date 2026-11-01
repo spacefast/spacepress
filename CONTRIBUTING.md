@@ -46,7 +46,7 @@ files under `runtime/` are picked up without code changes.
 
 ```
 zero build [dir] --target wp [--out <dir>] [--quiet]   write the plugins to .zero/wp-content
-zero check [dir]                                        compile; write nothing
+zero check [dir] [--json]                               compile; write nothing
 zero dev [dir] --wp [--port <n>]                        build, then boot the plugins in a Docker WordPress
 zero doctor [dir] --wp [--site <url> --token <t>]       check a build, and a running site
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
@@ -86,6 +86,19 @@ rebuild that must match the committed bundle, and a check that the prefixed
 PHP dependencies regenerate byte-for-byte (see
 [`docs/dependencies.md`](docs/dependencies.md)).
 
+Compiler diagnostic codes and compatibility claims are linked to executable
+fixtures in `tests/compatibility/registry.json`. Run
+`python3 scripts/compiler-contracts.py` when changing it; the contract suite
+checks generated documentation with `--check` and runs the refusal fixtures.
+See [compiler diagnostics](docs/compiler-diagnostics.md) and the
+[research adoption decisions](docs/research-adoption.md) for the implementation
+boundaries and source provenance.
+
+The WordPress lane builds its disposable app from fresh source so stale ignored
+migrations cannot contaminate a fresh database's migration ledger. It stages the
+generated client at the test import path and the plugins in a stable bind-mount
+directory; existing fixture migration output is left alone.
+
 ## Layout
 
 | Path | What |
@@ -103,11 +116,11 @@ PHP dependencies regenerate byte-for-byte (see
 | `src/config_migrate/` | `zero migrate config` importers |
 | `runtime/Zero/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `zero-identity` plugin and its screens |
-| `runtime/admin/` | the `zero-admin` plugin and its screens, not yet emitted by `zero build` |
+| `runtime/admin/` | the `zero-admin` plugin and its screens, emitted with `admin: true` |
 | `runtime/wp-plugin/` | the `zero-runtime` and `zero-app` plugin templates |
 | `runtime/client/` | the handwritten half of the typed client |
 | `types/zero/` | TypeScript declarations for `"zero"` |
-| `examples/` | pantry, blog, site, wp-plugins |
+| `examples/` | pantry, blog, site, wp-plugins, reusable field recipes |
 | `tests/` | Rust, PHP, WordPress and system suites, fixtures |
 | `docs/` | API, contracts, design documents |
 

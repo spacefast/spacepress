@@ -57,6 +57,14 @@ character counts as two. A Payload `text` or `textarea` without `maxLength`
 receives Payload's default `defaultMaxTextLength` of 40000. These validators preserve the source constraint rather
 than using Zero's Unicode-character count for text `.max()`.
 
+Field labels are preserved with `.ui({ label })` for the supported scalar and
+original Zero reference mappings. Sanity field `title`/`description` map to
+`label`/`help`. Payload `admin.description`, `admin.placeholder` and integer
+percentage `admin.width` (for example `"50%"`) map to the same presentation
+metadata. Each mapped property appears in the report. Other admin options,
+including read-only behavior, are refused rather than discarded. This does not
+add support for nested fields or executable admin components.
+
 A required text field named `title` enables a WordPress custom post type with
 the target's draft/revision behavior. Otherwise the imported collection uses a
 custom table (`editor: false`). The report calls out this storage choice and the

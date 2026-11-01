@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! zero build [dir] [--target standalone|wp] [--out <dir>] [--quiet]
-//! zero check [dir]                      compile for both targets; write nothing
+//! zero check [dir] [--json]             compile; write nothing (JSON diagnostics optional)
 //! zero dev [dir] [--port <n>]           build, then serve with `php -S`
 //! zero dev [dir] --wp [--port <n>]      build the plugin and boot it in docker WordPress (embedded harness)
 //! zero users|tokens <args...> [--dir d] the standalone CLI (zero/bin/zero.php user/token ...)
@@ -11,6 +11,7 @@
 //! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)
 //! ```
 
+mod builtins;
 mod client;
 mod commands;
 mod compile;
@@ -28,6 +29,7 @@ mod schema;
 mod schema_php;
 mod sync;
 mod types;
+mod uri;
 mod value;
 mod wp_plugins;
 mod wpml_config;
@@ -54,7 +56,7 @@ struct Args {
     json: bool,
 }
 
-const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
+const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--target standalone|wp] [--out dir] [--port n] [--wp] [--quiet]\n       zero check [project-dir] [--json]\n       zero <users|tokens|jobs> <args...> [--dir project-dir]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --token <t> | --app-password <user:pass> | --bearer <jwt>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -109,8 +111,11 @@ fn parse_args() -> Result<Args, String> {
             other => args.project = PathBuf::from(other),
         }
     }
-    if args.command != "doctor" && (args.site.is_some() || args.token.is_some() || args.json) {
-        return Err("--site, --token and --json are doctor options".into());
+    if args.command != "doctor" && (args.site.is_some() || args.token.is_some()) {
+        return Err("--site and --token are doctor options".into());
+    }
+    if args.json && !matches!(args.command.as_str(), "doctor" | "check") {
+        return Err("--json is supported by doctor and check".into());
     }
     Ok(args)
 }

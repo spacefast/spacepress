@@ -537,7 +537,7 @@ final class Schema
             'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            // A json() value keeps `{}` as an object (the JsObject marker); structured columns are
+            // A json() value keeps object/list handles; structured columns are
             // normalized against their fields, so plain arrays are exact there.
             'json' => ($col['system'] ?? false) ? Seam::toPhp(is_string($v) ? self::json($v) : $v) : (is_string($v) ? self::json($v) : $v),
             'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,

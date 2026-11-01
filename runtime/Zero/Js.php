@@ -1373,7 +1373,7 @@ final class Js
 
     // ---------------------------------------------------------------- objects
 
-    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` markers are equal). */
+    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` handles are equal). */
     public static function obj(array ...$parts): JsObject
     {
         $out = new JsObject();
@@ -1541,58 +1541,6 @@ final class Js
         return self::strictEq($a, $b);
     }
 
-    public static function at(mixed $root, array $path): mixed
-    {
-        foreach ($path as $k) {
-            if (!is_array($root) || !array_key_exists($k, $root)) {
-                return null;
-            }
-            $root = $root[$k];
-        }
-
-        return $root;
-    }
-
-    public static function write(mixed &$root, array $path, mixed $value): mixed
-    {
-        $ref = &$root;
-        foreach ($path as $k) {
-            if ($ref instanceof JsObject || $ref === null) {
-                $ref = [];
-            }
-            $ref = &$ref[$k];
-        }
-        $ref = $value;
-
-        return $value;
-    }
-
-    public static function objectBinding(array|JsObject &$source): array|JsObject
-    {
-        if ($source instanceof JsObject) {
-            return $source;
-        }
-        $binding = [];
-        foreach ($source as $key => &$field) {
-            $binding[$key] =& $field;
-        }
-
-        return $binding;
-    }
-
-    public static function copyObject(array|JsObject $source): array
-    {
-        if ($source instanceof JsObject) {
-            return [];
-        }
-        $copy = [];
-        foreach ($source as $key => $value) {
-            $copy[$key] = $value;
-        }
-
-        return $copy;
-    }
-
     public static function ownKeys(array $o): array
     {
         if (array_is_list($o)) {
@@ -1690,8 +1638,8 @@ final class Js
     }
 
     /**
-     * JSON text → Zero values: objects as assoc arrays, the empty object `{}` as the JsObject marker (so
-     * it encodes back as `{}`, not `[]`). Integers stay exact: request bodies and stored json() values
+     * JSON text → handles, preserving object/list shape at every depth.
+     * Integers stay exact: request bodies and stored json() values
      * may carry ids. Throws \JsonException.
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
@@ -1713,23 +1661,6 @@ final class Js
 
             return self::restoreNul(self::fromJson(json_decode($swapped, false, $depth, JSON_THROW_ON_ERROR)), $mark);
         }
-    }
-
-    /** The marker → plain arrays at every depth: for values outside json() columns (groups, inputs, filters). */
-    public static function plain(mixed $v): mixed
-    {
-        if ($v instanceof JsObject) {
-            return [];
-        }
-        if (is_array($v)) {
-            foreach ($v as $k => $x) {
-                if (is_array($x) || $x instanceof JsObject) {
-                    $v[$k] = self::plain($x);
-                }
-            }
-        }
-
-        return $v;
     }
 
     private static function restoreNul(mixed $v, string $mark): mixed

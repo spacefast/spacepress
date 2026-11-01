@@ -161,6 +161,11 @@ function fromJsonHandle(mixed $v): mixed
     return $v;
 }
 
+function setP(JsObject $o, string $k, mixed $v): mixed
+{
+    return $o->p[$k] = $v;
+}
+
 function bench(string $name, int $iters, callable $f): array
 {
     $f();
@@ -207,7 +212,9 @@ $hn = new JsObject(['meta' => new JsObject(['a' => 0])]);
 $groups[] = [
     bench('nested write plain', 3, function () use (&$pn, $M) { for ($i = 0; $i < $M; $i++) { $pn['meta']['a'] = $i; } }),
     bench('nested write handle, direct', 3, function () use ($hn, $M) { for ($i = 0; $i < $M; $i++) { $hn->p['meta']->p['a'] = $i; } }),
-    bench('nested write handle, receiver temp', 3, function () use ($hn, $M) { for ($i = 0; $i < $M; $i++) { $r = $hn->p['meta']; $r->p['a'] = $i; } }),
+    bench('nested write handle, receiver temp statement', 3, function () use ($hn, $M) { for ($i = 0; $i < $M; $i++) { $r = $hn->p['meta']; $r->p['a'] = $i; } }),
+    bench('nested write handle, Js::set helper (expression)', 3, function () use ($hn, $M) { for ($i = 0; $i < $M; $i++) { setP($hn->p['meta'], 'a', $i); } }),
+    bench('nested write handle, [R=.., write][1] form', 3, function () use ($hn, $M) { for ($i = 0; $i < $M; $i++) { [$r = $hn->p['meta'], $r->p['a'] = $i][1]; } }),
 ];
 
 $ints = range(0, $N - 1);

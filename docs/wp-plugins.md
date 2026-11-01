@@ -144,7 +144,8 @@ contents to detect changes before replacement; it is not a package signature.
 The canonical assembler owns `zero-manifest.json`, generated plugin ZIPs, and
 `--out`. Its order is: supply exact platform pins; resolve; acquire every tree;
 copy existing output to private staging; install dependencies; emit/lint generated
-`zero-runtime`, `zero-identity`, and `zero-app-<name>` plus their ZIPs; write its
+`zero-runtime`, `zero-identity`, `zero-app-<name>` and, with `admin: true`,
+`zero-admin`, plus their ZIPs; write its
 manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.
 

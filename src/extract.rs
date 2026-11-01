@@ -59,6 +59,7 @@ const CONFIG_KEYS: &[&str] = &[
     "media",
     "locales",
     "plugins",
+    "admin",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "label",
@@ -177,6 +178,7 @@ pub fn extract(
         }
     };
     out.schema.target = target_override.unwrap_or(config_target);
+    out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));

@@ -443,6 +443,8 @@ pub struct Schema {
     pub webhooks: Vec<Json>,
     pub media: Json,
     pub locales: Option<Json>,
+    /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
+    pub admin: bool,
 }
 
 impl Default for Schema {
@@ -458,6 +460,7 @@ impl Default for Schema {
             webhooks: Vec::new(),
             media: serde_json::json!({"sizes": {}}),
             locales: None,
+            admin: false,
         }
     }
 }

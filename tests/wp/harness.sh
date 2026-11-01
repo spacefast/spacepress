@@ -113,6 +113,8 @@ for dependency in manifest['dependencies']: print(dependency['slug'])
 print('zero-runtime')
 if 'zero-identity' in manifest['plugins']: print('zero-identity')
 print('zero-app-'+manifest['app'])
+# The optional admin registers only once the app has (plugins_loaded order), so it activates last.
+if 'zero-admin' in manifest['plugins']: print('zero-admin')
 ACTIVATE
   )
   for slug in "${activation[@]}"; do wp plugin activate "$slug" >/dev/null; done

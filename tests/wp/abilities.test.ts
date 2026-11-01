@@ -60,6 +60,14 @@ test("abilities convert empty input, JSON inputs and function-valued results at 
   assert.deepEqual([empty.status, empty.json], [200, {}]);
   const wire = await runAbility("blog/refs-wire", {}, "editor");
   assert.deepEqual([wire.status, wire.json], [200, { a: [null, null] }]);
+  const structuredInput = { meta: {}, info: {} };
+  const structured = await runAbility("blog/refs-echo", structuredInput, "editor");
+  const direct = await http("POST", api + "/actions/refsEcho", { as: "editor", body: structuredInput });
+  assert.deepEqual([structured.status, structured.json], [200, direct.json.data]);
+  assert.equal(direct.status, 200, JSON.stringify(direct.json));
+  const groupId = zero("insert", "gated", JSON.stringify({ title: `Ability group ${run}`, notes: { open: "old", sealed: "old" } }))[0].id;
+  const groupPatch = await runAbility("blog/gated-update", { id: groupId, patch: { notes: {} } }, "admin");
+  assert.deepEqual([groupPatch.status, groupPatch.json.notes], [200, { open: null, sealed: null }]);
   for (const meta of [{}, { "1": 1, "0": 2 }, { "\u0000": 1 }]) {
     const echo = await runAbility("blog/refs-echo", { meta }, "editor");
     assert.deepEqual([echo.status, echo.json], [200, { meta }]);

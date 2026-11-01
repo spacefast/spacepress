@@ -76,7 +76,7 @@ final class Invoke
                 self::requireTyped($op, $input);
             }
             [$method, $path, $query, $body] = ($op['call'])($input);
-            if (is_array($body)) { $body = new \Zero\JsObject($body); }
+            if ($body !== null) { $body = \Zero\Seam::inputToJs($body, $op['bodyShape']); }
             $data = $app->invoke($method, $path, $query, $body, self::viewer());
 
             return \Zero\Seam::toWire(isset($op['result']) ? ($op['result'])($data) : $data);

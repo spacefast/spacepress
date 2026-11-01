@@ -243,6 +243,7 @@ final class Register
             } else {
                 $op['shape'] = [];
             }
+            $op['bodyShape'] = $op['op'] === 'update' && isset($zero['collection']) ? $op['shape']['patch'] : $op['shape'];
         }
         unset($op);
 

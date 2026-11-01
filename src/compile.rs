@@ -250,7 +250,7 @@ pub struct Compiler<'a, 'p> {
     type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
-    helper_values: HashMap<(usize, bool), String>,
+    helper_values: HashMap<usize, String>,
     helper_types: HashMap<usize, Ty>,
     data_helpers: HashMap<(u8, usize), String>,
     effects: effects::Effects,
@@ -2339,11 +2339,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let wrapper = match self.helper_values.get(&helper_key) {
+                let wrapper = match self.helper_values.get(&key) {
                     Some(wrapper) => wrapper.clone(),
                     None => {
                         let wrapper = self.unique_name(&format!("{name}_value"));
-                        self.helper_values.insert(helper_key, wrapper.clone());
+                        self.helper_values.insert(key, wrapper.clone());
                         let _ = writeln!(
                             self.output,
                             "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"

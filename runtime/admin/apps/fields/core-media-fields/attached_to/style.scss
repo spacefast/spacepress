@@ -1,0 +1,5 @@
+// @TODO this is a temporary fix to make the field workable while developing.
+// These fields are too narrow.
+.fields-controls__attached-to {
+	min-width: 200px;
+}

@@ -1,0 +1,38 @@
+{
+	"name": "@zero-admin/wp-build",
+	"version": "0.1.0",
+	"description": "Opinionated build tooling for WordPress plugins with routes and packages support",
+	"type": "module",
+	"bin": {
+		"wp-build": "bin/wp-build.js"
+	},
+	"files": [
+		"bin/",
+		"lib/",
+		"README.md"
+	],
+	"keywords": [
+		"wordpress",
+		"build",
+		"esbuild",
+		"plugin",
+		"routes",
+		"packages"
+	],
+	"engines": {
+		"node": ">=18.12.0"
+	},
+	"dependencies": {
+		"browserslist-to-esbuild": "catalog:",
+		"esbuild": "catalog:",
+		"esbuild-sass-plugin": "catalog:",
+		"lightningcss": "catalog:",
+		"listr2": "catalog:",
+		"sass-embedded": "catalog:"
+	},
+	"peerDependencies": {
+		"browserslist": "catalog:"
+	},
+	"author": "WordPress Contributors",
+	"license": "GPL-2.0-or-later"
+}

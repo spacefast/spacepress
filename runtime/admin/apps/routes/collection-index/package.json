@@ -1,0 +1,9 @@
+{
+	"name": "@zero-admin/route-collection-index",
+	"version": "1.0.0",
+	"private": true,
+	"route": {
+		"path": "/collections"
+	},
+	"license": "GPL-2.0-or-later"
+}

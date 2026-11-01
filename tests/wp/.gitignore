@@ -8,3 +8,5 @@ cache/*.zip
 .wp-content-members/
 .harness-members.json
 .legacy-users.json
+.wp-content-admin/
+.harness-admin.json

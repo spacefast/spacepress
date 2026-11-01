@@ -1,0 +1,18 @@
+{
+	"name": "core-media-fields",
+	"version": "1.0.0",
+	"dependencies": {
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
+		"@wordpress/components": "catalog:",
+		"@wordpress/compose": "catalog:",
+		"@wordpress/core-data": "catalog:",
+		"@wordpress/data": "catalog:",
+		"@wordpress/element": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/icons": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@wordpress/url": "catalog:"
+	},
+	"license": "GPL-2.0-or-later"
+}

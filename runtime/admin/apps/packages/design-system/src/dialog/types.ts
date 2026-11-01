@@ -1,0 +1,79 @@
+import { type ReactNode } from 'react';
+import { type Dialog as BaseUIDialog } from '@base-ui/react/dialog';
+import type { Button, IconButton } from '@wordpress/ui';
+import type { ComponentProps, DistributiveOmit } from '../utils/types';
+
+export interface RootProps
+	extends Pick<
+		BaseUIDialog.Root.Props,
+		'open' | 'onOpenChange' | 'defaultOpen'
+	> {
+	/**
+	 * The title text for the dialog. This is required to be a string to ensure
+	 * accessible labeling of the dialog.
+	 */
+	title: string;
+
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+}
+
+export interface TriggerProps extends ComponentProps< 'button' > {
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+}
+
+export interface PopupProps extends ComponentProps< 'div' > {
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+
+	/**
+	 * Renders the dialog at a preset width.
+	 */
+	size?: 'small' | 'medium' | 'large';
+}
+export interface ActionProps extends ComponentProps< typeof Button > {
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+}
+
+export interface FooterProps extends ComponentProps< 'div' > {
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+}
+
+export interface HeaderProps extends ComponentProps< 'div' > {
+	/**
+	 * The content to be rendered inside the component.
+	 */
+	children?: ReactNode;
+}
+
+export type HeadingProps = ComponentProps< 'div' >;
+
+export interface CloseIconProps
+	extends DistributiveOmit<
+		ComponentProps< typeof IconButton >,
+		'label' | 'icon' | 'loading' | 'loadingAnnouncement'
+	> {
+	/**
+	 * A label describing the button's action, shown as a tooltip and to
+	 * assistive technology.
+	 */
+	label?: ComponentProps< typeof IconButton >[ 'label' ];
+
+	/**
+	 * The icon to display in the button.
+	 */
+	icon?: ComponentProps< typeof IconButton >[ 'icon' ];
+}

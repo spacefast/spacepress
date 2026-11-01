@@ -1,0 +1,8 @@
+Zero Admin is licensed under GPL-2.0-or-later.
+Copyright (c) 2026 Spacefast.
+
+Portions are adapted from Spacefast's earlier WordPress admin work, under the
+same license. Bundled WordPress packages are copyright the WordPress
+contributors, GPL-2.0-or-later; build/THIRD-PARTY-LICENSES.txt lists every
+bundled package with its license. Dashicons ship with their own license file
+(apps/packages/boot/src/dashicons/LICENSE.md).

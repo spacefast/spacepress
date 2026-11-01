@@ -1,0 +1,22 @@
+@use "@wordpress/base-styles/variables" as *;
+
+.comments-field {
+	display: flex;
+	align-items: center;
+	gap: $grid-unit-05;
+}
+
+.comments-field__icon {
+	flex-shrink: 0;
+	width: $grid-unit-30;
+	height: $grid-unit-30;
+}
+
+.comments-field__count {
+	color: inherit;
+	font-size: inherit;
+}
+
+.comments-field--no-comments .comments-field__icon {
+	display: none;
+}

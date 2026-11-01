@@ -1,0 +1,45 @@
+{
+	"name": "zero-admin",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Zero Admin: the optional admin screens for Zero apps on WordPress.",
+	"license": "GPL-2.0-or-later",
+	"type": "module",
+	"packageManager": "pnpm@10.16.0",
+	"scripts": {
+		"build": "wp-build build",
+		"typecheck": "tsc -b",
+		"test": "jest"
+	},
+	"dependencies": {
+		"@wordpress/base-styles": "catalog:",
+		"@wordpress/core-data": "catalog:",
+		"@zero-admin/dataviews": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/theme": "workspace:*",
+		"clsx": "catalog:",
+		"dequal": "catalog:",
+		"react": "catalog:"
+	},
+	"devDependencies": {
+		"@babel/core": "catalog:",
+		"@testing-library/dom": "catalog:",
+		"@testing-library/jest-dom": "catalog:",
+		"@testing-library/react": "catalog:",
+		"@testing-library/user-event": "catalog:",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"@wordpress/babel-preset-default": "catalog:",
+		"@wordpress/browserslist-config": "catalog:",
+		"@wordpress/jest-console": "catalog:",
+		"@wordpress/jest-preset-default": "catalog:",
+		"@zero-admin/wp-build": "workspace:*",
+		"babel-jest": "catalog:",
+		"jest": "catalog:",
+		"jest-environment-jsdom": "catalog:",
+		"typescript": "catalog:"
+	},
+	"browserslist": [
+		"extends @wordpress/browserslist-config"
+	]
+}

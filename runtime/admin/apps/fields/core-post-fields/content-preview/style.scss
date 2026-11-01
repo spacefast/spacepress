@@ -1,0 +1,22 @@
+.fields-content-preview {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	flex-direction: column;
+	height: 100%;
+	width: 100%;
+	position: relative;
+
+	.dataviews-view-grid & {
+		.block-editor-block-preview__container {
+			height: 100%;
+		}
+	}
+
+	.dataviews-view-table & {
+		width: 120px;
+		max-height: 160px;
+		text-wrap: balance; // Fallback for Safari.
+		text-wrap: pretty;
+	}
+}

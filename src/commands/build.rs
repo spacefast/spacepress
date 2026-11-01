@@ -52,14 +52,34 @@ fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
             )
         })?),
     };
-    let names: Vec<String> = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries
-            .filter_map(|e| Some(e.ok()?.file_name().to_str()?.to_string()))
-            .collect(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+    let names = migration_names(&dir)?;
+    pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
+}
+
+/// Every name in `zero/migrations/`. The next migration's number comes from these, so an entry that
+/// cannot be listed or named is an error: skipping it could reuse a number that is already taken.
+fn migration_names(dir: &Path) -> Result<Vec<String>, Diag> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(Diag::new(Span::NONE, format!("can't read zero/migrations/: {e}"))),
     };
-    pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
+    let mut names = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read zero/migrations/: {e}")))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "zero/migrations/{} is not a UTF-8 file name; rename or remove it",
+                    name.to_string_lossy()
+                ),
+            ));
+        };
+        names.push(name.to_string());
+    }
+    Ok(names)
 }
 
 fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
@@ -67,6 +87,22 @@ fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(path, content)
+}
+
+/// Writes a file that must not exist yet. A migration is numbered from the files beside it, so one
+/// that would land on an existing name is a numbering error and fails here rather than replacing the
+/// file.
+fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write as _;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
+    file.write_all(content.as_ref())
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -105,7 +141,7 @@ fn runtime_file(rel: &str) -> Option<&'static [u8]> {
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
-        write(&migrations.join(name), sql)?;
+        write_new(&migrations.join(name), sql)?;
     }
     if !built.migrations.is_empty() || !migrations.join("snapshot.json").is_file() {
         write(
@@ -547,6 +583,28 @@ mod tests {
             "{}",
             error.message
         );
+    }
+
+    #[test]
+    fn a_migration_file_name_that_is_not_utf8_is_an_error_not_skipped() {
+        use std::os::unix::ffi::OsStrExt as _;
+        let project = tempfile::tempdir().unwrap();
+        let dir = project.path().join("zero/migrations");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("0001_init.sql"), "").unwrap();
+        std::fs::write(dir.join(std::ffi::OsStr::from_bytes(b"0002_\xff.sql")), "").unwrap();
+        let error = read_previous(project.path()).unwrap_err();
+        assert!(error.message.contains("is not a UTF-8 file name"), "{}", error.message);
+    }
+
+    #[test]
+    fn a_new_migration_never_replaces_a_file_that_is_already_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zero/migrations/0002_update.sql");
+        super::write_new(&path, "first").unwrap();
+        let error = super::write_new(&path, "second").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
     }
 
     #[test]

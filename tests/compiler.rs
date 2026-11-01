@@ -1202,6 +1202,42 @@ fn rejects_phase2_static_contracts() {
             "const a: number[] = []; a[2] = 5; return a.length === 3;",
             "assigning to an array index can leave holes",
         ),
+        (
+            "const a: number[] = []; const box = { a }; a.push(1); return box.a.length === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 1 }]; const e = a.at(0)!; e.x = 2; return a[0]!.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [{ x: 1 }]; const b = a.slice(); b[0]!.x = 2; return a[0]!.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 1 }; const b = a; const change = () => { b.x = 2; }; change(); return a.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const bump = (v: { x: number }) => { v.x++; }; const a = { x: 1 }; const b = a; bump(b); return a.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const bump = (v: { x: number }) => { v.x++; }; const list = [{ x: 1 }]; list.forEach(bump); return list[0]!.x === 2;",
+            "passes each element to this function as a copy",
+        ),
+        (
+            "const a = { x: 1 }; let b = a; if (a.x > 5) b = { x: 0 }; b.x = 2; return a.x === 2;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { x: 1 }; let b = { x: 0 }; for (let i = 0; i < 2; i++) { b.x = 9; b = a; } return a.x === 9;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const keep = (v: number[]) => v; const a = [1]; const b = keep(a); a.push(2); return b.length === 2;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

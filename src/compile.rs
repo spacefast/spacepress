@@ -266,6 +266,11 @@ pub struct Compiler<'a, 'p> {
     helpers: HashMap<(usize, bool), String>,
     helper_types: HashMap<usize, Ty>,
     effects: effects::Effects,
+    /// The type each compiled expression had (unioned when compiled more than once), for the
+    /// aliasing check: only containers can be shared.
+    expr_types: HashMap<Span, Ty>,
+    /// The type of each local binding, by its declaration span (unioned likewise).
+    binding_types: HashMap<Span, Ty>,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -300,6 +305,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             helpers: HashMap::new(),
             helper_types: HashMap::new(),
             effects: effects::Effects::default(),
+            expr_types: HashMap::new(),
+            binding_types: HashMap::new(),
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -551,11 +558,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.helper_types
                 .insert(closure_key(closure), Ty::Fn(param_tys.clone(), Box::new(ret)));
         }
-        aliasing::check(&f)?;
         let saved = self.fx.replace(fx);
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
+        // After the body: the check reads the types the body's expressions compiled to, and walks
+        // nested closures itself (they share this function's bindings).
+        aliasing::check(
+            &f,
+            &aliasing::Oracle {
+                types: &self.expr_types,
+                bindings: &self.binding_types,
+                effects: &self.effects,
+            },
+        )?;
         let ret_ty = fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone()));
         self.helper_types.insert(
             closure_key(closure),
@@ -704,6 +720,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- scopes -------------------------------------------------------------
 
     fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool, binding: Span) -> String {
+        match self.binding_types.get_mut(&binding) {
+            Some(t) if *t != ty => *t = Ty::union([t.clone(), ty.clone()]),
+            Some(_) => {}
+            None => {
+                self.binding_types.insert(binding, ty.clone());
+            }
+        }
         let read_ty = self.effects.parameter_type(binding, &ty);
         let fx = self.fx();
         let shadow = fx.scopes.iter().any(|s| s.contains_key(name)) || fx.declared.iter().any(|d| d == name);
@@ -1162,8 +1185,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         // Every binding the declaration introduces (`let { i } = ...` too).
                         let mut bindings = Vec::new();
                         pat_bindings(pat, &mut bindings);
-                        let captured: Vec<Span> =
-                            bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
                         let scope = self.fx().scopes.last().cloned().unwrap_or_default();
                         let mut cells: Vec<String> = scope
                             .values()
@@ -1937,6 +1959,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn expr(&mut self, e: &Expr) -> Result<Out> {
+        let out = self.expr_untracked(e)?;
+        match self.expr_types.get_mut(&e.span) {
+            Some(t) if *t != out.ty => *t = Ty::union([t.clone(), out.ty.clone()]),
+            Some(_) => {}
+            None => {
+                self.expr_types.insert(e.span, out.ty.clone());
+            }
+        }
+        Ok(out)
+    }
+
+    fn expr_untracked(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
         let out = match &e.kind {
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
@@ -2696,7 +2730,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
         self.fx = Some(inner);
-        aliasing::check(f)?;
         let result = self.closure_body(f, &param_tys);
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));

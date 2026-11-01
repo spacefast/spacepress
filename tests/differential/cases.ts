@@ -342,6 +342,29 @@ function laneSActions() {
       copy.a = [...fresh.a, 2];
       return [list.map((e) => e.x), fresh.a, copy.a];
     }),
+    // A closure over each `for (let { i } ...)` iteration keeps its own `i`; array `includes`
+    // and `lastIndexOf` honor their fromIndex.
+    loopPatternClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5)]),
+    // The allowed side: writing a local nobody else holds, a spread copy's top level, a local passed
+    // by reference to a function that changes it, elements of a fresh array in a callback.
+    unsharedWrites: run(() => {
+      const bump = (v: { x: number }) => { v.x++; };
+      const o = { x: 0 };
+      bump(o);
+      bump(o);
+      const copy = { ...o };
+      copy.x = 10;
+      const built = [{ x: 1 }].map((e) => { e.x = 2; return e; });
+      const counts: { n: number }[] = [];
+      for (let i = 0; i < 2; i++) counts.push({ n: i });
+      for (const c of counts) c.n += 5;
+      return [o, copy, built, counts];
+    }),
     utf16Units: run(() => {
       const s = "\u{1F600}a\u00e9";
       return [s.length, s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];

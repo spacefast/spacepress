@@ -72,6 +72,21 @@ pub(super) struct Effects {
     expression_places: HashMap<Span, Place>,
     loop_writes: HashMap<Span, HashSet<Place>>,
     reference_arguments: HashMap<Span, HashSet<usize>>,
+    /// Calls whose callee resolved to known functions, and the argument positions whose value the
+    /// callee may keep past the call (returns it, stores it outside its own locals, or passes it on
+    /// to a parameter that does).
+    resolved_calls: HashSet<Span>,
+    retained_arguments: HashMap<Span, HashSet<usize>>,
+    /// (call, argument, through a callback) → the deepest path the callee writes below that parameter.
+    write_depths: HashMap<(Span, usize, bool), usize>,
+    /// Calls to a function whose result may be a container someone else holds.
+    shared_calls: HashSet<Span>,
+    /// (call, argument) where the callee stores some value inside that parameter.
+    stores_into: HashSet<(Span, usize)>,
+    /// (call, argument) the callee keeps somewhere beyond its result.
+    stored_arguments: HashSet<(Span, usize)>,
+    /// (call, argument) whose member the callee keeps somewhere beyond its result.
+    stored_members: HashSet<(Span, usize)>,
 }
 
 impl Effects {
@@ -155,6 +170,50 @@ impl Effects {
         self.reference_arguments
             .get(&call)
             .is_some_and(|arguments| arguments.contains(&index))
+    }
+
+    /// Whether the call's callee is a function of this program (not a runtime API or a builtin).
+    pub fn resolved(&self, call: Span) -> bool {
+        self.resolved_calls.contains(&call)
+    }
+
+    /// Whether the callee may keep the argument (or part of it) after it returns: returns it, or
+    /// stores it where its caller's other values can see it.
+    pub fn argument_retained(&self, call: Span, index: usize) -> bool {
+        self.retained_arguments
+            .get(&call)
+            .is_some_and(|arguments| arguments.contains(&index))
+    }
+
+    /// How deep below the argument the callee writes (1 = a member of it), if it writes at all.
+    pub fn argument_write_depth(&self, call: Span, index: usize) -> Option<usize> {
+        self.write_depths.get(&(call, index, false)).copied()
+    }
+
+    /// For an array method given a function: how deep the function writes below its parameter
+    /// `index` (the element, for most methods), if it writes at all.
+    pub fn callback_write_depth(&self, call: Span, index: usize) -> Option<usize> {
+        self.write_depths.get(&(call, index, true)).copied()
+    }
+
+    /// Whether the callee keeps the argument somewhere other than its result.
+    pub fn argument_stored(&self, call: Span, index: usize) -> bool {
+        self.stored_arguments.contains(&(call, index))
+    }
+
+    /// Whether the callee keeps a member of the argument somewhere other than its result.
+    pub fn argument_member_stored(&self, call: Span, index: usize) -> bool {
+        self.stored_members.contains(&(call, index))
+    }
+
+    /// Whether the callee stores a value somewhere inside that argument.
+    pub fn stores_into_argument(&self, call: Span, index: usize) -> bool {
+        self.stores_into.contains(&(call, index))
+    }
+
+    /// Whether the call's result may be a container another value holds.
+    pub fn result_shared(&self, call: Span) -> bool {
+        self.shared_calls.contains(&call)
     }
 
     pub fn replaces_argument(&self, argument: Span, later: Span) -> bool {
@@ -304,6 +363,8 @@ fn widen(ty: &Ty, path: &[Step]) -> Ty {
 }
 
 struct Call {
+    /// A callback an array method calls with its elements (not a call written in the program).
+    callback: bool,
     callee: Place,
     args: Vec<Option<Place>>,
     result: Place,
@@ -656,6 +717,7 @@ impl Graph {
                     {
                         if prop == "reduce" {
                             self.calls.push(Call {
+                                callback: true,
                                 callee: callback.clone(),
                                 args: vec![Some(result.clone()), element.clone(), None],
                                 result: result.clone(),
@@ -672,6 +734,7 @@ impl Graph {
                             });
                         }
                         self.calls.push(Call {
+                            callback: true,
                             callee: callback.clone(),
                             args,
                             result: result.clone(),
@@ -756,6 +819,7 @@ impl Graph {
                 }
                 if let Some(callee) = callee_value {
                     self.calls.push(Call {
+                        callback: false,
                         callee,
                         args: argv,
                         result: value.clone(),
@@ -985,6 +1049,133 @@ impl Graph {
         for call in &mut self.calls[first_call..] {
             if call.owner == owner {
                 call.prior.extend(&events);
+            }
+        }
+    }
+
+    /// Where each place's value ends up beyond plain locals: a function's result, or a binding of
+    /// some function. From that: which parameters a function keeps past the call (returns them or
+    /// stores them where its caller can see them), and which functions may return a container that
+    /// another value holds (a parameter, a captured binding, the shared result of another call).
+    fn retention(&self) -> (HashMap<Span, (bool, bool)>, HashSet<Span>) {
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        enum Sink {
+            Result(Span),
+            /// Stored into a binding of this function.
+            Store(Span),
+            /// Stored into a parameter's container (its caller holds that).
+            IntoParam,
+        }
+        let parameters: HashMap<Span, Span> = self
+            .functions
+            .iter()
+            .flat_map(|(f, ps)| ps.iter().map(move |p| (p.binding, *f)))
+            .collect();
+        let owner_of = |b: &Span, edge: &Span| {
+            parameters
+                .get(b)
+                .or_else(|| self.bindings.get(b))
+                .copied()
+                .unwrap_or(*edge)
+        };
+        let is_binding = |b: &Span| parameters.contains_key(b) || self.bindings.contains_key(b);
+        let encloses = |outer: Span, inner: Span| {
+            let mut cur = self.created_by.get(&inner).copied();
+            while let Some(f) = cur {
+                if f == outer {
+                    return true;
+                }
+                cur = self.created_by.get(&f).copied();
+            }
+            false
+        };
+        // Each binding → where its value goes, and whether only a member of it does (`.1`):
+        // `list.push(o.count)` keeps a member of `o`, not `o`.
+        let mut sinks: HashMap<Span, HashSet<(Sink, bool)>> = HashMap::new();
+        loop {
+            let mut changed = false;
+            for (src, dest, edge) in &self.copies {
+                if src.binding == dest.binding
+                    || matches!(src.path.last(), Some(Step::Field(f)) if f == "length")
+                    || (self.functions.contains_key(&src.binding) && src.path.is_empty())
+                {
+                    continue;
+                }
+                let member = !src.path.is_empty();
+                let mut add: HashSet<(Sink, bool)> = sinks
+                    .get(&dest.binding)
+                    .into_iter()
+                    .flatten()
+                    .map(|(s, m)| (*s, *m || member))
+                    .collect();
+                if self.functions.contains_key(&dest.binding) {
+                    if dest.path.first() == Some(&Step::Result) {
+                        add.insert((Sink::Result(dest.binding), member));
+                    }
+                } else if parameters.contains_key(&dest.binding) {
+                    // An argument: wherever that parameter ends up. Stored inside it: its caller
+                    // holds the container it went into.
+                    if !dest.path.is_empty() {
+                        add.insert((Sink::IntoParam, member));
+                    }
+                } else if is_binding(&dest.binding) {
+                    add.insert((Sink::Store(owner_of(&dest.binding, edge)), member));
+                }
+                let entry = sinks.entry(src.binding).or_default();
+                let before = entry.len();
+                entry.extend(add);
+                changed |= entry.len() != before;
+            }
+            if !changed {
+                break;
+            }
+        }
+        // Per parameter: (stored whole, stored a member). Returning counts as retaining (the
+        // caller decides by the result's type whether that matters).
+        let mut retained = HashMap::new();
+        for (param, function) in &parameters {
+            let Some(ss) = sinks.get(param) else { continue };
+            let store = |s: &Sink| match s {
+                Sink::Result(_) => false,
+                Sink::IntoParam => true,
+                Sink::Store(o) => o != function && !encloses(*function, *o),
+            };
+            let whole = ss.iter().any(|(s, m)| !m && store(s));
+            let part = ss.iter().any(|(s, m)| *m && store(s));
+            let returned = ss.iter().any(|(s, _)| matches!(s, Sink::Result(f) if f == function));
+            if whole || part || returned {
+                retained.insert(*param, (whole, part));
+            }
+        }
+        let sinks: HashMap<Span, HashSet<Sink>> = sinks
+            .into_iter()
+            .map(|(b, ss)| (b, ss.into_iter().map(|(s, _)| s).collect()))
+            .collect();
+        let mut shared = HashSet::new();
+        loop {
+            let before = shared.len();
+            for (src, ss) in &sinks {
+                for s in ss {
+                    let Sink::Result(f) = s else { continue };
+                    if shared.contains(f) {
+                        continue;
+                    }
+                    let held = if self.functions.contains_key(src) {
+                        shared.contains(src)
+                    } else if let Some(p) = parameters.get(src) {
+                        p == f
+                    } else if let Some(o) = self.bindings.get(src) {
+                        o != f
+                    } else {
+                        false
+                    };
+                    if held {
+                        shared.insert(*f);
+                    }
+                }
+            }
+            if shared.len() == before {
+                return (retained, shared);
             }
         }
     }
@@ -1273,10 +1464,60 @@ impl Graph {
         };
         let expression_writes = summaries(&self.expression_events);
         let loop_writes = summaries(&self.loop_events);
+        let (retained, shared) = self.retention();
+        let mut write_depths: HashMap<(Span, usize, bool), usize> = HashMap::new();
+        let mut shared_calls = HashSet::new();
+        let mut stores_into = HashSet::new();
+        let mut stored_arguments = HashSet::new();
+        let mut stored_members = HashSet::new();
+        let stored: HashSet<Span> = self
+            .copies
+            .iter()
+            .filter(|(src, dest, _)| src.binding != dest.binding && !dest.path.is_empty())
+            .map(|(_, dest, _)| dest.binding)
+            .collect();
+        let mut resolved_calls = HashSet::new();
+        let mut retained_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
         let mut reference_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
         for call in &self.calls {
             for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
+                if !call.callback {
+                    resolved_calls.insert(call.span);
+                }
+                if shared.contains(function) && !call.callback {
+                    shared_calls.insert(call.span);
+                }
                 for (index, param) in self.functions[function].iter().enumerate() {
+                    if stored.contains(&param.binding) && !call.callback {
+                        stores_into.insert((call.span, index));
+                    }
+                    if let Some((whole, part)) = retained.get(&param.binding)
+                        && !call.callback
+                    {
+                        retained_arguments.entry(call.span).or_default().insert(index);
+                        if *whole {
+                            stored_arguments.insert((call.span, index));
+                        }
+                        if *part {
+                            stored_members.insert((call.span, index));
+                        }
+                    }
+                    let depth = self
+                        .writes
+                        .iter()
+                        .filter(|p| p.binding == param.binding && !p.path.is_empty())
+                        .map(|p| {
+                            if p.path.contains(&Step::Descendants) {
+                                usize::MAX / 2
+                            } else {
+                                p.path.len()
+                            }
+                        })
+                        .max();
+                    if let Some(depth) = depth {
+                        let slot = write_depths.entry((call.span, index, call.callback)).or_default();
+                        *slot = (*slot).max(depth);
+                    }
                     if self
                         .writes
                         .iter()
@@ -1301,6 +1542,13 @@ impl Graph {
             expression_places: self.expression_places,
             loop_writes,
             reference_arguments,
+            resolved_calls,
+            retained_arguments,
+            write_depths,
+            shared_calls,
+            stores_into,
+            stored_arguments,
+            stored_members,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);

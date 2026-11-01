@@ -241,7 +241,9 @@ final class Scf
         $def = $field['zero'];
         $name = $def['name'];
         try {
-            $js = self::fromScf($def, $raw, $field['key'], true);
+            $js = !empty($field['zero_member'])
+                ? ProfileForm::validationValue($raw, $field)
+                : self::fromScf($def, $raw, $field['key'], true);
             $norm = Schema::normalize($def, $js, $name, HttpError::seg($name));
             Schema::checkRules($def, $norm, $name, HttpError::seg($name), [
                 'data' => [$name => $norm],

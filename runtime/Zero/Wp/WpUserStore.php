@@ -48,14 +48,15 @@ final class WpUserStore implements Store
         $fields = [];
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
-            // Scalar columns, whose SCF form this store reads and writes; structured columns
-            // (json, group, repeater, blocks, media lists) stay API-only on user forms.
+            // Scalar columns, whose SCF form this store reads and writes, and group/repeater/blocks
+            // columns, which ProfileForm reads and writes through Zero (json and media lists stay
+            // API-only on user forms).
             if (!self::onProfile($col, $def)) {
                 continue;
             }
             // showIf (§4.3) works as on posts: rules on watched fields live, rules on core user
             // columns or unwatched types settled against the saved member when the profile renders.
-            $fields[] = Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, $def, $spec);
+            $fields[] = ['zero_member' => true] + Scf::fieldFor($schema, 'field_zero_member_' . $col, self::META . $col, $col, $def, $spec);
         }
         acf_add_local_field_group([
             'key' => 'group_zero_' . $collection,
@@ -158,13 +159,14 @@ final class WpUserStore implements Store
 
     /**
      * Whether a member column is an SCF field on profile forms: scalar usermeta columns this store
-     * reads and writes in SCF's form. Core user columns, system columns, references and structured
-     * columns stay API-only there (ConditionalLogic settles rules on them against the saved member).
+     * reads and writes in SCF's form, and group/repeater/blocks columns (ProfileForm, through Zero).
+     * Core user columns, system columns, references, json and media lists stay API-only there
+     * (ConditionalLogic settles rules on them against the saved member).
      */
     public static function onProfile(string $col, array $def): bool
     {
         return !in_array($col, ['id', 'email', 'name'], true) && !($def['system'] ?? false) && !isset($def['references'])
-            && in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText'], true);
+            && in_array($def['type'], ['text', 'integer', 'real', 'boolean', 'select', 'email', 'url', 'date', 'timestamp', 'richText', 'group', 'repeater', 'blocks'], true);
     }
 
     public static function wpRole(string $role): string

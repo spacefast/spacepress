@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
+import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
 import { createClient } from "./app/zero/client/index.ts";
 import { api, auth, harness, http, run, sql, wp } from "./env.ts";
@@ -271,21 +273,339 @@ test("member showIf on profile forms: live rules on member fields, core-column r
   const id = wp("user", "create", `form-${run}`, `form-${run}@example.test`, "--porcelain", "--display_name=Plain");
   // What SCF's profile form renders: each member field after acf/prepare_field, for that user.
   const rendered = (user: string) => JSON.parse(wp("eval", [
+    `wp_set_current_user(${user});`,
     `acf_set_form_data(['post_id' => 'user_${user}']);`,
     "$out = [];",
     "foreach (acf_get_fields('group_zero_members') as $f) {",
     "  $p = apply_filters('acf/prepare_field', $f);",
     "  $out[$f['name']] = $p === false ? 'hidden' : ($p['conditional_logic'] ?: 0);",
     "}",
-    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge'], 'sponsored' => $out['zero_sponsored'], 'fields' => array_keys($out)]);",
+    "echo wp_json_encode(['perk' => $out['zero_perk'], 'badge' => $out['zero_badge'], 'sponsored' => $out['zero_sponsored'], 'sections' => $out['zero_sections'], 'fields' => array_keys($out)]);",
   ].join("\n")));
   const plain = rendered(id);
   assert.deepEqual(plain.perk, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
+  assert.deepEqual(plain.sections, [[{ field: "field_zero_member_plan", operator: "==", value: "pro" }]], "a structured member field's showIf is live too");
   assert.equal(plain.badge, "hidden", "a rule on the core name column is settled against the saved member: not shown");
   assert.equal(plain.fields.includes("zero_sponsorId"), false, "references aren't profile fields");
   assert.equal(plain.sponsored, "hidden", "a rule on a non-profile column is settled against the saved member, never watching a missing field");
   wp("user", "update", id, "--display_name=Cy Edited");
   assert.equal(rendered(id).badge, 0, "once the saved name matches, the field shows unconditionally");
+});
+
+/** A wp-admin session for a WordPress login: cookies, as the browser holds them after signing in. */
+async function adminCookie(login: string, password: string): Promise<string> {
+  // Polylang sends the first wp-admin request within 30s of activation to its setup wizard.
+  wp("transient", "delete", "pll_activation_redirect");
+  const res = await fetch(`${site}/wp-login.php`, {
+    method: "POST", redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
+    body: new URLSearchParams({ log: login, pwd: password, testcookie: "1" }),
+  });
+  return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+}
+
+const decode = (v: string) => v.replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+
+/**
+ * Every control of the profile form as a browser submits it: text-like inputs and hidden inputs with
+ * their values, checked boxes, the selected options, textareas. SCF's repeater/blocks templates
+ * (`acfcloneindex`) are skipped, as SCF's script disables them before submitting.
+ */
+function successfulControls(html: string): [string, string][] {
+  const form = html.slice(html.indexOf('<form id="your-profile"'), html.indexOf("</form>", html.indexOf('<form id="your-profile"')));
+  const out: [string, string][] = [];
+  const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}=(["'])(.*?)\\1`, "s"))?.[2];
+  for (const [tag] of form.matchAll(/<input\b[^>]*>/gs)) {
+    const name = attr(tag, "name");
+    const type = (attr(tag, "type") ?? "text").toLowerCase();
+    if (!name || /\bdisabled\b/.test(tag) || name.includes("acfcloneindex") || ["submit", "button", "file", "image", "reset"].includes(type)) continue;
+    if ((type === "checkbox" || type === "radio") && !/\bchecked\b/.test(tag)) continue;
+    if (type === "password") continue; // left blank: no password change
+    out.push([decode(name), decode(attr(tag, "value") ?? (type === "checkbox" ? "on" : ""))]);
+  }
+  for (const [, open, body] of form.matchAll(/<select\b([^>]*)>(.*?)<\/select>/gs)) {
+    const name = attr(open, "name");
+    if (!name || /\bdisabled\b/.test(open) || name.includes("acfcloneindex")) continue;
+    const options = [...body.matchAll(/<option\b([^>]*)>(.*?)<\/option>/gs)];
+    const chosen = options.filter(([, a]) => /\bselected\b/.test(a));
+    for (const [, a, label] of chosen.length > 0 || /\bmultiple\b/.test(open) ? chosen : options.slice(0, 1)) out.push([decode(name), decode(attr(a, "value") ?? label)]);
+  }
+  for (const [, open, body] of form.matchAll(/<textarea\b([^>]*)>(.*?)<\/textarea>/gs)) {
+    const name = attr(open, "name");
+    if (name && !name.includes("acfcloneindex")) out.push([decode(name), decode(body)]);
+  }
+  return out;
+}
+
+/**
+ * Load a profile screen and submit it as the browser does: every control as rendered, with `set`
+ * replacing (or adding) the named controls and `drop` removing them (a repeater row deleted).
+ */
+async function saveProfile(cookie: string, screen: string, set: Record<string, string> = {}, drop: (name: string) => boolean = () => false, renderedHtml?: string) {
+  let html = renderedHtml;
+  if (html === undefined) {
+    const page = await fetch(`${site}/wp-admin/${screen}`, { headers: { cookie }, redirect: "manual" });
+    assert.equal(page.status, 200, `${screen} didn't render: ${page.status} ${page.headers.get("location") ?? ""}`);
+    html = await page.text();
+  }
+  const controls = successfulControls(html).filter(([name]) => !(name in set) && !drop(name));
+  // Each set control goes where the browser would put it: right after the controls of the field it
+  // belongs to (SCF's empty placeholder for a list comes first, its rows after it, so PHP keeps the rows).
+  const body = [...controls];
+  for (const [name, value] of Object.entries(set)) {
+    let at = body.length;
+    for (let prefix = name; prefix.includes("["); prefix = prefix.slice(0, prefix.lastIndexOf("["))) {
+      const last = body.findLastIndex(([n]) => n === prefix || n.startsWith(prefix + "["));
+      if (last >= 0) {
+        at = last + 1;
+        break;
+      }
+    }
+    body.splice(at, 0, [name, value]);
+  }
+  const nonce = html.match(/acf\.data = .*?"nonce":"([^"]+)"/)?.[1];
+  if (!nonce) throw new Error("SCF validation nonce is missing from the profile screen");
+  const validationBody = new URLSearchParams(body);
+  validationBody.set("action", "acf/validate_save_post");
+  validationBody.set("nonce", nonce);
+  const validationRes = await fetch(`${site}/wp-admin/admin-ajax.php`, {
+    method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body: validationBody,
+  });
+  const validation = await validationRes.json();
+  assert.equal(validation.success, true, JSON.stringify(validation));
+  if (validation.data.valid !== 1) return { status: validationRes.status, html, text: JSON.stringify(validation.data.errors) };
+  const res = await fetch(`${site}/wp-admin/${screen.split("?")[0]}`, {
+    method: "POST", redirect: "manual",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body),
+  });
+  const responseHtml = res.status === 302 ? html : await res.text();
+  const text = res.status === 302 ? "" : responseHtml.replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  return { status: res.status, html: responseHtml, text };
+}
+
+/** `acf[...]` control name: field names are prefixed with the member field key; row ids and SCF's own keys aren't. */
+const acf = (...keys: string[]) => `acf${keys.map((k) => `[${k.startsWith("row-") || k === "acf_fc_layout" ? k : `field_zero_member_${k}`}]`).join("")}`;
+const memberRow = (id: number) => JSON.parse(wp("zero", "find", "members", JSON.stringify({ where: { id } }))).data[0];
+
+/** A member signed into wp-admin with their own password. */
+async function profileMember(tag: string) {
+  const m = await member(tag);
+  return { ...m, cookie: await adminCookie(wp("user", "get", String(m.id), "--field=user_login"), m.password) };
+}
+
+test("structured member fields render on the member's own profile, but not on the add-user form", async () => {
+  const gu = await profileMember("gu");
+  const page = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: gu.cookie } })).text();
+  for (const name of ["zero_address", "zero_links", "zero_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
+  assert.deepEqual(successfulControls(page).find(([name]) => name === acf("address", "address_source")), [acf("address", "address_source"), "signup"], "new groups render their non-boolean defaults");
+  assert.doesNotMatch(page, /data-name="zero_notes"/, "a group holding a sub-field the member can't read isn't rendered");
+  // The collection's read rule ("self") decides the form too: an admin editing this member sees none of its fields.
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Oslo']], ['id' => ${gu.id}]);`);
+  const asAdmin = await (await fetch(`${site}/wp-admin/user-edit.php?user_id=${gu.id}`, { headers: { cookie: await adminCookie("admin", "zero-test-admin") } })).text();
+  assert.match(asAdmin, /name="nickname"/, "the screen itself renders");
+  assert.doesNotMatch(asAdmin, /data-name="zero_/, "no member field, so no member value");
+  assert.doesNotMatch(asAdmin, /Oslo/);
+  const addForm = await (await fetch(`${site}/wp-admin/user-new.php`, { headers: { cookie: await adminCookie("admin", "zero-test-admin") } })).text();
+  assert.match(addForm, /data-name="zero_plan"/);
+  assert.doesNotMatch(addForm, /data-name="zero_(address|links|sections)"/, "no checked path creates users with structured values");
+});
+
+test("a profile save writes structured fields through Zero, in Zero's storage form and UTC", async () => {
+  const hu = await profileMember("hu");
+  // An untouched save of the whole form changes nothing and runs no member hook.
+  const untouched = await saveProfile(hu.cookie, "profile.php");
+  assert.equal(untouched.status, 302, untouched.text.slice(0, 400));
+  assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links, memberRow(hu.id).addressBy], [null, null, null], "never set, still unset");
+  // The date picker posts site time; Zero keeps UTC (Berlin is UTC+2 in July).
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    const saved = await saveProfile(hu.cookie, "profile.php", {
+      display_name: "Profile name",
+      [acf("address", "address_city")]: "Oslo",
+      [acf("links", "row-0", "links_label")]: "visible",
+      [acf("links", "row-0", "links_detail")]: "Site detail",
+      [acf("links", "row-0", "links_metadata", "links_metadata_bio")]: "",
+      [acf("plan")]: "pro",
+      [acf("links", "row-0", "links_at")]: "2026-07-01 14:30:00",
+      [acf("sections", "row-0", "acf_fc_layout")]: "bio",
+      [acf("sections", "row-0", "sections_bio_body")]: "Hello",
+    });
+    assert.equal(saved.status, 302, saved.text.slice(0, 400));
+    const row = memberRow(hu.id);
+    assert.deepEqual([row.address, row.links, row.sections], [
+      { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null },
+      [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail", metadata: { bio: null } }],
+      [{ layout: "bio", body: "Hello" }],
+    ]);
+    assert.deepEqual(JSON.parse(wp("zero", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id } }))).data.map(({ name, city }: { name: string; city: string | null }) => ({ name, city })),
+      [{ name: "Profile name", city: "Oslo" }], "afterUpdate sees the new core and structured fields together");
+    assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
+    assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
+      { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
+    // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
+    const again = await saveProfile(hu.cookie, "profile.php");
+    assert.match(again.html, /value="2026-07-01 14:30:00"/);
+    assert.equal(again.status, 302, again.text.slice(0, 400));
+    assert.deepEqual(memberRow(hu.id).links, row.links);
+    const changedTime = await saveProfile(hu.cookie, "profile.php", { [acf("links", "row-0", "links_at")]: "2026-07-01 12:30:00" });
+    assert.equal(changedTime.status, 302, changedTime.text.slice(0, 400));
+    assert.equal(memberRow(hu.id).links[0].at, "2026-07-01T10:30:00.000Z", "editing the wall clock to the saved UTC hour is still an edit");
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  // Saved instants the picker can't show exactly survive an untouched save: milliseconds, and the
+  // hour the end of summer time repeats (00:30 and 01:30 UTC both show as 02:30 in Berlin).
+  // A sub-field SCF doesn't post (its showIf hides it) keeps its value.
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum', 'optional' => null], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z', 'detail' => 'MS detail', 'metadata' => ['bio' => null]], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z', 'detail' => 'DST detail', 'metadata' => ['bio' => null]]], 'sections' => [['layout' => 'quote', 'text' => 'A', 'cite' => 'A cite'], ['layout' => 'quote', 'text' => 'B', 'cite' => 'B cite']]], ['id' => ${hu.id}]);`);
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    const hidden = (name: string) => name === acf("address", "address_district") || name.endsWith("[field_zero_member_links_detail]") || name.endsWith("[field_zero_member_sections_quote_cite]");
+    const kept = await saveProfile(hu.cookie, "profile.php", {}, hidden);
+    assert.equal(kept.status, 302, kept.text.slice(0, 400));
+    assert.deepEqual(memberRow(hu.id).links, [
+      { label: "ms", at: "2026-07-01T12:30:00.123Z", detail: "MS detail", metadata: { bio: null } },
+      { label: "dst", at: "2026-10-25T01:30:00.000Z", detail: "DST detail", metadata: { bio: null } },
+    ]);
+    // Deleting the first row keeps the surviving row's own hidden values, not its predecessor's.
+    const deleted = await saveProfile(hu.cookie, "profile.php", {}, (name) => hidden(name) || name.startsWith(acf("links", "row-0")) || name.startsWith(acf("sections", "row-0")));
+    assert.equal(deleted.status, 302, deleted.text.slice(0, 400));
+    assert.deepEqual(memberRow(hu.id).sections, [{ layout: "quote", text: "B", cite: "B cite" }]);
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links], [
+    { city: "Bergen", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: null, prefs: null, district: "Sentrum" },
+    [{ label: "dst", at: "2026-10-25T01:30:00.000Z", detail: "DST detail", metadata: { bio: null } }],
+  ]);
+  // Removing the last repeater row empties the list.
+  const emptied = await saveProfile(hu.cookie, "profile.php", { [acf("links")]: "" }, (name) => name.startsWith(acf("links") + "["));
+  assert.equal(emptied.status, 302, emptied.text.slice(0, 400));
+  assert.deepEqual(memberRow(hu.id).links, []);
+  const hooked = await saveProfile(hu.cookie, "profile.php", { display_name: "Name from form", [acf("address", "address_city")]: "Hooked" });
+  assert.equal(hooked.status, 302, hooked.text.slice(0, 400));
+  assert.equal(memberRow(hu.id).name, "Name from hook", "beforeUpdate core-field mutations apply after core's form write");
+  const updates = JSON.parse(wp("zero", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id }, orderBy: { id: "asc" } }))).data;
+  assert.deepEqual([updates.at(-1).name, updates.at(-1).city], ["Name from hook", "Hooked"], "afterUpdate observes the hook's final core value too");
+});
+
+test("a refused profile save keeps nothing, core's user fields included, and answers with Zero's reason", async () => {
+  const iu = await profileMember("iu");
+  await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Oslo" });
+  const name = () => sql(`SELECT display_name FROM wp_users WHERE ID = ${iu.id}`)[0].display_name;
+  const before = name();
+  const nickname = wp("user", "meta", "get", String(iu.id), "nickname");
+  // Field access: an admin-only sub-field, set from the member's own form.
+  const forged = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_verified")]: "1", nickname: "Forged" });
+  assert.equal(forged.status, 403);
+  assert.match(forged.text, /verified/);
+  // A field the form never rendered is refused whatever is posted, so a guess can't probe its value.
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['notes' => ['private' => 'secret']], ['id' => ${iu.id}]);`);
+  for (const guess of ["secret", "wrong", ""]) {
+    const probe = await saveProfile(iu.cookie, "profile.php", { [acf("notes", "notes_private")]: guess });
+    assert.equal(probe.status, 403, `guess ${JSON.stringify(guess)}`);
+  }
+  // The same answer when nothing is stored there.
+  const empty = await profileMember("iv");
+  assert.equal((await saveProfile(empty.cookie, "profile.php", { [acf("notes", "notes_private")]: "" })).status, 403);
+  assert.equal(memberRow(empty.id).notes, null);
+  // Zero still enforces required children after reconciling the effective group values.
+  const missing = await saveProfile(iu.cookie, "profile.php", {
+    [acf("links", "row-0", "links_label")]: "visible",
+    [acf("links", "row-0", "links_metadata", "links_metadata_bio")]: "",
+  });
+  assert.equal(missing.status, 200);
+  assert.match(missing.text, /detail is required/);
+  // Validation: the repeater's max(3).
+  const tooMany = await saveProfile(iu.cookie, "profile.php", Object.fromEntries([0, 1, 2, 3].flatMap((i) => [[acf("links", `row-${i}`, "links_label"), `L${i}`], [acf("links", `row-${i}`, "links_detail"), `D${i}`], [acf("links", `row-${i}`, "links_metadata", "links_metadata_bio"), ""]])));
+  assert.notEqual(tooMany.status, 302);
+  assert.match(tooMany.text, /links must have at most 3 items/);
+  // A member hook that throws.
+  const thrown = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Throw", nickname: "Thrown" });
+  assert.deepEqual([thrown.status, /address hook refused/.test(thrown.text)], [409, true]);
+  assert.deepEqual([name(), wp("user", "meta", "get", String(iu.id), "nickname")], [before, nickname], "core's user update rolled back with it");
+  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
+  // A real failed upgrade must refuse the form, never fall through to the trusted-code write path.
+  const rendered = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: iu.cookie } })).text();
+  const appDir = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/zero/app/`, import.meta.url));
+  const schema = readFileSync(appDir + "schema.php");
+  writeFileSync(appDir + "migrations/9998_profile_probe.sql", "INSERT INTO `{prefix}missing_profile_table` (`n`) VALUES (1);\n");
+  appendFileSync(appDir + "schema.php", "\n// profile upgrade probe\n");
+  const waitForStatus = async (status: number) => {
+    const deadline = Date.now() + 30_000;
+    while ((await fetch(`${api}/posts?limit=1`)).status !== status) {
+      assert.ok(Date.now() < deadline, `upgrade did not reach HTTP ${status}`);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  try {
+    await waitForStatus(503);
+    const unavailable = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_verified")]: "1", nickname: "Unavailable" }, () => false, rendered);
+    assert.equal(unavailable.status, 503);
+    assert.match(unavailable.text, /Storage is being upgraded/);
+  } finally {
+    rmSync(appDir + "migrations/9998_profile_probe.sql");
+    writeFileSync(appDir + "schema.php", schema);
+    await waitForStatus(200);
+  }
+  assert.deepEqual([memberRow(iu.id).address.verified, wp("user", "meta", "get", String(iu.id), "nickname")], [false, nickname]);
+
+});
+
+test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
+  const ku = await profileMember("ku");
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['links' => [['label' => 'hidden', 'detail' => 'Saved detail', 'metadata' => ['bio' => null]]]], ['id' => ${ku.id}]);`);
+  const hidden = (name: string) => name.endsWith("[field_zero_member_links_detail]");
+  const rejected = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Paris", pass1: "new-password-one", pass2: "new-password-two" }, hidden);
+  assert.equal(rejected.status, 200, "core shows the form again with its error");
+  assert.match(rejected.text, /passwords do not match/i);
+  assert.equal(memberRow(ku.id).address, null, "the member field staged before core refused is gone");
+  // Submit the redisplayed error form itself: SCF has prefixed its submitted row keys again.
+  const next = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Lyon" }, hidden, rejected.html);
+  assert.equal(next.status, 302, next.text.slice(0, 400));
+  assert.equal(memberRow(ku.id).address.city, "Lyon");
+  assert.deepEqual(memberRow(ku.id).links, [{ label: "hidden", at: null, detail: "Saved detail", metadata: { bio: null } }]);
+});
+
+test("the update rule decides profile saves: an admin is refused another member under \"self\", and sets admin-only fields on their own", async () => {
+  const ju = await profileMember("ju");
+  const admin = await adminCookie("admin", "zero-test-admin");
+  const other = await saveProfile(admin, `user-edit.php?user_id=${ju.id}`, { [acf("address", "address_city")]: "Bergen" });
+  assert.equal(other.status, 403);
+  assert.match(other.text, /update members rows/);
+  assert.equal((await http("PATCH", `${api}/members/${ju.id}`, { as: "admin", body: { address: { city: "Bergen" } } })).status, 404, "the API's answer to the same write");
+  assert.equal(memberRow(ju.id).address, null);
+  // The same request cannot change a core column to make the original row pass its update rule.
+  const denied = await saveProfile(ju.cookie, "profile.php", { display_name: "Unlocked", [acf("address", "address_city")]: "Gated" });
+  assert.equal(denied.status, 403);
+  assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address], ["ju", null]);
+  wp("user", "update", String(ju.id), "--display_name=Unlocked");
+  const allowed = await saveProfile(ju.cookie, "profile.php", { display_name: "Locked again", [acf("address", "address_city")]: "Gated" });
+  assert.equal(allowed.status, 302, allowed.text.slice(0, 400));
+  assert.deepEqual([memberRow(ju.id).name, memberRow(ju.id).address.city], ["Locked again", "Gated"], "authorization uses the original row even when the saved row no longer matches");
+  const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
+  assert.equal(own.status, 302, own.text.slice(0, 400));
+  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: true, optional: true, prefs: null, district: null });
+});
+
+test("update_field on a structured member field is a trusted Zero write; get_field reads it back by name", () => {
+  const id = wp("user", "create", `code-${run}`, `code-${run}@example.test`, "--porcelain");
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    const out = JSON.parse(wp("eval", [
+      `$before = get_field('zero_links', 'user_${id}');`,
+      `update_field('field_zero_member_links', [['field_zero_member_links_label' => 'Code', 'field_zero_member_links_detail' => 'Code detail', 'field_zero_member_links_metadata' => ['field_zero_member_links_metadata_bio' => ''], 'field_zero_member_links_at' => '2026-07-01 14:30:00']], 'user_${id}');`,
+      `echo wp_json_encode(['before' => $before, 'after' => get_field('zero_links', 'user_${id}', false)]);`,
+    ].join("\n")));
+    assert.deepEqual(out, { before: false, after: [{ field_zero_member_links_label: "Code", field_zero_member_links_detail: "Code detail", field_zero_member_links_metadata: { field_zero_member_links_metadata_bio: "" }, field_zero_member_links_at: "2026-07-01 14:30:00" }] },
+      "same request: no stale SCF cache (an empty repeater formats as false), and the name resolves without SCF's reference meta");
+    // An impossible date isn't laundered into a valid one by the timezone conversion.
+    const bad = wp("eval", `try { update_field('field_zero_member_links', [['field_zero_member_links_label' => 'X', 'field_zero_member_links_at' => '2026-02-30 10:00:00']], 'user_${id}'); echo 'saved'; } catch (\\Zero\\HttpError $e) { echo $e->status; }`);
+    assert.equal(bad, "422");
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  assert.deepEqual(memberRow(Number(id)).links, [{ label: "Code", at: "2026-07-01T12:30:00.000Z", detail: "Code detail", metadata: { bio: null } }]);
 });
 
 test("hidden columns never leave the runtime: list, get, with, write results, abilities", async () => {

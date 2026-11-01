@@ -234,16 +234,17 @@ class Mapper {
     return null;
   }
 
+  /** Two spellings of one attribute; an element has one place for it, so the second is not merged or dropped. */
+  private classSpelledTwice(node: ElementNode): void {
+    if (node.props.class === undefined || node.props.className === undefined) return;
+    this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${node.tag}> has both "class" and "className"; they are one attribute.`, hint: "Keep one of them.", loc: node.loc });
+  }
+
   /** The block attributes every mapped tag carries when the author asked for them. */
   private common(node: ElementNode): BlockAttributes {
     const attrs: BlockAttributes = {};
-    const spelledClass = this.text(node, "class");
-    const spelledClassName = this.text(node, "className");
-    if (spelledClass !== null && spelledClassName !== null) {
-      // Two spellings of one attribute; the block has one place for it, so the second is not merged or dropped.
-      this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${node.tag}> has both "class" and "className"; they are one attribute.`, hint: "Keep one of them.", loc: node.loc });
-    }
-    const className = spelledClass ?? spelledClassName;
+    this.classSpelledTwice(node);
+    const className = this.text(node, "class") ?? this.text(node, "className");
     if (className !== null) attrs.className = className;
     // `id` is Gutenberg's `anchor`: the same thing an author links a heading by.
     const anchor = this.text(node, "id");
@@ -364,6 +365,7 @@ class Mapper {
       if (child.props.style !== undefined) this.styleProp(child);
       // Phrasing tags are written as HTML text, so a value that is not text (a handler, an
       // object) would be stringified into the markup. Refused here, where every phrasing element passes.
+      this.classSpelledTwice(child);
       for (const [name, value] of Object.entries(child.props)) {
         if (name === "style" || value === null || value === undefined) continue;
         if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) continue;

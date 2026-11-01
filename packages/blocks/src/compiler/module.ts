@@ -138,9 +138,8 @@ export async function renderModule(file: string): Promise<ModuleResult> {
     return { nodes: [], diagnostics };
   }
 
-  // Executed inside the process-wide section (see exclusive.ts), so the module never runs while
-  // another compile has the serializer's DOM globals installed.
-  return exclusive(async () => {
+  // Module work (see exclusive.ts): never while any caller has the serializer's DOM globals installed.
+  return exclusive("module", async () => {
   try {
     await writeFile(bundlePath, code);
     let namespace: { default?: unknown };

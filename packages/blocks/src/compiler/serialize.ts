@@ -133,9 +133,9 @@ async function createDom(): Promise<Record<string, unknown>> {
 }
 
 function withDom<T>(use: () => Promise<T>): Promise<T> {
-  // Inside the process-wide section, so no authored module runs while the globals are installed;
-  // nested calls from within re-enter it and share the one installation through the depth count.
-  return exclusive(() => installDom(use));
+  // DOM work: no authored module runs while the globals are installed (see exclusive.ts); every
+  // DOM caller, nested or not, shares the one installation through the depth count.
+  return exclusive("dom", () => installDom(use));
 }
 
 async function installDom<T>(use: () => Promise<T>): Promise<T> {
@@ -178,7 +178,9 @@ async function loadBundle(): Promise<WpBundle> {
 /**
  * Run `use` with `@wordpress/blocks` loaded, core blocks registered and a DOM
  * in place. Shared by the serializer, the codegen and tests: registration is
- * the expensive part and happens once per process.
+ * the expensive part and happens once per process. `compileContent` and
+ * `renderModule` cannot be called from inside `use`: an authored module must
+ * not see the DOM, and the call is refused rather than left to wait for itself.
  */
 export function withBlockApi<T>(use: (api: BlockApi) => T | Promise<T>): Promise<T> {
   return withDom(async () => {

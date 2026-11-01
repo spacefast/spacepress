@@ -1,58 +1,81 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
- * One critical section for the whole process, re-entrant along the async
- * call chain of the section that currently holds it.
+ * Two kinds of work that must never overlap in this process.
  *
- * The serializer puts happy-dom's globals on `globalThis` while it works, and
- * an authored module must never run while they are there: a file that reads
- * `typeof document` would otherwise compile differently depending on which
- * other compile happened to be in flight. Module execution and DOM
- * installation both take this section, so they never overlap. A call made
- * from inside the section (a nested `withBlockApi`, a `serializeBlocks` in a
- * test's `withBlockApi` callback) runs directly rather than deadlocking.
+ * The serializer puts happy-dom's globals on `globalThis` while it works
+ * (`dom`), and an authored module must never run while they are there
+ * (`module`): a file that reads `typeof document` would otherwise compile
+ * differently depending on which other compile happened to be in flight.
  *
- * Re-entry is decided by ownership, not by inherited context: each section
- * gets a fresh token, and only work whose context still carries the token of
- * the section that currently holds the lock runs directly. A callback that
- * outlived its section (a promise it created and left behind) carries a stale
- * token and queues like any outsider. The holder also waits for every direct
- * re-entrant call it started before it releases, so nothing it began can run
- * on after the lock has passed to someone else.
+ * Work of one kind overlaps freely with work of the same kind: DOM users share
+ * one installation (the serializer counts them), and module executions are
+ * independent. Work of the other kind waits until every member of the active
+ * group has finished, nested members included, so the globals never outlive
+ * the group. A request for the other kind made from inside an active group
+ * (`withBlockApi(() => compileContent(...))`) could only ever wait for itself,
+ * so it is refused at once with an error that says so.
+ *
+ * Same-kind arrivals always join an active group, even with the other kind
+ * waiting: queueing them would let a member that awaits an outsider of its
+ * own kind deadlock the group. The other kind is delayed only by work already
+ * in flight, which is finite.
  */
-interface Holder {
+export type Kind = "dom" | "module";
+
+interface Group {
+  readonly kind: Kind;
+  /** Carried in the async context of every member, so a cross-kind request from inside can be told apart from an outsider. */
   readonly token: object;
-  /** Re-entrant work started inside this section and still running. */
-  readonly pending: Set<Promise<unknown>>;
+  active: number;
+}
+
+interface Waiter {
+  readonly kind: Kind;
+  start(group: Group): void;
 }
 
 const context = new AsyncLocalStorage<object>();
-let holder: Holder | null = null;
-let tail: Promise<void> = Promise.resolve();
+let current: Group | null = null;
+const waiting: Waiter[] = [];
 
-export function exclusive<T>(work: () => Promise<T>): Promise<T> {
-  const current = holder;
-  if (current !== null && context.getStore() === current.token) {
-    const nested = work();
-    current.pending.add(nested);
-    void nested.finally(() => current.pending.delete(nested)).catch(() => {});
-    return nested;
+export function exclusive<T>(kind: Kind, work: () => Promise<T>): Promise<T> {
+  if (current !== null && current.kind !== kind && context.getStore() === current.token) {
+    return Promise.reject(new Error(`${describe(kind)} cannot start inside ${describe(current.kind)}: it would wait for the work that is waiting for it. Finish one before starting the other.`));
   }
-  const previous = tail;
-  let release!: () => void;
-  tail = new Promise<void>((resolve) => {
-    release = resolve;
+  if (current === null) current = { kind, token: {}, active: 0 };
+  if (current.kind === kind) return join(current, work);
+  return new Promise<T>((resolve, reject) => {
+    waiting.push({ kind, start: (group) => join(group, work).then(resolve, reject) });
   });
-  return previous.then(async () => {
-    const mine: Holder = { token: {}, pending: new Set() };
-    holder = mine;
-    try {
-      return await context.run(mine.token, work);
-    } finally {
-      // Every direct re-entrant call this section started finishes before the lock passes on.
-      while (mine.pending.size > 0) await Promise.allSettled([...mine.pending]);
-      holder = null;
-      release();
-    }
-  });
+}
+
+function describe(kind: Kind): string {
+  return kind === "dom" ? "the block API (withBlockApi, serializeBlocks)" : "module execution (compileContent, renderModule)";
+}
+
+async function join<T>(group: Group, work: () => Promise<T>): Promise<T> {
+  group.active += 1;
+  try {
+    return await context.run(group.token, work);
+  } finally {
+    group.active -= 1;
+    if (group.active === 0 && current === group) release();
+  }
+}
+
+/** The active group has emptied: start the next group, every waiter of its kind at once. */
+function release(): void {
+  current = null;
+  const first = waiting.shift();
+  if (first === undefined) return;
+  const group: Group = { kind: first.kind, token: {}, active: 0 };
+  current = group;
+  const batch = [first];
+  for (let index = 0; index < waiting.length; ) {
+    if (waiting[index]!.kind === group.kind) batch.push(...waiting.splice(index, 1));
+    else index += 1;
+  }
+  // Each start() increments `active` synchronously, so the group cannot empty while the batch is still being started.
+  for (const waiter of batch) waiter.start(group);
 }

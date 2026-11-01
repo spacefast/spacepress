@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { compileContent } from "../../src/compiler/content.ts";
+import { withBlockApi } from "../../src/compiler/serialize.ts";
 import { allValid, brief, fixture, names, reparse } from "./helpers.ts";
 
 test("a file's imports, loops and components run at build time and become valid blocks", async () => {
@@ -57,6 +58,13 @@ test("a thrown error is located in the author's file when the author's and the s
     else process.env.TMPDIR = before;
     rmSync(base, { recursive: true, force: true });
   }
+});
+
+test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
+  await assert.rejects(withBlockApi(() => compileContent(fixture("sees-dom.tsx"))), /cannot start inside the block API/);
+  assert.equal("document" in globalThis, false);
+  const after = await compileContent(fixture("sees-dom.tsx"));
+  assert.match(after.markup, /<p>undefined\/undefined<\/p>/);
 });
 
 test("a module never sees the serializer's DOM, whatever else is compiling at the same time", async () => {

@@ -175,6 +175,12 @@ test("class and className on one element are a collision, not a silent choice", 
   assert.match(diagnostics[0]!.message, /both "class" and "className"/);
 });
 
+test("class and className on one phrasing element are the same collision", () => {
+  const at = { fileName: "/t/page.tsx", lineNumber: 4, columnNumber: 6 };
+  const { diagnostics } = map(jsx("p", { children: jsxDEV("span", { class: "first", className: "second", children: "x" }, undefined, false, at) }));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 4]]);
+});
+
 test("a class on the img alone reaches the image block", () => {
   const { blocks, diagnostics } = map(jsx("figure", { children: jsx("img", { src: "/a.png", class: "inner" }) }));
   assert.deepEqual(diagnostics, []);

@@ -6,6 +6,8 @@ GPL-2.0-or-later (full text in LICENSE-GPL)
 
   runtime/Zero/          the PHP runtime, shipped as the zero-runtime plugin
   runtime/identity/      the zero-identity plugin and its screens
+  runtime/admin/         the zero-admin plugin and its screens, not yet
+                         emitted by zero build
   runtime/wp-plugin/     the zero-runtime and zero-app plugin templates
   runtime/bin/           the runtime's command-line entry point, shipped
                          inside zero-runtime
@@ -42,6 +44,7 @@ Third-party code keeps its own license and is not relicensed by this file:
                                            and the libraries it bundles
   runtime/identity/vendor-prefixed/        passkey, JWT and TOTP libraries
   runtime/identity/build/                  the bundled identity screens
+  runtime/admin/build/                     the bundled admin screens
 
   Each of those directories carries a THIRD-PARTY-LICENSES.txt listing every
   package and its license. Rust dependencies are under their own permissive

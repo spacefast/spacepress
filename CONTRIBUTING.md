@@ -80,8 +80,10 @@ tests/system/run.sh              # examples/site end to end on WordPress
 
 CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
 warnings`, `cargo test --locked`, the PHP suites, `tsc` on the types and
-examples, the client's Node tests, the WordPress suites, and a check that the
-prefixed PHP dependencies regenerate byte-for-byte (see
+examples, the client's Node tests, the WordPress suites, the identity
+acceptance suite on two PHP versions, the admin screens' unit tests and a
+rebuild that must match the committed bundle, and a check that the prefixed
+PHP dependencies regenerate byte-for-byte (see
 [`docs/dependencies.md`](docs/dependencies.md)).
 
 ## Layout
@@ -101,6 +103,7 @@ prefixed PHP dependencies regenerate byte-for-byte (see
 | `src/config_migrate/` | `zero migrate config` importers |
 | `runtime/Zero/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `zero-identity` plugin and its screens |
+| `runtime/admin/` | the `zero-admin` plugin and its screens, not yet emitted by `zero build` |
 | `runtime/wp-plugin/` | the `zero-runtime` and `zero-app` plugin templates |
 | `runtime/client/` | the handwritten half of the typed client |
 | `types/zero/` | TypeScript declarations for `"zero"` |
@@ -110,8 +113,8 @@ prefixed PHP dependencies regenerate byte-for-byte (see
 
 ## Licensing
 
-Changes under `runtime/Zero`, `runtime/identity`, `runtime/wp-plugin` and
-`runtime/bin` are GPL-2.0-or-later; everything else is MIT, and bundled
-third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
+Changes under `runtime/Zero`, `runtime/identity`, `runtime/admin`,
+`runtime/wp-plugin` and `runtime/bin` are GPL-2.0-or-later; everything else
+is MIT, and bundled third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
 Don't add a dependency to the runtime whose license is incompatible with
 GPL-2.0-or-later, and don't copy GPL code into the MIT side.

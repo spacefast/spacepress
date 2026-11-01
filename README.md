@@ -289,13 +289,15 @@ What's next, none of it shipped:
   WordPress Playground, and one-click publish to Spacefast.
 - Zero Blocks: an optional add-on for authoring Gutenberg content and full
   block themes in TSX.
-- Zero Admin: an optional admin plugin for Zero apps, still being designed.
+- Zero Admin: an optional admin plugin for Zero apps. Its source is in the
+  repo under `runtime/admin/`; `zero build` does not emit it yet.
 
 ## License
 
 Zero is licensed by component, and [`LICENSE`](LICENSE) maps every path.
 Everything that runs inside WordPress is GPL-2.0-or-later: the PHP runtime,
-the `zero-identity` plugin and the plugins `zero build` emits. Everything else
-is MIT: the Rust compiler, the TypeScript client, the `"zero"` types, the
-examples, the docs and the tests. Bundled third-party code keeps its own
-license; see the `THIRD-PARTY-LICENSES.txt` files under `runtime/`.
+the `zero-identity` and `zero-admin` plugins and the plugins `zero build`
+emits. Everything else is MIT: the Rust compiler, the TypeScript client, the
+`"zero"` types, the examples, the docs and the tests. Bundled third-party
+code keeps its own license; see the `THIRD-PARTY-LICENSES.txt` files under
+`runtime/`.

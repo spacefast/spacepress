@@ -17,6 +17,11 @@
 //!   each loop body is walked twice so a share late in an iteration counts for the next one.
 //! - A write below the top level (`o.k.j = v`) also needs every value placed into `o` to have
 //!   been fresh.
+//! - A write is the statement's own operation (`o.x = v;`, `o.push(v);`, `const r = f(o);`),
+//!   never nested inside a larger expression (`[a, a.x++]`, `read(a, a.x++)`, `a.slice(a.pop())`),
+//!   where the rest of the expression may already hold a PHP copy of the container. A
+//!   container passed by value can't be shared by a later argument of the same call and then
+//!   forgotten.
 //! - A `for (const e of o)` element is a view of `o` when compiled PHP loops by reference (the
 //!   body writes `e`): writes through `e` are writes into `o`. An element of a literal of fresh
 //!   values (`for (const e of [{ n: 1 }])`) is an owner.
@@ -95,6 +100,7 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         scopes: Vec::new(),
         st: HashMap::new(),
         callback: None,
+        nesting: 0,
     }
     .function(f, None)
 }
@@ -119,6 +125,10 @@ struct Walk<'o, 'a> {
     st: HashMap<Span, Local>,
     /// Inside an array-method callback: the method's name, for messages.
     callback: Option<String>,
+    /// How many expressions enclose the one being walked inside its statement. A write is
+    /// accepted only at depth 0 (the statement's own operation): anywhere deeper, the rest of
+    /// the statement may observe the container in an order the analysis doesn't model.
+    nesting: usize,
 }
 
 fn join(a: &mut HashMap<Span, Local>, b: &HashMap<Span, Local>) {
@@ -368,10 +378,32 @@ impl Walk<'_, '_> {
         if !spread {
             return self.share(x);
         }
-        if self.nests(x)
-            && let Some(b) = self.root_binding(x)
-        {
-            self.st.entry(b).or_default().holds_shared = true;
+        if self.nests(x) {
+            for b in self.sources(x) {
+                self.taint(b);
+            }
+        }
+    }
+
+    /// Every local `e` may evaluate to (or be read out of).
+    fn sources(&self, e: &Expr) -> Vec<Span> {
+        match &e.kind {
+            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Await(x) | ExprKind::Chain(x) => self.sources(x),
+            ExprKind::Cond(_, a, b) | ExprKind::Logical(_, a, b) => {
+                let mut v = self.sources(a);
+                v.extend(self.sources(b));
+                v
+            }
+            ExprKind::Assign { value, .. } => self.sources(value),
+            _ => self.root_binding(e).into_iter().collect(),
+        }
+    }
+
+    /// Something shared may now sit inside `b`'s container (and inside what `b` is a view of).
+    fn taint(&mut self, b: Span) {
+        let view = self.st.get(&b).and_then(|l| l.view);
+        for k in std::iter::once(b).chain(view.map(|v| v.0)) {
+            self.st.entry(k).or_default().holds_shared = true;
         }
     }
 
@@ -381,7 +413,7 @@ impl Walk<'_, '_> {
             && !self.fresh(value)
             && let Some(b) = self.root_binding(holder)
         {
-            self.st.entry(b).or_default().holds_shared = true;
+            self.taint(b);
         }
         self.share(value);
     }
@@ -390,6 +422,16 @@ impl Walk<'_, '_> {
 
     /// A write `extra` steps below the place `target`.
     fn write(&self, target: &Expr, extra: usize, span: Span) -> Result<()> {
+        // A new container made right here can't be observed by the rest of the statement.
+        let temporary =
+            Self::root(target).is_none() && self.new_container(target) && (extra <= 1 || self.fresh(target));
+        if self.nesting > 1 && !temporary {
+            return err_help(
+                span,
+                "this changes a container in the middle of a larger expression, where compiled PHP may already hold a copy of it",
+                "make the change in its own statement before or after this one",
+            );
+        }
         let Some((name, d)) = Self::root(target) else {
             // A new container made right here (`[...list].sort()`, `[b, a].reverse()`) is the
             // same value whatever reads it next; a write below its top level reaches its members.
@@ -471,6 +513,13 @@ impl Walk<'_, '_> {
     }
 
     fn stmt(&mut self, s: &Stmt) -> Result<bool> {
+        let saved = std::mem::replace(&mut self.nesting, 0);
+        let r = self.stmt_inner(s);
+        self.nesting = saved;
+        r
+    }
+
+    fn stmt_inner(&mut self, s: &Stmt) -> Result<bool> {
         match s {
             Stmt::Decl { pat, init, .. } => {
                 let (owner, fresh) = match init {
@@ -670,6 +719,29 @@ impl Walk<'_, '_> {
     }
 
     fn expr(&mut self, e: &Expr) -> Result<()> {
+        // Function bodies and callbacks start their own statements.
+        if matches!(e.kind, ExprKind::Func(_)) {
+            let saved = std::mem::replace(&mut self.nesting, 0);
+            let r = self.expr_inner(e);
+            self.nesting = saved;
+            return r;
+        }
+        // `x!`, `x as T` and `await x` don't add a level.
+        let transparent = matches!(
+            e.kind,
+            ExprKind::NonNull(_) | ExprKind::As(..) | ExprKind::Await(_) | ExprKind::Chain(_)
+        );
+        if !transparent {
+            self.nesting += 1;
+        }
+        let r = self.expr_inner(e);
+        if !transparent {
+            self.nesting -= 1;
+        }
+        r
+    }
+
+    fn expr_inner(&mut self, e: &Expr) -> Result<()> {
         match &e.kind {
             ExprKind::Assign { target, value, .. } => {
                 self.expr(value)?;
@@ -853,6 +925,8 @@ impl Walk<'_, '_> {
         // A container passed by value is copied when the call starts, so a later argument
         // writing it (`read(a, a.x++)`) would change JS's argument but not PHP's: once evaluated,
         // a by-value argument counts as shared for the rest of the argument list.
+        // Shares that happen while the arguments are evaluated stay (`read(a, b = a)`).
+        let before: HashMap<Span, bool> = self.st.iter().map(|(k, l)| (*k, l.shared)).collect();
         let mut lent = Vec::new();
         for (i, a) in args.iter().enumerate() {
             let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
@@ -866,8 +940,17 @@ impl Walk<'_, '_> {
                 lent.push(b);
             }
         }
+        // Every later argument has been evaluated: a by-value argument is free again, unless
+        // something else shared it meanwhile (re-walk the arguments' sharing without lending).
+        let mut shared_meanwhile: HashSet<Span> = HashSet::new();
+        for a in args {
+            let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
+            collect_assigned_sources(x, self, &mut shared_meanwhile);
+        }
         for b in lent {
-            self.st.entry(b).or_default().shared = false;
+            if !shared_meanwhile.contains(&b) && !before.get(&b).copied().unwrap_or(false) {
+                self.st.entry(b).or_default().shared = false;
+            }
         }
         // Two arguments naming one container (`both(o, o)`): JS's parameters are one object,
         // PHP's by-reference one is not the other.
@@ -905,6 +988,36 @@ impl Walk<'_, '_> {
             return self.refuse(e.span, "this call", None);
         }
         Ok(())
+    }
+}
+
+/// Locals an argument expression shares by assigning them somewhere (`b = a`, `{ a }`, `[a]`).
+fn collect_assigned_sources(e: &Expr, w: &Walk<'_, '_>, out: &mut HashSet<Span>) {
+    match &e.kind {
+        ExprKind::Assign { value, .. } => {
+            out.extend(w.sources(value));
+            collect_assigned_sources(value, w, out);
+        }
+        ExprKind::Array(items) => items.iter().for_each(|it| {
+            let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
+            out.extend(w.sources(x));
+            collect_assigned_sources(x, w, out);
+        }),
+        ExprKind::Object(props) => props.iter().for_each(|p| {
+            let (Prop::KV(_, x) | Prop::Spread(x)) = p;
+            out.extend(w.sources(x));
+            collect_assigned_sources(x, w, out);
+        }),
+        ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Await(x) | ExprKind::Chain(x) | ExprKind::Unary(_, x) => {
+            collect_assigned_sources(x, w, out)
+        }
+        ExprKind::Cond(a, b, c) => [a, b, c].into_iter().for_each(|x| collect_assigned_sources(x, w, out)),
+        ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
+            collect_assigned_sources(a, w, out);
+            collect_assigned_sources(b, w, out);
+        }
+        // Calls are judged where they're walked; anything else holds no assignment.
+        _ => {}
     }
 }
 

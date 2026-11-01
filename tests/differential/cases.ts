@@ -151,17 +151,18 @@ export default defineConfig({
       const tuple: [{ count: number }] = [{ count: 2 }];
       const emptyOptions: { item?: { count: number } } = {};
       const mutateWithExtra = (item: { count: number } = { count: 0 }, extra: number[] = []) => { item.count++; extra.push(item.count); return item.count; };
-      const referenceArguments = {
-        optional: mutate(options.item!),
-        tuple: mutate(tuple[0]!),
-        optionalSource: options.item?.count,
-        tupleSource: tuple[0]?.count,
-        missing: mutate(emptyOptions.item),
-        missingKeys: Object.keys(emptyOptions),
-        unpacked: mutateWithExtra(options.item!, []),
-        unpackedMissing: mutateWithExtra(emptyOptions.item, []),
-        unpackedMissingKeys: Object.keys(emptyOptions),
-      };
+      // Calls that change their argument, each in its own statement (a change in the middle of a
+      // larger expression is refused).
+      const optional = mutate(options.item!);
+      const tupleCount = mutate(tuple[0]!);
+      const optionalSource = options.item?.count;
+      const tupleSource = tuple[0]?.count;
+      const missingCount = mutate(emptyOptions.item);
+      const missingKeys = Object.keys(emptyOptions);
+      const unpacked = mutateWithExtra(options.item!, []);
+      const unpackedMissing = mutateWithExtra(emptyOptions.item, []);
+      const unpackedMissingKeys = Object.keys(emptyOptions);
+      const referenceArguments = { optional, tuple: tupleCount, optionalSource, tupleSource, missing: missingCount, missingKeys, unpacked, unpackedMissing, unpackedMissingKeys };
       let item = { count: 1 };
       const readBinding = () => item.count;
       const spread = { ...item };
@@ -271,7 +272,8 @@ export default defineConfig({
       const once: Record<string, number> = {};
       once["k" + j++] ??= j;
       const text: { s: string } = { s: "a" };
-      const joined = (text.s += "b") + 1;
+      const appended = (text.s += "b");
+      const joined = appended + 1;
       const indexed = ({} as Record<string, number>)["x"] ?? -1;
       // A short-circuited logical assignment leaves the place untouched (no key appears).
       const skipped: { x?: string; y?: string; z?: string } = {};

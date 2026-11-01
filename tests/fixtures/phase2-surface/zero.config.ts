@@ -66,8 +66,9 @@ function nullableArguments(absent: { count: number } | null) {
   replace(present);
   mutateNullable(present, []);
   const module = present?.count;
-  const bumpPresent = (value: { count: number } | null) => { if (value !== null) value.count++; return []; };
-  mutate(present, bumpPresent(present));
+  const bumpPresent = (value: { count: number } | null) => { if (value !== null) value.count++; };
+  bumpPresent(present);
+  mutate(present, []);
   mutate(absent, []);
   let before = { count: 0 };
   const peek = (value: { count: number }, extra: number[]) => value.count;

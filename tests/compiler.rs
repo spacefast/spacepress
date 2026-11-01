@@ -1386,11 +1386,11 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "const a = { x: 0 }; return ({ a, n: (a.x = 1) }).a.x === 1;",
-            "may be the same object or array as another value here",
+            "in the middle of a larger expression",
         ),
         (
             "const reader = (p: { child: { x: number } }) => { const q = p.child; return (_: number) => q.x; }; const o = { child: { x: 0 } }; return reader(o)((o.child.x = 1)) === 1;",
-            "may be the same object or array as another value here",
+            "in the middle of a larger expression",
         ),
         (
             "const a = [1, 2]; const r = a.map((e) => { a.reverse(); return e; }); return r[1] === 1;",
@@ -1406,11 +1406,11 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "const a = { x: 0 }; const r: [{ x: number }, number] = [a, a.x++]; return r[1] === 0;",
-            "may be the same object or array as another value here",
+            "in the middle of a larger expression",
         ),
         (
             "const read = (p: { x: number }, n: number) => p.x; const a = { x: 0 }; return read(a, a.x++) === 1;",
-            "may be the same object or array as another value here",
+            "in the middle of a larger expression",
         ),
         (
             "const a = [1, 2]; const cb = (e: number) => { a.reverse(); return e; }; return a.map(cb)[1] === 1;",
@@ -1427,6 +1427,26 @@ fn rejects_phase2_static_contracts() {
         (
             "const a = { x: 0 }; let b = { x: 5 }; const f = () => { b = a; }; f(); b.x = 1; return a.x === 1;",
             "may be the same object or array as another value here",
+        ),
+        (
+            "const a = { child: { x: 0 } }; const b = { ...(a.child.x === 0 ? a : a) }; a.child.x = 1; return b.child.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const shared = { x: 0 }; const list = [{ child: { x: 0 } }]; for (const e of list) { e.child = shared; e.child.x = 1; } return shared.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const read = (p: { x: number }, q: { x: number }) => p.x + q.x; const a = { x: 0 }; let b = { x: 5 }; read(a, b = a); a.x = 1; return b.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const a = [1, 2]; return a.slice(a.pop()! - 2).length === 1;",
+            "in the middle of a larger expression",
+        ),
+        (
+            "const a = { x: 0 }; let b = { x: 9 }; const dst: Record<string, number> = {}; dst[(b = a).x === 0 ? 'x' : 'x'] = (a.x = 1); return b.x === 1;",
+            "in the middle of a larger expression",
         ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),

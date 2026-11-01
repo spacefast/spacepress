@@ -141,6 +141,42 @@ loop-local declarations receive a fresh binding on each execution.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
+Viewer-bound writes must not answer existence questions about unreadable data.
+Setting a non-null unique value (including an explicit primary key or a generated
+slug) requires an unfiltered collection read rule and visibility of that field
+across rows. Otherwise both taken and free values return 401/403 before any
+uniqueness lookup. A filtered read, including `self` or automatic draft filtering,
+does not authorize new or changed unique values. An unchanged value is accepted
+only when the viewer can read the current row and the column cannot hide values.
+That value is omitted from persistence, and native slug repair preserves it without
+querying competitors. Publishing a WordPress draft is a new uniqueness operation;
+echoing or omitting its slug cannot bypass the full visibility preflight.
+Hidden columns and unreadable rows receive the same refusal
+before equality can affect the response. Trusted CLI/hook writes retain normal
+uniqueness checks; successful public creates retain their ordinary row response.
+System uids remain unguessable sync identities.
+
+Every reference in a viewer-bound write, including generated values, must resolve within the target's read filters and use
+a readable target column; an unreadable target and a missing target return the
+same `reference_violation`, without the resolved value in its detail. A known sync UID authorizes only the exact primary-key
+reference resolved for that operation; hooks changing it receive no exemption. This applies to core WordPress saves too.
+Sync checks target visibility before resolved values reach input rules or validators.
+Potential generated constraints are preflighted before defaults and on-update
+generators run; hook-written references are checked before field validation.
+A delete requires visibility across the referencing collection and
+column before checking for children, so hidden children cannot be discovered by
+trying to delete their parent. The preflight follows cascade branches and covers
+generated values from referential updates even when a branch has no rows. Hidden
+cascade branches are refused before traversal, so recursion limits cannot reveal
+their depth.
+These checks roll back the whole write on refusal.
+Changing a referenced key uses the same relationship visibility preflight,
+following native cascading updates before the database can expose hidden children.
+Native WordPress draft publication preflights slug visibility before collision
+resolution. Wrapped saves and editor forms preserve an omitted slug on an
+already published, scheduled, or private row. Programmatic native writes without
+known input provenance retain collision resolution and require slug visibility.
+
 Create, per row:
 1. Let registered input normalizers consume virtual inputs, then reject unknown keys
    (`invalid_input`, pointer `/<key>`). The original supplied input remains available to write hooks.

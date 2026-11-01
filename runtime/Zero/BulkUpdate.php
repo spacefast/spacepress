@@ -25,6 +25,8 @@ final class BulkUpdate
         public readonly array $set,
         public readonly ?Viewer $viewer,
         array $keys,
+        public readonly array $resolvedReferences = [],
+        public readonly ?Viewer $errorViewer = null,
     ) {
         $this->pending = array_fill_keys($keys, true);
     }

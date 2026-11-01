@@ -32,6 +32,7 @@ export const payroll = collection("payroll", {
   entries: repeater({ fields: { open: text(), sealed: text().access({ read: "admin" }) } }),
   sections: blocks({ layouts: { private: { sealed: text().access({ read: "admin" }) }, public: { open: text() } } }),
   policy: group({ fields: { gate: text(), value: text().access({ update: (ctx) => ctx.data.gate !== "locked" }) } }),
+  badge: integer().unique().access({ read: "admin", update: "editor" }),
   writeOnly: text().access({ read: "admin", update: "editor" }),
   // An admin-only reference: SCF links (and can embed) the post it names.
   managerId: integer().references(() => ledger.id).access({ read: "admin" }),
@@ -79,13 +80,123 @@ export const fuses = collection("fuses", { id: id(), title: text().notNull(), no
   { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const fuseLog = collection("fuse_log", { id: id(), msg: text().notNull() }, { editor: false, access: { read: "anyone" } });
 
-export const schema = { vault, ledger, payroll, gated, dossier, claims, fuses, fuseLog };
+// Filtered reads and unreadable restrictive children exercise write-error confidentiality.
+export const oracleRows = collection("oracle_rows", {
+  id: id(), title: text().notNull(), ownerId: integer(), code: text().unique().max(191), badge: integer().unique().access({ read: "admin" }), publicBadge: integer().unique(),
+}, { uid: true, access: {
+  read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
+  create: "editor", update: "editor", delete: "editor",
+} });
+export const oracleRefs = collection("oracle_refs", {
+  id: id(), title: text().notNull(),
+  rowId: integer().references(() => oracleRows.id),
+  alias: integer().references(() => payroll.badge),
+}, { access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
+
+export const oracleSync = collection("oracle_sync", {
+  id: id(), title: text().notNull(), rowId: integer().references(() => oracleRows.id), badgeId: integer().references(() => oracleRows.badge).min(889002), publicBadgeId: integer().references(() => oracleRows.publicBadge),
+}, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
+export const oracleParents = collection("oracle_parents", { id: id(), title: text().notNull() },
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const oracleChildren = collection("oracle_children", {
+  id: id(), title: text().notNull(), parentId: integer().references(() => oracleParents.id, { onDelete: "cascade" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const oracleGrandchildren = collection("oracle_grand", {
+  id: id(), title: text().notNull(), childId: integer().references(() => oracleChildren.id),
+}, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+export const oracleDefaults = collection("oracle_defaults", {
+  id: id(), title: text().notNull(),
+  code: text().max(191).unique().default("reserved").access({ read: "admin" }),
+  touched: text().max(191).unique().$onUpdate(() => "reserved-update").access({ read: "admin" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
+
+export const nullParents = collection("null_parents", { id: id(), title: text().notNull() },
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const nullChildren = collection("null_children", {
+  id: id(), title: text().notNull(), parentId: integer().references(() => nullParents.id, { onDelete: "set null" }),
+  code: text().max(191).unique().$onUpdate(() => "null-reserved").access({ read: "admin" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
+export const hookParents = collection("hook_parents", { id: id(), title: text().notNull() },
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const hookChildren = collection("hook_children", {
+  id: id(), title: text().notNull(), parentId: integer().references(() => hookParents.id, { onDelete: "set null" }),
+  code: text().max(191).unique().access({ read: "admin" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const secretParents = collection("secret_parents", {
+  id: id(), title: text().notNull(), secret: integer().unique().access({ read: "admin" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const secretLinks = collection("secret_links", {
+  id: id(), title: text().notNull(), secret: integer().references(() => secretParents.secret),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
+export const refDefaults = collection("ref_defaults", {
+  id: id(), title: text().notNull(), targetId: integer().references(() => oracleRows.id).default(444444444),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
+
+export const defaultOnly = collection("default_only", {
+  id: id(), title: text().notNull(), code: text().max(191).unique().default("hidden-default").access({ read: "admin" }),
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
+
+export const derivedRefs = collection("derived_refs", {
+  id: id(), title: text().notNull(),
+  badgeId: integer().references(() => oracleRows.badge).min(100).$default(async () => {
+    const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
+    return row?.badge ?? null;
+  }),
+}, { sync: "content/derived-refs/*.json", access: {
+  read: "anyone", update: "editor", delete: "admin",
+  create: (ctx) => ctx.user?.role === "editor" && (ctx.data?.badgeId ?? 100) >= 100,
+} });
+
+export const deepRoots = collection("deep_roots", { id: id(), title: text().notNull() },
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const deepNodes = collection("deep_nodes", {
+  id: id(), title: text().notNull(), rootId: integer().references(() => deepRoots.id, { onDelete: "cascade" }),
+  parentId: integer().references(() => deepNodes.id, { onDelete: "cascade" }),
+}, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+
+export const roundTrips = collection("round_trips", {
+  id: id(), title: text().notNull(), ownerId: integer(), slug: slug({ source: "title" }),
+  secretCode: text().max(191).unique().access({ read: "admin", update: "editor" }),
+}, { sync: "content/round-trips/*.json", access: {
+  read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
+  create: "admin", update: "editor", delete: "admin",
+} });
+
+export const keyRoots = collection("key_roots", { id: id(), code: integer().unique() },
+  { editor: false, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+export const keyLinks = collection("key_links", { id: id(), rootCode: integer().references(() => keyRoots.code) },
+  { editor: false, access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+
+export const schema = { vault, ledger, payroll, gated, dossier, claims, fuses, fuseLog, oracleRows, oracleRefs, oracleSync, oracleParents, oracleChildren, oracleGrandchildren, oracleDefaults, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, keyRoots, keyLinks, roundTrips };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {
+  derivedRefs: {
+    async beforeCreate(data) {
+      if (data.title === "Hook reference") {
+        const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
+        data.badgeId = row?.badge ?? null;
+      }
+      return data;
+    },
+  },
+  hookChildren: {
+    async beforeUpdate(data) { data.code = "hook-reserved"; return data; },
+  },
+  oracleSync: {
+    async beforeCreate(data) {
+      if (data.title === "Swap reference") {
+        const other = await db.query.oracleRows.findFirst({ where: { title: "Other private" } });
+        if (other !== undefined && other !== null) data.rowId = other.id;
+      }
+      return data;
+    },
+  },
   fuses: {
     async afterCreate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
       await db.insert(fuseLog).values({ msg: `created ${row.title}` });

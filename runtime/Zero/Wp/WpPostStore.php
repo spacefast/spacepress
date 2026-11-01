@@ -244,10 +244,18 @@ final class WpPostStore implements Store
         $post = $this->corePost($spec, $values);
         $this->db->touchPost($id);
         if ($post !== []) {
+            $publishing = !in_array(get_post_status($id), ['publish', 'future', 'private'], true)
+                && in_array($post['post_status'] ?? null, ['publish', 'future', 'private'], true);
+            $preserveSlug = isset($spec['slug']) && !array_key_exists('post_name', $post) && !$publishing;
+            if ($preserveSlug) {
+                // An omitted/unchanged slug is not input. Native title edits must not repair it
+                // against competitors that the caller may not be allowed to read.
+                $post['post_name'] = (string) get_post_field('post_name', $id, 'raw');
+            }
             $post['ID'] = $id;
             // Zero writes the revision itself after the meta is saved (Db::updateOne → revisionWrite);
             // core's own post-update revision would be a second, meta-less one.
-            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withStatus($post, fn (array $post) => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true)))));
+            $r = $this->db->core(fn () => $this->withoutCoreRevision(fn () => $this->withStatus($post, fn (array $post) => $this->withSlug($post, static fn () => wp_update_post(wp_slash($post), true), $preserveSlug))));
             if ($r instanceof \WP_Error) {
                 throw new \RuntimeException('wp_update_post failed: ' . $r->get_error_message());
             }
@@ -335,14 +343,15 @@ final class WpPostStore implements Store
     }
 
     /** Pass the slug through verbatim (Zero already checked it is unique in this post type). */
-    private function withSlug(array $post, callable $fn): mixed
+    private function withSlug(array $post, callable $fn, bool $preserveEmpty = false): mixed
     {
-        if (!isset($post['post_name']) || $post['post_name'] === '') {
+        if (!isset($post['post_name']) || ($post['post_name'] === '' && !$preserveEmpty)) {
             return $fn();
         }
         $slug = $post['post_name'];
-        $filter = static fn ($override) => $slug;
-        add_filter('pre_wp_unique_post_slug', $filter);
+        $id = (int) ($post['ID'] ?? 0);
+        $filter = static fn ($override, $_slug, $postId) => $postId === $id ? $slug : $override;
+        add_filter('pre_wp_unique_post_slug', $filter, 10, 3);
         try {
             return $fn();
         } finally {

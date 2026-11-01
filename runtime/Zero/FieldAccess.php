@@ -205,6 +205,11 @@ final class FieldAccess
         if ($viewer === null || $op === 'delete') {
             return;
         }
+        $create = Access::collectionRules(db()->schema()->collection($collection))['create'];
+        if ($op === 'create' && Access::isShorthand($create) && Access::evaluate($create, $viewer, 'create') === false) {
+            return; // the collection/identity guards own this denial; no uniqueness lookup is reached
+        }
+        db()->requireUniqueVisibility($collection, array_intersect_key($data, $provided), $viewer, $op === 'create' && !$stored, $existing);
         $columns = self::columns($collection);
         if (!self::hasRule($columns, $op) && ($existing === null || !self::hasRule($columns, 'read'))) {
             return;

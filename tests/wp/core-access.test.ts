@@ -340,6 +340,18 @@ test("the classic editor neither shows nor erases content hidden from the editor
   const right = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: `<p>classified-${run} C:\\notes</p>` });
   const wrong = await editor.save(id, { post_title: `Native ${run} retitled`, post_type: "zero_dossier", content: "<p>guess</p>" });
   assert.deepEqual([right.status, wrong.status], [403, 403]);
+  for (const occupied of [false, true]) {
+    const slug = `form-slug-probe-${occupied}-${run}`;
+    const draft = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Form slug probe", slug, status: "draft" } });
+    assert.equal(draft.status, 201, JSON.stringify(draft.json));
+    if (occupied) {
+      assert.equal((await http("POST", `${core}/zero_dossier`, { as: "admin", body: { title: "Occupied form slug", slug, status: "publish" } })).status, 201);
+    }
+    const publish = await editor.save(draft.json.id, { post_type: "zero_dossier", post_status: "publish" });
+    assert.equal(publish.status, 403);
+    assert.match(await publish.text(), /You can.*set slug/);
+    assert.equal(zero("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].status, "draft");
+  }
 });
 
 test("wp-admin's list search doesn't read content hidden from the viewer", async () => {
@@ -386,7 +398,7 @@ test("restoring a hidden group is refused independently of whether its saved val
 });
 
 test("autosaving one's own draft returns it without the fields hidden from the author of the save", async () => {
-  const created = await http("POST", `${core}/zero_dossier`, { as: "editor", body: { title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
+  const created = await http("POST", `${core}/zero_dossier`, { as: "admin", body: { author: harness.users.editor.id, title: `Draft ${run}`, status: "draft", content: `<p>draftword-${run}</p>` } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   const autosaved = await http("POST", `${core}/zero_dossier/${created.json.id}/autosaves`, { as: "editor", body: { title: `Draft ${run} autosaved`, content: `<p>draftword-${run}</p>` } });
   assert.equal(autosaved.status, 200, JSON.stringify(autosaved.json));

@@ -94,7 +94,7 @@ test("relation filters only see target rows the viewer may read", async () => {
   // A draft author (post-backed, shorthand read + drafts) behind a published post.
   const ghost = await ok("POST", "/authors", { as: "admin", body: { name: `Ghost ${run}`, email: `price-42-${run}@example.test`, status: "draft" } });
   const byGhost = await ok("POST", "/posts", { as: "editor", body: { title: `By ghost ${run}`, authorId: ghost.id } });
-  await ok("POST", "/signups", { body: { email: `sk-live-7-${run}@example.test`, postId: byGhost.id } });
+  await ok("POST", "/signups", { as: "editor", body: { email: `sk-live-7-${run}@example.test`, postId: byGhost.id } });
   const where = (w: object) => qs({ where: { AND: [w, { id: byGhost.id }] } });
   const draftOracle = where({ author: { email: { like: `price-4%${run}%` } } });
   assert.deepEqual(await ok("GET", "/posts" + draftOracle), []);

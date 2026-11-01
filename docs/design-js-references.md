@@ -16,7 +16,7 @@ the order in which the change lands.
 | Representation | Two final PHP classes, `Zero\JsObject` and `Zero\JsArray`, each a handle around one PHP array (`->p` for properties, `->a` for elements). Compiled code holds and passes handles. Primitives stay PHP scalars. First-class function values are PHP `Closure`s. |
 | Identity | PHP object identity is JS identity. `===` between handles compiles to PHP `===`. The compile-time refusal of `===` on containers goes away. |
 | Key order | Property order is computed by one function, `Js::ownKeys`, at every enumeration: array-index keys ascending, then the rest in insertion order. Objects are only ever built by per-key assignment, never by PHP array spread, `array_merge` or `array_values`, so integer-like keys can't renumber. |
-| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist; where JS would produce one (a `map` whose callback shrinks the receiver) Zero stores `undefined`, the one documented deviation of the dense subset. |
+| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist: a callback that shrinks the array it is iterating (`map`, `filter`, `find*`, `reduce`, …) is refused with a `RangeError` at run time, so no helper ever has to know about holes. |
 | Evaluation order | Assignments, `===`, spreads, destructuring, `concat` and every array helper read their receiver, keys and old value exactly where JS reads them: a temporary or a helper call whose arguments PHP evaluates left to right. §4.2 gives the emission for each. |
 | Boundary | Compiled code lives in "JS land" (handles). `Db`, `Schema`, `Sql`, stores, SCF codecs, Sync and WordPress live in "runtime land" (plain arrays). One file, `runtime/Zero/Seam.php`, owns every conversion in both directions, driven by the schema. `Db` calls it at its public entry points; nothing else converts. A user `json()` column's value is a handle at every layer and every callback receives its own deep copy of it. |
 | Graphs | `structuredClone`, `JSON.stringify`, `String()` and `Seam::toPhp` all walk with an identity map: aliases are preserved by clone, cycles throw `TypeError` from `JSON.stringify` and `Seam`, and `String()` renders a cycle as `""` as JS does. |
@@ -195,12 +195,21 @@ Decision: Zero arrays are dense. JS holes are unreachable by construction:
   `delete a[i]`, `a.length = n`, non-numeric index types.
 
 With density, every "missing element" rule in the array methods collapses to
-one test, `$i >= count($a->a)`, which §4.1 uses. One case can still ask for a
-hole: `map` over an array whose callback shrinks it (`[1, 2, 3].map(() => a.pop())`)
-produces holes at the missing indices in JS. Zero's `map` writes `undefined`
-there and keeps `length`, so `JSON.stringify` and indexed reads agree with JS
-and only `forEach`/`Object.keys` over the result differ (they visit the
-`undefined`). This is the one documented deviation of the dense subset.
+one test, `$i >= count($a->a)`. One case can still ask for a hole: a
+callback that shrinks the array being iterated (`[1, 2, 3].map(() => a.pop())`)
+makes JS visit a missing index, and for `map` that puts a hole in the result.
+Storing `undefined` there instead would not be one deviation but many:
+`filter`, `some`, `every`, `reduce` and `forEach` skip holes and would visit
+the `undefined`; `indexOf(undefined)` is -1 on a hole and 0 on the stored
+value; `Object.keys`, `in` and spread differ too. Decision: the case is
+**refused**, not approximated. Every helper that reads `length` once and
+walks by index (§4.1) throws
+`JsError('Array shrank while being iterated', 'RangeError')` the moment it
+meets `$i >= count($a->a)`. Growing the array inside the callback is fine
+(JS doesn't visit the new elements either, and neither does Zero). The one
+remaining difference from JS is "shrinking an array inside its own iteration
+callback throws", which `config-api.md` states next to the dense-array rule.
+`for…of` and `Array.from` read the length live and need no check.
 
 ### 2.5 Prototype-less plain objects, functions
 
@@ -428,15 +437,12 @@ dates, regexp, logging).
 **Iteration rule for callbacks.** Every array method that takes a callback
 follows ECMA-262: `len = count($a->a)` is read once; for `i` in `0..len`, if
 `i >= count($a->a)` the element is missing and the method applies its
-missing-element rule (`map` writes `undefined` at that index and keeps
-`length`, §2.4; `filter`/`forEach`/`some`/`every`/`reduce`/`flatMap` skip
-it; all four `find`/`findIndex`/`findLast`/`findLastIndex` visit it as
-`undefined`, so `[1, 2].findIndex((v, i) => { if (i === 0) a.pop(); return i === 1; })`
-is 1 as in Node; `some` stops delegating to `findIndex` and gets its own
-loop; because of this the compiler types the `value` parameter of the four
-`find*` callbacks as `T | undefined`, so `value + 1` inside one is the
-existing "might be null" compile error and the user guards it, where JS
-would compute `NaN`); otherwise the callback gets the element read live. Each helper
+rule of §2.4 applies: the array shrank under the walk and the helper throws
+`RangeError`. This holds for `map`, `filter`, `forEach`, `some`, `every`,
+`reduce`, `flatMap`, `find`, `findIndex`, `findLast`, `findLastIndex` alike
+(`findLast*` walk downward from `len - 1` and check the same way), so no
+helper ever hands a callback a missing element and the `value` parameter
+keeps its element type. Otherwise the callback gets the element read live. Each helper
 keeps the element it read in a local and collects or returns that local,
 never re-reading `->a` after the callback. Callback shapes are the JS ones
 and the compiler types them so: `(value, index, array)` for `map`, `filter`,
@@ -755,8 +761,7 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    receiver reassigned by the right-hand side, `flatMap` whose later callback
    mutates an earlier result, `findLast` whose predicate overwrites the
    element, `for…of` with a push in the body, `map` with a push, with a write
-   to a later index, and with a `pop` in the callback (the documented
-   `undefined`-for-hole deviation), `bump === bump` and
+   to a later index, `bump === bump` and
    `[bump].includes(bump)` for a named function, `o[key()]` where `key`
    reassigns `o`, `(o.x ??= (n = 1))` observing the write to `n`,
    `o.s += "b"` on a string field, `take ? (o.x += 1) : 0` with `take`
@@ -764,8 +769,7 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    `ctx.data.<field>` and reads `value`, a validator that writes through a
    captured object the action passed as the column value and a check that
    the stored value is the validated one, an insert of `{ x: 1, f: () => 2 }`
-   into an unannotated `json()` column storing `{"x":1}`, `findIndex` with a
-   `pop` in the predicate,
+   into an unannotated `json()` column storing `{"x":1}`,
    and the alias-refinement program from §4.2 plus its `alias = root.child`
    variant.
 4. **Key-order case** (§2.3): literal, spread, `reduce`, `fromEntries`,
@@ -775,13 +779,22 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    Proxy in the differential runner, or the case is PHP-only in
    `js_parity.php` with the documented deviation); `a[0.5]`, `a[-1]`,
    `a[NaN]` read `undefined`.
-6. **Graph cases**: `structuredClone` of a shared descendant stays shared;
+6. **Shrink-under-iteration cases** (`js_parity.php`, PHP-only, since Node
+   produces a hole or skips where Zero throws): one row per helper that
+   reads `length` once (`map`, `filter`, `forEach`, `some`, `every`,
+   `reduce`, `flatMap`, `find`, `findIndex`, `findLast`, `findLastIndex`),
+   each with a callback that `pop`s on the first visit, expecting
+   `RangeError`; one row per helper with a callback that `push`es, expecting
+   the JS result (new elements not visited); one `for…of` and one
+   `Array.from` row with a `pop` in the body, expecting the JS result (live
+   length, no throw).
+7. **Graph cases**: `structuredClone` of a shared descendant stays shared;
    `JSON.stringify` of a cycle throws a catchable `TypeError`; `String()` of
    a self-containing array.
-7. **`tests/php/js_parity.php`** gains a row for each helper in the §4.1
+8. **`tests/php/js_parity.php`** gains a row for each helper in the §4.1
    table whose signature changed, using the existing "JS expression versus
    PHP call" format.
-8. **Harness.** `run-php.php` builds its arguments the way production does:
+9. **Harness.** `run-php.php` builds its arguments the way production does:
    for a validator it installs the fixture value at the column's full path
    inside the fixture `ctx.data`, builds one invocation graph with
    `Seam::ctx`, and reads `value` out of that graph at the same path, so
@@ -792,10 +805,10 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    instance and PHP runs each in its own process, so no case may depend on
    another action having run; a case may mutate captured module data only
    within its own body.
-9. **`tests/compiler.rs`:** the `reject-aliasing` fixture and the tests that
+10. **`tests/compiler.rs`:** the `reject-aliasing` fixture and the tests that
    expect the by-ref/identity/destructured-mutation errors are deleted along
    with the errors.
-10. **Boundary tests** (`tests/php/db_test.php`, `schema_test.php`,
+11. **Boundary tests** (`tests/php/db_test.php`, `schema_test.php`,
     `jobs_test.php`, `sync_test.php`): a `json()` column round-trips `{}`,
     `[]`, `{"1":1,"0":2}` and `{"\u0000":1}` through insert → read → REST
     body; a `group` written as `{}` from an action reads back filled; a
@@ -809,12 +822,12 @@ The bar is unchanged and now literal: what compiles must do what Node does.
     handler with an array; a `once` replay returns an equal, non-identical
     result; Sync digests a record with a `json()` value identically before
     and after the change; `sameJson` sees a nested `json()` change.
-11. **Real WordPress:** `tests/wp/run.sh` gains one case per WordPress
+12. **Real WordPress:** `tests/wp/run.sh` gains one case per WordPress
     crossing in §3: SCF `json` field round trip of `{}` and a numeric-keyed
     object; a job whose input has a `json()` field; an ability invoked with
     `{}` and one returning a row with an empty `json()` value (the `toWire`
     path); a localized row's `translations` in a hook.
-12. **Redundancy:** cases on the archived branch that only existed to prove
+13. **Redundancy:** cases on the archived branch that only existed to prove
     a *refusal* are not ported; their programs are now expected to pass, and
     a passing program already covers the behavior.
 
@@ -864,12 +877,12 @@ Three PRs, in order, each green on every suite in `LANE-BRIEF.md`.
    the loop overhead alone (7 µs per 1000 elements). The alternative is
    `foreach ($a->a as $x)`, which misses pushes inside the body. Keep
    exactness unless a measured hook shows it matters?
-3. **Dense arrays versus holes.** §2.4 refuses writes past `length` with a
-   `RangeError` where JS creates a hole. The alternative is a hole sentinel
-   in `->a` with every helper checking for it. The design takes the subset;
-   is a `RangeError` at run time acceptable, or should the compiler also warn
-   on `a[i] = v` where `i` isn't provably `< length`? (It usually can't
-   prove it.)
+3. **Compile-time warning for sparse writes.** §2.4 decides the hole
+   question: writes past `length` and shrinking an array inside its own
+   iteration callback are refused at run time with `RangeError`, and no hole
+   sentinel exists. Should the compiler additionally warn on `a[i] = v`
+   where `i` isn't provably `< length`? It usually can't prove it, so the
+   design does not; noted in case a lint is wanted later.
 4. **`Unknown` member reads.** `JSON.parse(s).x` is refused today ("can't
    read `x` of a value with unknown shape"). With handles, `Js::prop($v, 'x')`
    could return `null` for scalars and the property for objects. Out of scope

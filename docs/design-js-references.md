@@ -16,7 +16,7 @@ the order in which the change lands.
 | Representation | Two final PHP classes, `Zero\JsObject` and `Zero\JsArray`, each a handle around one PHP array (`->p` for properties, `->a` for elements). Compiled code holds and passes handles. Primitives stay PHP scalars. First-class function values are PHP `Closure`s. |
 | Identity | PHP object identity is JS identity. `===` between handles compiles to PHP `===`. The compile-time refusal of `===` on containers goes away. |
 | Key order | Property order is computed by one function, `Js::ownKeys`, at every enumeration: array-index keys ascending, then the rest in insertion order. Objects are only ever built by per-key assignment, never by PHP array spread, `array_merge` or `array_values`, so integer-like keys can't renumber. |
-| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist: a callback that shrinks the array it is iterating (`map`, `filter`, `find*`, `reduce`, …) is refused with a `RangeError` at run time, so no helper ever has to know about holes. |
+| Arrays | Dense, always. A valid index is an integer in `[0, 2^32 - 2]`. Writing past `length` or at a non-index number is a runtime `RangeError`; reading one is `undefined`. Holes can't exist: a fixed-length walk (`map`, `filter`, `find*`, `reduce`, …) that reaches an index its callback removed throws `RangeError` at run time, so no helper ever has to know about holes. |
 | Evaluation order | Assignments, `===`, spreads, destructuring, `concat` and every array helper read their receiver, keys and old value exactly where JS reads them: a temporary or a helper call whose arguments PHP evaluates left to right. §4.2 gives the emission for each. |
 | Boundary | Compiled code lives in "JS land" (handles). `Db`, `Schema`, `Sql`, stores, SCF codecs, Sync and WordPress live in "runtime land" (plain arrays). One file, `runtime/Zero/Seam.php`, owns every conversion in both directions, driven by the schema. `Db` calls it at its public entry points; nothing else converts. A user `json()` column's value is a handle at every layer and every callback receives its own deep copy of it. |
 | Graphs | `structuredClone`, `JSON.stringify`, `String()` and `Seam::toPhp` all walk with an identity map: aliases are preserved by clone, cycles throw `TypeError` from `JSON.stringify` and `Seam`, and `String()` renders a cycle as `""` as JS does. |
@@ -201,15 +201,22 @@ makes JS visit a missing index, and for `map` that puts a hole in the result.
 Storing `undefined` there instead would not be one deviation but many:
 `filter`, `some`, `every`, `reduce` and `forEach` skip holes and would visit
 the `undefined`; `indexOf(undefined)` is -1 on a hole and 0 on the stored
-value; `Object.keys`, `in` and spread differ too. Decision: the case is
+value; `Object.keys`, `in` and object spread differ too (array spread turns
+a hole into `undefined`, so it alone would agree). Decision: the case is
 **refused**, not approximated. Every helper that reads `length` once and
-walks by index (§4.1) throws
-`JsError('Array shrank while being iterated', 'RangeError')` the moment it
-meets `$i >= count($a->a)`. Growing the array inside the callback is fine
+walks by index (the eleven in §4.1) throws
+`JsError('Array shrank while being iterated', 'RangeError')` when its walk
+reaches an index that is no longer present (`$i >= count($a->a)`). The
+restriction is exactly that: a shrink the walk never reaches (on the last
+visit, after an early return, in a `findLast*` walking downward past the
+removed tail, or undone by regrowth before the walk gets there) does not
+throw and gives the JS result. Growing the array inside the callback is fine
 (JS doesn't visit the new elements either, and neither does Zero). The one
-remaining difference from JS is "shrinking an array inside its own iteration
-callback throws", which `config-api.md` states next to the dense-array rule.
-`for…of` and `Array.from` read the length live and need no check.
+remaining difference from JS is "a fixed-length walk that reaches an index
+its callback removed throws", which `config-api.md` states next to the
+dense-array rule. `for…of` and `Array.from(arr, f)` use the live
+array-iterator length and need no check; `Array.from({ length: n }, f)`
+keeps its fixed-count `range` path.
 
 ### 2.5 Prototype-less plain objects, functions
 
@@ -434,22 +441,30 @@ dates, regexp, logging).
 | new `arr(iterable): JsArray` | | for runtime code building a list to hand to compiled code |
 | deleted | `at`, `write`, `obj` (marker), `objectBinding`, `copyObject`, `plain`, `fromJson`'s marker branch | |
 
-**Iteration rule for callbacks.** Every array method that takes a callback
-follows ECMA-262: `len = count($a->a)` is read once; for `i` in `0..len`, if
-`i >= count($a->a)` the element is missing and the method applies its
-rule of §2.4 applies: the array shrank under the walk and the helper throws
-`RangeError`. This holds for `map`, `filter`, `forEach`, `some`, `every`,
-`reduce`, `flatMap`, `find`, `findIndex`, `findLast`, `findLastIndex` alike
-(`findLast*` walk downward from `len - 1` and check the same way), so no
-helper ever hands a callback a missing element and the `value` parameter
-keeps its element type. Otherwise the callback gets the element read live. Each helper
+**Iteration rule for callbacks.** The eleven fixed-length methods, `map`,
+`filter`, `forEach`, `some`, `every`, `reduce`, `flatMap`, `find`,
+`findIndex`, `findLast`, `findLastIndex`, follow ECMA-262: `len = count($a->a)`
+is read once; for `i` in `0..len` (`findLast*` from `len - 1` downward), if
+`i >= count($a->a)` the walk has reached an index its callback removed and
+the helper throws `RangeError` (§2.4). So no helper ever hands a callback a
+missing element and the `value` parameter keeps its element type. Otherwise
+the callback gets the element read live. The current PHP helpers mostly use
+snapshot `foreach` loops; the rewrite replaces them with captured-length
+index loops that read `->a[$i]` live. Each helper
 keeps the element it read in a local and collects or returns that local,
 never re-reading `->a` after the callback. Callback shapes are the JS ones
 and the compiler types them so: `(value, index, array)` for `map`, `filter`,
 `forEach`, `some`, `every`, `find*`, `flatMap`; `(acc, value, index, array)`
 for `reduce`; `(value, index)` for `Array.from`'s mapper; `(a, b)` for
 `sort`'s comparator. `effects.rs`'s callback edges gain the `array`
-parameter as a copy of the receiver.
+parameter as a copy of the receiver. `sort`/`toSorted` are not fixed-length
+walks and are exempt from the guard: `sort` sorts a snapshot of `->a` with
+`usort` and writes it back over the original prefix, keeping any elements
+the comparator pushed past the original length (Node gives `[1, 2, 9]` for a
+comparator that pushes 9 once; replacing the whole array with the snapshot
+would drop it). Comparator invocation order is V8's business and the corpus
+has no case that depends on it (row 29 mutates an element's field, not the
+array).
 Pushes inside the callback are not visited (they are past `len`); writes to
 not-yet-visited indices are seen. `Array.from(arr, f)` and `for…of` use the
 iterator protocol instead: they continue while `i < count($a->a)` live, so
@@ -631,7 +646,8 @@ list (mutating an object after storing it, reassigning a mutating parameter,
 mutating through a destructured parameter, replacing an argument
 mid-expression) and the tuple-widening paragraph about mutation are deleted.
 `structuredClone` joins Supported. New lines: arrays are dense (writing past
-`length` throws `RangeError`); module-level captured objects live for the PHP
+`length` throws `RangeError`, and so does a `map`/`filter`/`find*`/… walk
+that reaches an index its own callback removed); module-level captured objects live for the PHP
 process; the four `undefined`-erasure deviations of §2.6. The hooks table's
 "mutate `data` or return a replacement" becomes true as written.
 
@@ -783,11 +799,16 @@ The bar is unchanged and now literal: what compiles must do what Node does.
    produces a hole or skips where Zero throws): one row per helper that
    reads `length` once (`map`, `filter`, `forEach`, `some`, `every`,
    `reduce`, `flatMap`, `find`, `findIndex`, `findLast`, `findLastIndex`),
-   each with a callback that `pop`s on the first visit, expecting
-   `RangeError`; one row per helper with a callback that `push`es, expecting
-   the JS result (new elements not visited); one `for…of` and one
-   `Array.from` row with a `pop` in the body, expecting the JS result (live
-   length, no throw).
+   each on a three-element array with a callback that `pop`s twice on the
+   first visit and otherwise continues the walk (`false` for `some`/`find*`,
+   `true` for `every`), expecting `RangeError` in both walk directions; one
+   row per helper with a callback that `push`es, expecting the JS result (new
+   elements not visited); non-throwing shrink rows pinning the narrow
+   contract (`pop` on the last visit, `pop` then early return, `findLast`
+   popping one past its position), expecting the JS result; one `for…of` and
+   one `Array.from(arr, f)` row with a `pop` in the body, expecting the JS
+   result (live length, no throw); a `sort` comparator that pushes, expecting
+   the pushed element kept.
 7. **Graph cases**: `structuredClone` of a shared descendant stays shared;
    `JSON.stringify` of a cycle throws a catchable `TypeError`; `String()` of
    a self-containing array.

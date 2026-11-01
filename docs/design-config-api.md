@@ -832,8 +832,24 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   (`snapshotKeys`, `:497`), and revision reads and `restoreRevision`
   (`Db.php:983`) take it from there, never from the revision post's
   `post_author`. Revisions written before the mapping existed carry no
-  such key and fall back to the parent's current value, the fallback
-  `revisionEntry` already applies to the other snapshot keys (`:452`). A content collection with two `user()` columns must say
+  such key, but they do carry the old column's meta, because
+  `snapshotRevision` copies the parent's field meta into every revision
+  (`acf_copy_metadata`, `:539`); the migration that moves the column
+  (§6.4) therefore writes each revision's own meta value into its
+  `_zero_system` entry, so `restoreRevision` restores the owner the post
+  had at that revision, and the parent's current value is the fallback
+  only for a revision with neither, the fallback `revisionEntry` already
+  applies to the other snapshot keys (`:452`). Moving ownership into a
+  core column also moves it onto core's surfaces: `/wp/v2` responses carry
+  `author` and an `author` link, and list queries accept `author`,
+  `author_exclude` and `orderby=author`. Today `CoreAccess::strip` drops
+  only the designated content and slug of a hidden column (`:276-277`) and
+  `queryDenial` guards only their query parameters (`:330`), so without
+  more a `user().access({ read: false })` column would leak through core
+  REST. Both gain the author case: `strip` removes `author` and the
+  `author` link when the owner column is hidden from the viewer, and
+  `queryDenial` refuses the three author parameters with the same `403`
+  it gives a hidden slug (§7.1, PR 5). A content collection with two `user()` columns must say
   which is the author (`author: "assignedToId"`, a new designation beside
   `title` and `body`), or `author: false` for meta-only user columns; adding
   a second `user()` column without it is a build error, whether or not any
@@ -873,8 +889,10 @@ checked by the title rule, not this one), an explicit `title:` option, or
 Markdown `sync`. Otherwise it is a table; `auth: true` is always a table and
 `auth: true, content: true` is rejected (today's rule for `editor`). Off:
 `content: true` or `content: false` written out. The rule is printed in
-`zero build --explain` (§7.2), and the generated client's `SCHEMA` carries
-the result as today.
+`zero build --explain` (§7.2), and the generated client's `SCHEMA` gains a
+`kind` entry per collection: today it carries `drafts`, `revisions` and
+`localized` but not the storage kind (`src/client.rs:566`), and the two
+flags cannot stand in for it since a table may enable both.
 
 Because the kind decides storage (a post type or a `$wpdb` table), a
 kind change caused by an edit to the columns is refused, not applied:
@@ -1130,7 +1148,7 @@ only.
 |---|---|---|---|---|
 | `examples/site/zero.config.ts` | 205 | 169 | 170 | 137 |
 | `examples/pantry/zero.config.ts` | 117 | 102 | 105 | 89 |
-| `examples/pantry/lib/fields.ts` | 16 | 4 | 12 | 2 |
+| `examples/pantry/lib/fields.ts` | 16 | 4 | 13 | 2 |
 
 Beyond the counts, the site example loses: its `STAFF` array, the
 `defineRelations` block (11 lines), the `hooks:` block in `defineConfig`
@@ -1615,7 +1633,19 @@ them.
   optional but has a default (today `.default(x)` without `.notNull()`,
   `:627`) becomes `.nullable().default(x)`, because under §4.9.1 a bare
   `.default(x)` would make it required. Required fields keep
-  `.notNull()` (`:530,536`). One input has no equal spelling: an
+  `.notNull()` (`:530,536`). Timestamps follow §4.9.4: for a Payload
+  collection with automatic timestamps the importer emits nothing, since
+  the system columns are the same two (today it writes them out, `:336`,
+  and refuses an authored `createdAt`/`updatedAt` beside them, `:333`,
+  which stays the error); for a Payload collection with `timestamps:
+  false`, or any source whose own fields are named `createdAt` or
+  `updatedAt`, it emits `timestamps: false` and keeps the authored columns,
+  with a report entry saying the automatic columns were turned off to
+  preserve them. A source default of `null` (`defaultValue: null`,
+  Sanity's `initialValue: null`, accepted at `:620`) is dropped rather than
+  emitted, because `.default(null)` is an error under §4.1 and a nullable
+  column with no default already reads `null`; the report says so. One
+  input has no equal spelling: an
   original-Zero multi-media field carries attachment ids with no type
   restriction and is emitted as `media({ multiple: true })` today
   (`:487`), which §4.1 now accepts for image galleries only. The importer
@@ -1710,8 +1740,10 @@ its own; the examples are rewritten in the PR that breaks them.
 Inference needs to be visible. `zero build --explain` (or the existing
 `zero doctor`) prints, per collection: kind (content/table) and why, title,
 body, slug source, system columns, relations and their reverse names, access
-after defaults. The generated client's `SCHEMA` already carries most of it;
-this is the human-readable form.
+after defaults. The generated client's `SCHEMA` carries some of it
+(`drafts`, `revisions`, `localized`, relations, media and file columns,
+`src/client.rs:566`); the kind, the designations and the reasons are new,
+and this is the human-readable form.
 
 ### 7.3 Where the subset grows
 

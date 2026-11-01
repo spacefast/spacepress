@@ -17,7 +17,7 @@ namespace Zero;
  */
 final class Schema
 {
-    public const SERIES = '0.2';
+    public const SERIES = '0.3';
 
     /** The role ladder, lowest first; guests (§6.2) sit below subscribers. */
     public const ROLES = ['guest', 'subscriber', 'author', 'editor', 'admin'];
@@ -38,12 +38,12 @@ final class Schema
             throw new \RuntimeException("$file must return an array");
         }
         if (($raw['version'] ?? null) !== 3) {
-            throw new \RuntimeException('schema.php version 3 required');
+            throw new \RuntimeException('schema.php version 3 required; rebuild with this Zero version');
         }
 
         if (($raw['runtime'] ?? null) !== self::SERIES) {
             $series = $raw['runtime'] ?? '(missing)';
-            throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES);
+            throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES . '; rebuild with this Zero version');
         }
 
         return new self($raw);

@@ -6,7 +6,7 @@ namespace Zero\Wp;
 final class Runtime
 {
     public const SERIES = \Zero\Schema::SERIES;
-    public const VERSION = '0.2.0';
+    public const VERSION = '0.3.0';
     private static ?Plugin $plugin = null;
     private static ?string $appFile = null;
     private static bool $booted = false;

@@ -99,6 +99,25 @@ const laneRefs = {
   refsCloneError: run(() => { const e = new Error("x"); const cloned = structuredClone([e, e]); return [cloned[0] === e, cloned[0] === cloned[1], cloned[0]!.message]; }),
   refsOnceError: run(async () => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; }),
   refsOnceFunction: run(async () => { try { await once("refs-function", () => ({ f: refsRegistered })); return false; } catch { return true; } }),
+  refsDateArrayCoercion: run(() => [
+    new Date(["2020-01-01"]).getTime(),
+    new Date([["2020-01-01"]]).getTime(),
+    isNaN(new Date([]).getTime()),
+    isNaN(new Date(["2020-01-01", "2020-01-02"]).getTime()),
+    isNaN(new Date({ x: 1 }).getTime()),
+  ]),
+  refsContainerCoercion: run(() => {
+    const nested = [1, null, [2, null], { x: 3 }];
+    const empty: number[] = [];
+    const object = { x: 1 };
+    const parsedArray = JSON.parse('[7]');
+    const parsedObject = JSON.parse('{}');
+    return [String(nested), `${nested}`, "v=" + nested, nested + "!", String(object), `${object}`, "v=" + object,
+      Number(empty), Number([null]), Number([[7]]), isNaN(Number([1, 2])), isNaN(Number(object)),
+      String([2]) < String([10]), Number([2]) < Number([10]),
+      Array.isArray(empty), Array.isArray(object), Array.isArray(parsedArray), Array.isArray(parsedObject),
+      JSON.stringify({ empty, nested, object }), JSON.stringify({ parsedArray, parsedObject })];
+  }),
   refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
   refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
   refsIndexLogical: run(() => { const values = [true]; values[0] &&= true; return values; }),

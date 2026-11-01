@@ -25,7 +25,7 @@ the order in which the change lands.
 | Deleted | `check_aliasing`, `check_identity_eq`, `check_destructured_mutation`, by-ref parameters and `objectBinding`, capture anchors, `Js::write`/`at`/`obj`-marker/`copyObject`/`plain`, `Schema::plainOutsideJson` (moves into `Seam`), the empty-object marker and its 30 `instanceof JsObject` sites, `extract.rs`'s list-shaped-default refusal. |
 | Acceptance | The 65-row sharing corpus (`CORPUS.md` on `archive/s2-ownership-rule`: 58 compile and differ from Node, 3 agree, 4 are refused) plus `tests/differential` run under Node and compiled PHP; results must be identical. |
 | Cost | Measured as a representation microbenchmark (`docs/spikes/js-references-bench.php`): object build 2.8x per literal, member read/write 1.5x, a receiver-capturing write 1.0x in statement position and 1.6x inside an expression, `map`/`filter` 1.1–1.6x, JSON encode 1.04x, JSON decode 1.2–1.5x over today's decode walk, +56 bytes per handle. Pipeline cost (Seam traversals, per-callback cloning) is not measured yet; §6 says what the implementation PR must measure. |
-| Rollout | Three PRs: a preparatory `Seam` extraction that changes no representation, one atomic representation switch (runtime, compiler, boundaries, corpus), then deletions. |
+| Rollout | Three PRs: a preparatory `Seam` extraction that changes no representation, one atomic representation switch (runtime, compiler, boundaries, corpus), then deletions. The switch bumps the runtime series to `0.3`; schema v3 remains unchanged, and older compiled callbacks are refused at load with a rebuild instruction. |
 
 ---
 
@@ -194,7 +194,7 @@ Decision: Zero arrays are dense. JS holes are unreachable by construction:
   non-index number) throws `JsError('Zero arrays are dense: index … is past
   length …', 'RangeError')`. JS would create a hole or a non-index property.
   This is a deliberate subset restriction, documented in `config-api.md`
-  with `push`/`fill`/`Array.from({ length })` as the way to grow an array.
+  with `push`/`Array.from({ length })` as the way to grow an array.
   Compound (`a[i] += v`) and `++`/`--` on an element go through the same
   `get`/`setAt` pair.
 - **Still compile errors:** elisions in array literals, `new Array(n)`,

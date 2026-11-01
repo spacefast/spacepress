@@ -1801,7 +1801,7 @@ final class Js
         if ($v === null || is_bool($v)) {
             return (int) $v;
         }
-        if (is_array($v)) {
+        if ($v instanceof JsArray) {
             $v = self::str($v);
         }
 

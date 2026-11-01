@@ -375,8 +375,10 @@ transactions. `Store` exposes `afterCommit(callable)` and
 fields, with `(field, definition, column, spec)`. Top-level `spec` is the
 collection/global; nested `spec.fields` contains sibling definitions.
 
-Schema loading requires v3 and runtime series `0.2` (phase-2 design §3.1); v2
-and missing or incompatible series are refused. `Schema::version()` and
+Schema loading requires v3 and runtime series `0.3`; v2 and missing or
+incompatible series are refused with a rebuild instruction. Series `0.3`
+requires handle-based compiled callbacks; schemas from the `0.2` compiler
+cannot load under this runtime. `Schema::version()` and
 `Schema::runtime()` report the loaded contract. New feature metadata passes
 through unchanged; feature modules own its behavior. Lazy scheduled promotion
 remains at the start of requests/commands, so due records are visible in that

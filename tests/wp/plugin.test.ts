@@ -49,7 +49,7 @@ test("activation registers the post types, field groups and options page, and cr
     $plugin = \\Zero\\Wp\\Runtime::plugin();
     $description = $plugin->schema->describe();
     echo wp_json_encode([
-      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.2' : get_option('zero_runtime_tables'),
+      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.3' : get_option('zero_runtime_tables'),
       $description['runtime']['series'],
       $description['runtime']['wp']['actionScheduler'],
       $description['runtime']['wp']['mcpAdapter'],
@@ -59,7 +59,7 @@ test("activation registers the post types, field groups and options page, and cr
       \\Zero\\Wp\\Runtime::plugin() === $plugin,
     ]);
   `));
-  assert.deepEqual(registry, ["0.2", "0.2", "4.2.0", "0.7.1", [], [], null, true]);
+  assert.deepEqual(registry, ["0.3", "0.3", "4.2.0", "0.7.1", [], [], null, true]);
   const incompatible: unknown = JSON.parse(wp("eval", `
     $dir = sys_get_temp_dir() . '/zero-series-' . bin2hex(random_bytes(6));
     mkdir($dir . '/zero/app', 0777, true);
@@ -68,7 +68,7 @@ test("activation registers the post types, field groups and options page, and cr
       file_put_contents($file, '<?php return ' . var_export(['version'=>3, 'runtime'=>'0.1'], true) . ';');
       $result = \\Zero\\Wp\\Runtime::app($dir, $dir . '/app.php');
       ob_start(); do_action('admin_notices'); $notice = ob_get_clean();
-      echo wp_json_encode([$result, \\Zero\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'zero 0.2.x')]);
+      echo wp_json_encode([$result, \\Zero\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'zero 0.3.x')]);
     } finally {
       unlink($file); rmdir($dir . '/zero/app'); rmdir($dir . '/zero'); rmdir($dir);
     }

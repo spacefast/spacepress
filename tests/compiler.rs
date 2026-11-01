@@ -702,7 +702,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let content = project.join(".zero/wp-content");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(content.join("zero-manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["runtime"], "0.2");
+    assert_eq!(manifest["runtime"], "0.3");
     assert_eq!(manifest["app"], "blog");
     for slug in ["zero-runtime", "zero-identity", "zero-app-blog"] {
         let archive = std::fs::File::open(content.join("plugins").join(format!("{slug}.zip"))).unwrap();

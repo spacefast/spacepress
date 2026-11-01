@@ -448,7 +448,7 @@ cycles survive cloning. Captured module-level objects live for the PHP process
 
 Arrays are dense. Writing at `length` appends; writing past `length`, at a
 negative or fractional index, or at `NaN`/`Infinity` throws `RangeError`.
-Grow arrays with `push`, `fill` or `Array.from({ length: n }, mapper)`.
+Grow arrays with `push` or `Array.from({ length: n }, mapper)`.
 Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
 `reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
 callback removed. Shrinkage after the final visit or an early return is fine;

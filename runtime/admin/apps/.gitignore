@@ -2,3 +2,4 @@ node_modules/
 .tsout/
 build/
 *.tsbuildinfo
+.build-meta.json

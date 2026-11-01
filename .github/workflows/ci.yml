@@ -96,6 +96,38 @@ jobs:
             exit 1
           fi
 
+  # The admin screens: typecheck, unit tests, and a rebuild that must match the committed bundle.
+  admin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: runtime/admin/apps
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      # Corepack reads the pinned pnpm from this directory's packageManager field.
+      - run: corepack enable
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('runtime/admin/apps/pnpm-lock.yaml') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Check the committed bundle
+        working-directory: ${{ github.workspace }}
+        run: |
+          git diff --exit-code -- runtime/admin/build
+          untracked=$(git ls-files --others --exclude-standard -- runtime/admin/build)
+          if [ -n "$untracked" ]; then
+            printf 'Untracked admin bundle files:\n%s\n' "$untracked"
+            exit 1
+          fi
+
   types:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

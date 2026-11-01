@@ -35,12 +35,9 @@ async function collectMetafiles( rootDir ) {
 				entry.isFile() &&
 				entry.name.endsWith( '.meta.json' )
 			) {
-				try {
-					const json = JSON.parse( await readFile( full, 'utf8' ) );
-					metas.push( json );
-				} catch {
-					// ignore invalid json
-				}
+				// A metafile that does not parse is a build defect, not noise: an
+				// aggregate missing its inputs would hide bundled packages.
+				metas.push( JSON.parse( await readFile( full, 'utf8' ) ) );
 			}
 		}
 	}
@@ -49,7 +46,7 @@ async function collectMetafiles( rootDir ) {
 }
 
 function mergeMetafiles( metafiles ) {
-	const merged = { inputs: {}, outputs: {} };
+	const merged = { inputs: {}, outputs: {}, sassInputs: [] };
 	// Carry forward a metafileVersion if present
 	for ( const mf of metafiles ) {
 		if ( mf && typeof mf.metafileVersion !== 'undefined' ) {
@@ -64,7 +61,11 @@ function mergeMetafiles( metafiles ) {
 		if ( mf && mf.outputs ) {
 			Object.assign( merged.outputs, mf.outputs );
 		}
+		if ( mf && mf.sassInputs ) {
+			merged.sassInputs.push( ...mf.sassInputs );
+		}
 	}
+	merged.sassInputs = [ ...new Set( merged.sassInputs ) ].sort();
 	return merged;
 }
 
@@ -175,19 +176,12 @@ export async function buildAll( { meta = false, metaOut = false } = {} ) {
 
 		// If requested, aggregate all per-target meta.json into a single file
 		if ( meta && metaOut ) {
-			try {
-				const metafiles = await collectMetafiles( 'build' );
-				const merged = mergeMetafiles( metafiles );
-				const outDir = path.dirname( metaOut );
-				await mkdir( outDir, { recursive: true } );
-				await writeFile( metaOut, JSON.stringify( merged, null, 2 ) );
-				console.log( `\n📊 Wrote aggregated metafile: ${ metaOut }` );
-			} catch ( aggErr ) {
-				console.warn(
-					'\n⚠️  Failed to aggregate metafiles:',
-					aggErr.message
-				);
-			}
+			const metafiles = await collectMetafiles( 'build' );
+			const merged = mergeMetafiles( metafiles );
+			const outDir = path.dirname( metaOut );
+			await mkdir( outDir, { recursive: true } );
+			await writeFile( metaOut, JSON.stringify( merged, null, 2 ) );
+			console.log( `\n📊 Wrote aggregated metafile: ${ metaOut }` );
 		}
 
 		await compiler.dispose();

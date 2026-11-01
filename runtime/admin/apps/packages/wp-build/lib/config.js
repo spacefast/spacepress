@@ -376,7 +376,7 @@ const hashString = ( value ) =>
  * @param {import('sass-embedded').AsyncCompiler} options.compiler      - Pre-initialised shared compiler.
  * @param {string}                                options.absWorkingDir - Absolute working directory for the NodePackageImporter.
  */
-export function createSassPlugins( { compiler, absWorkingDir } ) {
+export function createSassPlugins( { compiler, absWorkingDir, loaded } ) {
 	const pkgImporter = new NodePackageImporter( absWorkingDir );
 
 	// Resolve bare module specifiers (e.g. "react-easy-crop/file.css",
@@ -454,6 +454,11 @@ export function createSassPlugins( { compiler, absWorkingDir } ) {
 								.filter( ( url ) => url.protocol === 'file:' )
 								.map( ( url ) => url.pathname ),
 						];
+						// Sass imports never reach esbuild's metafile; record them for
+						// the licence inventory.
+						for ( const file of watchFiles ) {
+							loaded?.add( file );
+						}
 					} else {
 						const source = await readFile( args.path, 'utf8' );
 						css = source;
@@ -553,8 +558,9 @@ export async function buildScript( options ) {
 	);
 
 	// Use shared compiler when available, otherwise fall back to esbuild-sass-plugin
+	const sassLoaded = new Set();
 	const sassPlugins = compiler
-		? createSassPlugins( { compiler, absWorkingDir } )
+		? createSassPlugins( { compiler, absWorkingDir, loaded: sassLoaded } )
 		: [
 				sassPlugin( {
 					filter: /\.module\.s?css$/,
@@ -602,7 +608,7 @@ export async function buildScript( options ) {
 		},
 	};
 
-	return esbuild.build( config ).then( ( result ) => {
+	return esbuild.build( config ).then( async ( result ) => {
 		if ( meta ) {
 			// Try to get output file
 			const outputs = Object.entries( result.metafile.outputs );
@@ -617,8 +623,16 @@ export async function buildScript( options ) {
 					absWorkingDir,
 					`${ outputFile }.meta.json`
 				);
-				const metaContent = JSON.stringify( result.metafile );
-				writeFile( metaPath, metaContent );
+				// Files Sass loaded, relative to the working directory like esbuild's inputs.
+				const sassInputs = [ ...sassLoaded ]
+					.map( ( file ) => path.relative( absWorkingDir, file ) )
+					.sort();
+				const metaContent = JSON.stringify( {
+					...result.metafile,
+					sassInputs,
+				} );
+				// Awaited: the aggregation step reads this file as soon as every build resolves.
+				await writeFile( metaPath, metaContent );
 			}
 		}
 		return result;

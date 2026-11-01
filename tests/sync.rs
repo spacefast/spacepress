@@ -28,6 +28,7 @@ const notes = collection("notes", {
 const snippets = collection("snippets", {
   id: id(),
   name: text().notNull(),
+  key: integer().unique(),
   body: text(),
 }, { editor: false, sync: "content/snippets/*.json", access: { read: "anyone" } });
 
@@ -105,6 +106,7 @@ const safes = collection("safes", {
   id: id(),
   vaultId: integer().notNull().references(() => vaults.id),
   keeperId: integer().references(() => people.id),
+  snippetKey: integer().references(() => snippets.key).access({ read: "admin" }),
 }, { editor: false, sync: "content/safes/*.json", access: { read: "anyone" } });
 // A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = collection("vaults", {
@@ -860,6 +862,47 @@ fn deferred_records_land_in_dependency_order_and_irreducible_cycles_are_reported
     assert!(
         site.rows("eggs").is_empty() && site.rows("chickens").is_empty(),
         "an irreducible cycle writes nothing"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
+    let (project, site) = setup();
+    let (status, created) = site.call(
+        "POST",
+        "/snippets",
+        Some(serde_json::json!({"name": "Original", "key": 1})),
+    );
+    assert_eq!(status, 201, "{created}");
+    let uid = created["data"]["uid"].as_str().unwrap();
+    let pulled = sync(&project, &site, &["--only", "snippets"]);
+    assert_eq!(
+        pulled.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&pulled.stdout)
+    );
+    let path = project.join(format!("content/snippets/{uid}.json"));
+    let mut record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["key"] = serde_json::json!(2);
+    std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+    // Even an empty hidden incoming relationship refuses a key change. This is not a target
+    // another push could create, so preserve the server's refusal rather than defer it.
+    let out = sync(&project, &site, &["--only", "snippets"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        data_or_error(&out)["failed"],
+        serde_json::json!([format!(
+            "snippets/{uid}: Rows in safes may reference this row (reference_violation)"
+        )])
+    );
+    assert_eq!(site.rows("snippets")[0]["key"], 1, "the refused update did not land");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap()["key"],
+        2,
+        "the local edit is retained"
     );
     let _ = std::fs::remove_dir_all(&project);
 }

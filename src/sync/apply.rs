@@ -716,7 +716,8 @@ fn perform(
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
                 // A reference to a record a later collection (or this one) pushes this run: retry once
                 // after every collection's first pass (§5.4's identity-then-fields order for cycles).
-                Err(p) if p.code() == "reference_violation" => {
+                // Only field-target refusals carry a pointer; incoming-constraint errors surface directly.
+                Err(p) if p.code() == "reference_violation" && p.body["pointer"].as_str().is_some() => {
                     // A reference to a record not on the site yet (a later collection's, this one's, a cycle):
                     // the record waits for another pass. A new record is created first without the
                     // references the site names as missing (identity first), so records that point at each

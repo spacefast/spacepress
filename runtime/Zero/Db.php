@@ -121,7 +121,7 @@ final class Db
         $existing = $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
         if ($existing !== null) {
             // Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
-            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values)));
+            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->resolvedReferences, $bulk->errorViewer)));
         }
 
         return true;
@@ -459,13 +459,13 @@ final class Db
      * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
      * @return ?list<array>
      */
-    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
+    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null, array $resolvedReferences = []): ?array
     {
         // Only the row containers unwrap here: a json() value inside a row keeps its `{}`.
         $values = $values instanceof JsObject ? [] : $values;
         $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => $r instanceof JsObject ? [] : $r, $values) : [$values];
 
-        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
+        return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around, $resolvedReferences) {
             $spec = $this->schema->collection($collection);
             $out = [];
             foreach ($rows as $data) {
@@ -473,7 +473,7 @@ final class Db
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
                 // One instant per row: every `now` default, nested ones and publishedAt included.
-                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
+                $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around, $resolvedReferences));
             }
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -481,19 +481,19 @@ final class Db
     }
 
     /** @return ?list<array> */
-    public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    public function update(string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, array $resolvedReferences = [], ?Viewer $errorViewer = null): ?array
     {
         [$set, $where] = [$set instanceof JsObject ? [] : $set, $this->plainFilter($collection, $where)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
         $set = self::plainOutsideJson($this->schema->collection($collection)['columns'], $set);
-        return $this->nested(function () use ($collection, $set, $where, $returning, $viewer) {
+        return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $resolvedReferences, $errorViewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             $pk = $spec['primaryKey'];
-            $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows));
+            $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows), $resolvedReferences, $errorViewer);
             $this->bulk[] = $bulk;
             try {
                 foreach ($rows as $existing) {
@@ -504,7 +504,7 @@ final class Db
                     }
                     unset($bulk->pending[$key]);
                     $bulk->current = $key;
-                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer));
+                    $out[] = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $set, $viewer, resolvedReferences: $resolvedReferences, errorViewer: $errorViewer));
                 }
             } finally {
                 array_pop($this->bulk);
@@ -633,7 +633,27 @@ final class Db
         return $data;
     }
 
-    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
+    /** The canonical default preview and write share constraint preflight before generators run. */
+    public function withDefaults(string $collection, array $data, ?Viewer $viewer = null): array
+    {
+        return $this->current(function () use ($collection, $data, $viewer): array {
+            $columns = $this->schema->collection($collection)['columns'];
+            $generations = [];
+            foreach ($columns as $name => $col) {
+                if (!array_key_exists($name, $data) && isset($col['default'])) {
+                    $generations[$name] = $col['default'];
+                }
+            }
+            $this->requireGeneratedVisibility($collection, $generations, $viewer);
+            foreach ($generations as $name => $generation) {
+                $data[$name] = Schema::generate($generation, $columns[$name]['type']);
+            }
+
+            return $data;
+        });
+    }
+
+    private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null, array $resolvedReferences = []): array
     {
         $columns = $spec['columns'];
         $data = self::plainOutsideJson($columns, $data);
@@ -641,11 +661,7 @@ final class Db
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
-        foreach ($columns as $name => $col) {
-            if (!array_key_exists($name, $data) && isset($col['default'])) {
-                $data[$name] = Schema::generate($col['default'], $col['type']);
-            }
-        }
+        $data = $this->withDefaults($collection, $data, $viewer);
         if ($spec['drafts'] ?? false) {
             $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
         }
@@ -661,12 +677,12 @@ final class Db
         if ($viewer !== null) {
             Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
         }
-        $write = fn (): array => $this->persistCreate($collection, $spec, $data);
+        $write = fn (): array => $this->persistCreate($collection, $spec, $data, $viewer, $resolvedReferences);
 
         return $around === null ? $write() : $around($write);
     }
 
-    private function persistCreate(string $collection, array $spec, array $data): array
+    private function persistCreate(string $collection, array $spec, array $data, ?Viewer $viewer, array $resolvedReferences): array
     {
         $columns = $spec['columns'];
         $ctx = $this->hookCtx();
@@ -691,12 +707,14 @@ final class Db
                 throw HttpError::invalidInput("$name is required", HttpError::seg($name));
             }
         }
+        $this->requireUniqueVisibility($collection, $norm, $viewer, true);
         $slugCol = $spec['slug'] ?? null;
         if ($slugCol !== null && !array_key_exists($slugCol, $norm)) {
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm, null);
         }
         $full = $norm + array_fill_keys(array_keys($columns), null);
-        $this->checkValues($columns, $norm, $full);
+        $this->checkValues($columns, $norm, $full, $viewer, $resolvedReferences);
+        $this->requireUniqueVisibility($collection, $norm, $viewer);
 
         $insert = [];
         foreach ($norm as $name => $v) {
@@ -718,7 +736,7 @@ final class Db
     }
 
     /** @param array $values trusted values applied over $patch after access and field rules (updateWithin) */
-    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = []): array
+    private function updateOne(string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = [], array $resolvedReferences = [], ?Viewer $errorViewer = null): array
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
@@ -726,6 +744,13 @@ final class Db
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
+        $generations = [];
+        foreach ($columns as $name => $col) {
+            if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
+                $generations[$name] = $col['onUpdate'];
+            }
+        }
+        $this->requireGeneratedVisibility($collection, $generations, $viewer ?? $errorViewer);
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
                 $patch[$name] = Schema::generate($col['onUpdate'], $col['type']);
@@ -758,10 +783,13 @@ final class Db
         }
         $slugCol = $spec['slug'] ?? null;
         $pkValue = $this->pkValue($spec, $previous);
+        $this->requireUniqueVisibility($collection, $patch, $viewer ?? $errorViewer);
         if ($slugCol !== null && array_key_exists($slugCol, $patch) && !array_key_exists($slugCol, $norm)) {
             $norm[$slugCol] = $this->deriveSlug($collection, $spec, $norm + $previous, $pkValue);
         }
-        $this->checkValues($columns, $norm, $norm + $previous);
+        $this->checkValues($columns, $norm, $norm + $previous, $viewer ?? $errorViewer, $resolvedReferences);
+        $this->requireUniqueVisibility($collection, $norm, $viewer ?? $errorViewer);
+        $this->requireIncomingVisibility($collection, $norm, $viewer ?? $errorViewer);
 
         $set = [];
         foreach ($norm as $name => $v) {
@@ -788,7 +816,7 @@ final class Db
         $existing = $row;
         Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
         $this->hook($spec, 'beforeDelete', $row);
-        $this->referentialActions($collection, $row);
+        $this->referentialActions($collection, $row, $viewer);
         try {
             $this->store->delete($collection, $this->pkValue($spec, $row));
         } catch (\Throwable $e) {
@@ -798,12 +826,92 @@ final class Db
         Extensions::written('delete', $collection, $row, $existing);
     }
 
+    /** Check the whole cascading graph before looking for any children, including empty branches. */
+    private function requireDeleteVisibility(string $collection, ?Viewer $viewer, array $seen = []): void
+    {
+        if ($viewer === null || isset($seen[$collection])) {
+            return;
+        }
+        $seen[$collection] = true;
+        foreach ($this->schema->collections() as $child => $spec) {
+            foreach ($spec['columns'] as $col => $def) {
+                $ref = $def['references'] ?? null;
+                if ($ref === null || $ref['collection'] !== $collection) {
+                    continue;
+                }
+                $this->requireReferenceVisibility($collection, $ref['column'], (string) $child, $def, $viewer);
+                $action = strtolower($ref['onDelete'] ?? 'no action');
+                if ($action === 'cascade') {
+                    $this->requireDeleteVisibility((string) $child, $viewer, $seen);
+                } else {
+                    if (in_array($action, ['set null', 'set default'], true)) {
+                        // These writes run as referential effects, but their errors still belong to
+                        // this viewer. Check potential generated values even on an empty branch.
+                        $inputs = [$col => $action === 'set default' ? ($def['default'] ?? ['value' => null]) : ['value' => null]];
+                        foreach ($spec['columns'] as $name => $column) {
+                            if ($name !== $col && isset($column['onUpdate'])) {
+                                $inputs[$name] = $column['onUpdate'];
+                            }
+                        }
+                        if (isset($spec['hooks']['beforeUpdate'])) {
+                            foreach ($spec['columns'] as $name => $column) {
+                                if ($name !== $spec['primaryKey'] && (($column['unique'] ?? false) || isset($column['references']))) {
+                                    $inputs[$name] = ['fn' => true]; // a hook may replace any constraint value
+                                }
+                            }
+                        }
+                        $this->requireGeneratedVisibility((string) $child, $inputs, $viewer);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Incoming foreign keys can reject a key change or propagate it into another hidden branch. */
+    private function requireIncomingVisibility(string $collection, array $written, ?Viewer $viewer, array $seen = []): void
+    {
+        $key = serialize([$collection, array_keys($written)]);
+        if ($viewer === null || isset($seen[$key])) {
+            return;
+        }
+        $seen[$key] = true;
+        foreach ($this->schema->collections() as $child => $spec) {
+            foreach ($spec['columns'] as $col => $def) {
+                $ref = $def['references'] ?? null;
+                if ($ref === null || $ref['collection'] !== $collection || !array_key_exists($ref['column'], $written)) {
+                    continue;
+                }
+                $this->requireReferenceVisibility($collection, $ref['column'], (string) $child, $def, $viewer);
+                if (in_array(strtolower($ref['onUpdate'] ?? 'no action'), ['cascade', 'set null', 'set default'], true)) {
+                    $this->requireIncomingVisibility((string) $child, [$col => true], $viewer, $seen);
+                }
+            }
+        }
+    }
+
+    /** Both ends of a relationship must be readable before constraints can answer about its rows. */
+    private function requireReferenceVisibility(string $parent, string $column, string $child, array $def, Viewer $viewer): void
+    {
+        if (FieldAccess::mayHide($this->schema->collection($parent)['columns'][$column], $viewer)) {
+            throw new HttpError(409, 'reference_violation', 'A hidden field may be referenced by this row');
+        }
+        try {
+            $visible = $this->readGuards($child, $viewer) === [] && !FieldAccess::mayHide($def, $viewer);
+        } catch (HttpError) {
+            $visible = false;
+        }
+        if (!$visible) {
+            throw new HttpError(409, 'reference_violation', "Rows in $child may reference this row");
+        }
+    }
+
     /**
      * FK actions in the pipeline (§4.2, §11.12): for every column referencing this collection, apply
      * its onDelete to the rows pointing at $row before $row goes. Hooks and revisions apply.
      */
-    private function referentialActions(string $collection, array $row): void
+    private function referentialActions(string $collection, array $row, ?Viewer $viewer = null): void
     {
+        $this->requireDeleteVisibility($collection, $viewer);
         foreach ($this->schema->collections() as $child => $cspec) {
             foreach ($cspec['columns'] as $col => $c) {
                 $ref = $c['references'] ?? null;
@@ -814,10 +922,15 @@ final class Db
                 $opts = ['where' => $where, 'limit' => 1];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
-                    $this->delete((string) $child, $where);
+                    $this->nested(function () use ($child, $where, $viewer): void {
+                        $opts = ['where' => $where];
+                        foreach ($this->selectDecoded((string) $child, $opts, '', null) as $dependent) {
+                            $this->deleteOne((string) $child, $dependent, $viewer);
+                        }
+                    });
                 } elseif ($action === 'set null' || $action === 'set default') {
                     $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c['type']) : null;
-                    $this->update((string) $child, [$col => $value], $where);
+                    $this->update((string) $child, [$col => $value], $where, errorViewer: $viewer);
                 } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
                 }
@@ -902,8 +1015,9 @@ final class Db
     }
 
     /** Rules (min/max/pattern/validate, nested) + media and reference existence for written values. */
-    private function checkValues(array $columns, array $norm, array $full): void
+    private function checkValues(array $columns, array $norm, array $full, ?Viewer $viewer = null, array $resolvedReferences = []): void
     {
+        $this->checkReferences($columns, $norm, $viewer, $resolvedReferences);
         $ctx = ['data' => $full, 'user' => $this->actor, 'target' => $this->target];
         foreach ($norm as $name => $v) {
             Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx);
@@ -921,14 +1035,123 @@ final class Db
                 }
             }
         }
+    }
+
+    /** Core REST and editor inputs use the same reference visibility check as the write pipeline. */
+    public function validateWriteReferences(string $collection, array $data, ?Viewer $viewer): void
+    {
+        $this->current(function () use ($collection, $data, $viewer): void {
+            $columns = $this->schema->collection($collection)['columns'];
+            $norm = [];
+            foreach ($data as $name => $value) {
+                if (isset($columns[$name]['references'])) {
+                    $norm[$name] = Schema::normalize($columns[$name], $value, (string) $name, HttpError::seg((string) $name));
+                }
+            }
+            $this->checkReferences($columns, $norm, $viewer);
+        });
+    }
+
+    private function checkReferences(array $columns, array $norm, ?Viewer $viewer, array $resolvedReferences = []): void
+    {
         foreach ($norm as $name => $v) {
             $ref = $columns[$name]['references'] ?? null;
             if ($ref === null || $v === null) {
                 continue;
             }
+            $missing = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg($name));
+            $guards = [];
+            if ($viewer !== null) {
+                $target = $this->schema->collection($ref['collection']);
+                if (FieldAccess::mayHide($target['columns'][$ref['column']], $viewer)) {
+                    throw $missing;
+                }
+                try {
+                    // A sync UID authorizes only its exact resolved primary-key reference, for this
+                    // operation. Hook-added/changed references never inherit it.
+                    if (($resolvedReferences[$name] ?? null) !== $v || $ref['column'] !== $target['primaryKey']) {
+                        $guards = $this->readGuards($ref['collection'], $viewer);
+                    }
+                } catch (HttpError) {
+                    throw $missing;
+                }
+            }
             $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
-            if ($this->selectDecoded($ref['collection'], $opts, '', null) === []) {
-                throw new HttpError(409, 'reference_violation', "No {$ref['collection']} row with {$ref['column']} " . Js::str($v), HttpError::seg($name));
+            if ($this->selectDecoded($ref['collection'], $opts, '', null, null, $guards) === []) {
+                throw $missing;
+            }
+        }
+    }
+
+    /** Potential generators are checked before hidden storage decides whether they will run. */
+    public function requireGeneratedVisibility(string $collection, array $generations, ?Viewer $viewer): void
+    {
+        $this->current(function () use ($collection, $generations, $viewer): void {
+            if ($viewer === null) {
+                return;
+            }
+            $spec = $this->schema->collection($collection);
+            $candidates = [];
+            foreach ($generations as $name => $generation) {
+                $candidates[$name] = array_key_exists('value', $generation) ? $generation['value'] : true;
+                $target = $spec['columns'][$name]['references'] ?? null;
+                if ($candidates[$name] !== null && $target !== null) {
+                    try {
+                        $visible = $this->readGuards($target['collection'], $viewer) === []
+                            && !FieldAccess::mayHide($this->schema->collection($target['collection'])['columns'][$target['column']], $viewer);
+                    } catch (HttpError) {
+                        $visible = false;
+                    }
+                    if (!$visible) {
+                        throw new HttpError(409, 'reference_violation', "Rows in {$target['collection']} may be referenced by this write", HttpError::seg((string) $name));
+                    }
+                }
+            }
+            $this->requireUniqueVisibility($collection, $candidates, $viewer);
+        });
+    }
+
+    /**
+     * A unique write can disclose every competing row. Reject it before a lookup unless the viewer
+     * may read the column across the collection. This also covers generated slugs and hook values;
+     * swallowing a conflict would falsely acknowledge a write and could commit partial hook effects.
+     */
+    public function requireUniqueVisibility(string $collection, array $data, ?Viewer $viewer, bool $creating = false): void
+    {
+        $this->current(fn () => $this->checkUniqueVisibility($collection, $data, $viewer, $creating));
+    }
+
+    private function checkUniqueVisibility(string $collection, array $data, ?Viewer $viewer, bool $creating): void
+    {
+        if ($viewer === null) {
+            return;
+        }
+        $spec = $this->schema->collection($collection);
+        $readable = null;
+        foreach ($spec['columns'] as $name => $col) {
+            if (!($col['unique'] ?? false) && $name !== $spec['primaryKey']) {
+                continue;
+            }
+            $derived = ($spec['slug'] ?? null) === $name && isset($col['source'])
+                && (($creating && !array_key_exists($name, $data)) || (array_key_exists($name, $data) && ($data[$name] === null || $data[$name] === '')));
+            if ((!array_key_exists($name, $data) || $data[$name] === null) && !$derived) {
+                continue;
+            }
+            // Uids are unguessable identities the caller already presents on the sync surface.
+            if ($name === 'uid' && ($col['system'] ?? false)) {
+                continue;
+            }
+            if ($readable === null) {
+                try {
+                    $readable = $this->readGuards($collection, $viewer) === [];
+                } catch (HttpError) {
+                    $readable = false;
+                }
+            }
+            if (!$readable || FieldAccess::mayHide($col, $viewer)) {
+                throw $viewer->user === null
+                    ? new HttpError(401, 'unauthenticated', "Sign in to set $name", HttpError::seg((string) $name))
+                    : new HttpError(403, 'forbidden', "You can't set $name", HttpError::seg((string) $name));
             }
         }
     }
@@ -1024,12 +1247,12 @@ final class Db
     /** Before an editor-side delete: beforeDelete($row) and the pipeline FK actions. */
     public function beforeEditorDelete(string $collection, array $row, ?array $user = null): void
     {
-        $this->asEditor($user, function () use ($collection, $row) {
+        $this->asEditor($user, function () use ($collection, $row, $user) {
             $spec = $this->schema->collection($collection);
             $existing = $row;
             Extensions::write('delete', $collection, $row, $existing, null, $existing);
             $this->hook($spec, 'beforeDelete', $row);
-            $this->referentialActions($collection, $row);
+            $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user, $this->target));
         });
     }
 
@@ -1156,13 +1379,13 @@ final class Db
         $this->rejectUnknown($fields, $patch);
 
         // One instant: never-written fields' `now` defaults and the patch's nested defaults agree.
-        return Js::atInstant(fn () => $this->transaction(function () use ($name, $fields, $patch) {
+        return Js::atInstant(fn () => $this->transaction(function () use ($name, $fields, $patch, $viewer) {
             $current = $this->globalGet($name);
             $norm = [];
             foreach ($patch as $field => $v) {
                 $norm[$field] = Schema::normalize($fields[$field], $v, (string) $field, HttpError::seg($field));
             }
-            $this->checkValues($fields, $norm, $norm + $current);
+            $this->checkValues($fields, $norm, $norm + $current, $viewer);
             $values = [];
             foreach ($norm + $current as $field => $v) {
                 $values[$field] = Schema::store($fields[$field], $v);

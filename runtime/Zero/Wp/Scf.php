@@ -221,7 +221,15 @@ final class Scf
     /** Core REST saves (`acf` in /wp/v2/<type>): same check, reported as a WP_Error (400). */
     public static function validateRestValue(mixed $valid, mixed $value, mixed $field): mixed
     {
-        if ($valid !== true || !is_array($field) || !isset($field['zero'])) {
+        if (!is_array($field) || !isset($field['zero'])) {
+            return $valid;
+        }
+        // SCF's post-object check distinguishes missing IDs before the controller can apply the
+        // target's read policy. Zero validates the scalar here and resolves existence/visibility
+        // together in the write pipeline, with the same response for an absent or hidden target.
+        if (isset($field['zero']['references'])) {
+            $valid = true;
+        } elseif ($valid !== true) {
             return $valid;
         }
         if (empty($field['zero_top'])) {

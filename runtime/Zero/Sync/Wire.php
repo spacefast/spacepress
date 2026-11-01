@@ -117,7 +117,7 @@ final class Wire
      * @param ?array $current the stored row being updated: a body that reads back as the same text is
      *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
      */
-    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null): array
+    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?array &$resolvedReferences = null, ?\Zero\Viewer $viewer = null): array
     {
         $spec = db()->schema()->collection($collection);
         $fields = $record['fields'] ?? [];
@@ -142,7 +142,10 @@ final class Wire
             }
             $ref = $spec['columns'][$name]['references'] ?? null;
             try {
-                $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value);
+                $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value, $viewer);
+                if ($ref !== null && $value !== null && $resolvedReferences !== null) {
+                    $resolvedReferences[$name] = $data[$name];
+                }
             } catch (HttpError $e) {
                 if ($missing === null || $e->errorCode !== 'sync_missing_reference') {
                     throw $e;
@@ -254,14 +257,31 @@ final class Wire
         return $out;
     }
 
-    private static function resolve(array $ref, string $name, mixed $uid): int|string
+    private static function resolve(array $ref, string $name, mixed $uid, ?\Zero\Viewer $viewer): int|string
     {
         $pointer = '/fields' . HttpError::seg($name);
         if (!Uid::valid($uid)) {
             throw HttpError::invalidInput("$name must be the uid of a {$ref['collection']} row", $pointer);
         }
-        $target = Module::find($ref['collection'], ['where' => ['uid' => $uid], 'limit' => 1])[0]
-            ?? throw new HttpError(422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer);
+        $spec = db()->schema()->collection($ref['collection']);
+        $denied = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg($name));
+        if ($viewer !== null && \Zero\FieldAccess::mayHide($spec['columns'][$ref['column']], $viewer)) {
+            throw $denied; // no hidden value may reach input rules or validators
+        }
+        $opts = ['where' => ['uid' => $uid], 'limit' => 1];
+        if ($viewer !== null && $ref['column'] !== $spec['primaryKey']) {
+            if ($spec['localized'] ?? false) {
+                $opts['locale'] = '*';
+            }
+            try {
+                $target = db()->findFirst($ref['collection'], $opts, $viewer);
+            } catch (HttpError) {
+                throw $denied;
+            }
+        } else {
+            $target = Module::find($ref['collection'], $opts)[0] ?? null;
+        }
+        $target ??= throw new HttpError(422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer);
 
         return $target[$ref['column']];
     }

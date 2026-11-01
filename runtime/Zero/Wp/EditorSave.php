@@ -36,6 +36,7 @@ final class EditorSave
 
     public static function register(): void
     {
+        add_filter('pre_wp_unique_post_slug', [self::class, 'uniqueSlug'], PHP_INT_MAX, 5);
         add_filter('wp_insert_post_data', [self::class, 'begin'], PHP_INT_MAX, 4);
         add_action('wp_insert_post', [self::class, 'inserted'], 0, 1);
         // After fillEditorDefaults (8) and core's revision (9), before Zero's after hooks (20).
@@ -49,6 +50,40 @@ final class EditorSave
         register_shutdown_function([self::class, 'shutdown']);
     }
 
+    /** Native collision resolution must not reveal competing slugs before save authorization. */
+    public static function uniqueSlug(mixed $override, string $slug, ?int $postId, string $status, string $postType): mixed
+    {
+        $postId ??= 0;
+        $plugin = Plugin::instance();
+        if ($plugin === null || self::busy() || get_current_user_id() === 0
+            || ($collection = CoreAccess::collection($postType)) === null
+            || ($column = $plugin->schema->collection($collection)['slug'] ?? null) === null) {
+            return $override;
+        }
+        try {
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+            $before = $postId > 0 ? $plugin->db()->editorRow($collection, $postId) : null;
+            $wrapped = self::$open !== null && self::$open['collection'] === $collection && self::$open['postId'] === $postId;
+            $form = is_admin() && (int) ($_POST['post_ID'] ?? 0) === $postId
+                && in_array($_POST['action'] ?? null, ['editpost', 'inline-save'], true);
+            $supplied = $wrapped ? self::$open['supplied'] : self::formData($collection)[1];
+            if ($before !== null && ($wrapped || $form) && !in_array($column, $supplied, true)
+                && in_array(get_post_status($postId), ['publish', 'future', 'private'], true)) {
+                // An omitted native column stays unchanged, including an empty stored value. Never
+                // branch on hidden equality or ask WordPress to repair it against competing rows.
+                return (string) ($before[$column] ?? '');
+            }
+            $plugin->db()->requireUniqueVisibility($collection, [$column => $slug], $viewer);
+        } catch (HttpError $e) {
+            if (self::$open === null && is_admin()) {
+                wp_die(esc_html($e->getMessage()), '', ['response' => $e->status, 'code' => $e->errorCode, 'back_link' => true]);
+            }
+            self::fail($e);
+        }
+
+        return $override;
+    }
+
     /**
      * Core REST create/update: the controller's save runs as one save, authorized before it commits;
      * a refusal answers with Zero's problem. Inside an already open transaction (a REST call made by
@@ -58,8 +93,12 @@ final class EditorSave
     public static function rest(string $collection, ?int $postId, \WP_REST_Request $request, callable $save): mixed
     {
         $plugin = Plugin::instance() ?? throw new \LogicException('No Zero app');
+        $before = $postId === null ? null : $plugin->db()->editorRow($collection, $postId);
         try {
             [$declared, $supplied] = CoreAccess::incoming($collection, $request, singleSelector: true);
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+            $plugin->db()->requireUniqueVisibility($collection, $declared, $viewer, $before === null);
+            $plugin->db()->validateWriteReferences($collection, $declared, $viewer);
         } catch (HttpError $e) {
             if ($plugin->connection()->inTransaction()) {
                 throw $e;
@@ -67,7 +106,6 @@ final class EditorSave
 
             return CoreAccess::error($e);
         }
-        $before = $postId === null ? null : $plugin->db()->editorRow($collection, $postId);
         if ($plugin->connection()->inTransaction()) {
             $outer = self::$open;
             self::$open = self::scope('rest', $collection, $postId, $before, $declared, $supplied) + ['nested' => true];
@@ -305,6 +343,7 @@ final class EditorSave
                     || ($v !== null && !(isset($spec['columns'][$col]['default']['value']) && $v === $spec['columns'][$col]['default']['value'])), ARRAY_FILTER_USE_BOTH);
                 $data = $after;
                 FieldAccess::checkWrite('create', $collection, $data, null, $viewer, $cols);
+                $plugin->db()->validateWriteReferences($collection, $after, $viewer);
                 Access::require($rules['create'], $viewer, 'create', $after, "create $collection rows");
 
                 return;
@@ -314,6 +353,7 @@ final class EditorSave
             $supplied = $open['owner'] === 'restore' ? $patch : self::groupPatch($spec['columns'], $patch, $before, $open['declared'] ?? []);
             $data = $patch;
             FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $supplied, stored: true);
+            $plugin->db()->validateWriteReferences($collection, $patch, $viewer);
             $r = Access::evaluate($rules['update'], $viewer, 'update', $patch);
             if ($r === false || (is_array($r) && !in_array(serialize($r), $open['covers'], true))) {
                 throw Access::deny($viewer->user, "update $collection rows");

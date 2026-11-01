@@ -1318,7 +1318,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $db = $locale->db;
     $anon = new \Zero\Viewer(null, 'standalone');
     $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
-    $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($locale): array {
+    $locale->identity()->addUser('localeEditor', 'editor', null);
+    $writeHeaders = ['authorization' => 'Bearer ' . $locale->identity()->createToken('localeEditor', null)['token']];
+    $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($locale, $writeHeaders): array {
+        if ($method !== 'GET') {
+            $headers += $writeHeaders;
+        }
         [$status, , $payload] = $locale->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
         $json = json_decode($payload, true);
 
@@ -1683,6 +1688,82 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'standalone'))), false);
     eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
     eq('the booted app\'s db() is back afterwards', \Zero\db()->schema()->hasCollection('profiles'), true);
+})();
+
+// ================================================================ write errors don't reveal what the viewer can't read
+
+// A unique conflict or a dangling reference is an answer about stored rows. Writes may only get one
+// about rows the viewer could read anyway (review: field-unique-oracle, ref-existence-oracle).
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $anyone = ['role' => 'anyone'];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+        // Anyone signs up; only admins see who did.
+        'subscribers' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin'], 'create' => $anyone],
+            'columns' => ['id' => $id, 'email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]],
+        // Anyone reads people; the ssn column is admin-only.
+        'people' => ['primaryKey' => 'id', 'access' => ['read' => $anyone, 'create' => $anyone, 'update' => $anyone],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'unique' => true, 'access' => ['read' => ['role' => 'admin'], 'update' => $anyone]]]],
+        // Notes are editor-readable; private tags may point at a note.
+        'notes' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'editor'], 'create' => $anyone, 'delete' => $anyone],
+            'columns' => ['id' => $id, 'body' => ['type' => 'text', 'notNull' => true]]],
+        'tags' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin'], 'create' => $anyone, 'update' => $anyone],
+            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'noteId' => ['type' => 'integer', 'references' => ['collection' => 'notes', 'column' => 'id']]]],
+    ]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "subscribers" ("id" integer PRIMARY KEY, "email" text NOT NULL UNIQUE, "note" text);
+        CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text UNIQUE);
+        CREATE TABLE "notes" ("id" integer PRIMARY KEY, "body" text NOT NULL);
+        CREATE TABLE "tags" ("id" integer PRIMARY KEY, "name" text NOT NULL, "noteId" integer REFERENCES "notes" ("id"))');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $anon = new \Zero\Viewer(null, 'standalone');
+    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber'], 'standalone');
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'standalone');
+    $count = static fn (string $c) => (int) $pdo->query("SELECT COUNT(*) FROM \"$c\"")->fetchColumn();
+
+    // Unique writes require visibility across the collection, before any value is looked up.
+    $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin);
+    problem('a private unique value is refused when taken', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $anon), 401, 'unauthenticated', '/email');
+    problem('a private unique value is refused when free', fn () => $db->insert('subscribers', ['email' => 'b@x.test'], true, $anon), 401, 'unauthenticated', '/email');
+    eq('rejected creates persist nothing', $count('subscribers'), 1);
+    problem('readers retain normal unique conflicts', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin), 409, 'unique_violation', '/email');
+
+    // A unique column the viewer can't read: refused before any lookup, whatever the value.
+    $person = $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789'], true)[0];
+    problem('setting a hidden unique column is refused when the value exists…', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '123-45-6789'], true, $anon), 401, 'unauthenticated', '/ssn');
+    problem('… and the same when it doesn\'t', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '000-00-0000'], true, $anon), 401, 'unauthenticated', '/ssn');
+    problem('a write-only unique value cannot be tested through an update', fn () => $db->update('people', ['ssn' => '123-45-6789'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
+    problem('a free write-only unique value is equally refused', fn () => $db->update('people', ['ssn' => '000-00-0000'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
+    eq('a create that leaves it out is fine', $db->insert('people', ['name' => 'r'], true, $anon)[0]['name'], 'r');
+    eq('an admin sets it', $db->insert('people', ['name' => 's', 'ssn' => '111-11-1111'], true, $admin)[0]['ssn'], '111-11-1111');
+
+    // A reference must name a row the viewer may read: unreadable and missing answer alike.
+    $note = $db->insert('notes', ['body' => 'private'], true)[0];
+    $missing = $note['id'] + 100;
+    $failure = static function (callable $write): array {
+        try {
+            $write();
+            return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
+        } catch (\Throwable $e) {
+            return \Zero\App::problem($e);
+        }
+    };
+    foreach ([$note['id'], $missing] as $value) {
+        $error = $failure(fn () => $db->insert('tags', ['name' => 't', 'noteId' => $value], true, $sub));
+        eq('unreadable and absent references answer identically',
+            [$error['status'], $error['code'], $error['pointer'], $error['detail']],
+            [409, 'reference_violation', '/noteId', 'No referenced notes row for noteId']);
+    }
+    $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
+    problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
+    eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
+    $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
+    foreach ([$note, $unreferenced] as $parent) {
+        problem('unreadable restrictive children refuse deletion whether present or absent', fn () => $db->delete('notes', ['id' => $parent['id']], true, new \Zero\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor'], 'standalone')), 409, 'reference_violation');
+    }
+    eq('refused deletes preserve both parents', $count('notes'), 2);
+    eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
 })();
 
 finish('db_test');

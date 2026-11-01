@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
 import { createClient } from "./app/zero/client/index.ts";
-import { api, auth, harness, http, run, sql, wp } from "./env.ts";
+import { api, auth, harness, http, run, sql, wp, wpTry, zero } from "./env.ts";
 
 const site = harness.url;
 const app = { id: "app_zero_dev", redirect: `${site}/auth/callback` };
@@ -23,12 +23,11 @@ async function call(method: string, path: string, opts: { token?: string; body?:
   return { status: res.status, text, json: text === "" ? undefined : JSON.parse(text) };
 }
 
-/** A member with a known password, created by an admin through the API (write-only `password`). */
+/** Trusted setup: self-read intentionally cannot inspect competing members through unique writes. */
 async function member(tag: string) {
   const email = `${tag}-${run}@example.test`;
-  const r = await http("POST", `${api}/members`, { as: "admin", body: { email, name: tag, password: `pw-${tag}-correct-horse` } });
-  assert.equal(r.status, 201, JSON.stringify(r.json));
-  return { id: r.json.data.id as number, email, password: `pw-${tag}-correct-horse`, row: r.json };
+  const row = zero("insert", "members", JSON.stringify({ email, name: tag, password: `pw-${tag}-correct-horse` }))[0];
+  return { id: row.id, email, password: `pw-${tag}-correct-horse`, row: { data: row } };
 }
 
 /** The authorization-code flow with only fetch: password sign-in → consent (cookie + CSRF) → token. */
@@ -170,7 +169,7 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   assert.deepEqual(sql(`SELECT user_email, display_name FROM wp_users WHERE ID = ${cy.id}`)[0], { user_email: cy.email, display_name: "cy" });
   assert.match(sql(`SELECT user_pass FROM wp_users WHERE ID = ${cy.id}`)[0].user_pass, /^\$wp\$|^\$P\$|^\$2y\$/, "WordPress's own hash");
   const self = await signIn(cy.email, cy.password);
-  const patched = await call("PATCH", `/members/${cy.id}`, { token: self.json.access_token, body: { points: 7, tags: ["beta"], handle: `cy-${run}` } });
+  const patched = await call("PATCH", `/members/${cy.id}`, { token: self.json.access_token, body: { points: 7, tags: ["beta"] } });
   assert.equal(patched.status, 200, patched.text);
   const meta = Object.fromEntries(sql(`SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = ${cy.id} AND meta_key IN ('zero_points','zero_tags')`).map((r) => [r.meta_key, r.meta_value]));
   assert.deepEqual(meta, { zero_points: "7", zero_tags: 'a:1:{i:0;s:4:"beta";}' }, "multiple selects are SCF's serialized arrays");
@@ -182,12 +181,21 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   const filtered = await call("GET", "/members", { token: self.json.access_token, query: { where: JSON.stringify({ tags: { has: "early" } }) } });
   assert.deepEqual(filtered.json.data.map((r: any) => r.id), [cy.id], "filters compare SCF's stored form");
   const dupe = await member("dy");
-  const taken = await call("PATCH", `/members/${dupe.id}`, { token: (await signIn(dupe.email, dupe.password)).json.access_token, body: { handle: `cy-${run}` } });
-  assert.deepEqual([taken.status, taken.json.code, taken.json.pointer], [409, "unique_violation", "/handle"], "declared unique columns hold in usermeta");
+  const dupeToken = (await signIn(dupe.email, dupe.password)).json.access_token;
+  zero("update", "members", JSON.stringify({ id: cy.id }), JSON.stringify({ handle: `cy-${run}`, joined: "2026-01-02" }));
+  for (const handle of [`cy-${run}`, `free-${run}`]) {
+    const refused = await call("PATCH", `/members/${dupe.id}`, { token: dupeToken, body: { handle } });
+    assert.deepEqual([refused.status, refused.json.code, refused.json.pointer], [403, "forbidden", "/handle"], "self-read never reveals a competing handle");
+  }
+  for (const email of [cy.email, `free-${run}@example.test`]) {
+    const refused = await http("POST", `${api}/members`, { as: "admin", body: { email, name: "Probe", password: "probe password 1" } });
+    assert.deepEqual([refused.status, refused.json.code, refused.json.pointer], [403, "forbidden", "/email"], "self-read applies even to admin collection writes");
+  }
+  const taken = JSON.parse(wpTry("zero", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
+  assert.deepEqual([taken.error.status, taken.error.code, taken.error.pointer], [409, "unique_violation", "/handle"], "trusted writes still enforce unique usermeta");
   // Uniqueness compares the stored (SCF) form: a date is kept as Ymd.
-  await call("PATCH", `/members/${cy.id}`, { token: self.json.access_token, body: { joined: "2026-01-02" } });
-  const sameDay = await call("PATCH", `/members/${dupe.id}`, { token: (await signIn(dupe.email, dupe.password)).json.access_token, body: { joined: "2026-01-02" } });
-  assert.deepEqual([sameDay.status, sameDay.json.pointer], [409, "/joined"]);
+  const sameDay = JSON.parse(wpTry("zero", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ joined: "2026-01-02" })));
+  assert.deepEqual([sameDay.error.status, sameDay.error.pointer], [409, "/joined"]);
   // A member's role is the one Zero authenticates them with: a contributor is an author.
   wp("user", "set-role", String(dupe.id), "contributor");
   const asContributor = await call("GET", "/me", { token: (await signIn(dupe.email, dupe.password)).json.access_token });

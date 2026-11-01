@@ -190,14 +190,17 @@ $leaks = static function (mixed $data) use ($hidden): bool {
     return str_contains($json, '$2y$');
 };
 
-[$s, $ana] = $call('POST', '/members', ['email' => 'ana@example.test', 'name' => 'Ana', 'password' => 'correct horse battery']);
-check('create a member with a write-only password: 201, row has no password or hidden column', $s === 201 && $ana['data']['role'] === 'subscriber' && !$leaks($ana) && !array_key_exists('password', $ana['data']), $ana);
+$ana = ['data' => $clubApp->db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana', 'password' => 'correct horse battery'], true)[0]];
+check('trusted creation hashes a write-only password and strips hidden columns', $ana['data']['role'] === 'subscriber' && !$leaks($ana) && !array_key_exists('password', $ana['data']), $ana);
 problem('a short password is refused', fn () => $clubApp->db->insert('members', ['email' => 'x@example.test', 'name' => 'X', 'password' => 'short'], true, new \Zero\Viewer(null, 'standalone')), 422, 'invalid_input', '/password');
 [$s, $signed] = $call('POST', '/auth/token', ['name' => 'ana@example.test', 'password' => 'correct horse battery']);
 $token = $signed['data']['accessToken'] ?? '';
 check('the member signs in with email + password; ctx.user.id is the member row id', $s === 200 && $signed['data']['user']['id'] === $ana['data']['id'] && $signed['data']['user']['member']['email'] === 'ana@example.test' && !$leaks($signed), $signed);
 eq('/me carries the member row', $call('GET', '/me', null, $token)[1]['data']['member']['plan'] ?? null, 'free');
-$call('POST', '/members', ['email' => 'bo@example.test', 'name' => 'Bo', 'password' => 'another long one']);
+$clubApp->db->insert('members', ['email' => 'bo@example.test', 'name' => 'Bo', 'password' => 'another long one']);
+foreach (['ana@example.test', 'free@example.test'] as $email) {
+    eq('self-read cannot expose uniqueness through public creation', $call('POST', '/members', ['email' => $email, 'name' => 'Probe', 'password' => 'another long one'])[0], 401);
+}
 [$s, $list] = $call('GET', '/members', null, $token);
 check('"self" read: a member lists only their own row', $s === 200 && array_column($list['data'], 'email') === ['ana@example.test'] && !$leaks($list), $list);
 eq('"self" read: anonymous → 401', $call('GET', '/members')[0], 401);
@@ -249,7 +252,7 @@ eq('credentials of an unmarked database resolve to nobody once members own the i
 \Zero\Auth\Module::use($clubApp->auth);
 
 // Deleting a member revokes its credentials, so a new row with the same id inherits none.
-$gone = $call('POST', '/members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'])[1]['data'];
+$gone = $clubApp->db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'], true)[0];
 $goneToken = $call('POST', '/auth/token', ['name' => 'gone@example.test', 'password' => 'gone password 1'])[1]['data']['accessToken'];
 $goneCli = cli2($club, 'token', 'create', 'gone@example.test')[1]['data']['token'];
 $clubApp->db->delete('members', ['id' => $gone['id']]);

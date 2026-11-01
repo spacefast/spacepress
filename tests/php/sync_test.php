@@ -226,7 +226,7 @@ eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.
 \Zero\Extensions::onRead(static fn (array $rows, string $c, ?\Zero\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
-    ? array_map(static fn (array $r) => array_diff_key($r, ['meta' => true]), $rows) : $rows);
+    ? array_map(static fn (array $r) => ($r['title'] ?? null) === 'Hidden' ? array_diff_key($r, ['meta' => true]) : $r, $rows) : $rows);
 $hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden ', 'slug' => 'hidden', 'meta' => ['secret' => 1]], 'body' => null];
 [, $answer] = req('POST', '/sync/notes', ['record' => $hidden, 'expect' => 'absent']);
 check('a normalized answer carries only what the viewer reads', !array_key_exists('meta', $answer['record']['fields']), $answer['record']);
@@ -253,7 +253,7 @@ isProblem('a filtered update rule is not enough to pull', req('GET', '/sync/note
 isProblem('nor to convert', req('POST', '/sync/notes/convert', ['direction' => 'toBlocks', 'text' => 'x'], as: 'au'), 403, 'forbidden');
 isProblem('collections without sync have no sync route', req('GET', '/sync/people'), 404, 'not_found');
 
-// Writes are authorized row by row through the pipeline: an author may create and may update rows
+// Writes are authorized row by row through the pipeline: an editor may create and authors update rows
 // their filter matches, but a stale write discloses nothing to a caller who can't pull.
 $au = $db->insert('people', ['name' => 'au'], true)[0];
 // A create rule reading defaulted values sees them on sync as on an ordinary create, and reads the
@@ -262,16 +262,23 @@ $au = $db->insert('people', ['name' => 'au'], true)[0];
 $GLOBALS['zeroCreateNeedsPublished'] = true;
 putenv('ZERO_NOW=2026-01-01T00:00:00.000Z');
 putenv('ZERO_NOW_STEP=1');
-$plain = req('POST', '/notes', ['title' => 'Plain', 'slug' => 'plain-create'], as: 'au');
-[$s] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_12121212121212121212', 'fields' => ['title' => 'Synced', 'slug' => 'synced-create'], 'body' => null], 'expect' => 'absent'], as: 'au');
+$plain = req('POST', '/notes', ['title' => 'Plain', 'slug' => 'plain-create'], as: 'ed');
+[$s] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_12121212121212121212', 'fields' => ['title' => 'Synced', 'slug' => 'synced-create'], 'body' => null], 'expect' => 'absent'], as: 'ed');
 eq('a create rule sees defaults on sync as on an ordinary create', [$plain[0], $s], [201, 201]);
 putenv('ZERO_NOW_STEP');
 putenv('ZERO_NOW');
 unset($GLOBALS['zeroCreateNeedsPublished']);
 $own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slug' => 'mine', 'meta' => null, 'authorId' => $au['uid'], 'status' => 'draft', 'publishedAt' => null], 'body' => null];
-[$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'au');
+[$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'ed');
 eq('the create rule authorizes a new uid', [$s, $mine['status']], [201, 'applied']);
-eq('a filtered update rule authorizes rows it matches', req('POST', '/sync/notes', ['record' => ['body' => "Edited.\n"] + $own, 'expect' => $mine['digest']], as: 'au')[1]['status'], 'applied');
+foreach (['mine', 'free-slug'] as $slug) {
+    $probe = ['uid' => 'zr_13131313131313131313', 'fields' => ['title' => 'Probe', 'slug' => $slug], 'body' => null];
+    isProblem('a writer who cannot read drafts cannot probe unique slugs', req('POST', '/sync/notes', ['record' => $probe, 'expect' => 'absent'], as: 'au'), 403, 'forbidden', '/slug');
+}
+$ownPatch = $own;
+unset($ownPatch['fields']['slug']);
+eq('a filtered update rule authorizes rows it matches', req('POST', '/sync/notes', ['record' => ['body' => "Edited.\n"] + $ownPatch, 'expect' => $mine['digest']], as: 'au')[1]['status'], 'normalized');
+eq('the authorized body edit was saved', $db->findFirst('notes', ['where' => ['uid' => $own['uid']]])['body'], \Zero\Sync\Markdown::toBlocks("Edited.\n"));
 $theirs = pull('notes')['zr_cccccccccccccccccccc'];
 isProblem('and masks rows it does not, as item routes do', req('POST', '/sync/notes', ['record' => ['body' => 'Mine now'] + $theirs['record'], 'expect' => $theirs['digest']], as: 'au'), 404, 'not_found');
 isProblem('authorization comes before staleness, so a probe learns nothing', req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => 'absent'], as: 'au'), 404, 'not_found');

@@ -523,6 +523,15 @@ final class Plugin
             if (!$store->isMeta($spec, $col)) {
                 continue;
             }
+            $generation = !$created && isset($def['onUpdate']) ? $def['onUpdate'] : ($def['default'] ?? null);
+            if ($generation !== null) {
+                try {
+                    $viewer = get_current_user_id() === 0 ? null : (CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended'));
+                    $this->db()->requireGeneratedVisibility($collection, [$col => $generation], $viewer);
+                } catch (HttpError $e) {
+                    EditorSave::fail($e);
+                }
+            }
             $key = $spec['wp']['metaPrefix'] . $col;
             $exists = metadata_exists('post', $postId, $key);
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
@@ -537,6 +546,13 @@ final class Plugin
         }
         $this->filled[$postId] = array_map('strval', array_keys($values));
         if ($values !== []) {
+            try {
+                $viewer = get_current_user_id() === 0 ? null : (CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended'));
+                $this->db()->requireUniqueVisibility($collection, $values, $viewer);
+                $this->db()->validateWriteReferences($collection, $values, $viewer);
+            } catch (HttpError $e) {
+                EditorSave::fail($e);
+            }
             $store->update($collection, $postId, $values);
         }
     }

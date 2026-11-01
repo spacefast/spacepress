@@ -521,8 +521,8 @@ Conversions:
 Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; negative/float/out-of-range arguments handled exactly like JS):
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
-- `charAt(string $s, int|float $i): string`, `strAt(string $s, int|float $i): ?string`
-- `indexOf(string|array $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|array $s, mixed $needle, mixed ...$from): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
+- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
+- `indexOf(string|array $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
 - `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; splitting a surrogate pair throws)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
@@ -545,11 +545,10 @@ Arrays (lists):
 - Callbacks are invoked as `$f($item, $index)`; compiled callbacks declare the parameters they use, and PHP closures ignore extra arguments.
 - `filter(array $a, callable $f): array` (re-indexed list; callback result passed through `truthy`)
 - `map(array $a, callable $f): array` (`$f($item, $index)`)
-- `includes(array $a, mixed $v): bool` — SameValueZero (numbers numeric, NAN equals NAN)
-- `indexOf(array $a, mixed $v): int`, `lastIndexOf(array $a, mixed $v): int` — strict equality
+- `includes(array $a, mixed $v, mixed $from = 0): bool` — SameValueZero (numbers numeric, NAN equals NAN)
 - `join(array $a, string $sep = ','): string` (null elements → `""`, others `str`)
 - `arrSlice(array $a, int|float $start = 0, int|float|null $end = null): array`
-- `arrAt(array $a, int|float $i): mixed`
+- `arrAt(array $a, mixed $i = 0): mixed`
 - `splice(array &$a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): array`
 - `reverse(array &$a): array` (in place, returns the array)
 - `sort(array &$a, ?callable $cmp = null): array` — in place; default compares `str()` values by UTF-16 code units; comparator results may be floats; stable.

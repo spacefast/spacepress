@@ -15,14 +15,18 @@ use Zero\Schema;
  * blocks columns included. Member columns keep Zero's storage form (structured ones are one JSON
  * usermeta `zero_<col>`, as custom tables keep them), so SCF never stores them itself:
  *
- * - render: `acf/pre_load_value` serves structured values from the member row; a field the viewer
- *   can't read (or a structured one holding anything it may not read) isn't rendered, and structured
- *   fields appear only on an existing user's edit screen (never the add or register forms).
+ * - render: `acf/pre_load_value` serves structured values from the member row (timestamps in site
+ *   time, as SCF's pickers show them). Member fields render only for a viewer whose read rule covers
+ *   the member and who may read everything the field holds; structured fields appear only on an
+ *   existing user's edit screen (never the add or register forms).
  * - save: a wp-admin profile save (`profile.php`, `user-edit.php`) is one transaction opened before
  *   core updates the user. Each member field the form posts is staged instead of written; the values
  *   that changed are written in one `Db::update` with the signed-in viewer, so the collection's update
  *   rule, field write rules, validation and hooks decide, as on `/zero/v1`. A refusal rolls the whole
- *   save back (core's user changes included) and answers with Zero's status and message.
+ *   save back (core's user changes included) and answers with Zero's status and message; a save core
+ *   itself rejects (mismatched passwords) is rolled back before the form is shown again. A posted
+ *   structured value is read back the way the form wrote it (fromForm): sub-fields SCF left out (a
+ *   showIf hid them) keep their saved values, an unchanged time control keeps its saved instant.
  * - code: `update_field()` on a structured member field outside a profile save (WP-CLI, cron, other
  *   plugins) is a trusted Zero write, as `update_user_meta` is for WordPress.
  */
@@ -37,6 +41,8 @@ final class ProfileForm
     {
         add_action('personal_options_update', [self::class, 'begin'], 0);
         add_action('edit_user_profile_update', [self::class, 'begin'], 0);
+        // Core rejected the user (edit_user returns before profile_update): nothing of the save stays open.
+        add_action('user_profile_update_errors', [self::class, 'rejected'], PHP_INT_MAX, 1);
         // After SCF's own save_user (10), which stages every posted field through pre_update_value.
         add_action('profile_update', [self::class, 'end'], 1000, 1);
         add_filter('acf/pre_load_value', [self::class, 'load'], 20, 3);
@@ -62,7 +68,7 @@ final class ProfileForm
         if ($js === null) {
             return [];
         }
-        $js = self::timestamps($def, $js, static fn (string $wall) => get_date_from_gmt($wall, 'Y-m-d H:i:s'));
+        $js = self::toForm($def, $js);
 
         return Scf::toScf($def, Schema::store($def, $js), (string) $field['key']) ?? [];
     }
@@ -106,12 +112,23 @@ final class ProfileForm
         if ($viewer === null) {
             return false;
         }
-        $col = (string) $def['name'];
-        $visible = FieldAccess::strip([$stored], $collection, $viewer)[0] ?? [];
-        // A structured field renders inputs for every sub-field: one that may be hidden hides it all.
-        $nested = $structured && FieldAccess::mayHide(['access' => []] + $def, $viewer);
+        return self::readable($collection, $id, $stored, (string) $def['name'], $def, $viewer) ? $field : false;
+    }
 
-        return !$nested && array_key_exists($col, $visible) && $visible[$col] === $stored[$col] ? $field : false;
+    /**
+     * May the viewer read field $col of member $id as stored: the collection's read rule covers the
+     * member, the field's read rule admits it, and (structured) nothing inside it may be hidden, since
+     * the form renders an input for every sub-field.
+     */
+    private static function readable(string $collection, int $id, ?array $stored, string $col, array $def, \Zero\Viewer $viewer): bool
+    {
+        if ($stored === null || !self::plugin()->db()->permits($collection, 'read', $id, $viewer)) {
+            return false;
+        }
+        $visible = FieldAccess::strip([$stored], $collection, $viewer)[0] ?? [];
+        $nested = in_array($def['type'], self::STRUCTURED, true) && FieldAccess::mayHide(['access' => []] + $def, $viewer);
+
+        return !$nested && array_key_exists($col, $visible) && $visible[$col] === ($stored[$col] ?? null);
     }
 
     // ================================================================ save
@@ -144,10 +161,16 @@ final class ProfileForm
         if (!$open && doing_action('user_register')) {
             return true; // the add/register forms render no structured fields: nothing posted is kept
         }
-        $js = self::incoming($ctx['def'], $value, $postId, $field);
-        if ($open && $ctx['structured'] && ($viewer = CoreAccess::viewer()) !== null) {
-            $stored = self::plugin()->db()->editorRow($ctx['collection'], $ctx['id'])[$ctx['col']] ?? null;
-            $js = self::withoutRenderedDefaults($ctx['def'], $js, $stored, $viewer);
+        $def = $ctx['def'];
+        // Scf::updateValue: json re-encoded, a top-level timestamp from site time to UTC.
+        $js = Scf::fromScf($def, wp_unslash(Scf::updateValue($value, $postId, $field)), (string) $field['key']);
+        if ($ctx['structured']) {
+            $row = self::plugin()->db()->editorRow($ctx['collection'], $ctx['id']);
+            // Only a field the form rendered is read as the form wrote it; anything posted for one it
+            // never rendered goes to Zero as posted, refused or not on its own terms, never on what is stored.
+            $viewer = $open ? CoreAccess::viewer() : null;
+            $rendered = $viewer !== null && self::readable($ctx['collection'], $ctx['id'], $row, $ctx['col'], $def, $viewer);
+            $js = self::fromForm($def, $js, $rendered || !$open ? ($row[$ctx['col']] ?? null) : null, $rendered ? $viewer : null);
         }
         if ($open) {
             self::$open['patch'][$ctx['col']] = $js;
@@ -201,6 +224,14 @@ final class ProfileForm
         }
     }
 
+    /** user_profile_update_errors: core refused the user, so the form shows again; end the save first. */
+    public static function rejected(mixed $errors): void
+    {
+        if (self::$open !== null && $errors instanceof \WP_Error && $errors->has_errors()) {
+            self::rollback();
+        }
+    }
+
     /** A profile save still open at shutdown never completed (an error page, a failed update): roll it back. */
     public static function shutdown(): void
     {
@@ -230,36 +261,31 @@ final class ProfileForm
 
     /**
      * The staged values that differ from what the form showed (it posts every rendered field), so a
-     * save is authorized on what it changes. A field the viewer can't fully read was never rendered:
-     * anything posted for it goes to Zero uncompared, so field access refuses it whatever its value
+     * save is authorized on what it changes. A field the viewer can't read was never rendered:
+     * anything posted for it goes to Zero uncompared, so it is refused or allowed on the rules alone
      * (comparing would tell a guess that matches the hidden value from one that doesn't). Both sides
-     * are compared as the form represents them, where an empty list may post as '' or nothing.
-     * A value that doesn't normalize is kept: Zero reports it.
+     * are compared as the form represents them (canonical). A value that doesn't normalize is kept:
+     * Zero reports it.
      */
     private static function changed(string $collection, int $id, array $staged, \Zero\Viewer $viewer): array
     {
-        $before = self::plugin()->db()->editorRow($collection, $id) ?? [];
-        $visible = FieldAccess::strip([$before], $collection, $viewer)[0] ?? [];
+        $before = self::plugin()->db()->editorRow($collection, $id);
         $columns = self::plugin()->schema->collection($collection)['columns'];
         $patch = [];
         foreach ($staged as $col => $js) {
             $col = (string) $col;
             $def = $columns[$col];
-            $structured = in_array($def['type'], self::STRUCTURED, true);
-            $readable = array_key_exists($col, $visible) && $visible[$col] === ($before[$col] ?? null)
-                && !($structured && FieldAccess::mayHide(['access' => []] + $def, $viewer));
-            if (!$readable) {
+            if (!self::readable($collection, $id, $before, $col, $def, $viewer)) {
                 $patch[$col] = $js;
                 continue;
             }
             try {
-                $posted = self::shown($def, Schema::normalize($def, $js, $col, HttpError::seg($col)));
-                $saved = self::shown($def, $before[$col] ?? null);
+                $posted = self::canonical($def, Schema::normalize($def, $js, $col, HttpError::seg($col)));
             } catch (HttpError) {
                 $patch[$col] = $js;
                 continue;
             }
-            if (Js::jsonStringify($posted) !== Js::jsonStringify($saved)) {
+            if (Js::jsonStringify($posted) !== Js::jsonStringify(self::canonical($def, $before[$col] ?? null))) {
                 $patch[$col] = $js;
             }
         }
@@ -268,37 +294,57 @@ final class ProfileForm
     }
 
     /**
-     * A decoded value as the form represents it: an empty list and no list read the same, as do no
-     * group and a group whose sub-fields all hold what an unset group renders (empty, or the default).
+     * A decoded value as the form represents it, at every depth: an empty list and no list read the
+     * same, as do no group and a group whose sub-fields all hold what an unset group renders (empty,
+     * or their default).
      */
-    private static function shown(array $def, mixed $v): mixed
+    private static function canonical(array $def, mixed $v): mixed
     {
-        if (in_array($def['type'], ['repeater', 'blocks'], true) && $v === []) {
-            return null;
-        }
-        if ($def['type'] === 'group' && is_array($v)) {
-            foreach ($def['fields'] ?? [] as $name => $sub) {
-                $value = $v[$name] ?? null;
-                if (!($value === null || self::isDefault($sub, $value)) || in_array($sub['type'] ?? '', self::STRUCTURED, true) && self::shown($sub, $value) !== null) {
-                    return $v;
+        $item = static function (array $fields, array $obj): array {
+            foreach ($fields as $name => $sub) {
+                if (array_key_exists($name, $obj) && in_array($sub['type'] ?? '', self::STRUCTURED, true)) {
+                    $obj[$name] = self::canonical($sub, $obj[$name]);
                 }
             }
 
-            return null;
+            return $obj;
+        };
+
+        return match (true) {
+            !is_array($v) => $v,
+            $def['type'] === 'group' => self::isUnsetGroup($def['fields'] ?? [], $item($def['fields'] ?? [], $v)) ? null : $item($def['fields'] ?? [], $v),
+            $def['type'] === 'repeater' => $v === [] ? null : array_map(static fn ($row) => is_array($row) ? $item($def['fields'] ?? [], $row) : $row, $v),
+            $def['type'] === 'blocks' => $v === [] ? null : array_map(static fn ($row) => is_array($row) ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row) : $row, $v),
+            default => $v,
+        };
+    }
+
+    /** Does a (canonical) group hold only what an unset group renders? */
+    private static function isUnsetGroup(array $fields, array $obj): bool
+    {
+        foreach ($fields as $name => $sub) {
+            $value = $obj[$name] ?? null;
+            if ($value !== null && !self::isDefault($sub, $value)) {
+                return false;
+            }
         }
 
-        return $v;
+        return true;
     }
 
     /**
-     * The form renders a new group or row with every sub-field at its default and posts them all,
-     * those the viewer may not set included (an unchecked toggle posts its "0"). Such a sub-field
-     * posted at its default in an item that doesn't exist yet was never set by the viewer: it is left
-     * out, so the default applies as it would through the API. Any other value for it is kept, and
-     * field access refuses it. Items that already exist are compared by Zero itself (unchanged
-     * values pass).
+     * A posted structured value (SCF's form decoded, timestamps in site time) → what Zero should be
+     * given, against $stored, the saved value at the same place (null: a new item).
+     *
+     * - timestamps: an unchanged control keeps the saved instant (milliseconds, and the hour a DST
+     *   change makes ambiguous); a changed one is converted from site time. Only an exact calendar
+     *   time is converted; anything else reaches Zero's validation as posted.
+     * - lists: an emptied list posts '' (null): the empty list, unless the saved value is null too.
+     * - $viewer (the field was rendered for this viewer): a sub-field SCF left out of an existing item
+     *   (a showIf hid and disabled it) keeps its saved value; in a new item, a sub-field the viewer may
+     *   not set, posted at its default, is left to the default as the API would.
      */
-    private static function withoutRenderedDefaults(array $def, mixed $posted, mixed $stored, \Zero\Viewer $viewer): mixed
+    private static function fromForm(array $def, mixed $posted, mixed $stored, ?\Zero\Viewer $viewer): mixed
     {
         $item = static function (array $fields, mixed $obj, mixed $before) use ($viewer): mixed {
             if (!is_array($obj)) {
@@ -306,41 +352,106 @@ final class ProfileForm
             }
             $before = is_array($before) ? $before : null;
             foreach ($fields as $name => $sub) {
+                $structured = in_array($sub['type'] ?? '', self::STRUCTURED, true);
                 if (!array_key_exists($name, $obj)) {
+                    if ($viewer !== null && $before !== null && array_key_exists($name, $before)) {
+                        $obj[$name] = $before[$name];
+                    }
                     continue;
                 }
-                if ($before === null && !in_array($sub['type'] ?? '', self::STRUCTURED, true)
+                if ($viewer !== null && $before === null && !$structured
                     && FieldAccess::unwritable('update', $sub, $viewer) && self::isDefault($sub, $obj[$name])) {
                     unset($obj[$name]);
                     continue;
                 }
-                if (in_array($sub['type'] ?? '', self::STRUCTURED, true)) {
-                    $obj[$name] = self::withoutRenderedDefaults($sub, $obj[$name], $before[$name] ?? null, $viewer);
+                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer);
+            }
+
+            return $obj;
+        };
+        $old = is_array($stored) && array_is_list($stored) ? $stored : [];
+
+        return match ($def['type'] ?? '') {
+            'timestamp' => self::wallToUtc($posted, $stored),
+            'group' => $item($def['fields'] ?? [], $posted, $stored),
+            'repeater', 'blocks' => match (true) {
+                $posted === null => $stored === null && !($def['notNull'] ?? false) ? null : [],
+                !is_array($posted) => $posted,
+                // SCF posts rows in their order: a row at a saved row's place edits it.
+                $def['type'] === 'repeater' => array_map(static fn ($row, $i) => $item($def['fields'] ?? [], $row, $old[$i] ?? null), $posted, array_keys($posted)),
+                default => array_map(static fn ($row, $i) => is_array($row)
+                    ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row, ($old[$i]['layout'] ?? null) === ($row['layout'] ?? null) ? ($old[$i] ?? null) : null)
+                    : $row, $posted, array_keys($posted)),
+            },
+            default => $posted,
+        };
+    }
+
+    /** A posted site-time timestamp → UTC; the saved instant when the control still shows it. */
+    private static function wallToUtc(mixed $posted, mixed $stored): mixed
+    {
+        $wall = self::wall($posted, '/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})\.000Z$/D');
+        if ($wall === null) {
+            return $posted;
+        }
+        if (is_string($stored) && self::utcToWall($stored) === str_replace(' ', 'T', $wall) . '.000Z') {
+            return $stored;
+        }
+
+        return str_replace(' ', 'T', get_gmt_from_date($wall, 'Y-m-d H:i:s')) . '.000Z';
+    }
+
+    /** A saved UTC timestamp (any precision) → site time, as the picker shows it (to the second). */
+    private static function utcToWall(mixed $stored): mixed
+    {
+        $wall = self::wall($stored, '/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d{1,3})?Z$/D');
+
+        return $wall === null ? $stored : str_replace(' ', 'T', get_date_from_gmt($wall, 'Y-m-d H:i:s')) . '.000Z';
+    }
+
+    /** 'Y-m-d H:i:s' of an ISO string matching $pattern that names a real calendar time, else null. */
+    private static function wall(mixed $v, string $pattern): ?string
+    {
+        if (!is_string($v) || !preg_match($pattern, $v, $m)) {
+            return null;
+        }
+        $at = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', "$m[1] $m[2]", new \DateTimeZone('UTC'));
+
+        return $at !== false && $at->format('Y-m-d H:i:s') === "$m[1] $m[2]" ? "$m[1] $m[2]" : null;
+    }
+
+    /** A saved structured value with its timestamps in site time, for the form. */
+    private static function toForm(array $def, mixed $v): mixed
+    {
+        $item = static function (array $fields, mixed $obj): mixed {
+            if (!is_array($obj)) {
+                return $obj;
+            }
+            foreach ($fields as $name => $sub) {
+                if (array_key_exists($name, $obj)) {
+                    $obj[$name] = self::toForm($sub, $obj[$name]);
                 }
             }
 
             return $obj;
         };
-        $old = is_array($stored) ? array_values($stored) : [];
 
         return match ($def['type'] ?? '') {
-            'group' => $item($def['fields'] ?? [], $posted, $stored),
-            // Rows past the saved ones are new (SCF posts rows in order).
-            'repeater' => is_array($posted) ? array_map(static fn ($row, $i) => $item($def['fields'] ?? [], $row, $old[$i] ?? null), $posted, array_keys($posted)) : $posted,
-            'blocks' => is_array($posted) ? array_map(static fn ($row, $i) => is_array($row)
-                ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row, ($old[$i]['layout'] ?? null) === ($row['layout'] ?? null) ? ($old[$i] ?? null) : null)
-                : $row, $posted, array_keys($posted)) : $posted,
-            default => $posted,
+            'timestamp' => self::utcToWall($v),
+            'group' => $item($def['fields'] ?? [], $v),
+            'repeater' => is_array($v) ? array_map(static fn ($row) => $item($def['fields'] ?? [], $row), $v) : $v,
+            'blocks' => is_array($v) ? array_map(static fn ($row) => is_array($row) ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row) : $row, $v) : $v,
+            default => $v,
         };
     }
 
     /** Is $v (as posted) the value a new item starts with: the sub-field's constant default, or null without one? */
     private static function isDefault(array $def, mixed $v): bool
     {
-        $default = isset($def['default']) && array_key_exists('value', $def['default']) ? $def['default']['value'] : null;
         if (isset($def['default']) && !array_key_exists('value', $def['default'])) {
             return false; // a generated default: whatever was posted wasn't it
         }
+        $default = $def['default']['value'] ?? null;
         try {
             $norm = Schema::normalize(['notNull' => false] + $def, $v, (string) ($def['name'] ?? ''), '');
         } catch (HttpError) {
@@ -348,62 +459,6 @@ final class ProfileForm
         }
 
         return Js::jsonStringify($norm) === Js::jsonStringify($default);
-    }
-
-    /** A posted (slashed, site-time) SCF value → Zero's JS form. */
-    private static function incoming(array $def, mixed $value, mixed $postId, array $field): mixed
-    {
-        // Scf::updateValue: json re-encoded, a top-level timestamp from site time to UTC.
-        $js = Scf::fromScf($def, wp_unslash(Scf::updateValue($value, $postId, $field)), (string) $field['key']);
-        if ($js === null && in_array($def['type'], ['repeater', 'blocks'], true)) {
-            $js = []; // an emptied (or never filled) list posts '': it is the empty list
-        }
-
-        return in_array($def['type'], self::STRUCTURED, true)
-            ? self::timestamps($def, $js, static fn (string $wall) => get_gmt_from_date($wall, 'Y-m-d H:i:s'))
-            : $js;
-    }
-
-    /**
-     * Apply $fn (wall time 'Y-m-d H:i:s' → wall time) to every timestamp inside a structured value: the
-     * pickers show site time, Zero keeps UTC. Only an exact, real calendar time is converted; anything
-     * else is left as it is, for Zero's validation to refuse.
-     */
-    private static function timestamps(array $def, mixed $v, callable $fn): mixed
-    {
-        if ($v === null) {
-            return null;
-        }
-        if (($def['type'] ?? '') === 'timestamp') {
-            if (!is_string($v) || !preg_match('/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})\.000Z$/D', $v, $m)) {
-                return $v;
-            }
-            $at = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', "$m[1] $m[2]", new \DateTimeZone('UTC'));
-            if ($at === false || $at->format('Y-m-d H:i:s') !== "$m[1] $m[2]") {
-                return $v; // not a real calendar time (2026-02-30): Zero refuses it unconverted
-            }
-
-            return str_replace(' ', 'T', $fn("$m[1] $m[2]")) . '.000Z';
-        }
-        $item = static function (array $fields, mixed $obj) use ($fn): mixed {
-            if (!is_array($obj)) {
-                return $obj;
-            }
-            foreach ($fields as $name => $sub) {
-                if (array_key_exists($name, $obj)) {
-                    $obj[$name] = self::timestamps($sub, $obj[$name], $fn);
-                }
-            }
-
-            return $obj;
-        };
-
-        return match ($def['type'] ?? '') {
-            'group' => $item($def['fields'] ?? [], $v),
-            'repeater' => is_array($v) ? array_map(static fn ($row) => $item($def['fields'] ?? [], $row), $v) : $v,
-            'blocks' => is_array($v) ? array_map(static fn ($row) => is_array($row) ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row) : $row, $v) : $v,
-            default => $v,
-        };
     }
 
     /** @return ?array{collection: string, id: int, col: string, def: array, structured: bool} a top-level member field on an existing user */

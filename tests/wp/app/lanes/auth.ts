@@ -21,7 +21,12 @@ export const members = collection("members", {
   sponsored: text().showIf({ sponsorId: { isNotNull: true } }),
   // Structured fields on the profile form (lane K2), written through Zero: a sub-field only admins
   // may set, a validated sub-field, a showIf on a scalar sibling, a timestamp in a repeater row.
-  address: group({ fields: { city: text().max(40), verified: boolean().notNull().default(false).access({ update: "admin" }) } }),
+  address: group({ fields: {
+    city: text().max(40),
+    verified: boolean().notNull().default(false).access({ update: "admin" }),
+    // Hidden (and so not posted by SCF) unless the city is Oslo.
+    district: text().showIf({ city: "Oslo" }),
+  } }),
   links: repeater({ fields: { label: text().notNull(), at: timestamp() } }).max(3),
   sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text() } } }).showIf({ plan: "pro" }),
   notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),

@@ -271,6 +271,7 @@ test("member showIf on profile forms: live rules on member fields, core-column r
   const id = wp("user", "create", `form-${run}`, `form-${run}@example.test`, "--porcelain", "--display_name=Plain");
   // What SCF's profile form renders: each member field after acf/prepare_field, for that user.
   const rendered = (user: string) => JSON.parse(wp("eval", [
+    `wp_set_current_user(${user});`,
     `acf_set_form_data(['post_id' => 'user_${user}']);`,
     "$out = [];",
     "foreach (acf_get_fields('group_zero_members') as $f) {",
@@ -381,6 +382,12 @@ test("structured member fields render on the member's own profile, but not on th
   const page = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: gu.cookie } })).text();
   for (const name of ["zero_address", "zero_links", "zero_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
   assert.doesNotMatch(page, /data-name="zero_notes"/, "a group holding a sub-field the member can't read isn't rendered");
+  // The collection's read rule ("self") decides the form too: an admin editing this member sees none of its fields.
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Oslo']], ['id' => ${gu.id}]);`);
+  const asAdmin = await (await fetch(`${site}/wp-admin/user-edit.php?user_id=${gu.id}`, { headers: { cookie: await adminCookie("admin", "zero-test-admin") } })).text();
+  assert.match(asAdmin, /name="nickname"/, "the screen itself renders");
+  assert.doesNotMatch(asAdmin, /data-name="zero_/, "no member field, so no member value");
+  assert.doesNotMatch(asAdmin, /Oslo/);
   const addForm = await (await fetch(`${site}/wp-admin/user-new.php`, { headers: { cookie: await adminCookie("admin", "zero-test-admin") } })).text();
   assert.match(addForm, /data-name="zero_plan"/);
   assert.doesNotMatch(addForm, /data-name="zero_(address|links|sections)"/, "no checked path creates users with structured values");
@@ -405,13 +412,13 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
     assert.equal(saved.status, 302, saved.text.slice(0, 400));
     const row = memberRow(hu.id);
     assert.deepEqual([row.address, row.links, row.sections], [
-      { city: "Oslo", verified: false },
+      { city: "Oslo", verified: false, district: null },
       [{ label: "Site", at: "2026-07-01T12:30:00.000Z" }],
       [{ layout: "bio", body: "Hello" }],
     ]);
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
     assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'zero_address'`)[0].meta_value),
-      { city: "Oslo", verified: false }, "one usermeta row in Zero's storage form, as the API writes it");
+      { city: "Oslo", verified: false, district: null }, "one usermeta row in Zero's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");
     assert.match(again.html, /value="2026-07-01 14:30:00"/);
@@ -420,6 +427,21 @@ test("a profile save writes structured fields through Zero, in Zero's storage fo
   } finally {
     wp("option", "update", "timezone_string", "");
   }
+  // Saved instants the picker can't show exactly survive an untouched save: milliseconds, and the
+  // hour the end of summer time repeats (00:30 and 01:30 UTC both show as 02:30 in Berlin).
+  // A sub-field SCF doesn't post (its showIf hides it) keeps its value.
+  wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum'], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z'], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z']]], ['id' => ${hu.id}]);`);
+  wp("option", "update", "timezone_string", "Europe/Berlin");
+  try {
+    const kept = await saveProfile(hu.cookie, "profile.php", {}, (name) => name === acf("address", "address_district"));
+    assert.equal(kept.status, 302, kept.text.slice(0, 400));
+  } finally {
+    wp("option", "update", "timezone_string", "");
+  }
+  assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links], [
+    { city: "Bergen", verified: false, district: "Sentrum" },
+    [{ label: "ms", at: "2026-07-01T12:30:00.123Z" }, { label: "dst", at: "2026-10-25T01:30:00.000Z" }],
+  ]);
   // Removing the last repeater row empties the list.
   const emptied = await saveProfile(hu.cookie, "profile.php", { [acf("links")]: "" }, (name) => name.startsWith(acf("links") + "["));
   assert.equal(emptied.status, 302, emptied.text.slice(0, 400));
@@ -438,10 +460,14 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   assert.match(forged.text, /verified/);
   // A field the form never rendered is refused whatever is posted, so a guess can't probe its value.
   wp("eval", `\\Zero\\Wp\\Runtime::plugin()->db()->update('members', ['notes' => ['private' => 'secret']], ['id' => ${iu.id}]);`);
-  for (const guess of ["secret", "wrong"]) {
+  for (const guess of ["secret", "wrong", ""]) {
     const probe = await saveProfile(iu.cookie, "profile.php", { [acf("notes", "notes_private")]: guess });
-    assert.equal(probe.status, 403, `guess ${guess}`);
+    assert.equal(probe.status, 403, `guess ${JSON.stringify(guess)}`);
   }
+  // The same answer when nothing is stored there.
+  const empty = await profileMember("iv");
+  assert.equal((await saveProfile(empty.cookie, "profile.php", { [acf("notes", "notes_private")]: "" })).status, 403);
+  assert.equal(memberRow(empty.id).notes, null);
   // Validation: the repeater's max(3).
   const tooMany = await saveProfile(iu.cookie, "profile.php", Object.fromEntries([0, 1, 2, 3].map((i) => [acf("links", `row-${i}`, "links_label"), `L${i}`])));
   assert.notEqual(tooMany.status, 302);
@@ -450,7 +476,19 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   const thrown = await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Throw", nickname: "Thrown" });
   assert.deepEqual([thrown.status, /address hook refused/.test(thrown.text)], [409, true]);
   assert.deepEqual([name(), wp("user", "meta", "get", String(iu.id), "nickname")], [before, nickname], "core's user update rolled back with it");
-  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", verified: false }, null, { private: "secret" }]);
+  assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", verified: false, district: null }, null, { private: "secret" }]);
+});
+
+test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
+  const ku = await profileMember("ku");
+  const rejected = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Paris", pass1: "new-password-one", pass2: "new-password-two" });
+  assert.equal(rejected.status, 200, "core shows the form again with its error");
+  assert.match(rejected.text, /passwords do not match/i);
+  assert.equal(memberRow(ku.id).address, null, "the member field staged before core refused is gone");
+  // A later save starts clean.
+  const next = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Lyon" });
+  assert.equal(next.status, 302, next.text.slice(0, 400));
+  assert.equal(memberRow(ku.id).address.city, "Lyon");
 });
 
 test("the update rule decides profile saves: an admin is refused another member under \"self\", and sets admin-only fields on their own", async () => {
@@ -463,7 +501,7 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.equal(memberRow(ju.id).address, null);
   const own = await saveProfile(admin, "profile.php", { [acf("address", "address_city")]: "Rome", [acf("address", "address_verified")]: "1" });
   assert.equal(own.status, 302, own.text.slice(0, 400));
-  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true });
+  assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", verified: true, district: null });
 });
 
 test("update_field on a structured member field is a trusted Zero write; get_field reads it back by name", () => {

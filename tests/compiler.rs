@@ -204,6 +204,46 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// An in-place update of an element past the end (`a[2] += 'x'`, `a[5]++`) would make the PHP array
+/// a keyed map that encodes as an object. The index is only known at run time, so compiled code
+/// throws a RangeError there; in-bounds updates match Node (tests/differential `elementUpdates`).
+#[test]
+fn element_updates_past_the_end_throw() {
+    let tmp = std::env::temp_dir().join(format!("zero-element-updates-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("zero.config.ts"),
+        r#"import { collection, id, defineConfig, action } from "zero";
+const n = collection("n", { id: id() }, { editor: false });
+export default defineConfig({
+  schema: { n },
+  actions: {
+    append: action({ input: {}, handler: async () => { const a: string[] = []; a[2] += "x"; return a; } }),
+    step: action({ input: {}, handler: async () => { const a: number[] = [1]; a[5]!++; return a; } }),
+  },
+});
+"#,
+    )
+    .unwrap();
+    let built = zero().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    for (name, detail) in [
+        ("append", "Index 2 is outside this array (length 0)"),
+        ("step", "Index 5 is outside this array (length 1)"),
+    ] {
+        let out = Command::new("php")
+            .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+            .args(["action", name])
+            .output()
+            .unwrap();
+        let got: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let message = got["error"]["detail"].as_str().unwrap_or_default();
+        assert!(message.starts_with(detail), "{name}: {got}");
+    }
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
 #[test]
 fn rejects_access_rules_that_cant_hold() {
@@ -1182,6 +1222,10 @@ fn rejects_phase2_static_contracts() {
         (
             "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p) === 1;",
             "position might be null or undefined",
+        ),
+        (
+            "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
+            "holds an object or array",
         ),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

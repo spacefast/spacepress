@@ -262,6 +262,21 @@ final class Js
         return -self::n($a);
     }
 
+    /**
+     * The index of an array element updated in place (`list[i] += v`, `list[i]++`). JS grows the
+     * array past its end, leaving holes; a PHP array would gain a key instead and turn into an
+     * object, so that throws. Evaluates the index once.
+     */
+    public static function slot(array $a, int|float $i): int
+    {
+        $n = count($a);
+        if (!is_finite($i) || $i < 0 || $i >= $n || $i != floor($i)) {
+            throw new JsError("Index {$i} is outside this array (length {$n}); compiled code can't grow an array by index. Use push(), or check the index first", 'RangeError');
+        }
+
+        return (int) $i;
+    }
+
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
     public static function postStep(int|float &$x, int $step): int|float
     {

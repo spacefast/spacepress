@@ -434,7 +434,10 @@ Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook, mutating an
 object after storing it in another (PHP copies on store), `list[i] = v`,
-`??=` or `||=` into an array index (use `push`; PHP turns a hole into a key),
+`??=` or `||=` into an array index (use `push`; PHP turns a hole into a key;
+`list[i] += v` and `list[i]++` throw a RangeError past the end), a closure
+capturing a `for (let …)` variable that holds an object or array (copy what it
+needs into a `const` inside the loop body),
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a `lastIndexOf` position that may be null or undefined, reassigning a
 parameter that also mutates its object or array (use a separate local

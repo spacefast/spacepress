@@ -346,6 +346,23 @@ function laneSActions() {
       }
       return seen;
     }),
+    // A captured primitive loop binding of any kind (here a string) gets its own per-iteration cell.
+    stringLoopClosures: run(() => {
+      const fns: (() => string)[] = [];
+      for (let s = "a"; s.length < 4; s += "a") fns.push(() => s);
+      return fns.map((f) => f());
+    }),
+    // In-place updates of existing elements, an index with a side effect evaluated once.
+    elementUpdates: run(() => {
+      const a: number[] = [1, 2, 3];
+      let i = 0;
+      a[i++]! += 5;
+      a[2]!++;
+      --a[1]!;
+      const s: string[] = ["a"];
+      s[0] += "x";
+      return [a, i, s];
+    }),
     // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
     // as 0.
     nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),

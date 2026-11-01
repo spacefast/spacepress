@@ -137,7 +137,11 @@ object with optional fields is rejected with a located diagnostic; capture the
 needed scalar values instead. Mutating `for…of` bindings use the same fixed
 object representation; array/record/optional-field and destructured mutations
 must use the source index instead. Object spread/rest copy field values, and
-loop-local declarations receive a fresh binding on each execution.
+loop-local declarations receive a fresh binding on each execution. A captured
+`for (let …)` header variable gets a fresh `Js::cell` per iteration, which
+copies its value, so it must be primitive; an object or array one is rejected.
+An in-place element update (`list[i] += v`, `list[i]++`) addresses the element
+through `Js::slot`, which throws a RangeError unless `i` is an existing index.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

@@ -274,6 +274,9 @@ $deviations = [
     ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1), ['a']],
     ['split("", limit) splitting a pair within the limit throws', fn () => Js::split('a🙂b', '', 2), ['$err' => 'RangeError']],
     ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
+    // Past-the-end updates are covered compiled (tests/compiler.rs); these are the other non-slots.
+    ['updating a fractional index throws', fn () => Js::slot([1, 2], 0.5), ['$err' => 'RangeError']],
+    ['updating a negative index throws', fn () => Js::slot([1, 2], -1), ['$err' => 'RangeError']],
     ['an unused JSON gap cut through a pair is fine', fn () => [Js::jsonStringify(1, '123456789🙂'), Js::jsonStringify([], '123456789🙂'), Js::jsonStringify(['f' => static fn () => 1], '123456789🙂')], ['1', '[]', '{}']],
     ['a used JSON gap cut through a pair throws', fn () => Js::jsonStringify([1], '123456789🙂'), ['$err' => 'RangeError']],
 ];

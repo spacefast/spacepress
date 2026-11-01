@@ -196,7 +196,7 @@ Decision: Zero arrays are dense. JS holes are unreachable by construction:
 
 With density, every "missing element" rule in the array methods collapses to
 one test, `$i >= count($a->a)`. One case can still ask for a hole: a
-callback that shrinks the array being iterated (`[1, 2, 3].map(() => a.pop())`)
+callback that shrinks the array being iterated (`const a = [1, 2, 3]; a.map(() => a.pop())`)
 makes JS visit a missing index, and for `map` that puts a hole in the result.
 Storing `undefined` there instead would not be one deviation but many:
 `filter`, `some`, `every`, `reduce` and `forEach` skip holes and would visit
@@ -463,7 +463,7 @@ dates, regexp, logging).
 | new `push(JsArray, mixed ...): int`, `unshift(JsArray, mixed ...): int`, `pop`, `shift` | `array_push($place, …)` etc. | over `->a` |
 | new `concat(JsArray $a, mixed ...$items): JsArray` | `array_merge` | called after every argument is evaluated; a `JsArray` item is spread, anything else appended |
 | new `forEach(JsArray, callable): void` | `array_map` with keys | §4.1 iteration rule |
-| new `from(JsArray\|string, ?callable): JsArray` | lowered to `map` | `Array.from(arr, f)`: iterator semantics, live length; a string source iterates code points (`mb_str_split`, as `for…of` over a string does). Accepted sources are exactly: any array-typed value (`Array`, `Tuple`, `ArrayLiteral`; today only `Ty::Array` is accepted, so tuples and short literals are newly accepted), a string (newly accepted; code points, like `for…of`), and the literal `{ length: n }` form, which stays on the fixed-count `range` path and still requires the mapper (`Array.from({ length: 3 })` without one stays refused, since it would need holes). Any other argument type (a `JsObject`, a `Record`, `Map`/`Set`, a generic iterable) is a compile error, `Array.from needs an array, a string, or { length: n } with a mapper`. `tests/compiler.rs` keeps one refusal case; the differential suite gets one row per accepted form. |
+| new `from(JsArray\|string, ?callable): JsArray` | lowered to `map` | `Array.from(arr, f)`: iterator semantics, live length; a string source iterates code points (`mb_str_split($s, 1, 'UTF-8')`, as `for…of` over a string does). Accepted sources are exactly: any array-typed value (`Array`, `Tuple`, `ArrayLiteral`; today only `Ty::Array` is accepted, so tuples and short literals are newly accepted), a string (newly accepted; code points, like `for…of`), and the literal `{ length: n }` form, which stays on the fixed-count `range` path and still requires the mapper (`Array.from({ length: 3 })` without one stays refused, since it would need holes). Any other argument type (a `JsObject`, a `Record`, `Map`/`Set`, a generic iterable) is a compile error, `Array.from needs an array, a string, or { length: n } with a mapper`. `tests/compiler.rs` keeps one refusal case; the differential suite gets one row per accepted form. |
 | new `toReversed`, `toSorted`, `with` | `array_reverse` | over `->a`, return new `JsArray` |
 | new `clone(mixed): mixed` | | `structuredClone`, §2.7 |
 | new `detach(mixed): mixed` | | runtime-internal ownership copy: same identity map as `clone`, closures and `RegExp` by reference (§3 rule 3) |
@@ -500,6 +500,11 @@ iterator protocol instead: they continue while `i < count($a->a)` live, so
 pushes inside the body are visited. `sort`'s contract is in the paragraph
 above: prefix writeback, pushed tail kept, comparator invocation order left
 to the engine.
+
+Every runtime `mb_*` call passes its encoding explicitly (`'UTF-8'` for
+Zero strings, with explicit source and destination encodings for conversions).
+WordPress plugins may change `mb_internal_encoding()`; Zero never depends on
+that global setting. The compiler's emitted `mb_*` calls follow the same rule.
 
 ### 4.2 Compiler
 

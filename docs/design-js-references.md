@@ -19,7 +19,7 @@ the order in which the change lands.
 | Holes | Arrays have no holes. A write past the end fills with `null`. Elisions, `new Array(n)` and `delete` stay compile errors. |
 | Boundary | Compiled code lives in "JS land" (handles). `Db`, `Schema`, `Sql`, stores, SCF codecs and WordPress calls live in "runtime land" (plain arrays). One file, `runtime/Zero/Seam.php`, owns every conversion in both directions, driven by the schema. A `json()` column's value is a handle at every layer; the runtime treats it as opaque. |
 | Deleted | `src/compile/effects.rs` (sharing analysis), `check_aliasing`, `check_identity_eq`, `check_destructured_mutation`, by-reference parameters, capture anchors, `Js::write`/`at`/`obj`/`objectBinding`/`copyObject`/`plain`, the empty-object marker and its 30 `instanceof JsObject` sites. |
-| Acceptance | The 69-case sharing corpus (branch `archive/s2-ownership-rule`) plus `tests/differential` run under Node and compiled PHP; results must be identical. |
+| Acceptance | The 65-row sharing corpus (`CORPUS.md` on branch `archive/s2-ownership-rule`: 58 compile and differ from Node, 3 agree, 4 are refused) plus `tests/differential` run under Node and compiled PHP; results must be identical. |
 | Cost | Measured: object build 2.6x slower per literal, member read/write 1.5x, `map`/`filter` 1.1–1.7x, JSON encode 1.0x, JSON decode 2.4x, +56 bytes per handle. Absolute cost at hook-sized data is well under a millisecond. |
 
 ---
@@ -462,16 +462,20 @@ sanity check, not as a gate.
 
 The bar is unchanged and now literal: what compiles must do what Node does.
 
-1. **Acceptance suite = the corpus + `tests/differential`.** The 69 miscompiling
-   programs on `archive/s2-ownership-rule` (its `CORPUS.md` describes each;
-   the branch has not finished appearing on origin at the time of writing)
-   move into `tests/differential/cases.ts` as a `laneRefs` action group,
-   restoring the original `map`/`reduce`/`fill`/closure/default-parameter
-   forms the archived branch had rewritten into loops. Every case runs under
-   `run-node.mjs` and `run-php.php` through the existing
+1. **Acceptance suite = the corpus + `tests/differential`.** `CORPUS.md` on
+   `archive/s2-ownership-rule` holds 65 action bodies, each a false negative
+   of one of the two analyses or a reviewer finding, with the Node result and
+   today's PHP result (58 differ, 3 agree, 4 are refused by the surviving
+   name-based check). Every row moves into `tests/differential/cases.ts` as
+   a `laneRefs` action group, one action per row, returning the body's value.
+   The cases on the branch's `cases.ts` that the analyses had rewritten into
+   loops (`map`/`reduce`/`fill`/closure/default-parameter forms) are restored
+   to their original forms. Every case runs under `run-node.mjs` and
+   `run-php.php` through the existing
    `compiled_php_matches_node_on_every_differential_case`, which already
    compares the two outputs. The six program shapes in §1 each get a case if
-   the corpus lacks one.
+   the corpus lacks one. Done means every row returns what Node returns,
+   including rows 22 and 34, where Node itself returns `false`.
 2. **Key-order case** (§2.3): literal, spread, `reduce`, `fromEntries`,
    `JSON.parse`, through `Object.keys` and `JSON.stringify`.
 3. **`tests/php/js_parity.php`** gains cases for each `Js::*` helper whose

@@ -59,7 +59,12 @@ final class Access
             $ctx = ['user' => $user, 'op' => $op, 'data' => $data];
             $ctx = is_string($slot) ? Seam::ctx($ctx, $dataShape) : $ctx;
             $r = $fn($ctx);
-            if ($r instanceof JsObject || is_array($r)) { $r = $collection === null ? Seam::toPhp($r) : Seam::filter($collection, $r); }
+            if ($r instanceof JsObject || is_array($r)) {
+                if ($collection === null) {
+                    throw new \LogicException('A filter-valued access rule requires its collection');
+                }
+                $r = Seam::filter($collection, $r);
+            }
             if (is_array($r)) {
                 return $r;
             }

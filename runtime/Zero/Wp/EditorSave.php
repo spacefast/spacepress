@@ -359,7 +359,7 @@ final class EditorSave
             $data = $patch;
             FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $supplied, stored: true);
             $plugin->db()->validateWriteReferences($collection, $patch, $viewer);
-            $r = Access::evaluate($rules['update'], $viewer, 'update', $patch, $spec['columns']);
+            $r = Access::evaluate($rules['update'], $viewer, 'update', $patch, $spec['columns'], $collection);
             if ($r === false || (is_array($r) && !in_array(serialize($r), $open['covers'], true))) {
                 throw Access::deny($viewer->user, "update $collection rows");
             }
@@ -451,7 +451,7 @@ final class EditorSave
             $plugin->app();
             $rule = Access::collectionRules($plugin->schema->collection($collection))['update'];
             foreach ($declared === null ? [null] : [null, $declared] as $data) {
-                $r = Access::evaluate($rule, $viewer, 'update', $data, $plugin->schema->collection($collection)['columns']);
+                $r = Access::evaluate($rule, $viewer, 'update', $data, $plugin->schema->collection($collection)['columns'], $collection);
                 if (is_array($r) && $plugin->db()->permits($collection, 'update', $postId, $viewer, $data)) {
                     $covers[] = serialize($r);
                 }

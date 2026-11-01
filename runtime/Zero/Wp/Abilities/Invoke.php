@@ -51,7 +51,7 @@ final class Invoke
         try {
             $input = \Zero\Seam::toPhp($input, $op['shape']);
             $data = isset($op['data']) ? ($op['data'])(self::object($input)) : null;
-            $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data, $op['dataShape'] ?? null) !== false;
+            $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data, $op['dataShape'] ?? null, $op['zero']['collection'] ?? null) !== false;
         } catch (\Throwable) {
             return true;
         }

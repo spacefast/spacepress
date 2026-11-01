@@ -169,6 +169,21 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
   `));
   assert.deepEqual(deferred, [[true], true], "deferred callbacks retain the registering Db across a shared transaction");
 
+  const referenceScope = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $target = $db->insert('oracle_rows', ['title' => 'Extension target', 'ownerId' => $viewer->user['id']], true)[0];
+    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+      if ($collection === 'oracle_rows' && ($viewer?->user['role'] ?? null) === 'editor') {
+        $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
+      }
+    });
+    try { $db->insert('oracle_refs', ['title' => 'Extension reference', 'rowId' => $target['id']], false, $viewer); }
+    catch (\\Zero\\HttpError $error) { $status = $error->status; $code = $error->errorCode; }
+    echo wp_json_encode([$status ?? null, $code ?? null, $db->findMany('oracle_refs', ['where' => ['title' => 'Extension reference']])]);
+  `));
+  assert.deepEqual(referenceScope, [409, "reference_violation", []], "reference checks retain the viewer for query extensions and persist no hidden link");
+
 });
 
 // ---- wp-admin and data-dependent rules (review of #38): every save is authorized on its own data

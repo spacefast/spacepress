@@ -1077,21 +1077,22 @@ final class Db
                 continue;
             }
             $missing = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg($name));
-            $guards = [];
+            $target = $this->schema->collection($ref['collection']);
             if ($viewer !== null) {
-                $target = $this->schema->collection($ref['collection']);
                 if (FieldAccess::mayHide($target['columns'][$ref['column']], $viewer)) {
-                    throw $missing;
-                }
-                try {
-                    $guards = $this->readGuards($ref['collection'], $viewer);
-                } catch (HttpError) {
                     throw $missing;
                 }
             }
             $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
-            if ($this->selectDecoded($ref['collection'], $opts, '', null, null, $guards) === []) {
-                throw $missing;
+            if ($target['localized'] ?? false) {
+                $opts['locale'] = '*';
+            }
+            try {
+                if ($this->selectDecoded($ref['collection'], $opts, '', $viewer) === []) {
+                    throw $missing;
+                }
+            } catch (HttpError $error) {
+                throw $viewer === null ? $error : $missing;
             }
         }
     }

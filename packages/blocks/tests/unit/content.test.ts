@@ -40,10 +40,10 @@ test("an error from a classic-fallback element inside a component names the comp
   assert.deepEqual(result.diagnostics[0]!.loc?.usedAt, { file: fixture("uses-fallback-card.tsx"), line: 7, column: 7 });
 });
 
-test("a thrown error is located in the author's file when the author's and the scratch paths contain a space", async () => {
-  const base = mkdtempSync(path.join(tmpdir(), "zero blocks "));
-  const authored = path.join(base, "my site");
-  const scratch = path.join(base, "tmp dir");
+test("a thrown error is located in the author's file when the author's and the scratch paths contain spaces, parentheses and a colon", async () => {
+  const base = mkdtempSync(path.join(tmpdir(), "zero blocks (1) "));
+  const authored = path.join(base, "my site (2)");
+  const scratch = path.join(base, "tmp: dir");
   cpSync(fixture("throws.tsx"), path.join(authored, "throws.tsx"), { recursive: true });
   mkdirSync(scratch);
   const before = process.env.TMPDIR;

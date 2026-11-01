@@ -74,14 +74,22 @@ function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scra
   if (!(error instanceof Error) || typeof error.stack !== "string") return undefined;
   // fileURLToPath, not URL.pathname: a space in the package or temp path is `%20` in the URL and a space on disk.
   const runtimeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  // The bundle is imported by URL, so Node prints its frames as `file:///…/module.mjs:L:C`, with
+  // spaces, parentheses and colons in the directory percent-encoded. Looking for that exact URL
+  // (and the plain path, which some frames carry) is what works for any directory name.
+  const bundleUrl = pathToFileURL(bundlePath).href;
   for (const line of error.stack.split("\n")) {
-    const match = /\(?((?:file:\/\/)?\/[^():]+\.[cm]?[jt]sx?):(\d+):(\d+)\)?\s*$/.exec(line);
+    const match = [bundleUrl, bundlePath].map((spelling) => {
+      const at = line.indexOf(`${spelling}:`);
+      if (at === -1) return null;
+      const position = /^(\d+):(\d+)\)?\s*$/.exec(line.slice(at + spelling.length + 1));
+      return position ? { line: Number(position[1]), column: Number(position[2]) } : null;
+    }).find((found) => found !== null);
     if (!match) continue;
-    const file = match[1]!.startsWith("file://") ? fileURLToPath(match[1]!) : match[1]!;
-    if (file !== bundlePath) continue;
-    const origin = map.findOrigin(Number(match[2]), Number(match[3]));
+    const origin = map.findOrigin(match.line, match.column);
     if (!("fileName" in origin) || typeof origin.fileName !== "string") continue;
-    const source = path.resolve(scratch, origin.fileName);
+    // esbuild writes map sources as relative URLs, so a parenthesis or space in a directory is percent-encoded.
+    const source = path.resolve(scratch, decodeURIComponent(origin.fileName));
     if (source.startsWith(`${runtimeDir}${path.sep}`)) continue;
     return { file: source, line: origin.lineNumber, column: origin.columnNumber };
   }

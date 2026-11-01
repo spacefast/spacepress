@@ -380,17 +380,22 @@ Three rules apply to every row of the table:
    `onWritten(array $row, ?array $previous)`, `aroundOperation`,
    `afterCommit`, `route`, `beforeAction`, `cli`, `schemaDescribe`,
    `onLookup`), the built-in job handlers (`Webhooks`), and `Access::evaluate`'s
-   non-`fn` rule forms. The compiler decides which is which by what it emits:
-   a compiled callback is a string in `schema.php`, a native one is a
-   callable in PHP, and the dispatch sites (`Db::hook`, `Access::evaluate`,
-   `Schema::checkRules`, `Schema::generate`, `App::action`, `Jobs\Runner`)
-   convert exactly when the spec entry is a string. No native surface is
-   user-facing: `Extensions` is registered only by the runtime's own feature
-   modules (`FieldAccess`, `Sync`, `Webhooks`, `Media\Files`, `Locale`) and
-   `runtime-contract.md` documents it as the runtime's internal seam; a
-   `zero.config.ts` author cannot register a PHP callable. So the dispatch
-   rule has no user-visible side and is pinned by one `db_test` case per
-   dispatch site (a native `onWrite` sees an array while the compiled
+   declarative rule forms (`allow`, `role`, `self`, which are user-authored
+   configuration but not callbacks). The discriminator is the slot's value
+   type: a **string** in a `schema.php` callback slot is always a compiled
+   `\ZeroApp\` name, and a native handler in such a slot (today only
+   `Webhooks::spec()`'s job handler) is always a non-string callable, a
+   `Closure` or first-class callable, never a `'Class::method'` string. The
+   dispatch sites (`Db::hook`, `Access::evaluate`, `Schema::checkRules`,
+   `Schema::generate`, `App::action`, `Jobs\Runner`) convert exactly when
+   the slot holds a string; `Extensions` seams are dispatched separately and
+   always with arrays. `zero.config.ts` exposes no way to register a PHP
+   callback: `Extensions` is registered only by the runtime's own modules
+   (`FieldAccess`, `Sync`, `Jobs`/`Webhooks`, `Media\Files`, `Locale`,
+   `Auth`, `Abilities`, and the WordPress store and REST registrants) and
+   `runtime-contract.md` documents it as the runtime's internal seam. So the
+   dispatch rule has no user-visible side and is pinned by one `db_test` case
+   per dispatch site (a native `onWrite` sees an array while the compiled
    `beforeCreate` of the same write sees a handle).
 
 | Crossing | Direction | Owner, and what happens |
@@ -406,7 +411,7 @@ Three rules apply to every row of the table:
 | Action handler `(input, ctx)` and its return | runtime → JS → wire | `App::action` validates the body (`Schema::validateInput`, which normalizes and applies defaults in runtime land) and passes `Seam::toJs($normalized, $inputSpec)` and `Seam::ctx`. The return value is a handle graph; `Response::json` calls `Js::jsonStringify`, which encodes handles directly. No conversion back. |
 | REST responses, generated TS client | runtime → wire | `Js::jsonStringify` is the only encoder for `{data}` bodies on both targets (standalone `Response`, `Wp\Rest`). Plain arrays still encode as today (list → `[]`, assoc → `{}`, empty → `[]`); handles encode by class. The wire format and the generated client are unchanged, with one fix: a `json()` value of `{}` round-trips as `{}` in every path, and a numeric-string-keyed object stays an object. |
 | `JSON.stringify` / `JSON.parse` in compiled code | JS ↔ text | `Js::jsonStringify(handle)` walks `ownKeys` for objects, `->a` for arrays, with the cycle check of §2.7. `Js::jsonParse` → `Js::decodeJson` → handles, with `jsNumbers` applied as today. `decodeJson` builds handles directly from `json_decode(..., false)`'s `stdClass`/arrays (the `"\0"` key workaround stays, since `json_decode` still goes through `stdClass`). Runtime callers that want arrays (`Jobs\Module`, `Scf::json` for non-json fields, `Sync\Wire`, `Abilities\Register`) call `Seam::toPhp(Js::decodeJson(...), $shape)`. |
-| Job enqueue | JS → runtime → text, and back | `jobs.x.enqueue(input, opts)` compiles to `\Zero\Seam::enqueue($name, $input, $opts)`, which converts **first**: `opts` → `toPhp($opts)`, `input` → `toPhp($input, $jobInputSpec)`, so `Schema::validateInput` only ever sees runtime arrays with `json()` fields as detached handles (rule 3), the same shape it sees from a REST body. It then calls `Jobs::enqueue($name, $normalized, $opts)`, which is unchanged and keeps its runtime-array contract for native callers (webhooks, sync): `Js::jsonStringify` writes the row, and `json()` handles inside the normalized array encode as the objects they are (`{}` stays `{}`, integer-like keys keep order). The `{ id }` result comes back as a `JsObject`. `validateInput` therefore has one input contract everywhere: runtime arrays, `json()` leaves handles. |
+| Job enqueue | JS → runtime → text, and back | `jobs.x.enqueue(input, opts)` compiles to `\Zero\Seam::enqueue($name, $input, $opts)`, which converts **first**: `opts` → `toPhp($opts)`, `input` → `toPhp($input, $jobInputSpec)`, so `Schema::validateInput` only ever sees runtime arrays with `json()` fields as detached handles (rule 3), the same shape it sees from a REST body. It then calls `Jobs::enqueue($name, $runtimeInput, $opts)`, which is unchanged and validates once (it already calls `Schema::validateInput`) and keeps its runtime-array contract for native callers (webhooks, sync): `Js::jsonStringify` writes the row, and `json()` handles inside the validated array encode as the objects they are (`{}` stays `{}`, integer-like keys keep order). The `{ id }` result comes back as a `JsObject`. `validateInput` therefore has one input contract everywhere: runtime arrays, `json()` leaves handles. |
 | Job run | text → runtime → JS | `Jobs\Runner` decodes with `Js::decodeJson` and runs `Seam::toPhp($decoded, $jobInputSpec)` (handles → runtime arrays, `json()` leaves handles), re-validates with `Schema::validateInput` (same contract as enqueue), then: a **native** handler (`Webhooks`, any PHP callable in the spec) gets the normalized runtime array and `$ctx` array, as today; a **compiled** handler gets `Seam::toJs($normalized, $jobInputSpec)` and `Seam::ctx`. Action Scheduler only ever carries `['id' => $id]`; the payload lives in Zero's table. |
 | `once()` / `Idempotency-Key` receipts | JS → bytes → JS | `Receipts` stores `serialize($result)` and replays with `unserialize`. `allowed_classes` becomes `[stdClass::class, JsObject::class, JsArray::class, RegExp::class]`: `stdClass` stays because runtime producers (media `sizes`, `jobs_test`'s fixture) still put it in results. Decision: a replayed `once` result is a **snapshot** taken when the result is stored (PHP `serialize` does this; the shim stores `structuredClone(result)`), structurally equal to the first result and not identical to it; the first call returns the original in both. The shim returns `structuredClone(stored)` on each replay so a later mutation of a replayed value can't leak into the next replay. |
 | Captured module-level data | compile time → JS | The compiler walks the evaluator's `Value` graph (`Rc<RefCell<…>>` containers, so identity is available) and emits one memoized static per distinct container into a per-module `__captured_N()` helper: `const p = { n: 0 }; const pairs = [p, p]` compiles to one `JsObject` referenced twice, and two roots that share a descendant share it in PHP. `to_json` is no longer on this path; `validate_captured_data` already refuses cycles. Lifetime: the PHP process, which is one HTTP request on the web and the worker's life under `zero jobs work`, the same shape as a Node process that serves many requests. `config-api.md` says so. |
@@ -458,7 +463,7 @@ dates, regexp, logging).
 | new `push(JsArray, mixed ...): int`, `unshift(JsArray, mixed ...): int`, `pop`, `shift` | `array_push($place, …)` etc. | over `->a` |
 | new `concat(JsArray $a, mixed ...$items): JsArray` | `array_merge` | called after every argument is evaluated; a `JsArray` item is spread, anything else appended |
 | new `forEach(JsArray, callable): void` | `array_map` with keys | §4.1 iteration rule |
-| new `from(JsArray\|string, ?callable): JsArray` | lowered to `map` | `Array.from(arr, f)`: iterator semantics, live length; a string source iterates code points (`mb_str_split`, as `for…of` over a string does). Accepted sources are exactly: a `JsArray`, a string, and the literal `{ length: n }` form, which stays on the fixed-count `range` path. Any other argument type (a `JsObject`, a `Record`, `Map`/`Set`, a generic iterable) is the existing compile error `Array.from needs an array, a string, or { length: n }`. |
+| new `from(JsArray\|string, ?callable): JsArray` | lowered to `map` | `Array.from(arr, f)`: iterator semantics, live length; a string source iterates code points (`mb_str_split`, as `for…of` over a string does). Accepted sources are exactly: any array-typed value (`Array`, `Tuple`, `ArrayLiteral`; today only `Ty::Array` is accepted, so tuples and short literals are newly accepted), a string (newly accepted; code points, like `for…of`), and the literal `{ length: n }` form, which stays on the fixed-count `range` path and still requires the mapper (`Array.from({ length: 3 })` without one stays refused, since it would need holes). Any other argument type (a `JsObject`, a `Record`, `Map`/`Set`, a generic iterable) is a compile error, `Array.from needs an array, a string, or { length: n } with a mapper`. `tests/compiler.rs` keeps one refusal case; the differential suite gets one row per accepted form. |
 | new `toReversed`, `toSorted`, `with` | `array_reverse` | over `->a`, return new `JsArray` |
 | new `clone(mixed): mixed` | | `structuredClone`, §2.7 |
 | new `detach(mixed): mixed` | | runtime-internal ownership copy: same identity map as `clone`, closures and `RegExp` by reference (§3 rule 3) |
@@ -492,10 +497,9 @@ array).
 Pushes inside the callback are not visited (they are past `len`); writes to
 not-yet-visited indices are seen. `Array.from(arr, f)` and `for…of` use the
 iterator protocol instead: they continue while `i < count($a->a)` live, so
-pushes inside the body are visited. `sort` sorts a snapshot of `->a` with
-`usort` and writes it back; the comparator may read the array but, as in
-V8, mutations during sort are unspecified and the corpus has no such case
-(row 29 mutates an element's field, not the array).
+pushes inside the body are visited. `sort`'s contract is in the paragraph
+above: prefix writeback, pushed tail kept, comparator invocation order left
+to the engine.
 
 ### 4.2 Compiler
 
@@ -929,9 +933,9 @@ Three PRs, in order, each green on every suite in `LANE-BRIEF.md`.
    `foreach ($a->a as $x)`, which misses pushes inside the body. Keep
    exactness unless a measured hook shows it matters?
 3. **Compile-time warning for sparse writes.** §2.4 decides the hole
-   question: writes past `length` and shrinking an array inside its own
-   iteration callback are refused at run time with `RangeError`, and no hole
-   sentinel exists. Should the compiler additionally warn on `a[i] = v`
+   question: writes past `length`, and a fixed-length walk that reaches an
+   index its own callback removed, are refused at run time with
+   `RangeError`, and no hole sentinel exists. Should the compiler additionally warn on `a[i] = v`
    where `i` isn't provably `< length`? It usually can't prove it, so the
    design does not; noted in case a lint is wanted later.
 4. **`Unknown` member reads.** `JSON.parse(s).x` is refused today ("can't

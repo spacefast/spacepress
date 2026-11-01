@@ -2,7 +2,6 @@
     "version": 3,
     "runtime": "0.2",
     "name": "blog",
-    "target": "wp",
     "admin": false,
     "site": {
         "uidPrefix": "zr_"

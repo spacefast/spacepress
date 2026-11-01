@@ -1,6 +1,6 @@
 // `editor: false` custom tables (§4.2): rows live in wp_zero_<table> in the §3.4 storage form, the
 // cross-kind reference (comments.postId → a post) is checked and cascaded by the pipeline, and a
-// MySQL UNIQUE violation maps to the same 409 the standalone target returns. Also: db.globals from
+// MySQL UNIQUE violation maps to a 409 `unique_violation` with the column pointer. Also: db.globals from
 // compiled code.
 import { test } from "node:test";
 import assert from "node:assert/strict";

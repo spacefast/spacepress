@@ -19,7 +19,7 @@ final class Trash
 
     public static function postBacked(array $spec): bool
     {
-        return db()->target() === 'wp' && ($spec['editor'] ?? true) && ($spec['wp'] ?? null) !== null;
+        return ($spec['editor'] ?? true) && ($spec['wp'] ?? null) !== null;
     }
 
     /** @return array<int, string> post id → uid of trashed posts with id > $after, ascending, at most $limit */

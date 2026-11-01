@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
+
 /// The WordPress harness files, embedded so an installed binary carries them (paths under the harness root).
 const HARNESS: &[(&str, &str)] = &[
     ("wp/harness.sh", include_str!("../../tests/wp/harness.sh")),
@@ -83,7 +84,7 @@ pub(super) fn wp(content: &Path, port: u16) -> ExitCode {
     let script = match harness() {
         Ok(script) => script,
         Err(e) => {
-            eprintln!("error: `zero dev --wp`: {e}");
+            eprintln!("error: `zero dev`: {e}");
             return ExitCode::from(1);
         }
     };

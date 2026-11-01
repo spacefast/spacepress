@@ -455,11 +455,7 @@ pub fn user() -> Ty {
 
 /// `ctx` for hooks and actions (§1.7).
 pub fn hook_ctx() -> Ty {
-    obj(&[("user", user().nullable()), ("target", target())])
-}
-
-fn target() -> Ty {
-    Ty::union(["standalone", "wp"].map(|value| Ty::StrLit(value.into())))
+    obj(&[("user", user().nullable())])
 }
 
 pub fn job_ctx() -> Ty {
@@ -486,7 +482,7 @@ pub fn field_access_ctx() -> Ty {
 
 /// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
 pub fn access_ctx(data: Ty) -> Ty {
-    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("target", target()), ("op", Ty::Str)]) else {
+    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("op", Ty::Str)]) else {
         unreachable!()
     };
     f.insert("data".into(), (data.nullable(), true));
@@ -495,11 +491,7 @@ pub fn access_ctx(data: Ty) -> Ty {
 
 /// `ctx` for `.validate` (§1.2): the whole row being written.
 pub fn validate_ctx() -> Ty {
-    obj(&[
-        ("data", Ty::Map(Box::new(Ty::Unknown))),
-        ("user", user().nullable()),
-        ("target", target()),
-    ])
+    obj(&[("data", Ty::Map(Box::new(Ty::Unknown))), ("user", user().nullable())])
 }
 
 /// A media row (§4.6), what `with: { cover: true }` puts in place of the id.

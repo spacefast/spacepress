@@ -178,7 +178,7 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
         ));
     }
     code.push_str(&format!(
-        "export default defineConfig({{\n  name: {},\n  target: \"wp\",\n  schema,\n{}}});\n",
+        "export default defineConfig({{\n  name: {},\n  schema,\n{}}});\n",
         q(name),
         if relations.is_empty() { "" } else { "  relations,\n" }
     ));

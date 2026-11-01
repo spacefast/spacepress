@@ -29,9 +29,6 @@ type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 type Awaitable<T> = T | Promise<T>;
 
-/** Where the compiled app runs: the standalone PHP+SQLite app or the WordPress plugin. */
-export type Target = "standalone" | "wp";
-
 /** Phantom keys: carry type information without showing up in autocomplete. */
 declare const columnBrand: unique symbol;
 declare const collectionBrand: unique symbol;
@@ -99,7 +96,6 @@ export interface ValidateCtx {
   /** The whole row being written (insert: data after defaults; update: existing merged with patch). Sub-field validators see the enclosing row. */
   data: Record<string, unknown>;
   user: User | null;
-  target: Target;
 }
 
 /** Editor presentation, independent of stored data and access rules. */
@@ -414,9 +410,8 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
   /**
-   * WordPress: `true` = posts + SCF fields (wp-admin editing, revisions, scheduling); `false` = a custom table.
-   * Standalone: no storage effect; it drives the `drafts`/`revisions` defaults so one config behaves the same everywhere.
-   * Default `true`.
+   * `true` = posts + SCF fields (wp-admin editing, revisions, scheduling); `false` = a custom table.
+   * It also drives the `drafts`/`revisions` defaults. Default `true`.
    */
   editor?: boolean;
   /** Adds `status` + `publishedAt`. Default `editor !== false`; `false` needs `editor: false`. */
@@ -927,7 +922,7 @@ export declare const db: Database;
 /** The role ladder, lowest first. A role rule admits that role and every role above it. */
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 
-/** Who is calling: a WordPress user on the wp target, a token's user standalone. */
+/** Who is calling: the WordPress user (or the zero-identity session's user). */
 export interface User {
   id: number;
   name: string;
@@ -938,7 +933,6 @@ export interface User {
 export type FieldRule = AccessShorthand | ((ctx: FieldAccessCtx) => boolean);
 export interface FieldAccessCtx {
   user: User | null;
-  target: Target;
   op: "read" | "create" | "update";
   data: Record<string, unknown>;
 }
@@ -947,12 +941,10 @@ export type SiblingFilter = Record<string, unknown>;
 
 export interface HookCtx {
   user: User | null;
-  target: Target;
 }
 
 export interface AccessCtx<TData = Record<string, unknown>> {
   user: User | null;
-  target: Target;
   op: "read" | "create" | "update" | "delete";
   /** create: the incoming row (after defaults, before beforeCreate). update: the patch. Absent otherwise. */
   data?: TData;
@@ -1083,8 +1075,6 @@ export interface ConfigInput<
 > {
   /** Project name: plugin slug (`zero-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
-  /** Build target when `--target` isn't passed. Default `"standalone"`. */
-  target?: Target;
   schema: TSchema;
   relations?: TRelations;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
@@ -1097,7 +1087,7 @@ export interface ConfigInput<
   files?: Record<string, AnyFileBucket>;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   locales?: TLocales;
-  /** Build-only WordPress plugin dependencies. Ignored by standalone output. */
+  /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`zero-admin`) with the build. Default `false`. */
   admin?: boolean;

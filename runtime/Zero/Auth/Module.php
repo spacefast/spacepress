@@ -65,22 +65,11 @@ final class Module
         $path = implode('/', $segments);
         $issuer = self::$issuer;
         $guests = (bool) (db()->schema()->auth()['guests'] ?? true);
-        $in = static fn (): array => self::object($body);
         switch ($path) {
             case 'auth/config':
                 App::allow($method, ['GET']);
 
                 return [200, $issuer?->config($guests) ?? ['issuer' => null, 'guests' => false]];
-            case 'auth/token':
-                App::allow($method, ['POST']);
-                $issuer ?? throw HttpError::notFound('Sign in through the identity issuer on this target');
-                $data = $in();
-
-                return [200, match ($data['grant_type'] ?? 'password') {
-                    'password' => self::user($issuer->password(self::string($data, 'name'), self::string($data, 'password'))),
-                    'refresh_token' => self::user($issuer->refresh(self::string($data, 'refreshToken'))),
-                    default => throw HttpError::invalidInput('grant_type must be password or refresh_token', '/grant_type'),
-                }];
             case 'auth/guest':
                 App::allow($method, ['POST']);
                 if ($issuer === null || !$guests) {
@@ -88,15 +77,9 @@ final class Module
                 }
 
                 return [201, self::user($issuer->guest())];
-            case 'auth/guest/upgrade':
-                App::allow($method, ['POST']);
-                $issuer ?? throw HttpError::notFound('Guests are not enabled');
-                $data = $in();
-
-                return [200, ['user' => self::present($issuer->upgrade($viewer->user, self::string($data, 'name'), self::string($data, 'password')))]];
             case 'auth/session':
                 App::allow($method, ['DELETE']);
-                $issuer ?? throw HttpError::notFound('Sessions belong to WordPress on this target');
+                $issuer ?? throw HttpError::notFound('Sessions belong to WordPress without zero-identity');
                 if ($viewer->user === null) {
                     throw new HttpError(401, 'unauthenticated', 'Sign in first');
                 }
@@ -123,7 +106,7 @@ final class Module
         // Read as the user themself, so field access and "self" apply exactly as on GET /members;
         // a read rule that keeps users from their own row yields no member, never a failed sign-in.
         try {
-            $member = db()->findFirst($collection, ['where' => ['id' => $user['id']]], new Viewer($user, db()->target()));
+            $member = db()->findFirst($collection, ['where' => ['id' => $user['id']]], new Viewer($user));
         } catch (HttpError $e) {
             if (!in_array($e->status, [401, 403], true)) {
                 throw $e;
@@ -301,26 +284,5 @@ final class Module
         }
 
         return $describe;
-    }
-
-    // ================================================================ helpers
-
-    private static function object(string $body): array
-    {
-        try {
-            $v = trim($body) === '' ? [] : json_decode($body, true, 32, JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
-        }
-        if (!is_array($v) || ($v !== [] && array_is_list($v))) {
-            throw HttpError::invalidInput('Body must be a JSON object', '');
-        }
-
-        return $v;
-    }
-
-    private static function string(array $data, string $key): string
-    {
-        return is_string($data[$key] ?? null) ? $data[$key] : throw HttpError::invalidInput("$key is required", HttpError::seg($key));
     }
 }

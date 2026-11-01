@@ -1,5 +1,5 @@
 // The WordPress half of the system suite. tests/system/run.sh builds examples/site with
-// `zero build --target wp` and boots a fresh WordPress with users and nothing else; this file installs
+// `zero build` and boots a fresh WordPress with users and nothing else; this file installs
 // the artifact the way a site owner would (copy wp-content/plugins in, activate with WP-CLI), checks
 // the install, runs the shared journey through the generated client against core /wp/v2 (the
 // editor) and /wp-json/zero/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
@@ -144,7 +144,7 @@ const hook = await receiver(hookSecret);
 before(() => {
   copySite(project);
   rmSync(artifact, { recursive: true, force: true });
-  zero("build", project, "--target", "wp", "--out", artifact, "--quiet");
+  zero("build", project, "--out", artifact, "--quiet");
 });
 
 test("installing the artifact: activation order, platform requirements, doctor", () => {
@@ -174,7 +174,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(logic, [[{ field: "field_zero_posts_seo_noindex", operator: "==", value: "0" }]]);
 
   // doctor reads the artifact and the live site, against the same platform policy activation used.
-  const diagnosis = doctor(project, "--wp", "--out", artifact, "--site", receipt.url);
+  const diagnosis = doctor(project, "--out", artifact, "--site", receipt.url);
   assert.deepEqual(failing(diagnosis), [], JSON.stringify(diagnosis.checks));
   const found = (name: string) => diagnosis.checks.find((c) => c.name === name)?.detail.split(";")[0];
   assert.deepEqual(
@@ -186,12 +186,12 @@ test("installing the artifact: activation order, platform requirements, doctor",
   // Without a required plugin the app refuses to boot and names the unmet row; doctor fails.
   wp("plugin", "deactivate", "secure-custom-fields");
   try {
-    assert.equal(doctor(project, "--wp", "--out", artifact, "--site", receipt.url).ok, false);
+    assert.equal(doctor(project, "--out", artifact, "--site", receipt.url).ok, false);
     assert.match(wp("eval", "do_action('admin_notices');"), /secure-custom-fields 6\.9\.7\+ is required \(found inactive\)/);
   } finally {
     wp("plugin", "activate", "secure-custom-fields");
   }
-  assert.deepEqual(failing(doctor(project, "--wp", "--out", artifact, "--site", receipt.url)), []);
+  assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
 
   // The site owner points the comment webhook at the moderation tool (env() reads wp-config constants).
   wp("config", "set", "SITE_HOOK_URL", `http://host.docker.internal:${hook.port}/hook`, "--type=constant");
@@ -256,7 +256,7 @@ test("the site journey on WordPress", async (t) => {
       signIn: browserSignIn,
       async upgrade() {
         upgrade(project);
-        zero("build", project, "--target", "wp", "--out", artifact, "--quiet");
+        zero("build", project, "--out", artifact, "--quiet");
         install(artifact);
         // The new plugin is on disk and nobody opens wp-admin: the next public API request migrates.
         // PHP's opcache revalidates files every couple of seconds, so poll that request.
@@ -267,7 +267,7 @@ test("the site journey on WordPress", async (t) => {
           assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200, "the site serves throughout the upgrade");
         }
         assert.deepEqual(sql("SELECT id FROM wp_zero__migrations"), ["0001_init", "0002_update"]);
-        assert.deepEqual(failing(doctor(project, "--wp", "--out", artifact, "--site", receipt.url)), []);
+        assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
         return clientOf(project, (make, role) => make({ url: api, headers: headers(role) }));
       },
     },

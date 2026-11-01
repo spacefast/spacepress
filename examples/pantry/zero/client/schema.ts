@@ -3,8 +3,6 @@
 
 export const SCHEMA = {
   "name": "pantry",
-  "target": "standalone",
-  "basePath": "/api",
   "collections": {
     "locations": {
       "path": "locations",

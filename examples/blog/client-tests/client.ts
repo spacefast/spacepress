@@ -9,7 +9,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ?
 declare function expectType<T extends true>(): void;
 type Flat<T> = { [K in keyof T]: T[K] } & {};
 
-const zero = createClient({ token: "zt_x" });
+const zero = createClient();
 createClient({ url: "https://x.test/wp-json/zero/v1", nonce: "abc" });
 createClient({ headers: { Authorization: "Basic " + btoa("admin:app pass") } });
 

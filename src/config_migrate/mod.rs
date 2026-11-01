@@ -147,7 +147,7 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
     // Validate the emitted config through the same compiler as `zero build`.
     let check = tempfile::tempdir().map_err(|e| fail("", e.to_string()))?;
     std::fs::write(check.path().join("zero.config.ts"), &config).map_err(|e| fail("", e.to_string()))?;
-    crate::commands::validate_config(check.path(), crate::schema::Target::Wp).map_err(|d| {
+    crate::commands::validate_config(check.path()).map_err(|d| {
         fail(
             "",
             format!(

@@ -9,7 +9,6 @@ export const schema = { notes };
 
 export default defineConfig({
   name: "plugin-demo",
-  target: "wp",
   schema,
   plugins: {
     // The first successful build records the WordPress.org archive SHA-256.

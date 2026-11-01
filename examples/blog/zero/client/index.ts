@@ -146,21 +146,17 @@ export interface Session {
 }
 
 export interface AuthClient {
-  /** WordPress: redirects to `<issuer>/authorize` (PKCE S256); the promise never settles. */
+  /** Redirects to `<issuer>/authorize` (PKCE S256); the promise never settles. */
   signIn(opts?: { returnTo?: string }): Promise<never>;
-  /** WordPress, on the redirect URI: exchanges `?code` at `<issuer>/token`, keeps the tokens, returns the user. */
+  /** On the redirect URI: exchanges `?code` at `<issuer>/token`, keeps the tokens, returns the user. */
   handleCallback(): Promise<User>;
-  /** Standalone: signs in with a password and keeps the session tokens. */
-  login(name: string, password: string): Promise<User>;
   /** Starts a guest session (`role: "guest"`) and keeps its tokens. */
   guest(): Promise<User>;
-  /** Standalone: turns the current guest into a password account in place (same `id`). */
-  upgrade(name: string, password: string): Promise<User>;
-  /** WordPress: sends the current guest to the issuer's screens to upgrade in place; never settles. */
+  /** Sends the current guest to the issuer's screens to upgrade in place; never settles. */
   upgrade(): Promise<never>;
   /** The signed-in user (with `member`, the auth collection row, when the app has one), or null. */
   me(): Promise<User | null>;
-  /** Revokes the session and forgets the tokens; WordPress also signs out at the issuer when `returnTo` is given. */
+  /** Revokes the session and forgets the tokens; also signs out at the issuer when `returnTo` is given. */
   signOut(opts?: { returnTo?: string }): Promise<void>;
   /** The held tokens, for server-side callers that forward them; null when signed out. */
   session(): Session | null;
@@ -177,25 +173,23 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 };
 
 export interface ClientOptions {
-  /** Base URL including the prefix: "https://x.test/api" or "https://x.test/wp-json/zero/v1". Default: this build's prefix. */
+  /** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
   url?: string;
-  /** Standalone bearer token (`zt_...`); sent as `Authorization: Bearer <token>`. */
-  token?: string;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
   nonce?: string;
   fetch?: typeof fetch;
-  /** Extra headers on every request (e.g. `Authorization: Basic ...` for WP application passwords). They win over the above. */
+  /** Extra headers on every request (e.g. `Authorization: Basic ...` for application passwords). They win over the above. */
   headers?: Record<string, string>;
   /** Frontend sign-in (design §6.2). */
   auth?: AuthOptions;
 }
 
 export interface AuthOptions {
-  /** WordPress OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
+  /** The zero-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
   issuer?: string;
-  /** WordPress: the registered application's client id. */
+  /** The registered application's client id. */
   clientId?: string;
-  /** WordPress: where the issuer sends the browser back (the page that calls `handleCallback()`). */
+  /** Where the issuer sends the browser back (the page that calls `handleCallback()`). */
   redirectUri?: string;
   /** Where tokens live: in memory (default) or `sessionStorage` under `zero.auth:<base url>`. */
   storage?: "memory" | "session";
@@ -207,7 +201,7 @@ export interface AuthOptions {
 // Errors
 // ---------------------------------------------------------------------------
 
-/** RFC 9457 problem document, as both targets send it. */
+/** RFC 9457 problem document, as the runtime sends it. */
 export interface Problem {
   type: string;
   title: string;
@@ -333,7 +327,7 @@ interface Held extends Session {
   sid?: string;
 }
 
-/** Zero's own token responses (`/auth/token`, `/auth/guest`). */
+/** Zero's guest token response (`/auth/guest`). */
 interface Issued {
   accessToken: string;
   refreshToken: string;
@@ -378,15 +372,11 @@ function authError(status: number, code: string, detail: string): ZeroError {
   return new ZeroError({ type: "about:blank", title: code, status, code, detail });
 }
 
-const notSupported = (what: string) => authError(400, "not_supported", `${what} is not available on the ${SCHEMA.target} target`);
-
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  const base = (options.url ?? SCHEMA.basePath).replace(/\/+$/, "");
-  const target: string = SCHEMA.target;
-  const wp = target === "wp";
+  const base = (options.url ?? "/wp-json/zero/v1").replace(/\/+$/, "");
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
@@ -435,8 +425,6 @@ export function createClient(options: ClientOptions = {}): Client {
     store({ ...next, sid });
   }
   const expiresAt = (expiresIn: number) => Date.now() + expiresIn * 1000;
-  // Phase-1 login stored a static token; it stays a token that never refreshes.
-  const staticToken = options.token;
 
   async function call(url: string, init: RequestInit, label: string): Promise<{ res: Response; parsed: unknown }> {
     let res: Response;
@@ -458,8 +446,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const headers: Record<string, string> = {};
     const tokens = send.anonymous ? null : held();
     const started = currentSid();
-    const bearer = tokens?.accessToken ?? (send.anonymous ? undefined : staticToken);
-    if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
+    if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
     if (options.nonce !== undefined) headers["x-wp-nonce"] = options.nonce;
     let body: string | FormData | undefined;
     if (send.form) body = send.form;
@@ -484,7 +471,7 @@ export function createClient(options: ClientOptions = {}): Client {
       if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
         // Refresh and retry only while the session that sent it is still the current one.
         if (currentSid() === started && (await renew(tokens)) && currentSid() === started) return request<T>(method, path, send, true);
-      } else if (!tokens && staticToken === undefined && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
+      } else if (!tokens && authOpts.guests && method !== "GET" && headers.authorization === undefined) {
         // An anonymous write becomes a guest's: the one it starts, or the one a concurrent first
         // write started from the same anonymous state. Never a user who signed in meanwhile.
         // Only the guest started from this request's own anonymous generation: one begun later
@@ -526,20 +513,15 @@ export function createClient(options: ClientOptions = {}): Client {
       return true;
     };
     try {
-      if (wp) {
-        const clientId = current.clientId ?? authOpts.clientId ?? "";
-        const out = await issuerPost<OidcTokens>("/token", { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: clientId });
-        return keep({
-          accessToken: out.access_token,
-          refreshToken: out.refresh_token,
-          expiresAt: expiresAt(out.expires_in),
-          ...(current.clientId !== undefined ? { clientId: current.clientId } : {}),
-          ...((out.id_token ?? current.idToken) !== undefined ? { idToken: out.id_token ?? current.idToken } : {}),
-        });
-      } else {
-        const out = await request<Issued>("POST", "/auth/token", { json: { grant_type: "refresh_token", refreshToken: current.refreshToken }, anonymous: true });
-        return keep({ accessToken: out.accessToken, refreshToken: out.refreshToken, expiresAt: expiresAt(out.expiresIn) });
-      }
+      const clientId = current.clientId ?? authOpts.clientId ?? "";
+      const out = await issuerPost<OidcTokens>("/token", { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: clientId });
+      return keep({
+        accessToken: out.access_token,
+        refreshToken: out.refresh_token,
+        expiresAt: expiresAt(out.expires_in),
+        ...(current.clientId !== undefined ? { clientId: current.clientId } : {}),
+        ...((out.id_token ?? current.idToken) !== undefined ? { idToken: out.id_token ?? current.idToken } : {}),
+      });
     } catch (e) {
       // A refused refresh signs this session out: a new generation, like any sign-out.
       if (!(e instanceof ZeroError) || e.status !== 0) switchTo(null, started);
@@ -547,7 +529,7 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   }
 
-  /** Store a sign-in's tokens unless the session changed since `from` (then the newer one stays). */
+  /** Store a guest's tokens unless the session changed since `from` (then the newer one stays). */
   function adopt(out: Issued, from: string): User {
     const adopted = switchTo({
       accessToken: out.accessToken,
@@ -632,11 +614,9 @@ export function createClient(options: ClientOptions = {}): Client {
 
   const auth: AuthClient = {
     signIn(opts = {}) {
-      if (!wp) return Promise.reject(notSupported("signIn()"));
       return redirectToIssuer(opts.returnTo, {});
     },
     async handleCallback() {
-      if (!wp) throw notSupported("handleCallback()");
       const { sessionStorage, location } = browser();
       const params = new URLSearchParams(location?.search ?? "");
       let pkce: Json = {};
@@ -686,23 +666,13 @@ export function createClient(options: ClientOptions = {}): Client {
       }
       return user;
     },
-    async login(name: string, password: string) {
-      if (wp) throw notSupported("login()");
-      const from = currentSid();
-      return adopt(await request<Issued>("POST", "/auth/token", { json: { grant_type: "password", name, password }, anonymous: true }), from);
-    },
     guest: () => startGuest(currentSid()),
-    upgrade: (async (name?: string, password?: string) => {
-      if (!wp) {
-        if (name === undefined || password === undefined) throw notSupported("upgrade() without a name and password");
-        return (await request<{ user: User }>("POST", "/auth/guest/upgrade", { json: { name, password } })).user;
-      }
-      if (name !== undefined) throw notSupported("upgrade(name, password)");
+    async upgrade() {
       const current = held();
       if (!current) throw authError(401, "unauthenticated", "Only a guest session can be upgraded");
       const { handoff } = await issuerPost<{ handoff: string }>("/handoff", {}, current.accessToken);
       return redirectToIssuer(undefined, { handoff });
-    }) as AuthClient["upgrade"],
+    },
     me: () => request<User | null>("GET", "/me"),
     async signOut(opts = {}) {
       const current = held();
@@ -714,15 +684,14 @@ export function createClient(options: ClientOptions = {}): Client {
         return;
       }
       try {
-        if (wp) await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
-        else await request("DELETE", "/auth/session");
+        await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
       } catch (e) {
         // A session the server already ended is signed out; anything else is the caller's to see.
         if (!(e instanceof ZeroError && e.status === 401)) throw e;
       } finally {
         switchTo(null, from); // only the session this sign-out began with
       }
-      if (wp && opts.returnTo !== undefined && current.idToken !== undefined) {
+      if (opts.returnTo !== undefined && current.idToken !== undefined) {
         const params = new URLSearchParams({ id_token_hint: current.idToken, post_logout_redirect_uri: opts.returnTo });
         browser().location?.assign(`${await issuer()}/logout?${params}`);
       }

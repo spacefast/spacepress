@@ -14,7 +14,7 @@ target="${CARGO_TARGET_DIR:-target}"
 zero="$target/debug/zero"
 compose() { docker compose -p "${ZERO_WP_PROJECT:-zero-wp-test}" "$@"; }
 
-"$zero" build "$here/members" --target wp --quiet >/dev/null
+"$zero" build "$here/members" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-members"
 rsync -a --delete "$here/members/.zero/wp-content/" "$wp/.wp-content-members/"
 "$wp/harness.sh" down

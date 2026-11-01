@@ -20,7 +20,7 @@ const sync = (...flags: string[]) =>
 test("the blog's committed posts sync into a fresh WordPress, once", async () => {
   rmSync(project, { recursive: true, force: true });
   cpSync(join(repo, "examples/blog"), project, { recursive: true, filter: (src) => !src.includes("/.zero") });
-  zero("build", project, "--target", "wp", "--quiet");
+  zero("build", project, "--quiet");
   const built = join(project, ".zero/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
   wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "polylang", "zero-runtime", "zero-identity", "zero-app-blog");

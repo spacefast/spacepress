@@ -1,5 +1,5 @@
 // The auth-collection fixture (§6.2): members are users. tests/php/auth_test.php runs the runtime on
-// it; tests/compiler.rs keeps auth.schema.json and the SQLite migration in step with the compiler.
+// it; tests/compiler.rs keeps auth.schema.json in step with the compiler.
 import { collection, defineConfig, defineRelations, email, group, id, integer, select, text } from "zero";
 
 export const members = collection("members", {

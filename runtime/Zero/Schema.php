@@ -64,11 +64,6 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
-    public function target(): string
-    {
-        return (string) ($this->raw['target'] ?? 'standalone');
-    }
-
     /** @return array<string, array> */
     public function collections(): array
     {
@@ -191,8 +186,8 @@ final class Schema
         }
 
         return Extensions::describe([
-            'name' => $this->name(), 'target' => $this->target(),
-            'runtime' => ['series' => $this->runtime(), 'target' => $this->target()],
+            'name' => $this->name(),
+            'runtime' => ['series' => $this->runtime()],
             'locales' => $this->locales(), 'media' => $this->media(),
             'files' => array_map(static fn (array $b): array => ['accept' => $b['accept'], 'maxBytes' => $b['maxBytes']], $this->files()),
             'auth' => array_intersect_key($this->auth(), ['collection' => true, 'guests' => true]),
@@ -635,7 +630,7 @@ final class Schema
 
     /**
      * Run min/max, pattern, validate (in that order; first failure wins) on a normalized value and,
-     * recursively, on its sub-fields. $ctx is the validate ctx: ['data' => row, 'user' => ?array, 'target' => string].
+     * recursively, on its sub-fields. $ctx is the validate ctx: ['data' => row, 'user' => ?array].
      *
      * @throws HttpError invalid_input
      */
@@ -748,7 +743,7 @@ final class Schema
      * Validate an action input object: unknown keys rejected, defaults applied, values coerced,
      * rules run (validate ctx.data = the input). Returns the JS form.
      */
-    public static function validateInput(array $columns, mixed $input, string $base = '', ?array $user = null, string $target = 'standalone'): array
+    public static function validateInput(array $columns, mixed $input, string $base = '', ?array $user = null): array
     {
         if ($input === null) {
             $input = [];
@@ -757,7 +752,7 @@ final class Schema
             throw HttpError::invalidInput('Input must be a JSON object', $base);
         }
         $out = self::normalizeFields($columns, $input, $base);
-        self::checkFields($columns, $out, $base, ['data' => $out, 'user' => $user, 'target' => $target]);
+        self::checkFields($columns, $out, $base, ['data' => $out, 'user' => $user]);
 
         return $out;
     }

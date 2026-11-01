@@ -1,7 +1,7 @@
 //! `zero sync` (design §5.4).
 //!
 //! ```text
-//! zero sync [dir] --site <url> (--token <t> | --app-password <user:pass> | --bearer <jwt>) [--only c1,c2] [--check] [--no-commit] [--json]
+//! zero sync [dir] --site <url> (--app-password <user:pass> | --bearer <jwt>) [--only c1,c2] [--check] [--no-commit] [--json]
 //! zero sync status [dir] --site …     what a sync would do; writes nothing
 //! zero sync resolve <uid> [dir] --site …
 //! ```
@@ -15,7 +15,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: zero sync [status | resolve <uid>] [dir] --site <url> (--token <t> | --app-password <user:pass> | --bearer <jwt>) [--only c1,c2] [--check] [--no-commit] [--json]";
+const USAGE: &str = "usage: zero sync [status | resolve <uid>] [dir] --site <url> (--app-password <user:pass> | --bearer <jwt>) [--only c1,c2] [--check] [--no-commit] [--json]";
 
 struct Flags {
     mode: Mode,
@@ -51,7 +51,6 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
         match a.as_str() {
             "--site" => flags.site = Some(value("--site")?),
-            "--token" => flags.credential = Some(Credential::Token(value("--token")?)),
             "--app-password" => flags.credential = Some(Credential::AppPassword(value("--app-password")?)),
             "--bearer" => flags.credential = Some(Credential::Bearer(value("--bearer")?)),
             "--only" => {
@@ -93,16 +92,10 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         .site
         .or_else(|| std::env::var("ZERO_SITE").ok().filter(|s| !s.is_empty()));
     if flags.credential.is_none() {
-        flags.credential = std::env::var("ZERO_TOKEN")
+        flags.credential = std::env::var("ZERO_APP_PASSWORD")
             .ok()
             .filter(|s| !s.is_empty())
-            .map(Credential::Token)
-            .or_else(|| {
-                std::env::var("ZERO_APP_PASSWORD")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-                    .map(Credential::AppPassword)
-            });
+            .map(Credential::AppPassword);
     }
     Ok(flags)
 }
@@ -117,7 +110,7 @@ pub fn run(args: &[String]) -> ExitCode {
     };
     let (Some(site), Some(credential)) = (flags.site.clone(), flags.credential) else {
         eprintln!(
-            "zero sync needs --site (or ZERO_SITE) and a credential: --token, --app-password or --bearer (or ZERO_TOKEN / ZERO_APP_PASSWORD)\n{USAGE}"
+            "zero sync needs --site (or ZERO_SITE) and a credential: --app-password or --bearer (or ZERO_APP_PASSWORD)\n{USAGE}"
         );
         return ExitCode::from(3);
     };

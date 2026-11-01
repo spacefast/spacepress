@@ -50,8 +50,8 @@ check('the row is a WordPress user: id, email, display name, role', $user instan
 check('the password is stored as a WordPress hash that checks out', str_starts_with($user->user_pass, '$') && wp_check_password('correct horse battery', $user->user_pass, $anaId) && !wp_check_password('wrong', $user->user_pass, $anaId));
 eq('WordPress authenticates the member with it', wp_authenticate('ana@example.test', 'correct horse battery')->ID ?? null, $anaId);
 eq('member columns live in usermeta with the collection\'s defaults', get_user_meta($anaId, 'zero_plan', true), 'free');
-problem('a short password is refused', fn () => $db->insert('members', ['email' => 'x@example.test', 'name' => 'X', 'password' => 'short'], true, new Viewer(null, 'wp')), 422, 'invalid_input', '/password');
-problem('a password with NUL is refused before hashing', fn () => $db->insert('members', ['email' => 'nul@example.test', 'name' => 'N', 'password' => "long password\0with nul"], true, new Viewer(null, 'wp')), 422, 'invalid_input', '/password');
+problem('a short password is refused', fn () => $db->insert('members', ['email' => 'x@example.test', 'name' => 'X', 'password' => 'short'], true, new Viewer(null)), 422, 'invalid_input', '/password');
+problem('a password with NUL is refused before hashing', fn () => $db->insert('members', ['email' => 'nul@example.test', 'name' => 'N', 'password' => "long password\0with nul"], true, new Viewer(null)), 422, 'invalid_input', '/password');
 problem('a taken email is a unique violation', fn () => $db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana 2', 'password' => 'another long one']), 409, 'unique_violation', '/email');
 
 // ================================================================ /me and "self"
@@ -86,10 +86,10 @@ eq('filtering on a hidden column is refused (403, §4.3)', array_intersect_key($
 eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['member' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/member/passwordHash');
 eq('nested OR/NOT filters are checked too', $probe(['where' => json_encode(['OR' => [['NOT' => ['suspendedAt' => null]]]])], $anaId)[1]['pointer'] ?? null, '/where/OR/0/NOT/suspendedAt');
 eq('ordering on a hidden column is refused', $probe(['orderBy' => 'guest'], $anaId)[1]['pointer'] ?? null, '/orderBy/guest');
-problem('selecting a hidden column is refused (403, §4.3)', fn () => $db->findMany('members', ['columns' => ['passwordHash' => true]], new Viewer($wp->user('admin'), 'wp')), 403, 'forbidden', '/columns/passwordHash');
+problem('selecting a hidden column is refused (403, §4.3)', fn () => $db->findMany('members', ['columns' => ['passwordHash' => true]], new Viewer($wp->user('admin'))), 403, 'forbidden', '/columns/passwordHash');
 eq('hidden columns are unknown to direct writes', $call('PATCH', "/members/$anaId", ['passwordHash' => 'x'], $anaId)[1]['pointer'] ?? null, '/passwordHash');
-problem('a mutation filtered on a hidden column is refused too', fn () => $db->update('members', ['name' => 'x'], ['passwordHash' => ['isNotNull' => true]], true, new Viewer($wp->user('admin'), 'wp')), 403, 'forbidden', '/where/passwordHash');
-problem('… also through a relation', fn () => $db->delete('notes', ['member' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'), 'wp')), 403, 'forbidden', '/where/member/passwordHash');
+problem('a mutation filtered on a hidden column is refused too', fn () => $db->update('members', ['name' => 'x'], ['passwordHash' => ['isNotNull' => true]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/passwordHash');
+problem('… also through a relation', fn () => $db->delete('notes', ['member' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/member/passwordHash');
 $trusted = $db->findMany('members');
 check('trusted reads (hooks, CLI) never carry the auth secrets either', !$leaks($trusted) && count($trusted) >= 2, $trusted);
 $revisionList = $call('GET', '/notes/' . $note['data']['id'] . '/revisions', null, $anaId)[1]['data'] ?? [];
@@ -101,7 +101,7 @@ check('/_schema never names hidden columns', !str_contains($describe, 'passwordH
 // ================================================================ role and password
 
 eq('role is admin-only: a member can\'t promote themself', $call('PATCH', "/members/$anaId", ['role' => 'admin'], $anaId)[0], 403);
-problem('… and even an admin can\'t clear it: role is never null', fn () => $db->update('members', ['role' => null], ['id' => $wp->userId('admin')], false, new Viewer($wp->user('admin'), 'wp')), 422, 'invalid_input', '/role');
+problem('… and even an admin can\'t clear it: role is never null', fn () => $db->update('members', ['role' => null], ['id' => $wp->userId('admin')], false, new Viewer($wp->user('admin'))), 422, 'invalid_input', '/role');
 $promoted = $db->update('members', ['role' => 'editor'], ['id' => $boId], true)[0];
 eq('a role change is the WordPress role, and the one Zero authenticates with', [$promoted['role'], (new WP_User($boId))->roles, \Zero\Wp\WpAuth::map(new WP_User($boId))['role']], ['editor', ['editor'], 'editor']);
 (new WP_User($boId))->set_role('administrator');

@@ -197,8 +197,8 @@ defineConfig({
       afterCreate(row, ctx) {
         // @ts-expect-error ctx.user may be null (anonymous writers, trusted callers)
         void ctx.user.id;
-        // @ts-expect-error the target is "standalone" | "wp"
-        if (ctx.target === "wordpress") void row;
+        // @ts-expect-error there is no build target on ctx
+        void ctx.target;
       },
       // @ts-expect-error the trailing argument is HookCtx, not a user
       beforeDelete(row, user: { role: string; email: string }) {
@@ -222,8 +222,12 @@ defineConfig({
 
 defineConfig({
   schema,
-  // @ts-expect-error target is "standalone" | "wp"
-  target: "wordpress",
+  // @ts-expect-error there is no build target option
+  target: "wp",
+});
+
+defineConfig({
+  schema,
   // @ts-expect-error globals are made with global()
   globals: { settings: { siteTitle: "x" } },
 });

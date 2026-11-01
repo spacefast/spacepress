@@ -55,7 +55,7 @@ final class Runner
             // Exact integers (row ids), and `{}` stays an object in json() input fields.
             $input = Js::decodeJson((string) $locked['input'], 4096);
             $input = $input instanceof \Zero\JsObject ? [] : $input;
-            $ctx = ['user' => null, 'target' => $db->target(), 'attempt' => $attempt, 'jobId' => $id];
+            $ctx = ['user' => null, 'attempt' => $attempt, 'jobId' => $id];
             if (is_callable($spec['handler'])) {
                 // Built-in jobs that only talk to the network (webhooks) run outside a transaction, so a
                 // slow endpoint never holds the database's write lock; only the bookkeeping is transactional.

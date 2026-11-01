@@ -26,7 +26,7 @@ final class Jobs
         $db = db();
         $spec = self::spec($name);
         $ctx = $db->hookCtx();
-        $input = Schema::validateInput($spec['input'] ?? [], $input, '', $ctx['user'], $ctx['target']);
+        $input = Schema::validateInput($spec['input'] ?? [], $input, '', $ctx['user']);
         $opts ??= [];
         $delay = $opts['delay'] ?? 0;
         if (!is_int($delay) && !is_float($delay) || !is_finite((float) $delay) || $delay < 0) {

@@ -71,16 +71,6 @@ final class IdentityBridge implements Issuer
         return ['issuer' => untrailingslashit(home_url('/identity')), 'guests' => $guests];
     }
 
-    public function password(string $name, string $password): array
-    {
-        throw HttpError::notFound('Sign in through the issuer: POST /identity/token');
-    }
-
-    public function refresh(string $refreshToken): array
-    {
-        throw HttpError::notFound('Refresh through the issuer: POST /identity/token');
-    }
-
     public function guest(): array
     {
         self::provision();
@@ -114,11 +104,6 @@ final class IdentityBridge implements Issuer
             'clientId' => self::GUEST_CLIENT,
             'user' => WpAuth::map(new \WP_User($id)),
         ];
-    }
-
-    public function upgrade(?array $user, string $name, string $password): array
-    {
-        throw HttpError::notFound('Guests save their account on the hosted screens: POST /identity/handoff');
     }
 
     public function signOut(array $user): void

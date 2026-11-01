@@ -19,7 +19,7 @@ eq('PHP platform policy matches the shared golden', \Zero\Wp\Platform::requireme
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];
-$ctx = ['data' => [], 'user' => null, 'target' => 'wp'];
+$ctx = ['data' => [], 'user' => null];
 
 /** normalize + rules, like the write pipeline does for one column. */
 $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed {

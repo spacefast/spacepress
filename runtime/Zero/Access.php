@@ -55,7 +55,7 @@ final class Access
         }
         if (isset($rule['fn'])) {
             $fn = '\\ZeroApp\\' . $rule['fn'];
-            $ctx = ['user' => $user, 'target' => $viewer->target, 'op' => $op, 'data' => $data];
+            $ctx = ['user' => $user, 'op' => $op, 'data' => $data];
             $r = $fn($ctx);
             if (is_array($r)) {
                 return $r;

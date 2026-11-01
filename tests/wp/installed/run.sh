@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `zero dev --wp` from an installed binary: a release build made from a throwaway copy of the source,
+# `zero dev` from an installed binary: a release build made from a throwaway copy of the source,
 # which is deleted before the binary runs, so nothing can reach this checkout. The binary runs in a
 # temp project with a fresh HOME and no ZERO_WP_HARNESS; it must write its embedded harness to the
 # cache dir, boot WordPress with the app, and serve the app's REST API.
@@ -43,7 +43,7 @@ rm -rf "$project/.zero"
 cd "$project"
 out="$(env -u ZERO_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
   ZERO_WP_PLUGIN_CACHE="${ZERO_WP_PLUGIN_CACHE:-$repo/.zero/cache/plugins}" \
-  "$bin/zero" dev --wp --port "$ZERO_WP_PORT" 2>&1)" || { echo "$out" >&2; echo 'FAIL: zero dev --wp exited non-zero' >&2; exit 1; }
+  "$bin/zero" dev --port "$ZERO_WP_PORT" 2>&1)" || { echo "$out" >&2; echo 'FAIL: zero dev exited non-zero' >&2; exit 1; }
 echo "$out"
 grep -q "WordPress is up on http://127.0.0.1:$ZERO_WP_PORT" <<< "$out" || { echo 'FAIL: no "WordPress is up" line' >&2; exit 1; }
 stop="$(sed -n 's/^WordPress is up on .* Stop it with: //p' <<< "$out")"
@@ -57,10 +57,10 @@ done
 python3 - "$work" <<'CHECK'
 import json, sys
 schema = json.load(open(sys.argv[1] + "/_schema.json"))["data"]
-assert schema["name"] == "project" and schema["target"] == "wp", schema
+assert schema["name"] == "project", schema
 assert json.load(open(sys.argv[1] + "/locations.json"))["data"] == []
 CHECK
-echo 'ok - an installed zero binary boots `zero dev --wp` from its embedded harness'
+echo 'ok - an installed zero binary boots `zero dev` from its embedded harness'
 # The printed stop command takes the stack down.
 (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || { echo "FAIL: the printed stop command failed: $stop" >&2; exit 1; }
 stop=""

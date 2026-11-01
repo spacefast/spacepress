@@ -3,8 +3,6 @@
 
 export const SCHEMA = {
   "name": "site",
-  "target": "wp",
-  "basePath": "/wp-json/zero/v1",
   "collections": {
     "authors": {
       "path": "authors",

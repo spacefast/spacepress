@@ -82,7 +82,7 @@ function finiteNumber(value: 0 | -1): boolean { switch (value) { case 0: return 
 function finiteFunction(): true { const value = `show`; const predicates = [(): true => !false]; const zero = 0; const flag = !zero; switch (value) { case templateResult(): switch (flag) { case true: if (!finiteNumber(0) || finiteNumber(-1)) deny(); return predicates[0]!() && !0; } } }
 function constDefault(): boolean { const { value = "show", enabled = true } = { value: undefined, enabled: undefined }; switch (enabled) { case YES: switch (value) { case SHOW: return finiteFunction(); } } }
 function allowed(flag: boolean | null): boolean { const NO = false; switch (flag) { case YES: return constDefault(); case NO: deny(); case NIL: return false; } }
-function visibleTarget(ctx: FieldContext): boolean { switch (ctx.target) { case "wp": return false; case "standalone": if (ctx.user === null) return true; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return true; } } }
+function visibleRole(ctx: FieldContext): boolean { if (ctx.user === null) return true; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return true; } }
 function visible(value: unknown): boolean { const decision: `hide` | `show` = value === "private" ? "hide" : "show"; const VISIBLE = "show"; switch (decision) { case HIDE: return false; case VISIBLE: return true; } }
 function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read": if (ctx.data.label === "error") deny(); const decision = ctx.user === null ? 0 : 1; switch (decision) { case 0: return visible(ctx.data.label); case 1: return false; } case "create": return false; case "update": return true; } }
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
@@ -95,7 +95,7 @@ const posts = collection("posts", {
   authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),
   seo: group({ fields: { kind: text({ enum: ["a", "b"] }), enabled: boolean(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) } }).showIf({ status: "published" }),
   items: repeater({ fields: { enabled: boolean(), label: text().showIf({ enabled: true }) } }),
-  sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleTarget(ctx); } } }).showIf({ kind: { ne: "hidden" } }) } } }),
+  sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }) } } }),
   tags: select({ options: ["news", "guide"], multiple: true }).localized(), meta: json().localized(),
 }, { sync: "content/./posts/*.md", agents: true });
 const members = collection("members", { id: id(), email: email().notNull().unique().max(191), name: text() }, { auth: true, access: { read: "self", create: "anyone", update: "self", delete: "admin" } });

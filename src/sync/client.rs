@@ -4,8 +4,6 @@ use serde_json::{Value, json};
 use std::time::Duration;
 
 pub enum Credential {
-    /// A standalone API token (`zero token create`).
-    Token(String),
     /// A WordPress application password, `user:password`.
     AppPassword(String),
     /// An OIDC access token from the identity plugin.
@@ -44,15 +42,19 @@ impl Problem {
 }
 
 impl Client {
-    /// `site` is the site's URL; the API prefix is found from it (`/api` standalone, `/wp-json/zero/v1`
-    /// on WordPress) unless it already ends in one.
+    /// `site` is the site's URL (scheme, host and an optional path prefix); `/wp-json/zero/v1` is
+    /// appended to its path unless the path already ends in it. A query or fragment is refused: the
+    /// endpoint paths are appended to the URL's path, so neither has a place to go.
     pub fn new(site: &str, credential: Credential) -> Result<Client, String> {
         let url = url::Url::parse(site).map_err(|e| format!("--site: {e}"))?;
         if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() {
             return Err("--site must be an http(s) URL without credentials".into());
         }
+        if url.query().is_some() || url.fragment().is_some() {
+            return Err("--site must be the site's URL without a query or fragment (https://example.test or https://example.test/blog)".into());
+        }
         let auth = match credential {
-            Credential::Token(t) | Credential::Bearer(t) => format!("Bearer {t}"),
+            Credential::Bearer(t) => format!("Bearer {t}"),
             Credential::AppPassword(p) => format!("Basic {}", base64(p.as_bytes())),
         };
         let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -61,23 +63,15 @@ impl Client {
             .max_redirects(0)
             .build()
             .into();
-        let root = url.as_str().trim_end_matches('/').to_string();
-        let mut client = Client {
-            agent,
-            base: root.clone(),
-            auth,
-        };
-        if root.ends_with("/api") || root.ends_with("/wp-json/zero/v1") {
-            return Ok(client);
+        let mut url = url;
+        let path = url.path().trim_end_matches('/').to_string();
+        if !path.ends_with("/wp-json/zero/v1") {
+            url.set_path(&format!("{path}/wp-json/zero/v1"));
+        } else {
+            url.set_path(&path);
         }
-        for prefix in ["/wp-json/zero/v1", "/api"] {
-            client.base = format!("{root}{prefix}");
-            if client.get("/_schema").is_ok() {
-                return Ok(client);
-            }
-        }
-        client.base = format!("{root}/api");
-        Ok(client)
+        let base = url.as_str().trim_end_matches('/').to_string();
+        Ok(Client { agent, base, auth })
     }
 
     pub fn get(&self, path: &str) -> Result<Value, Problem> {
@@ -141,4 +135,38 @@ fn base64(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base(site: &str) -> Result<String, String> {
+        Client::new(site, Credential::Bearer("t".into())).map(|c| c.base)
+    }
+
+    #[test]
+    fn the_rest_prefix_joins_the_sites_path_and_is_never_doubled() {
+        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/zero/v1");
+        assert_eq!(
+            base("https://x.test/blog/").unwrap(),
+            "https://x.test/blog/wp-json/zero/v1"
+        );
+        assert_eq!(
+            base("https://x.test/blog/wp-json/zero/v1/").unwrap(),
+            "https://x.test/blog/wp-json/zero/v1"
+        );
+    }
+
+    #[test]
+    fn a_site_with_a_query_fragment_or_credentials_is_refused() {
+        for site in [
+            "https://x.test/#section",
+            "https://x.test/?rest_route=/zero/v1",
+            "https://user@x.test",
+            "ftp://x.test",
+        ] {
+            assert!(base(site).is_err(), "{site} was accepted");
+        }
+    }
 }

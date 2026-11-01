@@ -8,9 +8,7 @@ namespace Zero;
 final class Viewer
 {
     /** @param ?array{id: int, name: string, role: string} $user */
-    public function __construct(
-        public readonly ?array $user,
-        public readonly string $target,
-    ) {
+    public function __construct(public readonly ?array $user)
+    {
     }
 }

@@ -15,7 +15,7 @@ const run = async (name, fn) => {
     out[name] = { error: e.message };
   }
 };
-const hookCtx = { user: null, target: "wp" };
+const hookCtx = { user: null };
 for (const [name, a] of Object.entries(config.actions ?? {})) {
   await run(name, () => a.handler({}, hookCtx));
 }

@@ -297,6 +297,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
 
 - `beforeRead(collection, &opts, ?viewer, pointer)` runs before query validation
   and SQL; its normalized options also govern projection at every relation level.
+  Constraint preflights treat extension narrowing as filtered visibility: unique
+  namespaces, generated references, and incoming relationships must remain fully
+  readable before storage can answer about competitors or children. Unchanged
+  unique values must also survive a viewer-scoped read of the current row.
   `onLookup(collection, pks)` runs in concrete stores before hydration
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime

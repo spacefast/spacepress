@@ -913,7 +913,7 @@ final class Db
             throw new HttpError(409, 'reference_violation', 'A hidden field may be referenced by this row');
         }
         try {
-            $visible = $this->readGuards($child, $viewer) === [] && !FieldAccess::mayHide($def, $viewer);
+            $visible = $this->readsAllRows($child, $viewer) && !FieldAccess::mayHide($def, $viewer);
         } catch (HttpError) {
             $visible = false;
         }
@@ -1111,7 +1111,7 @@ final class Db
                 $target = $spec['columns'][$name]['references'] ?? null;
                 if ($candidates[$name] !== null && $target !== null) {
                     try {
-                        $visible = $this->readGuards($target['collection'], $viewer) === []
+                        $visible = $this->readsAllRows($target['collection'], $viewer)
                             && !FieldAccess::mayHide($this->schema->collection($target['collection'])['columns'][$target['column']], $viewer);
                     } catch (HttpError) {
                         $visible = false;
@@ -1123,6 +1123,24 @@ final class Db
             }
             $this->requireUniqueVisibility($collection, $candidates, $viewer);
         });
+    }
+
+    /** Prove a complete namespace without reading its rows; extension narrowing is a read filter too. */
+    private function readsAllRows(string $collection, Viewer $viewer): bool
+    {
+        if ($this->readGuards($collection, $viewer) !== []) {
+            return false;
+        }
+        // Constraints span every locale. Sorting is harmless; any other query rewrite may hide
+        // competitors, children, or their values and cannot authorize a namespace-wide check.
+        $opts = ($this->schema->collection($collection)['localized'] ?? false) ? ['locale' => '*'] : [];
+        Extensions::query($collection, $opts, $viewer, '');
+        unset($opts['orderBy']);
+        if (($opts['where'] ?? null) === []) {
+            unset($opts['where']);
+        }
+
+        return $opts === [];
     }
 
     /**
@@ -1161,7 +1179,7 @@ final class Db
             }
             if ($readable === null) {
                 try {
-                    $readable = $this->readGuards($collection, $viewer) === [];
+                    $readable = $this->readsAllRows($collection, $viewer);
                 } catch (HttpError) {
                     $readable = false;
                 }
@@ -1189,7 +1207,13 @@ final class Db
                 return false;
             }
             try {
-                if (!$this->permits($collection, 'read', $existing[$spec['primaryKey']], $viewer)) {
+                $opts = ['where' => [$spec['primaryKey'] => $existing[$spec['primaryKey']]]];
+                if ($spec['localized'] ?? false) {
+                    $opts['locale'] = '*';
+                }
+                $visible = $this->findFirst($collection, $opts, $viewer);
+                if ($visible === null || !array_key_exists($name, $visible)
+                    || !Js::strictEq($visible[$name], $existing[$name])) {
                     return false;
                 }
             } catch (HttpError) {

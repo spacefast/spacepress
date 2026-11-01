@@ -184,6 +184,46 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
   `));
   assert.deepEqual(referenceScope, [409, "reference_violation", []], "reference checks retain the viewer for query extensions and persist no hidden link");
 
+  const constraintScope = JSON.parse(wp("eval", `
+    $app = \\Zero\\Wp\\Plugin::instance()->db();
+    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'key_roots', 'key_links']));
+    foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
+    unset($spec);
+    $db = new \\Zero\\Db($app->store(), new \\Zero\\Schema(['collections' => $specs]), $app->media(), 'wp');
+    $viewer = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+    $code = 'extension-' . bin2hex(random_bytes(8));
+    $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
+    $base = random_int(1000000000, 1900000000);
+    $parents = $db->insert('key_roots', [['code' => $base], ['code' => $base + 1]], true);
+    $db->insert('key_links', ['rootCode' => $base]);
+    \\Zero\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\Zero\\Viewer $viewer): void {
+      if ($viewer !== null && in_array($collection, ['oracle_rows', 'key_links'], true)) {
+        $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
+      }
+    });
+    $result = [];
+    foreach ([$code, $code . '-free'] as $candidate) {
+      try { $db->insert('oracle_rows', ['title' => $code . '-probe', 'code' => $candidate], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    try { $db->update('oracle_rows', ['code' => $code], ['id' => $hidden['id']], false, null, $viewer); $result[] = null; }
+    catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    foreach ($parents as $parent) {
+      try { $db->delete('key_roots', ['id' => $parent['id']], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+      try { $db->update('key_roots', ['code' => $parent['code'] + 10], ['id' => $parent['id']], false, $viewer); $result[] = null; }
+      catch (\\Zero\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
+    }
+    $result[] = count($db->findMany('oracle_rows', ['where' => ['title' => $code . '-probe']]));
+    $result[] = array_column($db->findMany('key_roots', ['where' => ['id' => ['in' => array_column($parents, 'id')]], 'orderBy' => ['id' => 'asc']]), 'code') === [$base, $base + 1];
+    echo wp_json_encode($result);
+  `));
+  assert.deepEqual(constraintScope, [
+    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"],
+    [409, "reference_violation"], [409, "reference_violation"],
+    [409, "reference_violation"], [409, "reference_violation"], 0, true,
+  ], "query extensions conceal unique competitors and incoming references, including empty branches and hidden resends");
+
 });
 
 // ---- wp-admin and data-dependent rules (review of #38): every save is authorized on its own data

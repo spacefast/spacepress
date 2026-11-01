@@ -497,10 +497,9 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
-`Number(undefined)` and `+undefined` compile as `NaN`; literal `null` converts to
-zero. Numeric conversion of a nullable binding is rejected, even under a non-null
-assertion, because its runtime null/undefined distinction has already been erased;
-choose a default first (`Number(value ?? 0)`).
+String `lastIndexOf` accepts only literal number/null/undefined positions; a
+runtime position can hide the erased null/undefined distinction behind an alias,
+assertion or call. Omit the position or use a literal instead.
 
 Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
@@ -534,7 +533,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
-- Global regex lookarounds on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. UTF-8 stand-ins cannot safely decide lookarounds at an interior surrogate position.
+- Global regex character classes, lookarounds and lone-surrogate escapes on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. UTF-8 stand-ins cannot safely decide those atoms at an interior surrogate position.
 
 Arrays (lists):
 - `find(array $a, callable $f): mixed` (null when none), `findIndex(array $a, callable $f): int`, `findLast`, `findLastIndex`

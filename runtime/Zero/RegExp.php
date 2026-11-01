@@ -32,6 +32,8 @@ final class RegExp implements \Stringable
     private bool $dotAll;
     private bool $multiline;
     private bool $unicode;
+    /** These atoms can distinguish a real UTF-8 stand-in from a UTF-16 surrogate. */
+    private bool $requiresUnicodeOnAstral = false;
 
     public function __construct(string $source, string $flags = '')
     {
@@ -128,9 +130,9 @@ final class RegExp implements \Stringable
      */
     public function matchAll(string $s): array
     {
-        if (!$this->unicode && preg_match('/\(\?<?[=!]/', $this->src) === 1
+        if (!$this->unicode && $this->requiresUnicodeOnAstral
             && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
-            throw new JsError('A lookaround on text outside the Basic Multilingual Plane (an emoji, say) can\'t be checked without Unicode mode; add the u flag', 'RangeError');
+            throw new JsError('Character classes, lookarounds and lone-surrogate escapes on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError');
         }
         $out = [];
         $offset = 0;
@@ -165,7 +167,7 @@ final class RegExp implements \Stringable
      * empty match there, flagged with a fifth element. PCRE can't stand inside a UTF-8 character,
      * so the pattern runs on `Js::splitPair($s, $pos)`, where the halves are two noncharacter
      * stand-ins. An empty match only looks at its neighbours through anchors, `\b`/`\B` (a half
-     * and a stand-in are both non-word, non-line-terminator) and lookarounds; a lookaround could
+     * and a stand-in are both non-word, non-line-terminator) and literals. Character classes, lookarounds and lone-surrogate escapes could
      * tell the stand-in from the half, so matchAll refuses those before trying any stand-in.
      * A match that consumes a half
      * would make a lone surrogate, which throws (the documented deviation).
@@ -212,6 +214,9 @@ final class RegExp implements \Stringable
 
     private function groupOpen(): string
     {
+        if (preg_match('/\G\?<?[=!]/A', $this->src, $look, 0, $this->pos)) {
+            $this->requiresUnicodeOnAstral = true;
+        }
         if (preg_match('/\G\?<([A-Za-z_$][\w$]*)>/A', $this->src, $m, 0, $this->pos)) {
             if (str_contains($m[1], '$')) {
                 throw new JsError("Group name '{$m[1]}' is not supported", 'SyntaxError');
@@ -341,6 +346,7 @@ final class RegExp implements \Stringable
             $this->pos += 6;
             $cp = 0x10000 + (($cp - 0xD800) << 10) + (hexdec($lo[1]) - 0xDC00);
         } elseif ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            $this->requiresUnicodeOnAstral = true;
             return '(?!)'; // a lone surrogate can never occur in UTF-8 input
         }
 
@@ -353,6 +359,7 @@ final class RegExp implements \Stringable
      */
     private function charClass(): string
     {
+        $this->requiresUnicodeOnAstral = true;
         $negated = ($this->src[$this->pos] ?? '') === '^';
         if ($negated) {
             $this->pos++;

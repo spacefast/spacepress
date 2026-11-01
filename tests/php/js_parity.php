@@ -278,7 +278,9 @@ $deviations = [
     // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
     ['inserting inside a surrogate pair throws', fn () => [Js::replaceAll('🙂', '', '-'), Js::replace('🙂', Js::re('(?:)', 'g'), '-')], ['$err' => 'RangeError']],
     ['$` inside a surrogate pair throws', fn () => Js::replaceAll('🙂', '', '$`'), ['$err' => 'RangeError']],
-    ['lookarounds on astral text need Unicode mode', fn () => Js::strMatch('🙂', Js::re('(?=[^\uFDD0])', 'g')), ['$err' => 'RangeError']],
+    ['lookarounds on astral text need Unicode mode', fn () => Js::strMatch('🙂', Js::re('(?=.)', 'g')), ['$err' => 'RangeError']],
+    ['classes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B[^\uFDD0]?', 'g')), ['$err' => 'RangeError']],
+    ['surrogate escapes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B\uDE00?', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
     ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],

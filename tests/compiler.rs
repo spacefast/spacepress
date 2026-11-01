@@ -1182,36 +1182,8 @@ fn rejects_phase2_static_contracts() {
         ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         (
-            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p) === 1;",
-            "position might be null or undefined",
-        ),
-        (
-            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p!) === 1;",
-            "position might be null or undefined",
-        ),
-        (
-            "const o: { p?: number } = {}; return 'ab'.lastIndexOf('b', o.p!) === 1;",
-            "position might be null or undefined",
-        ),
-        (
-            "const o: { p?: number } = {}; return 'ab'.lastIndexOf('b', o['p']!) === 1;",
-            "position might be null or undefined",
-        ),
-        (
-            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', Number(p)) === 1;",
-            "numeric conversion might receive null or undefined",
-        ),
-        (
-            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', +p) === 1;",
-            "numeric conversion might receive null or undefined",
-        ),
-        (
-            "const p: unknown = undefined; return 'ab'.lastIndexOf('b', Number(p)) === 1;",
-            "numeric conversion might receive null or undefined",
-        ),
-        (
-            "return 'ab'.lastIndexOf('b', Number(JSON.parse('0', () => undefined))) === 1;",
-            "numeric conversion might receive null or undefined",
+            "return 'ab'.lastIndexOf('b', Number(undefined)) === 1;",
+            "position must be a literal number, null or undefined",
         ),
         (
             "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",

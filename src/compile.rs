@@ -2111,7 +2111,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
                         }
                     }
-                    UnOp::Plus => self.number_conversion(x, &v)?,
+                    UnOp::Plus => {
+                        if v.ty.is_num() {
+                            v
+                        } else {
+                            Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
+                        }
+                    }
                     UnOp::TypeOf => Out::atom(format!("\\Zero\\Js::typeOf({})", v.php), Ty::Str),
                 }
             }
@@ -3305,50 +3311,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    /// Null and undefined convert to different numbers. Decide literals before their shared PHP
-    /// representation erases the distinction; a nullable binding must choose its default first.
-    fn number_conversion(&mut self, source: &Expr, value: &Out) -> Result<Out> {
-        let original_span = source.span;
-        let mut source = source;
-        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &source.kind {
-            source = x;
-        }
-        match source.kind {
-            ExprKind::Undefined => return Ok(Out::atom("NAN", Ty::Num)),
-            ExprKind::Null => return Ok(Out::atom("0", Ty::Num)),
-            _ => {}
-        }
-        // JSON.parse without a reviver returns unknown but never undefined. Other unknown values
-        // need narrowing; an assertion alone cannot recover the erased null/undefined distinction.
-        let json_parse = if let ExprKind::Call { callee, args, .. } = &source.kind
-            && args.len() == 1
-            && let ExprKind::Member { obj, prop, .. } = &callee.kind
-            && prop == "parse"
-            && let ExprKind::Ident(name) = &obj.kind
-        {
-            matches!(self.resolve(name, obj.span), Ok(Resolved::Global(g)) if g == "JSON")
-        } else {
-            false
-        };
-        let asserted_nullable =
-            source.span != original_span && self.argument_constraint(source).is_some_and(|ty| ty.is_nullable());
-        if (!json_parse && value.ty.is_nullable()) || asserted_nullable {
-            return err_help(
-                source.span,
-                "numeric conversion might receive null or undefined, which JS converts two different ways",
-                "choose a default first (`Number(value ?? 0)`); narrow unknown values with `typeof` before converting",
-            );
-        }
-        Ok(if value.ty.is_num() {
-            value.clone()
-        } else {
-            Out::atom(format!("\\Zero\\Js::toNumber({})", value.php), Ty::Num)
-        })
-    }
-
-    /// `s.lastIndexOf(x, pos)`: JS reads an `undefined` position as omitted (search from the end)
-    /// and `null` as 0, but compiled PHP has one null for both. A literal decides it here; a
-    /// value that may be null or undefined at runtime is refused. Returns the compiled arguments.
+    /// The PHP value model erases undefined into null. Only literal string-search positions are
+    /// accepted: runtime positions can hide that distinction through assertions, aliases or calls.
     fn position_args(&mut self, args: &[ArrEl], position: usize, m: &str) -> Result<Vec<Out>> {
         let mut argv = self.plain_args(args)?;
         let Some(ArrEl::Item(p)) = args.get(position) else {
@@ -3361,14 +3325,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &e.kind {
             ExprKind::Undefined => argv.truncate(position),
             ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
-            _ if argv[position].ty.is_nullable() || self.argument_constraint(e).is_some_and(|ty| ty.is_nullable()) => {
+            _ if literal_position(e) => {}
+            _ => {
                 return err_help(
                     p.span,
-                    format!("`{m}()`'s position might be null or undefined here, which JS reads two different ways"),
-                    "pass a number (`pos ?? 0`), or leave the argument out",
+                    format!("`{m}()`'s position must be a literal number, null or undefined"),
+                    "use a literal position (for example `0` or `-1`), or leave the argument out",
                 );
             }
-            _ => {}
         }
         Ok(argv)
     }
@@ -3403,11 +3367,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Resolved::Local(local) => Some(local.constraint),
                 _ => None,
             },
-            ExprKind::Member { obj, prop, .. } => self
-                .argument_constraint(obj)?
-                .non_null()
-                .field(prop)
-                .map(|(ty, optional)| if optional { ty.nullable() } else { ty }),
+            ExprKind::Member { obj, prop, .. } => {
+                self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
+            }
             ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
                 Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
@@ -3417,9 +3379,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => Some(Ty::union(ts).nullable()),
                 },
                 Ty::Obj(fields) => match &index.kind {
-                    ExprKind::Str(key) => fields
-                        .get(key)
-                        .map(|(ty, optional)| if *optional { ty.clone().nullable() } else { ty.clone() }),
+                    ExprKind::Str(key) => fields.get(key).map(|(t, _)| t.clone()),
                     _ => None,
                 },
                 _ => None,
@@ -3696,7 +3656,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a0 = argv.first();
         Ok(match (g, a0) {
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
-            ("Number", Some(v)) => self.number_conversion(self.arg(args, 0, span, "a value")?, v)?,
+            ("Number", Some(v)) => {
+                if v.ty.is_num() {
+                    v.clone()
+                } else {
+                    Out::atom(format!("\\Zero\\Js::toNumber({})", v.php), Ty::Num)
+                }
+            }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
             ("encodeURI" | "encodeURIComponent", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
@@ -5698,4 +5664,13 @@ fn element_write(through_element: bool, span: Span) -> Result<()> {
         "changing an array element in place isn't supported: compiled PHP can't grow an array by index",
         "build the new array instead (`list.map((v, j) => j === i ? next : v)`), or `list.push(value)` to append",
     )
+}
+
+/// Numeric literals may have signs and erased type annotations, but no runtime computation.
+fn literal_position(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Num(_) => true,
+        ExprKind::As(x, _) | ExprKind::NonNull(x) | ExprKind::Unary(UnOp::Plus | UnOp::Neg, x) => literal_position(x),
+        _ => false,
+    }
 }

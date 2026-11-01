@@ -70,6 +70,6 @@ into the baseline worktree before building. Alternate the last command across
 worktrees five times and retain its JSON output. The runner fails immediately
 on a bad status, missing row, incorrect relation, or incorrect nested JSON.
 
-Full clean WordPress and PHP suite wall times are reported in the switch PR.
+Full clean WordPress and PHP suite wall times are reported in the switch pull request.
 They are single suite runs, include test orchestration, and are not controlled
 performance experiments.

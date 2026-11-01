@@ -1355,11 +1355,14 @@ final class Js
             try {
                 $gap = self::unitSlice($u, 0, 10);
             } catch (JsError $e) {
-                if (!self::emitsGap($v)) {
-                    $gap = '';
-                } else {
+                // If the result doesn't depend on the gap, it's never written and the cut doesn't
+                // matter: compare two encodes with different stand-in gaps.
+                $plain = self::encode($v, '', '');
+                if ($plain !== self::encode($v, ' ', '')) {
                     throw $e;
                 }
+
+                return $plain;
             }
         } elseif ($indent !== null) {
             $gap = str_repeat(' ', (int) min(10, max(0, self::toInteger($indent))));
@@ -1368,16 +1371,6 @@ final class Js
         }
 
         return self::encode($v, $gap, '');
-    }
-
-    /** Whether encoding `$v` with indentation writes the gap (a non-empty array or object). */
-    private static function emitsGap(mixed $v): bool
-    {
-        if ($v instanceof \JsonSerializable) {
-            $v = $v->jsonSerialize();
-        }
-
-        return is_array($v) && $v !== [] || is_object($v) && !$v instanceof JsObject && !$v instanceof \Closure && get_object_vars($v) !== [];
     }
 
     private static function encode(mixed $v, string $gap, string $indent): ?string

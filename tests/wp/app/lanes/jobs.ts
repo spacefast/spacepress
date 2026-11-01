@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, env, HttpError, id, integer, job, jobs, once, text } from "zero";
+import { action, boolean, collection, db, env, HttpError, id, integer, job, jobs, json, once, text } from "zero";
 
 export const jobNotes = collection("jobNotes", {
   id: id(),
@@ -19,6 +19,13 @@ export const schema = { jobNotes, hookNotes };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {
+  refsEnqueue: action({
+    input: { noteId: integer().notNull(), meta: json().notNull() }, access: "editor",
+    handler: async (input) => {
+      const queued = await jobs.stamp.enqueue({ noteId: input.noteId, meta: input.meta });
+      return { id: queued.id, sent: JSON.stringify(input.meta) };
+    },
+  }),
   jobsOnce: action({
     input: { note: text().notNull() },
     access: "editor",
@@ -54,7 +61,7 @@ export const config = {
   webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hookNotes.created"] }],
   jobs: {
     stamp: job({
-      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false) },
+      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json() },
       retries: 2,
       agents: true, // also the `blog/job-stamp` ability (lane F)
       handler: async (input, ctx) => {
@@ -63,7 +70,7 @@ export const config = {
           await db.update(jobNotes).set({ stamped: `partial ${ctx.attempt}` }).where({ id: input.noteId });
           throw new Error(`stamp failed on attempt ${ctx.attempt}`);
         }
-        await db.update(jobNotes).set({ stamped: `${ctx.jobId}:${ctx.attempt}` }).where({ id: input.noteId });
+        await db.update(jobNotes).set({ stamped: input.meta !== null ? JSON.stringify(input.meta) : `${ctx.jobId}:${ctx.attempt}` }).where({ id: input.noteId });
       },
     }),
   },

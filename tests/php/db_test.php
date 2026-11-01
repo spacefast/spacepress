@@ -188,7 +188,7 @@ $functions = <<<'PHP'
     use Zero\Js;
     use function Zero\db;
 
-    // Compiled from a hook that mutates its argument: by-reference, no return.
+    // A compiled before-hook mutates its handle without returning a replacement.
     // Advances a pinned clock by a second while a row's defaults are being generated.
     function locations__tick()
     {
@@ -198,26 +198,26 @@ $functions = <<<'PHP'
         return null;
     }
 
-    function locations__beforeCreate(array &$data)
+    function locations__beforeCreate(\Zero\JsObject $data)
     {
-        $data['name'] = Js::trim($data['name'] ?? null);
-        if ($data['name'] !== 'forget-code') {
-            $data['code'] = strtoupper(Js::slice($data['name'], 0, 3));
+        $data->p['name'] = Js::trim($data->p['name'] ?? null);
+        if ($data->p['name'] !== 'forget-code') {
+            $data->p['code'] = strtoupper(Js::slice($data->p['name'], 0, 3));
         }
     }
 
     function items__beforeCreate($data)
     {
-        if (!array_key_exists('name', $data)) {
+        if (!array_key_exists('name', $data->p)) {
             throw new \LogicException('beforeCreate ran without a required field');
         }
-        return [...$data, 'name' => ucfirst($data['name'])];
+        return new \Zero\JsObject([...$data->p, 'name' => ucfirst($data->p['name'])]);
     }
 
     function items__afterUpdate($row, $previous)
     {
-        db()->insert('logs', ['message' => "item {$row['id']} qty {$previous['qty']}->{$row['qty']}"]);
-        if ($row['qty'] < 0) {
+        db()->insert('logs', ['message' => "item {$row->p['id']} qty {$previous->p['qty']}->{$row->p['qty']}"]);
+        if ($row->p['qty'] < 0) {
             throw new JsError('qty cannot go negative');
         }
     }
@@ -225,7 +225,7 @@ $functions = <<<'PHP'
     // Self-recursive: "loop:N" writes "loop:N-1" until 0.
     function logs__afterCreate($row)
     {
-        if (preg_match('/^loop:(\d+)$/', $row['message'], $m) && (int) $m[1] > 0) {
+        if (preg_match('/^loop:(\d+)$/', $row->p['message'], $m) && (int) $m[1] > 0) {
             db()->insert('logs', ['message' => 'loop:' . ((int) $m[1] - 1)]);
         }
     }
@@ -233,18 +233,18 @@ $functions = <<<'PHP'
     // ---- lane B: field access. Owners and editors see the salary; owners update their own row.
     function profiles__field__salary__read($ctx)
     {
-        return $ctx['user'] !== null && ($ctx['user']['role'] === 'editor' || $ctx['user']['role'] === 'admin' || $ctx['data']['ownerId'] === $ctx['user']['id']);
+        return $ctx->p['user'] !== null && ($ctx->p['user']->p['role'] === 'editor' || $ctx->p['user']->p['role'] === 'admin' || $ctx->p['data']->p['ownerId'] === $ctx->p['user']->p['id']);
     }
 
     // Sub-field rules see the enclosing item after its defaults.
     function profiles__field__notes__tag__create($ctx)
     {
-        return $ctx['data']['pinned'] === true;
+        return $ctx->p['data']->p['pinned'] === true;
     }
 
     function profiles__field__checks__note__update($ctx)
     {
-        return ($ctx['data']['open'] ?? null) === true;
+        return ($ctx->p['data']->p['open'] ?? null) === true;
     }
 
     // Counts its calls: the value a rule saw must be the value stored, so it may run once per item.
@@ -255,51 +255,51 @@ $functions = <<<'PHP'
 
     function profiles__field__rounds__note__update($ctx)
     {
-        return $ctx['data']['n'] === 1;
+        return $ctx->p['data']->p['n'] === 1;
     }
 
     function profiles__field__gated__door__update($ctx)
     {
-        return $ctx['data']['gate'] === true;
+        return $ctx->p['data']->p['gate'] === true;
     }
 
     function profiles__field__vault__door__update($ctx)
     {
-        return ($ctx['data']['config']['locked'] ?? null) !== true;
+        return ($ctx->p['data']->p['config']->p['locked'] ?? null) !== true;
     }
 
     function profiles__field__seen__x__read($ctx)
     {
-        return $ctx['user'] !== null;
+        return $ctx->p['user'] !== null;
     }
 
     // Reads another column's incoming value: only a supplied notes.flag === false allows it.
     function profiles__field__cleared__update($ctx)
     {
-        return ($ctx['data']['notes']['flag'] ?? null) === false;
+        return ($ctx->p['data']->p['notes']->p['flag'] ?? null) === false;
     }
 
     function profiles__field__stamp__note__create($ctx)
     {
-        return $ctx['data']['n'] === 1;
+        return $ctx->p['data']->p['n'] === 1;
     }
 
     // A tag may change only while the note stays pinned.
     function profiles__field__notes__tag__update($ctx)
     {
-        return ($ctx['data']['pinned'] ?? null) === true;
+        return ($ctx->p['data']->p['pinned'] ?? null) === true;
     }
 
     function profiles__access__update($ctx)
     {
-        return in_array($ctx['user']['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx['user']['id'] ?? -1];
+        return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx->p['user']->p['id'] ?? -1];
     }
 
     function action__restock($input)
     {
-        $item = db()->findFirst('items', ['where' => ['id' => $input['itemId']]])
+        $item = db()->findFirst('items', ['where' => ['id' => $input->p['itemId']]])
             ?? throw new HttpError(404, 'not_found', 'No such item');
-        return db()->update('items', ['qty' => $item['qty'] + $input['amount']], ['id' => $item['id']], true)[0];
+        return db()->update('items', ['qty' => $item['qty'] + $input->p['amount']], ['id' => $item['id']], true)[0];
     }
     PHP;
 
@@ -331,7 +331,7 @@ eq('by-ref beforeCreate mutation is kept (trim + fill)', [$garage['name'], $gara
 eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['shelf', true]);
 eq('default now: one instant per write, nested defaults included, even when the clock moves between defaults',
     [$garage['createdAt'], $garage['updatedAt'], $garage['audit']['at'] ?? null], array_fill(0, 3, '2026-01-01T00:00:00.000Z'));
-eq('json column round-trips', $garage['meta'], ['floor' => 1, 'tags' => ['a/b', 'é']]);
+eq('json column round-trips', \Zero\Js::jsonStringify($garage['meta']), '{"floor":1,"tags":["a/b","é"]}');
 eq('json stored with unescaped slashes/unicode', $wp->scalar('SELECT `meta` FROM {prefix}zero_locations WHERE `name` = ?', ['Garage']), '{"floor":1,"tags":["a/b","é"]}');
 
 [$attic, $basement] = $db->insert('locations', [
@@ -961,14 +961,14 @@ problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' 
 // An unchanged resend must be the same value: a list resent as an object is a change.
 $db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
 $faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
-eq('… the stored list is untouched, and the true resend passes', [$db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta'], $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
+eq('… the stored list is untouched, and the true resend passes', [\Zero\Seam::toWire($db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta']), $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
 // Carrying an omitted protected value forward compares only what the viewer sees: any hidden value
 // in that item is refused alike, right guess or wrong.
 $db->update('profiles', ['tasks' => [['label' => 'w', 'rate' => 5, 'secret' => 'old']]], ['id' => $mine['id']]);
 $faProblem('right guess of a hidden value while carrying a protected one', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'secret' => 'old']]]), 403, 'forbidden', '/tasks/0');
 $faProblem('wrong guess, same answer', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'secret' => 'nope']]]), 403, 'forbidden', '/tasks/0');
 $faProblem('an item edited while leaving out what she can\'t see is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w!', 'rate' => 5]]]), 403, 'forbidden', '/tasks/0');
-$faProblem('so is a partial resend', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [[]]]), 403, 'forbidden', '/tasks/0');
+$faProblem('so is a partial resend', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [(object) []]]), 403, 'forbidden', '/tasks/0');
 eq('resending the item as she sees it keeps the stored item whole', [$as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => [['label' => 'w', 'rate' => 5]]])[0], $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['tasks']], [200, [['label' => 'w', 'rate' => 5, 'secret' => 'old']]]);
 // Group null and item removal are refused from the rules alone: the same answer whether or not a
 // hidden value is stored, so a destructive write can't test for presence.
@@ -1031,14 +1031,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
 })();
 
-// ================================================================ the empty-object marker stays in json() values
-
-// ================================================================ the empty-object marker stays in json() values
+// ================================================================ JSON identity at query boundaries
 
 // An access rule sees the patch as plain arrays: a list column sent as `{}` (the marker once decoded)
 // reaches the rule as [], never as a JsObject its array code can't handle.
 (static function (): void {
-    eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
+    eval('namespace ZeroApp; function marked__update($ctx) { return !\Zero\Js::includes($ctx->p["data"]->p["tags"], "locked"); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
     eval('namespace ZeroApp; function marked__read($ctx) { return ["AND" => [new \\Zero\\JsObject()]]; }');
     $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
@@ -1094,6 +1092,77 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     } finally {
         \Zero\Db::setInstance($previous);
     }
+})();
+
+// ================================================================ callback ownership and JSON boundaries
+(static function (): void {
+    eval(<<<'CODE'
+    namespace ZeroApp;
+    function refs__before($data, $ctx) {
+        if ($data !== $ctx->p['data']) throw new \RuntimeException('before alias');
+        if ($data->p['meta'] instanceof \Zero\JsObject && isset($data->p['meta']->p['x'])) $data->p['meta']->p['x'] = 2;
+    }
+    function refs__validate($value, $ctx) {
+        if ($value !== $ctx->p['data']->p['meta']) return 'validator alias';
+        if (isset($value->p['x'])) {
+            $ctx->p['data']->p['meta']->p['x'] = 8;
+            if ($value->p['x'] !== 8) return 'validator graph';
+            $GLOBALS['refsCaptured']->p['x'] = 99;
+        }
+        return true;
+    }
+    function refs__after($row) {
+        if ($row->p['meta'] instanceof \Zero\JsObject && isset($row->p['meta']->p['x'])) $row->p['meta']->p['x'] = 100;
+    }
+    function refs__input($input, $ctx) { return $input->p['info']->p['extra']; }
+    CODE);
+    $columns = [
+        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'meta' => ['type' => 'json', 'rules' => ['validate' => 'refs__validate'], 'access' => ['update' => ['allow' => false]]],
+        'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json', 'default' => ['json' => '{"1":1,"0":2}']]], 'default' => ['json' => '{}']],
+    ];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['refs' => [
+        'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_refs', 'columns' => $columns,
+        'access' => ['read' => ['allow' => true], 'update' => ['allow' => true]],
+        'hooks' => ['beforeCreate' => 'refs__before', 'afterCreate' => 'refs__after'],
+        'relations' => ['self' => ['kind' => 'one', 'collection' => 'refs', 'from' => 'id', 'to' => 'id']],
+    ]]]);
+    $wp = $GLOBALS['wp'];
+    $wp->exec('CREATE TABLE {prefix}zero_refs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `meta` LONGTEXT, `info` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \Zero\Db(\Zero\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \Zero\db()->media(), 'wp');
+    $previous = \Zero\Db::instance();
+    \Zero\Db::setInstance($db);
+    $seen = null;
+    \Zero\Extensions::onWrite(static function (string $op, string $collection, array &$data) use (&$seen): void {
+        if ($collection === 'refs') $seen = is_array($data);
+    });
+    try {
+        $source = new \Zero\JsObject(['x' => 1]);
+        $GLOBALS['refsCaptured'] = $source;
+        $row = $db->insert('refs', new \Zero\JsObject(['meta' => $source]), true)[0];
+        eq('before mutations persist; validator, capture and after mutations are isolated', [
+            $seen, $row['meta']->p['x'], $db->findFirst('refs')['meta']->p['x'], $source->p['x'],
+        ], [true, 2, 2, 99]);
+        eq('a group default fills nested JSON defaults as objects', \Zero\Js::jsonStringify($row['info']), '{"extra":{"0":2,"1":1}}');
+        foreach (['{}', '[]', '{"1":1,"0":2}', '{"\u0000":1}'] as $json) {
+            $value = \Zero\Js::decodeJson($json);
+            $created = $db->insert('refs', ['meta' => $value, 'info' => []], true)[0];
+            $read = $db->findFirst('refs', ['where' => ['id' => $created['id']]]);
+            eq("JSON insert/read/response: $json", \Zero\Js::jsonStringify($read['meta']), \Zero\Js::jsonStringify($value));
+        }
+        $protected = $db->insert('refs', ['meta' => \Zero\Js::decodeJson('{"a":1,"b":{"n":2}}')], true)[0];
+        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'Ed', 'role' => 'editor'], 'wp');
+        $same = $db->update('refs', ['meta' => \Zero\Js::decodeJson('{"b":{"n":2},"a":1}')], ['id' => $protected['id']], true, $viewer)[0];
+        eq('a protected JSON echo compares object keys structurally', $same['meta']->p['b']->p['n'], 2);
+        problem('a nested JSON change is a protected write', fn () => $db->update('refs', ['meta' => \Zero\Js::decodeJson('{"b":{"n":3},"a":1}')], ['id' => $protected['id']], true, $viewer), 403, 'forbidden', '/meta');
+        eq('sameJson detects a nested handle change', \Zero\Js::sameJson($same['meta'], \Zero\Js::decodeJson('{"b":{"n":3},"a":1}')), false);
+        $jsRow = \Zero\Seam::findFirst('refs', ['where' => ['id' => $row['id']], 'with' => ['self' => true]]);
+        eq('row handles enumerate columns and attached relations', [\Zero\Js::keys($jsRow)->a, $jsRow->p['self']->p['id']], [[...array_keys($columns), 'self'], $row['id']]);
+        problem('cyclic write inputs are a validation error', static function () use ($db): void {
+            $cycle = new \Zero\JsObject(); $cycle->p['self'] = $cycle;
+            $db->insert('refs', ['meta' => $cycle]);
+        }, 422, 'invalid_input');
+    } finally { \Zero\Db::setInstance($previous); unset($GLOBALS['refsCaptured']); }
 })();
 
 // ================================================================ a second Db keeps its own rules

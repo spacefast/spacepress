@@ -74,16 +74,16 @@ impl Builder {
         let r = if self.returning { ", true" } else { "" };
         match self.kind {
             BuilderKind::Insert => format!(
-                "\\Zero\\db()->insert({t}, {}{r})",
+                "\\Zero\\Seam::insert({t}, {}{r})",
                 self.values.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Update => format!(
-                "\\Zero\\db()->update({t}, {}, {}{r})",
+                "\\Zero\\Seam::update({t}, {}, {}{r})",
                 self.set.as_deref().unwrap_or("[]"),
                 self.filter.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Delete => format!(
-                "\\Zero\\db()->delete({t}, {}{r})",
+                "\\Zero\\Seam::delete({t}, {}{r})",
                 self.filter.as_deref().unwrap_or("[]")
             ),
         }
@@ -490,8 +490,8 @@ pub fn access_ctx(data: Ty) -> Ty {
 }
 
 /// `ctx` for `.validate` (§1.2): the whole row being written.
-pub fn validate_ctx() -> Ty {
-    obj(&[("data", Ty::Map(Box::new(Ty::Unknown))), ("user", user().nullable())])
+pub fn data_ctx(data: Ty) -> Ty {
+    obj(&[("data", data), ("user", user().nullable())])
 }
 
 /// A media row (§4.6), what `with: { cover: true }` puts in place of the id.

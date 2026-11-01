@@ -30,33 +30,33 @@ $schema['actions']['plain'] = ['input' => [], 'handler' => 'action__plain',
 $schema['collections']['posts']['hooks']['afterCreate'] = 'posts__afterCreate';
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-    function job__notify(array $input, $ctx)
+    function job__notify(\Zero\JsObject $input, $ctx)
     {
-        if (($input['note'] ?? null) === 'fail') {
+        if (($input->p['note'] ?? null) === 'fail') {
             // Writes and enqueues first, so the failure must roll them back.
-            \Zero\db()->insert('comments', ['postId' => $input['postId'], 'name' => 'partial', 'body' => $ctx['jobId']]);
-            \Zero\Jobs\Jobs::enqueue('notify', ['postId' => $input['postId'], 'note' => 'from-failed']);
-            throw new \Zero\JsError('notify failed on attempt ' . $ctx['attempt']);
+            \Zero\db()->insert('comments', ['postId' => $input->p['postId'], 'name' => 'partial', 'body' => $ctx->p['jobId']]);
+            \Zero\Jobs\Jobs::enqueue('notify', ['postId' => $input->p['postId'], 'note' => 'from-failed']);
+            throw new \Zero\JsError('notify failed on attempt ' . $ctx->p['attempt']);
         }
-        \Zero\db()->insert('comments', ['postId' => $input['postId'], 'name' => 'job', 'body' => $ctx['jobId'] . ':' . $ctx['attempt'] . ':' . ($ctx['user'] === null ? 'nobody' : 'someone')]);
+        \Zero\db()->insert('comments', ['postId' => $input->p['postId'], 'name' => 'job', 'body' => $ctx->p['jobId'] . ':' . $ctx->p['attempt'] . ':' . ($ctx->p['user'] === null ? 'nobody' : 'someone')]);
     }
 
-    function posts__afterCreate(array $row, $ctx)
+    function posts__afterCreate(\Zero\JsObject $row, $ctx)
     {
-        \Zero\Jobs\Jobs::enqueue('notify', ['postId' => $row['id'], 'note' => $row['excerpt']], $row['excerpt'] === 'keyed' ? ['key' => 'post-' . $row['title']] : null);
-        if ($row['title'] === 'Explode') {
+        \Zero\Jobs\Jobs::enqueue('notify', ['postId' => $row->p['id'], 'note' => $row->p['excerpt']], $row->p['excerpt'] === 'keyed' ? ['key' => 'post-' . $row->p['title']] : null);
+        if ($row->p['title'] === 'Explode') {
             throw new \Zero\HttpError(500, 'boom', 'afterCreate exploded');
         }
     }
 
-    function action__remember(array $input, $ctx)
+    function action__remember(\Zero\JsObject $input, $ctx)
     {
-        $key = 'remember-' . ($input['note'] === 'a2' ? 'a' : $input['note']);
+        $key = 'remember-' . ($input->p['note'] === 'a2' ? 'a' : $input->p['note']);
 
-        return \Zero\Jobs\Receipts::once('fn', $key, fn () => ['note' => $input['note'], 'at' => count(\Zero\db()->findMany('comments')), 'empty' => new \stdClass(), 'list' => []]);
+        return \Zero\Jobs\Receipts::once('fn', $key, fn () => ['note' => $input->p['note'], 'at' => count(\Zero\db()->findMany('comments')), 'empty' => new \stdClass(), 'list' => []]);
     }
 
-    function action__plain(array $input, $ctx)
+    function action__plain(\Zero\JsObject $input, $ctx)
     {
         return count(\Zero\db()->findMany('comments'));
     }
@@ -195,6 +195,38 @@ $wp->exec("UPDATE {prefix}zero__jobs SET `state` = 'running', `lockedAt` = ? WHE
 eq('maintain re-queues a stuck job', Runner::maintain()['requeued'], 1);
 eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['state'], $delivery($failing['id']) !== null], ['pending', true]);
 
+// Both registered handler contracts consume the same validated, persisted JSON payload.
+(static function () use ($schema, $db): void {
+    eval('namespace ZeroApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \Zero\Js::jsonStringify($input->p["meta"])]; }');
+    $seen = null;
+    $spec = ['input' => ['meta' => ['type' => 'json', 'notNull' => true]], 'handler' => 'refs__job', 'retries' => 1];
+    $schema['jobs']['jsonCompiled'] = $spec;
+    $schema['jobs']['jsonNative'] = ['handler' => static function (array $input) use (&$seen): void {
+        $seen = [is_array($input), \Zero\Js::jsonStringify($input['meta'])];
+    }] + $spec;
+    $other = new \Zero\Db($db->store(), new \Zero\Schema($schema), $db->media(), 'wp');
+    \Zero\Db::setInstance($other);
+    try {
+        $meta = \Zero\Js::decodeJson('{"1":1,"0":2,"empty":{}}');
+        foreach (['jsonCompiled', 'jsonNative'] as $name) {
+            $queued = \Zero\Seam::enqueue($name, new \Zero\JsObject(['meta' => $meta]));
+            eq("$name completes", \Zero\Jobs\Runner::run($queued->p['id'])['state'], 'done');
+        }
+        eq('compiled and native jobs receive their own container contracts with identical JSON', [$GLOBALS['refsJob'], $seen], [[true, '{"0":2,"1":1,"empty":{}}'], [true, '{"0":2,"1":1,"empty":{}}']]);
+    } finally { \Zero\Db::setInstance($db); unset($GLOBALS['refsJob']); }
+})();
+
+// The first result is original; every replay comes from the persisted snapshot.
+$db->transaction(static function (): void {
+    $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1])]);
+    $first = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
+    $first->p['nested']->a[] = 2;
+    $second = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
+    $second->p['nested']->a[] = 3;
+    $third = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
+    eq('once() returns the original first and an independent snapshot on every replay', [$first === $source, $first === $second, $third->p['nested']->a], [true, false, [1]]);
+});
+
 // ---- once() and Idempotency-Key ------------------------------------------------------------------------------------
 [$s1, $r1] = $request('POST', '/actions/remember', ['note' => 'a']);
 $db->insert('comments', ['postId' => $created['data']['id'], 'name' => 'x', 'body' => 'y']);
@@ -212,7 +244,7 @@ check('Idempotency-Key replay returns the stored result with Idempotent-Replayed
 [$s, $mismatch] = $request('POST', '/actions/remember', ['note' => 'c'], ['idempotency-key' => 'req-1']);
 eq('same key, different body → 409 idempotency_mismatch', [$s, $mismatch['code']], [409, 'idempotency_mismatch']);
 eq('a key differing only in case is another key', $request('POST', '/actions/remember', ['note' => 'c'], ['idempotency-key' => 'REQ-1'])[0], 200);
-[$s, , $h] = $request('POST', '/actions/plain', [], ['idempotency-key' => 'req-1']);
+[$s, , $h] = $request('POST', '/actions/plain', (object) [], ['idempotency-key' => 'req-1']);
 eq('actions without idempotent: true ignore the header', [$s, $h['idempotent-replayed'] ?? null], [200, null]);
 $count = static fn () => count($db->findMany('comments'));
 $before = $count();

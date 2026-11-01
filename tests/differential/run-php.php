@@ -20,20 +20,40 @@ try {
             $ctx['op'] = $parts[2];
             $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['access'][$parts[2]]['fn'];
 
-            return $fn($ctx);
+            return $fn(\Zero\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
         })(),
         'field' => (function () use ($schema, $parts, $args) {
             $ctx = $args['ctx'];
             $ctx['op'] = $parts[3];
             $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['access'][$parts[3]]['fn'];
 
-            return $fn($ctx);
+            return $fn(\Zero\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
         })(),
         'validate' => (function () use ($schema, $parts, $args) {
-            $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['rules']['validate'];
-            $value = $args['value'];
-
-            return $fn($value, $args['ctx']);
+            $columns = $schema['collections'][$parts[1]]['columns'];
+            $keys = explode('.', $parts[2]);
+            $path = [array_shift($keys)];
+            $col = $columns[$path[0]];
+            while ($keys !== []) {
+                if ($col['type'] === 'repeater') { $path[] = 0; }
+                if ($col['type'] === 'blocks') {
+                    $path[] = 0;
+                    $fields = $col['layouts'][array_shift($keys)];
+                } else { $fields = $col['fields']; }
+                $key = array_shift($keys);
+                $path[] = $key;
+                $col = $fields[$key];
+            }
+            $fn = '\\ZeroApp\\' . $col['rules']['validate'];
+            $ctx = $args['ctx'];
+            $container = &$ctx['data'];
+            foreach (array_slice($path, 0, -1) as $key) { $container = &$container[$key]; }
+            $container[$path[array_key_last($path)]] = $args['value'];
+            unset($container);
+            $ctx = \Zero\Seam::ctx($ctx, $columns);
+            $value = $ctx->p['data'];
+            foreach ($path as $key) { $value = \Zero\Seam::container($value)[$key]; }
+            return $fn($value, $ctx);
         })(),
         default => throw new \LogicException("unknown case $case"),
     };

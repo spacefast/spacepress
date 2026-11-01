@@ -24,7 +24,7 @@ $ctx = ['data' => [], 'user' => null];
 /** normalize + rules, like the write pipeline does for one column. */
 $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed {
     $n = Schema::normalize($col, $v, $name, '/' . $name);
-    Schema::checkRules($col, $n, $name, '/' . $name, $ctx);
+    Schema::checkRules($col, $n, $name, '/' . $name, ['data' => [$name => $n]] + array_diff_key($ctx, ['data' => true]), [$name => $col]);
 
     return $n;
 };
@@ -122,7 +122,7 @@ $box = ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'extra' =
 $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson('{"a":{}}')], 'box', '/box');
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
-eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], 'json')), '{"a":{}}');
+eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

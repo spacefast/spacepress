@@ -53,28 +53,28 @@ $functions = <<<'PHP'
     namespace ZeroApp;
     // Authors and up create; while the test flag is set, only published rows (status comes from its default).
     function notes__create($ctx) {
-        $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx['user']['role'] ?? ''] ?? 0;
+        $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx->p['user']->p['role'] ?? ''] ?? 0;
         if (empty($GLOBALS['zeroCreateNeedsPublished'])) {
             return $rank >= 1;
         }
         // The generated `now` values must be the instant the rule itself reads.
         $now = \Zero\Js::iso(\Zero\Js::now());
-        return $rank >= 1 && ($ctx['data']['status'] ?? null) === 'published'
-            && ($ctx['data']['publishedAt'] ?? null) === $now && ($ctx['data']['updatedAt'] ?? null) === $now;
+        return $rank >= 1 && ($ctx->p['data']->p['status'] ?? null) === 'published'
+            && ($ctx->p['data']->p['publishedAt'] ?? null) === $now && ($ctx->p['data']->p['updatedAt'] ?? null) === $now;
     }
     // Editors may update every note; authors only notes credited to a person with their name (a filter).
     function notes__update($ctx) {
-        return match ($ctx['user']['role'] ?? null) {
+        return match ($ctx->p['user']->p['role'] ?? null) {
             'editor', 'admin' => true,
-            'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx['user']['name']]]), 'id')]],
+            'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx->p['user']->p['name']]]), 'id')]],
             default => false,
         };
     }
     // Normalisation the client didn't send: titles are trimmed.
-    function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
+    function notes__beforeCreate($data) { return new \Zero\JsObject(['title' => trim($data->p['title'])] + $data->p); }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
     // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
-    function notes__beforeUpdate($patch, $existing) { return match ($patch['title'] ?? null) { 'steal uid' => $patch + ['uid' => 'zr_99999999999999999999'], 'drop it' => new \Zero\JsObject(), default => $patch }; }
+    function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \Zero\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
 
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
@@ -256,6 +256,11 @@ $leak = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as:
 isProblem('a stale write on a row the caller may update', $leak, 409, 'sync_stale');
 check('carries no current record for a caller who cannot pull', !array_key_exists('current', $leak[1]), $leak[1]);
 isProblem('trash needs the delete rule', req('POST', '/sync/notes/trash', ['uid' => $own['uid'], 'expect' => $mine['digest']], as: 'au'), 403, 'forbidden');
+
+$nulRow = $db->insert('notes', ['title' => 'NUL JSON', 'meta' => \Zero\Js::decodeJson('{"\\u0000":1}')], true)[0];
+$nul = pull('notes')[$nulRow['uid']];
+[$nulStatus, $nulResult] = req('POST', '/sync/notes', ['record' => $nul['record'], 'expect' => $nul['digest']]);
+eq('a NUL-key JSON record keeps its sent digest when echoed', [$nulStatus, $nulResult['status'] ?? null], [200, 'unchanged']);
 
 // ================================================================ paging and trash
 

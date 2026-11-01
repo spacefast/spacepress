@@ -43,17 +43,17 @@ $schema = [
 $functions = <<<'PHP'
     <?php
     namespace ZeroApp;
-    function talks__beforeCreate(array $data): array
+    function talks__beforeCreate(\Zero\JsObject $data): \Zero\JsObject
     {
-        return ($data['title'] ?? '') === 'hooked' ? ['deck' => 999999] + $data : $data;
+        return ($data->p['title'] ?? '') === 'hooked' ? new \Zero\JsObject(['deck' => 999999] + $data->p) : $data;
     }
     /** A hook that pins the deck: deleting the file must not leave it dangling. */
-    function talks__beforeUpdate(array $patch, array $existing): array
+    function talks__beforeUpdate(\Zero\JsObject $patch, \Zero\JsObject $existing): \Zero\JsObject
     {
         // 'pinned' keeps deck on every update; 'restore' puts deck back while backup is being nulled.
         return match (true) {
-            $existing['title'] === 'pinned' => ['deck' => $existing['deck']] + $patch,
-            $existing['title'] === 'restore' && array_key_exists('backup', $patch) => ['deck' => $existing['backup']] + $patch,
+            $existing->p['title'] === 'pinned' => new \Zero\JsObject(['deck' => $existing->p['deck']] + $patch->p),
+            $existing->p['title'] === 'restore' && array_key_exists('backup', $patch->p) => new \Zero\JsObject(['deck' => $existing->p['backup']] + $patch->p),
             default => $patch,
         };
     }

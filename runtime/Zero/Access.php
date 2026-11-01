@@ -36,7 +36,7 @@ final class Access
         return ['read' => $a['read'] ?? self::DEFAULT_READ, 'update' => $a['update'] ?? self::DEFAULT_WRITE];
     }
 
-    public static function evaluate(array $rule, Viewer $viewer, string $op, ?array $data = null): bool|array
+    public static function evaluate(array $rule, Viewer $viewer, string $op, ?array $data = null, ?array $dataShape = null, ?string $collection = null): bool|array
     {
         $user = $viewer->user;
         if (array_key_exists('allow', $rule)) {
@@ -54,10 +54,12 @@ final class Access
             };
         }
         if (isset($rule['fn'])) {
-            $fn = '\\ZeroApp\\' . $rule['fn'];
+            $slot = $rule['fn'];
+            $fn = is_string($slot) ? '\\ZeroApp\\' . $slot : $slot;
             $ctx = ['user' => $user, 'op' => $op, 'data' => $data];
-            $ctx = Seam::ctx($ctx);
+            $ctx = is_string($slot) ? Seam::ctx($ctx, $dataShape) : $ctx;
             $r = $fn($ctx);
+            if ($r instanceof JsObject || is_array($r)) { $r = $collection === null ? Seam::toPhp($r) : Seam::filter($collection, $r); }
             if (is_array($r)) {
                 return $r;
             }
@@ -82,9 +84,9 @@ final class Access
     }
 
     /** An access rule that is a plain boolean check (create, actions, globals, media): throw unless allowed. */
-    public static function require(array $rule, Viewer $viewer, string $op, ?array $data, string $what): void
+    public static function require(array $rule, Viewer $viewer, string $op, ?array $data, string $what, ?array $dataShape = null): void
     {
-        $r = self::evaluate($rule, $viewer, $op, $data);
+        $r = self::evaluate($rule, $viewer, $op, $data, $dataShape);
         if (is_array($r)) {
             throw new \LogicException("The $op rule for $what returned a filter; it must return a boolean");
         }

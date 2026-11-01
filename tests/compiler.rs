@@ -110,18 +110,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "global fields that are notNull need a default (`title`)",
         "zero.config.ts:3:38",
     );
-    // PHP decodes {} and "0".."n" keyed objects as lists, in a json() column or a json sub-field;
-    // group defaults are normalized against their fields and stay valid.
-    rejects(
-        "reject-json-list-shaped-default",
-        "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
-        "zero.config.ts:2:",
-    );
-    rejects(
-        "reject-json-list-shaped-object",
-        "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
-        "zero.config.ts:3:",
-    ); // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
+    // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
         "reject-default-timestamp",
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
@@ -993,16 +982,24 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
-            "const make = (value: number[]) => { value.push(1); return () => value.length; }; make([]); return true;",
-            "a captured mutating parameter needs an object with required fields",
+            "const root: { x: number | string } = { x: 1 }; const alias = root; if (typeof root.x === 'number') { alias.x = 'hi'; return root.x + 1 > 0; } return true;",
+            "is ambiguous",
         ),
         (
-            "for (const values of [[1]]) values.push(2); return true;",
-            "a mutating loop binding needs an object with required fields",
+            "const root: { child: { x: number | string } } = { child: { x: 1 } }; const alias = root.child; if (typeof root.child.x === 'number') { alias.x = 'hi'; return root.child.x + 1 > 0; } return true;",
+            "is ambiguous",
         ),
         (
-            "for (const { items } of [{ items: [1] }]) items.push(2); return true;",
-            "through a destructured loop binding",
+            "const root: { child: { x: number | string } } = { child: { x: 1 } }; const { child } = root; if (typeof root.child.x === 'number') { child.x = 'hi'; return root.child.x + 1 > 0; } return true;",
+            "is ambiguous",
+        ),
+        (
+            "const root: { x: number | string } = { x: 1 }; const change = () => { root.x = 'hi'; }; if (typeof root.x === 'number') { change(); return root.x + 1 > 0; } return true;",
+            "is ambiguous",
+        ),
+        (
+            "const check = (a: { x: number | string }, b: { x: number | string }) => { if (typeof a.x === 'number') { b.x = 'hi'; return a.x + 1 > 0; } return true; }; const root = { x: 1 }; return check(root, root);",
+            "is ambiguous",
         ),
         (
             "[1].map((value: 1) => value); return true;",
@@ -1014,7 +1011,7 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "const read = (value: number, index: number, extra: number) => value; [1].map(read); return true;",
-            "this parameter is declared as number, but it receives null",
+            "this parameter is declared as number, but it receives number[]",
         ),
         (
             "'a'.replace('a', (match: string, offset: 'zero') => offset); return true;",
@@ -1069,14 +1066,6 @@ fn rejects_phase2_static_contracts() {
             "field rules must return a boolean on every path",
         ),
         (
-            "const a = { inner: { count: 0 } }; const mutate = ({ inner }: { inner: { count: number } }) => { inner.count++; }; mutate(a); return true;",
-            "through a destructured parameter",
-        ),
-        (
-            "let a = { count: 0 }; const mutate = (v: { count: number }, extra: number[]) => { v.count++; }; const reset = () => { a = { count: 9 }; return []; }; mutate(a, reset()); return true;",
-            "a later argument replaces an object or array",
-        ),
-        (
             "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; value = null; switch (read()) { case 'a': case 'b': return true; }",
             "field rules must return a boolean on every path",
         ),
@@ -1091,10 +1080,6 @@ fn rejects_phase2_static_contracts() {
         (
             "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; function clear(value: { inner: { count: number } | null }) { value.inner = null; } if (record.inner !== null) { clear(record); record.inner.count = 1; } return true;",
             "object might be null",
-        ),
-        (
-            "const a = { count: 0 }; const reset = (v: { count: number }) => { if (v.count < 0) v.count++; v = { count: 9 }; }; reset(a); return true;",
-            "this parameter also shares member mutations",
         ),
         (
             "let value: 0 | 1 = 1; const read = () => value; value++; switch (read()) { case 0: case 1: return true; }",
@@ -1334,43 +1319,43 @@ fn phase2_schema_and_closures_match_the_contract() {
         $schema = $db->schema();
         $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
-        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read']);
-        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read']);
-        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read']);
+        $private = $fn(\Zero\Seam::ctx(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $public = $fn(\Zero\Seam::ctx(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $authenticated = $fn(\Zero\Seam::ctx(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read'], ['label' => ['type' => 'text']]));
         $fieldThrows = false;
         try {
-            $fn(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read']);
+            $fn(\Zero\Seam::ctx(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
         } catch (\Zero\JsError $error) {
             $fieldThrows = $error->getMessage() === 'denied';
         }
         $action = $schema->action('inbound');
         $fn = '\\ZeroApp\\' . $action['handler'];
         $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor']];
-        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
+        $actionAllowed = $fn(\Zero\Seam::toJs(\Zero\Schema::validateInput($action['input'], []), $action['input']), \Zero\Seam::ctx($actor));
         $actionThrows = false;
         try {
-            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $actor);
+            $fn(\Zero\Seam::toJs(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $action['input']), \Zero\Seam::ctx($actor));
         } catch (\Zero\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
         $fn = '\\ZeroApp\\' . $schema->action('widened')['handler'];
-        $widened = $fn([]);
+        $widened = $fn(new \Zero\JsObject());
         // Ordinary array mutation/reduction results belong to the differential
         // owner; this fixture retains their generated-client type proof.
-        unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
+        foreach (['values', 'choice', 'nested', 'reduced', 'reducedNested'] as $key) { unset($widened->p[$key]); }
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
-        $subscriberUpdate = $fn(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']]);
+        $update = $fn(\Zero\Seam::ctx(['data' => [], 'op' => 'update'] + $actor, []));
+        $subscriberUpdate = $fn(\Zero\Seam::ctx(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']], []));
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
-        $bucketGuest = $fn(['user' => null, 'op' => 'create']);
+        $bucketGuest = $fn(\Zero\Seam::ctx(['user' => null, 'op' => 'create']));
         $job = $schema->jobs()['sendWelcome'];
         $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
         $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
-        $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
+        $db->transaction(static fn () => $fn(\Zero\Seam::toJs($input, $job['input']), \Zero\Seam::ctx($ctx)));
+        echo \Zero\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
         &serde_json::Value::Null,
     );

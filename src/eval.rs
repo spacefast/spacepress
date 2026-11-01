@@ -156,6 +156,7 @@ pub const GLOBALS: &[&str] = &[
     "Array",
     "JSON",
     "String",
+    "structuredClone",
     "Number",
     "Boolean",
     "parseInt",

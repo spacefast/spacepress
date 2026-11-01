@@ -16,6 +16,10 @@ require __DIR__ . '/../../runtime/Zero/bootstrap.php';
 
 use Zero\Js;
 use Zero\JsError;
+use Zero\JsArray;
+use Zero\JsObject;
+
+function jsValue(mixed $value): mixed { return \Zero\Seam::toJs($value, ['type' => 'json']); }
 
 // Other WordPress plugins may change this setting; Zero strings remain UTF-8.
 mb_internal_encoding('ISO-8859-1');
@@ -43,8 +47,8 @@ $cases = [
     ['(() => { let i = 2 ** 53; const old = i++; const pre = ++i; return [old, pre, i, i + 1 === i]; })()', function () { $i = 2 ** 53; $old = Js::postStep($i, 1); $pre = Js::preStep($i, 1); return [$old, $pre, $i, Js::n($i + 1) === $i]; }],
     ['String(100 / 3)', fn () => Js::numStr(100 / 3)],
     ['String(NaN) + String(-Infinity)', fn () => Js::numStr(NAN) . Js::numStr(-INF)],
-    ['String([1, [2, null], "a", true])', fn () => Js::str([1, [2, null], 'a', true])],
-    ['String({a: 1}) + String(null)', fn () => Js::str(['a' => 1]) . Js::str(null)],
+    ['String([1, [2, null], "a", true])', fn () => Js::str(jsValue([1, [2, null], 'a', true]))],
+    ['String({a: 1}) + String(null)', fn () => Js::str(jsValue(['a' => 1])) . Js::str(null)],
     ['String(/a\/b/gi)', fn () => Js::str($re('a\/b', 'ig'))],
 
     // ---- toNumber / parseInt / parseFloat
@@ -52,13 +56,13 @@ $cases = [
         fn () => array_map(Js::toNumber(...), ['', '  12  ', "\u{a0}\n 4.5e1 \u{2028}", '.5', '5.', '-0', '+.5e-2'])],
     ['["0x1F", "0b101", "0o17", "0X1f", "-0x10", "0x", "1_000", "12px", "Infinity", "-Infinity", "infinity", "1e400"].map(Number)',
         fn () => array_map(Js::toNumber(...), ['0x1F', '0b101', '0o17', '0X1f', '-0x10', '0x', '1_000', '12px', 'Infinity', '-Infinity', 'infinity', '1e400'])],
-    ['[null, true, false, [], [7], [1, 2]].map(Number)', fn () => array_map(Js::toNumber(...), [null, true, false, [], [7], [1, 2]])],
+    ['[null, true, false, [], [7], [1, 2]].map(Number)', fn () => array_map(fn ($v) => Js::toNumber(jsValue($v)), [null, true, false, [], [7], [1, 2]])],
     ['["08", "0x1F", "  -42px", "1e3", "", "-0", "9007199254740993", "123456789012345678901234567890", "+-1"].map(s => parseInt(s))',
         fn () => array_map(fn ($s) => Js::parseInt($s), ['08', '0x1F', '  -42px', '1e3', '', '-0', '9007199254740993', '123456789012345678901234567890', '+-1'])],
     ['["9007199254740993", "-9007199254740993", "9007199254740992", "0x20000000000001", "0o400000000000000001", "0b100000000000000000000000000000000000000000000000000001"].map(Number).map((n) => n - 1)',
         fn () => array_map(fn ($s) => Js::n(Js::toNumber($s) - 1), ['9007199254740993', '-9007199254740993', '9007199254740992', '0x20000000000001', '0o400000000000000001', '0b100000000000000000000000000000000000000000000000000001'])],
     ['(() => { const v = JSON.parse(\'{"n":9007199254740993,"l":[-9007199254740995,3]}\'); return [v.n - 1, v.l[0] + 1, v.l[1] + 1]; })()',
-        function () { $v = Js::jsonParse('{"n":9007199254740993,"l":[-9007199254740995,3]}'); return [Js::n($v['n'] - 1), Js::n($v['l'][0] + 1), Js::n($v['l'][1] + 1)]; }],
+        function () { $v = Js::jsonParse('{"n":9007199254740993,"l":[-9007199254740995,3]}'); return [Js::n($v->p['n'] - 1), Js::n($v->p['l']->a[0] + 1), Js::n($v->p['l']->a[1] + 1)]; }],
     ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 10 ** -2, 2 ** 0.5, 1 ** Infinity, (-1) ** -Infinity, 2 ** Infinity, 1 ** NaN]',
         fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(10, -2), Js::pow(2, 0.5), Js::pow(1, INF), Js::pow(-1, -INF), Js::pow(2, INF), Js::pow(1, NAN)]],
     ['[parseInt("ff", 16), parseInt("0xff", 16), parseInt("0xff", 10), parseInt("102", 2), parseInt("z", 36), parseInt("1", 37), parseInt("10", 0), parseInt("10", 4.9), parseInt("10", -1)]',
@@ -145,30 +149,30 @@ $cases = [
     ['new RegExp("(", "")', fn () => $re('(', '')],
 
     // ---- sort / arrays
-    ['[10, 9, 1].sort()', function () { $a = [10, 9, 1]; Js::sort($a); return $a; }],
-    ['["b", "a", 10, 9, true, null, "B", "｡", "🙂"].sort()', function () { $a = ['b', 'a', 10, 9, true, null, 'B', "\u{ff61}", '🙂']; Js::sort($a); return $a; }],
+    ['[10, 9, 1].sort()', function () { $a = jsValue([10, 9, 1]); Js::sort($a); return $a; }],
+    ['["b", "a", 10, 9, true, null, "B", "｡", "🙂"].sort()', function () { $a = jsValue(['b', 'a', 10, 9, true, null, 'B', "\u{ff61}", '🙂']); Js::sort($a); return $a; }],
     ['[[3, 1, 2].sort((a, b) => b - a), [0.3, 0.1, 0.2].sort((a, b) => a - b), [{k: 1, i: 0}, {k: 0, i: 1}, {k: 1, i: 2}, {k: 0, i: 3}].sort((a, b) => a.k - b.k).map(o => o.i)]',
-        fn () => [Js::sorted([3, 1, 2], fn ($a, $b) => $b - $a), Js::sorted([0.3, 0.1, 0.2], fn ($a, $b) => $a - $b), array_column(Js::sorted([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]], fn ($a, $b) => $a['k'] - $b['k']), 'i')]],
+        fn () => [Js::sorted(jsValue([3, 1, 2]), fn ($a, $b) => $b - $a), Js::sorted(jsValue([0.3, 0.1, 0.2]), fn ($a, $b) => $a - $b), Js::map(Js::sorted(jsValue([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]]), fn ($a, $b) => $a->p['k'] - $b->p['k']), fn ($row) => $row->p['i'])]],
     ['(() => { const a = [1, 2, 3, 4, 5]; const r = a.splice(-2, 1, "x", "y"); return [a, r, a.slice(-2), a.slice(1, -10), a.at(-1), a.at(9)]; })()',
-        function () { $a = [1, 2, 3, 4, 5]; $r = Js::splice($a, -2, 1, 'x', 'y'); return [$a, $r, Js::arrSlice($a, -2), Js::arrSlice($a, 1, -10), Js::arrAt($a, -1), Js::arrAt($a, 9)]; }],
+        function () { $a = jsValue([1, 2, 3, 4, 5]); $r = Js::splice($a, -2, 1, 'x', 'y'); return [$a, $r, Js::arrSlice($a, -2), Js::arrSlice($a, 1, -10), Js::arrAt($a, -1), Js::arrAt($a, 9)]; }],
     ['(() => { const a = [1, 2, 3]; a.splice(1); const b = [1, 2, 3, 4]; b.fill(0, -3, -1); const c = [1, 2]; c.reverse(); return [a, b, c]; })()',
-        function () { $a = [1, 2, 3]; Js::splice($a, 1); $b = [1, 2, 3, 4]; Js::fill($b, 0, -3, -1); $c = [1, 2]; Js::reverse($c); return [$a, $b, $c]; }],
+        function () { $a = jsValue([1, 2, 3]); Js::splice($a, 1); $b = jsValue([1, 2, 3, 4]); Js::fill($b, 0, -3, -1); $c = jsValue([1, 2]); Js::reverse($c); return [$a, $b, $c]; }],
     ['[[NaN].includes(NaN), [NaN].indexOf(NaN), [1, 2, 1].lastIndexOf(1), [0].includes(-0), [1, "1"].indexOf("1"), [1, 2, 3].indexOf(1, -2)]',
-        fn () => [Js::includes([NAN], NAN), Js::indexOf([NAN], NAN), Js::lastIndexOf([1, 2, 1], 1), Js::includes([0], -0.0), Js::indexOf([1, '1'], '1'), Js::indexOf([1, 2, 3], 1, -2)]],
+        fn () => [Js::includes(jsValue([NAN]), NAN), Js::indexOf(jsValue([NAN]), NAN), Js::lastIndexOf(jsValue([1, 2, 1]), 1), Js::includes(jsValue([0]), -0.0), Js::indexOf(jsValue([1, '1']), '1'), Js::indexOf(jsValue([1, 2, 3]), 1, -2)]],
     ['[[1, [2, [3, [4]]]].flat(), [1, [2, [3, [4]]]].flat(Infinity), [1, 2].flatMap(x => [x, [x * 10]]), [null, 1, "a"].join("-"), [[1, 2], [3]].join(";")]',
-        fn () => [Js::flat([1, [2, [3, [4]]]]), Js::flat([1, [2, [3, [4]]]], INF), Js::flatMap([1, 2], fn ($x) => [$x, [$x * 10]]), Js::join([null, 1, 'a'], '-'), Js::join([[1, 2], [3]], ';')]],
+        fn () => [Js::flat(jsValue([1, [2, [3, [4]]]])), Js::flat(jsValue([1, [2, [3, [4]]]]), INF), Js::flatMap(jsValue([1, 2]), fn ($x) => jsValue([$x, [$x * 10]])), Js::join(jsValue([null, 1, 'a']), '-'), Js::join(jsValue([[1, 2], [3]]), ';')]],
     ['[[1, 2, 3].reduce((a, b) => a + b), [].reduce((a, b) => a + b, "init"), [5, 6].map((x, i) => x * i), [0, 1, "", "x"].filter(x => x), [1, 2, 3].findLast(x => x < 3), [1, 2].findIndex(x => x > 5), [].every(x => false), [1].some(x => x)]',
-        fn () => [Js::reduce([1, 2, 3], fn ($a, $b) => $a + $b), Js::reduce([], fn ($a, $b) => $a + $b, 'init'), Js::map([5, 6], fn ($x, $i) => $x * $i), Js::filter([0, 1, '', 'x'], fn ($x) => $x), Js::findLast([1, 2, 3], fn ($x) => $x < 3), Js::findIndex([1, 2], fn ($x) => $x > 5), Js::every([], fn ($x) => false), Js::some([1], fn ($x) => $x)]],
-    ['[].reduce((a, b) => a + b)', fn () => Js::reduce([], fn ($a, $b) => $a + $b)],
+        fn () => [Js::reduce(jsValue([1, 2, 3]), fn ($a, $b) => $a + $b), Js::reduce(jsValue([]), fn ($a, $b) => $a + $b, 'init'), Js::map(jsValue([5, 6]), fn ($x, $i) => $x * $i), Js::filter(jsValue([0, 1, '', 'x']), fn ($x) => $x), Js::findLast(jsValue([1, 2, 3]), fn ($x) => $x < 3), Js::findIndex(jsValue([1, 2]), fn ($x) => $x > 5), Js::every(jsValue([]), fn ($x) => false), Js::some(jsValue([1]), fn ($x) => $x)]],
+    ['[].reduce((a, b) => a + b)', fn () => Js::reduce(jsValue([]), fn ($a, $b) => $a + $b)],
     ['[Math.max(), Math.min(), Math.max(1, NaN, 3), Math.max(-0, 0), Math.min(0, -0), Math.max(2, 7.5, 3)]',
         fn () => [Js::max(), Js::min(), Js::max(1, NAN, 3), Js::max(-0.0, 0), Js::min(0, -0.0), Js::max(2, 7.5, 3)]],
-    ['Array.from({length: 3}, (_, i) => i * i)', fn () => Js::range(3, fn ($i) => $i * $i)],
+    ['Array.from({length: 3}, (_, i) => i * i)', fn () => Js::range(3, fn ($_, $i) => $i * $i)],
 
     // ---- objects
     ['(() => { const o = {b: 1, 2: "two", a: [1], 1: "one"}; return [Object.keys(o), Object.values(o), Object.entries(o)]; })()',
-        function () { $o = ['b' => 1, 2 => 'two', 'a' => [1], 1 => 'one']; return [Js::keys($o), Js::values($o), Js::entries($o)]; }],
-    ['(() => { const {a, ...rest} = {a: 1, b: 2, c: 3}; return [rest, Object.fromEntries([["x", 1], ["y", [2]]]), Object.hasOwn({k: null}, "k")]; })()',
-        fn () => [Js::omit(['a' => 1, 'b' => 2, 'c' => 3], ['a']), Js::fromEntries([['x', 1], ['y', [2]]]), Js::hasOwn(['k' => null], 'k')]],
+        function () { $o = jsValue(['b' => 1, 2 => 'two', 'a' => [1], 1 => 'one']); return [Js::keys($o), Js::values($o), Js::entries($o)]; }],
+    ['(() => { const {a, ...rest} = {a: 1, b: 2, c: 3}; return [rest, Object.fromEntries([["x", 1], ["y", [2]]]), Object.hasOwn({k: null}, "k"), Object.hasOwn([1], "length"), Object.hasOwn([1], "0"), Object.hasOwn([1], "1")]; })()',
+        fn () => [Js::omit(jsValue(['a' => 1, 'b' => 2, 'c' => 3]), ['a']), Js::fromEntries(jsValue([['x', 1], ['y', [2]]])), Js::hasOwn(jsValue(['k' => null]), 'k'), Js::hasOwn(new JsArray([1]), 'length'), Js::hasOwn(new JsArray([1]), '0'), Js::hasOwn(new JsArray([1]), '1')]],
 
     // ---- JSON
     ['JSON.stringify({a: [1, {b: 2}], c: "x/é \"", d: 1.0, e: NaN, f: -0, g: [], h: 1e21, i: () => 1, j: [() => 1, Infinity]}, null, 2)',
@@ -191,6 +195,76 @@ $cases = [
         fn () => array_map(Js::iso(...), [0, -1, 1e12, 8.64e15, -8.64e15, -62198755200000, 253402300800000])],
     ['new Date(NaN).toISOString()', fn () => Js::iso(NAN)],
 ];
+
+$deviations = [
+    ['String(undefined): undefined is null in the value model', fn () => Js::str(null), 'null'],
+    ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
+    ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
+    ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
+];
+
+// Each fixed-length helper owns a separate shrink/growth row because its walk can fail independently.
+$walks = ['map', 'filter', 'forEach', 'some', 'every', 'reduce', 'flatMap', 'find', 'findIndex', 'findLast', 'findLastIndex'];
+foreach ($walks as $method) {
+    $invoke = static fn (JsArray $a, callable $visit) => $method === 'reduce'
+        ? Js::reduce($a, static fn ($acc, $v, $i, $source) => $visit($v, $i, $source), 0)
+        : Js::$method($a, $visit);
+    $deviations[] = ["$method rejects a reached missing index", static function () use ($invoke, $method) {
+        $a = new JsArray([1, 2, 3]);
+        $first = true;
+        $invoke($a, static function ($v) use ($a, &$first, $method) {
+            if ($first) { Js::pop($a); Js::pop($a); $first = false; }
+            return $method === 'every';
+        });
+    }, ['$err' => 'RangeError']];
+    $jsCallback = $method === 'reduce' ? '(acc, v, i, source)' : '(v, i, source)';
+    $truth = $method === 'every' ? 'true' : 'false';
+    $extra = $method === 'reduce' ? ', 0' : '';
+    $cases[] = ["(() => { const a = [1,2,3]; const seen = []; const result = a.$method($jsCallback => { a.push(9); seen.push([v,i,source === a]); return $truth; }$extra); return [result ?? null, seen, a]; })()", static function () use ($method, $invoke) {
+        $a = new JsArray([1, 2, 3]); $seen = [];
+        $result = $invoke($a, static function ($v, $i, $source) use ($a, &$seen, $method) {
+            Js::push($a, 9); $seen[] = [$v, $i, $source === $a];
+            return $method === 'every';
+        });
+        return [$result, $seen, $a];
+    }];
+}
+$deviations[] = ['past-end writes reject sparse arrays', fn () => Js::setAt(new JsArray([1]), 2, 9), ['$err' => 'RangeError']];
+$deviations[] = ['compound index write rejects a sparse result', static function () {
+    $a = new JsArray(['a']); $old = Js::get($a, 2); return Js::setAt($a, 2, Js::str($old) . 'x');
+}, ['$err' => 'RangeError']];
+$deviations[] = ['index increment rejects a sparse result', static function () {
+    $a = new JsArray([1]); $old = Js::get($a, 5) ?? NAN; return Js::setAt($a, 5, Js::add($old, 1));
+}, ['$err' => 'RangeError']];
+$deviations[] = ['fractional writes reject named array properties', fn () => Js::setAt(new JsArray([1]), 0.5, 9), ['$err' => 'RangeError']];
+$cases[] = ['(() => { const a = [1,2]; return [a.map((v,i) => { if (i === 1) a.pop(); return v; }), a]; })()', static function () {
+    $a = new JsArray([1, 2]); $result = Js::map($a, static function ($v, $i) use ($a) { if ($i === 1) { Js::pop($a); } return $v; }); return [$result, $a];
+}];
+$cases[] = ['(() => { const a = [1,2,3]; return a.some(v => { a.pop(); a.pop(); return true; }); })()', static function () {
+    $a = new JsArray([1, 2, 3]); return Js::some($a, static function () use ($a) { Js::pop($a); Js::pop($a); return true; });
+}];
+$cases[] = ['(() => { const a = [1,2,3]; return a.findLast(v => { a.pop(); return false; }) ?? null; })()', static function () {
+    $a = new JsArray([1, 2, 3]); return Js::findLast($a, static function () use ($a) { Js::pop($a); return false; });
+}];
+$cases[] = ['(() => { const a = [2,1]; let pushed = false; a.sort((x,y) => { if (!pushed) { a.push(9); pushed = true; } return x-y; }); return a; })()', static function () {
+    $a = new JsArray([2, 1]); $pushed = false;
+    return Js::sort($a, static function ($x, $y) use ($a, &$pushed) { if (!$pushed) { Js::push($a, 9); $pushed = true; } return $x - $y; });
+}];
+$cases[] = ['[Array.from("a🙂b"), [1,2].with(-1, 9), [1,2].toReversed()]', fn () => [Js::from('a🙂b'), Js::with(new JsArray([1, 2]), -1, 9), Js::toReversed(new JsArray([1, 2]))]];
+$cases[] = ['(() => { const a = [1]; const n = a.push(2); const x = a.pop(); const m = a.unshift(0); const y = a.shift(); return [n,x,m,y,a]; })()', static function () {
+    $a = new JsArray([1]); $n = Js::push($a, 2); $x = Js::pop($a); $m = Js::unshift($a, 0); $y = Js::shift($a); return [$n, $x, $m, $y, $a];
+}];
+
+
+$cases[] = ['(() => { const p = {x:1}; const a = [[p]]; const flat = a.flat(); flat[0].x = 2; return [flat, a]; })()', static function () {
+    $p = new JsObject(['x' => 1]); $a = new JsArray([new JsArray([$p])]); $flat = Js::flat($a); $flat->a[0]->p['x'] = 2; return [$flat, $a];
+}];
+$cases[] = ['(() => { const a = [3,1,2]; return [a.toSorted((x,y) => x-y), a.concat([4],5), a]; })()', static function () {
+    $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, static fn ($x, $y) => $x - $y), Js::concat($a, new JsArray([4]), 5), $a];
+}];
+$cases[] = ['(() => { const p = {x:1}; const copy = structuredClone([p,p]); copy[0].x = 2; return [copy[0] === copy[1], p.x, copy]; })()', static function () {
+    $p = new JsObject(['x' => 1]); $copy = Js::clone(new JsArray([$p, $p])); $copy->a[0]->p['x'] = 2; return [$copy->a[0] === $copy->a[1], $p->p['x'], $copy];
+}];
 
 // ---------------------------------------------------------------- run node once
 
@@ -225,6 +299,7 @@ if (!is_array($expected) || count($expected) !== count($cases)) {
 /** Typed comparison of a PHP value against a tagged JS value. Returns null when equal, else a reason. */
 function mismatch(mixed $actual, mixed $exp, string $path = ''): ?string
 {
+    if ($actual instanceof JsObject || $actual instanceof JsArray) { $actual = \Zero\Seam::container($actual); }
     $show = fn ($v) => is_float($v) ? sprintf('%.17g', $v) : var_export($v, true);
     if (is_array($exp) && isset($exp['$'])) {
         $special = ['NaN' => NAN, 'Infinity' => INF, '-Infinity' => -INF, '-0' => -0.0][$exp['$']];

@@ -19,6 +19,15 @@ const hookCtx = { user: null };
 for (const [name, a] of Object.entries(config.actions ?? {})) {
   await run(name, () => a.handler({}, hookCtx));
 }
+function* columns(fields, prefix = [], dataPath = []) {
+  for (const [name, b] of Object.entries(fields)) {
+    const key = [...prefix, name], path = [...dataPath, name];
+    yield { col: key.join("."), b, path };
+    const meta = b.$meta;
+    if (meta.fields) yield* columns(meta.fields, key, meta.kind === "repeater" ? [...path, 0] : path);
+    for (const [layout, children] of Object.entries(meta.layouts ?? {})) yield* columns(children, [...key, layout], [...path, 0]);
+  }
+}
 for (const c of Object.values(config.schema ?? {})) {
   for (const [op, rule] of Object.entries(c.options?.access ?? {})) {
     if (typeof rule !== "function") continue;
@@ -26,7 +35,7 @@ for (const c of Object.values(config.schema ?? {})) {
       await run(`access:${c.name}:${op}:${i}`, () => rule({ ...ctx, op }));
     }
   }
-  for (const [col, b] of Object.entries(c.cols)) {
+  for (const { col, b, path } of columns(c.cols)) {
     for (const [op, rule] of Object.entries(b.$meta?.access ?? {})) {
       if (typeof rule !== "function") continue;
       for (const [i, ctx] of (mod.FIELD_CTXS ?? []).entries()) {
@@ -36,7 +45,13 @@ for (const c of Object.values(config.schema ?? {})) {
     const v = b.$meta?.validate;
     if (!v) continue;
     for (const [i, value] of (mod.VALIDATE_VALUES?.[`${c.name}.${col}`] ?? []).entries()) {
-      await run(`validate:${c.name}:${col}:${i}`, () => v(value, mod.VALIDATE_CTX));
+      await run(`validate:${c.name}:${col}:${i}`, () => {
+        const ctx = structuredClone(mod.VALIDATE_CTX);
+        let container = ctx.data;
+        for (const key of path.slice(0, -1)) container = container[key];
+        container[path.at(-1)] = structuredClone(value);
+        return v(container[path.at(-1)], ctx);
+      });
     }
   }
 }

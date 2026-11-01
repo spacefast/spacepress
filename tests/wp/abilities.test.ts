@@ -55,6 +55,20 @@ test("wp zero abilities lists every operation of the app with schemas from schem
   assert.equal(text, readFileSync(fixture, "utf8"), "tests/wp/fixtures/abilities.json is stale; rerun with ZERO_UPDATE_FIXTURES=1");
 });
 
+test("abilities convert empty input, JSON inputs and function-valued results at the wire", async () => {
+  const empty = await runAbility("blog/refs-empty", {}, "editor");
+  assert.deepEqual([empty.status, empty.json], [200, {}]);
+  const wire = await runAbility("blog/refs-wire", {}, "editor");
+  assert.deepEqual([wire.status, wire.json], [200, { a: [null, null] }]);
+  for (const meta of [{}, { "1": 1, "0": 2 }, { "\u0000": 1 }]) {
+    const echo = await runAbility("blog/refs-echo", { meta }, "editor");
+    assert.deepEqual([echo.status, echo.json], [200, { meta }]);
+    assert.deepEqual(JSON.parse(wp("zero", "run", "blog/refs-echo", `--input=${JSON.stringify({ meta })}`, "--user=editor")).data, { meta });
+    const row = await runAbility("blog/events-create", { title: `Wire ${run}`, extra: meta }, "editor");
+    assert.deepEqual([row.status, row.json.extra], [200, meta]);
+  }
+});
+
 test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and annotations", async () => {
   // Every page: lanes keep adding collections to the shared test app, past one page of 100.
   const listed: any[] = [];

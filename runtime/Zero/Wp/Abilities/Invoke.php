@@ -49,8 +49,9 @@ final class Invoke
             return self::error($e); // a suspended account (§6.2)
         }
         try {
+            $input = \Zero\Seam::toPhp($input, $op['shape']);
             $data = isset($op['data']) ? ($op['data'])(self::object($input)) : null;
-            $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data) !== false;
+            $allowed = Access::evaluate($rule, $viewer, $ruleOp, $data, $op['dataShape'] ?? null) !== false;
         } catch (\Throwable) {
             return true;
         }
@@ -66,17 +67,19 @@ final class Invoke
             return new \WP_Error('zero_unavailable', $plugin === null ? 'No Zero app is active' : \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
         try {
-            $input = self::object(Register::sentInput($op['name'], $input)) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
+            $app = $plugin->app();
+            $input = self::object(\Zero\Seam::toPhp(Register::sentInput($op['name'], $input), $op['shape'])) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
             if (isset($op['run'])) {
-                return ($op['run'])($input);
+                return \Zero\Seam::toWire(($op['run'])($input));
             }
             if (Register::queryString()) {
                 self::requireTyped($op, $input);
             }
             [$method, $path, $query, $body] = ($op['call'])($input);
-            $data = $plugin->app()->invoke($method, $path, $query, $body, self::viewer());
+            if (is_array($body)) { $body = new \Zero\JsObject($body); }
+            $data = $app->invoke($method, $path, $query, $body, self::viewer());
 
-            return isset($op['result']) ? ($op['result'])($data) : $data;
+            return \Zero\Seam::toWire(isset($op['result']) ? ($op['result'])($data) : $data);
         } catch (\Throwable $e) {
             return self::error($e);
         }
@@ -140,6 +143,7 @@ final class Invoke
     /** An omitted input is `{}`; anything but an object is not an operation input. */
     public static function object(mixed $input): ?array
     {
+        if ($input instanceof \Zero\JsArray) { return null; }
         $input = \Zero\Seam::container($input);
 
         return $input === null || is_array($input) && ($input === [] || !array_is_list($input)) ? ($input ?? []) : null;

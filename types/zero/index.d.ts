@@ -939,8 +939,14 @@ export interface FieldAccessCtx {
 /** Scalar sibling conditions (eq/ne/in/isNull/isNotNull), ANDed; top-level OR supported. */
 export type SiblingFilter = Record<string, unknown>;
 
-export interface HookCtx {
+export interface HookCtx<TData = Record<string, unknown>> {
+  /** Before-hooks share their data or patch with this value. */
+  data?: TData;
   user: User | null;
+}
+
+export interface BeforeHookCtx<TData> extends HookCtx<TData> {
+  data: TData;
 }
 
 export interface AccessCtx<TData = Record<string, unknown>> {
@@ -995,10 +1001,10 @@ export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx:
  */
 export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `data` or return a replacement. */
-  beforeCreate?: (data: Insert<T>, ctx: HookCtx) => Awaitable<Insert<T> | void>;
+  beforeCreate?: (data: Insert<T>, ctx: BeforeHookCtx<Insert<T>>) => Awaitable<Insert<T> | void>;
   afterCreate?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** Mutate `patch` or return a replacement. */
-  beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: HookCtx) => Awaitable<Patch<T> | void>;
+  beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: BeforeHookCtx<Patch<T>>) => Awaitable<Patch<T> | void>;
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;

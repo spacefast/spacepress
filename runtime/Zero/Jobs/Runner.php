@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Zero\Jobs;
 
 use Zero\Js;
+use Zero\Schema;
 
 use function Zero\db;
 
@@ -54,9 +55,9 @@ final class Runner
             $spec = Jobs::spec((string) $locked['job']);
             // Exact integers (row ids), and `{}` stays an object in json() input fields.
             $input = Js::decodeJson((string) $locked['input'], 4096);
-            $input = \Zero\Seam::container($input);
+            $input = Schema::validateInput($spec['input'] ?? [], $input, '', null);
             $ctx = ['user' => null, 'attempt' => $attempt, 'jobId' => $id];
-            if (is_callable($spec['handler'])) {
+            if (!is_string($spec['handler'])) {
                 // Built-in jobs that only talk to the network (webhooks) run outside a transaction, so a
                 // slow endpoint never holds the database's write lock; only the bookkeeping is transactional.
                 ($spec['handler'])(is_array($input) ? $input : [], $ctx);

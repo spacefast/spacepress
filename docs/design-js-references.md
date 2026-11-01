@@ -1,6 +1,6 @@
 # Zero: JS reference semantics in compiled PHP
 
-Status: design, for review. No implementation yet. Zero is unreleased, so this
+Status: accepted. Implementation follows the three-step rollout in §8. Zero is unreleased, so this
 breaks the compiled-code contract without a migration.
 
 Scope: how compiled `zero.config.ts` code represents JS objects and arrays at
@@ -491,9 +491,12 @@ walks and are exempt from the guard: `sort` sorts a snapshot of `->a` with
 `usort` and writes it back over the original prefix, keeping any elements
 the comparator pushed past the original length (Node gives `[1, 2, 9]` for a
 comparator that pushes 9 once; replacing the whole array with the snapshot
-would drop it). Comparator invocation order is V8's business and the corpus
-has no case that depends on it (row 29 mutates an element's field, not the
-array).
+would drop it). Corpus rows 29 and 34 do observe which comparator argument
+is read or mutated. PHP's two-element sort calls the operands in the reverse
+order from V8; the helper calls the authored comparator with reversed
+operands and negates its comparison sign. This preserves ordering and matches
+those corpus observations. Beyond these cases, comparator invocation order
+remains engine-defined; comparators must not depend on a particular sequence.
 Pushes inside the callback are not visited (they are past `len`); writes to
 not-yet-visited indices are seen. `Array.from(arr, f)` and `for…of` use the
 iterator protocol instead: they continue while `i < count($a->a)` live, so
@@ -638,7 +641,9 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
   Paths through `Index` steps match any index. A refinement on a place whose
   alias set reaches a value that has escaped the function (passed to a call,
   stored into a container that itself escapes, captured by a closure,
-  returned) is dropped at the next call expression. Without this,
+  returned) is dropped at the next call expression that can execute user code
+or retain its arguments. Known built-ins that only read scalar/container values
+(e.g. `indexOf`) are not escape boundaries. Without this,
   `const alias = o; if (typeof o.x === "number") { alias.x = "hi"; return o.x + 1; }`
   would keep the numeric refinement on `o.x` and emit numeric addition where
   Node gives `"hi1"`. Aliases the runtime creates outside compiled code are
@@ -652,8 +657,10 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
   that enters a function from outside (a parameter the slot says nothing
   about, a value returned by a `db.*` call) is an **external root**, and a
   member write through any external root or escaped place drops every
-  refinement rooted in an external root; refinements on locals the function
-  built itself are untouched. The rule is conservative on purpose: a
+  descendant refinement rooted in an external root; it cannot replace the
+  receiver binding itself, so the receiver's non-null refinement survives.
+  Tuple and numeric widening from earlier mutations survives refinement
+  invalidation. Refinements on locals the function built itself are untouched. The rule is conservative on purpose: a
   refinement survives only on a place nothing else can reach, and a dropped
   refinement is a compile error at the use site, never a wrong program.
   Deleted from the module:

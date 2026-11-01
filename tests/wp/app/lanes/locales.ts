@@ -4,7 +4,7 @@
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
 // group) that also syncs with Markdown files (lane C), `phrases` an `editor: false` one (Zero's own
 // translationGroup column).
-import { collection, db, id, integer, richText, select, slug, text } from "zero";
+import { action, collection, db, id, integer, richText, select, slug, text } from "zero";
 
 export const tours = collection("tours", {
   id: id(),
@@ -28,7 +28,12 @@ export const phrases = collection("phrases", {
 export const schema = { tours, tourLog, phrases };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
-export const actions = {};
+export const actions = {
+  refsTranslations: action({ input: { id: integer().notNull() }, access: "editor", handler: async (input) => {
+    const row = await db.query.tours.findFirst({ where: { id: input.id }, locale: "*" });
+    return row ? Object.keys(row.translations).sort() : [];
+  } }),
+};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {
@@ -39,6 +44,7 @@ export const hooks = {
       if (existing.title.startsWith("Bump") && price != null) patch.price = price + 1;
     },
     async afterUpdate(row, previous, ctx) {
+      if (!Object.hasOwn(row.translations, row.locale)) throw new Error("translations missing in hook");
       await db.insert(tourLog).values({ tourId: row.id, entry: `${row.locale}:${row.price}${ctx.user ? " by " + ctx.user.name : ""}` });
     },
   },

@@ -35,7 +35,7 @@ final class Module
         if ($n === 1) {
             App::allow($method, ['GET', 'POST']);
             if ($method === 'GET') {
-                $opts = \Zero\Js::plain(App::listOptions($query)); // media has no json() columns
+                $opts = \Zero\Seam::toPhp(App::listOptions($query)); // media has no json() columns
                 if (isset($opts['with'])) {
                     throw HttpError::invalidQuery('media has no relations', '/with');
                 }

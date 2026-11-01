@@ -87,9 +87,9 @@ $schema['actions']['inboundHmac'] = $signed('hmac-sha256', 'x-hub-signature');
 $schema['actions']['inboundIdem'] = ['idempotent' => true] + $signed('zero', 'zero-signature');
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-    function action__inbound(array $input, $ctx)
+    function action__inbound(\Zero\JsObject $input, $ctx)
     {
-        return ['n' => $input['n'] ?? null, 'user' => $ctx['user']];
+        return ['n' => $input->p['n'] ?? null, 'user' => $ctx->p['user']];
     }
     PHP;
 

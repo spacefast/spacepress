@@ -60,6 +60,11 @@ test("a thrown error is located in the author's file when the author's and the s
   }
 });
 
+test("a stack frame naming a longer path that ends with the bundle's path is not the bundle's frame", async () => {
+  const result = await compileContent(fixture("decoy-frame.tsx"));
+  assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: fixture("decoy-frame.tsx"), line: 8, column: 17 }]);
+});
+
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
   const scratchRoot = mkdtempSync(path.join(tmpdir(), "zero-blocks-scratch-"));
   const before = process.env.TMPDIR;

@@ -82,6 +82,8 @@ function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scra
     const match = [bundleUrl, bundlePath].map((spelling) => {
       const at = line.indexOf(`${spelling}:`);
       if (at === -1) return null;
+      // The frame's file name starts after `at ` or `(`; a longer path that merely ends with ours is another file.
+      if (!/(?:^|\s|\()$/.test(line.slice(0, at))) return null;
       const position = /^(\d+):(\d+)\)?\s*$/.exec(line.slice(at + spelling.length + 1));
       return position ? { line: Number(position[1]), column: Number(position[2]) } : null;
     }).find((found) => found !== null);

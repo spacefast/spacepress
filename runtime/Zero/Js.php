@@ -236,11 +236,37 @@ final class Js
         return is_int($r) && ($r > 9007199254740992 || $r < -9007199254740992) ? (float) $r : $r;
     }
 
-    /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place through n() and returns the old value. */
+    /**
+     * Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers: each operand as the JS number it
+     * is (an exact int past ±2^53, read from storage or input, as the nearest double), then the
+     * result through n(). So arithmetic matches JS on every operand, while the operands themselves,
+     * and any id compiled code passes on, keep their exact stored value.
+     */
+    public static function add(int|float $a, int|float $b): int|float
+    {
+        return self::n(self::n($a) + self::n($b));
+    }
+
+    public static function sub(int|float $a, int|float $b): int|float
+    {
+        return self::n(self::n($a) - self::n($b));
+    }
+
+    public static function mul(int|float $a, int|float $b): int|float
+    {
+        return self::n(self::n($a) * self::n($b));
+    }
+
+    public static function neg(int|float $a): int|float
+    {
+        return -self::n($a);
+    }
+
+    /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
     public static function postStep(int|float &$x, int $step): int|float
     {
         $old = $x;
-        $x = self::n($x + $step);
+        $x = self::add($x, $step);
 
         return $old;
     }
@@ -248,7 +274,7 @@ final class Js
     /** Prefix `++x` / `--x`: the place is evaluated once (an index with side effects runs once). */
     public static function preStep(int|float &$x, int $step): int|float
     {
-        return $x = self::n($x + $step);
+        return $x = self::add($x, $step);
     }
 
     /**
@@ -264,6 +290,7 @@ final class Js
         if (is_nan((float) $b) || (is_infinite((float) $b) && abs($a) == 1)) {
             return NAN;
         }
+        [$a, $b] = [self::n($a), self::n($b)]; // operands as JS numbers, like add()
         if (is_int($a) && is_int($b) && $b >= 0) {
             $p = $a ** $b;
             if (is_int($p)) {

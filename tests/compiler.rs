@@ -1392,6 +1392,18 @@ fn rejects_phase2_static_contracts() {
             "const reader = (p: { child: { x: number } }) => { const q = p.child; return (_: number) => q.x; }; const o = { child: { x: 0 } }; return reader(o)((o.child.x = 1)) === 1;",
             "may be the same object or array as another value here",
         ),
+        (
+            "const a = [1, 2]; const r = a.map((e) => { a.reverse(); return e; }); return r[1] === 1;",
+            "changes the array `map` is walking",
+        ),
+        (
+            "return [{ x: 0 }].filter((e) => { e.x = 1; return true; })[0]!.x === 1;",
+            "`filter` passes each element to the callback as a copy",
+        ),
+        (
+            "const identity = (p: { x: number }) => p; const reader = (p: { x: number }) => { const q = identity(p); return () => q.x; }; const o = { x: 0 }; const f = reader(o); o.x = 1; return f() === 1;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

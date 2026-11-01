@@ -151,6 +151,10 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
 
 type Class = usize;
 
+/// Depth past which a write is treated as "somewhere below" (effects reports descendants writes
+/// with a huge depth). Every level walk stops here, or sooner once a level is empty.
+const MAX_DEPTH: usize = 64;
+
 /// Union-find over containers.
 #[derive(Default)]
 struct Uf {
@@ -332,20 +336,65 @@ impl Uf {
         }
     }
 
-    /// Whether a write `depth` member steps below a binding of class `c` lands in the container
-    /// of class `e` or in one `e` holds.
-    fn write_reaches(&mut self, c: Class, depth: usize, e: Class) -> bool {
-        let e = self.find(e);
-        let mut level = vec![self.find(c)];
+    /// Whether a write `depth` member steps below a binding of class `c` changes the container of
+    /// class `r` itself (not something it holds): the write's target level includes `r`.
+    fn write_lands_in(&mut self, c: Class, depth: usize, r: Class) -> bool {
+        let r = self.find(r);
+        let c = self.find(c);
+        if depth > MAX_DEPTH {
+            return self.overlap(c, r);
+        }
+        let mut level = vec![c];
+        let mut seen = HashSet::from([c]);
         for _ in 1..depth {
             let mut next = Vec::new();
             for h in level {
                 if let Some(i) = self.existing_interior(h) {
-                    next.push(i);
-                    for k in self.contents[i].clone() {
-                        next.push(self.find(k));
+                    for k in std::iter::once(i).chain(self.contents[i].clone()) {
+                        let k = self.find(k);
+                        if seen.insert(k) {
+                            next.push(k);
+                        }
                     }
                 }
+            }
+            if next.is_empty() {
+                return false;
+            }
+            level = next;
+        }
+        level.contains(&r)
+    }
+
+    /// Whether a write `depth` member steps below a binding of class `c` lands in the container
+    /// of class `e` or in one `e` holds.
+    fn write_reaches(&mut self, c: Class, depth: usize, e: Class) -> bool {
+        let e = self.find(e);
+        let c = self.find(c);
+        // An unbounded depth (a write somewhere among the descendants): any overlap counts.
+        if depth > MAX_DEPTH {
+            return self.overlap(c, e);
+        }
+        let mut level = vec![c];
+        let mut seen = HashSet::from([c]);
+        for _ in 1..depth {
+            let mut next = Vec::new();
+            for h in level {
+                if let Some(i) = self.existing_interior(h) {
+                    for k in std::iter::once(i).chain(self.contents[i].clone()) {
+                        let k = self.find(k);
+                        if seen.insert(k) {
+                            next.push(k);
+                        }
+                    }
+                }
+            }
+            if next.is_empty() {
+                // The write goes deeper than anything known here: it can only land in `e` if
+                // `e` overlaps something on the way down.
+                return seen
+                    .into_iter()
+                    .any(|t| t == e || self.reaches(e, t) || self.reaches(t, e));
             }
             level = next;
         }
@@ -369,19 +418,22 @@ impl Uf {
         if self.is_interior[c] {
             level.extend(self.contents[c].clone());
         }
-        for d in 0..depth.max(1) {
+        for d in 0..depth.clamp(1, MAX_DEPTH) {
             let mut next = Vec::new();
             for k in level {
                 let k = self.find(k);
                 if !path.insert(k) {
                     continue;
                 }
-                if d + 1 < depth.max(1)
+                if d + 1 < depth.clamp(1, MAX_DEPTH)
                     && let Some(i) = self.existing_interior(k)
                 {
                     next.push(i);
                     next.extend(self.contents[i].clone());
                 }
+            }
+            if next.is_empty() {
+                break;
             }
             level = next;
         }
@@ -793,8 +845,8 @@ impl Walk<'_, '_> {
         }
     }
 
-    /// Reading a member of a literal on the spot (`({ a, n: f() }).a`) observes it: whatever it
-    /// holds is seen there too.
+    /// Reading a member of a literal or a call result on the spot (`({ a, n: f() }).a`,
+    /// `list.filter(...)[0]`) observes it: whatever it holds is seen there too.
     fn read_through(&mut self, o: Option<Class>) {
         if let Some(o) = o {
             let c = self.uf.find(o);
@@ -1070,6 +1122,15 @@ impl Walk<'_, '_> {
         });
     }
 
+    /// Whether `e` is a call (through `as`, `!`, `await`): its result has no binding.
+    fn is_call(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Call { .. } => true,
+            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Await(x) | ExprKind::Chain(x) => Self::is_call(x),
+            _ => false,
+        }
+    }
+
     /// The reduce call `e` is (through `as`, `!`, `await`).
     fn reduce_call(e: &Expr) -> Option<&Expr> {
         match &e.kind {
@@ -1179,7 +1240,7 @@ impl Walk<'_, '_> {
             },
             ExprKind::Member { obj, .. } => {
                 let o = self.expr(obj);
-                if Self::builds_new(obj) {
+                if Self::builds_new(obj) || Self::is_call(obj) {
                     self.read_through(o);
                 }
                 Some(match o {
@@ -1189,7 +1250,7 @@ impl Walk<'_, '_> {
             }
             ExprKind::Index { obj, index, .. } => {
                 let o = self.expr(obj);
-                if Self::builds_new(obj) {
+                if Self::builds_new(obj) || Self::is_call(obj) {
                     self.read_through(o);
                 }
                 self.expr(index);
@@ -1501,6 +1562,35 @@ impl Walk<'_, '_> {
                 // into the receiver's elements by any other route (`a[0].x = 1`) is a change the
                 // copy doesn't see, though JS's parameter would. Refused when the callback reads
                 // its element at all (it has one).
+                // A write into the receiver itself while the method walks it (`a.reverse()`,
+                // `a.push(x)` inside `a.map(...)`): JS walks the live array, PHP a snapshot.
+                if let Some(r) = recv {
+                    let r = self.uf.find(r);
+                    for w in &mut self.writes[writes_before..] {
+                        if let Target::Binding(b, depth) = w.target
+                            && !self.callback_params.contains_key(&b)
+                            && let Some(c) = self.classes.get(&b).copied()
+                            && depth >= 1
+                            && self.uf.write_lands_in(c, depth, r)
+                        {
+                            w.target = Target::Outside;
+                            w.named_callback = Some(format!("{method}:receiver"));
+                        }
+                    }
+                    for (b, depth, span) in helper_writes.clone() {
+                        if let Some(c) = self.classes.get(&b).copied()
+                            && self.uf.write_lands_in(c, depth, r)
+                        {
+                            self.writes.push(Write {
+                                target: Target::Outside,
+                                name: "this call".to_string(),
+                                span,
+                                named_callback: Some(format!("{method}:helper")),
+                                call: None,
+                            });
+                        }
+                    }
+                }
                 if let Some(e) = element
                     && !params.is_empty()
                 {
@@ -1778,7 +1868,8 @@ impl Walk<'_, '_> {
     /// each level down to the written one, must be seen only through `c`.
     fn unsafe_below(&mut self, c: Class, depth: usize) -> bool {
         let mut level: Vec<(Class, Class)> = vec![(c, c)];
-        for _ in 1..depth {
+        let mut visited: HashSet<Class> = HashSet::from([self.uf.find(c)]);
+        for _ in 1..depth.min(MAX_DEPTH) {
             let mut next = Vec::new();
             for (holder, _) in level {
                 let Some(i) = self.uf.existing_interior(holder) else {
@@ -1788,10 +1879,12 @@ impl Walk<'_, '_> {
                 if i != holder && self.uf.seen_elsewhere(i, None, Some(holder)) {
                     return true;
                 }
-                next.push((i, holder));
+                if visited.insert(i) {
+                    next.push((i, holder));
+                }
                 for k in self.uf.contents[i].clone() {
                     let k = self.uf.find(k);
-                    if k != i {
+                    if k != i && visited.insert(k) {
                         next.push((k, holder));
                     }
                 }
@@ -1818,6 +1911,13 @@ impl Walk<'_, '_> {
     }
 
     fn reject(&self, w: &Write) -> Diag {
+        if let Some(method) = w.named_callback.as_deref().and_then(|m| m.strip_suffix(":receiver")) {
+            return Diag::new(
+                w.span,
+                format!("this changes the array `{method}` is walking: JS sees the change while it walks, compiled PHP walks a snapshot"),
+            )
+            .help("collect the changes and apply them after the call, or loop with an index");
+        }
         if let Some(method) = w.named_callback.as_deref().and_then(|m| m.strip_suffix(":helper")) {
             return Diag::new(
                 w.span,
@@ -1872,4 +1972,33 @@ pub(super) fn index_write(span: Span) -> Result<()> {
         "assigning to an array index can leave holes, which compiled PHP turns into an object",
         "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A container that holds itself (`o.self = o`), written "somewhere below" (the depth effects
+    /// reports for a write through a recursive call): every level walk ends, and the write is
+    /// judged by overlap. Run with a timeout; before the depth cap these walks didn't return.
+    #[test]
+    fn level_walks_end_on_cycles_and_unbounded_depths() {
+        let mut uf = Uf::default();
+        let o = uf.new_class();
+        let child = uf.new_class();
+        uf.store(o, child);
+        uf.store(child, o);
+        let unbounded = usize::MAX / 2;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let reaches = uf.write_reaches(o, unbounded, child);
+            let lands = uf.write_lands_in(o, unbounded, child);
+            let beyond = uf.seen_beyond(o, Span::NONE, None, unbounded, false);
+            tx.send((reaches, lands, beyond)).unwrap();
+        });
+        let (reaches, lands, _) = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("level walks must end on a cyclic interior");
+        assert!(reaches && lands, "a write anywhere below `o` may land in what it holds");
+    }
 }

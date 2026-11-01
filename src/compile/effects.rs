@@ -1283,6 +1283,26 @@ impl Graph {
                         seen_alias.insert(dest.binding, m);
                         aliases.push((dest.binding, m));
                     }
+                    // Passed to a helper that returns it (or part of it): the call's result in
+                    // this function is the same container.
+                    if src.binding == b && parameters.contains_key(&dest.binding) {
+                        let callee = parameters[&dest.binding];
+                        let returns = sinks
+                            .get(&dest.binding)
+                            .is_some_and(|ss| ss.iter().any(|(s, _)| matches!(s, Sink::Result(f) if *f == callee)));
+                        if returns {
+                            for (rd, _) in result_into.get(&callee).into_iter().flatten() {
+                                let local = self.bindings.get(&rd.binding) == Some(function)
+                                    || (!self.bindings.contains_key(&rd.binding)
+                                        && !parameters.contains_key(&rd.binding)
+                                        && !self.functions.contains_key(&rd.binding));
+                                if local && !seen_alias.contains_key(&rd.binding) {
+                                    seen_alias.insert(rd.binding, member);
+                                    aliases.push((rd.binding, member));
+                                }
+                            }
+                        }
+                    }
                 }
             }
             let escaping_capture = |b: &Span| {

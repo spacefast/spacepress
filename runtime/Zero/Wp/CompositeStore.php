@@ -27,7 +27,7 @@ final class CompositeStore implements Store
 
     public static function create(Schema $schema, Connection $db): self
     {
-        $dialect = Dialect::mysql($db->ciCollation());
+        $dialect = $db->sqlite() ? Dialect::mysqlOnSqlite() : Dialect::mysql($db->ciCollation());
         $tables = new WpTableStore($db, $schema, $dialect);
 
         return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, new WpUserStore($db, $schema, $dialect, $tables));

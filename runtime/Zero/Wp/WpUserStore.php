@@ -212,7 +212,7 @@ final class WpUserStore implements Store
                 $def['type'] === 'boolean' => new ColumnRef($v, $meta(self::META . $col), $v, 'scalar'),
                 // SCF's date/time pickers keep 'Y-m-d H:i:s' (UTC) and 'Ymd', as on posts (§3.5.1).
                 $def['type'] === 'timestamp' => new ColumnRef("CONCAT(REPLACE($v, ' ', 'T'), '.000Z')", $meta(self::META . $col), $v, 'scalar'),
-                $def['type'] === 'date' => new ColumnRef("DATE_FORMAT(STR_TO_DATE($v, '%Y%m%d'), '%Y-%m-%d')", $meta(self::META . $col), $v, 'scalar'),
+                $def['type'] === 'date' => new ColumnRef($this->dialect->isoDate($v), $meta(self::META . $col), $v, 'scalar'),
                 // Structured columns keep their storage form (§3.4), as custom tables do; no SCF field edits them.
                 default => new ColumnRef($v, $meta(self::META . $col), ColumnRef::kindFor($def['type']) === 'scalar' ? $v : '', ColumnRef::kindFor($def['type'])),
             };

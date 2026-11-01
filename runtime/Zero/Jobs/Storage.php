@@ -39,6 +39,12 @@ final class Storage
         return db()->store()->dialect()->name === 'mysql';
     }
 
+    /** A dedupe key, receipt scope or key as a parameter: a `VARBINARY` column's value, compared byte for byte. */
+    public static function bytes(string $value): string|\Zero\Wp\Bytes
+    {
+        return db()->store() instanceof \Zero\Wp\CompositeStore ? new \Zero\Wp\Bytes($value) : $value;
+    }
+
     /** ` FOR UPDATE` on MySQL; SQLite transactions already hold the write lock (BEGIN IMMEDIATE). */
     public static function forUpdate(): string
     {
@@ -54,7 +60,12 @@ final class Storage
     /** Rows changed by the previous statement on this connection (0 for an ignored insert). */
     public static function changes(): int
     {
-        return (int) self::run(self::mysql() ? 'SELECT ROW_COUNT() AS n' : 'SELECT changes() AS n')[0]['n'];
+        $store = db()->store();
+        if ($store instanceof \Zero\Wp\CompositeStore) {
+            return $store->db->changes();
+        }
+
+        return (int) self::run('SELECT changes() AS n')[0]['n'];
     }
 
     /** `UPDATE OR IGNORE` / `UPDATE IGNORE`: a unique conflict leaves the row unchanged instead of failing. */

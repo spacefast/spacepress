@@ -3,437 +3,309 @@
 declare(strict_types=1);
 
 /*
- * Db + write pipeline + migrations + HTTP + CLI, against a hand-written app root
- * in a temp dir (what `zero build` would emit), on a real SQLite file.
+ * Db + write pipeline + CLI + REST on WordPress, in-process (tests/php/wp.php): a hand-written app
+ * plugin (what `zero build` emits) on a fresh WordPress-on-SQLite site. The collections here are
+ * custom tables (`editor: false`); post-backed collections are proven by the blog suite and tests/wp.
  */
 
-use Zero\App;
 use Zero\HttpError;
 use Zero\JsError;
 
-$runtime = dirname(__DIR__, 2) . '/runtime';
-$root = sys_get_temp_dir() . '/zero-db-test-' . bin2hex(random_bytes(4));
+require __DIR__ . '/wp.php';
+require __DIR__ . '/harness.php';
 
 // ================================================================ fixture app
 
-$files = [
-    'public/index.php' => <<<'PHP'
-        <?php
-        declare(strict_types=1);
-        if (PHP_SAPI === 'cli-server' && is_file(__DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH)) && !str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '.php')) {
-            return false;
-        }
-        require __DIR__ . '/../zero/runtime/bootstrap.php';
-        \Zero\App::boot(dirname(__DIR__))->handleHttp();
-        PHP,
-    'zero/app/schema.php' => <<<'PHP'
-        <?php
-        declare(strict_types=1);
-        $now = ['now' => true];
-        $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
-        return [
-            'version' => 3, 'runtime' => '0.2',
-            'collections' => [
-                'locations' => [
-                    'primaryKey' => 'id',
-                    'columns' => [
-                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
-                        'name' => ['type' => 'text', 'notNull' => true, 'unique' => true],
-                        'code' => ['type' => 'text', 'notNull' => true],
-                        'kind' => ['type' => 'text', 'notNull' => true, 'enum' => ['shelf', 'bin'], 'default' => ['value' => 'shelf']],
-                        'active' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
-                        'meta' => ['type' => 'json'],
-                        'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
-                        // A function default between the two `now` defaults that moves the clock.
-                        'tick' => ['type' => 'text', 'default' => ['fn' => 'locations__tick']],
-                        'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]], 'default' => ['value' => []]],
-                        'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now],
-                    ],
-                    'relations' => [
-                        'items' => ['kind' => 'many', 'collection' => 'items', 'from' => 'id', 'to' => 'locationId'],
-                    ],
-                    'hooks' => ['beforeCreate' => 'locations__beforeCreate'],
-                    'beforeCreateFills' => ['code'],
-                    'access' => $open,
-                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
-                ],
-                'items' => [
-                    'primaryKey' => 'id',
-                    'columns' => [
-                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
-                        'name' => ['type' => 'text', 'notNull' => true],
-                        'qty' => ['type' => 'integer', 'notNull' => true, 'default' => ['value' => 1]],
-                        'price' => ['type' => 'real'],
-                        'seenAt' => ['type' => 'timestamp'],
-                        'bestBefore' => ['type' => 'date'],
-                        'locationId' => ['type' => 'integer', 'references' => ['collection' => 'locations', 'column' => 'id', 'onDelete' => 'cascade']],
-                    ],
-                    'relations' => [
-                        'location' => ['kind' => 'one', 'collection' => 'locations', 'from' => 'locationId', 'to' => 'id', 'optional' => true],
-                    ],
-                    'hooks' => ['beforeCreate' => 'items__beforeCreate', 'afterUpdate' => 'items__afterUpdate'],
-                    'access' => $open,
-                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
-                ],
-                'logs' => [
-                    'primaryKey' => 'id',
-                    'columns' => [
-                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
-                        'message' => ['type' => 'text', 'notNull' => true],
-                        'at' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
-                    ],
-                    'relations' => [],
-                    'hooks' => ['afterCreate' => 'logs__afterCreate'],
-                    'access' => $open,
-                    'api' => ['list' => true, 'get' => true, 'create' => false, 'update' => false, 'delete' => false],
-                ],
-                // ---- lane B: field access
-                'teams' => [
-                    'primaryKey' => 'id',
-                    'columns' => [
-                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
-                        'name' => ['type' => 'text', 'notNull' => true],
-                        'budget' => ['type' => 'integer', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]],
-                    ],
-                    'relations' => ['members' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'teamId']],
-                    'access' => $open,
-                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
-                ],
-                'profiles' => [
-                    'primaryKey' => 'id',
-                    'revisions' => true,
-                    'columns' => [
-                        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
-                        'name' => ['type' => 'text', 'notNull' => true],
-                        'email' => ['type' => 'email', 'access' => ['read' => ['role' => 'editor']]],
-                        'ownerId' => ['type' => 'integer'],
-                        'salary' => ['type' => 'integer', 'access' => ['read' => ['fn' => 'profiles__field__salary__read'], 'update' => ['role' => 'admin']]],
-                        'approved' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false], 'access' => ['create' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
-                        'notes' => ['type' => 'group', 'fields' => [
-                            'public' => ['type' => 'text'],
-                            'private' => ['type' => 'text', 'access' => ['read' => ['role' => 'editor']]],
-                            'flag' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
-                            'pinned' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
-                            'tag' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__notes__tag__create'], 'update' => ['fn' => 'profiles__field__notes__tag__update']]],
-                        ]],
-                        'blocks' => ['type' => 'blocks', 'layouts' => [
-                            'memo' => ['text' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]]],
-                            'link' => ['href' => ['type' => 'text']],
-                        ]],
-                        'mentorId' => ['type' => 'integer', 'access' => ['read' => ['role' => 'editor']]],
-                        'stamp' => ['type' => 'group', 'fields' => [
-                            'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
-                            'note' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__stamp__note__create']]],
-                        ]],
-                        'pairs' => ['type' => 'repeater', 'fields' => [
-                            'label' => ['type' => 'text'],
-                            'details' => ['type' => 'group', 'fields' => ['secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]]]],
-                        ]],
-                        'rounds' => ['type' => 'repeater', 'fields' => [
-                            'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
-                            'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__rounds__note__update']]],
-                        ]],
-                        'fixed' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => ['a' => ['type' => 'text'], 'b' => ['type' => 'text']]],
-                        'gated' => ['type' => 'group', 'fields' => [
-                            'gate' => ['type' => 'boolean', 'default' => ['value' => true], 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
-                            'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__gated__door__update']]],
-                        ]],
-                        'seeded' => ['type' => 'repeater', 'fields' => [
-                            'label' => ['type' => 'text'],
-                            'origin' => ['type' => 'text', 'default' => ['value' => 'api'], 'access' => ['create' => ['allow' => false], 'update' => ['allow' => false]]],
-                        ]],
-                        // door is declared before the group whose hidden value its rule reads.
-                        'vault' => ['type' => 'group', 'fields' => [
-                            'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__vault__door__update']]],
-                            'config' => ['type' => 'group', 'fields' => ['locked' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]]]],
-                        ]],
-                        'seen' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => [
-                            'x' => ['type' => 'text', 'access' => ['read' => ['fn' => 'profiles__field__seen__x__read']]],
-                        ]],
-                        // Hidden containers holding unwritable fields (round-11 review).
-                        'locker' => ['type' => 'group', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
-                            'pin' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
-                        ]],
-                        'diary' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
-                            'label' => ['type' => 'text'],
-                            'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
-                        ]],
-                        'entries' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
-                            'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
-                        ]],
-                        'cleared' => ['type' => 'boolean', 'access' => ['update' => ['fn' => 'profiles__field__cleared__update']]],
-                        'meta' => ['type' => 'json', 'access' => ['update' => ['allow' => false]]],
-                        'checks' => ['type' => 'repeater', 'fields' => [
-                            'open' => ['type' => 'boolean'],
-                            'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__checks__note__update']]],
-                        ]],
-                        'tasks' => ['type' => 'repeater', 'fields' => [
-                            'label' => ['type' => 'text'],
-                            'rate' => ['type' => 'integer', 'access' => ['update' => ['role' => 'editor']]],
-                            'secret' => ['type' => 'text', 'access' => ['read' => ['allow' => false], 'update' => ['allow' => true]]],
-                        ]],
-                        'teamId' => ['type' => 'integer', 'references' => ['collection' => 'teams', 'column' => 'id', 'onDelete' => 'set null']],
-                    ],
-                    'relations' => [
-                        'team' => ['kind' => 'one', 'collection' => 'teams', 'from' => 'teamId', 'to' => 'id', 'optional' => true],
-                        'mentor' => ['kind' => 'one', 'collection' => 'profiles', 'from' => 'mentorId', 'to' => 'id', 'optional' => true],
-                        'mentees' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'mentorId'],
-                    ],
-                    'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['fn' => 'profiles__access__update'], 'delete' => ['role' => 'editor']],
-                    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
-                ],
+$now = ['now' => true];
+$open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
+$schema = [
+    'name' => 'dbtest',
+    'collections' => [
+        'locations' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'name' => ['type' => 'text', 'notNull' => true, 'unique' => true],
+                'code' => ['type' => 'text', 'notNull' => true],
+                'kind' => ['type' => 'text', 'notNull' => true, 'enum' => ['shelf', 'bin'], 'default' => ['value' => 'shelf']],
+                'active' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
+                'meta' => ['type' => 'json'],
+                'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
+                // A function default between the two `now` defaults that moves the clock.
+                'tick' => ['type' => 'text', 'default' => ['fn' => 'locations__tick']],
+                'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]], 'default' => ['value' => []]],
+                'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now],
             ],
-            'actions' => [
-                'restock' => [
-                    'input' => [
-                        'itemId' => ['type' => 'integer', 'notNull' => true],
-                        'amount' => ['type' => 'integer', 'notNull' => true, 'default' => ['value' => 5]],
-                    ],
-                    'handler' => 'action__restock',
-                    'access' => ['role' => 'anyone'],
-                ],
+            'relations' => [
+                'items' => ['kind' => 'many', 'collection' => 'items', 'from' => 'id', 'to' => 'locationId'],
             ],
-        ];
-        PHP,
-    'zero/app/functions.php' => <<<'PHP'
-        <?php
-        declare(strict_types=1);
-        namespace ZeroApp;
-
-        use Zero\HttpError;
-        use Zero\JsError;
-        use Zero\Js;
-        use function Zero\db;
-
-        // Compiled from a hook that mutates its argument: by-reference, no return.
-        // Advances a pinned clock by a second while a row's defaults are being generated.
-        function locations__tick()
-        {
-            if (($pinned = getenv('ZERO_NOW')) !== false && $pinned !== '') {
-                putenv('ZERO_NOW=' . Js::iso(Js::now() + 1000));
-            }
-            return null;
-        }
-
-        function locations__beforeCreate(array &$data)
-        {
-            $data['name'] = Js::trim($data['name'] ?? null);
-            if ($data['name'] !== 'forget-code') {
-                $data['code'] = strtoupper(Js::slice($data['name'], 0, 3));
-            }
-        }
-
-        function items__beforeCreate($data)
-        {
-            if (!array_key_exists('name', $data)) {
-                throw new \LogicException('beforeCreate ran without a required field');
-            }
-            return [...$data, 'name' => ucfirst($data['name'])];
-        }
-
-        function items__afterUpdate($row, $previous)
-        {
-            db()->insert('logs', ['message' => "item {$row['id']} qty {$previous['qty']}->{$row['qty']}"]);
-            if ($row['qty'] < 0) {
-                throw new JsError('qty cannot go negative');
-            }
-        }
-
-        // Self-recursive: "loop:N" writes "loop:N-1" until 0.
-        function logs__afterCreate($row)
-        {
-            if (preg_match('/^loop:(\d+)$/', $row['message'], $m) && (int) $m[1] > 0) {
-                db()->insert('logs', ['message' => 'loop:' . ((int) $m[1] - 1)]);
-            }
-        }
-
-        // ---- lane B: field access. Owners and editors see the salary; owners update their own row.
-        function profiles__field__salary__read($ctx)
-        {
-            return $ctx['user'] !== null && ($ctx['user']['role'] === 'editor' || $ctx['user']['role'] === 'admin' || $ctx['data']['ownerId'] === $ctx['user']['id']);
-        }
-
-        // Sub-field rules see the enclosing item after its defaults.
-        function profiles__field__notes__tag__create($ctx)
-        {
-            return $ctx['data']['pinned'] === true;
-        }
-
-        function profiles__field__checks__note__update($ctx)
-        {
-            return ($ctx['data']['open'] ?? null) === true;
-        }
-
-        // Counts its calls: the value a rule saw must be the value stored, so it may run once per item.
-        function profiles__stamp__n__default()
-        {
-            return ++$GLOBALS['stampCalls'];
-        }
-
-        function profiles__field__rounds__note__update($ctx)
-        {
-            return $ctx['data']['n'] === 1;
-        }
-
-        function profiles__field__gated__door__update($ctx)
-        {
-            return $ctx['data']['gate'] === true;
-        }
-
-        function profiles__field__vault__door__update($ctx)
-        {
-            return ($ctx['data']['config']['locked'] ?? null) !== true;
-        }
-
-        function profiles__field__seen__x__read($ctx)
-        {
-            return $ctx['user'] !== null;
-        }
-
-        // Reads another column's incoming value: only a supplied notes.flag === false allows it.
-        function profiles__field__cleared__update($ctx)
-        {
-            return ($ctx['data']['notes']['flag'] ?? null) === false;
-        }
-
-        function profiles__field__stamp__note__create($ctx)
-        {
-            return $ctx['data']['n'] === 1;
-        }
-
-        // A tag may change only while the note stays pinned.
-        function profiles__field__notes__tag__update($ctx)
-        {
-            return ($ctx['data']['pinned'] ?? null) === true;
-        }
-
-        function profiles__access__update($ctx)
-        {
-            return in_array($ctx['user']['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx['user']['id'] ?? -1];
-        }
-
-        function action__restock($input)
-        {
-            $item = db()->findFirst('items', ['where' => ['id' => $input['itemId']]])
-                ?? throw new HttpError(404, 'not_found', 'No such item');
-            return db()->update('items', ['qty' => $item['qty'] + $input['amount']], ['id' => $item['id']], true)[0];
-        }
-        PHP,
-    'zero/app/migrations/0001_init.sql' => <<<'SQL'
-        CREATE TABLE "locations" (
-        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-        	"name" text NOT NULL,
-        	"code" text NOT NULL,
-        	"kind" text DEFAULT 'shelf' NOT NULL,
-        	"active" integer DEFAULT 1 NOT NULL,
-        	"meta" text,
-        	"createdAt" text NOT NULL,
-        	"tick" text,
-        	"audit" text,
-        	"updatedAt" text NOT NULL
-        );
-        --> statement-breakpoint
-        CREATE UNIQUE INDEX "locations_name_unique" ON "locations" ("name");
-        --> statement-breakpoint
-        CREATE TABLE "items" (
-        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-        	"name" text NOT NULL,
-        	"qty" integer DEFAULT 1 NOT NULL,
-        	"price" real,
-        	"seenAt" text,
-        	"bestBefore" text,
-        	"locationId" integer REFERENCES "locations"("id") ON DELETE cascade
-        );
-        --> statement-breakpoint
-        CREATE TABLE "logs" (
-        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-        	"message" text NOT NULL,
-        	"at" text NOT NULL
-        );
-        --> statement-breakpoint
-        CREATE TABLE "teams" (
-        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-        	"name" text NOT NULL,
-        	"budget" integer
-        );
-        --> statement-breakpoint
-        CREATE TABLE "profiles" (
-        	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-        	"name" text NOT NULL,
-        	"email" text,
-        	"ownerId" integer,
-        	"salary" integer,
-        	"approved" integer DEFAULT 0 NOT NULL,
-        	"notes" text,
-        	"blocks" text,
-        	"mentorId" integer,
-        	"stamp" text,
-        	"pairs" text,
-        	"rounds" text,
-        	"fixed" text,
-        	"gated" text,
-        	"seeded" text,
-        	"vault" text,
-        	"seen" text,
-        	"locker" text,
-        	"entries" text,
-        	"diary" text,
-        	"cleared" integer,
-        	"meta" text,
-        	"checks" text,
-        	"tasks" text,
-        	"teamId" integer REFERENCES "teams"("id") ON DELETE set null
-        );
-        SQL,
+            'hooks' => ['beforeCreate' => 'locations__beforeCreate'],
+            'beforeCreateFills' => ['code'],
+            'access' => $open,
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
+        'items' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'name' => ['type' => 'text', 'notNull' => true],
+                'qty' => ['type' => 'integer', 'notNull' => true, 'default' => ['value' => 1]],
+                'price' => ['type' => 'real'],
+                'seenAt' => ['type' => 'timestamp'],
+                'bestBefore' => ['type' => 'date'],
+                'locationId' => ['type' => 'integer', 'references' => ['collection' => 'locations', 'column' => 'id', 'onDelete' => 'cascade']],
+            ],
+            'relations' => [
+                'location' => ['kind' => 'one', 'collection' => 'locations', 'from' => 'locationId', 'to' => 'id', 'optional' => true],
+            ],
+            'hooks' => ['beforeCreate' => 'items__beforeCreate', 'afterUpdate' => 'items__afterUpdate'],
+            'access' => $open,
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
+        'logs' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'message' => ['type' => 'text', 'notNull' => true],
+                'at' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now],
+            ],
+            'relations' => [],
+            'hooks' => ['afterCreate' => 'logs__afterCreate'],
+            'access' => $open,
+            'api' => ['list' => true, 'get' => true, 'create' => false, 'update' => false, 'delete' => false],
+        ],
+        // ---- lane B: field access
+        'teams' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'name' => ['type' => 'text', 'notNull' => true],
+                'budget' => ['type' => 'integer', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]],
+            ],
+            'relations' => ['members' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'teamId']],
+            'access' => $open,
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
+        'profiles' => [
+            'primaryKey' => 'id',
+            'revisions' => true,
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'name' => ['type' => 'text', 'notNull' => true],
+                'email' => ['type' => 'email', 'access' => ['read' => ['role' => 'editor']]],
+                'ownerId' => ['type' => 'integer'],
+                'salary' => ['type' => 'integer', 'access' => ['read' => ['fn' => 'profiles__field__salary__read'], 'update' => ['role' => 'admin']]],
+                'approved' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false], 'access' => ['create' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                'notes' => ['type' => 'group', 'fields' => [
+                    'public' => ['type' => 'text'],
+                    'private' => ['type' => 'text', 'access' => ['read' => ['role' => 'editor']]],
+                    'flag' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                    'pinned' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => true]],
+                    'tag' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__notes__tag__create'], 'update' => ['fn' => 'profiles__field__notes__tag__update']]],
+                ]],
+                'blocks' => ['type' => 'blocks', 'layouts' => [
+                    'memo' => ['text' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]]],
+                    'link' => ['href' => ['type' => 'text']],
+                ]],
+                'mentorId' => ['type' => 'integer', 'access' => ['read' => ['role' => 'editor']]],
+                'stamp' => ['type' => 'group', 'fields' => [
+                    'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
+                    'note' => ['type' => 'text', 'access' => ['create' => ['fn' => 'profiles__field__stamp__note__create']]],
+                ]],
+                'pairs' => ['type' => 'repeater', 'fields' => [
+                    'label' => ['type' => 'text'],
+                    'details' => ['type' => 'group', 'fields' => ['secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]]]],
+                ]],
+                'rounds' => ['type' => 'repeater', 'fields' => [
+                    'n' => ['type' => 'integer', 'default' => ['fn' => 'profiles__stamp__n__default']],
+                    'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__rounds__note__update']]],
+                ]],
+                'fixed' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => ['a' => ['type' => 'text'], 'b' => ['type' => 'text']]],
+                'gated' => ['type' => 'group', 'fields' => [
+                    'gate' => ['type' => 'boolean', 'default' => ['value' => true], 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]],
+                    'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__gated__door__update']]],
+                ]],
+                'seeded' => ['type' => 'repeater', 'fields' => [
+                    'label' => ['type' => 'text'],
+                    'origin' => ['type' => 'text', 'default' => ['value' => 'api'], 'access' => ['create' => ['allow' => false], 'update' => ['allow' => false]]],
+                ]],
+                // door is declared before the group whose hidden value its rule reads.
+                'vault' => ['type' => 'group', 'fields' => [
+                    'door' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__vault__door__update']]],
+                    'config' => ['type' => 'group', 'fields' => ['locked' => ['type' => 'boolean', 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']]]]],
+                ]],
+                'seen' => ['type' => 'group', 'access' => ['update' => ['allow' => false]], 'fields' => [
+                    'x' => ['type' => 'text', 'access' => ['read' => ['fn' => 'profiles__field__seen__x__read']]],
+                ]],
+                // Hidden containers holding unwritable fields (round-11 review).
+                'locker' => ['type' => 'group', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                    'pin' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                ]],
+                'diary' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                    'label' => ['type' => 'text'],
+                    'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                ]],
+                'entries' => ['type' => 'repeater', 'access' => ['read' => ['role' => 'editor']], 'fields' => [
+                    'v' => ['type' => 'text', 'access' => ['update' => ['role' => 'editor']]],
+                ]],
+                'cleared' => ['type' => 'boolean', 'access' => ['update' => ['fn' => 'profiles__field__cleared__update']]],
+                'meta' => ['type' => 'json', 'access' => ['update' => ['allow' => false]]],
+                'checks' => ['type' => 'repeater', 'fields' => [
+                    'open' => ['type' => 'boolean'],
+                    'note' => ['type' => 'text', 'access' => ['update' => ['fn' => 'profiles__field__checks__note__update']]],
+                ]],
+                'tasks' => ['type' => 'repeater', 'fields' => [
+                    'label' => ['type' => 'text'],
+                    'rate' => ['type' => 'integer', 'access' => ['update' => ['role' => 'editor']]],
+                    'secret' => ['type' => 'text', 'access' => ['read' => ['allow' => false], 'update' => ['allow' => true]]],
+                ]],
+                'teamId' => ['type' => 'integer', 'references' => ['collection' => 'teams', 'column' => 'id', 'onDelete' => 'set null']],
+            ],
+            'relations' => [
+                'team' => ['kind' => 'one', 'collection' => 'teams', 'from' => 'teamId', 'to' => 'id', 'optional' => true],
+                'mentor' => ['kind' => 'one', 'collection' => 'profiles', 'from' => 'mentorId', 'to' => 'id', 'optional' => true],
+                'mentees' => ['kind' => 'many', 'collection' => 'profiles', 'from' => 'id', 'to' => 'mentorId'],
+            ],
+            'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['fn' => 'profiles__access__update'], 'delete' => ['role' => 'editor']],
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
+    ],
+    'actions' => [
+        'restock' => [
+            'input' => [
+                'itemId' => ['type' => 'integer', 'notNull' => true],
+                'amount' => ['type' => 'integer', 'notNull' => true, 'default' => ['value' => 5]],
+            ],
+            'handler' => 'action__restock',
+            'access' => ['role' => 'anyone'],
+        ],
+    ],
 ];
 
-// Rebuild-style migration on the parent table (what the compiler emits to add a column).
-$rebuild = <<<'SQL'
-    CREATE TABLE "__new_locations" (
-    	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-    	"name" text NOT NULL,
-    	"code" text NOT NULL,
-    	"kind" text DEFAULT 'shelf' NOT NULL,
-    	"active" integer DEFAULT 1 NOT NULL,
-    	"meta" text,
-    	"createdAt" text NOT NULL,
-    	"tick" text,
-    	"audit" text,
-    	"updatedAt" text NOT NULL,
-    	"note" text
-    );
-    --> statement-breakpoint
-    INSERT INTO "__new_locations"("id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "audit", "updatedAt") SELECT "id", "name", "code", "kind", "active", "meta", "createdAt", "tick", "audit", "updatedAt" FROM "locations";
-    --> statement-breakpoint
-    DROP TABLE "locations";
-    --> statement-breakpoint
-    ALTER TABLE "__new_locations" RENAME TO "locations";
-    --> statement-breakpoint
-    CREATE UNIQUE INDEX "locations_name_unique" ON "locations" ("name");
-    SQL;
+$functions = <<<'PHP'
+    use Zero\HttpError;
+    use Zero\JsError;
+    use Zero\Js;
+    use function Zero\db;
 
-require __DIR__ . '/blog_app.php';
-copyRuntime($root);
-foreach ($files as $rel => $content) {
-    @mkdir(dirname("$root/$rel"), 0777, true);
-    file_put_contents("$root/$rel", $content);
-}
-putenv('ZERO_DB_PATH'); // default path <root>/data/zero.sqlite, created on demand
-putenv('ZERO_AUTO_MIGRATE');
-ini_set('error_log', "$root/error.log"); // 5xx problems are logged by design; keep test output clean
-
-register_shutdown_function(static function () use ($root): void {
-    // A fatal error or an uncaught throwable ends the suite here: say so before the log goes with the
-    // temp dir, and fail the run (a bare exit 255 with no output says nothing).
-    $error = error_get_last();
-    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
-        fwrite(STDERR, "db_test died: {$error['message']} at {$error['file']}:{$error['line']}\n");
+    // Compiled from a hook that mutates its argument: by-reference, no return.
+    // Advances a pinned clock by a second while a row's defaults are being generated.
+    function locations__tick()
+    {
+        if (($pinned = getenv('ZERO_NOW')) !== false && $pinned !== '') {
+            putenv('ZERO_NOW=' . Js::iso(Js::now() + 1000));
+        }
+        return null;
     }
-    stopServer();
-    exec('rm -rf ' . escapeshellarg($root));
-});
 
-require __DIR__ . '/harness.php';
+    function locations__beforeCreate(array &$data)
+    {
+        $data['name'] = Js::trim($data['name'] ?? null);
+        if ($data['name'] !== 'forget-code') {
+            $data['code'] = strtoupper(Js::slice($data['name'], 0, 3));
+        }
+    }
+
+    function items__beforeCreate($data)
+    {
+        if (!array_key_exists('name', $data)) {
+            throw new \LogicException('beforeCreate ran without a required field');
+        }
+        return [...$data, 'name' => ucfirst($data['name'])];
+    }
+
+    function items__afterUpdate($row, $previous)
+    {
+        db()->insert('logs', ['message' => "item {$row['id']} qty {$previous['qty']}->{$row['qty']}"]);
+        if ($row['qty'] < 0) {
+            throw new JsError('qty cannot go negative');
+        }
+    }
+
+    // Self-recursive: "loop:N" writes "loop:N-1" until 0.
+    function logs__afterCreate($row)
+    {
+        if (preg_match('/^loop:(\d+)$/', $row['message'], $m) && (int) $m[1] > 0) {
+            db()->insert('logs', ['message' => 'loop:' . ((int) $m[1] - 1)]);
+        }
+    }
+
+    // ---- lane B: field access. Owners and editors see the salary; owners update their own row.
+    function profiles__field__salary__read($ctx)
+    {
+        return $ctx['user'] !== null && ($ctx['user']['role'] === 'editor' || $ctx['user']['role'] === 'admin' || $ctx['data']['ownerId'] === $ctx['user']['id']);
+    }
+
+    // Sub-field rules see the enclosing item after its defaults.
+    function profiles__field__notes__tag__create($ctx)
+    {
+        return $ctx['data']['pinned'] === true;
+    }
+
+    function profiles__field__checks__note__update($ctx)
+    {
+        return ($ctx['data']['open'] ?? null) === true;
+    }
+
+    // Counts its calls: the value a rule saw must be the value stored, so it may run once per item.
+    function profiles__stamp__n__default()
+    {
+        return ++$GLOBALS['stampCalls'];
+    }
+
+    function profiles__field__rounds__note__update($ctx)
+    {
+        return $ctx['data']['n'] === 1;
+    }
+
+    function profiles__field__gated__door__update($ctx)
+    {
+        return $ctx['data']['gate'] === true;
+    }
+
+    function profiles__field__vault__door__update($ctx)
+    {
+        return ($ctx['data']['config']['locked'] ?? null) !== true;
+    }
+
+    function profiles__field__seen__x__read($ctx)
+    {
+        return $ctx['user'] !== null;
+    }
+
+    // Reads another column's incoming value: only a supplied notes.flag === false allows it.
+    function profiles__field__cleared__update($ctx)
+    {
+        return ($ctx['data']['notes']['flag'] ?? null) === false;
+    }
+
+    function profiles__field__stamp__note__create($ctx)
+    {
+        return $ctx['data']['n'] === 1;
+    }
+
+    // A tag may change only while the note stays pinned.
+    function profiles__field__notes__tag__update($ctx)
+    {
+        return ($ctx['data']['pinned'] ?? null) === true;
+    }
+
+    function profiles__access__update($ctx)
+    {
+        return in_array($ctx['user']['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx['user']['id'] ?? -1];
+    }
+
+    function action__restock($input)
+    {
+        $item = db()->findFirst('items', ['where' => ['id' => $input['itemId']]])
+            ?? throw new HttpError(404, 'not_found', 'No such item');
+        return db()->update('items', ['qty' => $item['qty'] + $input['amount']], ['id' => $item['id']], true)[0];
+    }
+    PHP;
+
+$wp = wpSite('db', ['schema' => $schema, 'functions' => $functions, 'users' => ['fa_alice' => 'author', 'fa_bob' => 'author', 'fa_ed' => 'editor', 'fa_admin' => 'admin']]);
+$db = \Zero\db();
+$app = $wp->app();
 
 function names(array $rows): array
 {
@@ -442,24 +314,14 @@ function names(array $rows): array
 
 // ================================================================ boot + migrate
 
-require $root . '/zero/runtime/bootstrap.php';
-$previousSecret = getenv('ZERO_SECRET');
-putenv('ZERO_SECRET');
-$app = App::boot($root);
-$db = \Zero\db();
-$pdo = $app->store->pdo();
-check('boot creates data/zero.sqlite', is_file("$root/data/zero.sqlite"));
-$secret = file_get_contents("$root/data/secret");
-check('boot creates a private 32-byte signing key', preg_match('/^[0-9a-f]{64}$/D', $secret) === 1 && (fileperms("$root/data/secret") & 0777) === 0600);
-eq('reloading preserves the signing key', \Zero\Secret::load($root), $secret);
-putenv('ZERO_SECRET=deployment-signing-key');
-eq('deployment signing key overrides the persistent key', \Zero\Secret::load($root), 'deployment-signing-key');
-putenv($previousSecret === false ? 'ZERO_SECRET' : 'ZERO_SECRET=' . $previousSecret);
-eq('init migration recorded', $pdo->query('SELECT id FROM __zero_migrations')->fetchAll(PDO::FETCH_COLUMN), ['0001_init']);
-eq('foreign keys on after boot', (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn(), 1);
-eq('second migrate is a no-op', $app->migrate(), []);
+eq('activation applied the init migration and recorded it in the per-app ledger',
+    $wp->sql('SELECT `id` FROM {prefix}zero__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
+eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
+eq('the runtime describes its database as SQLite through the official plugin', \Zero\Wp\Platform::versions()['database']['kind'], 'sqlite');
+eq('platform problems accept SQLite Database Integration', \Zero\Wp\Platform::problems(), []);
 
 // ================================================================ write pipeline: create
+
 
 $tsPattern = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/';
 putenv('ZERO_NOW=2026-01-01T00:00:00.000Z');
@@ -470,7 +332,7 @@ eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['she
 eq('default now: one instant per write, nested defaults included, even when the clock moves between defaults',
     [$garage['createdAt'], $garage['updatedAt'], $garage['audit']['at'] ?? null], array_fill(0, 3, '2026-01-01T00:00:00.000Z'));
 eq('json column round-trips', $garage['meta'], ['floor' => 1, 'tags' => ['a/b', 'é']]);
-eq('json stored with unescaped slashes/unicode', $pdo->query('SELECT meta FROM locations')->fetchColumn(), '{"floor":1,"tags":["a/b","é"]}');
+eq('json stored with unescaped slashes/unicode', $wp->scalar('SELECT `meta` FROM {prefix}zero_locations WHERE `name` = ?', ['Garage']), '{"floor":1,"tags":["a/b","é"]}');
 
 [$attic, $basement] = $db->insert('locations', [
     ['name' => 'Attic', 'kind' => 'bin', 'active' => false, 'updatedAt' => '2000-01-01T00:00:00Z'],
@@ -511,6 +373,8 @@ problem('reference_violation names the column', fn () => $db->insert('items', ['
 
 // ================================================================ reads
 
+// ================================================================ reads
+
 $find = fn (array $opts, string $c = 'items') => $db->findMany($c, $opts);
 eq('gt + orderBy', names($find(['where' => ['qty' => ['gt' => 2]], 'orderBy' => ['name' => 'asc']])), ['Lamp', 'Nails']);
 eq('top-level OR', names($find(['where' => ['OR' => [['name' => 'Box'], ['qty' => ['gte' => 100]]]], 'orderBy' => ['id' => 'asc']])), ['Nails', 'Box']);
@@ -519,6 +383,16 @@ eq('in / notIn', [names($find(['where' => ['name' => ['in' => ['Lamp', 'Hammer']
 eq('empty in matches nothing', $find(['where' => ['id' => ['in' => []]]]), []);
 eq('like is case-sensitive, ilike is not', [names($find(['where' => ['name' => ['like' => 'ha%']]])), names($find(['where' => ['name' => ['ilike' => 'ha%']]]))], [[], ['Hammer']]);
 eq('notIlike', names($find(['where' => ['name' => ['notIlike' => '%A%']]])), ['Box']);
+$db->insert('items', [['name' => 'Été', 'qty' => 1], ['name' => 'ΟΔΥΣΣΕΥΣ', 'qty' => 1], ['name' => 'İ', 'qty' => 1]]);
+// Rows the items hook would reshape (it trims and capitalizes) go in as stored values.
+$wp->exec('INSERT INTO {prefix}zero_items (`name`, `qty`) VALUES (?, 1), (?, 1)', ["Hammer\n", 'abc\\']);
+eq('ilike folds case beyond ASCII', names($find(['where' => ['name' => ['ilike' => 'été']]])), ['Été']);
+eq('ilike folds a final sigma onto its capital', names($find(['where' => ['name' => ['ilike' => 'οδυσσευς']]])), ['ΟΔΥΣΣΕΥΣ']);
+eq('ilike `_` is one character, whatever its case folding expands to', names($find(['where' => ['name' => ['ilike' => '_']]])), ['İ']);
+eq('ilike matches the whole value: a trailing newline is not ignored', names($find(['where' => ['name' => ['ilike' => 'hammer']]])), ['Hammer']);
+eq('ilike keeps a trailing backslash as a literal', names($find(['where' => ['name' => ['ilike' => 'ABC\\']]])), ['abc\\']);
+eq('like is exact', names($find(['where' => ['name' => ['like' => 'été']]])), []);
+$db->delete('items', ['name' => ['in' => ['Été', 'ΟΔΥΣΣΕΥΣ', 'İ', "Hammer\n", 'abc\\']]]);
 eq('like escapes and _', names($find(['where' => ['name' => ['like' => '_ox']]])), ['Box']);
 eq('field-level OR + several operators ANDed', names($find(['where' => ['qty' => ['OR' => [['lt' => 3], ['gt' => 50]], 'ne' => 1], 'price' => ['isNotNull' => true]], 'orderBy' => ['id' => 'asc']])), ['Hammer', 'Nails']);
 eq('field-level NOT', names($find(['where' => ['qty' => ['NOT' => ['lte' => 3]]]])), ['Nails']);
@@ -555,6 +429,8 @@ problem('unknown orderBy column', fn () => $find(['orderBy' => ['nope' => 'asc']
 
 // ================================================================ update / delete / hooks
 
+// ================================================================ update / delete / hooks
+
 $updated = $db->update('locations', ['name' => 'Attic+'], ['id' => $attic['id']], true)[0];
 check('onUpdate now applied when absent from patch', $updated['updatedAt'] !== '2000-01-01T00:00:00.000Z' && preg_match($tsPattern, $updated['updatedAt']) === 1, $updated);
 eq('createdAt untouched by update', $updated['createdAt'], $attic['createdAt']);
@@ -574,16 +450,17 @@ check('JsError keeps its message', $e instanceof JsError && $e->getMessage() ===
 eq('transaction rolled back the update and the hook insert', [$db->findFirst('items', ['where' => ['id' => $hammer['id']]])['qty'], $logCount()], [5, $before]);
 
 // Callback effects use another connection: they must see committed rows, never uncommitted state.
-$observer = \Zero\Store\SqliteStore::connect("$root/data/zero.sqlite");
+$observer = new PDO('sqlite:' . DB_PATH);
+$items = $wp->connection()->prefix() . 'zero_items';
 $committed = [];
-$db->transaction(function () use ($db, $observer, &$committed) {
-    \Zero\Extensions::afterCommit(function () use ($observer, &$committed) {
-        $committed[] = 'outer:' . $observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn();
+$db->transaction(function () use ($db, $observer, $items, &$committed) {
+    \Zero\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
+        $committed[] = 'outer:' . (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn();
     });
-    $db->transaction(function () use ($db, $observer, &$committed) {
+    $db->transaction(function () use ($db, $observer, $items, &$committed) {
         $db->update('items', ['qty' => 6], ['name' => 'Hammer']);
-        \Zero\Extensions::afterCommit(function () use ($observer, &$committed) {
-            $committed[] = 'inner:' . $observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn();
+        \Zero\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
+            $committed[] = 'inner:' . (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn();
         });
     });
     eq('nested transaction defers callbacks until the outer commit', $committed, []);
@@ -599,17 +476,17 @@ problem('outer rollback discards callbacks registered by a nested write', functi
     });
 }, 422, 'rejected');
 // A post-commit failure cannot roll back durable data or undo callbacks already applied.
-problem('post-commit exception propagates', function () use ($db, $root) {
-    $db->transaction(function () use ($db, $root) {
-        file_put_contents("$root/committed-file", 'durable');
-        $db->store()->onRollback(static fn () => unlink("$root/committed-file"));
+problem('post-commit exception propagates', function () use ($db, $wp) {
+    $db->transaction(function () use ($db, $wp) {
+        file_put_contents($wp->dir . '/committed-file', 'durable');
+        $wp->connection()->onRollback(static fn () => unlink($wp->dir . '/committed-file'));
         $db->update('items', ['qty' => 5], ['name' => 'Hammer']);
         \Zero\Extensions::afterCommit(static fn () => throw new JsError('after commit'));
     });
 }, 422, 'rejected');
-eq('post-commit failure never undoes committed filesystem effects', is_file("$root/committed-file"), true);
+eq('post-commit failure never undoes committed filesystem effects', is_file($wp->dir . '/committed-file'), true);
 \Zero\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
-eq('rollback and post-commit failure leave no stale callbacks', [$observer->query("SELECT qty FROM items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
+eq('rollback and post-commit failure leave no stale callbacks', [(int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
 
 $before = $logCount();
 $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:8']));
@@ -622,30 +499,98 @@ eq('delete returns pre-delete rows', names($deleted), ['Box']);
 $db->delete('locations', ['id' => $attic['id']]);
 eq('runtime FK cascade is on', $db->findFirst('items', ['where' => ['id' => $lamp['id']]]), null);
 
-// ================================================================ migrations: rebuild + integrity guard
+// ================================================================ migrations: a later file, the ledger, a failing statement
 
-$cli = function (string ...$args) use ($root): array {
-    exec('ZERO_DEBUG=1 ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/zero/bin/zero.php") . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>/dev/null', $out, $code);
-
-    return [$code, json_decode(implode("\n", $out), true)];
-};
+// An app update ships 0002: adding a column to a table with rows. `wp zero migrate` applies it in
+// order, records it per app, and the next request sees current storage.
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-file_put_contents("$root/zero/app/migrations/0002_rebuild_locations.sql", $rebuild);
-eq('CLI migrate applies the rebuild', $cli('migrate'), [0, ['data' => ['applied' => ['0002_rebuild_locations']]]]);
-eq('child rows survive a parent rebuild (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('rebuilt table has the new column', array_column($pdo->query('PRAGMA table_info("locations")')->fetchAll(), 'name')[10] ?? null, 'note');
-problem('unique index recreated by the rebuild', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
+file_put_contents($wp->plugin()->dir . '/zero/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}zero_locations` ADD COLUMN `note` LONGTEXT;');
+eq('`wp zero migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
+eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
+eq('the table has the new column and the ledger the file', [
+    $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'zero_locations', 'note']),
+    array_column($wp->sql('SELECT `id` FROM {prefix}zero__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
+], [1, ['0001_init', '0002_note']]);
+problem('the unique index still holds', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
+// Migration text is SQL as the compiler or an operator writes it: a leading comment, a `?` inside a
+// literal default, and a constraint over rows that break it.
+$migrate = static function (string $id, string $sql) use ($wp): ?array {
+    file_put_contents($wp->plugin()->dir . "/zero/app/migrations/$id.sql", $sql);
 
-file_put_contents("$root/zero/app/migrations/0003_orphan.sql", "DELETE FROM \"locations\" WHERE \"name\" = 'Garage';\n--> statement-breakpoint\nSELECT 1;");
-[$code, $out] = $cli('migrate');
-check('migration leaving broken FKs fails and names the table', $code === 1 && str_contains($out['error']['detail'] ?? '', 'items -> locations'), $out);
-eq('failed migration rolled back and not recorded', [count($db->findMany('locations', ['where' => ['name' => 'Garage']])), $pdo->query("SELECT COUNT(*) FROM __zero_migrations WHERE id = '0003_orphan'")->fetchColumn()], [1, 0]);
-check('foreign keys back on after a failed migration', (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn() === 1);
-[$code, $out] = $cli('insert', 'items', '{"name":"ghost"}');
-check('CLI auto-migrate refuses to run past a broken migration', $code === 1 && ($out['error']['code'] ?? null) === 'internal', $out);
-unlink("$root/zero/app/migrations/0003_orphan.sql");
+    return $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null;
+};
+// Statement text as the compiler or an operator writes it, read as the driver reads it. Each ALTER
+// is a plain Connection::run on a parent table with children (the migration path above proves the
+// same statement reaching it through a file); the children must survive the driver's table rebuild.
+$wp->exec('CREATE TABLE {prefix}zero_rf_parent (`id` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec('CREATE TABLE {prefix}zero_rf_child (`id` BIGINT UNSIGNED NOT NULL, `pid` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `zero_rf_child_pid_fk` FOREIGN KEY (`pid`) REFERENCES {prefix}zero_rf_parent (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+$wp->exec('INSERT INTO {prefix}zero_rf_parent VALUES (1)');
+$wp->exec('INSERT INTO {prefix}zero_rf_child VALUES (1, 1)');
+$column = static fn (string $name): int => (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'zero_rf_parent', $name]);
+$children = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero_rf_child');
+$alter = static function (string $sql, string $column) use ($wp, $children): array {
+    $wp->exec($sql);
+
+    return [$children(), $column === '' ? null : (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'zero_rf_parent', $column])];
+};
+eq('a leading block comment and a literal `?` default', $alter("/* adds a prompt */ ALTER TABLE `{prefix}zero_rf_parent` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?'", 'prompt'), [1, 1]);
+eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}zero_rf_parent` ADD COLUMN `c2` LONGTEXT', 'c2'), [1, 1]);
+eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}zero_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
+eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}zero_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
+eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}zero_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
+eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}zero_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}zero_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
+eq('`--` without a space is subtraction', $wp->sql('SELECT 1--? AS n', [1])[0]['n'], 2);
+eq('a parameter inside an executable comment this server reads is bound', $wp->sql('SELECT /*!80000 ? */ AS n', [42])[0]['n'], 42);
+eq('a `?` inside an executable comment for a newer server is text, not a parameter', $wp->sql('SELECT 3 AS n /*!99999 , ? AS m */')[0], ['n' => 3]);
+eq('a token-merging executable comment is read as the server reads it', $wp->sql('/*!80000 SELECT*/1 AS n')[0]['n'], 1);
+eq('a quoted `*/` inside executable SQL does not end the comment', $wp->sql("SELECT /*!80000 '*/?' AS s, ? AS n */", [42])[0], ['s' => '*/?', 'n' => 42]);
+eq('an odd run of backslashes escapes the quote: the `?` inside stays text', $wp->sql("SELECT 'it''s a \\\\\\'?' AS s, ? AS n", [7])[0], ['s' => "it's a \\'?", 'n' => 7]);
+$wp->exec('INSERT INTO {prefix}zero_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
+$wp->exec('ALTER TABLE {prefix}zero_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
+$wp->exec('UPDATE {prefix}zero_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
+file_put_contents($wp->plugin()->dir . '/zero/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}zero_logs` ADD CONSTRAINT `zero_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}zero_items` (`id`) ON DELETE SET NULL;');
+putenv('ZERO_DEBUG=1');
+[$code, $out] = $wp->wpCli(['migrate']);
+putenv('ZERO_DEBUG');
+check('a constraint added over rows that break it fails the migration and changes nothing', $code === 1 && str_contains($out['error']['detail'] ?? '', 'foreign key constraint fails')
+    && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'zero_logs', 'zero_logs_itemId_fk']) === 0, $out);
+$wp->exec('DELETE FROM {prefix}zero_logs WHERE `message` = ?', ['orphan']);
+eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['0002c_fk']);
+// Migrations run under one site-wide lock across processes: while this process holds it, another
+// process can't take it (and gives up at its timeout); once released, it can.
+file_put_contents($wp->dir . '/lock.php', <<<'PHP'
+    <?php
+    require $argv[1];
+    wpLoad($argv[2]);
+    try {
+        echo \Zero\Wp\Runtime::plugin()->connection()->locked('zero:test', 1, static fn () => 'held');
+    } catch (RuntimeException $e) {
+        echo 'refused';
+    }
+    PHP);
+$other = static fn (): string => trim((string) shell_exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg($wp->dir . '/lock.php') . ' ' . escapeshellarg(__DIR__ . '/wp.php') . ' ' . escapeshellarg($wp->dir) . ' 2>/dev/null'));
+$whileHeld = $wp->connection()->locked('zero:test', 1, $other);
+eq('a second process can\'t take a held migration lock, and can once it is released', [$whileHeld, $other()], ['refused', 'held']);
+eq('the lock is per name', $wp->connection()->locked('zero:other', 1, $other), 'held');
+
+// A statement that fails stops the file; what ran before it is recorded step by step, nothing after it runs.
+file_put_contents($wp->plugin()->dir . '/zero/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}zero_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}zero_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}zero_logs`;");
+putenv('ZERO_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
+[$code, $out] = $wp->wpCli(['migrate']);
+putenv('ZERO_DEBUG');
+check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '0003_broken failed at statement 2'), $out);
+eq('the statements before it ran and are recorded; the ones after it did not run', [
+    count($db->findMany('logs', ['where' => ['message' => 'hello']])), count($db->findMany('logs')) > 0,
+    array_column($wp->sql('SELECT `id` FROM {prefix}zero__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
+], [0, true, ['0003_broken:1']]);
+unlink($wp->plugin()->dir . '/zero/app/migrations/0003_broken.sql');
+$wp->exec('DELETE FROM {prefix}zero__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
+eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
+    [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
 // ================================================================ CLI
+
+$cli = fn (string ...$args) => $wp->cli(...$args);
 
 [$code, $out] = $cli('find', 'items', '{"where":{"name":{"like":"Ham%"}},"columns":{"name":true}}');
 eq('CLI find', [$code, $out], [0, ['data' => [['name' => 'Hammer']]]]);
@@ -659,45 +604,28 @@ eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->find
 eq('CLI action', [$code, $out['data']['qty'] ?? null], [0, 7]);
 eq('CLI usage error', $cli('frobnicate')[0], 1);
 
-// ================================================================ HTTP
+// ================================================================ REST: the WordPress route
 
-$port = (static function (): int {
-    $s = stream_socket_server('tcp://127.0.0.1:0');
-    $port = (int) substr(strrchr(stream_socket_get_name($s, false), ':'), 1);
-    fclose($s);
-
-    return $port;
-})();
-$GLOBALS['server'] = proc_open(
-    [PHP_BINARY, '-S', "127.0.0.1:$port", "$root/public/index.php"],
-    [0 => ['file', '/dev/null', 'r'], 1 => ['file', "$root/server.log", 'a'], 2 => ['file', "$root/server.log", 'a']],
-    $pipes,
-    $root,
-);
-
-function stopServer(): void
-{
-    if (is_resource($GLOBALS['server'] ?? null)) {
-        proc_terminate($GLOBALS['server']);
-        proc_close($GLOBALS['server']);
-    }
-}
+// Through the web server (php -S on this site), as a client sees it: /wp-json/zero/v1 answers with
+// Zero's envelopes, problem documents and headers.
+$port = $wp->startServer();
+$base = "http://127.0.0.1:$port/wp-json/zero/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
-function http(string $method, string $path, mixed $body = null, ?string $raw = null): array
+function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
 {
-    global $port;
-    $ch = curl_init("http://127.0.0.1:$port$path");
-    $headers = [];
+    global $base;
+    $ch = curl_init($base . $path);
+    $out = [];
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers) {
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers],
+        CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$out) {
             if (str_contains($line, ':')) {
                 [$k, $v] = explode(':', $line, 2);
-                $headers[strtolower(trim($k))] = trim($v);
+                $out[strtolower(trim($k))] = trim($v);
             }
             return strlen($line);
         },
@@ -708,19 +636,8 @@ function http(string $method, string $path, mixed $body = null, ?string $raw = n
     $res = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 
-    return ['status' => $status, 'headers' => $headers, 'body' => (string) $res, 'json' => is_string($res) ? json_decode($res, true) : null];
+    return ['status' => $status, 'headers' => $out, 'body' => (string) $res, 'json' => is_string($res) ? json_decode($res, true) : null];
 }
-
-// Poll until the server answers; no fixed sleep.
-$deadline = microtime(true) + 10;
-do {
-    $ready = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
-    if (!$ready) {
-        usleep(10_000);
-    }
-} while (!$ready && microtime(true) < $deadline);
-check('server started', (bool) $ready, @file_get_contents("$root/server.log"));
-$ready && fclose($ready);
 
 $isProblem = function (string $label, array $r, int $status, string $code, ?string $pointer = null): void {
     $j = $r['json'];
@@ -728,80 +645,74 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
         "$label → $status $code",
         $r['status'] === $status && str_starts_with($r['headers']['content-type'] ?? '', 'application/problem+json')
             && ($j['type'] ?? null) === 'about:blank' && ($j['status'] ?? null) === $status && ($j['code'] ?? null) === $code
-            && is_string($j['title'] ?? null) && is_string($j['detail'] ?? null) && ($j['pointer'] ?? null) === $pointer
-            && ($r['headers']['access-control-allow-origin'] ?? null) === '*',
+            && is_string($j['title'] ?? null) && is_string($j['detail'] ?? null) && ($j['pointer'] ?? null) === $pointer,
         $r,
     );
 };
 
-$r = http('OPTIONS', '/api/items');
-eq('OPTIONS preflight', [$r['status'], $r['headers']['access-control-allow-origin'] ?? null, $r['headers']['access-control-allow-methods'] ?? null, $r['headers']['access-control-allow-headers'] ?? null, $r['headers']['access-control-expose-headers'] ?? null],
-    [204, '*', 'GET, POST, PATCH, DELETE, OPTIONS', 'content-type, authorization, idempotency-key', 'Idempotent-Replayed']);
-
-$r = http('GET', '/api/_schema');
-check('GET /api/_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'
+$r = http('GET', '/_schema');
+check('GET /_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
+eq('the runtime reports the WordPress platform in /_schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
 
-$r = http('POST', '/api/items', ['name' => 'widget', 'price' => 2.0, 'locationId' => $garage['id']]);
+$r = http('POST', '/items', ['name' => 'widget', 'price' => 2.0, 'locationId' => $garage['id']]);
 $widget = $r['json']['data'] ?? [];
-check('POST → 201 {data} with hook applied', $r['status'] === 201 && ($widget['name'] ?? null) === 'Widget' && str_starts_with($r['headers']['content-type'] ?? '', 'application/json')
-    && ($r['headers']['access-control-allow-origin'] ?? null) === '*', $r);
+check('POST → 201 {data} with hook applied', $r['status'] === 201 && ($widget['name'] ?? null) === 'Widget' && str_starts_with($r['headers']['content-type'] ?? '', 'application/json'), $r);
 check('integral float printed without .0', str_contains($r['body'], '"price":2,'), $r['body']);
 
-$r = http('GET', '/api/items?' . http_build_query(['where' => json_encode(['locationId' => $garage['id']]), 'orderBy' => '-qty,name', 'limit' => 2, 'with' => 'location']));
+$r = http('GET', '/items?' . http_build_query(['where' => json_encode(['locationId' => $garage['id']]), 'orderBy' => '-qty,name', 'limit' => 2, 'with' => 'location']));
 eq('GET list: where + orderBy + limit + with', [$r['status'], array_column($r['json']['data'] ?? [], 'name'), $r['json']['data'][0]['location']['name'] ?? null], [200, ['Hammer', 'Nails'], 'Garage']);
-eq('GET list offset', array_column(http('GET', '/api/items?orderBy=-id&offset=1&limit=1')['json']['data'] ?? [], 'name'), ['Nails']);
-$isProblem('bad where JSON', http('GET', '/api/items?where=%7Bbad'), 400, 'invalid_query', '/where');
-$isProblem('unknown where column', http('GET', '/api/items?where=' . rawurlencode('{"nope":1}')), 400, 'invalid_query', '/where/nope');
-$isProblem('bad limit', http('GET', '/api/items?limit=-1'), 400, 'invalid_query', '/limit');
+eq('GET list offset', array_column(http('GET', '/items?orderBy=-id&offset=1&limit=1')['json']['data'] ?? [], 'name'), ['Nails']);
+$isProblem('bad where JSON', http('GET', '/items?where=%7Bbad'), 400, 'invalid_query', '/where');
+$isProblem('unknown where column', http('GET', '/items?where=' . rawurlencode('{"nope":1}')), 400, 'invalid_query', '/where/nope');
+$isProblem('bad limit', http('GET', '/items?limit=-1'), 400, 'invalid_query', '/limit');
 
-$r = http('GET', "/api/items/{$widget['id']}?with=location");
+$r = http('GET', "/items/{$widget['id']}?with=location");
 eq('GET by id with relation', [$r['status'], $r['json']['data']['location']['code'] ?? null], [200, 'GAR']);
-$isProblem('GET missing id', http('GET', '/api/items/999999'), 404, 'not_found');
-$isProblem('GET non-integer id', http('GET', '/api/items/abc'), 404, 'not_found');
-$isProblem('unknown collection', http('GET', '/api/widgets'), 404, 'not_found');
-$isProblem('route outside /api', http('GET', '/nope'), 404, 'not_found');
+$isProblem('GET missing id', http('GET', '/items/999999'), 404, 'not_found');
+$isProblem('GET non-integer id', http('GET', '/items/abc'), 404, 'not_found');
+$isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 
-$isProblem('invalid JSON body', http('POST', '/api/items', raw: '{"name":'), 400, 'invalid_json');
-$isProblem('coercion error with pointer', http('POST', '/api/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
-$isProblem('missing required', http('POST', '/api/items', ['qty' => 1]), 422, 'invalid_input', '/name');
-$isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
-$r = http('POST', '/api/locations', raw: '{"name":"Empty","meta":{"a":{},"b":[]}}');
+// A malformed JSON body is refused by WordPress's REST server before Zero runs (rest_invalid_json);
+// in-process, Zero's own parser answers invalid_json.
+eq('invalid JSON body is refused by the REST server', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'rest_invalid_json']);
+eq('… and by Zero itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
+$isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
+$isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');
+$isProblem('unique violation', http('POST', '/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
+$r = http('POST', '/locations', raw: '{"name":"Empty","meta":{"a":{},"b":[]}}');
 eq('a json column keeps {} apart from [] through storage and the API', [$r['status'], str_contains($r['body'], '"meta":{"a":{},"b":[]}'),
-    str_contains(http('GET', '/api/locations/' . ($r['json']['data']['id'] ?? 0))['body'], '"meta":{"a":{},"b":[]}')], [201, true, true]);
-$r = http('POST', '/api/locations', raw: '{"name":"Bare","meta":{}}');
+    str_contains(http('GET', '/locations/' . ($r['json']['data']['id'] ?? 0))['body'], '"meta":{"a":{},"b":[]}')], [201, true, true]);
+$r = http('POST', '/locations', raw: '{"name":"Bare","meta":{}}');
 eq('… a json value that is {} itself, too', [$r['status'], str_contains($r['body'], '"meta":{}')], [201, true]);
-$isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
+$isProblem('reference violation', http('POST', '/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
 
-$r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => 7]);
+$r = http('PATCH', "/items/{$widget['id']}", ['qty' => 7]);
 eq('PATCH', [$r['status'], $r['json']['data']['qty'] ?? null], [200, 7]);
-$isProblem('PATCH missing', http('PATCH', '/api/items/999999', ['qty' => 1]), 404, 'not_found');
-$isProblem('PATCH array body', http('PATCH', "/api/items/{$widget['id']}", [1, 2]), 422, 'invalid_input', '');
+$isProblem('PATCH missing', http('PATCH', '/items/999999', ['qty' => 1]), 404, 'not_found');
+$isProblem('PATCH array body', http('PATCH', "/items/{$widget['id']}", [1, 2]), 422, 'invalid_input', '');
 
-$logsBefore = count(http('GET', '/api/logs?limit=200')['json']['data']);
-$r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => -5]);
+$logsBefore = count(http('GET', '/logs?limit=200')['json']['data']);
+$r = http('PATCH', "/items/{$widget['id']}", ['qty' => -5]);
 $isProblem('hook throws JsError mid-request', $r, 422, 'rejected');
 eq('rejected detail is the JsError message', $r['json']['detail'] ?? null, 'qty cannot go negative');
 eq('request rolled back: row unchanged, hook insert undone',
-    [http('GET', "/api/items/{$widget['id']}")['json']['data']['qty'], count(http('GET', '/api/logs?limit=200')['json']['data'])], [7, $logsBefore]);
+    [http('GET', "/items/{$widget['id']}")['json']['data']['qty'], count(http('GET', '/logs?limit=200')['json']['data'])], [7, $logsBefore]);
 
-$r = http('POST', '/api/actions/restock', ['itemId' => $widget['id']]);
+$r = http('POST', '/actions/restock', ['itemId' => $widget['id']]);
 eq('action with default input', [$r['status'], $r['json']['data']['qty'] ?? null], [200, 12]);
-$isProblem('action input coercion', http('POST', '/api/actions/restock', ['itemId' => 'x']), 422, 'invalid_input', '/itemId');
-$isProblem('action unknown input key', http('POST', '/api/actions/restock', ['itemId' => 1, 'extra' => 1]), 422, 'invalid_input', '/extra');
-$isProblem('action HttpError from handler', http('POST', '/api/actions/restock', ['itemId' => 999999]), 404, 'not_found');
-$isProblem('unknown action', http('POST', '/api/actions/nope', []), 404, 'not_found');
+$isProblem('action input coercion', http('POST', '/actions/restock', ['itemId' => 'x']), 422, 'invalid_input', '/itemId');
+$isProblem('action unknown input key', http('POST', '/actions/restock', ['itemId' => 1, 'extra' => 1]), 422, 'invalid_input', '/extra');
+$isProblem('action HttpError from handler', http('POST', '/actions/restock', ['itemId' => 999999]), 404, 'not_found');
+$isProblem('unknown action', http('POST', '/actions/nope', []), 404, 'not_found');
 
-$isProblem('api flag disables create', http('POST', '/api/logs', ['message' => 'x']), 405, 'method_not_allowed');
-$isProblem('api flag disables delete', http('DELETE', '/api/logs/1'), 405, 'method_not_allowed');
-$isProblem('unsupported method', http('PUT', '/api/items'), 405, 'method_not_allowed');
+$isProblem('api flag disables create', http('POST', '/logs', ['message' => 'x']), 405, 'method_not_allowed');
+$isProblem('api flag disables delete', http('DELETE', '/logs/1'), 405, 'method_not_allowed');
 
-$r = http('DELETE', "/api/items/{$widget['id']}");
+$r = http('DELETE', "/items/{$widget['id']}");
 eq('DELETE returns the deleted row', [$r['status'], $r['json']['data']['name'] ?? null, $r['json']['data']['qty'] ?? null], [200, 'Widget', 12]);
-$isProblem('deleted row is gone', http('GET', "/api/items/{$widget['id']}"), 404, 'not_found');
-
-stopServer();
+$isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'not_found');
 
 // ================================================================ relation filters respect the target's read access
 
@@ -812,7 +723,7 @@ stopServer();
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $one = static fn (string $c, string $from) => ['kind' => 'one', 'collection' => $c, 'from' => $from, 'to' => 'id'];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
         'accounts' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin']],
             'columns' => ['id' => $id, 'apiKey' => ['type' => 'text', 'notNull' => true]]],
         'articles' => ['primaryKey' => 'id', 'drafts' => true,
@@ -822,14 +733,24 @@ stopServer();
             'columns' => ['id' => $id, 'articleId' => ['type' => 'integer'], 'ownerId' => ['type' => 'integer']],
             'relations' => ['article' => $one('articles', 'articleId'), 'owner' => $one('accounts', 'ownerId')]],
     ]]);
-    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
-    $pdo->exec('CREATE TABLE "accounts" ("id" integer PRIMARY KEY, "apiKey" text NOT NULL); CREATE TABLE "articles" ("id" integer PRIMARY KEY, "secret" text, "ownerId" integer, "status" text NOT NULL, "publishedAt" text); CREATE TABLE "comments" ("id" integer PRIMARY KEY, "articleId" integer, "ownerId" integer)');
-    $pdo->exec("INSERT INTO accounts VALUES (1, 'sk_live_7x'); INSERT INTO articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z'); INSERT INTO comments VALUES (1, 1, 1), (2, 2, NULL)");
-    $store = new \Zero\Store\SqliteStore($pdo, $schema);
-    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
-    $anon = new \Zero\Viewer(null, 'standalone');
-    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
-    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'standalone');
+    // Its own custom tables on the site, read through a Db over the same connection.
+    $wp = $GLOBALS['wp'];
+    $raw = ['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => []];
+    foreach (['accounts', 'articles', 'comments'] as $t) {
+        $raw['collections'][$t] = $schema->collection($t) + ['editor' => false, 'table' => "zero_rf_$t"];
+    }
+    $schema = new \Zero\Schema($raw);
+    $wp->exec('CREATE TABLE {prefix}zero_rf_accounts (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `apiKey` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}zero_rf_articles (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `secret` LONGTEXT, `ownerId` BIGINT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}zero_rf_comments (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `articleId` BIGINT, `ownerId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec("INSERT INTO {prefix}zero_rf_accounts VALUES (1, 'sk_live_7x')");
+    $wp->exec("INSERT INTO {prefix}zero_rf_articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z')");
+    $wp->exec('INSERT INTO {prefix}zero_rf_comments VALUES (1, 1, 1), (2, 2, NULL)');
+    $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $anon = new \Zero\Viewer(null, 'wp');
+    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'wp');
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'wp');
     $ids = static fn (string $c, array $where, ?\Zero\Viewer $v) => array_column($db->findMany($c, ['where' => $where, 'orderBy' => ['id' => 'asc']], $v), 'id');
     $key = ['owner' => ['apiKey' => ['like' => 'sk_live_7%']]];
 
@@ -852,18 +773,18 @@ stopServer();
 
 // ================================================================ field access (lane B, phase 2 §4)
 
-$ids = $app->identity();
+// ================================================================ field access (lane B, phase 2 §4)
+
+// The field-access users are WordPress users (created at install); rules see them as Zero maps them.
 $fa = [];
-foreach (['fa_alice' => 'author', 'fa_bob' => 'author', 'fa_ed' => 'editor', 'fa_admin' => 'admin'] as $name => $role) {
-    $fa[$name] = ['user' => $ids->addUser($name, $role, null), 'token' => $ids->createToken($name, null)['token']];
+foreach (['fa_alice', 'fa_bob', 'fa_ed', 'fa_admin'] as $name) {
+    $fa[$name] = ['user' => $wp->user($name)];
 }
 /** In-process API call as one of the field-access users (null = anonymous); returns [status, data or problem]. */
-$as = function (?string $who, string $method, string $path, mixed $body = null, array $query = []) use ($app, &$fa): array {
-    $headers = $who === null ? [] : ['authorization' => 'Bearer ' . $fa[$who]['token']];
-    [$status, , $out] = $app->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
-    $json = json_decode($out, true);
+$as = function (?string $who, string $method, string $path, mixed $body = null, array $query = []) use ($wp): array {
+    [$status, $data] = $wp->call($method, $path, $body, $who, $query);
 
-    return [$status, $status < 300 ? $json['data'] : $json];
+    return [$status, $data];
 };
 $faProblem = function (string $label, array $r, int $status, string $code, ?string $pointer): void {
     check("$label → $status $code $pointer", $r[0] === $status && ($r[1]['code'] ?? null) === $code && ($r[1]['pointer'] ?? null) === $pointer, $r[1]);
@@ -906,9 +827,9 @@ $faProblem('with across a hidden link column (target end)', $as('fa_alice', 'GET
 $faProblem('relation filter across a hidden link column (target end)', $as('fa_alice', 'GET', '/profiles', query: ['where' => '{"mentees":{"name":"Bob"}}']), 403, 'forbidden', '/where/mentees');
 eq('editors may follow the link', $as('fa_ed', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'mentor'])[1]['mentor'], null);
 $faProblem('orderBy on a hidden column', $as(null, 'GET', '/profiles', query: ['orderBy' => '-email']), 403, 'forbidden', '/orderBy/email');
-problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null, 'standalone')), 403, 'forbidden', '/columns/email');
-problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'], 'standalone')), 403, 'forbidden', '/columns/salary');
-eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'standalone'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
+problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \Zero\Viewer(null, 'wp')), 403, 'forbidden', '/columns/email');
+problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \Zero\Viewer($fa['fa_alice']['user'], 'wp')), 403, 'forbidden', '/columns/salary');
+eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \Zero\Viewer(null, 'wp'))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
 eq('a readable column filters normally; trusted filters see everything', [
     array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
@@ -938,7 +859,6 @@ eq('a sub-field rule sees the item after its defaults', $as('fa_alice', 'POST', 
 $GLOBALS['stampCalls'] = 0;
 [$s, $stamped] = $as('fa_alice', 'POST', '/profiles', ['name' => 'Stamped', 'stamp' => ['note' => 'x']]);
 eq('a dynamic sub-field default is generated once: the value the rule saw is stored', [$s, $stamped['stamp'] ?? null, $GLOBALS['stampCalls']], [201, ['n' => 1, 'note' => 'x'], 1]);
-$faProblem('a nested hidden field without an update rule cannot be overwritten', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['private' => 'changed']]), 403, 'forbidden', '/notes/private');
 $faProblem('a null group would erase the hidden sub-field', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
 // Repeater items have no identity: protected values must be resent unchanged in place, never moved or dropped.
 $faProblem('an emptied repeater would drop protected values', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['tasks' => []]), 403, 'forbidden', '/tasks/0');
@@ -1004,9 +924,9 @@ $faProblem('a merged hidden value is not incoming data (group first)', $as('fa_a
 $faProblem('… nor with the keys reversed', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['cleared' => true, 'notes' => ['public' => 'n']]), 403, 'forbidden', '/cleared');
 eq('… and nothing was stored', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['cleared'], false);
 // Update/delete selectors run as the viewer: they can't filter on a column hidden from it.
-$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user'], 'standalone');
+$aliceViewer = new \Zero\Viewer($fa['fa_alice']['user'], 'wp');
 problem('an update selector on a hidden column is refused', fn () => $db->update('profiles', ['name' => 'x'], ['email' => 'alice@example.test'], true, $aliceViewer), 403, 'forbidden', '/where/email');
-problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'], 'standalone')), 403, 'forbidden', '/where/salary');
+problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \Zero\Viewer($fa['fa_ed']['user'], 'wp')), 403, 'forbidden', '/where/salary');
 // An unchanged resend must be the same value: a list resent as an object is a change.
 $db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
 $faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
@@ -1023,16 +943,16 @@ eq('resending the item as she sees it keeps the stored item whole', [$as('fa_ali
 // hidden value is stored, so a destructive write can't test for presence.
 $db->update('profiles', ['notes' => ['public' => 'x', 'flag' => null]], ['id' => $mine['id']]);
 $faProblem('a null group is refused even when the hidden sub-field is empty', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => null]), 403, 'forbidden', '/notes');
+$faProblem('a nested hidden field without an update rule cannot be overwritten', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => ['private' => 'changed']]), 403, 'forbidden', '/notes/private');
 $faProblem('an unchanged group resend can\'t confirm a hidden value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['notes' => $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['notes']]), 403, 'forbidden', '/notes/private');
-$faProblem('switching a block\'s layout would erase its protected value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'link', 'href' => 'x']]]), 403, 'forbidden', '/blocks/0');
-eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
-$faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
-
 // A column hidden from the viewer can't be overwritten either, whatever is sent: a write is only for
 // those who can see the value (review: field-write-hidden). A declared update rule makes it write-only.
 $faProblem('an author can\'t overwrite a value she can\'t read', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'mine@x.test']), 403, 'forbidden', '/email');
 eq('… and nothing changed', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['email'], 'alice@example.test');
 eq('an editor, who reads it, may', $as('fa_ed', 'PATCH', "/profiles/{$mine['id']}", ['email' => 'alice@example.test'])[0], 200);
+$faProblem('switching a block\'s layout would erase its protected value', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'link', 'href' => 'x']]]), 403, 'forbidden', '/blocks/0');
+eq('the refused layout switch kept the stored block', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['blocks'], [['layout' => 'memo', 'text' => 'kept']]);
+$faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['blocks' => [['layout' => 'memo', 'text' => 'kept'], ['layout' => ['memo']]]]), 422, 'invalid_input', '/blocks/1/layout');
 
 // Revisions are read through the same strip.
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
@@ -1048,539 +968,7 @@ eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$m
 $described = $as(null, 'GET', '/_schema')[1]['collections']['profiles'];
 eq('/_schema access.fields summaries', $described['access']['fields'], ['email' => ['read' => 'editor'], 'salary' => ['read' => 'rule', 'update' => 'admin'], 'approved' => ['create' => 'editor', 'update' => 'editor'], 'mentorId' => ['read' => 'editor'], 'fixed' => ['update' => false], 'seen' => ['update' => false], 'locker' => ['read' => 'editor'], 'diary' => ['read' => 'editor'], 'entries' => ['read' => 'editor'], 'cleared' => ['update' => 'rule'], 'meta' => ['update' => false]]);
 
-// ================================================================ lane G: media sizes + focal (phase 2 §7.2)
-
-// A second app root whose schema configures sizes. Booting it replaces the Db singleton, so the
-// section restores the previous one for whatever sections follow.
-(static function () use ($root): void {
-    $previous = \Zero\db();
-    try {
-        $mediaRoot = "$root/media-app";
-        copyRuntime($mediaRoot);
-        @mkdir("$mediaRoot/zero/app/migrations", 0777, true);
-        file_put_contents("$mediaRoot/zero/app/schema.php", '<?php return ' . var_export([
-            'version' => 3, 'runtime' => '0.2', 'collections' => [],
-            'media' => ['sizes' => [
-                'thumb' => ['width' => 100, 'height' => 100, 'fit' => 'cover'],
-                'wide' => ['width' => 200, 'height' => null, 'fit' => 'inside'],
-                'huge' => ['width' => 4000, 'height' => null, 'fit' => 'inside'],
-            ]],
-        ], true) . ';');
-        $mediaApp = App::boot($mediaRoot);
-        $mediaApp->identity()->addUser('mediaEditor', 'editor', null);
-        $mediaApp->identity()->addUser('mediaAuthor', 'author', null);
-        $bearer = static fn (string $name) => ['authorization' => 'Bearer ' . $mediaApp->identity()->createToken($name, null)['token']];
-        $asEditor = $bearer('mediaEditor');
-        $asAuthor = $bearer('mediaAuthor');
-        $mediaReq = static function (string $method, string $path, array $headers, string $body = '', array $files = [], array $query = []) use ($mediaApp): array {
-            [$status, , $out] = $mediaApp->handle($method, $path, $query, $body, $headers, $files);
-            $json = json_decode($out, true);
-
-            return [$status, $status < 300 ? $json['data'] : $json];
-        };
-        $png = static function (int $w, int $h): string {
-            $file = tempnam(sys_get_temp_dir(), 'zimg');
-            $im = imagecreatetruecolor($w, $h);
-            imagefilledrectangle($im, 0, 0, intdiv($w, 2) - 1, $h - 1, imagecolorallocate($im, 255, 0, 0));
-            imagefilledrectangle($im, intdiv($w, 2), 0, $w - 1, $h - 1, imagecolorallocate($im, 0, 0, 255));
-            imagepng($im, $file);
-
-            return $file;
-        };
-        $post = static fn (string $file, string $name) => $mediaReq('POST', '/media', $asAuthor, '', ['file' => ['name' => $name, 'tmp_name' => $file, 'error' => UPLOAD_ERR_OK]]);
-
-        [$s, $img] = $post($png(400, 200), 'wide.png');
-        $base = substr($img['url'], 0, -4);
-        eq('upload returns every configured size; a size the original fits is the original', [$s, array_map(static fn ($z) => [$z['width'], $z['height']], $img['sizes']), $img['sizes']['huge']['url'], $img['focal']],
-            [201, ['thumb' => [100, 100], 'wide' => [200, 100], 'huge' => [400, 200]], $img['url'], null]);
-        check('size files sit next to the original as <uuid>-<size>-…', str_starts_with($img['sizes']['thumb']['url'], "$base-thumb-") && str_starts_with($img['sizes']['wide']['url'], "$base-wide-"));
-        $dims = static fn (string $url) => array_slice(getimagesize("$mediaRoot/public$url") ?: [], 0, 2);
-        eq('size files exist with their dimensions', [$dims($img['sizes']['thumb']['url']), $dims($img['sizes']['wide']['url'])], [[100, 100], [200, 100]]);
-        $thumbBytes = file_get_contents("$mediaRoot/public{$img['sizes']['thumb']['url']}");
-        $wideBytes = file_get_contents("$mediaRoot/public{$img['sizes']['wide']['url']}");
-
-        $focal = json_encode(['focal' => ['x' => 0, 'y' => 0.5], 'alt' => 'Left']);
-        check('PATCH /media needs editor', $mediaReq('PATCH', "/media/{$img['id']}", $asAuthor, $focal)[0] === 403);
-        [$s, $patched] = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, $focal);
-        eq('PATCH sets focal + alt; inside sizes keep their file', [$s, $patched['focal'], $patched['alt'], $patched['sizes']['wide']], [200, ['x' => 0, 'y' => 0.5], 'Left', $img['sizes']['wide']]);
-        check('changing focal regenerates the cover size (different bytes) and removes the old crop after commit',
-            file_get_contents("$mediaRoot/public{$patched['sizes']['thumb']['url']}") !== $thumbBytes
-            && !is_file("$mediaRoot/public{$img['sizes']['thumb']['url']}")
-            && file_get_contents("$mediaRoot/public{$img['sizes']['wide']['url']}") === $wideBytes);
-        $t = imagecreatefrompng("$mediaRoot/public{$patched['sizes']['thumb']['url']}");
-        $red = imagecolorsforindex($t, imagecolorat($t, 50, 50));
-        eq('the regenerated crop follows the focal point (left half is red)', [$red['red'], $red['blue']], [255, 0]);
-        eq('GET returns the stored focal', $mediaReq('GET', "/media/{$img['id']}", [])[1]['focal'], ['x' => 0, 'y' => 0.5]);
-        check('focal is validated with a pointer', ($mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":2,"y":0}}')[1]['pointer'] ?? null) === '/focal/x');
-        check('PATCH unknown media → 404', $mediaReq('PATCH', '/media/999999', $asEditor, '{"alt":"x"}')[0] === 404);
-
-        $txt = tempnam(sys_get_temp_dir(), 'ztxt');
-        file_put_contents($txt, 'plain text');
-        $doc = $post($txt, 'a.txt')[1];
-        check('a non-image has sizes: {} on the wire', str_contains($mediaApp->handle('GET', "/media/{$doc['id']}", [], '', [])[2], '"sizes":{}') && $doc['focal'] === null);
-
-        // Rows from before sizes existed get every size the first time their focal point is set.
-        $legacy = $post($png(300, 300), 'old.png')[1];
-        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = \'{}\' WHERE "id" = ?', [$legacy['id']]);
-        $upgraded = $mediaReq('PATCH', "/media/{$legacy['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
-        eq('a row uploaded before sizes were configured gets every size on its first focal change', array_keys($upgraded['sizes']), ['thumb', 'wide', 'huge']);
-        eq('internal media fields are not queryable at any depth', array_map(
-            static fn (string $w) => $mediaReq('GET', '/media', [], query: ['where' => $w])[0],
-            ['{"focal":null}', '{"OR":[{"sizes":{"isNull":true}}]}', '{"NOT":{"path":"x"}}'],
-        ), [400, 400, 400]);
-
-        // Focal A → B → A inside one transaction: rollback keeps the committed crop, commit the final one.
-        $sequence = static function (bool $rollback) use ($img, $mediaRoot, $base): array {
-            try {
-                \Zero\db()->transaction(static function () use ($img, $rollback): void {
-                    \Zero\db()->media()->update($img['id'], ['focal' => ['x' => 1, 'y' => 0.5]]);
-                    \Zero\db()->media()->update($img['id'], ['focal' => ['x' => 0, 'y' => 0.5]]);
-                    if ($rollback) {
-                        throw new \RuntimeException('roll back');
-                    }
-                });
-            } catch (\RuntimeException) {
-            }
-
-            return glob("$mediaRoot/public$base-thumb-*");
-        };
-        $committed = $mediaReq('GET', "/media/{$img['id']}", [])[1]['sizes']['thumb']['url'];
-        eq('A → B → A rolled back: only the committed crop remains', $sequence(true), ["$mediaRoot/public$committed"]);
-        $files = $sequence(false);
-        $final = $mediaReq('GET', "/media/{$img['id']}", [])[1]['sizes']['thumb']['url'];
-        eq('A → B → A committed: exactly the final crop remains, and the row points at it', $files, ["$mediaRoot/public$final"]);
-
-        // A size configured after the upload is filled in on the next focal change.
-        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = json_remove("sizes", \'$.wide\') WHERE "id" = ?', [$img['id']]);
-        $filled = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
-        eq('a size missing from the row is rendered on the next focal change', [$filled['sizes']['wide']['width'], $filled['sizes']['wide']['height']], [200, 100]);
-
-        // A size the original now fits (config changed) drops its old rendition: file and row entry.
-        $small = $post($png(80, 80), 'small.png')[1];
-        $staleRel = substr($small['url'], strlen('/uploads/'), -4) . '-thumb-stale.png';
-        copy("$mediaRoot/public{$small['url']}", "$mediaRoot/public/uploads/$staleRel");
-        $mediaApp->store->run('UPDATE "__zero_media" SET "sizes" = json_set("sizes", \'$.thumb\', json(?)) WHERE "id" = ?', [json_encode(['file' => $staleRel, 'width' => 50, 'height' => 50]), $small['id']]);
-        $refit = $mediaReq('PATCH', "/media/{$small['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
-        eq('a size the original now fits is served by the original and its old file is gone', [$refit['sizes']['thumb']['url'], is_file("$mediaRoot/public/uploads/$staleRel")], [$small['url'], false]);
-
-        $final = $mediaReq('GET', "/media/{$img['id']}", [])[1];
-        $mediaReq('DELETE', "/media/{$img['id']}", $asEditor);
-        check('deleting media removes the size files after commit', !is_file("$mediaRoot/public{$final['sizes']['thumb']['url']}") && !is_file("$mediaRoot/public$base.png"));
-    } finally {
-        \Zero\Db::setInstance($previous);
-    }
-})();
-
-// ================================================================ localization (§7.3)
-
-// One row per locale in a translation group; synced columns follow the group; reads pick a locale
-// and fall back to the default per group. Its own app root: the fixture app above isn't localized.
-(static function () use ($root): void {
-    $app = "$root-locale";
-    $schemaPhp = <<<'PHP'
-        <?php
-        $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
-        $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
-        $api = ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true];
-        return ['version' => 3, 'runtime' => '0.2', 'locales' => ['default' => 'en', 'all' => ['en', 'de', 'fr'], 'fallback' => true], 'collections' => [
-            'pages' => ['primaryKey' => 'id', 'localized' => true, 'drafts' => true, 'revisions' => true, 'slug' => 'slug', 'access' => $open, 'api' => $api,
-                'hooks' => ['beforeUpdate' => 'pages__beforeUpdate', 'afterUpdate' => 'pages__afterUpdate'],
-                'relations' => ['notes' => ['kind' => 'many', 'collection' => 'notes', 'from' => 'id', 'to' => 'pageId'], 'chapters' => ['kind' => 'many', 'collection' => 'chapters', 'from' => 'id', 'to' => 'pageId'], 'parent' => ['kind' => 'one', 'collection' => 'pages', 'from' => 'parentId', 'to' => 'id', 'optional' => true]],
-                'columns' => [
-                    'id' => $id,
-                    'title' => ['type' => 'text', 'notNull' => true, 'localized' => true],
-                    'slug' => ['type' => 'slug', 'unique' => true, 'source' => 'title'],
-                    'price' => ['type' => 'integer'],
-                    'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['a', 'b'], 'notNull' => true, 'default' => ['value' => []]],
-                    'seo' => ['type' => 'group', 'fields' => ['heading' => ['type' => 'text', 'localized' => true], 'noindex' => ['type' => 'boolean']]],
-                    'stampedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true]],
-                    'box' => ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
-                    'parentId' => ['type' => 'integer', 'references' => ['collection' => 'pages', 'column' => 'id', 'onDelete' => 'set null']],
-                    'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
-                    'publishedAt' => ['type' => 'timestamp', 'system' => true],
-                    'locale' => ['type' => 'text', 'enum' => ['en', 'de', 'fr'], 'notNull' => true, 'default' => ['value' => 'en'], 'system' => true],
-                    'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
-                    'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
-                ]],
-            'codes' => ['primaryKey' => 'code', 'localized' => true, 'access' => $open, 'api' => $api, 'relations' => [],
-                'columns' => [
-                    'code' => ['type' => 'text', 'primaryKey' => true, 'notNull' => true],
-                    'label' => ['type' => 'text', 'localized' => true],
-                    'rank' => ['type' => 'integer'],
-                    'locale' => ['type' => 'text', 'enum' => ['en', 'de', 'fr'], 'notNull' => true, 'default' => ['value' => 'en'], 'system' => true],
-                    'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
-                    'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
-                ]],
-            'notes' => ['primaryKey' => 'id', 'access' => $open, 'api' => $api, 'relations' => [],
-                'columns' => ['id' => $id, 'pageId' => ['type' => 'integer'], 'body' => ['type' => 'text', 'notNull' => true]]],
-            'chapters' => ['primaryKey' => 'id', 'localized' => true, 'access' => $open, 'api' => $api, 'relations' => [],
-                'columns' => [
-                    'id' => $id,
-                    'pageId' => ['type' => 'integer'],
-                    'heading' => ['type' => 'text', 'notNull' => true, 'localized' => true],
-                    'locale' => ['type' => 'text', 'enum' => ['en', 'de', 'fr'], 'notNull' => true, 'default' => ['value' => 'en'], 'system' => true],
-                    'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
-                    'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
-                ]],
-        ]];
-        PHP;
-    $functionsPhp = <<<'PHP'
-        <?php
-        namespace ZeroApp;
-        // Records every afterUpdate as "<locale>:<price>", so per-row hooks during group sync are observable.
-        // Rewrites a synced value on one translation: group sync must refuse rather than split the group.
-        function pages__beforeUpdate($patch, $existing) {
-            if ($existing['title'] === 'Bump DE' && isset($patch['price'])) {
-                $patch['price']++;
-            }
-            if ($existing['title'] === 'Tag DE' && isset($patch['price'])) {
-                $patch['tags'] = ['b']; // a different synced column than the one propagated
-            }
-            if ($existing['title'] === 'Adopt DE' && isset($patch['price'])) {
-                $patch['price']++; // rewrites the value it is adopting
-            }
-            if ($existing['title'] === 'Spawn on adopt' && isset($patch['price'])) {
-                \Zero\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing['id']]);
-            }
-            if ($existing['title'] === 'Order EN' && ($patch['stampedAt'] ?? null) === '2001-01-01T00:00:00.000Z') {
-                $patch['price'] = 5; // a hook changes a synced value during a bulk update of another column
-            }
-            if ($existing['title'] === 'Move DE') {
-                $patch['locale'] = 'fr';
-            }
-            if ($existing['title'] === 'Spawn DE' && isset($patch['price'])) {
-                // creates a French translation while the group still holds its old values
-                \Zero\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing['id']]);
-            }
-            return $patch;
-        }
-        function pages__afterUpdate($row, $previous) {
-            if ($row['price'] === 13 && $row['locale'] === 'de') {
-                throw new \Zero\JsError('de refuses 13');
-            }
-            if ($row['title'] === 'Between' && $row['price'] === 41) {
-                // between two rows of one group in a bulk update: touch the first again
-                \Zero\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
-            }
-            if ($row['title'] === 'Between' && $row['stampedAt'] === '2001-01-01T00:00:00.000Z') {
-                // restore the first row's synced value: what was handed to the second must follow
-                \Zero\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
-            }
-            if ($row['title'] === 'Mid' && $row['price'] === 51) {
-                \Zero\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
-            }
-            if ($row['title'] === 'Mid' && $row['price'] === 52) {
-                \Zero\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \Zero\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
-            }
-            if ($row['title'] === 'Late DE' && $row['price'] === 53 && $previous['price'] !== 53) {
-                // the sibling written early deletes the row that started the group write, then fails
-                \Zero\db()->delete('pages', ['title' => 'Late']);
-                if (\Zero\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
-                    throw new \Zero\JsError('de refuses 53');
-                }
-            }
-            if ($row['title'] === 'Kick' && $row['price'] === 31) {
-                // a nested bulk update over two translations whose group the outer update also covers,
-                // changing another synced column than the outer one
-                \Zero\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
-            }
-            if ($row['price'] === 21 && $row['locale'] === 'en' && ($other = \Zero\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
-                \Zero\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
-            }
-            $group = $row['translations'];
-            ksort($group);
-            \Zero\db()->insert('notes', ['pageId' => $row['id'], 'body' => 'afterUpdate ' . $row['locale'] . ':' . $row['price'] . ' ' . json_encode($group)]);
-        }
-        PHP;
-    $migration = <<<'SQL'
-        CREATE TABLE "pages" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "slug" text, "price" integer, "tags" text DEFAULT '[]' NOT NULL, "seo" text, "stampedAt" text NOT NULL DEFAULT '2000-01-01T00:00:00.000Z', "box" text, "parentId" integer REFERENCES "pages"("id") ON DELETE set null, "status" text DEFAULT 'published' NOT NULL, "publishedAt" text, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
-        --> statement-breakpoint
-        CREATE UNIQUE INDEX "pages_slug_unique" ON "pages" ("slug");
-        --> statement-breakpoint
-        CREATE UNIQUE INDEX "pages_translationGroup_locale" ON "pages" ("translationGroup", "locale");
-        --> statement-breakpoint
-        CREATE TABLE "notes" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "pageId" integer, "body" text NOT NULL);
-        --> statement-breakpoint
-        CREATE TABLE "codes" ("code" text PRIMARY KEY NOT NULL, "label" text, "rank" integer, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
-        --> statement-breakpoint
-        CREATE UNIQUE INDEX "codes_translationGroup_locale" ON "codes" ("translationGroup", "locale");
-        --> statement-breakpoint
-        CREATE TABLE "chapters" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "pageId" integer, "heading" text NOT NULL, "locale" text DEFAULT 'en' NOT NULL, "translationGroup" text);
-        --> statement-breakpoint
-        CREATE UNIQUE INDEX "chapters_translationGroup_locale" ON "chapters" ("translationGroup", "locale");
-        SQL;
-    foreach (['zero/app/schema.php' => $schemaPhp, 'zero/app/functions.php' => $functionsPhp, 'zero/app/migrations/0001_init.sql' => $migration] as $rel => $content) {
-        @mkdir(dirname("$app/$rel"), 0777, true);
-        file_put_contents("$app/$rel", $content);
-    }
-    $previous = \Zero\Db::instance();
-    $locale = App::boot($app);
-    $db = $locale->db;
-    $anon = new \Zero\Viewer(null, 'standalone');
-    $editor = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
-    $locale->identity()->addUser('localeEditor', 'editor', null);
-    $writeHeaders = ['authorization' => 'Bearer ' . $locale->identity()->createToken('localeEditor', null)['token']];
-    $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($locale, $writeHeaders): array {
-        if ($method !== 'GET') {
-            $headers += $writeHeaders;
-        }
-        [$status, , $payload] = $locale->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers);
-        $json = json_decode($payload, true);
-
-        return [$status, $json['data'] ?? $json];
-    };
-    $titles = static fn (array $rows): array => array_map(static fn ($r) => $r['locale'] . ':' . $r['title'], $rows);
-
-    // create: default and explicit locale; translationOf joins the group and copies synced columns
-    $tea = $db->insert('pages', ['title' => 'Tea', 'price' => 3, 'tags' => ['a']], true)[0];
-    eq('create defaults to locales.default in its own group', [$tea['locale'], $tea['translations']], ['en', ['en' => $tea['id']]]);
-    [$status, $tee] = $rest('POST', '/pages', [], ['title' => 'Tee', 'locale' => 'de', 'translationOf' => $tea['id'], 'status' => 'draft']);
-    eq('translationOf copies synced columns, keeps localized + per-row ones', [$status, $tee['locale'], $tee['price'], $tee['tags'], $tee['slug'], $tee['status']], [201, 'de', 3, ['a'], 'tee', 'draft']);
-    eq('translations list the whole group on every row (API rows hide translationGroup)', [
-        $tee['translations'], $db->findFirst('pages', ['where' => ['id' => $tea['id']]])['translations'], array_key_exists('translationGroup', $tee),
-    ], [['en' => $tea['id'], 'de' => $tee['id']], ['en' => $tea['id'], 'de' => $tee['id']], false]);
-    problem('a synced column that differs from the group → 422', fn () => $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => 9]), 422, 'invalid_input', '/price');
-    problem('one row per locale per group → 409', fn () => $db->insert('pages', ['title' => 'Tee 2', 'locale' => 'de', 'translationOf' => $tea['id']]), 409, 'unique_violation', '/locale');
-    problem('translationOf must name a row', fn () => $db->insert('pages', ['title' => 'x', 'locale' => 'fr', 'translationOf' => 999]), 422, 'invalid_input', '/translationOf');
-    problem('a malformed locale is invalid input', fn () => $db->insert('pages', ['title' => 'x', 'locale' => [], 'translationOf' => $tea['id']]), 422, 'invalid_input', '/locale');
-    problem('translations are derived', fn () => $db->insert('pages', ['title' => 'x', 'translations' => []]), 422, 'invalid_input', '/translations');
-    $the = $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tee['id'], 'price' => 3], true)[0];
-    problem('locale is immutable', fn () => $db->update('pages', ['locale' => 'de'], ['id' => $the['id']]), 422, 'invalid_input', '/locale');
-    problem('translationOf only on create', fn () => $db->update('pages', ['translationOf' => $tea['id']], ['id' => $the['id']]), 422, 'invalid_input', '/translationOf');
-
-    // update: a synced change reaches every row of the group in one transaction, hooks + revisions per row
-    $db->update('pages', ['price' => 4, 'title' => 'Thé vert'], ['id' => $the['id']]);
-    $group = $db->findMany('pages', ['locale' => '*', 'orderBy' => ['id' => 'asc']]);
-    eq('synced column propagates; localized one stays per row', array_map(static fn ($r) => [$r['locale'], $r['title'], $r['price']], $group), [['en', 'Tea', 4], ['de', 'Tee', 4], ['fr', 'Thé vert', 4]]);
-    eq('afterUpdate ran once per row, sibling rows already see the full group', array_column($db->findMany('notes', ['orderBy' => ['id' => 'asc']]), 'body'), [
-        'afterUpdate fr:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
-        'afterUpdate en:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
-        'afterUpdate de:4 {"de":' . $tee['id'] . ',"en":' . $tea['id'] . ',"fr":' . $the['id'] . '}',
-    ]);
-    eq('each synced row keeps its own revision', count($db->revisions('pages', $tee['id'])), 2);
-    // A bulk update covering several rows of one group: each row's hooks and revision once, not
-    // once for the update and again for the group sync it already received.
-    $before = array_column($db->findMany('notes'), 'id');
-    $db->update('pages', ['price' => 5], ['id' => ['in' => [$tea['id'], $tee['id']]]]);
-    $bodies = array_map(static fn ($n) => substr($n['body'], 0, 16), $db->findMany('notes', ['where' => ['id' => ['notIn' => $before]], 'orderBy' => ['id' => 'asc']]));
-    sort($bodies);
-    eq('a bulk update over one group runs each row\'s afterUpdate once', $bodies, ['afterUpdate de:5', 'afterUpdate en:5', 'afterUpdate fr:5']);
-    eq('… one revision each', [count($db->revisions('pages', $tea['id'])), count($db->revisions('pages', $tee['id'])), count($db->revisions('pages', $the['id']))], [3, 3, 3]);
-    $db->update('pages', ['price' => 4], ['id' => ['in' => [$tea['id'], $tee['id'], $the['id']]]]);
-    $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // A nested bulk update over rows of the same group: both changes reach every row.
-    $kick = $db->insert('pages', ['title' => 'Kick', 'price' => 1], true)[0];
-    $nest = $db->insert('pages', ['title' => 'Nest', 'price' => 1], true)[0];
-    $nestDe = $db->insert('pages', ['title' => 'Nest DE', 'locale' => 'de', 'translationOf' => $nest['id']], true)[0];
-    $nestFr = $db->insert('pages', ['title' => 'Nest FR', 'locale' => 'fr', 'translationOf' => $nest['id']], true)[0];
-    $db->update('pages', ['price' => 31], ['id' => ['in' => [$kick['id'], $nest['id']]]]);
-    eq('… a nested bulk over the same group commits both changes to every row', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$nest['id'], $nestDe['id'], $nestFr['id']]]]])),
-        [[31, ['b']], [31, ['b']], [31, ['b']]]);
-    $db->delete('pages', ['id' => ['in' => [$kick['id'], $nest['id'], $nestDe['id'], $nestFr['id']]]]);
-    $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // Writes between two rows of one group in a bulk update: the group agrees, and the latest change wins.
-    $order = $db->insert('pages', ['title' => 'Order', 'price' => 1], true)[0];
-    $between = $db->insert('pages', ['title' => 'Between', 'price' => 1], true)[0];
-    $orderDe = $db->insert('pages', ['title' => 'Order DE', 'locale' => 'de', 'translationOf' => $order['id']], true)[0];
-    $three = ['id' => ['in' => [$order['id'], $between['id'], $orderDe['id']]]];
-    $db->update('pages', ['price' => 41], $three);
-    eq('… a nested write between the rows commits with the group agreeing', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
-    $db->update('pages', ['stampedAt' => '2001-01-01T00:00:00.000Z'], $three);
-    eq('… also when a later change restores the value the group had', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$order['id'], $orderDe['id']]]]]), 'price'), [41, 41]);
-    $db->delete('pages', $three);
-    $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // Hooks between two rows of a group in a bulk update: a nested write to the later row, a new
-    // translation of it, or deleting the earlier one all leave the group consistent.
-    $late = $db->insert('pages', ['title' => 'Late', 'price' => 1], true)[0];
-    $mid = $db->insert('pages', ['title' => 'Mid', 'price' => 1], true)[0];
-    $lateDe = $db->insert('pages', ['title' => 'Late DE', 'locale' => 'de', 'translationOf' => $late['id']], true)[0];
-    $lateRows = static fn () => array_map(static fn ($r) => $r['title'] . ':' . $r['price'], $db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['like' => 'Late%']], 'orderBy' => ['id' => 'asc']]));
-    $three = ['id' => ['in' => [$late['id'], $mid['id'], $lateDe['id']]]];
-    $db->update('pages', ['price' => 51], $three);
-    // Late DE was already written by the bulk update (once, with the group's 51); Mid's hook wrote later.
-    eq('… a later nested write to a row the bulk update already reached wins, the group agreeing', $lateRows(), ['Late:57', 'Late DE:57']);
-    $db->update('pages', ['price' => 52], $three);
-    eq('… a translation created between them joins with the group\'s current values', $lateRows(), ['Late:52', 'Late DE:52', 'Late FR:52']);
-    $revisionsBefore = count($db->revisions('pages', $late['id']));
-    $notesBefore = count($db->findMany('notes'));
-    problem('… a sibling hook that deletes the first row and then fails rolls everything back', fn () => $db->update('pages', ['price' => 53], $three), 422, 'rejected');
-    eq('… nothing of it committed: rows, revisions, hook effects', [$lateRows(), count($db->revisions('pages', $late['id'])), count($db->findMany('notes'))],
-        [['Late:52', 'Late DE:52', 'Late FR:52'], $revisionsBefore, $notesBefore]);
-    $db->delete('pages', ['title' => ['in' => ['Late', 'Mid', 'Late DE', 'Late FR']]]);
-    $db->delete('notes', ['id' => ['notIn' => $before]]);
-    // A row from before localization (no group yet): its old revisions show the group it has now.
-    $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
-    $db->store()->update('pages', $legacy['id'], ['translationGroup' => null]);
-    $db->update('pages', ['title' => 'Legacy v2'], ['id' => $legacy['id']]);
-    $legacyRevision = array_reverse($db->revisions('pages', $legacy['id']))[0]['id'];
-    $legacyDe = $db->insert('pages', ['title' => 'Alt', 'locale' => 'de', 'translationOf' => $legacy['id']], true)[0];
-    eq('a revision taken before the row had a group shows its current group', $db->revision('pages', $legacy['id'], $legacyRevision)['translations'], ['en' => $legacy['id'], 'de' => $legacyDe['id']]);
-    $db->delete('pages', ['id' => ['in' => [$legacy['id'], $legacyDe['id']]]]);
-    $firstRevision = array_reverse($db->revisions('pages', $tea['id']))[0]['id'];
-    eq('a revision shows the group as it is now, not as it was', $db->revision('pages', $tea['id'], $firstRevision)['translations'], ['en' => $tea['id'], 'de' => $tee['id'], 'fr' => $the['id']]);
-    $notesBefore = count($db->findMany('notes'));
-    $revisionsBefore = count($db->revisions('pages', $tea['id']));
-    problem('a sibling hook failing mid-sync rolls back the whole group', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 13], ['id' => $tea['id']])), 422, 'rejected');
-    eq('… rows, hook effects and revisions written before the failure are gone', [
-        array_column($db->findMany('pages', ['locale' => '*']), 'price'), count($db->findMany('notes')), count($db->revisions('pages', $tea['id'])),
-    ], [[4, 4, 4], $notesBefore, $revisionsBefore]);
-
-    // A group holding a localized sub-field is translated whole: never copied or synced.
-    $seo = $db->insert('pages', ['title' => 'Seo', 'seo' => ['heading' => 'Hello', 'noindex' => true]], true)[0];
-    $seoDe = $db->insert('pages', ['title' => 'Seo DE', 'locale' => 'de', 'translationOf' => $seo['id'], 'seo' => ['heading' => 'Hallo', 'noindex' => true]], true)[0];
-    $db->update('pages', ['seo' => ['heading' => 'Hi', 'noindex' => false]], ['id' => $seo['id']]);
-    eq('a group with a localized sub-field stays per row', [$seoDe['seo']['heading'], $db->findFirst('pages', ['where' => ['id' => $seoDe['id']]])['seo']], ['Hallo', ['heading' => 'Hallo', 'noindex' => true]]);
-    $db->delete('pages', ['id' => ['in' => [$seo['id'], $seoDe['id']]]]);
-    // A sibling's hook that rewrites a synced value can't split the group: the whole write is refused.
-    $bump = $db->insert('pages', ['title' => 'Bump', 'price' => 1], true)[0];
-    $bumpDe = $db->insert('pages', ['title' => 'Bump DE', 'locale' => 'de', 'translationOf' => $bump['id']], true)[0];
-    problem('a hook that diverges a synced column → 409, nothing committed', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $bump['id']])), 409, 'conflict', '/price');
-    problem('… also when one bulk update covers both rows', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
-    problem('… also when the patch is input that normalizes to the group\'s values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2.0, 'box' => ['label' => 'x']], ['id' => ['in' => [$bump['id'], $bumpDe['id']]]])), 409, 'conflict', '/price');
-    eq('… both rows keep the group value', array_column($db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]]), 'price'), [1, 1]);
-    $db->delete('pages', ['id' => ['in' => [$bump['id'], $bumpDe['id']]]]);
-    $tag = $db->insert('pages', ['title' => 'Tag', 'price' => 1, 'tags' => ['a']], true)[0];
-    $tagDe = $db->insert('pages', ['title' => 'Tag DE', 'locale' => 'de', 'translationOf' => $tag['id']], true)[0];
-    problem('… also when the hook changes another synced column', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $tag['id']])), 409, 'conflict', '/tags');
-    eq('… nothing committed', array_map(static fn ($r) => [$r['price'], $r['tags']], $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$tag['id'], $tagDe['id']]]], 'orderBy' => ['id' => 'asc']])), [[1, ['a']], [1, ['a']]]);
-    $db->delete('pages', ['id' => ['in' => [$tag['id'], $tagDe['id']]]]);
-    $spawn = $db->insert('pages', ['title' => 'Spawn', 'price' => 1], true)[0];
-    $spawnDe = $db->insert('pages', ['title' => 'Spawn DE', 'locale' => 'de', 'translationOf' => $spawn['id']], true)[0];
-    problem('… also when a hook adds a translation with the old values', fn () => $db->transaction(fn () => $db->update('pages', ['price' => 2], ['id' => $spawn['id']])), 409, 'conflict', '/price');
-    eq('… nothing committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['like' => 'Spawn%']]])), 2);
-    $db->delete('pages', ['id' => ['in' => [$spawn['id'], $spawnDe['id']]]]);
-    $move = $db->insert('pages', ['title' => 'Move', 'price' => 1], true)[0];
-    $moveDe = $db->insert('pages', ['title' => 'Move DE', 'locale' => 'de', 'translationOf' => $move['id']], true)[0];
-    problem('a hook can\'t move a row to another locale either', fn () => $db->update('pages', ['title' => 'Move DE'], ['id' => $moveDe['id']]), 422, 'invalid_input', '/locale');
-    $db->delete('pages', ['id' => ['in' => [$move['id'], $moveDe['id']]]]);
-
-    // Per-row generated values (default now, onUpdate) aren't synced: a translation keeps its own.
-    $stamped = $db->insert('pages', ['title' => 'Stamped', 'stampedAt' => '2000-01-01T00:00:00Z'], true)[0];
-    $stampedDe = $db->insert('pages', ['title' => 'Stamped DE', 'locale' => 'de', 'translationOf' => $stamped['id']], true)[0];
-    check('a generated column is per row', $stampedDe['stampedAt'] !== $stamped['stampedAt'], [$stamped['stampedAt'], $stampedDe['stampedAt']]);
-    $db->delete('pages', ['id' => ['in' => [$stamped['id'], $stampedDe['id']]]]);
-
-    // Text primary keys that look like numbers stay text through groups, sync and reads.
-    $db->insert('codes', ['code' => '01', 'label' => 'One', 'rank' => 1]);
-    $db->insert('codes', ['code' => '001', 'label' => 'Eins', 'locale' => 'de', 'translationOf' => '01']);
-    $db->update('codes', ['rank' => 2], ['code' => '001']);
-    eq('numeric-looking text keys keep their type', array_map(static fn ($r) => [$r['code'], $r['rank'], $r['translations']], $db->findMany('codes', ['locale' => '*', 'orderBy' => ['code' => 'asc']])),
-        [['001', 2, ['en' => '01', 'de' => '001']], ['01', 2, ['en' => '01', 'de' => '001']]]);
-
-    // A synced group with an admin-only sub-field: an editor can't confirm the hidden value by guessing.
-    $boxed = $db->insert('pages', ['title' => 'Boxed', 'box' => ['label' => 'L', 'secret' => 's3cret']], true)[0];
-    $boxGuess = static fn (string $secret) => fn () => $db->insert('pages', ['title' => 'Boxed DE', 'locale' => 'de', 'translationOf' => $boxed['id'], 'box' => ['label' => 'L', 'secret' => $secret]], true, $editor);
-    problem('a hidden sub-field is refused whatever it is (right guess)', $boxGuess('s3cret'), 422, 'invalid_input', '/box');
-    problem('… exactly like a wrong guess', $boxGuess('nope'), 422, 'invalid_input', '/box');
-    $db->delete('pages', ['id' => $boxed['id']]);
-
-    // Adoption (a row linked into a group outside the API) is held to the same group invariant.
-    $adopt = $db->insert('pages', ['title' => 'Adopt', 'price' => 7], true)[0];
-    problem('a hook rewriting an adopted synced value → 409, nothing committed', fn () => $db->transaction(function () use ($db, $adopt) {
-        $de = $db->insert('pages', ['title' => 'Adopt DE', 'locale' => 'de', 'price' => 1], true)[0];
-        $db->store()->update('pages', $de['id'], ['translationGroup' => $db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup']]); // linked outside the pipeline
-        \Zero\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
-    }), 409, 'conflict', '/price');
-    eq('… no Adopt DE row was committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => 'Adopt DE']])), 0);
-    problem('… and a hook that adds a translation during a group adoption is checked too', fn () => $db->transaction(function () use ($db, $adopt) {
-        $de = $db->insert('pages', ['title' => 'Spawn on adopt', 'locale' => 'de', 'price' => 1], true)[0];
-        $db->store()->update('pages', $de['id'], ['translationGroup' => $db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup']]);
-        $rows = $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$adopt['id'], $de['id']]]], 'orderBy' => ['id' => 'asc']]);
-        \Zero\Locale\GroupSync::adoptAll('pages', $rows);
-    }), 409, 'conflict', '/price');
-    eq('… nothing of it committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['in' => ['Spawn on adopt', 'Spawned FR']]]])), 0);
-    $db->delete('pages', ['id' => $adopt['id']]);
-
-    // An idempotent translation create replays its receipt even after the group's values moved on.
-    $idem = $db->insert('pages', ['title' => 'Idem', 'price' => 3], true)[0];
-    $request = ['title' => 'Idem FR', 'locale' => 'fr', 'translationOf' => $idem['id'], 'price' => 3];
-    $first = $rest('POST', '/pages', [], $request, ['idempotency-key' => 'idem-fr']);
-    $db->update('pages', ['price' => 4], ['id' => $idem['id']]);
-    $again = $rest('POST', '/pages', [], $request, ['idempotency-key' => 'idem-fr']);
-    eq('… the replay returns the original 201', [$first[0], $again[0], $again[1]['id'] ?? null], [201, 201, $first[1]['id']]);
-    $db->delete('pages', ['id' => ['in' => [$idem['id'], $first[1]['id']]]]);
-
-    // reads: locale with fallback per group, `*`, filters combine, non-localized collections refuse
-    $coffee = $db->insert('pages', ['title' => 'Coffee', 'price' => 5], true)[0];
-    $kaffee = $db->insert('pages', ['title' => 'Kaffee', 'locale' => 'de', 'translationOf' => $coffee['id']], true)[0];
-    $db->update('pages', ['price' => 21], ['id' => $the['id']]);
-    eq('a sync that writes another group still propagates that group', array_column($db->findMany('pages', ['locale' => '*', 'orderBy' => ['id' => 'asc']]), 'price'), [21, 21, 21, 22, 22]);
-    $db->delete('pages', ['id' => $kaffee['id']]);
-    $db->update('pages', ['price' => 4], ['id' => $the['id']]);
-    $db->update('pages', ['price' => 5], ['id' => $coffee['id']]);
-    eq('locale=de: the de row, else the group\'s default-locale row', $titles($db->findMany('pages', ['locale' => 'de', 'orderBy' => ['id' => 'asc']])), ['de:Tee', 'en:Coffee']);
-    eq('locale=fr with a filter', $titles($db->findMany('pages', ['locale' => 'fr', 'where' => ['price' => ['gte' => 4]], 'orderBy' => ['id' => 'asc']])), ['fr:Thé vert', 'en:Coffee']);
-    eq('a filter that excludes the translation does not resurrect its fallback', $titles($db->findMany('pages', ['locale' => 'fr', 'where' => ['title' => ['like' => 'Tea%']]])), []);
-    eq('locale=* returns every row', count($db->findMany('pages', ['locale' => '*'])), 4);
-    eq('API list defaults to locales.default', $titles($rest('GET', '/pages', ['orderBy' => 'id'])[1]), ['en:Tea', 'en:Coffee']);
-    eq('REST ?locale=fr', $titles($rest('GET', '/pages', ['locale' => 'fr', 'orderBy' => 'id'])[1]), ['fr:Thé vert', 'en:Coffee']);
-    eq('a hidden translation (draft) does not hide its group: anonymous de falls back', [
-        $titles($db->findMany('pages', ['locale' => 'de', 'orderBy' => ['id' => 'asc']], $anon)),
-        $titles($db->findMany('pages', ['locale' => 'de', 'orderBy' => ['id' => 'asc']], $editor)),
-    ], [['en:Tea', 'en:Coffee'], ['de:Tee', 'en:Coffee']]);
-    eq('GET /pages/{id} names a row; ?locale= picks its group\'s row', [
-        $rest('GET', '/pages/' . $tea['id'])[1]['title'],
-        $rest('GET', '/pages/' . $tea['id'], ['locale' => 'fr'])[1]['title'],
-        $rest('GET', '/pages/' . $coffee['id'], ['locale' => 'fr'])[1]['title'],
-    ], ['Tea', 'Thé vert', 'Coffee']);
-    $isBad = static fn (array $r, string $ptr) => check("bad locale → 400 $ptr", $r[0] === 400 && $r[1]['code'] === 'invalid_query' && $r[1]['pointer'] === $ptr, $r);
-    $isBad($rest('GET', '/pages', ['locale' => 'es']), '/locale');
-    $isBad($rest('GET', '/notes', ['locale' => 'en']), '/locale');
-    problem('translations cannot be filtered', fn () => $db->findMany('pages', ['where' => ['translations' => null]]), 400, 'invalid_query', '/where/translations');
-
-    // with: a localized `many` resolves to each parent row's locale, `one` resolves the stored id
-    $db->insert('notes', ['pageId' => $coffee['id'], 'body' => 'child']);
-    $fallback = $db->findMany('pages', ['locale' => 'de', 'with' => ['notes' => true], 'where' => ['id' => $coffee['id']]]);
-    eq('`many` children that aren\'t localized are attached as stored', [$fallback[0]['locale'], in_array('child', array_column($fallback[0]['notes'], 'body'), true)], ['en', true]);
-    // Chapters name the en page (pageId is synced, so the de translation names it too); Serve has no de row.
-    $steep = $db->insert('chapters', ['pageId' => $tea['id'], 'heading' => 'Steep'], true)[0];
-    $db->insert('chapters', ['heading' => 'Ziehen', 'locale' => 'de', 'translationOf' => $steep['id']]);
-    $db->insert('chapters', ['pageId' => $tea['id'], 'heading' => 'Serve']);
-    $headings = static fn (array $rows): array => array_map(static fn ($r) => [$r['locale'] . ':' . $r['title'], $titles(array_map(static fn ($c) => ['title' => $c['heading']] + $c, $r['chapters']))], $rows);
-    $mine = ['id' => ['in' => [$tea['id'], $tee['id'], $the['id']]]];
-    eq('each parent row gets its group\'s children in its own locale, falling back per group', $headings($db->findMany('pages', ['locale' => '*', 'where' => $mine, 'orderBy' => ['id' => 'asc'], 'with' => ['chapters' => true]])), [
-        ['en:Tea', ['en:Steep', 'en:Serve']], ['de:Tee', ['de:Ziehen', 'en:Serve']], ['fr:Thé vert', ['en:Steep', 'en:Serve']],
-    ]);
-    eq('… limit applies per parent', $headings($db->findMany('pages', ['locale' => '*', 'where' => $mine, 'orderBy' => ['id' => 'asc'], 'with' => ['chapters' => ['limit' => 1, 'offset' => 1]]])), [
-        ['en:Tea', ['en:Serve']], ['de:Tee', ['en:Serve']], ['fr:Thé vert', ['en:Serve']],
-    ]);
-    eq('… over REST, a viewer who can\'t see the de draft gets its fallback parent and en children', $headings($rest('GET', '/pages', ['locale' => 'de', 'with' => 'chapters', 'where' => json_encode(['id' => $tea['id']])])[1]), [
-        ['en:Tea', ['en:Steep', 'en:Serve']],
-    ]);
-    eq('… a nested locale still wins, for every row of the group', $headings($db->findMany('pages', ['locale' => '*', 'where' => $mine, 'orderBy' => ['id' => 'asc'], 'with' => ['chapters' => ['locale' => 'en', 'limit' => 1]]])), [
-        ['en:Tea', ['en:Steep']], ['de:Tee', ['en:Steep']], ['fr:Thé vert', ['en:Steep']],
-    ]);
-    problem('… a nested limit is still validated', fn () => $db->findMany('pages', ['where' => ['id' => $tea['id']], 'with' => ['chapters' => ['limit' => -1]]]), 400, 'invalid_query', '/with/chapters/limit');
-    problem('… so is a nested option when no parent has a key to follow', fn () => $db->findMany('pages', ['where' => ['id' => $tea['id']], 'with' => ['parent' => ['limit' => -1]]]), 400, 'invalid_query', '/with/parent/limit');
-    $db->update('pages', ['parentId' => $tea['id']], ['id' => $coffee['id']]);
-    $fr = $db->findMany('pages', ['locale' => 'fr', 'with' => ['parent' => true], 'orderBy' => ['id' => 'asc']]);
-    eq('`one` relation resolves the referenced row as stored', array_map(static fn ($r) => $r['parent']['title'] ?? null, $fr), [null, 'Tea']);
-
-    // delete: only that row; the group shrinks
-    $db->delete('pages', ['id' => $tee['id']]);
-    eq('delete shrinks the group', [$db->findFirst('pages', ['where' => ['id' => $tea['id']]])['translations'], $titles($db->findMany('pages', ['locale' => 'de', 'orderBy' => ['id' => 'asc']]))],
-        [['en' => $tea['id'], 'fr' => $the['id']], ['en:Tea', 'en:Coffee']]);
-
-    // hooks see rows as stored (locale, translations, translationGroup)
-    $stored = $db->findFirst('pages', ['where' => ['id' => $the['id']]]);
-    check('trusted rows carry the group id', is_string($stored['translationGroup']) && strlen($stored['translationGroup']) === 36, $stored);
-
-    // translationOf copies synced values from storage, not from the caller's field-filtered view.
-    $hidePrice = true;
-    \Zero\Extensions::onRead(static function (array $rows, string $c, ?\Zero\Viewer $v) use (&$hidePrice): array {
-        return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
-    }, constraintSafe: true);
-    $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];
-    $hidePrice = false;
-    $hidePrice = true;
-    $guess = static fn (int $price) => fn () => $db->insert('pages', ['title' => 'Thé encore', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => $price], true, $editor);
-    problem('a hidden synced value is refused whatever it is (right guess)', $guess(4), 422, 'invalid_input', '/price');
-    problem('… exactly like a wrong guess', $guess(5), 422, 'invalid_input', '/price');
-    $hidePrice = false;
-    eq('a hidden synced column is copied at create (no repair update, one revision)', [$db->findFirst('pages', ['where' => ['id' => $de['id']]])['price'], count($db->revisions('pages', $de['id']))], [4, 1]);
-
-    \Zero\Db::setInstance($previous);
-})();
+// ================================================================ globals: one instant per update
 
 // ================================================================ globals: one instant per update
 
@@ -1588,14 +976,19 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 // although every clock read here moves the pinned clock a millisecond (ZERO_NOW_STEP).
 (static function (): void {
     $now = ['now' => true];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [], 'globals' => ['site' => [
+    $wp = $GLOBALS['wp'];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [], 'globals' => ['site' => [
+        'label' => 'site', 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
+        'wp' => ['postId' => 'zero_global_site', 'menuSlug' => 'zero-global-site', 'groupKey' => 'group_zero_global_site', 'fieldKeyPrefix' => 'field_zero_global_site_', 'optionPrefix' => 'zero_global_site_'],
         'fields' => [
             'createdAt' => ['type' => 'timestamp', 'default' => $now],
             'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]]],
         ],
     ]]]);
-    $store = new \Zero\Store\SqliteStore(\Zero\Store\SqliteStore::connect(':memory:'), $schema);
-    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    // Globals are SCF option fields: SCF must know this global's fields to write them.
+    \Zero\Wp\Scf::register($schema);
+    $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
     putenv('ZERO_NOW=2030-01-01T00:00:00.000Z');
     putenv('ZERO_NOW_STEP=1');
     try {
@@ -1609,14 +1002,16 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 
 // ================================================================ the empty-object marker stays in json() values
 
+// ================================================================ the empty-object marker stays in json() values
+
 // An access rule sees the patch as plain arrays: a list column sent as `{}` (the marker once decoded)
 // reaches the rule as [], never as a JsObject its array code can't handle.
 (static function (): void {
     eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
     eval('namespace ZeroApp; function marked__read($ctx) { return ["AND" => [new \\Zero\\JsObject()]]; }');
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
-        'primaryKey' => 'id', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => ['marked' => [
+        'primaryKey' => 'id', 'editor' => false, 'table' => 'zero_marked', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
             'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['locked', 'open']],
@@ -1626,15 +1021,15 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         ],
         'relations' => ['kids' => ['kind' => 'many', 'collection' => 'marked', 'from' => 'id', 'to' => 'parentId']],
     ]]]);
-    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
-    $pdo->exec('CREATE TABLE "marked" ("id" integer PRIMARY KEY, "tags" text, "meta" text, "info" text, "parentId" integer)');
-    $store = new \Zero\Store\SqliteStore($pdo, $schema);
-    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $wp = $GLOBALS['wp'];
+    $wp->exec('CREATE TABLE {prefix}zero_marked (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `meta` LONGTEXT, `info` LONGTEXT, `parentId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
     $previous = \Zero\Db::instance();
     \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
     try {
         $row = $db->insert('marked', ['tags' => ['open']], true)[0];
-        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
+        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'wp');
         $patch = \Zero\Js::decodeJson('{"tags":{},"meta":{"a":{}}}');
         try {
             $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
@@ -1655,10 +1050,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             ['parentId' => $parent['id'], 'meta' => [], 'info' => ['extra' => []]]]);
         $kids = $db->findFirst('marked', \Zero\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
         $byInfo = $db->findMany('marked', \Zero\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
-        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'standalone'));
+        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'wp'));
         eq('permission checks run a rule filter holding {} like reads do', [
-            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null, 'standalone')),
-            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null, 'standalone')) ?? []),
+            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null, 'wp')),
+            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null, 'wp')) ?? []),
         ], [true, 4]);
         eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
             array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']), $kids),
@@ -1675,20 +1070,22 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 // Extensions (field access, sync, locales, files…) reach the schema through db(): that must be the
 // Db running the operation, not the booted app's, or a second Db silently loses its field rules.
 (static function (): void {
+    $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     eval('namespace ZeroApp; function scoped__rule($ctx) { return \\Zero\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\Zero\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
-        'people' => ['primaryKey' => 'id', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
+        'people' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'zero_scoped_people', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
             'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
-    ], 'globals' => ['scope' => ['fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']]]]]);
-    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
-    $pdo->exec('CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text)');
-    $store = new \Zero\Store\SqliteStore($pdo, $schema);
-    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    ], 'globals' => ['scope' => ['label' => 'scope', 'agents' => true, 'fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
+        'wp' => ['postId' => 'zero_global_scope', 'menuSlug' => 'zero-global-scope', 'groupKey' => 'group_zero_global_scope', 'fieldKeyPrefix' => 'field_zero_global_scope_', 'optionPrefix' => 'zero_global_scope_']]]]);
+    \Zero\Wp\Scf::register($schema);
+    $wp->exec('CREATE TABLE {prefix}zero_scoped_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
     $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
-    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'standalone'))), false);
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \Zero\Viewer(null, 'wp'))), false);
     eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
-    $viewer = new \Zero\Viewer(['id' => 1, 'role' => 'admin'], 'standalone');
+    $viewer = new \Zero\Viewer(['id' => 1, 'role' => 'admin'], 'wp');
     eq('direct permission rules query the secondary schema', [$db->permits('people', 'read', 1, $viewer), $db->permittedKeys('people', 'update', $viewer)], [true, null]);
     $revisions = $db->revisions('people', 1, $viewer);
     eq('revision authorization queries the secondary schema', count($revisions), 1);
@@ -1701,7 +1098,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
     eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
     eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');
-    $shared = new \Zero\Db($store, new \Zero\Schema(['collections' => []]), $db->media());
+    $shared = new \Zero\Db($store, new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => []]), $db->media(), 'wp');
     $committed = [];
     $shared->transaction(function () use ($db, &$committed): void {
         $db->transaction(function () use ($db, &$committed): void {
@@ -1720,75 +1117,83 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 // A unique conflict or a dangling reference is an answer about stored rows. Writes may only get one
 // about rows the viewer could read anyway (review: field-unique-oracle, ref-existence-oracle).
 (static function (): void {
+    $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $anyone = ['role' => 'anyone'];
-    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => [
+    $table = static fn (string $name, array $access, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "zero_$name", 'access' => $access, 'columns' => ['id' => $id] + $columns];
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'target' => 'wp', 'collections' => [
         // Anyone signs up; only admins see who did.
-        'subscribers' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin'], 'create' => $anyone],
-            'columns' => ['id' => $id, 'email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]],
+        'subscribers' => $table('subscribers', ['read' => ['role' => 'admin'], 'create' => $anyone],
+            ['email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]),
         // Anyone reads people; the ssn column is admin-only.
-        'people' => ['primaryKey' => 'id', 'access' => ['read' => $anyone, 'create' => $anyone, 'update' => $anyone],
-            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'unique' => true, 'access' => ['read' => ['role' => 'admin'], 'update' => $anyone]]]],
+        'people' => $table('people', ['read' => $anyone, 'create' => $anyone, 'update' => $anyone],
+            ['name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'unique' => true, 'access' => ['read' => ['role' => 'admin'], 'update' => $anyone]]]),
         // Notes are editor-readable; private tags may point at a note.
-        'notes' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'editor'], 'create' => $anyone, 'delete' => $anyone],
-            'columns' => ['id' => $id, 'body' => ['type' => 'text', 'notNull' => true]]],
-        'tags' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin'], 'create' => $anyone, 'update' => $anyone],
-            'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'noteId' => ['type' => 'integer', 'references' => ['collection' => 'notes', 'column' => 'id']]]],
+        'notes' => $table('notes', ['read' => ['role' => 'editor'], 'create' => $anyone, 'delete' => $anyone],
+            ['body' => ['type' => 'text', 'notNull' => true]]),
+        'tags' => $table('tags', ['read' => ['role' => 'admin'], 'create' => $anyone, 'update' => $anyone],
+            ['name' => ['type' => 'text', 'notNull' => true], 'noteId' => ['type' => 'integer', 'references' => ['collection' => 'notes', 'column' => 'id']]]),
     ]]);
-    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
-    $pdo->exec('CREATE TABLE "subscribers" ("id" integer PRIMARY KEY, "email" text NOT NULL UNIQUE, "note" text);
-        CREATE TABLE "people" ("id" integer PRIMARY KEY, "name" text NOT NULL, "ssn" text UNIQUE);
-        CREATE TABLE "notes" ("id" integer PRIMARY KEY, "body" text NOT NULL);
-        CREATE TABLE "tags" ("id" integer PRIMARY KEY, "name" text NOT NULL, "noteId" integer REFERENCES "notes" ("id"))');
-    $store = new \Zero\Store\SqliteStore($pdo, $schema);
-    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
-    $anon = new \Zero\Viewer(null, 'standalone');
-    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber'], 'standalone');
-    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'standalone');
-    $count = static fn (string $c) => (int) $pdo->query("SELECT COUNT(*) FROM \"$c\"")->fetchColumn();
+    $wp->exec('CREATE TABLE {prefix}zero_subscribers (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `note` LONGTEXT, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}zero_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` VARCHAR(191), PRIMARY KEY (`id`), UNIQUE KEY `ssn_unique` (`ssn`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}zero_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}zero_tags (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `zero_tags_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}zero_notes (`id`)) ENGINE=InnoDB');
+    $store = \Zero\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \Zero\Db($store, $schema, \Zero\db()->media(), 'wp');
+    $previous = \Zero\Db::instance();
+    \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
+    $anon = new \Zero\Viewer(null, 'wp');
+    $sub = new \Zero\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber'], 'wp');
+    $admin = new \Zero\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin'], 'wp');
+    $editor = new \Zero\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor'], 'wp');
+    $count = static fn (string $c) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}zero_$c");
+    try {
+        // Unique writes require visibility across the collection, before any value is looked up.
+        $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin);
+        problem('a private unique value is refused when taken', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $anon), 401, 'unauthenticated', '/email');
+        problem('a private unique value is refused when free', fn () => $db->insert('subscribers', ['email' => 'b@x.test'], true, $anon), 401, 'unauthenticated', '/email');
+        eq('rejected creates persist nothing', $count('subscribers'), 1);
+        problem('readers retain normal unique conflicts', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin), 409, 'unique_violation', '/email');
 
-    // Unique writes require visibility across the collection, before any value is looked up.
-    $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin);
-    problem('a private unique value is refused when taken', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $anon), 401, 'unauthenticated', '/email');
-    problem('a private unique value is refused when free', fn () => $db->insert('subscribers', ['email' => 'b@x.test'], true, $anon), 401, 'unauthenticated', '/email');
-    eq('rejected creates persist nothing', $count('subscribers'), 1);
-    problem('readers retain normal unique conflicts', fn () => $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin), 409, 'unique_violation', '/email');
+        // A unique column the viewer can't read: refused before any lookup, whatever the value.
+        $person = $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789'], true)[0];
+        problem('setting a hidden unique column is refused when the value exists…', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '123-45-6789'], true, $anon), 401, 'unauthenticated', '/ssn');
+        problem('… and the same when it doesn\'t', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '000-00-0000'], true, $anon), 401, 'unauthenticated', '/ssn');
+        problem('a write-only unique value cannot be tested through an update', fn () => $db->update('people', ['ssn' => '123-45-6789'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
+        problem('a free write-only unique value is equally refused', fn () => $db->update('people', ['ssn' => '000-00-0000'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
+        eq('a create that leaves it out is fine', $db->insert('people', ['name' => 'r'], true, $anon)[0]['name'], 'r');
+        eq('an admin sets it', $db->insert('people', ['name' => 's', 'ssn' => '111-11-1111'], true, $admin)[0]['ssn'], '111-11-1111');
 
-    // A unique column the viewer can't read: refused before any lookup, whatever the value.
-    $person = $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789'], true)[0];
-    problem('setting a hidden unique column is refused when the value exists…', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '123-45-6789'], true, $anon), 401, 'unauthenticated', '/ssn');
-    problem('… and the same when it doesn\'t', fn () => $db->insert('people', ['name' => 'q', 'ssn' => '000-00-0000'], true, $anon), 401, 'unauthenticated', '/ssn');
-    problem('a write-only unique value cannot be tested through an update', fn () => $db->update('people', ['ssn' => '123-45-6789'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
-    problem('a free write-only unique value is equally refused', fn () => $db->update('people', ['ssn' => '000-00-0000'], ['id' => $person['id']], true, $sub), 403, 'forbidden', '/ssn');
-    eq('a create that leaves it out is fine', $db->insert('people', ['name' => 'r'], true, $anon)[0]['name'], 'r');
-    eq('an admin sets it', $db->insert('people', ['name' => 's', 'ssn' => '111-11-1111'], true, $admin)[0]['ssn'], '111-11-1111');
+        // A reference must name a row the viewer may read: unreadable and missing answer alike.
+        $note = $db->insert('notes', ['body' => 'private'], true)[0];
+        $missing = $note['id'] + 100;
+        $failure = static function (callable $write): array {
+            try {
+                $write();
 
-    // A reference must name a row the viewer may read: unreadable and missing answer alike.
-    $note = $db->insert('notes', ['body' => 'private'], true)[0];
-    $missing = $note['id'] + 100;
-    $failure = static function (callable $write): array {
-        try {
-            $write();
-            return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
-        } catch (\Throwable $e) {
-            return \Zero\App::problem($e);
+                return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
+            } catch (\Throwable $e) {
+                return \Zero\App::problem($e);
+            }
+        };
+        foreach ([$note['id'], $missing] as $value) {
+            $error = $failure(fn () => $db->insert('tags', ['name' => 't', 'noteId' => $value], true, $sub));
+            eq('unreadable and absent references answer identically',
+                [$error['status'], $error['code'], $error['pointer'], $error['detail']],
+                [409, 'reference_violation', '/noteId', 'No referenced notes row for noteId']);
         }
-    };
-    foreach ([$note['id'], $missing] as $value) {
-        $error = $failure(fn () => $db->insert('tags', ['name' => 't', 'noteId' => $value], true, $sub));
-        eq('unreadable and absent references answer identically',
-            [$error['status'], $error['code'], $error['pointer'], $error['detail']],
-            [409, 'reference_violation', '/noteId', 'No referenced notes row for noteId']);
+        $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
+        problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
+        eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
+        $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
+        foreach ([$note, $unreferenced] as $parent) {
+            problem('unreadable restrictive children refuse deletion whether present or absent', fn () => $db->delete('notes', ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
+        }
+        eq('refused deletes preserve both parents', $count('notes'), 2);
+        eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
+    } finally {
+        \Zero\Db::setInstance($previous);
     }
-    $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
-    problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
-    eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
-    $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
-    foreach ([$note, $unreferenced] as $parent) {
-        problem('unreadable restrictive children refuse deletion whether present or absent', fn () => $db->delete('notes', ['id' => $parent['id']], true, new \Zero\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor'], 'standalone')), 409, 'reference_violation');
-    }
-    eq('refused deletes preserve both parents', $count('notes'), 2);
-    eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
 })();
 
 finish('db_test');

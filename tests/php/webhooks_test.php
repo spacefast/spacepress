@@ -3,26 +3,21 @@
 declare(strict_types=1);
 
 /*
- * Webhooks (§6.1, D2) on the standalone runtime: committed writes become signed deliveries to a
- * real local receiver (a `php -S` child), a 500 retries with backoff, and `signature` actions
- * accept a valid `zero` / `hmac-sha256` signature and reject stale or forged ones.
+ * Webhooks (§6.1, D2) on WordPress, in-process (tests/php/wp.php): committed writes become signed
+ * deliveries to a real local receiver (a `php -S`-free socket server), a 500 retries with backoff, and
+ * `signature` actions accept a valid `zero` / `hmac-sha256` signature and reject stale or forged ones.
+ * Delivery goes through wp_safe_remote_post, as on every WordPress site.
  */
 
-use Zero\App;
 use Zero\Jobs\Runner;
 use Zero\Jobs\Webhooks;
 
-require __DIR__ . '/blog_app.php';
+require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
-
-$root = blogApp(sys_get_temp_dir() . '/zero-webhooks-test-' . bin2hex(random_bytes(4)));
-putenv('ZERO_DB_PATH');
-putenv('ZERO_AUTO_MIGRATE');
-ini_set('error_log', "$root/error.log");
 
 // The receiver appends each request (headers + raw body) to a log and answers with the status in
 // $inbox/status (200 unless told otherwise).
-$inbox = "$root/receiver";
+$inbox = sys_get_temp_dir() . '/zero-webhooks-inbox-' . bin2hex(random_bytes(4));
 @mkdir($inbox);
 // This process binds the listening socket and hands it to the receiver as its stdin, so the port is
 // never free between choosing and listening (no other process can take it) and there is no readiness
@@ -70,16 +65,17 @@ $listener = stream_socket_server('tcp://127.0.0.1:0');
 $port = (int) substr(strrchr(stream_socket_get_name($listener, false), ':'), 1);
 $server = proc_open([PHP_BINARY, "$inbox/serve.php", $inbox], [0 => $listener, 2 => ['file', '/dev/null', 'w']], $pipes);
 fclose($listener); // the receiver holds the socket now
-register_shutdown_function(static function () use ($server, $root): void {
+register_shutdown_function(static function () use ($server, $inbox): void {
     proc_terminate($server);
-    exec('rm -rf ' . escapeshellarg($root));
+    exec('rm -rf ' . escapeshellarg($inbox));
 });
 $received = static fn (): array => is_file("$inbox/log") ? array_map(static fn ($l) => json_decode($l, true), file("$inbox/log", FILE_IGNORE_NEW_LINES)) : [];
 
-putenv("ZERO_HOOK_URL=http://127.0.0.1:$port/");
-putenv('ZERO_HOOK_SECRET=whsec_test');
+// The app's configuration comes from constants on WordPress (wp-config.php); Env::get reads them too.
+define('ZERO_HOOK_URL', "http://127.0.0.1:$port/");
+define('ZERO_HOOK_SECRET', 'whsec_test');
 putenv('ZERO_INBOUND_SECRET=inbound_test');
-$schema = require "$root/zero/app/schema.php";
+$schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['webhooks'] = [
     ['url' => ['env' => 'ZERO_HOOK_URL'], 'secret' => ['env' => 'ZERO_HOOK_SECRET'], 'events' => ['comments.created', 'comments.updated']],
 ];
@@ -89,20 +85,19 @@ $signed = static fn (string $scheme, string $header) => ['input' => ['n' => ['ty
 $schema['actions']['inboundZero'] = $signed('zero', 'zero-signature');
 $schema['actions']['inboundHmac'] = $signed('hmac-sha256', 'x-hub-signature');
 $schema['actions']['inboundIdem'] = ['idempotent' => true] + $signed('zero', 'zero-signature');
-file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
-file_put_contents("$root/zero/app/functions.php", <<<'PHP'
+$functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
     function action__inbound(array $input, $ctx)
     {
         return ['n' => $input['n'] ?? null, 'user' => $ctx['user']];
     }
-    PHP, FILE_APPEND);
+    PHP;
 
-require "$root/zero/runtime/bootstrap.php";
-$app = App::boot($root);
+$wp = wpSite('webhooks', ['schema' => $schema, 'functions' => $functions, 'users' => ['ann' => 'admin']]);
+$app = $wp->app();
 $db = $app->db;
-$pdo = $app->store->pdo();
-$jobs = static fn () => $pdo->query('SELECT * FROM "__zero_jobs" ORDER BY "createdAt", "id"')->fetchAll();
+$jobs = static fn () => $wp->sql('SELECT * FROM {prefix}zero__jobs ORDER BY `createdAt`, `id`');
+$jobRow = static fn (string $id) => $wp->sql('SELECT * FROM {prefix}zero__jobs WHERE `id` = ?', [$id])[0] ?? null;
 $post = $db->insert('posts', ['title' => 'Hooked'], true)[0];
 putenv('ZERO_NOW=2026-02-01T00:00:00.000Z');
 
@@ -134,7 +129,7 @@ file_put_contents("$inbox/status", '500');
 $update = array_values(array_filter($jobs(), static fn ($j) => json_decode($j['input'], true)['event'] === 'comments.updated'))[0];
 $attempt = Runner::run($update['id']);
 check('a 500 fails the attempt and backs off with the job schedule', $attempt['state'] === 'failed' && str_contains($attempt['error'], 'answered 500')
-    && $pdo->query("SELECT \"runAt\" FROM \"__zero_jobs\" WHERE \"id\" = '{$update['id']}'")->fetchColumn() === '2026-02-01T00:01:00.000Z', $attempt);
+    && $jobRow($update['id'])['runAt'] === '2026-02-01T00:01:00.000Z', $attempt);
 unlink("$inbox/status");
 putenv('ZERO_NOW=2026-02-01T00:01:00.000Z');
 eq('the retry delivers', Runner::run($update['id'])['state'] ?? null, 'done');
@@ -146,8 +141,8 @@ eq('webhook jobs retry up to 8 times', Webhooks::spec()['retries'], 8);
 
 // ---- inbound ------------------------------------------------------------------------------------------------------
 $now = 1769904060; // the pinned clock
-$call = static function (string $action, string $raw, array $headers) use ($app): array {
-    [$status, , $out] = $app->handle('POST', "/actions/$action", [], $raw, $headers);
+$call = static function (string $action, string $raw, array $headers, ?string $as = null) use ($wp): array {
+    [$status, , $out] = $wp->handle('POST', "/actions/$action", $raw, $as, $headers);
 
     return [$status, json_decode($out, true)];
 };
@@ -162,13 +157,11 @@ eq('a missing header is 401 invalid_signature', $call('inboundZero', $raw, [])[1
 eq('a signature over different bytes is rejected', $call('inboundZero', '{"n": 7}', ['zero-signature' => $zeroSig($now)])[0], 401);
 eq('hmac-sha256 compares hex(hmac(secret, raw body))', $call('inboundHmac', $raw, ['x-hub-signature' => hash_hmac('sha256', $raw, 'inbound_test')])[0], 200);
 eq('hmac-sha256 rejects a forged digest', $call('inboundHmac', $raw, ['x-hub-signature' => hash_hmac('sha256', $raw, 'nope')])[1]['code'] ?? null, 'invalid_signature');
-[, $token] = [exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/zero/bin/zero.php") . ' user add ann --role admin'),
-    json_decode(exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/zero/bin/zero.php") . ' token create ann'), true)['data']['token']];
 $keyed = ['zero-signature' => $zeroSig($now), 'idempotency-key' => 'evt-1'];
 [$s1, $anon] = $call('inboundIdem', $raw, $keyed);
-[$s2, $asAdmin] = $call('inboundIdem', $raw, $keyed + ['authorization' => "Bearer $token"]);
+[$s2, $asAdmin] = $call('inboundIdem', $raw, $keyed, 'ann');
 eq('a signed caller is anonymous everywhere: credentials change neither ctx.user nor the idempotency receipt',
-    [$s1, $s2, $anon, $asAdmin, (int) $pdo->query("SELECT COUNT(*) FROM \"__zero_receipts\" WHERE \"key\" = 'evt-1'")->fetchColumn()],
+    [$s1, $s2, $anon, $asAdmin, (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}zero__receipts WHERE CAST(`key` AS CHAR) = 'evt-1'")],
     [200, 200, ['data' => ['n' => 7, 'user' => null]], ['data' => ['n' => 7, 'user' => null]], 1]);
 putenv('ZERO_INBOUND_SECRET');
 eq('an unset secret rejects every request', $call('inboundHmac', $raw, ['x-hub-signature' => hash_hmac('sha256', $raw, '')])[0], 401);

@@ -2,6 +2,8 @@ pub const WORDPRESS: &str = "7.1";
 pub const PHP: &str = "8.2";
 pub const MYSQL: &str = "8.0";
 pub const MARIADB: &str = "10.11";
+/// The SQLite Database Integration plugin: WordPress on SQLite (Playground, sites without a MySQL server).
+pub const SQLITE: &str = "3.1.2";
 pub const SERIES: &str = "0.2";
 
 /// Exact platform floors; user pins may override them only without lowering a floor.
@@ -48,7 +50,7 @@ pub fn requirements() -> serde_json::Value {
         .into_iter()
         .map(|p| (p.slug, serde_json::json!({"version":p.version,"sha256":p.sha256})))
         .collect();
-    serde_json::json!({"wordpress":WORDPRESS,"php":PHP,"mysql":MYSQL,"mariadb":MARIADB,"plugins":plugins})
+    serde_json::json!({"wordpress":WORDPRESS,"php":PHP,"mysql":MYSQL,"mariadb":MARIADB,"sqlite":SQLITE,"plugins":plugins})
 }
 
 pub fn cache(project: &std::path::Path) -> std::path::PathBuf {

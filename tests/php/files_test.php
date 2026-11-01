@@ -3,26 +3,20 @@
 declare(strict_types=1);
 
 /*
- * Private file buckets on the standalone target (phase 2 §7.2), in-process through App::handle on a
- * real SQLite file: accept/maxBytes, the owner rule, signed download URLs, `file` columns.
+ * Private file buckets on WordPress (phase 2 §7.2), in-process through App::handle (tests/php/wp.php):
+ * accept/maxBytes, the owner rule, signed download URLs, `file` columns, rollback. The site's php -S
+ * answers the private-files probe (the router denies /wp-content/uploads/zero-private/, as the
+ * .htaccess does under Apache), so uploads are open.
  */
 
 use Zero\App;
+use Zero\Wp\WpFiles;
 
-require __DIR__ . '/blog_app.php';
+require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$root = sys_get_temp_dir() . '/zero-files-test-' . bin2hex(random_bytes(4));
-copyRuntime($root);
-@mkdir("$root/zero/app/migrations", 0777, true);
-@mkdir("$root/public", 0777, true);
-register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($root)));
-ini_set('error_log', "$root/error.log");
-putenv('ZERO_DB_PATH');
-putenv('ZERO_SECRET=files-test-secret');
-putenv('ZERO_NOW');
-file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export([
-    'version' => 3, 'runtime' => '0.2',
+$schema = [
+    'name' => 'talks',
     'files' => [
         'decks' => ['accept' => ['application/pdf', 'text/*'], 'maxBytes' => 64,
             'access' => ['read' => ['owner' => true], 'create' => ['role' => 'author'], 'delete' => ['owner' => true]]],
@@ -44,9 +38,9 @@ file_put_contents("$root/zero/app/schema.php", '<?php return ' . var_export([
         'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
         'revisions' => false,
     ]],
-], true) . ';');
+];
 // A before-hook that swaps in a file id: the column check must see the final value.
-file_put_contents("$root/zero/app/functions.php", <<<'PHP'
+$functions = <<<'PHP'
     <?php
     namespace ZeroApp;
     function talks__beforeCreate(array $data): array
@@ -63,26 +57,20 @@ file_put_contents("$root/zero/app/functions.php", <<<'PHP'
             default => $patch,
         };
     }
-    PHP);
-file_put_contents("$root/zero/app/migrations/0001_init.sql", 'CREATE TABLE "talks" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" text NOT NULL, "deck" integer, "backup" integer, "extra" text);');
+    PHP;
 
-require "$root/zero/runtime/bootstrap.php";
-$app = App::boot($root);
-$tokens = [];
-foreach (['alice' => 'author', 'bob' => 'author', 'ed' => 'editor', 'sub' => 'subscriber'] as $name => $role) {
-    $app->identity()->addUser($name, $role, null);
-    $tokens[$name] = $app->identity()->createToken($name, null)['token'];
-}
+$wp = wpSite('files', ['schema' => $schema, 'functions' => $functions, 'users' => ['alice' => 'author', 'bob' => 'author', 'ed' => 'editor', 'sub' => 'subscriber'], 'server' => true]);
+$app = $wp->app();
+eq('the activation probe passed: uploads are open', (new WpFiles($wp->connection(), 'talks'))->unavailable(), null);
+$private = WpFiles::root() . '/talks/decks';
 
 /** @return array{int, mixed, array<string, string>, string|\Closure} */
 function call(string $method, string $path, ?string $as = null, mixed $body = null, array $query = [], array $files = []): array
 {
-    global $app, $tokens;
-    $headers = $as === null ? [] : ['authorization' => 'Bearer ' . $tokens[$as]];
-    [$status, $out, $payload] = $app->handle($method, $path, $query, $body === null ? '' : json_encode($body), $headers, $files);
-    $json = is_string($payload) ? json_decode($payload, true) : null;
+    global $wp;
+    [$status, $data, $headers, $payload] = $wp->call($method, $path, $body, $as, $query, $files);
 
-    return [$status, $status < 300 ? ($json['data'] ?? null) : $json, $out, $payload];
+    return [$status, $data, $headers, $payload];
 }
 
 function isProblem(string $label, array $r, int $status, string $code, ?string $pointer = null): void
@@ -96,11 +84,11 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 
     return call('POST', "/files/$bucket", $as, files: ['file' => ['name' => $name, 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK]]);
 };
-/** Follow a signed url in-process; returns [status, headers, body]. */
-$download = static function (string $url): array {
+/** Follow a signed url in-process (its path below the REST namespace); returns [status, headers as sent, body]. */
+$download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, , $headers, $payload] = call('GET', substr($parts['path'], strlen(App::PREFIX)), query: $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/zero/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
     \Zero\Response::emit($payload);
 
@@ -116,9 +104,10 @@ isProblem('maxBytes', $upload('decks', str_repeat('x', 65), 'big.txt', 'alice'),
 isProblem('unknown bucket', $upload('nope', 'x', 'a.txt', 'alice'), 404, 'not_found');
 [$s, $deck] = $upload('decks', "Slide one\n", "Q3 \"plan\"/é.txt", 'alice');
 eq('201 row: sniffed mime, owner = uploader, no storage path', [$s, $deck['bucket'], $deck['filename'], $deck['mime'], $deck['size'], $deck['ownerId'], array_key_exists('path', $deck)],
-    [201, 'decks', 'é.txt', 'text/plain', 10, $app->identity()->listUsers()[0]['id'], false]);
-check('bytes live under <root>/private, never under public/', count(glob("$root/private/decks/*")) === 1 && glob("$root/public/**/*") === []);
-$deckFile = glob("$root/private/decks/*")[0];
+    [201, 'decks', 'é.txt', 'text/plain', 10, $wp->userId('alice'), false]);
+check('bytes live under uploads/zero-private/<app>/<bucket>, behind the deny rules, never in the media library',
+    count(glob("$private/*")) === 1 && is_file(WpFiles::root() . '/.htaccess') && array_diff(scandir($wp->uploads()), ['.', '..', 'zero-private']) === [], glob("$private/*"));
+$deckFile = glob("$private/*")[0];
 
 // ================================================================ signed downloads
 
@@ -161,7 +150,7 @@ isProblem('a before-hook cannot slip in an unchecked file id', call('POST', '/ta
 eq('… and the rejected create left no row', in_array('hooked', array_column(call('GET', '/talks')[1], 'title'), true), false);
 
 // Rollback: an upload inside a failing transaction leaves no row and no bytes; a failed delete keeps both.
-$before = glob("$root/private/decks/*");
+$before = glob("$private/*");
 $tmp = tempnam(sys_get_temp_dir(), 'zf');
 file_put_contents($tmp, 'rolled back');
 try {
@@ -171,7 +160,7 @@ try {
     });
 } catch (\RuntimeException) {
 }
-eq('a rolled-back upload leaves no bytes behind', glob("$root/private/decks/*"), $before);
+eq('a rolled-back upload leaves no bytes behind', glob("$private/*"), $before);
 try {
     \Zero\db()->transaction(static function () use ($deck): void {
         \Zero\Media\Files::delete('decks', $deck['id'], null);
@@ -179,7 +168,7 @@ try {
     });
 } catch (\RuntimeException) {
 }
-eq('a rolled-back delete keeps the row, the reference and the bytes', [call('GET', "/files/decks/{$deck['id']}", 'alice')[0], call('GET', "/talks/{$talk['id']}")[1]['deck'], glob("$root/private/decks/*")],
+eq('a rolled-back delete keeps the row, the reference and the bytes', [call('GET', "/files/decks/{$deck['id']}", 'alice')[0], call('GET', "/talks/{$talk['id']}")[1]['deck'], glob("$private/*")],
     [200, $deck['id'], $before]);
 
 // Nested file fields: checked on write; a delete is refused while one still holds the id.

@@ -82,7 +82,7 @@ final class WpPostStore implements Store
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
                 $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
                 $system && $col === 'publishedAt' => new ColumnRef(
-                    "CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE DATE_FORMAT({a}.post_date_gmt, '%Y-%m-%dT%H:%i:%s.000Z') END",
+                    "CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' END',
                     '',
                     "NULLIF({a}.post_date_gmt, '0000-00-00 00:00:00')",
                     'scalar',
@@ -90,7 +90,7 @@ final class WpPostStore implements Store
                 $type === 'integer', $type === 'media', $type === 'file' => new ColumnRef($v, $m($col), "CAST($v AS SIGNED)", 'scalar'),
                 $type === 'real' => new ColumnRef($v, $m($col), "CAST($v AS DECIMAL(30,10))", 'scalar'),
                 $type === 'timestamp' => new ColumnRef("CONCAT(REPLACE($v, ' ', 'T'), '.000Z')", $m($col), $v, 'scalar'),
-                $type === 'date' => new ColumnRef("DATE_FORMAT(STR_TO_DATE($v, '%Y%m%d'), '%Y-%m-%d')", $m($col), $v, 'scalar'),
+                $type === 'date' => new ColumnRef($this->dialect->isoDate($v), $m($col), $v, 'scalar'),
                 $type === 'json' => new ColumnRef($v, $m($col), '', 'json'),
                 $type === 'select', $type === 'mediaList' => new ColumnRef($v, $m($col), '{j}.meta_value', 'serialized-list'),
                 in_array($type, ['group', 'repeater', 'blocks'], true) => new ColumnRef('NULL', $m($col), "NULLIF(NULLIF({j}.meta_value, ''), '0')", 'json'),
@@ -274,11 +274,12 @@ final class WpPostStore implements Store
     private function corePost(array $spec, array $values): array
     {
         $post = [];
-        $map = array_filter([
-            $spec['title'] ?? null => 'post_title',
-            $spec['content'] ?? null => 'post_content',
-            $spec['slug'] ?? null => 'post_name',
-        ], static fn ($k) => $k !== '', ARRAY_FILTER_USE_KEY);
+        $map = [];
+        foreach (['title' => 'post_title', 'content' => 'post_content', 'slug' => 'post_name'] as $designation => $field) {
+            if (is_string($spec[$designation] ?? null) && $spec[$designation] !== '') {
+                $map[$spec[$designation]] = $field;
+            }
+        }
         foreach ($map as $col => $field) {
             if (array_key_exists($col, $values)) {
                 $post[$field] = (string) ($values[$col] ?? '');

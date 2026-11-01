@@ -29,7 +29,7 @@ jobs:
       - name: Install test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl
+          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl php8.3-zip
           sudo update-alternatives --set php /usr/bin/php8.3
           php --version
           npm install --global typescript@5.9.3
@@ -45,13 +45,18 @@ jobs:
         with:
           path: .zero/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      # tests/sync.rs serves a WordPress-on-SQLite site (tests/php/wp.php).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: tests/wp/cache/*.zip
+          key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
   php:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -60,9 +65,14 @@ jobs:
       - name: Install PHP extensions
         run: |
           sudo apt-get update
-          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl
+          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl php8.3-zip
           sudo update-alternatives --set php /usr/bin/php8.3
           php --version
+      # WordPress core and the pinned plugins the in-process suites boot (tests/php/wp.php), pinned by SHA-256.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: tests/wp/cache/*.zip
+          key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
       - run: tests/php/run.sh
 
   vendor:

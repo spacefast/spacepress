@@ -9,6 +9,8 @@ final class Platform
     public const PHP = '8.2';
     public const MYSQL = '8.0';
     public const MARIADB = '10.11';
+    /** The SQLite Database Integration plugin (WordPress Playground, sites without a MySQL server). */
+    public const SQLITE = '3.1.2';
     public const PLUGINS = [
         'secure-custom-fields' => ['version' => '6.9.7', 'sha256' => '5b10edab948f64b84d44d81a29fd5794a2573205e0d5e7ea9538024fc93ff52c'],
         'action-scheduler' => ['version' => '4.2.0', 'sha256' => 'a360712a5adb066a0d60db76cbe2768234731cbcc363ba7dc2d51bf4559e4551'],
@@ -18,7 +20,7 @@ final class Platform
 
     public static function requirements(): array
     {
-        return ['wordpress' => self::WORDPRESS, 'php' => self::PHP, 'mysql' => self::MYSQL, 'mariadb' => self::MARIADB, 'plugins' => self::PLUGINS];
+        return ['wordpress' => self::WORDPRESS, 'php' => self::PHP, 'mysql' => self::MYSQL, 'mariadb' => self::MARIADB, 'sqlite' => self::SQLITE, 'plugins' => self::PLUGINS];
     }
 
     public static function versions(): array
@@ -27,6 +29,8 @@ final class Platform
         $server = (string) $wpdb->db_server_info();
         $maria = stripos($server, 'mariadb') !== false;
         preg_match('/(?:5\.5\.5-)?(\d+\.\d+(?:\.\d+)?)/', $server, $match);
+        // The SQLite Database Integration plugin answers as MySQL 8; what matters is its own version.
+        $sqlite = $wpdb->dbh instanceof \PDO;
         $headers = [];
         foreach (self::PLUGINS as $slug => $_) {
             $file = WP_PLUGIN_DIR . '/' . $slug . '/' . $slug . '.php';
@@ -34,7 +38,9 @@ final class Platform
         }
         return [
             'version' => (string) get_bloginfo('version'), 'php' => PHP_VERSION,
-            'database' => ['kind' => $maria ? 'mariadb' : 'mysql', 'version' => $match[1] ?? '0'],
+            'database' => $sqlite
+                ? ['kind' => 'sqlite', 'version' => defined('SQLITE_DRIVER_VERSION') ? (string) SQLITE_DRIVER_VERSION : '0']
+                : ['kind' => $maria ? 'mariadb' : 'mysql', 'version' => $match[1] ?? '0'],
             'scf' => class_exists('ACF') && defined('ACF_VERSION') ? ACF_VERSION : null,
             // Action Scheduler registers its version on plugins_loaded. A plugin activated after that hook
             // fired (several activated in one WP-CLI call) never registers in that request, so the registry
@@ -65,9 +71,9 @@ final class Platform
             }
         }
         $database = $versions['database'];
-        $minimum = $database['kind'] === 'mariadb' ? self::MARIADB : self::MYSQL;
+        $minimum = match ($database['kind']) { 'mariadb' => self::MARIADB, 'sqlite' => self::SQLITE, default => self::MYSQL };
         if (version_compare($database['version'], $minimum, '<')) {
-            $problems[] = $database['kind'] . " $minimum+ is required";
+            $problems[] = ($database['kind'] === 'sqlite' ? 'SQLite Database Integration' : $database['kind']) . " $minimum+ is required";
         }
         return $problems;
     }

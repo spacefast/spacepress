@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Zero\Wp;
 
 use Zero\Env;
-use Zero\HttpError;
-use Zero\JsError;
 
 use function Zero\db;
 
@@ -61,7 +59,7 @@ final class Guests
                 if (db()->transaction(static fn (): bool => self::pruneOne($db, $id, $cutoff))) {
                     $out['pruned'][] = $id;
                 }
-            } catch (HttpError|JsError $e) {
+            } catch (\Throwable $e) {
                 $out['kept'][] = ['id' => $id, 'reason' => $e->getMessage()];
                 error_log('[zero] ' . self::HOOK . ": kept guest $id: " . $e->getMessage());
             }

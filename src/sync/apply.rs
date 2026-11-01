@@ -716,7 +716,7 @@ fn perform(
                 Err(p) if p.code() == "sync_stale" => return Err(Stale),
                 // A reference to a record a later collection (or this one) pushes this run: retry once
                 // after every collection's first pass (§5.4's identity-then-fields order for cycles).
-                Err(p) if p.code() == "sync_missing_reference" => {
+                Err(p) if p.code() == "reference_violation" => {
                     // A reference to a record not on the site yet (a later collection's, this one's, a cycle):
                     // the record waits for another pass. A new record is created first without the
                     // references the site names as missing (identity first), so records that point at each
@@ -890,9 +890,9 @@ fn remote_digest(r: &Remote) -> Option<&str> {
     }
 }
 
-/// Create a record's identity: the record with the references the site reports as missing set to null,
-/// one at a time as the site names them (its `sync_missing_reference` pointer, `/fields/<column>`), so
-/// every reference that resolves is kept. The digest of what was created, for the full push to expect.
+/// Create a record's identity with refused references set to null, one at a time as the site's generic
+/// `reference_violation` pointer names them (`/<column>`). Missing and unreadable targets receive the
+/// same treatment; no retry bypasses access checks. Returns the digest for the full push to expect.
 fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -> Result<String, Problem> {
     let mut identity = record.clone();
     let mut problem = Problem {
@@ -902,7 +902,7 @@ fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -
     loop {
         let column = problem.body["pointer"]
             .as_str()
-            .and_then(|p| p.strip_prefix("/fields/"))
+            .and_then(|p| p.strip_prefix('/'))
             .filter(|c| !c.contains('/'))
             .map(|c| c.replace("~1", "/").replace("~0", "~"));
         match column {
@@ -916,7 +916,7 @@ fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -
             &json!({"record": identity, "expect": "absent"}),
         ) {
             Ok(answer) => return answer["digest"].as_str().map(String::from).ok_or(problem),
-            Err(p) if p.code() == "sync_missing_reference" => problem = p,
+            Err(p) if p.code() == "reference_violation" => problem = p,
             Err(p) => return Err(p),
         }
     }

@@ -106,7 +106,7 @@ const safes = collection("safes", {
   vaultId: integer().notNull().references(() => vaults.id),
   keeperId: integer().references(() => people.id),
 }, { editor: false, sync: "content/safes/*.json", access: { read: "anyone" } });
-// A reference target the syncing editor may not list (admins only): sync resolves it anyway.
+// A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = collection("vaults", {
   id: id(),
   name: text().notNull(),
@@ -865,7 +865,7 @@ fn deferred_records_land_in_dependency_order_and_irreducible_cycles_are_reported
 }
 
 #[test]
-fn a_reference_to_a_record_the_syncing_user_cannot_list_still_resolves() {
+fn a_reference_to_an_unreadable_record_never_lands() {
     let (project, site) = setup();
     let admin = admin_token(&project);
     let admin_site = Site {
@@ -879,8 +879,8 @@ fn a_reference_to_a_record_the_syncing_user_cannot_list_still_resolves() {
     let vault = vault["data"]["uid"].as_str().unwrap().to_string();
     std::fs::create_dir_all(project.join("content/safes")).unwrap();
     std::fs::create_dir_all(project.join("content/people")).unwrap();
-    // The keeper isn't on the site (people don't sync), so the safe's push names keeperId as missing and
-    // its identity is pushed first. Its required vaultId, which the editor can't list, must be kept.
+    // An unavailable optional keeper must not turn the identity-only pass into a bypass for the
+    // required vault reference: the editor cannot read that row even when its UID is known.
     let safe = "zr_eeeeeeeeeeeeeeeeee01";
     std::fs::write(
         project.join("content/safes/s.json"),
@@ -890,15 +890,13 @@ fn a_reference_to_a_record_the_syncing_user_cannot_list_still_resolves() {
     let out = sync(&project, &site, &["--only", "safes"]);
     let report = data_or_error(&out);
     let safes = admin_site.rows("safes");
-    assert_eq!(
-        safes.len(),
-        1,
-        "the safe's identity was created with its vault: {report}"
+    assert!(
+        safes.is_empty(),
+        "no pass may persist an unreadable reference: {report}"
     );
-    assert!(!safes[0]["vaultId"].is_null());
-    // The keeper never arrives, so the run reports it rather than writing a null.
     assert_eq!(out.status.code(), Some(1));
     assert!(report["failed"].to_string().contains(safe), "{report}");
+    assert_eq!(admin_site.rows("vaults").len(), 1, "the target remains unchanged");
     let _ = std::fs::remove_dir_all(&project);
 }
 

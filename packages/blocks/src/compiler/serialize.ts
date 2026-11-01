@@ -43,13 +43,18 @@ interface WpBlock {
   innerContent?: (string | null)[];
 }
 
+interface ParsedBlock extends WpBlock {
+  isValid: boolean;
+  innerBlocks: ParsedBlock[];
+}
+
 /** The subset of `@wordpress/blocks` the serializer and its tests use. */
 export interface BlockApi {
   createBlock(name: string, attributes?: BlockAttributes, innerBlocks?: WpBlock[]): WpBlock;
   getBlockType(name: string): BlockType | undefined;
   getBlockTypes(): BlockType[];
   getSaveContent(type: string | BlockType, attributes: BlockAttributes, innerBlocks?: WpBlock[]): string;
-  parse(markup: string): (WpBlock & { isValid: boolean })[];
+  parse(markup: string): ParsedBlock[];
   serialize(blocks: WpBlock[]): string;
   registerBlockType(name: string, settings: Record<string, unknown>): unknown;
   unregisterBlockType(name: string): unknown;
@@ -302,6 +307,8 @@ interface Prepared {
 
 class Serializer {
   readonly diagnostics: Diagnostic[] = [];
+  /** The authored node each built block came from, for the round-trip check's locations. */
+  readonly origins = new WeakMap<WpBlock, BlockNode>();
   private readonly unverified = new Set<string>();
   private readonly api: BlockApi;
 
@@ -369,6 +376,13 @@ class Serializer {
       if (!fitsAttribute(schema, value)) {
         this.error("attribute_type", `${node.blockName}.${name} expects ${describeType(schema)}, got ${describeValue(value)}.`, undefined, node.loc);
         ok = false;
+        continue;
+      }
+      // The block comment is JSON; a value JSON cannot write (a BigInt inside an object) would throw at the end.
+      const unwritable = jsonProblem(value);
+      if (unwritable !== null) {
+        this.error("attribute_type", `${node.blockName}.${name} holds ${unwritable}, which block markup cannot store.`, "Use JSON values: strings, numbers, booleans, arrays and plain objects.", node.loc);
+        ok = false;
       }
     }
     return ok;
@@ -395,12 +409,12 @@ class Serializer {
 
     if (node.blockName === "core/html") {
       const { content, ...rest } = attrs;
-      return { ...this.api.createBlock(node.blockName, rest, []), innerContent: [typeof content === "string" ? content : this.innerHtml(node)] };
+      return this.from(node, { ...this.api.createBlock(node.blockName, rest, []), innerContent: [typeof content === "string" ? content : this.innerHtml(node)] });
     }
 
     if (passthroughBlocks.has(node.blockName)) {
       const inner = this.innerHtml(node);
-      return this.api.createBlock(node.blockName, inner === "" ? attrs : { ...attrs, [PASSTHROUGH_INNER_ATTRIBUTE]: inner }, []);
+      return this.from(node, this.api.createBlock(node.blockName, inner === "" ? attrs : { ...attrs, [PASSTHROUGH_INNER_ATTRIBUTE]: inner }, []));
     }
 
     const type = this.api.getBlockType(node.blockName)!;
@@ -435,7 +449,85 @@ class Serializer {
       this.error("unmappable_element", `${node.blockName} cannot hold inner blocks; ${innerBlocks.length === 1 ? "its child" : "its children"} would be dropped.`, "Put the child blocks beside it, or inside a group.", first.loc ?? node.loc);
       return null;
     }
+    return this.from(node, block);
+  }
+
+  private from(node: BlockNode, block: WpBlock): WpBlock {
+    this.origins.set(block, node);
     return block;
+  }
+
+  /**
+   * Read the document back the way the editor will and compare it with what
+   * was written. `save()` is free to ignore a registered attribute (core/list's
+   * legacy `values`, `scope` on a table's `td`) or to write markup its own
+   * parser rejects (a heading at level 7); the registry check cannot see
+   * either, the reparse can.
+   */
+  verify(written: readonly WpBlock[], read: readonly ParsedBlock[], parent: BlockNode | undefined): void {
+    if (written.length !== read.length) {
+      const first = written[0] !== undefined ? this.origins.get(written[0]) : undefined;
+      this.error("save_failed", `${written.length} ${written.length === 1 ? "block was" : "blocks were"} written${parent ? ` inside ${parent.blockName}` : ""} and ${read.length} read back.`, undefined, first?.loc ?? parent?.loc);
+      return;
+    }
+    for (const [index, block] of written.entries()) {
+      const parsed = read[index]!;
+      const origin = this.origins.get(block);
+      const loc = origin?.loc ?? parent?.loc;
+      if (parsed.name !== block.name || !parsed.isValid) {
+        this.error("save_failed", `${block.name} saved markup the editor does not accept as that block${parsed.name !== block.name ? ` (it reads it as ${parsed.name})` : ""}.`, "Check the attribute values against what the block can render; the editor would show it as broken.", loc);
+        continue;
+      }
+      if (origin !== undefined) {
+        for (const name of Object.keys(origin.attrs)) {
+          if (name === PASSTHROUGH_INNER_ATTRIBUTE || (block.name === "core/html" && name === "content")) continue;
+          if (canonical(block.attributes[name]) !== canonical(parsed.attributes[name])) {
+            this.error("attribute_dropped", `${block.name}.${name} is a registered attribute, but the block's save() does not write it into the markup; the editor reads back ${describeValue(normalizeRichText(parsed.attributes[name]))}.`, "Express it another way: as children, or through an attribute the block's current markup carries.", loc);
+          }
+        }
+      }
+      // A passthrough block's children were written as raw HTML inside it, which the parser reads as
+      // inner blocks of its own; they were never built here, so there is nothing to compare them with.
+      if (!passthroughBlocks.has(block.name)) this.verify(block.innerBlocks, parsed.innerBlocks, origin ?? parent);
+    }
+  }
+}
+
+/** `RichTextData` as the HTML string it stands for; everything else as is. */
+function normalizeRichText(value: unknown): unknown {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && !isPlainObject(value) ? String(value) : value;
+}
+
+/** One string per value, independent of key order, so two attribute values compare as the editor would see them. */
+function canonical(value: unknown): string {
+  const normalized = normalizeRichText(value);
+  return JSON.stringify(normalized, (_key, entry: unknown) => {
+    if (typeof entry === "function") return "«function»";
+    if (typeof entry === "symbol") return "«symbol»";
+    if (isPlainObject(entry)) return Object.fromEntries(Object.entries(entry).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    return typeof entry === "object" && entry !== null && !Array.isArray(entry) ? String(entry) : entry;
+  }) ?? "undefined";
+}
+
+/** What stops a value from being written as JSON, in words, or null when nothing does. */
+function jsonProblem(value: unknown): string | null {
+  try {
+    JSON.stringify(value);
+    return null;
+  } catch (error) {
+    if (error instanceof TypeError && /circular/i.test(error.message)) return "a circular reference";
+    return /BigInt/.test(error instanceof Error ? error.message : "") ? "a BigInt" : "a value JSON cannot write";
+  }
+}
+
+/** Parse without the parser's console logging: an invalid block is a diagnostic here, not console noise. */
+function quietParse(api: BlockApi, markup: string): ParsedBlock[] {
+  const { error, warn, groupCollapsed, groupEnd, info } = console;
+  Object.assign(console, { error() {}, warn() {}, groupCollapsed() {}, groupEnd() {}, info() {} });
+  try {
+    return api.parse(markup);
+  } finally {
+    Object.assign(console, { error, warn, groupCollapsed, groupEnd, info });
   }
 }
 
@@ -473,6 +565,10 @@ export function serializeBlocks(blocks: readonly BlockNode[]): Promise<Serialize
       if (built !== null) prepared.blocks.push(built);
     }
     if (prepared.diagnostics.some((d) => d.severity === "error")) return { markup: "", diagnostics: prepared.diagnostics };
-    return { markup: prepared.blocks.length === 0 ? "" : api.serialize(prepared.blocks), diagnostics: prepared.diagnostics };
+    if (prepared.blocks.length === 0) return { markup: "", diagnostics: prepared.diagnostics };
+    const markup = api.serialize(prepared.blocks);
+    serializer.verify(prepared.blocks, quietParse(api, markup), undefined);
+    if (prepared.diagnostics.some((d) => d.severity === "error")) return { markup: "", diagnostics: prepared.diagnostics };
+    return { markup, diagnostics: prepared.diagnostics };
   });
 }

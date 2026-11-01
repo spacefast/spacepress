@@ -153,33 +153,79 @@ test("a non-plain object is not an object attribute", async () => {
   assert.deepEqual(notPlain.diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 5]]);
 });
 
-test("an editor-local attribute is refused, except core/html's content which is the block's body", async () => {
+test("an editor-local attribute is refused", async () => {
   const { markup, diagnostics } = await serializeBlocks([at(block("core/image", { url: "/a.png", blob: "blob:x" }), 4)]);
   assert.equal(markup, "");
   assert.deepEqual(diagnostics.map(brief), [{ code: "local_attribute", severity: "error", file: "/t/page.tsx", line: 4, column: 5 }]);
+});
+
+test("core/html's content is editor-local too, but it is the block's body and is accepted", async () => {
   assert.deepEqual((await serializeBlocks([block("core/html", { content: "<b>x</b>" })])).diagnostics, []);
 });
 
-test("a block with both a content attribute and children is refused, whatever the children are", async () => {
+test("a block with a content attribute and rich-text children is refused", async () => {
   const richText = await serializeBlocks([at(block("core/paragraph", { content: "a" }, [text("b")]), 5)]);
   assert.deepEqual(richText.diagnostics.map(brief), [{ code: "content_and_children", severity: "error", file: "/t/page.tsx", line: 5, column: 5 }]);
+});
+
+test("a block with a content attribute and a child block is refused", async () => {
   const childBlock = await serializeBlocks([at(block("core/paragraph", { content: "FIRST" }, [block("core/paragraph", {}, [text("SECOND")])]), 6)]);
   assert.deepEqual(childBlock.diagnostics.map((d) => [d.code, d.loc?.line]), [["content_and_children", 6]]);
+});
+
+test("a Custom HTML block with both content and children is refused", async () => {
   const html = await serializeBlocks([at(block("core/html", { content: "<b>a</b>" }, [text("b")]), 7)]);
   assert.deepEqual(html.diagnostics.map((d) => [d.code, d.loc?.line]), [["content_and_children", 7]]);
+});
+
+test("a third-party block with both content and children is refused", async () => {
   const thirdParty = await serializeBlocks([at(block("acme/x", { content: "a" }, [text("b")]), 8)]);
   assert.deepEqual(thirdParty.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["content_and_children", 8]]);
 });
 
-test("a child block the parent's save() cannot hold is refused rather than dropped", async () => {
+test("a child block a paragraph cannot hold is refused rather than dropped", async () => {
   const paragraph = await serializeBlocks([block("core/paragraph", {}, [text("p"), at(block("core/heading", { level: 2 }, [text("h")]), 3)])]);
   assert.equal(paragraph.markup, "");
   assert.deepEqual(paragraph.diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 3]]);
   assert.match(paragraph.diagnostics[0]!.message, /core\/paragraph cannot hold inner blocks/);
+});
+
+test("a child block an image cannot hold is refused rather than dropped", async () => {
   const image = await serializeBlocks([block("core/image", { url: "/a.png" }, [at(block("core/paragraph", {}, [text("x")]), 4)])]);
   assert.deepEqual(image.diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 4]]);
-  // A block with an InnerBlocks slot keeps them.
+});
+
+test("a block with an InnerBlocks slot keeps its children", async () => {
   assert.deepEqual((await serializeBlocks([block("core/group", {}, [block("core/paragraph", {}, [text("x")])])])).diagnostics, []);
+});
+
+test("a registered attribute the block's save() does not write is refused rather than lost", async () => {
+  const { markup, diagnostics } = await serializeBlocks([at(block("core/list", { values: "<li>LOST</li>" }), 9)]);
+  assert.equal(markup, "");
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_dropped", 9]]);
+  assert.match(diagnostics[0]!.message, /core\/list\.values/);
+});
+
+test("a registered attribute the save() writes only in part is refused at its block", async () => {
+  // core/table writes `scope` for <th> cells only; on a <td> it vanishes.
+  const { diagnostics } = await serializeBlocks([at(block("core/table", { body: [{ cells: [{ content: "W", tag: "td", scope: "row" }] }] }), 2)]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_dropped", 2]]);
+});
+
+test("markup the editor would reject as its block is refused, at the nested block that produced it", async () => {
+  const { markup, diagnostics } = await serializeBlocks([block("core/group", {}, [at(block("core/heading", { level: 7, content: "LOST" }), 6)])]);
+  assert.equal(markup, "");
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["save_failed", 6]]);
+  assert.match(diagnostics[0]!.message, /core\/heading/);
+});
+
+test("a value JSON cannot write inside an object attribute is refused before serialization", async () => {
+  const { diagnostics } = await serializeBlocks([at(block("core/query", { query: { n: 1n } }), 3)]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 3]]);
+  assert.match(diagnostics[0]!.message, /BigInt/);
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assert.deepEqual((await serializeBlocks([at(block("core/group", { metadata: circular }), 4)])).diagnostics.map((d) => [d.code, d.loc?.line]), [["attribute_type", 4]]);
 });
 
 test("an unserializable attribute value is still a plain attribute_type error", async () => {
@@ -246,8 +292,11 @@ test("the attribute the passthrough keeps its body in cannot be authored", async
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["unknown_attribute", 2]]);
 });
 
-test("an empty tree is an empty document, and a second document serializes like the first", async () => {
+test("an empty tree is an empty document", async () => {
   assert.deepEqual(await serializeBlocks([]), { markup: "", diagnostics: [] });
+});
+
+test("a second document serializes like the first", async () => {
   const tree = [block("core/paragraph", {}, [text("same")])];
   assert.equal((await serializeBlocks(tree)).markup, (await serializeBlocks(tree)).markup);
 });

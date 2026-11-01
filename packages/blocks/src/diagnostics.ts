@@ -16,6 +16,7 @@ export type DiagnosticCode =
   | "attribute_type"
   | "local_attribute"
   | "content_and_children"
+  | "attribute_dropped"
   | "save_failed"
   | "unverified_block"
   // module execution

@@ -93,6 +93,9 @@ function stringProp(props: ElementProps, name: string): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+/** The props every mapped block-level tag accepts: the two that become block attributes, and `style`, refused separately. */
+const COMMON_PROPS = ["class", "className", "id", "style"] as const;
+
 /** The block attributes every mapped tag carries when the author asked for them. */
 function commonAttributes(props: ElementProps): BlockAttributes {
   const attrs: BlockAttributes = {};
@@ -189,6 +192,24 @@ class Mapper {
     return [];
   }
 
+  /**
+   * Refuse every prop the tag's block has no attribute for. A `colspan` on a
+   * cell or a `start` on a list is mapped; a `data-track` on a paragraph has
+   * nowhere to go in block markup, and dropping it would be silent.
+   */
+  private props(node: ElementNode, known: readonly string[]): void {
+    for (const name of Object.keys(node.props)) {
+      if (name === "style" || known.includes(name)) continue;
+      this.diagnostics.push({
+        code: "unmappable_element",
+        severity: "error",
+        message: `<${node.tag}> has a "${name}" prop that its block cannot hold.`,
+        hint: "Remove it, or use a block component and set the block's own attribute.",
+        loc: node.loc,
+      });
+    }
+  }
+
   /** Map one block-level element. Returns a run, because a div can dissolve. */
   private element(node: ElementNode): BlockNode[] {
     if (node.props.style !== undefined && node.tag !== "img") this.styleProp(node);
@@ -196,34 +217,41 @@ class Mapper {
 
     const heading = HEADING_TAG.exec(node.tag);
     if (heading !== null) {
+      this.props(node, COMMON_PROPS);
       return [block("core/heading", { level: Number(heading[1]), ...attrs }, this.rich(node), node.loc)];
     }
 
     switch (node.tag) {
       case "p":
+        this.props(node, COMMON_PROPS);
         return [block("core/paragraph", attrs, this.rich(node), node.loc)];
       case "div":
+        this.props(node, COMMON_PROPS);
         // A bare div dissolves; a classed one is the group the author meant. Never wrap for free.
         return Object.keys(attrs).length === 0 ? this.blocks(node.children) : [block("core/group", attrs, this.blocks(node.children), node.loc)];
       case "ul":
-      case "ol": {
-        if (node.tag === "ol") attrs.ordered = true;
-        return [block("core/list", attrs, this.blocks(node.children), node.loc)];
-      }
+      case "ol":
+        return [block("core/list", { ...this.list(node), ...attrs }, this.blocks(node.children), node.loc)];
       case "li":
+        this.props(node, COMMON_PROPS);
         return [block("core/list-item", attrs, this.listItem(node), node.loc)];
       case "blockquote":
+        this.props(node, COMMON_PROPS);
         return [block("core/quote", attrs, this.blocks(node.children), node.loc)];
       case "pre":
+        this.props(node, COMMON_PROPS);
         return [block("core/code", attrs, this.code(node), node.loc)];
       case "img":
         this.onlyChildren(node, [], "an image has no content", "Remove the children, or use a <figure> with a <figcaption>.");
         return [block("core/image", { ...this.image(node), ...attrs }, [], node.loc)];
       case "figure":
+        this.props(node, COMMON_PROPS);
         return this.figure(node, attrs);
       case "table":
+        this.props(node, COMMON_PROPS);
         return [block("core/table", { ...this.table(node), ...attrs }, [], node.loc)];
       case "hr":
+        this.props(node, COMMON_PROPS);
         this.onlyChildren(node, [], "a separator has no content", "Remove the children.");
         return [block("core/separator", attrs, [], node.loc)];
       case "details":
@@ -233,10 +261,24 @@ class Mapper {
     }
 
     if (GROUP_TAGS.has(node.tag)) {
+      this.props(node, COMMON_PROPS);
       return [block("core/group", { tagName: node.tag, ...attrs }, this.blocks(node.children), node.loc)];
     }
 
     return this.unmappable(node, `<${node.tag}> has no block.`, 'Use one of the mapped tags, or name a block directly with <Block name="…">.');
+  }
+
+  /** `<ol>` numbering (`start`, `reversed`) and either list's `type` are core/list attributes. */
+  private list(node: ElementNode): BlockAttributes {
+    this.props(node, [...COMMON_PROPS, "start", "reversed", "type"]);
+    const attrs: BlockAttributes = {};
+    if (node.tag === "ol") attrs.ordered = true;
+    const { start, reversed, type } = node.props;
+    if (typeof start === "number") attrs.start = start;
+    else if (typeof start === "string" && start !== "") attrs.start = Number(start);
+    if (reversed === true) attrs.reversed = true;
+    if (typeof type === "string" && type !== "") attrs.type = type;
+    return attrs;
   }
 
   /**
@@ -270,14 +312,26 @@ class Mapper {
     }
   }
 
-  /** A list item's own text, then any list nested under it. */
+  /**
+   * A list item's own text, then any list nested under it. That is the only
+   * order a list item block can hold, so text after a nested list is refused
+   * rather than moved in front of it.
+   */
   private listItem(node: ElementNode): ContentNode[] {
     const text: ContentNode[] = [];
     const nested: ContentNode[] = [];
     for (const child of node.children) {
       if (child.kind === "block") nested.push(...this.blocks([child]));
       else if (isElement(child) && !isInlineTag(child.tag)) nested.push(...this.element(child));
-      else text.push(child);
+      else if (nested.length > 0 && !(child.kind === "text" && child.text.trim() === "")) {
+        this.diagnostics.push({
+          code: "unmappable_element",
+          severity: "error",
+          message: `${child.kind === "text" ? "Text" : `<${child.tag}>`} after a nested list in a <li> has nowhere to go: an item's text comes before its nested list.`,
+          hint: "Move it before the nested list, or into its own item.",
+          loc: child.kind === "text" ? node.loc : child.loc,
+        });
+      } else text.push(child);
     }
     this.checkInline(text);
     return [...text, ...nested];
@@ -287,7 +341,7 @@ class Mapper {
   private code(node: ElementNode): ContentNode[] {
     const [code] = elementChildren(node, "code");
     if (code) {
-      this.structural(code);
+      this.structural(code, [], "Put a class on the <pre>.");
       this.onlyChildren(node, [code], "a code block holds one <code>", "Put everything inside the <code>.");
     }
     const body = code ? code.children : node.children;
@@ -297,17 +351,31 @@ class Mapper {
 
   private image(node: ElementNode): BlockAttributes {
     if (node.props.style !== undefined) this.styleProp(node);
+    this.props(node, [...COMMON_PROPS, "src", "alt", "title", "width", "height"]);
     const attrs: BlockAttributes = {};
     const url = stringProp(node.props, "src");
     if (url !== null) attrs.url = url;
     const alt = stringProp(node.props, "alt");
     if (alt !== null) attrs.alt = alt;
+    const title = stringProp(node.props, "title");
+    if (title !== null) attrs.title = title;
+    // core/image stores both as strings, whatever the author typed.
+    for (const dimension of ["width", "height"] as const) {
+      const value = node.props[dimension];
+      if (typeof value === "number" || (typeof value === "string" && value !== "")) attrs[dimension] = String(value);
+    }
     return attrs;
   }
 
-  /** A structural child (figcaption, summary, thead, tr, td, …): checked for a style prop like any element. */
-  private structural(node: ElementNode): ElementNode {
+  /**
+   * A structural child (figcaption, summary, thead, tr, td, …): checked for a
+   * style prop like any element, and for props the block has no place for.
+   */
+  private structural(node: ElementNode, known: readonly string[] = [], hint?: string): ElementNode {
     if (node.props.style !== undefined) this.styleProp(node);
+    const before = this.diagnostics.length;
+    this.props(node, ["style", ...known]);
+    if (hint !== undefined) for (const added of this.diagnostics.slice(before)) added.hint = hint;
     return node;
   }
 
@@ -335,7 +403,11 @@ class Mapper {
   }
 
   private details(node: ElementNode): BlockAttributes {
+    this.props(node, [...COMMON_PROPS, "open", "name"]);
     const attrs: BlockAttributes = {};
+    if (node.props.open === true) attrs.showContent = true;
+    const name = stringProp(node.props, "name");
+    if (name !== null) attrs.name = name;
     const [summary, ...extra] = elementChildren(node, "summary");
     if (summary) attrs.summary = renderRichTextHtml(this.rich(this.structural(summary)));
     for (const duplicate of extra) this.unmappable(duplicate, "A <details> has one <summary>; this second one has nowhere to go.", "Merge the summaries into one.");
@@ -371,10 +443,23 @@ class Mapper {
         this.structural(row);
         const cells = row.children.filter((cell): cell is ElementNode => isElement(cell) && (cell.tag === "td" || cell.tag === "th"));
         this.onlyChildren(row, cells, "a row holds td and th cells", "Put content inside a cell.");
-        return { cells: cells.map((cell) => ({ content: renderRichTextHtml(this.rich(this.structural(cell))), tag: cell.tag })) };
+        return { cells: cells.map((cell) => this.cell(cell)) };
       });
     };
     return { head: rowsIn("thead"), body: rowsIn("tbody"), foot: rowsIn("tfoot") };
+  }
+
+  /** One cell as core/table stores it: content, tag, and the span and scope attributes HTML gives a cell. */
+  private cell(node: ElementNode): Record<string, string> {
+    this.structural(node, ["colSpan", "colspan", "rowSpan", "rowspan", "scope"]);
+    const cell: Record<string, string> = { content: renderRichTextHtml(this.rich(node)), tag: node.tag };
+    for (const [attribute, names] of [["colspan", ["colSpan", "colspan"]], ["rowspan", ["rowSpan", "rowspan"]], ["scope", ["scope"]]] as const) {
+      for (const name of names) {
+        const value = node.props[name];
+        if (typeof value === "number" || (typeof value === "string" && value !== "")) cell[attribute] = String(value);
+      }
+    }
+    return cell;
   }
 }
 

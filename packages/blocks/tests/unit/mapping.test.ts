@@ -40,6 +40,50 @@ test("lists: ordered flag, items as inner blocks, a nested list beside its item'
   assert.deepEqual(map(jsx("ul", { children: jsx("li", {}) })).blocks[0]?.attrs, {});
 });
 
+test("an ordered list's start, reversed and type reach the list block", () => {
+  const { blocks, diagnostics } = map(jsx("ol", { start: 5, reversed: true, type: "a", children: jsx("li", { children: "e" }) }));
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(blocks[0]?.attrs, { ordered: true, start: 5, reversed: true, type: "a" });
+});
+
+test("text after a nested list in an item is refused rather than moved in front of the list", () => {
+  const at = { fileName: "/t/page.tsx", lineNumber: 4, columnNumber: 3 };
+  const { diagnostics } = map(jsx("ul", { children: jsxDEV("li", { children: ["before", jsx("ul", { children: jsx("li", { children: "nested" }) }), "AFTER"] }, undefined, false, at) }));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 4]]);
+  assert.match(diagnostics[0]!.message, /after a nested list/);
+});
+
+test("a prop the tag's block has no attribute for is refused rather than dropped", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map([
+    jsxDEV("p", { "data-track": "hero", children: "x" }, undefined, false, at(1)),
+    jsxDEV("img", { src: "/a.png", loading: "lazy" }, undefined, false, at(2)),
+    jsx("table", { children: jsx("tr", { children: jsxDEV("td", { headers: "h1", children: "c" }, undefined, false, at(3)) }) }),
+    jsx("pre", { children: jsxDEV("code", { class: "language-ts", children: "c" }, undefined, false, at(4)) }),
+  ]);
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2], ["unmappable_element", 3], ["unmappable_element", 4]]);
+  assert.match(diagnostics[0]!.message, /"data-track" prop/);
+  assert.match(diagnostics[3]!.hint ?? "", /class on the <pre>/);
+});
+
+test("an image's title, width and height reach the image block as strings", () => {
+  const { blocks, diagnostics } = map(jsx("img", { src: "/a.png", title: "T", width: 300, height: "20" }));
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(blocks[0]?.attrs, { url: "/a.png", title: "T", width: "300", height: "20" });
+});
+
+test("a table cell's colSpan, rowSpan and scope are kept on the cell", () => {
+  const { blocks, diagnostics } = map(jsx("table", { children: jsx("tr", { children: [jsx("th", { scope: "col", colSpan: 2, children: "W" }), jsx("td", { rowspan: "3", children: "x" })] }) }));
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(blocks[0]?.attrs.body, [{ cells: [{ content: "W", tag: "th", colspan: "2", scope: "col" }, { content: "x", tag: "td", rowspan: "3" }] }]);
+});
+
+test("an open details with a name keeps both on the block", () => {
+  const { blocks, diagnostics } = map(jsxs("details", { open: true, name: "faq", children: [jsx("summary", { children: "S" }), jsx("p", { children: "b" })] }));
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(blocks[0]?.attrs, { showContent: true, name: "faq", summary: "S" });
+});
+
 test("sectioning tags are groups that remember their tag; a bare div dissolves and a classed div is a group", () => {
   const { blocks } = map([
     jsx("section", { class: "card", children: jsx("p", { children: "in" }) }),

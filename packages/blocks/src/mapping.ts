@@ -235,9 +235,13 @@ class Mapper {
   }
 
   /** Two spellings of one attribute; an element has one place for it, so the second is not merged or dropped. */
+  private spelledTwice(node: ElementNode, html: string, jsx: string): void {
+    if (node.props[html] === undefined || node.props[jsx] === undefined) return;
+    this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${node.tag}> has both "${html}" and "${jsx}"; they are one attribute.`, hint: "Keep one of them.", loc: node.loc });
+  }
+
   private classSpelledTwice(node: ElementNode): void {
-    if (node.props.class === undefined || node.props.className === undefined) return;
-    this.diagnostics.push({ code: "unmappable_element", severity: "error", message: `<${node.tag}> has both "class" and "className"; they are one attribute.`, hint: "Keep one of them.", loc: node.loc });
+    this.spelledTwice(node, "class", "className");
   }
 
   /** The block attributes every mapped tag carries when the author asked for them. */
@@ -534,6 +538,8 @@ class Mapper {
   /** One cell as core/table stores it: content, tag, and the span and scope attributes HTML gives a cell. */
   private cell(node: ElementNode): Record<string, string> {
     this.structural(node, ["colSpan", "colspan", "rowSpan", "rowspan", "scope"]);
+    this.spelledTwice(node, "colspan", "colSpan");
+    this.spelledTwice(node, "rowspan", "rowSpan");
     const cell: Record<string, string> = { content: renderRichTextHtml(this.rich(node)), tag: node.tag };
     for (const [attribute, names] of [["colspan", ["colSpan", "colspan"]], ["rowspan", ["rowSpan", "rowspan"]], ["scope", ["scope"]]] as const) {
       for (const name of names) {

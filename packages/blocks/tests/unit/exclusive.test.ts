@@ -89,15 +89,48 @@ test("a nested call keeps its group alive after the outer call has returned", as
 });
 
 test("a nested call that awaits an outsider of its own kind completes, since the outsider joins", async () => {
+  const assigned = gate();
   let outsider!: Promise<void>;
+  let nested!: Promise<void>;
   const outer = exclusive("dom", async () => {
-    void exclusive("dom", async () => {
+    nested = exclusive("dom", async () => {
+      await assigned.closed;
+      assert.ok(outsider);
       await outsider;
     });
   });
   outsider = exclusive("dom", async () => {});
-  await Promise.all([outer, outsider]);
+  assigned.open();
+  await Promise.all([outer, nested, outsider]);
   assert.equal(await exclusive("module", async () => "after"), "after");
+});
+
+test("a waiter that throws synchronously cannot hand the lock on while the rest of its batch is still starting", async () => {
+  const hold = gate();
+  const seen: string[] = [];
+  const module = exclusive("module", async () => {
+    await hold.closed;
+  });
+  const thrower = exclusive("dom", () => {
+    throw new Error("sync");
+  });
+  const gated = gate();
+  const domMember = exclusive("dom", async () => {
+    await gated.closed;
+    seen.push("dom member:end");
+  });
+  await turn();
+  hold.open();
+  await assert.rejects(thrower, /sync/);
+  // The dom group is active with one member still running; module work must wait for it.
+  const later = exclusive("module", async () => {
+    seen.push("later module");
+  });
+  await turn();
+  assert.deepEqual(seen, []);
+  gated.open();
+  await Promise.all([module, domMember, later]);
+  assert.deepEqual(seen, ["dom member:end", "later module"]);
 });
 
 test("work of the other kind requested from inside an active group is refused at once, not left waiting for itself", async () => {

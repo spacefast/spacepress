@@ -32,6 +32,7 @@ interface Group {
 
 interface Waiter {
   readonly kind: Kind;
+  /** Start this waiter as a member of `group`, whose `active` count already includes it. */
   start(group: Group): void;
 }
 
@@ -46,7 +47,7 @@ export function exclusive<T>(kind: Kind, work: () => Promise<T>): Promise<T> {
   if (current === null) current = { kind, token: {}, active: 0 };
   if (current.kind === kind) return join(current, work);
   return new Promise<T>((resolve, reject) => {
-    waiting.push({ kind, start: (group) => join(group, work).then(resolve, reject) });
+    waiting.push({ kind, start: (group) => run(group, work).then(resolve, reject) });
   });
 }
 
@@ -54,8 +55,13 @@ function describe(kind: Kind): string {
   return kind === "dom" ? "the block API (withBlockApi, serializeBlocks)" : "module execution (compileContent, renderModule)";
 }
 
-async function join<T>(group: Group, work: () => Promise<T>): Promise<T> {
+function join<T>(group: Group, work: () => Promise<T>): Promise<T> {
   group.active += 1;
+  return run(group, work);
+}
+
+/** Run one member whose place in `active` is already counted; the count is given back when it settles. */
+async function run<T>(group: Group, work: () => Promise<T>): Promise<T> {
   try {
     return await context.run(group.token, work);
   } finally {
@@ -76,6 +82,8 @@ function release(): void {
     if (waiting[index]!.kind === group.kind) batch.push(...waiting.splice(index, 1));
     else index += 1;
   }
-  // Each start() increments `active` synchronously, so the group cannot empty while the batch is still being started.
+  // Every member is counted before any starts: a member that throws synchronously cannot empty
+  // the group, and hand the lock on, while the rest of the batch is still being started.
+  group.active = batch.length;
   for (const waiter of batch) waiter.start(group);
 }

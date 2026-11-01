@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -61,7 +61,18 @@ test("a thrown error is located in the author's file when the author's and the s
 });
 
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
-  await assert.rejects(withBlockApi(() => compileContent(fixture("sees-dom.tsx"))), /cannot start inside the block API/);
+  const scratchRoot = mkdtempSync(path.join(tmpdir(), "zero-blocks-scratch-"));
+  const before = process.env.TMPDIR;
+  process.env.TMPDIR = scratchRoot;
+  try {
+    await assert.rejects(withBlockApi(() => compileContent(fixture("sees-dom.tsx"))), /cannot start inside the block API/);
+    // The refused compile had already made its scratch directory; it is cleaned up like any other.
+    assert.deepEqual(readdirSync(scratchRoot), []);
+  } finally {
+    if (before === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = before;
+    rmSync(scratchRoot, { recursive: true, force: true });
+  }
   assert.equal("document" in globalThis, false);
   const after = await compileContent(fixture("sees-dom.tsx"));
   assert.match(after.markup, /<p>undefined\/undefined<\/p>/);

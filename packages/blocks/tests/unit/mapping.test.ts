@@ -175,6 +175,13 @@ test("class and className on one element are a collision, not a silent choice", 
   assert.match(diagnostics[0]!.message, /both "class" and "className"/);
 });
 
+test("colSpan beside colspan, or rowSpan beside rowspan, on a cell is a collision", () => {
+  const at = (line: number) => ({ fileName: "/t/page.tsx", lineNumber: line, columnNumber: 1 });
+  const { diagnostics } = map(jsx("table", { children: jsx("tr", { children: [jsxDEV("td", { colSpan: 2, colspan: 3, children: "c" }, undefined, false, at(1)), jsxDEV("td", { rowSpan: 2, rowspan: "3", children: "r" }, undefined, false, at(2))] }) }));
+  assert.deepEqual(diagnostics.map((d) => [d.code, d.loc?.line]), [["unmappable_element", 1], ["unmappable_element", 2]]);
+  assert.match(diagnostics[0]!.message, /both "colspan" and "colSpan"/);
+});
+
 test("class and className on one phrasing element are the same collision", () => {
   const at = { fileName: "/t/page.tsx", lineNumber: 4, columnNumber: 6 };
   const { diagnostics } = map(jsx("p", { children: jsxDEV("span", { class: "first", className: "second", children: "x" }, undefined, false, at) }));

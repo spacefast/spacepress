@@ -139,7 +139,8 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   }
 
   // Module work (see exclusive.ts): never while any caller has the serializer's DOM globals installed.
-  return exclusive("module", async () => {
+  // A refused admission never runs the callback, so the scratch directory is removed out here.
+  return exclusive("module", async (): Promise<ModuleResult> => {
   try {
     await writeFile(bundlePath, code);
     let namespace: { default?: unknown };
@@ -164,6 +165,9 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+  }).catch(async (error: unknown) => {
+    await rm(scratch, { recursive: true, force: true });
+    throw error;
   });
 }
 

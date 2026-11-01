@@ -3329,6 +3329,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `s.lastIndexOf(x, pos)`: JS reads an `undefined` position as omitted (search from the end)
+    /// and `null` as 0, but compiled PHP has one null for both. A literal decides it here; a
+    /// value that may be null or undefined at runtime is refused. Returns the compiled arguments.
+    fn position_args(&mut self, args: &[ArrEl], position: usize, m: &str) -> Result<Vec<Out>> {
+        let mut argv = self.plain_args(args)?;
+        let Some(ArrEl::Item(p)) = args.get(position) else {
+            return Ok(argv);
+        };
+        let mut e: &Expr = p;
+        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &e.kind {
+            e = x;
+        }
+        match &e.kind {
+            ExprKind::Undefined => argv.truncate(position),
+            ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
+            _ if argv[position].ty.is_nullable() => {
+                return err_help(
+                    p.span,
+                    format!("`{m}()`'s position might be null or undefined here, which JS reads two different ways"),
+                    "pass a number (`pos ?? 0`), or leave the argument out",
+                );
+            }
+            _ => {}
+        }
+        Ok(argv)
+    }
+
     fn plain_args(&mut self, args: &[ArrEl]) -> Result<Vec<Out>> {
         let mut out = Vec::new();
         for a in args {
@@ -3955,7 +3982,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Str,
             ));
         }
-        let argv = self.plain_args(args)?;
+        // Only String.prototype.lastIndexOf reads an `undefined` position as omitted; everywhere
+        // else (and for arrays) null and undefined are both 0, which the runtime does.
+        let argv = match m {
+            "lastIndexOf" => self.position_args(args, 1, m)?,
+            _ => self.plain_args(args)?,
+        };
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {

@@ -102,8 +102,8 @@ pub(super) struct Effects {
     stored_members: HashSet<(Span, usize)>,
     /// (call, argument) a member of which the callee may return.
     returned_members: HashSet<(Span, usize)>,
-    /// Call → bindings of enclosing functions the callee (or what it calls) writes into.
-    captured_writes: HashMap<Span, HashSet<Span>>,
+    /// Call → bindings of enclosing functions the callee writes into, with the deepest write.
+    captured_writes: HashMap<Span, HashMap<Span, usize>>,
 }
 
 impl Effects {
@@ -223,8 +223,12 @@ impl Effects {
     }
 
     /// Bindings of enclosing functions the callee writes into (through a capture).
-    pub fn captured_writes(&self, call: Span) -> impl Iterator<Item = Span> + '_ {
-        self.captured_writes.get(&call).into_iter().flatten().copied()
+    pub fn captured_writes(&self, call: Span) -> impl Iterator<Item = (Span, usize)> + '_ {
+        self.captured_writes
+            .get(&call)
+            .into_iter()
+            .flatten()
+            .map(|(b, d)| (*b, *d))
     }
 
     /// Whether the callee may return a member of the argument.
@@ -1265,10 +1269,14 @@ impl Graph {
             let mut seen_alias = HashSet::from([*param]);
             while let Some(b) = aliases.pop() {
                 for (src, dest, _) in &self.copies {
+                    // A local of this function the parameter flows into whole: the same
+                    // container, or (stored inside it, `{ p }`) a container holding it.
+                    let temporary = !self.bindings.contains_key(&dest.binding)
+                        && !parameters.contains_key(&dest.binding)
+                        && !self.functions.contains_key(&dest.binding);
                     if src.binding == b
-                        && src.path.is_empty()
-                        && dest.path.is_empty()
-                        && self.bindings.get(&dest.binding) == Some(function)
+                        && (src.path.is_empty() || temporary)
+                        && (self.bindings.get(&dest.binding) == Some(function) || temporary)
                         && seen_alias.insert(dest.binding)
                     {
                         aliases.push(dest.binding);
@@ -1644,7 +1652,7 @@ impl Graph {
             .collect();
         let mut resolved_calls = HashSet::new();
         let mut retained_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
-        let mut captured_writes: HashMap<Span, HashSet<Span>> = HashMap::new();
+        let mut captured_writes: HashMap<Span, HashMap<Span, usize>> = HashMap::new();
         for call in &self.calls {
             if call.callback {
                 continue;
@@ -1653,7 +1661,17 @@ impl Graph {
                 for p in self.function_writes.get(function).into_iter().flatten() {
                     // A member write into a binding the callee doesn't own (a capture).
                     if !p.path.is_empty() && self.bindings.get(&p.binding).is_some_and(|o| o != function) {
-                        captured_writes.entry(call.span).or_default().insert(p.binding);
+                        let depth = if p.path.contains(&Step::Descendants) {
+                            usize::MAX / 2
+                        } else {
+                            p.path.len()
+                        };
+                        let slot = captured_writes
+                            .entry(call.span)
+                            .or_default()
+                            .entry(p.binding)
+                            .or_default();
+                        *slot = (*slot).max(depth);
                     }
                 }
             }

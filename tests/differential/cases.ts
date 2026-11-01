@@ -349,6 +349,9 @@ function laneSActions() {
       for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
       return fs.map((f) => f());
     }),
+    // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
+    // as 0.
+    nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),
     arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -1e300), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -1e300), [1, 2, 1].lastIndexOf(1, 1e300)]),
     // The allowed side: writing a local nobody else holds, a spread copy's top level, a local passed
     // by reference to a function that changes it, elements of a fresh array in a callback.
@@ -369,7 +372,13 @@ function laneSActions() {
       const pushed: { x: number }[] = [];
       rows.forEach((r) => { pushed.push(r); });
       const totals = rows.reduce((acc, r) => { acc.sum += r.x; return acc; }, { sum: 0 });
-      return [o, copy, built, counts, collected, pushed, totals];
+      // A callee appending to a captured array that already holds the argument.
+      const kept: { x: number }[] = [];
+      const add = (r: { x: number }) => { kept.push({ x: r.x }); };
+      const first = rows[0]!;
+      kept.push(first);
+      add(first);
+      return [o, copy, built, counts, collected, pushed, totals, kept];
     }),
     utf16Units: run(() => {
       const s = "\u{1F600}a\u00e9";

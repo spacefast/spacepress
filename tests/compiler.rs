@@ -1356,6 +1356,26 @@ fn rejects_phase2_static_contracts() {
             "const rows = [{ x: 1 }]; const out = rows.reduce((acc, r) => { acc.push(r); return acc; }, [] as { x: number }[]); out[0]!.x = 9; return rows[0]!.x === 9;",
             "may be the same object or array as another value here",
         ),
+        (
+            "const a = { x: 0 }; [a].map((e) => { e.x++; return e.x; }); return a.x === 1;",
+            "`map` passes each element to the callback as a copy",
+        ),
+        (
+            "const r = [1].reduce((acc, n) => { const q = acc; acc.push(n); return q; }, [] as number[]); return r.length === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const list = [{ x: 0 }, { x: 0 }]; list.reduce((acc, r) => { acc.x = 1; return r; }, { x: 0 }); return list[0]!.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const reader = (p: { x: number }) => { const box = { p }; return () => box.p.x; }; const o = { x: 0 }; const f = reader(o); o.x = 1; return f() === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p) === 1;",
+            "position might be null or undefined",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

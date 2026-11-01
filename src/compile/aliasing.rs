@@ -136,7 +136,10 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         callback_params: HashMap::new(),
         last_callback: Vec::new(),
         reduce_init: None,
-        accumulators: HashSet::new(),
+        accumulators: HashMap::new(),
+        reduce_result: None,
+        result_receivers: HashMap::new(),
+        reduce_acc: HashMap::new(),
         callback_route: HashMap::new(),
         writes: Vec::new(),
     };
@@ -370,10 +373,32 @@ impl Uf {
         if self.is_interior[c] {
             via.extend(self.holders[c].iter().copied());
         }
-        via.into_iter().any(|h| {
+        if via.into_iter().any(|h| {
             let h = self.find(h);
             !skip.contains(&h) && self.observable(h, &mut skip.clone())
-        })
+        }) {
+            return true;
+        }
+        // An interior stands for the containers stored in it: the element may be one of them
+        // (`[a].map(e => ...)` hands `a` itself to `e`), seen through its own holders.
+        if self.is_interior[c] {
+            for k in self.contents[c].clone() {
+                let k = self.find(k);
+                if k == c || skip.contains(&k) {
+                    continue;
+                }
+                if self.outside[k] || self.repeated[k] || !self.bindings[k].is_empty() {
+                    return true;
+                }
+                let holders: Vec<Class> = self.held_in[k].clone().into_iter().map(|h| self.find(h)).collect();
+                if holders.into_iter().any(|h| {
+                    !skip.contains(&h) && self.existing_interior(h) != Some(c) && self.observable(h, &mut skip.clone())
+                }) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Whether two values may share a container: the same class, or one held (at any depth)
@@ -557,8 +582,16 @@ struct Walk<'o, 'a> {
     last_callback: Vec<Span>,
     /// The class of a reduce call's initial value, while its callback is walked.
     reduce_init: Option<Option<Class>>,
-    /// Reducer accumulator parameters whose initial value is fresh.
-    accumulators: HashSet<Span>,
+    /// Reducer accumulator parameters → the class of the reduce call's result. A write at the
+    /// accumulator's top level is array_reduce's own carry when, after the whole walk, nothing
+    /// but the accumulator and that result can see its container (see `verify`).
+    accumulators: HashMap<Span, Option<Class>>,
+    /// The result class of the reduce call whose callback is being walked.
+    reduce_result: Option<Class>,
+    /// Accumulator parameter → bindings declared directly from that reduce call's result.
+    result_receivers: HashMap<Span, Vec<Span>>,
+    /// Reduce call span → its accumulator parameter.
+    reduce_acc: HashMap<Span, Span>,
     /// A callback element parameter → the array its callback's results build (`map`).
     callback_route: HashMap<Span, Class>,
     writes: Vec<Write>,
@@ -823,6 +856,11 @@ impl Walk<'_, '_> {
                     Some(e) => self.expr(e),
                     None => None,
                 };
+                if let (Pat::Id(_, span), Some(e)) = (pat, init)
+                    && let Some(acc) = Self::reduce_call(e).and_then(|c| self.reduce_acc.get(&c.span).copied())
+                {
+                    self.result_receivers.entry(acc).or_default().push(*span);
+                }
                 self.declare_pat(pat, v);
             }
             Stmt::Expr(e) => {
@@ -992,14 +1030,6 @@ impl Walk<'_, '_> {
         if matches!(t, Target::Binding(_, 0)) {
             return;
         }
-        // A reducer's accumulator is the value array_reduce carries: a write into it at the top
-        // level is a write into that carried value (it's the accumulator's own container in PHP
-        // too). Only a write below it can reach something it holds.
-        if let Target::Binding(b, 1) = t
-            && self.accumulators.contains(&b)
-        {
-            return;
-        }
         self.writes.push(Write {
             target: t,
             name,
@@ -1007,6 +1037,18 @@ impl Walk<'_, '_> {
             named_callback: None,
             call: None,
         });
+    }
+
+    /// The reduce call `e` is (through `as`, `!`, `await`).
+    fn reduce_call(e: &Expr) -> Option<&Expr> {
+        match &e.kind {
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Member { prop, .. } if prop == "reduce" || prop == "reduceRight" => Some(e),
+                _ => None,
+            },
+            ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Await(x) | ExprKind::Chain(x) => Self::reduce_call(x),
+            _ => None,
+        }
     }
 
     /// Whether `e` evaluates to a container made by this very expression.
@@ -1256,6 +1298,8 @@ impl Walk<'_, '_> {
         let mut argv: Vec<Option<Class>> = Vec::new();
         let mut cb_return: Option<Class> = None;
         let mut cb_params: Vec<Span> = Vec::new();
+        let reduce_result = matches!(p, "reduce" | "reduceRight").then(|| self.uf.new_class());
+        self.reduce_result = reduce_result;
         // A reducer's accumulator starts as the initial value (or the first element).
         self.reduce_init = if matches!(p, "reduce" | "reduceRight") {
             match args.get(1) {
@@ -1341,7 +1385,14 @@ impl Walk<'_, '_> {
                     Some(i) => Some(i),
                     None => Some(self.uf.interior(r)),
                 };
-                self.join(start, cb_return)
+                let acc = self.join(start, cb_return);
+                match (reduce_result, acc) {
+                    (Some(res), Some(a)) => {
+                        self.uf.unite(res, a);
+                        Some(res)
+                    }
+                    (res, a) => res.or(a),
+                }
             }
             _ if FRESH_METHODS.contains(&p) => Some(self.uf.new_class()),
             _ => Some(self.uf.outside_class()),
@@ -1377,11 +1428,9 @@ impl Walk<'_, '_> {
                         // the callback returns. A fresh initial value nobody else holds is
                         // array_reduce's own carry in PHP as in JS.
                         let init = self.reduce_init.flatten();
-                        if let Some(a) = init
-                            && !self.uf.observable(a, &mut HashSet::new())
-                            && let Pat::Id(_, span) = &p.pat
-                        {
-                            self.accumulators.insert(*span);
+                        if let Pat::Id(_, span) = &p.pat {
+                            self.accumulators.insert(*span, self.reduce_result);
+                            self.reduce_acc.insert(call.span, *span);
                         }
                         match init {
                             Some(a) => Some(a),
@@ -1524,14 +1573,16 @@ impl Walk<'_, '_> {
         }
         // The callee writes a captured binding while an argument may be (or hold, or sit inside)
         // that binding's container: in JS the parameter sees the write, in PHP it holds a copy.
-        let captured: Vec<Span> = fx.captured_writes(e.span).collect();
-        for b in captured {
+        let captured: Vec<(Span, usize)> = fx.captured_writes(e.span).collect();
+        for (b, depth) in captured {
             let Some(cb) = self.classes.get(&b).copied() else {
                 continue;
             };
             for (j, vj) in argv.iter().enumerate() {
                 let Some(vj) = vj else { continue };
-                if self.uf.overlap(cb, *vj) {
+                // Only a write that lands in the argument's container or inside it (`out.push`
+                // into a container that merely holds the argument is not a write into it).
+                if self.uf.write_reaches(cb, depth, *vj) {
                     let (ArrEl::Item(x) | ArrEl::Spread(x)) = &args[j];
                     let name = Self::root(x).map_or("this argument".to_string(), |(n, _)| n.to_string());
                     self.writes.push(Write {
@@ -1620,6 +1671,23 @@ impl Walk<'_, '_> {
                     }
                     None => false,
                 },
+                // A write at a reducer accumulator's top level: the carry, unless anything but the
+                // accumulator and the reduce result can see that container (an element returned
+                // as the next accumulator, an alias, a holder).
+                // (A fresh carry flows into the reduce result: whoever receives that result sees
+                // the very value PHP's array_reduce returns, so it doesn't count.)
+                Target::Binding(b, 1) if self.accumulators.contains_key(&b) => match self.classes.get(&b).copied() {
+                    Some(c) => {
+                        let c = self.uf.find(c);
+                        let receivers: Vec<Span> = self.result_receivers.get(&b).cloned().unwrap_or_default();
+                        let bindings = self.uf.bindings[c].clone();
+                        self.uf.bindings[c].retain(|x| !receivers.contains(x));
+                        let r = self.uf.seen_beyond(c, b, None);
+                        self.uf.bindings[c] = bindings;
+                        r
+                    }
+                    None => false,
+                },
                 Target::Binding(b, depth) => match (self.classes.get(&b).copied(), w.call) {
                     (Some(c), Some(call)) => {
                         let c = self.uf.find(c);
@@ -1681,7 +1749,13 @@ impl Walk<'_, '_> {
     /// it's lost whenever anything can see the container again.
     fn unsafe_value(&mut self, c: Class, depth: usize) -> bool {
         let c = self.uf.find(c);
-        self.uf.observable(c, &mut HashSet::new()) || depth >= 2 && self.unsafe_below(c, depth)
+        self.uf.observable(c, &mut HashSet::new())
+            || self.uf.is_interior[c]
+                && self.uf.contents[c]
+                    .clone()
+                    .into_iter()
+                    .any(|k| self.uf.observable(k, &mut HashSet::new()))
+            || depth >= 2 && self.unsafe_below(c, depth)
     }
 
     fn reject(&self, w: &Write) -> Diag {

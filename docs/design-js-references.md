@@ -927,6 +927,9 @@ Three PRs, in order, each green on every suite in `LANE-BRIEF.md`.
    or `decodeJson` breaks every program compiled by the old compiler, and
    a compiler that emits `->p` needs the runtime to return handles. It is one
    large PR by necessity; review it by section of this document.
+   The browser compiler suite discovers refusal fixtures by directory, so obsolete
+   aliasing, array-identity, and list-shaped JSON default refusal configs are
+   removed here alongside accepted behavioral coverage. Each layer stays green.
 3. **Deletions.** `Js::plain`, `fromJson`'s marker branch, the marker class's
    `ArrayAccess` shims, dead tests for the old error messages. `Seam::toPhp`
    and `Db`'s entry points keep accepting plain arrays permanently: REST,

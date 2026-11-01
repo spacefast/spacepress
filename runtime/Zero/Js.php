@@ -1368,7 +1368,18 @@ final class Js
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
         if (is_string($indent)) {
-            $gap = self::unitSlice(self::units($indent), 0, 10);
+            // The first 10 units. Cutting a surrogate pair there only matters if the gap is
+            // written (a non-empty array or object): a scalar or empty result never uses it.
+            $u = self::units($indent);
+            try {
+                $gap = self::unitSlice($u, 0, 10);
+            } catch (JsError $e) {
+                if (!self::emitsGap($v)) {
+                    $gap = '';
+                } else {
+                    throw $e;
+                }
+            }
         } elseif ($indent !== null) {
             $gap = str_repeat(' ', (int) min(10, max(0, self::toInteger($indent))));
         } else {
@@ -1376,6 +1387,16 @@ final class Js
         }
 
         return self::encode($v, $gap, '');
+    }
+
+    /** Whether encoding `$v` with indentation writes the gap (a non-empty array or object). */
+    private static function emitsGap(mixed $v): bool
+    {
+        if ($v instanceof \JsonSerializable) {
+            $v = $v->jsonSerialize();
+        }
+
+        return is_array($v) && $v !== [] || is_object($v) && !$v instanceof JsObject && !$v instanceof \Closure && get_object_vars($v) !== [];
     }
 
     private static function encode(mixed $v, string $gap, string $indent): ?string

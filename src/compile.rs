@@ -2900,21 +2900,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut pre = Vec::new();
         let mut ks: Vec<String> = Vec::new();
         for (n, k) in keys.iter().enumerate() {
-            if n > 1 && ks[..n - 1].iter().any(|k| k.starts_with('[')) {
+            // Reading the container key `n` is looked up in throws if it came off a missing element.
+            if n > 1 && keys[..n - 1].iter().any(|k| k.starts_with('[')) {
                 pre.push(format!("\\Zero\\Js::reach({root}, [{}])", ks[..n - 1].join(", ")));
             }
             let digits = |k: &str| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
-            let literal =
-                (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
-                    || digits(k)
-                    || k.len() > 2 && k.starts_with('[') && k.ends_with(']') && digits(&k[1..k.len() - 1]);
-            if literal {
-                ks.push(k.clone());
+            // An array step `[i]` keeps its tag around the temporary: `[$t]`.
+            let (inner, element) = match k.strip_prefix('[').and_then(|k| k.strip_suffix(']')) {
+                Some(i) => (i, true),
+                None => (k.as_str(), false),
+            };
+            let literal = digits(inner)
+                || !element
+                    && inner.len() >= 2
+                    && inner.starts_with('\'')
+                    && inner.ends_with('\'')
+                    && !inner[1..inner.len() - 1].contains('\'');
+            let key = if literal {
+                inner.to_string()
             } else {
                 let tmp = self.tmp_var();
-                pre.push(format!("{tmp} = {k}"));
-                ks.push(tmp);
-            }
+                pre.push(format!("{tmp} = {inner}"));
+                tmp
+            };
+            ks.push(if element { format!("[{key}]") } else { key });
         }
         (pre, ks)
     }

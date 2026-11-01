@@ -380,6 +380,8 @@ function laneSActions() {
       try { deep[0]!.x.y = ++hits; } catch { hits += 10; }
       const lists: { x: number[] }[] = [];
       try { lists[0]!.x[hits++]!++; } catch { hits += 100; }
+      let i = 0;
+      try { deep[i]!.x.y = ++hits; } catch { hits += 10; }
       const flat: { x: number }[] = [];
       try { flat[2]!.x = ++hits; } catch { hits += 1000; }
       return hits;

@@ -30,10 +30,13 @@ export const actions = {
     input: { note: text().notNull() },
     access: "editor",
     idempotent: true,
-    handler: async (input) => await once(`note-${input.note}`, async () => {
-      const rows = await db.insert(jobNotes).values({ title: `once ${input.note}` }).returning();
-      return { ids: rows.map((r) => r.id) };
-    }),
+    handler: async (input) => {
+      const result = await once(`note-${input.note}`, async () => {
+        const rows = await db.insert(jobNotes).values({ title: `once ${input.note}` }).returning();
+        return { ids: rows.map((r) => r.id) };
+      });
+      return { ...result, f: () => 1 };
+    },
   }),
   // Inbound webhook: an HMAC over the raw body replaces the access rule.
   jobsInbound: action({

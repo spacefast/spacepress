@@ -53,7 +53,9 @@ $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'
     {
         $key = 'remember-' . ($input->p['note'] === 'a2' ? 'a' : $input->p['note']);
 
-        return \Zero\Jobs\Receipts::once('fn', $key, fn () => ['note' => $input->p['note'], 'at' => count(\Zero\db()->findMany('comments')), 'empty' => new \stdClass(), 'list' => []]);
+        $result = \Zero\Jobs\Receipts::once('fn', $key, fn () => ['note' => $input->p['note'], 'at' => count(\Zero\db()->findMany('comments')), 'empty' => new \stdClass(), 'list' => []]);
+        $result['f'] = static fn () => 1;
+        return $result;
     }
 
     function action__plain(\Zero\JsObject $input, $ctx)
@@ -218,13 +220,13 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
 
 // The first result is original; every replay comes from the persisted snapshot.
 $db->transaction(static function (): void {
-    $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1])]);
+    $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1]), 'error' => new \Zero\JsError('snapshot')]);
     $first = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
     $first->p['nested']->a[] = 2;
     $second = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
     $second->p['nested']->a[] = 3;
     $third = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
-    eq('once() returns the original first and an independent snapshot on every replay', [$first === $source, $first === $second, $third->p['nested']->a], [true, false, [1]]);
+    eq('once() returns the original first and an independent snapshot on every replay', [$first === $source, $first === $second, $third->p['nested']->a, $third->p['error'] === $source->p['error'], $third->p['error']->getMessage()], [true, false, [1], false, 'snapshot']);
 });
 
 // ---- once() and Idempotency-Key ------------------------------------------------------------------------------------

@@ -47,7 +47,7 @@ final class Receipts
             throw new \Zero\JsError('once key must be a string', 'TypeError');
         }
         $stored = self::remember($scope, self::key($key, ''), (int) (db()->actor()['id'] ?? 0), self::$fingerprint ?: hash('sha256', ''),
-            static fn (): array => ['data' => $fn()]);
+            static fn (): array => ['data' => $fn()], snapshot: static fn (array $result): array => Js::clone($result));
 
         return $stored['data'] ?? null;
     }
@@ -66,7 +66,12 @@ final class Receipts
                 $response = $next();
 
                 return ['status' => $response->status, 'data' => $response->data];
-            }, $replayed);
+            }, $replayed, static function (array $result) use ($scope): array {
+                if (str_starts_with($scope, 'action:')) {
+                    $result['data'] = Js::jsonTree($result['data']);
+                }
+                return $result;
+            });
         $response = Response::json($stored['data'] ?? null, (int) ($stored['status'] ?? 200));
 
         return $replayed ? $response->withHeaders(['Idempotent-Replayed' => 'true']) : $response;
@@ -82,9 +87,9 @@ final class Receipts
     }
 
     /** @param callable(): array $run @return array the stored result */
-    private static function remember(string $scope, string $key, int $userId, string $hash, callable $run, bool &$replayed = false): array
+    private static function remember(string $scope, string $key, int $userId, string $hash, callable $run, bool &$replayed = false, ?callable $snapshot = null): array
     {
-        return db()->transaction(static function () use ($scope, $key, $userId, $hash, $run, &$replayed): array {
+        return db()->transaction(static function () use ($scope, $key, $userId, $hash, $run, &$replayed, $snapshot): array {
             $where = 'WHERE "scope" = ? AND "key" = ? AND "userId" = ?';
             // Claim first: the primary key decides a race (the loser waits, then is ignored), and no
             // locking read ever runs on an absent key, so two first uses can't deadlock on gap locks.
@@ -101,13 +106,13 @@ final class Receipts
                     throw new HttpError(409, 'outcome_unknown', 'A request with this idempotency key started but has no recorded outcome');
                 }
                 $replayed = true;
-                $result = unserialize((string) $existing['result'], ['allowed_classes' => [\stdClass::class, \Zero\RegExp::class, \Zero\JsObject::class, \Zero\JsArray::class]]);
+                $result = unserialize((string) $existing['result'], ['allowed_classes' => [\stdClass::class, \Zero\RegExp::class, \Zero\JsObject::class, \Zero\JsArray::class, \Zero\JsError::class]]);
 
                 return is_array($result) ? $result : [];
             }
             $result = $run();
             // serialize() keeps empty objects and lists apart, so a replay is byte-identical.
-            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($result), $scopeBytes, $keyBytes, $userId]);
+            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($snapshot === null ? $result : $snapshot($result)), $scopeBytes, $keyBytes, $userId]);
 
             return $result;
         });

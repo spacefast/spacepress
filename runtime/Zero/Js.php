@@ -1409,8 +1409,13 @@ final class Js
             return $value;
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
-        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp) {
+        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
+            if ($value instanceof JsError) {
+                $copy = new JsError($value->getMessage(), $value->jsName);
+                $seen[$value] = $copy;
+                return $copy;
+            }
             if ($value instanceof RegExp) {
                 $copy = new RegExp($value->source, $value->flags);
                 $seen[$value] = $copy;

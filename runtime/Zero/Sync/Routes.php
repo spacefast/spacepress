@@ -287,7 +287,7 @@ final class Routes
      */
     private static function authorizeRow(string $collection, array $spec, string $op, Viewer $viewer, int|string $id, ?array $data): void
     {
-        $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data, $spec['columns']);
+        $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data, $spec['columns'], $collection);
         if ($rule === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
         }

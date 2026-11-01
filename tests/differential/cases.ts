@@ -92,6 +92,10 @@ const laneRefs = {
     const readRecord = (a: Record<string, number> | null) => a?.[(() => { visited++; return "x"; })()] ?? 99;
     return [readArray(null), readRecord(null), visited, readArray([7]), readRecord({ x: 8 }), visited];
   }),
+  refsGuardedUpdates: run(() => { const bump = (o: { n: number | null; s: string | null }) => { if (o.n !== null) o.n++; if (o.n !== null) o.n += 2; if (o.s !== null) o.s += "b"; return [o.n, o.s]; }; return [bump({ n: 1, s: "a" }), bump({ n: null, s: null })]; }),
+  refsCloneError: run(() => { const e = new Error("x"); const cloned = structuredClone([e, e]); return [cloned[0] === e, cloned[0] === cloned[1], cloned[0]!.message]; }),
+  refsOnceError: run(async () => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; }),
+  refsOnceFunction: run(async () => { try { await once("refs-function", () => ({ f: refsRegistered })); return false; } catch { return true; } }),
   refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
   refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
   refsIndexLogical: run(() => { const values = [true]; values[0] &&= true; return values; }),

@@ -29,7 +29,7 @@ $schema = [
         ],
         'notes' => [
             'primaryKey' => 'id', 'editor' => true, 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
-            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
+            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update'], 'delete' => ['fn' => 'notes__delete']] + $editor, 'api' => $api, 'relations' => [],
             'hooks' => ['beforeCreate' => 'notes__beforeCreate', 'beforeUpdate' => 'notes__beforeUpdate'],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -69,6 +69,12 @@ $functions = <<<'PHP'
             'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx->p['user']->p['name']]]), 'id')]],
             default => false,
         };
+    }
+    function notes__delete($ctx) {
+        if (!empty($GLOBALS['zeroJsonDeleteFilter'])) {
+            return new \Zero\JsObject(['meta' => new \Zero\JsObject(['eq' => new \Zero\JsObject()])]);
+        }
+        return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true);
     }
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return new \Zero\JsObject(['title' => trim($data->p['title'])] + $data->p); }
@@ -261,6 +267,21 @@ $nulRow = $db->insert('notes', ['title' => 'NUL JSON', 'meta' => \Zero\Js::decod
 $nul = pull('notes')[$nulRow['uid']];
 [$nulStatus, $nulResult] = req('POST', '/sync/notes', ['record' => $nul['record'], 'expect' => $nul['digest']]);
 eq('a NUL-key JSON record keeps its sent digest when echoed', [$nulStatus, $nulResult['status'] ?? null], [200, 'unchanged']);
+
+// Sync authorizes post-backed trash through the same schema-aware JSON filter as Db.
+$object = $db->insert('notes', ['title' => 'Object filter', 'meta' => \Zero\Js::decodeJson('{}')], true)[0];
+$list = $db->insert('notes', ['title' => 'List filter', 'meta' => \Zero\Js::decodeJson('[]')], true)[0];
+$filterRows = pull('notes');
+$GLOBALS['zeroJsonDeleteFilter'] = true;
+try {
+    $objectTrash = req('POST', '/sync/notes/trash', ['uid' => $object['uid'], 'expect' => $filterRows[$object['uid']]['digest']]);
+    $listTrash = req('POST', '/sync/notes/trash', ['uid' => $list['uid'], 'expect' => $filterRows[$list['uid']]['digest']]);
+    eq('a compiled JSON object filter authorizes {} and masks [] on Sync trash', [$objectTrash[0], $objectTrash[1]['status'] ?? null, $listTrash[0]], [200, 'applied', 404]);
+} finally {
+    unset($GLOBALS['zeroJsonDeleteFilter']);
+    wp_delete_post($object['id'], true);
+    wp_delete_post($list['id'], true);
+}
 
 // ================================================================ paging and trash
 

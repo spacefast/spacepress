@@ -2875,10 +2875,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .field(prop)
                     .map(|(t, _)| t)
                     .unwrap_or(ft.clone());
-                let read = Out::atom(
-                    format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop)),
-                    if optional { ft.nullable() } else { ft },
-                );
+                let read_ty = self
+                    .path_of(target)
+                    .and_then(|path| self.narrowed_path(&path))
+                    .unwrap_or_else(|| if optional { ft.nullable() } else { ft });
+                let read = Out::atom(format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
                     through_element,
                     constraint,

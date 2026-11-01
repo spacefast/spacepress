@@ -244,6 +244,38 @@ export default defineConfig({
       return count;
     }),
     json: run(() => [JSON.stringify({ a: [1, 2.5, "x"], b: null }), JSON.stringify(1.0), JSON.parse('{"k":[1,2]}')]),
+    // `{}` stays an object (PHP's [] is also the empty list): literals, parsed JSON, filled and spread.
+    emptyObjects: run(() => {
+      const o: Record<string, number> = {};
+      const a: number[] = [];
+      const filled: Record<string, number> = {};
+      filled.k = 1;
+      const copy = { ...o };
+      const parsed = JSON.parse('{"x":{},"y":[]}');
+      // Target keys, then the right side, then the write: the right side still sees the empty object.
+      const self: Record<string, string> = {};
+      self.x = JSON.stringify(self);
+      const keyed: Record<string, number> = {};
+      let i = 0;
+      keyed["k" + i++] = i;
+      const lazy: Record<string, string> = {};
+      lazy.x ??= JSON.stringify(lazy);
+      const deep: { a: Record<string, number> } = { a: {} };
+      deep.a.b = 5;
+      deep.a.b += 2;
+      let j = 0;
+      const once: Record<string, number> = {};
+      once["k" + j++] ??= j;
+      const text: { s: string } = { s: "a" };
+      const joined = (text.s += "b") + 1;
+      const indexed = ({} as Record<string, number>)["x"] ?? -1;
+      // A short-circuited logical assignment leaves the place untouched (no key appears).
+      const skipped: { x?: string; y?: string; z?: string } = {};
+      skipped.x &&= "a";
+      skipped.y ||= "b";
+      skipped.y ||= "c";
+      return [JSON.stringify({ o, a, n: null }), JSON.stringify(filled), Object.keys(o), JSON.stringify(copy), JSON.stringify(parsed), o, self, keyed, lazy, deep, once, j, joined, text, indexed, JSON.stringify(skipped)];
+    }),
     errors: run(() => {
       try {
         throw new Error("boom");
@@ -269,8 +301,8 @@ function laneDActions() {
   return {
     onceReplays: action({ input: {}, handler: async () => {
       let runs = 0;
-      const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"] }; });
-      const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"] }; });
+      const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"], extra: {} }; });
+      const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"], extra: {} }; });
       const other = await once("lane-d-other", () => { runs++; return runs; });
       return { first, second, other, runs };
     } }),

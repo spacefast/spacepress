@@ -38,6 +38,7 @@ final class Invoke
         if ($plugin !== null && $plugin->unavailable() !== null) {
             return new \WP_Error('zero_unavailable', \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
+        $input = Register::sentInput($op['name'], $input);
         if (($op['defer'] ?? false) || $plugin === null || self::object($input) === null) {
             return true;
         }
@@ -65,7 +66,7 @@ final class Invoke
             return new \WP_Error('zero_unavailable', $plugin === null ? 'No Zero app is active' : \Zero\Wp\Plugin::UNAVAILABLE, ['status' => 503]);
         }
         try {
-            $input = self::object($input) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
+            $input = self::object(Register::sentInput($op['name'], $input)) ?? throw HttpError::invalidInput('Input must be a JSON object', '');
             if (isset($op['run'])) {
                 return ($op['run'])($input);
             }
@@ -139,6 +140,10 @@ final class Invoke
     /** An omitted input is `{}`; anything but an object is not an operation input. */
     public static function object(mixed $input): ?array
     {
+        if ($input instanceof \Zero\JsObject) {
+            return [];
+        }
+
         return $input === null || is_array($input) && ($input === [] || !array_is_list($input)) ? ($input ?? []) : null;
     }
 

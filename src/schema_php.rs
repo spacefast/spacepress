@@ -18,9 +18,24 @@ enum Ctx {
 
 fn generator(d: &DefaultKind) -> String {
     match d {
+        // A literal holding `{}` also carries its JSON text, so the runtime restores the empty object
+        // (schema.php stays plain data; PHP arrays can't tell `{}` from `[]`).
+        DefaultKind::Value(v) if has_empty_object(v) => format!(
+            "['value' => {}, 'json' => {}]",
+            php_json(v),
+            php_str(&serde_json::to_string(v).expect("JSON"))
+        ),
         DefaultKind::Value(v) => format!("['value' => {}]", php_json(v)),
         DefaultKind::Now => "['now' => true]".to_string(),
         DefaultKind::Fn(name) => format!("['fn' => {}]", php_str(name)),
+    }
+}
+
+fn has_empty_object(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::Object(o) => o.is_empty() || o.values().any(has_empty_object),
+        serde_json::Value::Array(a) => a.iter().any(has_empty_object),
+        _ => false,
     }
 }
 

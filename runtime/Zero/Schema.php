@@ -251,6 +251,9 @@ final class Schema
     /** Resolve a `default` / `onUpdate` spec. */
     public static function generate(array $spec, string $type): mixed
     {
+        if (isset($spec['json'])) {
+            return Js::decodeJson($spec['json']); // a literal holding `{}` (see schema_php::generator)
+        }
         if (array_key_exists('value', $spec)) {
             return $spec['value'];
         }
@@ -286,6 +289,7 @@ final class Schema
      */
     public static function normalize(array $col, mixed $v, string $name, string $pointer): mixed
     {
+        $v = self::plainOutsideJson($col, $v);
         if ($v === null) {
             if ($col['notNull'] ?? false) {
                 throw HttpError::invalidInput("$name is required", $pointer);
@@ -343,7 +347,7 @@ final class Schema
      */
     public static function normalizeFields(array $fields, mixed $obj, string $base): array
     {
-        if ($obj === null) {
+        if ($obj === null || $obj instanceof JsObject) {
             $obj = [];
         }
         if (!self::isObject($obj)) {
@@ -447,7 +451,7 @@ final class Schema
 
     private static function isObject(mixed $v): bool
     {
-        return is_array($v) && ($v === [] || !array_is_list($v));
+        return $v instanceof JsObject || (is_array($v) && ($v === [] || !array_is_list($v)));
     }
 
     private static function expected(string $type): string
@@ -517,6 +521,55 @@ final class Schema
         return $mo >= 1 && $mo <= 12 && $d >= 1 && $d <= [31, $leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$mo - 1];
     }
 
+    /**
+     * Only json() values keep the empty-object marker (`{}`); everything else is plain arrays, so field
+     * access, rules, hooks and codecs never see it. Structured columns are walked by their fields, so a
+     * json() sub-field inside a group/repeater/blocks item keeps its `{}`.
+     */
+    public static function plainOutsideJson(array $col, mixed $v): mixed
+    {
+        $type = $col['type'];
+        if ($type === 'json') {
+            return $v;
+        }
+        $v = $v instanceof JsObject ? [] : $v;
+        if (!is_array($v)) {
+            return $v;
+        }
+        $item = static function (array $fields, mixed $o): mixed {
+            $o = $o instanceof JsObject ? [] : $o;
+            if (!is_array($o)) {
+                return $o;
+            }
+            foreach ($o as $k => $x) {
+                $o[$k] = isset($fields[$k]) ? self::plainOutsideJson($fields[$k], $x) : Js::plain($x);
+            }
+
+            return $o;
+        };
+
+        return match ($type) {
+            'group' => $item($col['fields'] ?? [], $v),
+            'repeater' => array_map(static fn ($o) => $item($col['fields'] ?? [], $o), $v),
+            'blocks' => array_map(
+                static fn ($o) => is_array($o) && is_string($o['layout'] ?? null) && isset($col['layouts'][$o['layout']])
+                    ? $item($col['layouts'][$o['layout']], $o) : Js::plain($o),
+                $v,
+            ),
+            default => Js::plain($v),
+        };
+    }
+
+    /** Stored JSON text (written by this runtime, so valid; unreadable text decodes to null). */
+    private static function json(string $v): mixed
+    {
+        try {
+            return Js::decodeJson($v);
+        } catch (\JsonException) {
+            return null;
+        }
+    }
+
     /** Stored value → JS-facing value. */
     public static function decode(array $col, mixed $v): mixed
     {
@@ -528,17 +581,20 @@ final class Schema
             'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
             'boolean' => (bool) (int) $v,
-            'json', 'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
-            'group' => self::fillFields($col['fields'] ?? [], is_string($v) ? json_decode($v, true) : $v),
+            // A json() value keeps `{}` as an object (the JsObject marker); structured columns are
+            // normalized against their fields, so plain arrays are exact there.
+            'json' => is_string($v) ? self::json($v) : $v,
+            'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            'group' => self::fillFields($col['fields'] ?? [], self::plainOutsideJson($col, is_string($v) ? self::json($v) : $v)),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),
-                (array) (is_string($v) ? json_decode($v, true) : $v),
+                (array) self::plainOutsideJson($col, is_string($v) ? self::json($v) : $v),
             ),
             'blocks' => array_map(
                 static fn ($item) => is_array($item) && isset($col['layouts'][$item['layout'] ?? ''])
                     ? ['layout' => $item['layout']] + self::fillFields($col['layouts'][$item['layout']], $item)
                     : $item,
-                (array) (is_string($v) ? json_decode($v, true) : $v),
+                (array) self::plainOutsideJson($col, is_string($v) ? self::json($v) : $v),
             ),
             default => (string) $v,
         };
@@ -547,6 +603,9 @@ final class Schema
     /** Every sub-key present (stores other than SQLite may omit empty sub-fields). */
     private static function fillFields(array $fields, mixed $obj): mixed
     {
+        if ($obj instanceof JsObject) {
+            $obj = [];
+        }
         if (!is_array($obj)) {
             return $obj;
         }

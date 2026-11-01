@@ -57,6 +57,26 @@ pub fn php_json(v: &serde_json::Value) -> String {
     }
 }
 
+/// A captured value as a compiled-code PHP expression: like php_json, but an empty object `{}` is the
+/// JsObject marker so it stays an object in JSON. schema.php keeps plain arrays (php_json): it is data,
+/// loaded by tools without the runtime.
+fn php_js_value(v: &serde_json::Value) -> String {
+    use serde_json::Value as J;
+    match v {
+        // Parenthesized: PHP 8.2/8.3 can't index or call on a bare `new` expression.
+        J::Object(map) if map.is_empty() => "(new \\Zero\\JsObject())".into(),
+        J::Array(items) => format!("[{}]", items.iter().map(php_js_value).collect::<Vec<_>>().join(", ")),
+        J::Object(map) => format!(
+            "[{}]",
+            map.iter()
+                .map(|(k, v)| format!("{} => {}", php_str(k), php_js_value(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        other => php_json(other),
+    }
+}
+
 fn err<T>(span: Span, msg: impl Into<String>) -> Result<T> {
     Err(Diag::new(span, msg))
 }
@@ -133,6 +153,9 @@ struct Out {
 struct AssignmentPlace {
     read: Out,
     constraint: Ty,
+    /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
+    /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
+    path: Option<(String, Vec<String>)>,
 }
 
 impl Out {
@@ -2001,7 +2024,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Obj(fields)
                 };
-                Out::atom(format!("[{}]", parts.join(", ")), ty)
+                // `{}` stays an object in JSON (PHP's [] is also the empty list): the JsObject marker.
+                // An object built only from spreads may be empty too, so Js::obj decides at runtime.
+                let php = if parts.is_empty() {
+                    "(new \\Zero\\JsObject())".to_string()
+                } else if parts.iter().all(|p| p.starts_with("...")) {
+                    format!("\\Zero\\Js::obj([{}])", parts.join(", "))
+                } else {
+                    format!("[{}]", parts.join(", "))
+                };
+                Out::atom(php, ty)
             }
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
@@ -2403,7 +2435,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some((ann, module)) => self.resolve_ann(ann, *module, &HashMap::new())?,
                     None => ty_of_json(&json),
                 };
-                Ok(Out::atom(php_json(&json), ty))
+                Ok(Out::atom(php_js_value(&json), ty))
             }
         }
     }
@@ -2664,9 +2696,98 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn assign(&mut self, op: Option<AssignOp>, target: &Expr, value: &Expr, span: Span) -> Result<Out> {
-        let AssignmentPlace { read: t, constraint } = self.place(target)?;
+        let AssignmentPlace {
+            read: t,
+            constraint,
+            path,
+        } = self.place(target)?;
+        // A place inside an object/Record (a path of keys under a root variable): the keys are
+        // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
+        // while the object still reads as it was, and Js::write unwraps empty-object markers only as
+        // it writes. `o["k" + i++] = i` and `o.x = JSON.stringify(o)` behave as in JS.
+        let object_path = path.filter(|(_, keys)| !keys.is_empty() && Self::writes_into_object(&t, keys));
+        let keys_php = object_path.as_ref().map(|(root, keys)| {
+            let mut pre = Vec::new();
+            let mut ks = Vec::new();
+            for k in keys {
+                // Only a lone literal key needs no temporary; any expression (even one that starts
+                // with a quote, like `'k' . $i++`) is evaluated exactly once.
+                let literal =
+                    (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
+                        || (!k.is_empty() && k.chars().all(|c| c.is_ascii_digit()));
+                if literal {
+                    ks.push(k.clone());
+                } else {
+                    let tmp = self.tmp_var();
+                    pre.push(format!("{tmp} = {k}"));
+                    ks.push(tmp);
+                }
+            }
+            (root.clone(), pre, ks)
+        });
         let v = self.expr(value)?;
         let v = self.finish_value(v, value.span)?;
+        if let Some((root, pre, ks)) = keys_php {
+            if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
+                return err(
+                    span,
+                    format!(
+                        "can't assign {} to something of type {}",
+                        v.ty.describe(),
+                        constraint.describe()
+                    ),
+                );
+            }
+            let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
+            let mut bin_ty = None;
+            let mut logical_keep = None;
+            let new = match op {
+                None => v.php.clone(),
+                Some(AssignOp::Bin(b)) => {
+                    let r = self.binary(b, Out::atom(read.clone(), t.ty.clone()), v.clone(), span)?;
+                    if !(assignable(&r.ty, &constraint)
+                        || r.ty.is_num()
+                            && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
+                    {
+                        return err(
+                            span,
+                            format!(
+                                "can't assign {} to something of type {}",
+                                r.ty.describe(),
+                                constraint.describe()
+                            ),
+                        );
+                    }
+                    bin_ty = Some(r.ty.clone());
+                    r.php
+                }
+                // Logical assignment writes only when it assigns (JS leaves the place untouched).
+                Some(AssignOp::Log(l)) => {
+                    let keep = match l {
+                        LogOp::Nullish => format!("{read} !== null"),
+                        LogOp::Or => self.truthy(&Out::atom(read.clone(), t.ty.clone())),
+                        LogOp::And => format!("!{}", paren(&self.truthy(&Out::atom(read.clone(), t.ty.clone())))),
+                    };
+                    logical_keep = Some(keep);
+                    v.php.clone()
+                }
+            };
+            let ty = match op {
+                None => v.ty.clone(),
+                Some(AssignOp::Log(l)) => logical_result_type(l, &t.ty, &v.ty),
+                Some(AssignOp::Bin(_)) => bin_ty.expect("binary result type"),
+            };
+            let mut write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
+            if let Some(keep) = logical_keep {
+                write = format!("({} ? {read} : {write})", paren(&keep));
+            }
+            let php = if pre.is_empty() {
+                write
+            } else {
+                format!("[{}, {write}][{}]", pre.join(", "), pre.len())
+            };
+            return Ok(Out::new(php, ty));
+        }
         if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
             return err(
                 span,
@@ -2707,11 +2828,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("!{}", paren(&cond))
                 };
                 Ok(Out::new(
-                    format!("{} = {} ? {} : {}", t.php, paren(&keep), t.php, v.wrapped()),
+                    format!("({} ? {} : ({} = {}))", paren(&keep), t.php, t.php, v.php),
                     logical_result_type(l, &t.ty, &v.ty),
                 ))
             }
         }
+    }
+
+    /// True when some step of this write path goes through an object/Record value (which may be the
+    /// empty-object marker); array-only paths keep plain PHP writes.
+    fn writes_into_object(_t: &Out, keys: &[String]) -> bool {
+        keys.iter().any(|k| !k.starts_with("(int) "))
     }
 
     /// An assignable PHP place.
@@ -2742,6 +2869,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     Ok(AssignmentPlace {
                         constraint: l.constraint,
+                        path: Some((l.php.clone(), Vec::new())),
                         read: Out {
                             php: l.php.clone(),
                             ty,
@@ -2761,7 +2889,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let AssignmentPlace {
+                    read: o,
+                    constraint,
+                    path,
+                } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
                 };
@@ -2774,8 +2906,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .field(prop)
                     .map(|(t, _)| t)
                     .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
+                let path = path.map(|(root, mut keys)| {
+                    keys.push(php_str(prop));
+                    (root, keys)
+                });
                 Ok(AssignmentPlace {
                     constraint,
+                    path,
                     read: Out {
                         php: php.clone(),
                         ty: if optional { ft.nullable() } else { ft },
@@ -2786,7 +2923,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 })
             }
             ExprKind::Index { obj, index, .. } => {
-                let AssignmentPlace { read: o, constraint } = self.place_inner(obj, false)?;
+                let AssignmentPlace {
+                    read: o,
+                    constraint,
+                    path,
+                } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
@@ -2801,12 +2942,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                 };
+                let path = match (path, o.ty.non_null()) {
+                    (Some((root, mut keys)), Ty::Map(_)) => {
+                        keys.push(i.php.clone());
+                        Some((root, keys))
+                    }
+                    (Some((root, mut keys)), Ty::Array(_)) => {
+                        keys.push(format!("(int) {}", i.wrapped()));
+                        Some((root, keys))
+                    }
+                    _ => None,
+                };
                 let constraint = match constraint.non_null() {
                     Ty::Array(t) | Ty::Map(t) => *t,
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
                     constraint,
+                    path,
                     read: Out {
                         php: php.clone(),
                         ty,
@@ -4321,11 +4474,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let is_list = col.ty.is_list_kind();
         // `{ tags: ["a"] }` / `{ seo: {...} }`: a whole value, compared with `eq`.
         let whole_value = match &e.kind {
+            // `{}` on a json() column is the empty object to compare with, not an empty operator map.
             ExprKind::Object(props) => {
                 is_json
-                    && !props
-                        .iter()
-                        .all(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))
+                    && (props.is_empty()
+                        || !props
+                            .iter()
+                            .all(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str()))))
             }
             ExprKind::Array(_) => is_list || is_json,
             _ => true,
@@ -4712,7 +4867,8 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
+        Ty::Obj(_) | Ty::Map(_) => "array|\\Zero\\JsObject ",
+        Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
         Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => "int|float ",

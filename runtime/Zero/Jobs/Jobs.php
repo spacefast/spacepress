@@ -20,8 +20,9 @@ final class Jobs
      * @param array{delay?: int|float, key?: string}|null $opts
      * @return array{id: string}
      */
-    public static function enqueue(string $name, mixed $input, ?array $opts = null): array
+    public static function enqueue(string $name, mixed $input, array|\Zero\JsObject|null $opts = null): array
     {
+        $opts = $opts === null ? null : \Zero\Js::plain($opts);
         $db = db();
         $spec = self::spec($name);
         $ctx = $db->hookCtx();

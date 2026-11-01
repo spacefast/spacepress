@@ -264,9 +264,11 @@ final class Scf
             return $value;
         }
         if ($def['type'] === 'json' && is_string($value)) {
-            $decoded = json_decode(wp_unslash($value), true);
-
-            return json_last_error() === JSON_ERROR_NONE ? wp_slash((string) Js::jsonStringify($decoded)) : $value;
+            try {
+                return wp_slash((string) Js::jsonStringify(Js::decodeJson(wp_unslash($value))));
+            } catch (\JsonException) {
+                return $value;
+            }
         }
         if ($def['type'] === 'timestamp' && is_string($value) && self::$io === 0) {
             return get_gmt_from_date($value, 'Y-m-d H:i:s'); // the picker posts site time; meta keeps UTC
@@ -442,7 +444,7 @@ final class Scf
     private static function json(string $s, bool $strict): mixed
     {
         try {
-            return json_decode($s, true, 512, JSON_THROW_ON_ERROR);
+            return Js::decodeJson($s);
         } catch (\JsonException $e) {
             if ($strict) {
                 throw $e;

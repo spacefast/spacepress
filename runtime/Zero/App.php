@@ -383,6 +383,7 @@ final class App
         $s = trim(self::queryString($value, '/with'));
         if (str_starts_with($s, '{')) {
             $with = self::queryJson($s, '/with');
+            $with = $with instanceof JsObject ? [] : $with;
             if (!is_array($with) || ($with !== [] && array_is_list($with))) {
                 throw HttpError::invalidQuery('with must be an object', '/with');
             }
@@ -415,7 +416,8 @@ final class App
     private static function queryJson(mixed $value, string $ptr): mixed
     {
         try {
-            return json_decode(self::queryString($value, $ptr), true, 512, JSON_THROW_ON_ERROR);
+            // `{}` stays an object here; Db flattens query options by schema, keeping json() operands.
+            return Js::decodeJson(self::queryString($value, $ptr));
         } catch (\JsonException $e) {
             throw HttpError::invalidQuery('Invalid JSON: ' . $e->getMessage(), $ptr);
         }
@@ -427,7 +429,8 @@ final class App
             return [];
         }
         try {
-            return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            // `{}` inside a json() column value stays an object; Db/Schema flatten it everywhere else.
+            return Js::decodeJson($body);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }
@@ -435,6 +438,9 @@ final class App
 
     private static function object(mixed $v): array
     {
+        if ($v instanceof JsObject) {
+            return []; // a top-level `{}` body: no fields
+        }
         if (!is_array($v) || ($v !== [] && array_is_list($v))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }
@@ -637,6 +643,8 @@ final class App
 
     private static function rows(mixed $v): array
     {
+        $v = $v instanceof JsObject ? [] : $v; // a top-level `{}` row; nested json() values keep theirs
+
         return is_array($v) ? $v : throw HttpError::invalidInput('Expected a JSON object or array of objects');
     }
 }

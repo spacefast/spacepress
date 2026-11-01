@@ -74,7 +74,8 @@ $functions = <<<'PHP'
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
-    function notes__beforeUpdate($patch, $existing) { return ($patch['title'] ?? null) === 'steal uid' ? $patch + ['uid' => 'zr_99999999999999999999'] : $patch; }
+    // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
+    function notes__beforeUpdate($patch, $existing) { return match ($patch['title'] ?? null) { 'steal uid' => $patch + ['uid' => 'zr_99999999999999999999'], 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
 $migration = <<<'SQL'
     CREATE TABLE "people" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "name" text NOT NULL, "uid" text);
@@ -158,6 +159,12 @@ check('uid minted on insert', preg_match('/^zr_[0-9a-f]{20}$/D', $ada['uid']) ==
 isProblem('uid is immutable', req('PATCH', "/people/{$ada['id']}", ['uid' => 'zr_00000000000000000000']), 422, 'invalid_input', '/uid');
 $hooked = $db->insert('notes', ['title' => 'Hooked'], true)[0];
 problem('a hook cannot change a uid either', fn () => $db->update('notes', ['title' => 'steal uid'], ['id' => $hooked['id']]), 422, 'invalid_input', '/uid');
+$before = $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'];
+$db->update('notes', ['title' => 'drop it'], ['id' => $hooked['id']]);
+eq('a beforeUpdate returning {} replaces the patch with nothing', $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'], $before);
+// What sync authorizes (Wire::decode's data) is plain outside json(): a select sent as `{}` is [].
+eq('sync hands rules plain arrays outside json() values, and keeps {} inside them', \Zero\Js::jsonStringify(\Zero\Sync\Wire::decode('notes',
+    \Zero\Js::decodeJson('{"uid":"zr_0f0f0f0f0f0f0f0f0f0f","fields":{"title":"T","meta":{"a":{}}},"body":null}'), true)), '{"title":"T","meta":{"a":{}},"body":null}');
 eq('and the row keeps its uid and title', [$db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['uid'], $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']], [$hooked['uid'], 'Hooked']);
 $given = $db->insert('people', ['name' => 'Grace', 'uid' => 'zr_11111111111111111111'], true)[0];
 eq('a writer may supply the uid', $given['uid'], 'zr_11111111111111111111');
@@ -188,6 +195,9 @@ check('pull includes drafts', $pulled[$noteUid]['record']['fields']['status'] ==
 
 eq('same record again is unchanged', req('POST', '/sync/notes', ['record' => $record, 'expect' => $created['digest']])[1]['status'], 'unchanged');
 isProblem('expect absent on an existing uid is stale', req('POST', '/sync/notes', ['record' => $record, 'expect' => 'absent']), 409, 'sync_stale');
+// `fields: {}` (an object on the wire, the marker once decoded) is an empty field set, not a type error.
+[$s, $empty] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_0e0e0e0e0e0e0e0e0e0e', 'fields' => new stdClass(), 'body' => null], 'expect' => 'absent']);
+check('a push with fields: {} is accepted as an object (then the required title is what is missing)', $s === 422 && ($empty['pointer'] ?? null) === '/title', $empty);
 $stale = req('POST', '/sync/notes', ['record' => ['fields' => ['title' => 'Later']] + $record, 'expect' => 'sha256:' . str_repeat('0', 64)]);
 isProblem('wrong expected digest is stale', $stale, 409, 'sync_stale');
 eq('stale carries the current record and digest', [$stale[1]['current']['digest'], $stale[1]['current']['record']], [$created['digest'], $record]);
@@ -200,14 +210,18 @@ eq('a hook that reshapes the write reports normalized with the stored record',
 eq('normalized digest is the stored record', $normalized['digest'], Canon::digest($normalized['record']));
 
 
-// `{}` and `[]` are different JSON; a store that can't keep the difference answers `normalized`,
-// so the digest a client holds is always one a pull reproduces.
+// `{}` and `[]` are different JSON, and a json() value keeps the difference through storage, so the
+// write is applied as sent and the digest a client holds is one a pull reproduces.
 $shapes = ['uid' => 'zr_ffffffffffffffffffff', 'fields' => ['title' => 'Shapes', 'slug' => 'shapes', 'meta' => ['nested' => new stdClass(), 'list' => []], 'authorId' => null, 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [, $shaped] = req('POST', '/sync/notes', ['record' => $shapes, 'expect' => 'absent']);
-eq('a reshaped value reports normalized with the stored shape', [$shaped['status'], $shaped['record']['fields']['meta']], ['normalized', ['nested' => [], 'list' => []]]);
+[, , $raw] = $app->handle('GET', '/sync/notes', ['after' => '0', 'first' => '100'], '', ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('{} and [] in a json() value are kept apart: applied as sent, pulled back apart',
+    [$shaped['status'], str_contains($raw, '"meta":{"list":[],"nested":{}}') || str_contains($raw, '"meta":{"nested":{},"list":[]}')], ['applied', true]);
 eq('an answer digest is the digest a pull returns', $shaped['digest'], pull('notes')['zr_ffffffffffffffffffff']['digest']);
-$repush = req('POST', '/sync/notes', ['record' => pull('notes')['zr_ffffffffffffffffffff']['record'], 'expect' => $shaped['digest']]);
-eq('and pushing the pulled record is a no-op', $repush[1]['status'] ?? $repush, 'unchanged');
+// Re-push the pulled record as the wire carried it (decoding it to PHP arrays would turn {} into []).
+$pulled = array_values(array_filter(json_decode($raw, false)->data->records, static fn ($r) => ($r->uid ?? $r->record->uid) === 'zr_ffffffffffffffffffff'))[0];
+[, , $out] = $app->handle('POST', '/sync/notes', [], json_encode(['record' => $pulled->record, 'expect' => $shaped['digest']]), ['authorization' => 'Bearer ' . $tokens['ed']]);
+eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['status'] ?? $out, 'unchanged');
 
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.

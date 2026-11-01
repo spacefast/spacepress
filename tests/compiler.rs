@@ -192,6 +192,15 @@ fn db_globals_read_defaults_and_write_typed_fields() {
     };
     assert_eq!(visit(), serde_json::json!({ "data": ["Hi", null, 1] }));
     assert_eq!(visit(), serde_json::json!({ "data": ["Hi", { "visits": 1 }, 2] }));
+    let out = Command::new("php")
+        .arg(tmp.join(".zero/app/zero/bin/zero.php"))
+        .args(["action", "emptyMeta"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),
+        serde_json::json!({ "data": ["{}"] })
+    );
     let _ = std::fs::remove_dir_all(tmp);
 }
 

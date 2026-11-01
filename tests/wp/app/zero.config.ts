@@ -1,7 +1,7 @@
 // The WP test app: the frozen phase-1 blog's schema (tests/fixtures/blog), relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
-import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, real, select, text, timestamp, HttpError } from "zero";
+import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, json, real, select, text, timestamp, HttpError } from "zero";
 import { schema, settings, comments } from "../../fixtures/blog/zero.config.ts";
 import blog from "../../fixtures/blog/zero.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
@@ -34,7 +34,15 @@ export const events = collection("events", {
   startsAt: timestamp().default("2030-01-01"), // a bare-date default: editor saves store it as full ISO
   kinds: select({ options: ["talk", "workshop", "social"], multiple: true }).notNull().default([]),
   postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
-}, { access: { read: "anyone", create: "editor" } });
+  extra: json(), // a json() meta column: `{}` must stay an object through postmeta
+}, {
+  access: {
+    read: "anyone",
+    create: "editor",
+    // Other signed-in users may only reset `extra` to the empty object: the rule must see `{}`, not `[]`.
+    update: (ctx) => ctx.user?.role === "editor" || ctx.user?.role === "admin" || (ctx.user !== null && JSON.stringify(ctx.data?.extra) === "{}"),
+  },
+});
 
 const appSchema = merge("collection", [schema, { signups, events }, ...lanes.map((l) => l.schema)]);
 // The blog's relations, plus events → posts and posts → signups (an editor-only relation target).

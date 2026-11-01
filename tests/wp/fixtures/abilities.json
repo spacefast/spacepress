@@ -15036,6 +15036,13 @@
                 "desc"
               ]
             },
+            "extra": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
             "status": {
               "type": "string",
               "enum": [
@@ -15134,6 +15141,17 @@
               "postId": {
                 "type": [
                   "integer",
+                  "null"
+                ]
+              },
+              "extra": {
+                "type": [
+                  "object",
+                  "array",
+                  "string",
+                  "number",
+                  "integer",
+                  "boolean",
                   "null"
                 ]
               },
@@ -15263,6 +15281,17 @@
             "null"
           ]
         },
+        "extra": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
         "status": {
           "type": "string",
           "enum": [
@@ -15354,6 +15383,17 @@
             "null"
           ]
         },
+        "extra": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
         "status": {
           "type": "string",
           "enum": [
@@ -15427,6 +15467,17 @@
         "postId": {
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "extra": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
             "null"
           ]
         },
@@ -15524,6 +15575,17 @@
                 "null"
               ]
             },
+            "extra": {
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
             "status": {
               "type": "string",
               "enum": [
@@ -15600,6 +15662,17 @@
         "postId": {
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "extra": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
             "null"
           ]
         },
@@ -15703,6 +15776,17 @@
         "postId": {
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "extra": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
             "null"
           ]
         },

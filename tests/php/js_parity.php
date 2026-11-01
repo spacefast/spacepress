@@ -159,6 +159,11 @@ $cases = [
     ['[JSON.stringify([1, [2]], null, "\t"), JSON.stringify({a: 1}, null, 20), JSON.stringify({a: 1}, null, "abcdefghijklm"), JSON.stringify({b: 1, 2: 1, 1: 1}), JSON.stringify(() => 1), JSON.stringify("\u0007"), JSON.stringify([1], null, 0), JSON.stringify(0.1 + 0.2)]',
         fn () => [Js::jsonStringify([1, [2]], "\t"), Js::jsonStringify(['a' => 1], 20), Js::jsonStringify(['a' => 1], 'abcdefghijklm'), Js::jsonStringify(['b' => 1, 2 => 1, 1 => 1]), Js::jsonStringify(fn () => 1), Js::jsonStringify("\u{7}"), Js::jsonStringify([1], 0), Js::jsonStringify(0.1 + 0.2)]],
     ['JSON.parse("{\"a\": [1, 2.5, null, \"x\"], \"b\": {\"c\": true}}")', fn () => Js::jsonParse('{"a": [1, 2.5, null, "x"], "b": {"c": true}}')],
+    // {} stays an object through parse and stringify, also beside a key PHP objects can't hold ("\u0000k").
+    // sameJson: structural equality that tells {} from [] (two decoded {} are equal; {} is not []).
+    ['[JSON.stringify({a:{}}) === JSON.stringify({a:{}}), JSON.stringify({a:{}}) === JSON.stringify({a:[]}), JSON.stringify([1,{}]) === JSON.stringify([1,{}])]',
+        fn () => [Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":{}}')), Js::sameJson(Js::decodeJson('{"a":{}}'), Js::decodeJson('{"a":[]}')), Js::sameJson(Js::decodeJson('[1,{}]'), Js::decodeJson('[1,{}]'))]],
+    ['JSON.stringify(JSON.parse(JSON.stringify({ a: {}, b: [], [String.fromCharCode(0) + "k"]: { e: {} } })))', fn () => Js::jsonStringify(Js::jsonParse('{"a":{},"b":[],"\\u0000k":{"e":{}}}'))],
     ['JSON.parse("{bad")', fn () => Js::jsonParse('{bad')],
 
     // ---- dates

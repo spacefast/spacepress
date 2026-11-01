@@ -100,10 +100,10 @@ a date alone and epoch milliseconds; Sanity accepted many other ISO 8601
 spellings (week, ordinal, reduced and compact forms, expanded years, impossible
 dates, no timezone, and more), which are all refused now.
 
-Zero's PHP runtime has no empty JSON object: `{}`, and an object keyed `"0"`,
-`"1"`, ... in order, read back as arrays. A JSON default that is or contains
-one is refused at its `defaultValue` pointer, and `zero build` rejects such a
-`.default()` on any `json()` column.
+Zero's PHP runtime reads an object keyed `"0"`, `"1"`, ... in order back as an
+array (`{}` itself is kept). A JSON default that is or contains one is refused
+at its `defaultValue` pointer, and `zero build` rejects such a `.default()` on
+any `json()` column.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload

@@ -295,7 +295,7 @@ final class EditorSave
 
                 return;
             }
-            $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => $v !== ($before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
+            $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => !\Zero\Js::sameJson($v, $before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
             $patch = array_intersect_key($after, array_flip([...$changed, ...$open['supplied']]));
             $data = $patch;
             FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $patch);

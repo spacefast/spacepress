@@ -356,10 +356,11 @@ final class Routes
     private static function input(string $body): array
     {
         try {
-            $in = trim($body) === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            $in = trim($body) === '' ? [] : Js::decodeJson($body);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }
+        $in = $in instanceof \Zero\JsObject ? [] : $in;
         if (!is_array($in) || ($in !== [] && array_is_list($in))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }

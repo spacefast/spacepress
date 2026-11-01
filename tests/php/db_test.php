@@ -645,6 +645,8 @@ unlink("$root/zero/app/migrations/0003_orphan.sql");
 eq('CLI find', [$code, $out], [0, ['data' => [['name' => 'Hammer']]]]);
 [$code, $out] = $cli('insert', 'items', '{"name":"cli","qty":"x"}');
 eq('CLI error envelope + exit 1', [$code, $out['error']['code'] ?? null, $out['error']['pointer'] ?? null], [1, 'invalid_input', '/qty']);
+[$code, $out] = $cli('insert', 'items', '{}');
+eq('CLI insert {} is one row with no fields (it reaches the pipeline)', [$code, $out['error']['pointer'] ?? null], [1, '/name']);
 [$code, $out] = $cli('update', 'items', '{"name":"Hammer"}', '{"qty":-3}');
 eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->findFirst('items', ['where' => ['name' => 'Hammer']])['qty']], [1, 'rejected', 5]);
 [$code, $out] = $cli('action', 'restock', json_encode(['itemId' => $hammer['id'], 'amount' => 2]));
@@ -759,6 +761,11 @@ $isProblem('invalid JSON body', http('POST', '/api/items', raw: '{"name":'), 400
 $isProblem('coercion error with pointer', http('POST', '/api/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/api/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/api/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
+$r = http('POST', '/api/locations', raw: '{"name":"Empty","meta":{"a":{},"b":[]}}');
+eq('a json column keeps {} apart from [] through storage and the API', [$r['status'], str_contains($r['body'], '"meta":{"a":{},"b":[]}'),
+    str_contains(http('GET', '/api/locations/' . ($r['json']['data']['id'] ?? 0))['body'], '"meta":{"a":{},"b":[]}')], [201, true, true]);
+$r = http('POST', '/api/locations', raw: '{"name":"Bare","meta":{}}');
+eq('… a json value that is {} itself, too', [$r['status'], str_contains($r['body'], '"meta":{}')], [201, true]);
 $isProblem('reference violation', http('POST', '/api/items', ['name' => 'x', 'locationId' => 424242]), 409, 'reference_violation', '/locationId');
 
 $r = http('PATCH', "/api/items/{$widget['id']}", ['qty' => 7]);
@@ -1465,6 +1472,69 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         putenv('ZERO_NOW');
     }
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
+})();
+
+// ================================================================ the empty-object marker stays in json() values
+
+// An access rule sees the patch as plain arrays: a list column sent as `{}` (the marker once decoded)
+// reaches the rule as [], never as a JsObject its array code can't handle.
+(static function (): void {
+    eval('namespace ZeroApp; function marked__update($ctx) { return !in_array("locked", $ctx["data"]["tags"] ?? [], true); }');
+    // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
+    eval('namespace ZeroApp; function marked__read($ctx) { return ["AND" => [new \\Zero\\JsObject()]]; }');
+    $schema = new \Zero\Schema(['version' => 3, 'runtime' => '0.2', 'collections' => ['marked' => [
+        'primaryKey' => 'id', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'tags' => ['type' => 'select', 'multiple' => true, 'enum' => ['locked', 'open']],
+            'meta' => ['type' => 'json'],
+            'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json']]],
+            'parentId' => ['type' => 'integer'],
+        ],
+        'relations' => ['kids' => ['kind' => 'many', 'collection' => 'marked', 'from' => 'id', 'to' => 'parentId']],
+    ]]]);
+    $pdo = \Zero\Store\SqliteStore::connect(':memory:');
+    $pdo->exec('CREATE TABLE "marked" ("id" integer PRIMARY KEY, "tags" text, "meta" text, "info" text, "parentId" integer)');
+    $store = new \Zero\Store\SqliteStore($pdo, $schema);
+    $db = new \Zero\Db($store, $schema, new \Zero\Store\SqliteMedia($store, sys_get_temp_dir()));
+    $previous = \Zero\Db::instance();
+    \Zero\Db::setInstance($db); // registered extensions read the active Db's schema
+    try {
+        $row = $db->insert('marked', ['tags' => ['open']], true)[0];
+        $viewer = new \Zero\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor'], 'standalone');
+        $patch = \Zero\Js::decodeJson('{"tags":{},"meta":{"a":{}}}');
+        try {
+            $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
+            $got = [$updated['tags'], \Zero\Js::jsonStringify($updated['meta'])];
+        } catch (\Throwable $e) {
+            $got = $e::class . ': ' . $e->getMessage();
+        }
+        eq('an update rule gets plain arrays; the json() value keeps {}', $got, [[], '{"a":{}}']);
+        // A json() filter operand keeps `{}`: deleting rows whose meta is {} leaves the one holding [].
+        $db->insert('marked', [['meta' => \Zero\Js::decodeJson('{}')], ['meta' => []]]);
+        $db->delete('marked', \Zero\Js::decodeJson('{"meta":{"eq":{}}}'));
+        eq('a json() filter compares {} and [] as different values', array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']),
+            $db->findMany('marked', ['orderBy' => ['id' => 'asc']])), ['{"a":{}}', '[]']);
+        // The same holds in nested `with` options, in a json() sub-field of a structured filter, and
+        // under a viewer whose read rule returns a filter containing {} (all flattened by schema).
+        $parent = $db->findFirst('marked', ['orderBy' => ['id' => 'asc']]);
+        $db->insert('marked', [['parentId' => $parent['id'], 'meta' => \Zero\Js::decodeJson('{}'), 'info' => ['extra' => \Zero\Js::decodeJson('{}')]],
+            ['parentId' => $parent['id'], 'meta' => [], 'info' => ['extra' => []]]]);
+        $kids = $db->findFirst('marked', \Zero\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
+        $byInfo = $db->findMany('marked', \Zero\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
+        $asViewer = $db->findMany('marked', [], new \Zero\Viewer(null, 'standalone'));
+        eq('permission checks run a rule filter holding {} like reads do', [
+            $db->permits('marked', 'read', $parent['id'], new \Zero\Viewer(null, 'standalone')),
+            count($db->permittedKeys('marked', 'read', new \Zero\Viewer(null, 'standalone')) ?? []),
+        ], [true, 4]);
+        eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
+            array_map(static fn ($r) => \Zero\Js::jsonStringify($r['meta']), $kids),
+            array_map(static fn ($r) => \Zero\Js::jsonStringify($r['info']['extra']), $byInfo),
+            count($asViewer),
+        ], [['{}'], ['{}'], 4]);
+    } finally {
+        \Zero\Db::setInstance($previous);
+    }
 })();
 
 finish('db_test');

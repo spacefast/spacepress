@@ -26,6 +26,34 @@ if (is_dir($apps)) {
     $built = json_decode(file_get_contents(__DIR__ . '/../../runtime/identity/build/.manifest.json'), true, 512, JSON_THROW_ON_ERROR);
     eq('identity screens are built from the committed sources (cd runtime/identity/apps && node build.mjs)', $built['sources'], $digest);
 }
+// The admin screens' committed bundle must come from the committed sources (apps/build.mjs), and
+// its licence bundle must name every notice that lives in the workspace itself.
+$adminApps = __DIR__ . '/../../runtime/admin/apps';
+if (is_dir($adminApps)) {
+    $lines = [];
+    // Skips what the workspace's .gitignore skips (generated trees and files), as build.mjs does.
+    $generated = static fn (string $name) => in_array($name, ['node_modules', '.tsout', 'build', '.build-meta.json'], true) || str_ends_with($name, '.tsbuildinfo');
+    $files = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
+        new RecursiveDirectoryIterator($adminApps, FilesystemIterator::SKIP_DOTS),
+        static fn (SplFileInfo $f) => !$generated($f->getFilename()) && !$f->isLink() && ($f->isDir() || $f->isFile()),
+    ));
+    $notices = [];
+    foreach ($files as $file) {
+        $rel = substr($file->getPathname(), strlen($adminApps) + 1);
+        $lines[$rel] = hash_file('sha256', $file->getPathname());
+        $top = strtok($rel, '/');
+        if (in_array($top, ['packages', 'routes', 'fields'], true) && preg_match('/^(LICEN[CS]E|COPYING|NOTICE)(\\b|[.\\-_])/i', $file->getFilename())) {
+            $notices[] = $rel;
+        }
+    }
+    ksort($lines, SORT_STRING);
+    $digest = hash('sha256', implode('', array_map(static fn ($path, $hash) => "$hash  $path\n", array_keys($lines), $lines)));
+    $built = json_decode(file_get_contents(__DIR__ . '/../../runtime/admin/build/.manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+    eq('admin screens are built from the committed sources (cd runtime/admin/apps && pnpm build)', $built['sources'], $digest);
+    $bundle = file_get_contents(__DIR__ . '/../../runtime/admin/build/THIRD-PARTY-LICENSES.txt');
+    sort($notices);
+    eq('admin licence bundle names every workspace notice', array_values(array_filter($notices, static fn ($n) => !str_contains($bundle, "\n$n\n") && !str_starts_with($bundle, "$n\n"))), []);
+}
 // Another plugin can own these names before Zero loads. The real bundled
 // parser and YAML implementation must still run through their private names.
 eval('namespace Symfony\Component\Yaml; final class Yaml {}');

@@ -1,0 +1,1 @@
+<?php return array('name' => '@zero-admin/fields-next', 'dependencies' => array('react', 'wp-core-data', 'wp-data', 'wp-editor', 'wp-element', 'wp-i18n'), 'moduleDependencies' => array('@zero-admin/admin-toolkit', '@zero-admin/core-data-next'), 'version' => 'a5ad7b7c44cb34087519');

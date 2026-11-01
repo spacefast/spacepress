@@ -1,0 +1,1 @@
+<?php return array('name' => 'collection-index', 'dependencies' => array(), 'moduleDependencies' => array(), 'version' => 'e103c400f92a5a2f16a4');

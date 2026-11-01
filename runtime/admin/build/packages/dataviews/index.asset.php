@@ -1,0 +1,1 @@
+<?php return array('name' => '@zero-admin/dataviews', 'dependencies' => array('react', 'react-dom', 'wp-data', 'wp-date', 'wp-hooks', 'wp-i18n'), 'moduleDependencies' => array(), 'version' => '675b9ed4a8762226338e');

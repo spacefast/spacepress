@@ -51,6 +51,7 @@ test("activation registers the post types, field groups and options page, and cr
     echo wp_json_encode([
       get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.3' : get_option('zero_runtime_tables'),
       $description['runtime']['series'],
+      $description['runtime']['identity'],
       $description['runtime']['wp']['actionScheduler'],
       $description['runtime']['wp']['mcpAdapter'],
       $description['runtime']['wp']['incompatibleTables'],
@@ -59,7 +60,7 @@ test("activation registers the post types, field groups and options page, and cr
       \\Zero\\Wp\\Runtime::plugin() === $plugin,
     ]);
   `));
-  assert.deepEqual(registry, ["0.3", "0.3", "4.2.0", "0.7.1", [], [], null, true]);
+  assert.deepEqual(registry, ["0.3", "0.3", true, "4.2.0", "0.7.1", [], [], null, true]);
   const incompatible: unknown = JSON.parse(wp("eval", `
     $dir = sys_get_temp_dir() . '/zero-series-' . bin2hex(random_bytes(6));
     mkdir($dir . '/zero/app', 0777, true);

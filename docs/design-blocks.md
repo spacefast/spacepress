@@ -196,13 +196,13 @@ blocks; the compiler cannot validate those and says so once per build.
 |---|---|---|
 | `p` | `core/paragraph` | loose text and phrasing runs at block level also become one paragraph |
 | `h1`–`h6` | `core/heading` | `level` from the tag |
-| `ul`, `ol` → `li` | `core/list` → `core/list-item` | `ordered` on `ol`; nested lists ride inside the item |
+| `ul`, `ol` → `li` | `core/list` → `core/list-item` | `ordered`, `start`, `reversed`, `type` on the list; nested lists ride inside the item, after its text |
 | `blockquote` | `core/quote` | loose text inside becomes a paragraph |
 | `pre` (`> code`) | `core/code` | |
-| `img`; `figure > img (+ figcaption)` | `core/image` | `src`→`url`, `alt`, caption |
-| `table` (`thead/tbody/tfoot > tr > th/td`) | `core/table` | cells are attributes, as core stores them |
+| `img`; `figure > img (+ figcaption)` | `core/image` | `src`→`url`, `alt`, `title`, `width`, `height`, caption |
+| `table` (`thead/tbody/tfoot > tr > th/td`) | `core/table` | cells are attributes, as core stores them, with `colspan`, `rowspan`, `scope` |
 | `hr` | `core/separator` | |
-| `details (> summary)` | `core/details` | |
+| `details (> summary)` | `core/details` | `open`→`showContent`, `name` |
 | `section article aside header footer main nav` | `core/group` with `tagName` | |
 | `div` with `class`/`id` | `core/group` | a bare `div` dissolves into its children; never a free wrapper |
 | `a abbr b br cite code del em i ins kbd mark q s samp small span strong sub sup time u var` | rich text | inline inside the enclosing block |
@@ -211,7 +211,9 @@ blocks; the compiler cannot validate those and says so once per build.
 Refused: a `style` prop on any HTML tag (`style_prop_unsupported`; hint: use
 the block's own `style` attribute object through a block component, or a
 class), and a tag with no block (`unmappable_element`; hint: a mapped tag or
-`<Block name>`). No layout inference: a flex-looking `div` is a group with
+`<Block name>`). Any other prop on a mapped tag is refused the same way
+(`unmappable_element`): block markup has no place for it, and dropping it
+would be silent. No layout inference: a flex-looking `div` is a group with
 those classes, never columns.
 
 ### 3.3 Executing a module
@@ -553,7 +555,7 @@ data from a theme are a plugin reading the Zero REST API, or writing
 | Code | Severity | Where |
 |---|---|---|
 | `style_prop_unsupported`, `unmappable_element` | error | mapper, node loc |
-| `unknown_block`, `unknown_attribute`, `attribute_type`, `local_attribute`, `content_and_children`, `save_failed` | error | serializer, node loc |
+| `unknown_block`, `unknown_attribute`, `attribute_type`, `local_attribute`, `content_and_children`, `attribute_dropped` (a registered attribute the block's `save()` does not write; found by reparsing), `save_failed` (a throwing `save()`, or markup the pinned parser rejects as that block) | error | serializer, node loc |
 | `unverified_block` | info (`--verbose`) | serializer, first use |
 | `module_failed` (bundle or execution error), `default_export_missing`, `not_content` (a component returned something that is not JSX, text or a number) | error | module, mapped through the source map |
 | `index_template_missing`, `unknown_template`, `unknown_template_part`, `unknown_pattern`, `query_mode_required`, `unknown_preset`, `theme_json_invalid`, `declared_file_missing`, `duplicate_slug` | error | theme compiler |

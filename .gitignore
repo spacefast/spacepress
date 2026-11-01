@@ -14,3 +14,8 @@ runtime/identity/apps/node_modules/
 /tests/system/.wp-content-blog/
 /tests/system/.harness-blog.json
 /runtime/admin/apps/node_modules/
+
+# The optional packages/blocks package (its own pnpm project)
+/packages/blocks/node_modules/
+/packages/blocks/dist/
+/packages/blocks/vendor/

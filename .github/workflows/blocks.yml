@@ -1,0 +1,43 @@
+# The optional @spacefast/zero-blocks package (packages/blocks). Separate from ci.yml and
+# path-filtered, so a core PR outside these paths never runs it.
+name: Blocks
+
+on:
+  pull_request:
+    paths:
+      - 'packages/blocks/**'
+      - '.github/workflows/blocks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/blocks/**'
+      - '.github/workflows/blocks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blocks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  blocks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/blocks
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          package_json_file: packages/blocks/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: packages/blocks/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

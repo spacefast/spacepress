@@ -399,7 +399,11 @@ final class ProfileForm
                     }
                     continue;
                 }
-                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
+                $baseline = $before[$name] ?? null;
+                if ($before === null && $sub['type'] === 'timestamp') {
+                    $baseline = $sub['default']['value'] ?? null;
+                }
+                $obj[$name] = self::fromForm($sub, $obj[$name], $baseline, $viewer,
                     is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
                 if ($viewer !== null && $before === null && isset($sub['default'])
                     && !array_key_exists('value', $sub['default'])

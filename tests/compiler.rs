@@ -1376,6 +1376,22 @@ fn rejects_phase2_static_contracts() {
             "const p: number | undefined = undefined; return 'ab'.lastIndexOf('b', p) === 1;",
             "position might be null or undefined",
         ),
+        (
+            "const a = { x: 0 }; [{ child: a }].map((e) => { e.child.x = 1; return e; }); return a.x === 1;",
+            "`map` passes each element to the callback as a copy",
+        ),
+        (
+            "const a = [{ x: 0 }]; const mutate = () => { a[0]!.x = 1; }; const r = a.map((e) => { mutate(); return e.x; }); return r[0] === 1;",
+            "changes the array `map` is walking",
+        ),
+        (
+            "const a = { x: 0 }; return ({ a, n: (a.x = 1) }).a.x === 1;",
+            "may be the same object or array as another value here",
+        ),
+        (
+            "const reader = (p: { child: { x: number } }) => { const q = p.child; return (_: number) => q.x; }; const o = { child: { x: 0 } }; return reader(o)((o.child.x = 1)) === 1;",
+            "may be the same object or array as another value here",
+        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (

@@ -1265,24 +1265,40 @@ impl Graph {
             };
             // Captured by a closure that outlives the call (returned or stored), directly or
             // through a local it was copied into: the closure keeps the container itself.
-            let mut aliases = vec![*param];
-            let mut seen_alias = HashSet::from([*param]);
-            while let Some(b) = aliases.pop() {
+            // Locals of this function the parameter (or part of it) flows into: the same
+            // container, one holding it (`{ p }`), or one of its members (`p.child`). `member`
+            // records that only part of the parameter is held there.
+            let mut aliases = vec![(*param, false)];
+            let mut seen_alias: HashMap<Span, bool> = HashMap::from([(*param, false)]);
+            while let Some((b, member)) = aliases.pop() {
                 for (src, dest, _) in &self.copies {
-                    // A local of this function the parameter flows into whole: the same
-                    // container, or (stored inside it, `{ p }`) a container holding it.
                     let temporary = !self.bindings.contains_key(&dest.binding)
                         && !parameters.contains_key(&dest.binding)
                         && !self.functions.contains_key(&dest.binding);
                     if src.binding == b
-                        && (src.path.is_empty() || temporary)
                         && (self.bindings.get(&dest.binding) == Some(function) || temporary)
-                        && seen_alias.insert(dest.binding)
+                        && !seen_alias.contains_key(&dest.binding)
                     {
-                        aliases.push(dest.binding);
+                        let m = member || (!src.path.is_empty() && !temporary);
+                        seen_alias.insert(dest.binding, m);
+                        aliases.push((dest.binding, m));
                     }
                 }
             }
+            let escaping_capture = |b: &Span| {
+                self.captured_by.get(b).is_some_and(|fs| {
+                    fs.iter().any(|f| {
+                        self.copies.iter().any(|(src, dest, _)| {
+                            src.binding == *f
+                                && src.path.is_empty()
+                                && dest.binding != *f
+                                && sinks_of_value(&sinks, dest, function, &store)
+                        })
+                    })
+                })
+            };
+            let captured_part = seen_alias.iter().any(|(b, m)| *m && escaping_capture(b));
+            let seen_alias: HashSet<Span> = seen_alias.into_iter().filter(|(_, m)| !m).map(|(b, _)| b).collect();
             let captured_kept = seen_alias.iter().any(|b| {
                 self.captured_by.get(b).is_some_and(|fs| {
                     fs.iter().any(|f| {
@@ -1296,7 +1312,7 @@ impl Graph {
                 })
             });
             let whole = captured_kept || ss.iter().any(|(s, m)| !m && store(s));
-            let part = ss.iter().any(|(s, m)| *m && store(s));
+            let part = captured_part || ss.iter().any(|(s, m)| *m && store(s));
             let returned = ss
                 .iter()
                 .any(|(s, m)| !m && matches!(s, Sink::Result(f) if f == function));
@@ -1652,27 +1668,61 @@ impl Graph {
             .collect();
         let mut resolved_calls = HashSet::new();
         let mut retained_arguments: HashMap<Span, HashSet<usize>> = HashMap::new();
+        // Each function → member writes into bindings it doesn't own, including through the
+        // functions it calls (to a fixpoint), with the deepest write per binding.
+        let mut foreign: HashMap<Span, HashMap<Span, usize>> = HashMap::new();
+        for (function, writes) in &self.function_writes {
+            for p in writes {
+                if !p.path.is_empty() && self.bindings.get(&p.binding).is_some_and(|o| o != function) {
+                    let depth = if p.path.contains(&Step::Descendants) {
+                        usize::MAX / 2
+                    } else {
+                        p.path.len()
+                    };
+                    let slot = foreign.entry(*function).or_default().entry(p.binding).or_default();
+                    *slot = (*slot).max(depth);
+                }
+            }
+        }
+        loop {
+            let mut changed = false;
+            for call in &self.calls {
+                let callees: Vec<Span> = self
+                    .values
+                    .iter()
+                    .filter(|(value, _)| callable_at(value, &call.callee))
+                    .map(|(_, f)| *f)
+                    .collect();
+                for f in callees {
+                    let inherited: Vec<(Span, usize)> = foreign
+                        .get(&f)
+                        .into_iter()
+                        .flatten()
+                        .filter(|(b, _)| self.bindings.get(b).is_some_and(|o| *o != call.owner))
+                        .map(|(b, d)| (*b, *d))
+                        .collect();
+                    for (b, d) in inherited {
+                        let slot = foreign.entry(call.owner).or_default().entry(b).or_default();
+                        if *slot < d {
+                            *slot = d;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
         let mut captured_writes: HashMap<Span, HashMap<Span, usize>> = HashMap::new();
         for call in &self.calls {
             if call.callback {
                 continue;
             }
             for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                for p in self.function_writes.get(function).into_iter().flatten() {
-                    // A member write into a binding the callee doesn't own (a capture).
-                    if !p.path.is_empty() && self.bindings.get(&p.binding).is_some_and(|o| o != function) {
-                        let depth = if p.path.contains(&Step::Descendants) {
-                            usize::MAX / 2
-                        } else {
-                            p.path.len()
-                        };
-                        let slot = captured_writes
-                            .entry(call.span)
-                            .or_default()
-                            .entry(p.binding)
-                            .or_default();
-                        *slot = (*slot).max(depth);
-                    }
+                for (b, d) in foreign.get(function).into_iter().flatten() {
+                    let slot = captured_writes.entry(call.span).or_default().entry(*b).or_default();
+                    *slot = (*slot).max(*d);
                 }
             }
         }

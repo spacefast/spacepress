@@ -140,6 +140,7 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         reduce_result: None,
         result_receivers: HashMap::new(),
         reduce_acc: HashMap::new(),
+        captured_calls: Vec::new(),
         callback_route: HashMap::new(),
         writes: Vec::new(),
     };
@@ -354,51 +355,66 @@ impl Uf {
         level.into_iter().any(|t| t == e || self.reaches(e, t))
     }
 
-    /// For a write through a callback's element parameter `b` (class `c`): whether the element
-    /// can be seen other than through `b` itself and `route` (the array `map` builds from the
-    /// callback's results). The receiver holding it counts when anything can see the receiver.
-    fn seen_beyond(&mut self, c: Class, b: Span, route: Option<Class>) -> bool {
+    /// For a write `depth` steps below the binding `b` of class `c` (a callback's element, or a
+    /// reducer's accumulator): whether anything but `b` and `route` can see a container the write
+    /// passes through or lands in. For an element (`element`), `c` stands for the receiver's
+    /// elements: each element stored there counts, and the receiver may hold them only if
+    /// nothing can see the receiver itself.
+    fn seen_beyond(&mut self, c: Class, b: Span, route: Option<Class>, depth: usize, element: bool) -> bool {
         let c = self.find(c);
-        if self.outside[c] || self.repeated[c] || self.keepers[c].is_some() {
-            return true;
-        }
-        if self.bindings[c].iter().any(|x| *x != b) {
-            return true;
-        }
-        let mut skip = HashSet::from([c]);
-        if let Some(r) = route {
-            skip.insert(self.find(r));
-        }
-        let mut via: Vec<Class> = self.held_in[c].clone();
+        let route = route.map(|r| self.find(r));
+        // Levels 0..depth below `b`: the containers the write passes through and lands in.
+        let mut path: HashSet<Class> = HashSet::new();
+        let mut level: Vec<Class> = vec![c];
         if self.is_interior[c] {
-            via.extend(self.holders[c].iter().copied());
+            level.extend(self.contents[c].clone());
         }
-        if via.into_iter().any(|h| {
-            let h = self.find(h);
-            !skip.contains(&h) && self.observable(h, &mut skip.clone())
-        }) {
-            return true;
-        }
-        // An interior stands for the containers stored in it: the element may be one of them
-        // (`[a].map(e => ...)` hands `a` itself to `e`), seen through its own holders.
-        if self.is_interior[c] {
-            for k in self.contents[c].clone() {
+        for d in 0..depth.max(1) {
+            let mut next = Vec::new();
+            for k in level {
                 let k = self.find(k);
-                if k == c || skip.contains(&k) {
+                if !path.insert(k) {
                     continue;
                 }
-                if self.outside[k] || self.repeated[k] || !self.bindings[k].is_empty() {
-                    return true;
+                if d + 1 < depth.max(1)
+                    && let Some(i) = self.existing_interior(k)
+                {
+                    next.push(i);
+                    next.extend(self.contents[i].clone());
                 }
-                let holders: Vec<Class> = self.held_in[k].clone().into_iter().map(|h| self.find(h)).collect();
-                if holders.into_iter().any(|h| {
-                    !skip.contains(&h) && self.existing_interior(h) != Some(c) && self.observable(h, &mut skip.clone())
-                }) {
+            }
+            level = next;
+        }
+        let receivers: Vec<Class> = if element && self.is_interior[c] {
+            self.holders[c].clone().into_iter().map(|h| self.find(h)).collect()
+        } else {
+            Vec::new()
+        };
+        let mut allowed: HashSet<Class> = path.clone();
+        allowed.extend(receivers.iter().copied());
+        if let Some(r) = route {
+            allowed.insert(r);
+        }
+        for k in path.clone() {
+            if self.outside[k] || self.repeated[k] || self.keepers[k].is_some() {
+                return true;
+            }
+            if self.bindings[k].iter().any(|x| *x != b) {
+                return true;
+            }
+            let mut holders: Vec<Class> = self.held_in[k].clone();
+            if self.is_interior[k] {
+                holders.extend(self.holders[k].clone());
+            }
+            for h in holders {
+                let h = self.find(h);
+                if !allowed.contains(&h) && self.observable(h, &mut allowed.clone()) {
                     return true;
                 }
             }
         }
-        false
+        let mut seen: HashSet<Class> = route.into_iter().collect();
+        receivers.into_iter().any(|r| self.observable(r, &mut seen))
     }
 
     /// Whether two values may share a container: the same class, or one held (at any depth)
@@ -592,6 +608,8 @@ struct Walk<'o, 'a> {
     result_receivers: HashMap<Span, Vec<Span>>,
     /// Reduce call span → its accumulator parameter.
     reduce_acc: HashMap<Span, Span>,
+    /// Every call to a program function that writes a captured binding: (binding, depth, call).
+    captured_calls: Vec<(Span, usize, Span)>,
     /// A callback element parameter → the array its callback's results build (`map`).
     callback_route: HashMap<Span, Class>,
     writes: Vec<Write>,
@@ -772,6 +790,19 @@ impl Walk<'_, '_> {
                 Some(a)
             }
             (a, b) => a.or(b),
+        }
+    }
+
+    /// Reading a member of a literal on the spot (`({ a, n: f() }).a`) observes it: whatever it
+    /// holds is seen there too.
+    fn read_through(&mut self, o: Option<Class>) {
+        if let Some(o) = o {
+            let c = self.uf.find(o);
+            if self.uf.bindings[c].is_empty() && !self.uf.outside[c] && self.uf.keepers[c].is_none() {
+                let k = self.uf.new_class();
+                self.uf.keepers[k] = Some(Span::NONE);
+                self.uf.store(k, c);
+            }
         }
     }
 
@@ -1148,6 +1179,9 @@ impl Walk<'_, '_> {
             },
             ExprKind::Member { obj, .. } => {
                 let o = self.expr(obj);
+                if Self::builds_new(obj) {
+                    self.read_through(o);
+                }
                 Some(match o {
                     Some(o) => self.member_of(o),
                     None => self.uf.outside_class(),
@@ -1155,6 +1189,9 @@ impl Walk<'_, '_> {
             }
             ExprKind::Index { obj, index, .. } => {
                 let o = self.expr(obj);
+                if Self::builds_new(obj) {
+                    self.read_through(o);
+                }
                 self.expr(index);
                 Some(match o {
                     Some(o) => self.member_of(o),
@@ -1455,7 +1492,11 @@ impl Walk<'_, '_> {
                 }
                 let params = std::mem::take(&mut self.last_callback);
                 let writes_before = self.writes.len();
+                let calls_before = self.captured_calls.len();
                 self.body(&f.body);
+                // Helpers the callback calls that write a captured binding: the same as writing it
+                // here (`mutate()` changing `a[0]` while the callback holds a copy of it).
+                let helper_writes: Vec<(Span, usize, Span)> = self.captured_calls[calls_before..].to_vec();
                 // While the callback runs, PHP's parameter is a copy of the element: a write
                 // into the receiver's elements by any other route (`a[0].x = 1`) is a change the
                 // copy doesn't see, though JS's parameter would. Refused when the callback reads
@@ -1471,6 +1512,20 @@ impl Walk<'_, '_> {
                             && self.uf.write_reaches(c, depth, e)
                         {
                             w.target = Target::Outside;
+                        }
+                    }
+                    for (b, depth, span) in helper_writes {
+                        if !self.callback_params.contains_key(&b)
+                            && let Some(c) = self.classes.get(&b).copied()
+                            && self.uf.write_reaches(c, depth, e)
+                        {
+                            self.writes.push(Write {
+                                target: Target::Outside,
+                                name: "this call".to_string(),
+                                span,
+                                named_callback: Some(format!("{method}:helper")),
+                                call: None,
+                            });
                         }
                     }
                 }
@@ -1574,6 +1629,9 @@ impl Walk<'_, '_> {
         // The callee writes a captured binding while an argument may be (or hold, or sit inside)
         // that binding's container: in JS the parameter sees the write, in PHP it holds a copy.
         let captured: Vec<(Span, usize)> = fx.captured_writes(e.span).collect();
+        for (b, depth) in &captured {
+            self.captured_calls.push((*b, *depth, e.span));
+        }
         for (b, depth) in captured {
             let Some(cb) = self.classes.get(&b).copied() else {
                 continue;
@@ -1663,14 +1721,15 @@ impl Walk<'_, '_> {
                 // A write through a callback's element parameter reaches the receiver's element
                 // in JS and a copy in PHP: lost unless the element is never seen again (`map`
                 // returning it as its result is that same value in both).
-                Target::Binding(b, _) if self.callback_params.contains_key(&b) => match self.classes.get(&b).copied() {
-                    Some(c) => {
-                        let c = self.uf.find(c);
-                        let route = self.callback_route.get(&b).copied().map(|r| self.uf.find(r));
-                        self.uf.seen_beyond(c, b, route)
+                Target::Binding(b, depth) if self.callback_params.contains_key(&b) => {
+                    match self.classes.get(&b).copied() {
+                        Some(c) => {
+                            let route = self.callback_route.get(&b).copied();
+                            self.uf.seen_beyond(c, b, route, depth, true)
+                        }
+                        None => false,
                     }
-                    None => false,
-                },
+                }
                 // A write at a reducer accumulator's top level: the carry, unless anything but the
                 // accumulator and the reduce result can see that container (an element returned
                 // as the next accumulator, an alias, a holder).
@@ -1682,7 +1741,7 @@ impl Walk<'_, '_> {
                         let receivers: Vec<Span> = self.result_receivers.get(&b).cloned().unwrap_or_default();
                         let bindings = self.uf.bindings[c].clone();
                         self.uf.bindings[c].retain(|x| !receivers.contains(x));
-                        let r = self.uf.seen_beyond(c, b, None);
+                        let r = self.uf.seen_beyond(c, b, None, 1, false);
                         self.uf.bindings[c] = bindings;
                         r
                     }
@@ -1759,6 +1818,13 @@ impl Walk<'_, '_> {
     }
 
     fn reject(&self, w: &Write) -> Diag {
+        if let Some(method) = w.named_callback.as_deref().and_then(|m| m.strip_suffix(":helper")) {
+            return Diag::new(
+                w.span,
+                format!("this call changes the array `{method}` is walking, while its callback holds a copy of the element in compiled PHP"),
+            )
+            .help("loop with `for (const item of list) { ... }`, or make the change after the call");
+        }
         if let Some(method) = &w.named_callback {
             return Diag::new(
                 w.span,

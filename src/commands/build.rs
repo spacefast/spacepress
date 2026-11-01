@@ -650,20 +650,13 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-fn check_json(project: &Path, target: Option<Target>) -> ExitCode {
+fn check_json(project: &Path) -> ExitCode {
     let diagnostics = match loader::load_all(&project.join("zero.config.ts")) {
         Err(diagnostics) => diagnostics,
-        Ok(program) => {
-            let checked = build_program(project, target, &program).and_then(|built| {
-                let other = if built.schema.target == Target::Wp {
-                    Target::Standalone
-                } else {
-                    Target::Wp
-                };
-                build_program(project, Some(other), &program)
-            });
-            checked.err().into_iter().collect()
-        }
+        Ok(program) => build_program(project, Some(Target::Wp), &program)
+            .err()
+            .into_iter()
+            .collect(),
     };
     println!(
         "{}",
@@ -683,7 +676,7 @@ pub(super) fn run(args: &crate::Args) -> ExitCode {
         return ExitCode::from(2);
     }
     if args.command == "check" && args.json {
-        return check_json(&project, if args.wp { Some(Target::Wp) } else { args.target });
+        return check_json(&project);
     }
     let started = std::time::Instant::now();
     let target = if args.wp { Some(Target::Wp) } else { args.target };

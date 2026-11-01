@@ -240,7 +240,11 @@ pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
         let mut hash = Sha256::new();
         hash.update(serde_json::to_vec(&diag.code).expect("code serializes"));
         hash.update([0]);
-        hash.update(diag.message.as_bytes());
+        hash.update(
+            diag.message
+                .replace(root.to_string_lossy().as_ref(), "<project>")
+                .as_bytes(),
+        );
         let id: String = hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
         let loc = location(diag.span, root);
         let group = groups.entry(id.clone()).or_insert_with(|| DiagnosticGroup {

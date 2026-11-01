@@ -40,8 +40,7 @@ stop at their first error. This is not a complete tolerant TypeScript checker.
 
 The ordinary `zero check` keeps its terminal output and first-error behavior.
 The JSON form also fails on unsupported constructs; a report containing blockers
-never exits successfully. It checks the same existing target contracts as the
-terminal command. Nonfatal build hints are not currently included in the JSON
+never exits successfully. It checks the WordPress compilation contract without requiring target flags. Nonfatal build hints are not currently included in the JSON
 format.
 
 ## Codes

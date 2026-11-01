@@ -75,7 +75,9 @@ test("activation registers the post types, field groups and options page, and cr
   `, "--skip-plugins=zero-app-blog"));
   assert.deepEqual(incompatible, [null, null, true, true]);
   const diagnosis: unknown = JSON.parse(execFileSync(zeroBinary(), [
-    "doctor", fileURLToPath(new URL("app", import.meta.url)), "--wp", "--site", `${harness.url}/?rest_route=/zero/v1`, "--json",
+    "doctor", fileURLToPath(new URL("app", import.meta.url)),
+    "--out", fileURLToPath(new URL(".wp-content", import.meta.url)),
+    "--site", `${harness.url}/?rest_route=/zero/v1`, "--json",
   ], { encoding: "utf8" }));
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });

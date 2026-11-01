@@ -263,6 +263,18 @@ fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(missing["diagnostics"][0]["code"], "Z1003");
     assert_eq!(missing["diagnostics"][0]["location"], Value::Null);
+    let relocated = tempfile::tempdir().unwrap();
+    let (out, relocated_missing) = checked(relocated.path());
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(missing["groups"][0]["id"], relocated_missing["groups"][0]["id"]);
+    for (report, project) in [(&missing, tmp.path()), (&relocated_missing, relocated.path())] {
+        assert!(
+            report["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains(project.to_str().unwrap())
+        );
+    }
     std::fs::write(tmp.path().join("zero.config.ts"), "const x = ;").unwrap();
     let (out, syntax) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));

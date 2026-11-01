@@ -156,6 +156,18 @@ before equality can affect the response. Trusted CLI/hook writes retain normal
 uniqueness checks; successful public creates retain their ordinary row response.
 System uids remain unguessable sync identities.
 
+Blind intake belongs in a narrow application action, not a public unique-create
+endpoint. The site example acknowledges newsletter requests with a constant
+response and queues private, deduplicated processing; it returns neither a
+subscriber row nor a job identifier. Existing and new subscriptions have the
+same acknowledgement. Exact announcement recipient counts are admin-only,
+including filtering: comparing counts around a signup would otherwise disclose
+membership. Member administrators explicitly have collection read
+access before managing unique identities. Its editor-only removal action
+authorizes detaching private subscription links and returns only the post id;
+private subscriber data never leaves that action. These application policies
+do not exempt viewer-bound CRUD from the checks above.
+
 Every reference in a viewer-bound write, including generated values, must resolve within the target's read filters and use
 a readable target column; an unreadable target and a missing target return the
 same `reference_violation`, without the resolved value in its detail. A known sync UID authorizes only the exact primary-key

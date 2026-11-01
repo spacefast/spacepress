@@ -66,7 +66,7 @@ to `main` at `b45e586`.
 | `group({ fields })`, `repeater({ fields })` | | JSON |
 | `blocks({ layouts })` | | JSON tagged list |
 
-### 1.2 Column modifiers (`src/eval.rs:1904`, the `MODIFIERS` list)
+### 1.2 Column modifiers (`src/eval.rs:2028`, the `MODIFIERS` list)
 
 `notNull`, `unique`, `primaryKey`, `default`, `defaultNow`, `$default`,
 `$defaultFn`, `$onUpdate`, `$onUpdateFn`, `references`, `$type`, `min`, `max`,
@@ -234,9 +234,12 @@ media(opts?)         // { accept?: string | string[], multiple?: true }   MIME p
 file("bucket")       // the bucket's key under defineConfig.files
 select(options, opts?)   // select(["a","b"]) | select(["a","b"], { multiple: true })
 ref("target", opts?) // the target's key under defineConfig.collections; { onDelete?: "cascade" | "restrict" | "set null" }
-user()               // the viewer's account id (§4.8)
+user(opts?)          // a wp_users id, the ownership column (§4.8); { onDelete?: "cascade" | "restrict" | "set null" } as for ref
 group({ ...fields }), repeater({ ...fields }), blocks({ layout: { ...fields } })
 ```
+
+`many("target", "column")` is not a column; it names an inferred reverse
+relation in a collection's `relations:` option (§4.3).
 
 What changed and why:
 
@@ -765,7 +768,32 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   none is open the hook opens one, and only then does it commit on
   `deleted_user` or roll back if core fails in between. `Connection::begin()`
   gains the same probe (behind `suppress_errors`, as identity runs it),
-  since today it checks Zero's own depth only (`Connection.php:140`). In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
+  since today it checks Zero's own depth only (`Connection.php:140`). A
+  joined transaction has an owner Zero cannot observe: nothing tells the
+  connection when the other plugin commits or rolls back, and Zero's
+  `afterCommit` and `onRollback` callbacks are tied to its own `COMMIT`
+  and `ROLLBACK` (`Connection.php:149,187,192`); the cascade registers such
+  callbacks, among them the physical deletion of a bucket file after
+  commit (`WpFiles.php:236`) and the post-cache cleanup after rollback
+  (`cleanCaches`, `:232`). So a join runs the cascade in a reduced mode:
+  the SQL writes and the `RELEASE SAVEPOINT` happen inside the owner's
+  transaction; `afterCommit` work that is reversible, cache invalidation
+  and the touched-post list, runs when the savepoint is released (an early
+  invalidation costs a cache miss, never a wrong read); `afterCommit` work
+  that is not reversible, file unlinks and job dispatch, is written to the
+  outbox table inside the same transaction so it becomes visible exactly if
+  the owner commits, and the next request or cron tick performs it (the
+  job outbox already works this way: the row is written in the
+  transaction, `Jobs/Jobs.php:51`, and `maintain` sweeps rows nobody
+  dispatched, `Jobs/Runner.php:140`); and the
+  `onRollback` cache cleanup is also run on `ROLLBACK TO SAVEPOINT`, while
+  an owner rollback that happens later is covered by the touched users
+  identity already reports to the host (`zero_identity_touched_user`,
+  `runtime/identity/src/DB.php:115`), which Zero's hook also emits for the
+  posts it touched. A cascade whose `afterCommit` work has no outbox form
+  refuses the join instead (`wp_die` naming the plugin's open transaction),
+  so the deletion fails closed rather than deleting a file the owner may
+  still roll back. In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
   ID = ? FOR UPDATE`, the same lock a reference write takes on its target
   before it validates existence, which today only checks, `Db.php:705`),
   checks every `"restrict"` column first and refuses the whole deletion
@@ -959,7 +987,7 @@ Zero Admin's `admin: true` fits as is.
 import {
   collection, global, bucket,
   text, integer, real, boolean, date, timestamp, json, email, url, slug, richText,
-  media, file, select, ref, user, group, repeater, blocks,
+  media, file, select, ref, user, group, repeater, blocks, many,
   action, job, jobs, once, env, db, HttpError, defineConfig,
   type Row, type Insert,
 } from "zero";
@@ -1449,7 +1477,7 @@ work from. "Where" names the compiler site that changes.
 | manual `createdAt`/`updatedAt` | system columns; `timestamps: false` to drop | `src/extract.rs:321` (same place as `status`) |
 | `.default(x)` alone (nullable, explicit null accepted) | `.default(x)` is NOT NULL; `.nullable().default(x)` for the old meaning | `src/eval.rs:1907,1952`; `Db.php:429` |
 | `.unique().max(191)` on text | `.unique()` | `src/extract.rs:1224` |
-| `ctx.user?.role === "admin" \|\| …` | `ctx.is("editor")` | `src/compile.rs:390` (ctx types), `Access.php:53` |
+| `ctx.user?.role === "admin" \|\| …` | `ctx.is("editor")` | `src/types.rs:457,488` (ctx types), `Access.php:53` |
 | `ownerId: integer()` + function rule | `userId: user()` + `"self"` | new column kind; `src/extract.rs:918` |
 
 ### 6.2 Added
@@ -1477,10 +1505,22 @@ filter grammar, the subset.
 ### 6.4 Existing data
 
 Zero is pre-1.0 and no app outside this repo runs on the current config, so
-existing databases are rebuilt, not migrated. For the record, five changes
+existing databases are rebuilt, not migrated. For the record, six changes
 touch storage and `zero build`'s migration step must at least refuse rather
 than destroy: a collection whose key differs from its old name argument is a
-table rename (`shopping_list` to `shoppingList` in the pantry); `ref()`
+table rename (`shopping_list` to `shoppingList` in the pantry); a content
+collection's single `user()` column moving from meta to `post_author`
+(§4.8) is a storage change the snapshot does not record today
+(`src/migrate.rs:74` keeps `editor`, `drafts` and columns, no author
+mapping), and the two can disagree, since an admin may have assigned an
+author record to another user while `post_author` kept the creating
+admin's id; the snapshot gains an `author` entry per content collection
+and the generated migration copies the meta value into `post_author`
+(`UPDATE wp_posts p JOIN wp_postmeta m … SET p.post_author = m.meta_value`,
+`0` where the meta is null) before dropping the meta, so the meta value,
+which was the one Zero read and enforced, wins over the core value nobody
+checked; the reverse move (`author: false` on a column that was
+`post_author`) copies `post_author` into new meta the same way; `ref()`
 columns keep their names but the inferred `onDelete` (`"restrict"` on a
 NOT NULL FK that had none) is a changed constraint; `.default()` implying
 NOT NULL turns a nullable column NOT NULL, which is new migration work:
@@ -1498,7 +1538,26 @@ milliseconds, through `UPDATE … WHERE col IS NULL`), then constrained; the
 generated SQL is the same for the same schema change whenever it is built,
 and the value is right whenever it is applied. MySQL's bare
 `CURRENT_TIMESTAMP` is not Zero's timestamp format (`Schema.php:527` does
-not normalize it), which is why the expression formats it;
+not normalize it), which is why the expression formats it. The SQL form
+covers table columns only; the same nullable-to-NOT NULL transition also
+reaches storage the snapshot does not constrain: a content collection's
+postmeta and an auth collection's usermeta (where a missing or `NULL` meta
+reads as `null`, `Schema.php:521` returns stored nulls unchanged), the
+options row a global lives in, and sub-fields of `group`, `repeater` and
+`blocks`, whose constraints the snapshot omits (`src/migrate.rs:103` keeps
+the parent column only) and which `fillFields` reads back as `null` when
+absent (`:548`). Without more, a `.default(x)` sub-field types as non-null
+while old rows still return `null`. So the migration step compares the
+full declared shape, not the SQL snapshot alone: the snapshot gains the
+nullability of meta-backed columns, global fields and structured
+sub-fields, and a transition to NOT NULL on any of them emits a PHP
+backfill step in the migration, a new step kind beside the SQL files
+(`Wp/Migrator.php:63` applies `.sql` only today; the step runs under the
+same per-site lock and ledger, `:103`), that walks the affected posts,
+users, option or JSON values and writes the constant default where the
+value is `null`; a function default is refused there as it is for SQL
+columns. Until the backfill has run the build refuses to ship the
+type change, so the declared type and the stored rows never disagree;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on content collections `updatedAt` reads
@@ -1515,8 +1574,17 @@ them.
   new shapes: no `id: id()`, `ref()` instead of `<name>Id: integer().references`
   plus a relations block (`:279-380`), `select([...])`, `content: false`
   instead of `editor: false`, no `target`. Its "a required text field named
-  `title` enables a post type" rule becomes exactly §4.9.3, so the importer
-  no longer needs to decide.
+  `title` enables a post type" rule (`:276,665`) is narrower than §4.9.3 in
+  two ways, and the importer writes the difference out rather than
+  inheriting the inference: an *optional* text field named `title` yields a
+  table today, where §4.9.3 would infer a content collection and then fail
+  the title rule, so the importer emits `content: false` for that
+  collection with a report entry saying why; and a source field that is
+  optional but has a default (today `.default(x)` without `.notNull()`,
+  `:627`) becomes `.nullable().default(x)`, because under §4.9.1 a bare
+  `.default(x)` would make it required. Required fields keep
+  `.notNull()` (`:530,536`). The importer's output is therefore
+  unchanged in meaning, and reports where the new spelling differs.
 - **The original-Zero migration** (`docs/migrating-from-zero.md`, `zero
   migrate site`) maps the capsule's implicit timestamps to the new system
   columns instead of reporting them as a gap (`docs/zero-compatibility.md`
@@ -1614,8 +1682,9 @@ Three places, all small:
   carries `type_args` on every call (`src/ir.rs:280`); the evaluator reads
   them only for `$type` (`src/eval.rs:888`). `json` reads them the same way.
 - **A method on `ctx`** (`ctx.is("editor")`): access and hook closures are
-  compiled, not evaluated; `ctx` is typed in `src/compile.rs:390` and the
-  method lowers to a PHP call. No evaluator change.
+  compiled, not evaluated; the `ctx` types live in `src/types.rs:457,488`
+  and `src/compile.rs:390` picks one per slot; the method lowers to a PHP
+  call. No evaluator change.
 - **Two type names** (`Row<typeof t>`, `Insert<typeof t>`): the compiler's
   annotation resolver matches `InferSelectModel`/`InferInsertModel` by name
   and resolves a collection path (`TyAnn::Query`, `src/compile.rs:854`);

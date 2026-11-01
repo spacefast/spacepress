@@ -61,5 +61,6 @@ overrides:
   "@wordpress/warning": "3.51.0"
   "@wordpress/wordcount": "4.51.0"
   "@wordpress/worker-threads": "1.11.0"
-onlyBuiltDependencies:
-  - esbuild
+# esbuild's postinstall places its platform binary; pnpm 12 reads the allowlist from `allowBuilds`.
+allowBuilds:
+  esbuild: true

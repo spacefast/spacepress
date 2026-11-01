@@ -156,6 +156,8 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
+    /// `list[i]`: a plain `=` here could write past the end (see `index_write`).
+    array_index: bool,
 }
 
 impl Out {
@@ -1147,6 +1149,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
+                // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
+                // it saw. PHP closures capture by reference, so a captured loop variable moves to a
+                // fresh cell before each update (earlier closures keep theirs; `continue` too).
+                let fresh: Vec<String> = match init.as_deref() {
+                    Some(Stmt::Decl {
+                        kind: DeclKind::Let,
+                        pat,
+                        ..
+                    }) => {
+                        // Every binding the declaration introduces (`let { i } = ...` too).
+                        let mut bindings = Vec::new();
+                        pat_bindings(pat, &mut bindings);
+                        let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        let scope = self.fx().scopes.last().cloned().unwrap_or_default();
+                        let mut cells: Vec<String> = scope
+                            .values()
+                            .filter(|l| captured.contains(&l.binding))
+                            .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
+                            .collect();
+                        cells.sort();
+                        cells
+                    }
+                    _ => Vec::new(),
+                };
+                let update_php = fresh
+                    .into_iter()
+                    .chain((!update_php.is_empty()).then_some(update_php))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
@@ -2701,7 +2732,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             read: t,
             constraint,
             path,
+            array_index,
         } = self.place(target)?;
+        // `??=` and `||=` write when the element is missing (undefined), so past the end too;
+        // `&&=` never writes a missing element.
+        if array_index && matches!(op, None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or))) {
+            index_write(span)?;
+        }
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
@@ -2869,6 +2906,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         l.ty
                     };
                     Ok(AssignmentPlace {
+                        array_index: false,
                         constraint: l.constraint,
                         path: Some((l.php.clone(), Vec::new())),
                         read: Out {
@@ -2894,6 +2932,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
@@ -2912,6 +2951,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
+                    array_index: false,
                     constraint,
                     path,
                     read: Out {
@@ -2928,11 +2968,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    ..
                 } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
+                let array_index = matches!(o.ty.non_null(), Ty::Array(_));
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
@@ -2959,6 +3001,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
+                    array_index,
                     constraint,
                     path,
                     read: Out {
@@ -3247,6 +3290,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             _ => err(span, format!("`new {n}` isn't supported")),
         }
+    }
+
+    /// `s.lastIndexOf(x, pos)`: JS reads an `undefined` position as omitted (search from the end)
+    /// and `null` as 0, but compiled PHP has one null for both. A literal decides it here; a
+    /// value that may be null or undefined at runtime is refused. Returns the compiled arguments.
+    fn position_args(&mut self, args: &[ArrEl], position: usize, m: &str) -> Result<Vec<Out>> {
+        let mut argv = self.plain_args(args)?;
+        let Some(ArrEl::Item(p)) = args.get(position) else {
+            return Ok(argv);
+        };
+        let mut e: &Expr = p;
+        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &e.kind {
+            e = x;
+        }
+        match &e.kind {
+            ExprKind::Undefined => argv.truncate(position),
+            ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
+            _ if argv[position].ty.is_nullable() => {
+                return err_help(
+                    p.span,
+                    format!("`{m}()`'s position might be null or undefined here, which JS reads two different ways"),
+                    "pass a number (`pos ?? 0`), or leave the argument out",
+                );
+            }
+            _ => {}
+        }
+        Ok(argv)
     }
 
     fn plain_args(&mut self, args: &[ArrEl]) -> Result<Vec<Out>> {
@@ -3881,7 +3951,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Str,
             ));
         }
-        let argv = self.plain_args(args)?;
+        // Only String.prototype.lastIndexOf reads an `undefined` position as omitted; everywhere
+        // else (and for arrays) null and undefined are both 0, which the runtime does.
+        let argv = match m {
+            "lastIndexOf" => self.position_args(args, 1, m)?,
+            _ => self.plain_args(args)?,
+        };
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {
@@ -3902,6 +3977,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
             "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
+            "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
+                return err_help(
+                    span,
+                    format!("`{m}()` with a position isn't supported"),
+                    "slice the string first, for example `s.slice(start).startsWith(x)`",
+                );
+            }
             "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "endsWith" => Out::atom(format!("str_ends_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
@@ -5505,4 +5587,40 @@ fn check_aliasing(f: &Func) -> Result<()> {
         FnBody::Expr(e) => w.expr(e),
         FnBody::Block(b) => w.stmts(b),
     }
+}
+
+/// The binding spans a pattern introduces, in source order.
+fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
+    match p {
+        Pat::Id(_, span) => out.push(*span),
+        Pat::Default(p, _) => pat_bindings(p, out),
+        Pat::Obj { props, rest, .. } => {
+            for (_, p) in props {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
+        }
+        Pat::Arr { elems, rest, .. } => {
+            for p in elems.iter().flatten() {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
+        }
+    }
+}
+
+/// `list[i] = v` past the end leaves holes JS fills with `undefined` but a PHP array turns into a
+/// keyed map (`[1, , , 2]` vs `{"0":1,"3":2}`). A plain `=`, `??=` or `||=` into an array by index
+/// is refused; changing an existing element (`list[i]++`, `list[i] += 1`, `list[i].x = ...`) is not
+/// a write past the end and stays.
+fn index_write(span: Span) -> Result<()> {
+    err_help(
+        span,
+        "assigning to an array index can leave holes, which compiled PHP turns into an object",
+        "use `list.push(value)` to append, or build the array with `map`/`Array.from`",
+    )
 }

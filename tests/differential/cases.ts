@@ -291,6 +291,7 @@ export default defineConfig({
       throw new Error("expected failure");
     }),
     ...laneDActions(),
+    ...laneSActions(),
   },
   jobs: laneDJobs(),
 });
@@ -323,6 +324,31 @@ function laneDActions() {
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
     envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+  };
+}
+
+// ---- lane S: string units, positions and loop closures. JS counts strings in UTF-16 code
+// units and gives each `for (let ...)` iteration its own binding; compiled PHP must agree.
+function laneSActions() {
+  return {
+    loopClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let i = 0; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    loopPatternClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
+    // as 0.
+    nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),
+    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -1e300), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -1e300), [1, 2, 1].lastIndexOf(1, 1e300)]),
+    utf16Units: run(() => {
+      const s = "\u{1F600}a\u00e9";
+      return [s.length, s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
   };
 }
 

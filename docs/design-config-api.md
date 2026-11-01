@@ -762,38 +762,33 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   savepoint was discarded at once, inside a transaction it succeeds and
   changes nothing, `runtime/identity/src/DB.php:122`). It is portable,
   which `SELECT @@in_transaction` is not: that variable exists on MariaDB
-  only, and WordPress runs on MySQL too. If another plugin's `$wpdb`
-  transaction is open the hook joins it with a savepoint and never issues
-  `START TRANSACTION`, which would silently commit that plugin's work; if
-  none is open the hook opens one, and only then does it commit on
-  `deleted_user` or roll back if core fails in between. `Connection::begin()`
-  gains the same probe (behind `suppress_errors`, as identity runs it),
-  since today it checks Zero's own depth only (`Connection.php:140`). A
-  joined transaction has an owner Zero cannot observe: nothing tells the
-  connection when the other plugin commits or rolls back, and Zero's
-  `afterCommit` and `onRollback` callbacks are tied to its own `COMMIT`
-  and `ROLLBACK` (`Connection.php:149,187,192`); the cascade registers such
-  callbacks, among them the physical deletion of a bucket file after
-  commit (`WpFiles.php:236`) and the post-cache cleanup after rollback
-  (`cleanCaches`, `:232`). So a join runs the cascade in a reduced mode:
-  the SQL writes and the `RELEASE SAVEPOINT` happen inside the owner's
-  transaction; `afterCommit` work that is reversible, cache invalidation
-  and the touched-post list, runs when the savepoint is released (an early
-  invalidation costs a cache miss, never a wrong read); `afterCommit` work
-  that is not reversible, file unlinks and job dispatch, is written to the
-  outbox table inside the same transaction so it becomes visible exactly if
-  the owner commits, and the next request or cron tick performs it (the
-  job outbox already works this way: the row is written in the
-  transaction, `Jobs/Jobs.php:51`, and `maintain` sweeps rows nobody
-  dispatched, `Jobs/Runner.php:140`); and the
-  `onRollback` cache cleanup is also run on `ROLLBACK TO SAVEPOINT`, while
-  an owner rollback that happens later is covered by the touched users
-  identity already reports to the host (`zero_identity_touched_user`,
-  `runtime/identity/src/DB.php:115`), which Zero's hook also emits for the
-  posts it touched. A cascade whose `afterCommit` work has no outbox form
-  refuses the join instead (`wp_die` naming the plugin's open transaction),
-  so the deletion fails closed rather than deleting a file the owner may
-  still roll back. In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
+  only, and WordPress runs on MySQL too. If no transaction is open the hook opens one, and only then does it
+  commit on `deleted_user` or roll back if core fails in between. If
+  another plugin's `$wpdb` transaction is open the hook *refuses* the
+  deletion (`wp_die` naming the open transaction; an `HttpError` under
+  Zero's pipeline cannot happen, because there the open transaction is
+  Zero's own and the hook simply runs inside it). Joining with a savepoint
+  was considered and dropped: a joined transaction has an owner Zero cannot
+  observe, and Zero's `afterCommit` and `onRollback` callbacks are tied to
+  its own `COMMIT` and `ROLLBACK` (`Connection.php:149,187,192`). The
+  cascade registers such callbacks, among them the physical deletion of a
+  bucket file after commit (`WpFiles.php:236`) and the post-cache cleanup
+  after rollback (`cleanCaches`, `:232`); an outbox could defer the
+  irreversible effects, but no invalidation timing makes the object cache
+  safe without hearing the owner's commit or rollback: invalidating at
+  savepoint release lets another request repopulate the cache with the old
+  committed rows before the owner commits, and the originating request can
+  cache uncommitted rows before the owner rolls back. The one host-side
+  notification that exists (`zero_identity_touched_user`,
+  `runtime/identity/src/DB.php:115`) flows the other way, into a Zero
+  transaction, and its receiver cleans user caches only
+  (`IdentityBridge.php:39`). So the hook fails closed. In practice nothing
+  in the repo deletes a user inside a foreign transaction: wp-admin, WP-CLI
+  and zero-identity (`runtime/identity/src/Plugin.php:166` listens on `delete_user`, it never
+  calls `wp_delete_user`) reach the hook with autocommit on.
+  `Connection::begin()` gains the same probe (behind `suppress_errors`, as
+  identity runs it) and the same refusal, since today it checks Zero's own
+  depth only (`Connection.php:140`). In every case the hook locks the account row (`SELECT … FROM wp_users WHERE
   ID = ? FOR UPDATE`, the same lock a reference write takes on its target
   before it validates existence, which today only checks, `Db.php:705`),
   checks every `"restrict"` column first and refuses the whole deletion
@@ -801,9 +796,16 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   natively; the existing `delete_user` hook only guards storage
   availability today), then runs `"set null"` (clear, or rewrite to the
   reassignment target core was given) and `"cascade"` through the
-  pipeline. A concurrent reference write therefore either commits before
-  the lock and is seen by the restrict check, or waits on the lock and
-  then fails its existence check. Without an auth collection
+  pipeline. The restrict check and the rows the cascade and `"set null"`
+  passes operate on are read with `SELECT … FOR UPDATE`, not the plain
+  select the in-pipeline check uses today (`Db.php:713`, a snapshot read
+  under `REPEATABLE READ` that could miss a reference committed after the
+  transaction's first read); a locking read returns the latest committed
+  version and holds the child rows until the deletion commits. A concurrent
+  reference write therefore either commits before the account lock and is
+  seen by the restrict check, or waits on the lock and then fails its
+  existence check; a concurrent write to a child row waits on the row lock
+  and then finds the parent gone. Without an auth collection
   the same hook applies; `Db::referentialActions()` keys on a registered
   target today and gains the built-in users as one, with the restrict
   check split out of its in-order loop. It is what
@@ -822,7 +824,16 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   `post_author = 0` (WordPress's "no author"), so `{ userId: { isNull:
   true } }` filters `post_author = 0`; a native editor save keeps whatever
   the author box set; and a `.notNull()` author column refuses `null` and
-  `0` alike on both storages. A content collection with two `user()` columns must say
+  `0` alike on both storages. Revisions keep their own meaning of
+  `post_author`: a revision row's `post_author` is the editing actor
+  (`WpPostStore.php:526` sets it; wp-admin's revision screen shows it as
+  attribution), so the owner is snapshotted into the revision's
+  `_zero_system` meta beside `status`, `publishedAt` and the slug
+  (`snapshotKeys`, `:497`), and revision reads and `restoreRevision`
+  (`Db.php:983`) take it from there, never from the revision post's
+  `post_author`. Revisions written before the mapping existed carry no
+  such key and fall back to the parent's current value, the fallback
+  `revisionEntry` already applies to the other snapshot keys (`:452`). A content collection with two `user()` columns must say
   which is the author (`author: "assignedToId"`, a new designation beside
   `title` and `body`), or `author: false` for meta-only user columns; adding
   a second `user()` column without it is a build error, whether or not any
@@ -916,7 +927,16 @@ keep per-row timestamps (today's rule for `$onUpdate` columns).
 `body` is the only `richText()` column; with two or more, `body:` must name
 one (a build error says so), so reordering fields never moves the WordPress
 post content. `body: false` keeps every rich-text column as a plain field.
-`slug()` with no `source` derives from the title column when there is one,
+Because the designation decides where the value lives (`post_content` or
+meta), an inferred change of body is refused like a kind change (§4.9.3):
+today only an explicit designation or a rich-text column literally named
+`content` is the post content (`src/extract.rs:748`), so an existing
+collection with one rich-text `description` column stores it in meta, and
+the build compares the inferred body with the migration snapshot's
+(§6.4) and fails with "`description` would become the post content; write
+`body: "description"` to move it, or `body: false` to keep it a field"
+until the config says which. `slug()` with no `source` derives from the
+title column when there is one,
 and on a table with no title it is a hand-supplied slug, as a source-free
 `slug()` is today. `slug({ source: false })` makes the hand-supplied form
 explicit on a content collection. Off: `body: false`; `slug({ source: "other" })`
@@ -1063,9 +1083,12 @@ vocabulary:
   in wp-admin alike, because `map_meta_cap` grants `publish_<type>` from
   the same rule (`CoreAccess.php:157`). That is today's behaviour and the
   proposal keeps it as a deliberate override: a Zero collection is governed
-  by its config, and a site that wants WordPress's own publish gate for a
-  collection writes it in the rule. Whether to add a `contributor` rung or
-  a capability test to rules is open question 12.
+  by its config. The override cannot yet be undone from the config: both
+  roles normalize to `author` (`WpAuth.php:63`) and the rule context
+  carries the viewer's id, name and rung only (`src/types.rs:457`), so no
+  rule can tell `edit_posts` from `publish_posts` today. Restoring
+  WordPress's publish gate for a collection needs either a `contributor`
+  rung or a capability accessor on the context; that is open question 12.
 - **`"self"` is `post_author`.** On a content collection with one `user()`
   column, that column is written to `post_author`, so WordPress's own
   "Mine" views and `edit_others_posts` capability match Zero's `"self"`.
@@ -1117,7 +1140,7 @@ Beyond the counts, the site example loses: its `STAFF` array, the
 `.unique()`, the hand-written auth access block, and the
 `files("manuscripts", …)` name repeat. It keeps every feature: localized fields, sync, private files,
 field access, `showIf`, blocks, a job, a webhook, an auth collection, two
-actions and seven hooks.
+actions and five hooks.
 
 ### 5.1 `examples/site/zero.config.ts`, after
 
@@ -1505,7 +1528,7 @@ filter grammar, the subset.
 ### 6.4 Existing data
 
 Zero is pre-1.0 and no app outside this repo runs on the current config, so
-existing databases are rebuilt, not migrated. For the record, six changes
+existing databases are rebuilt, not migrated. For the record, seven changes
 touch storage and `zero build`'s migration step must at least refuse rather
 than destroy: a collection whose key differs from its old name argument is a
 table rename (`shopping_list` to `shoppingList` in the pantry); a content
@@ -1520,7 +1543,11 @@ and the generated migration copies the meta value into `post_author`
 `0` where the meta is null) before dropping the meta, so the meta value,
 which was the one Zero read and enforced, wins over the core value nobody
 checked; the reverse move (`author: false` on a column that was
-`post_author`) copies `post_author` into new meta the same way; `ref()`
+`post_author`) copies `post_author` into new meta the same way; the body
+designation (§4.9.5) is recorded in the snapshot the same way, an
+inferred change is refused, and an explicit change generates the copy
+between `post_content` and the column's meta in the direction the config
+moved; `ref()`
 columns keep their names but the inferred `onDelete` (`"restrict"` on a
 NOT NULL FK that had none) is a changed constraint; `.default()` implying
 NOT NULL turns a nullable column NOT NULL, which is new migration work:
@@ -1556,8 +1583,13 @@ backfill step in the migration, a new step kind beside the SQL files
 same per-site lock and ledger, `:103`), that walks the affected posts,
 users, option or JSON values and writes the constant default where the
 value is `null`; a function default is refused there as it is for SQL
-columns. Until the backfill has run the build refuses to ship the
-type change, so the declared type and the stored rows never disagree;
+columns. The build cannot know which databases have run it, so the gate
+is the runtime's, not the build's: the artifact ships with its backfill
+step, the first request of any kind applies pending migrations before
+Zero serves (`Plugin.php:102`), and while storage is behind the build
+Zero's REST and the core `/wp/v2` writes to its collections answer `503`
+(`:30,163`), so no request reads the new type before the backfill has
+run; the declared type and the stored rows never disagree;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on content collections `updatedAt` reads
@@ -1583,8 +1615,15 @@ them.
   optional but has a default (today `.default(x)` without `.notNull()`,
   `:627`) becomes `.nullable().default(x)`, because under §4.9.1 a bare
   `.default(x)` would make it required. Required fields keep
-  `.notNull()` (`:530,536`). The importer's output is therefore
-  unchanged in meaning, and reports where the new spelling differs.
+  `.notNull()` (`:530,536`). One input has no equal spelling: an
+  original-Zero multi-media field carries attachment ids with no type
+  restriction and is emitted as `media({ multiple: true })` today
+  (`:487`), which §4.1 now accepts for image galleries only. The importer
+  emits `repeater({ file: media() })` for it, with a report entry marked
+  `changed` saying that the value shape moves from a list of ids to a list
+  of `{ file: id }` objects, and `zero migrate site` writes the stored
+  values in that shape. Everything else the importer emits is unchanged
+  in meaning, and the report says where the new spelling differs.
 - **The original-Zero migration** (`docs/migrating-from-zero.md`, `zero
   migrate site`) maps the capsule's implicit timestamps to the new system
   columns instead of reporting them as a gap (`docs/zero-compatibility.md`

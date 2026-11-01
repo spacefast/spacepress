@@ -60,7 +60,7 @@ Compiled PHP represents undefined as null (including typeof); pure configuration
 
 Status: **divergence**.
 
-At this revision string slicing/indexing uses Unicode code points, while .length counts UTF-16 code units. Astral-string parity cases adapt the Node oracle for indexing. Diagnostic columns also count UTF-16 code units.
+Compiled PHP indexes and slices strings in UTF-16 code units, like JS; a result that would split a surrogate pair throws a RangeError. Configuration evaluated at build time (defaults, static data) still slices by Unicode code points while .length counts UTF-16 code units. Diagnostic columns count UTF-16 code units.
 
 [Evidence](../tests/compiler_contracts.rs) (`documented_runtime_differences_are_measured_in_evaluation_and_compiled_php`)
 

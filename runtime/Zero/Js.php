@@ -570,6 +570,21 @@ final class Js
         return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
     }
 
+    /** A stand-in for one half of a surrogate pair (a noncharacter: never in real text, see splitPair). */
+    public const HALF = "\u{FDD0}";
+
+    /** `$s` with the 4-byte character at byte `$pos` replaced by two HALF stand-ins. */
+    public static function splitPair(string $s, int $pos): string
+    {
+        return substr($s, 0, $pos) . self::HALF . self::HALF . substr($s, $pos + 4);
+    }
+
+    /** A result would hold a lone surrogate: see loneSurrogate(). */
+    public static function splitsPair(): never
+    {
+        self::loneSurrogate();
+    }
+
     private static function loneSurrogate(): never
     {
         throw new JsError('This splits a character in two (a lone UTF-16 surrogate), which compiled code can\'t represent; slice at character boundaries, for example with Array.from(s)', 'RangeError');
@@ -854,12 +869,15 @@ final class Js
         $last = 0;
         foreach ($matches as $match) {
             [$start, $end, $groups, $names] = $match;
-            // An empty match between the two halves of a surrogate pair (see replaceAll): one unit
-            // past the character's start; anything inserted there would split the pair.
+            // An empty match between the two halves of a surrogate pair (see RegExp::insidePair),
+            // one unit past the character's start: anything inserted there splits the pair. A
+            // template expands against the split string, so `` $` `` and `$'` carry a half.
             $between = $match[4] ?? false;
             $matched = substr($s, $start, $end - $start);
             if (is_string($replacement)) {
-                $rep = $between ? $replacement : self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
+                $rep = $between
+                    ? self::expandReplacement($replacement, self::splitPair($s, $start), $start + strlen(self::HALF), $start + strlen(self::HALF), $groups, $named ? $names : null)
+                    : self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null);
             } else {
                 $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s]));
             }

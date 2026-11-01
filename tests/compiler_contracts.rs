@@ -364,6 +364,6 @@ export default defineConfig({{ name: "differences", schema: {{ notes }}, actions
     );
     assert_eq!(
         result,
-        json!([["undefined", "object", "", 2], ["object", "object", "", 2]])
+        json!([["undefined", "object", "", 2], ["object", "object", "a", 2]])
     );
 }

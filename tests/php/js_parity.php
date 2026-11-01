@@ -118,6 +118,8 @@ $cases = [
     ['((seen) => ["🙂a".replaceAll("", (m, i) => { seen.push(i); return ""; }), "🙂".replace(/(?:)/g, (m, i) => { seen.push(i); return ""; }), "🙂a".match(/x*/g), seen])([])',
         function () use ($re) { $seen = []; $f = function (string $m, int $i) use (&$seen) { $seen[] = $i; return ''; };
             return [Js::replaceAll('🙂a', '', $f), Js::replace('🙂', $re('(?:)', 'g'), $f), Js::strMatch('🙂a', $re('x*', 'g')), $seen]; }],
+    ['["🙂".replaceAll("", "$&"), "🙂".replace(/()/g, (m, g) => g ?? "x"), "🙂".match(/^/g), "🙂".match(/\\b/g), "🙂".match(/\\B/g), "🙂a".match(/(?=a)/g)]',
+        fn () => [Js::replaceAll('🙂', '', '$&'), Js::replace('🙂', $re('()', 'g'), fn ($m, $g) => $g ?? 'x'), Js::strMatch('🙂', $re('^', 'g')), Js::strMatch('🙂', $re('\b', 'g')), Js::strMatch('🙂', $re('\B', 'g')), Js::strMatch('🙂a', $re('(?=a)', 'g'))]],
     ['"2020-01-02".replace(/(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)/, "$<d>.$<m>.$<y> $<nope>|$2")',
         fn () => Js::replace('2020-01-02', $re('(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)', ''), '$<d>.$<m>.$<y> $<nope>|$2')],
     ['["abc".replace(/(b)/g, "$1$1$2$<x>"), "abc".replace(/(b)/, "$10"), "abcabc".replace(/b/, "X"), "abcabc".replace(/B/gi, "X"), "aaa".replace(/a*?/g, "-")]',
@@ -275,6 +277,7 @@ $deviations = [
     ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
     // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
     ['inserting inside a surrogate pair throws', fn () => [Js::replaceAll('🙂', '', '-'), Js::replace('🙂', Js::re('(?:)', 'g'), '-')], ['$err' => 'RangeError']],
+    ['$` inside a surrogate pair throws', fn () => Js::replaceAll('🙂', '', '$`'), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
     ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],

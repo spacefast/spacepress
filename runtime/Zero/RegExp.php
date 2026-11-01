@@ -121,8 +121,8 @@ final class RegExp implements \Stringable
 
     /**
      * All matches left to right; empty matches advance one code point, or one UTF-16 unit without
-     * the u flag, as in JS: then an empty match also sits between the halves of a surrogate pair
-     * (flagged by a fifth element, see Js::applyReplacements), if the pattern matches empty there.
+     * the u flag, as in JS. So without it, after an empty match at the start of a character outside
+     * the BMP, JS also tries the position between its two halves (see insidePair()).
      *
      * @return list<array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4?: true}>
      */
@@ -134,8 +134,8 @@ final class RegExp implements \Stringable
         while ($offset <= $size && ($m = $this->matchAt($s, $offset)) !== null) {
             $out[] = $m;
             $offset = $m[1] > $m[0] ? $m[1] : $m[1] + Js::charLenAt($s, $m[1]);
-            if ($m[1] === $m[0] && !$this->unicode && $offset - $m[1] === 4 && $this->matchesEmptyInsidePair()) {
-                $out[] = [$m[1], $m[1], array_fill(0, $this->groupCount, null), [], true];
+            if ($m[1] === $m[0] && !$this->unicode && $offset - $m[1] === 4 && ($in = $this->insidePair($s, $m[1])) !== null) {
+                $out[] = $in;
             }
         }
 
@@ -143,18 +143,31 @@ final class RegExp implements \Stringable
     }
 
     /**
-     * Whether the pattern matches empty between the two halves of a surrogate pair. PCRE can't see
-     * that position, so only the always-empty patterns (`(?:)`, `x*`, ...) that match anywhere are
-     * answered: they match the empty string with nothing around it. Anything else that matches
-     * empty (anchors, lookarounds) can't be decided here and throws.
+     * The match JS finds between the two halves of the surrogate pair at byte `$pos`, if any: an
+     * empty match there, flagged with a fifth element. PCRE can't stand inside a UTF-8 character,
+     * so the pattern runs on `Js::splitPair($s, $pos)`, where the halves are two noncharacter
+     * stand-ins. An empty match only looks at its neighbours through anchors, `\b`/`\B` (a half
+     * and a stand-in are both non-word, non-line-terminator) and lookarounds; a lookaround could
+     * tell the stand-in from the half, so a pattern with one throws. A match that consumes a half
+     * would make a lone surrogate, which throws (the documented deviation).
+     *
+     * @return ?array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4: true}
      */
-    private function matchesEmptyInsidePair(): bool
+    private function insidePair(string $s, int $pos): ?array
     {
-        if (preg_match('/[\\^$]|\(\?[=!<]/', $this->src) === 1) {
-            throw new JsError('An empty match inside a character outside the Basic Multilingual Plane (an emoji, say) can\'t be checked in compiled code; add the u flag', 'RangeError');
+        $at = $pos + strlen(Js::HALF);
+        $m = $this->matchAt(Js::splitPair($s, $pos), $at);
+        if ($m === null || $m[0] !== $at) {
+            return null;
+        }
+        if ($m[1] !== $at) {
+            Js::splitsPair();
+        }
+        if (preg_match('/\(\?<?[=!]/', $this->src) === 1) {
+            throw new JsError('A lookaround matching inside a character outside the Basic Multilingual Plane (an emoji, say) can\'t be checked in compiled code; add the u flag', 'RangeError');
         }
 
-        return $this->matchAt('', 0) !== null;
+        return [$pos, $pos, $m[2], $m[3], true];
     }
 
     // ---------------------------------------------------------------- translation

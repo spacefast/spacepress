@@ -40,10 +40,10 @@ final class ProfileForm
     public static function register(): void
     {
         // Requiredness is checked by Zero after omitted controls have been reconciled with storage.
-        Scf::fieldFilter(static function (array $field, array $def): array {
+        Scf::fieldFilter(static function (array $field, array $def, string $col, array $spec): array {
             if (str_starts_with($field['key'], 'field_zero_member_')) {
                 $field['required'] = 0;
-                if (array_key_exists('value', $def['default'] ?? [])) {
+                if (!isset($spec['columns']) && array_key_exists('value', $def['default'] ?? [])) {
                     $default = self::toForm($def, $def['default']['value']);
                     $field['default_value'] = Scf::toScf($def, Schema::store($def, $default), (string) $field['key']);
                 }

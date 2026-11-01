@@ -441,13 +441,13 @@ Conversions:
 - `isInteger(mixed $v): bool`, `isFinite(mixed $v): bool` (`Number.isInteger/isFinite`, no coercion).
 - `toFixed(int|float $n, int $digits = 0): string` — JS `toFixed`.
 
-Strings (all code-point based, negative/float/out-of-range arguments handled exactly like JS):
+Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; negative/float/out-of-range arguments handled exactly like JS):
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
 - `charAt(string $s, int|float $i): string`, `strAt(string $s, int|float $i): ?string`
-- `indexOf(string $s, string $needle, int|float $from = 0): int`, `lastIndexOf(string $s, string $needle): int`
+- `indexOf(string $s, string $needle, int|float $from = 0): int`, `lastIndexOf(string $s, string $needle, int|float|null $from = null): int` (lists too: both honor `fromIndex`)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
-- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → code points)
+- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; a lone surrogate becomes U+FFFD)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
 - `trim(string $s): string`, `trimStart`, `trimEnd` (JS whitespace incl. Unicode spaces and line terminators)
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).

@@ -129,7 +129,8 @@ pub(super) fn check(f: &Func, oracle: &Oracle<'_>) -> Result<()> {
         oracle,
         st: State::default(),
         scopes: Vec::new(),
-        next: 0,
+        sites: HashMap::new(),
+        passes: 0,
         callback_of: None,
         closures: 0,
     };
@@ -237,7 +238,9 @@ struct Walk<'o, 'a> {
     oracle: &'o Oracle<'a>,
     st: State,
     scopes: Vec<HashMap<String, Bind>>,
-    next: Tag,
+    sites: HashMap<(Bind, u8), Tag>,
+    /// Loop-body walks done so far (bounded; see `looped`).
+    passes: usize,
     /// Inside an inline callback of this array method.
     callback_of: Option<String>,
     /// How many closures deep the walk is.
@@ -245,9 +248,12 @@ struct Walk<'o, 'a> {
 }
 
 impl Walk<'_, '_> {
-    fn fresh(&mut self) -> Tag {
-        self.next += 1;
-        self.next
+    /// The tag for a new container bound at `site` in `role` (0: the container, 1: what a
+    /// literal built inside it). The same site and role always get the same tag, so a loop or a
+    /// closure walked again reaches the same state and the fixpoint converges.
+    fn site(&mut self, site: Bind, role: u8) -> Tag {
+        let next = self.sites.len() + 1;
+        *self.sites.entry((site, role)).or_insert(next)
     }
 
     fn lookup(&self, name: &str) -> Option<Bind> {
@@ -456,11 +462,11 @@ impl Walk<'_, '_> {
         self.st.share(&v.inner);
         let mut tags = v.tags.clone();
         if tags.is_empty() {
-            let t = self.fresh();
+            let t = self.site(b, 0);
             let mut inner = v.inner.clone();
             if v.holds_fresh {
                 // The containers built inside the literal: only this local holds them, for now.
-                let held = self.fresh();
+                let held = self.site(b, 1);
                 inner.insert(held);
             }
             if !inner.is_empty() {
@@ -635,10 +641,12 @@ impl Walk<'_, '_> {
         r
     }
 
-    /// Run `body` until the joined state stops changing (zero or more iterations).
+    /// Run `body` until the joined state stops changing (zero or more iterations). Tags are
+    /// per site, so the state only grows and the loop converges; the bound is a backstop.
     fn looped(&mut self, mut body: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
         let mut acc = self.st.clone();
         for _ in 0..16 {
+            self.passes += 1;
             body(self)?;
             let mut next = acc.clone();
             next.join(&self.st);

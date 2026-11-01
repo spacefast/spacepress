@@ -1203,6 +1203,10 @@ fn rejects_phase2_static_contracts() {
             "assigning to an array index can leave holes",
         ),
         (
+            "const a: (number | null)[] = []; a[2] ??= 5; return a.length === 3;",
+            "assigning to an array index can leave holes",
+        ),
+        (
             "const a: number[] = []; const box = { a }; a.push(1); return box.a.length === 1;",
             "may be the same object or array as another value here",
         ),

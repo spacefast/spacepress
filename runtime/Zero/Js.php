@@ -628,8 +628,9 @@ final class Js
             // fromIndex: relative to the end when negative, clamped to the last element.
             $last = count($s) - 1;
             if ($from !== null) {
+                // Clamp before the cast: -Infinity or -1e20 must search nothing, not index 0.
                 $f = self::toInteger($from);
-                $last = (int) ($f < 0 ? count($s) + $f : min($f, $last));
+                $last = (int) ($f < 0 ? max(count($s) + $f, -1) : min($f, $last));
             }
             for ($i = $last; $i >= 0; $i--) {
                 if (self::strictEq($s[$i], $needle)) {

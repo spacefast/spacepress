@@ -2771,7 +2771,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             path,
             array_index,
         } = self.place(target)?;
-        if op.is_none() && array_index {
+        // `??=` and `||=` write when the element is missing (undefined), so past the end too;
+        // `&&=` never writes a missing element.
+        if array_index && matches!(op, None | Some(AssignOp::Log(LogOp::Nullish | LogOp::Or))) {
             aliasing::index_write(span)?;
         }
         // A place inside an object/Record (a path of keys under a root variable): the keys are

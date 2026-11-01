@@ -102,7 +102,8 @@ final class Db
         $opts = ['where' => [$bulk->spec['primaryKey'] => $pk], 'limit' => 1];
         $existing = $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
         if ($existing !== null) {
-            $bulk->done[$key] = Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values));
+            // Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
+            $bulk->done[$key] = $this->nested(fn () => Js::atInstant(fn () => $this->updateOne($collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values)));
         }
 
         return true;

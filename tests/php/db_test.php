@@ -1251,11 +1251,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             if ($row['title'] === 'Mid' && $row['price'] === 52) {
                 \Zero\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \Zero\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
             }
-            if ($row['title'] === 'Mid' && $row['price'] === 53) {
-                \Zero\db()->delete('pages', ['title' => 'Late']); // the row that started the group write
-            }
             if ($row['title'] === 'Late DE' && $row['price'] === 53 && $previous['price'] !== 53) {
-                throw new \Zero\JsError('de refuses 53'); // a sibling write fails after the first row is gone
+                // the sibling written early deletes the row that started the group write, then fails
+                \Zero\db()->delete('pages', ['title' => 'Late']);
+                if (\Zero\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
+                    throw new \Zero\JsError('de refuses 53');
+                }
             }
             if ($row['title'] === 'Kick' && $row['price'] === 31) {
                 // a nested bulk update over two translations whose group the outer update also covers,
@@ -1374,8 +1375,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('… a later nested write to a row the bulk update already reached wins, the group agreeing', $lateRows(), ['Late:57', 'Late DE:57']);
     $db->update('pages', ['price' => 52], $three);
     eq('… a translation created between them joins with the group\'s current values', $lateRows(), ['Late:52', 'Late DE:52', 'Late FR:52']);
-    problem('… a sibling hook failing after the first row was deleted still rolls everything back', fn () => $db->update('pages', ['price' => 53], $three), 422, 'rejected');
-    eq('… nothing of it committed', $lateRows(), ['Late:52', 'Late DE:52', 'Late FR:52']);
+    $revisionsBefore = count($db->revisions('pages', $late['id']));
+    $notesBefore = count($db->findMany('notes'));
+    problem('… a sibling hook that deletes the first row and then fails rolls everything back', fn () => $db->update('pages', ['price' => 53], $three), 422, 'rejected');
+    eq('… nothing of it committed: rows, revisions, hook effects', [$lateRows(), count($db->revisions('pages', $late['id'])), count($db->findMany('notes'))],
+        [['Late:52', 'Late DE:52', 'Late FR:52'], $revisionsBefore, $notesBefore]);
     $db->delete('pages', ['title' => ['in' => ['Late', 'Mid', 'Late DE', 'Late FR']]]);
     $db->delete('notes', ['id' => ['notIn' => $before]]);
     // A row from before localization (no group yet): its old revisions show the group it has now.

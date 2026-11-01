@@ -18,6 +18,13 @@ test("a file's imports, loops and components run at build time and become valid 
   assert.equal(parsed[1]!.attributes.content, "Simple, <strong>honest</strong> pricing &amp; no surprises: 5 &lt; 6.");
 });
 
+test("a key after a spread compiles like any other paragraph", async () => {
+  const result = await compileContent(fixture("spread-key.tsx"));
+  assert.deepEqual(result.diagnostics, []);
+  const [paragraph] = await reparse(result.markup);
+  assert.deepEqual([paragraph!.name, paragraph!.attributes.className, paragraph!.attributes.content], ["core/paragraph", "lead", "Row a"]);
+});
+
 test("a mistake inside a component names the component's line and where it was used", async () => {
   const result = await compileContent(fixture("uses-card.tsx"));
   assert.deepEqual(result.diagnostics.map(brief), [{ code: "style_prop_unsupported", severity: "error", file: fixture("card.tsx"), line: 3, column: 10 }]);

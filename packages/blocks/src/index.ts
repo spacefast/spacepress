@@ -10,7 +10,7 @@
 import { toContentNodes } from "./jsx-runtime.ts";
 import type { BlockAttributes, BlockNode } from "./nodes.ts";
 
-export { Fragment } from "./jsx-runtime.ts";
+export { Fragment, createElement } from "./jsx-runtime.ts";
 export type { JSX } from "./jsx-runtime.ts";
 export type { BlockAttributes, BlockNode, ContentNode, ElementNode, ElementProps, SourceLocation, TextNode } from "./nodes.ts";
 export type { Diagnostic, DiagnosticCode, Severity } from "./diagnostics.ts";

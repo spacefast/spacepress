@@ -129,7 +129,9 @@ function toLocation(source: JsxSource | undefined): SourceLocation | undefined {
 }
 
 function create(type: unknown, props: ElementProps | null | undefined, loc: SourceLocation | undefined): ContentNode {
-  const { children, ...rest } = props ?? {};
+  // `key` is React's reconciliation hint and never content; the transform usually lifts it out of
+  // props, but a key after a spread stays in them, and it is ignored either way.
+  const { children, key: _key, ...rest } = props ?? {};
 
   if (type === Fragment) {
     return { kind: "element", tag: FRAGMENT_TAG, props: {}, children: toContentNodes(children, loc) };
@@ -138,7 +140,7 @@ function create(type: unknown, props: ElementProps | null | undefined, loc: Sour
   if (typeof type === "function") {
     let rendered: unknown;
     try {
-      rendered = (type as (props: ElementProps) => unknown)(props ?? {});
+      rendered = (type as (props: ElementProps) => unknown)(children === undefined ? rest : { ...rest, children });
     } catch (error) {
       throw usedAt(error, loc);
     }
@@ -161,6 +163,15 @@ function create(type: unknown, props: ElementProps | null | undefined, loc: Sour
 /** The production transform's entry: no source positions. */
 export function jsx(type: unknown, props: ElementProps, _key?: unknown): ContentNode {
   return create(type, props, undefined);
+}
+
+/**
+ * The classic transform's entry. The automatic transform falls back to it for
+ * one shape, a `key` written after a spread (`<p {...props} key="k">`), and
+ * imports it from the `jsxImportSource` package itself.
+ */
+export function createElement(type: unknown, props: ElementProps | null | undefined, ...children: unknown[]): ContentNode {
+  return create(type, children.length === 0 ? props : { ...props, children: children.length === 1 ? children[0] : children }, undefined);
 }
 
 export const jsxs = jsx;

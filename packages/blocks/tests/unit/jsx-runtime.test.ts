@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { Fragment, jsx, jsxDEV, jsxs, toContentNodes } from "../../src/jsx-runtime.ts";
+import { Fragment, createElement, jsx, jsxDEV, jsxs, toContentNodes } from "../../src/jsx-runtime.ts";
 import { Block, blockComponent } from "../../src/index.ts";
 import { ContentError } from "../../src/diagnostics.ts";
 import { text } from "./helpers.ts";
@@ -73,6 +73,19 @@ test("a content error thrown while a component's JSX is built names the call sit
     () => jsxDEV(Card, {}, undefined, false, source),
     (error: unknown) => error instanceof ContentError && error.code === "not_content" && error.loc !== undefined && error.loc.line === 3 && error.loc.usedAt?.line === 7,
   );
+});
+
+test("a key that stays in props after a spread is ignored, as a lifted key is", () => {
+  const element = jsx("p", { ...{ key: "row-1", class: "lead" }, children: "x" });
+  assert.deepEqual(element, { kind: "element", tag: "p", props: { class: "lead" }, children: [text("x")] });
+  const Paragraph = blockComponent<{ class?: string }>("core/paragraph");
+  const fromComponent = jsx(Paragraph, { ...{ key: "row-1" }, children: "x" });
+  assert.deepEqual(fromComponent.kind === "block" ? fromComponent.attrs : null, {});
+});
+
+test("the classic transform's createElement builds the same node as jsx", () => {
+  assert.deepEqual(createElement("p", { class: "lead" }, "a", jsx("em", { children: "b" })), jsx("p", { class: "lead", children: ["a", jsx("em", { children: "b" })] }));
+  assert.deepEqual(createElement("hr", null), jsx("hr", {}));
 });
 
 test("a hole in a returned node's children is refused as not content", () => {

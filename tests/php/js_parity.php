@@ -363,8 +363,8 @@ $deviations = array_merge($deviations, [
     ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1)->a, ['a']],
     ['split("", limit) splitting a pair within the limit throws', fn () => Js::split('a🙂b', '', 2), ['$err' => 'RangeError']],
     ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
-    ['an unused JSON gap cut through a pair is fine', fn () => [Js::jsonStringify(1, '123456789🙂'), Js::jsonStringify([], '123456789🙂'), Js::jsonStringify(['f' => static fn () => 1], '123456789🙂')], ['1', '[]', '{}']],
-    ['a used JSON gap cut through a pair throws', fn () => Js::jsonStringify([1], '123456789🙂'), ['$err' => 'RangeError']],
+    ['an unused JSON gap cut through a pair is fine', fn () => [Js::jsonStringify(1, '123456789🙂'), Js::jsonStringify(new \Zero\JsArray(), '123456789🙂'), Js::jsonStringify(new \Zero\JsObject(), '123456789🙂'), Js::jsonStringify(new \Zero\JsObject(['f' => static fn () => 1]), '123456789🙂'), Js::jsonStringify(static fn () => 1, '123456789🙂')], ['1', '[]', '{}', '{}', null]],
+    ['a used JSON gap cut through a pair throws', fn () => Js::jsonStringify(new \Zero\JsArray([1]), '123456789🙂'), ['$err' => 'RangeError']],
 ]);
 
 $passed = 0;

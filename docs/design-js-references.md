@@ -532,15 +532,14 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
 - **Array literal.** `[a, b, ...$s]` → `new \Zero\JsArray([a, b, ...$s->a])`.
   List spread of a PHP list is safe (it renumbers, which is what a list is)
   and `$s->a` snapshots at its source position for the same reason.
-- **Member read.** `$o['k']` / `($o['k'] ?? null)` → `$o->p['k']` /
-  `($o->p['k'] ?? null)` for a static key. A computed key whose expression
-  is not pure (contains a call or an assignment) reads through
-  `\Zero\Js::prop(<o>, <k>)`, so the receiver is read before the key runs
-  (`o[key()]` where `key` reassigns `o` reads the old object in JS; verified).
-  Pure keys read `$o->p[\Zero\Js::key(<k>)] ?? null` directly. Optional
-  chains keep the temp-and-null pattern. `length` → `count($a->a)`. Array
-  and tuple index reads → `\Zero\Js::get($a, $i)` (a helper, so the same
-  order holds); a literal in-range tuple index may stay `$t->a[0]`.
+- **Member read.** Object property reads use `\Zero\Js::prop(<o>, <k>)`,
+  including static keys, so a missing receiver throws a catchable JS `TypeError`.
+  Arguments preserve receiver-before-key order (`o[key()]` where `key`
+  reassigns `o` reads the old object). Optional chains keep the
+  temp-and-null pattern. `length` → `count($a->a)`. Array and tuple index
+  reads use `\Zero\Js::get($a, $i)` with the same checked receiver semantics.
+  The original direct member-read benchmark below is historical and does not
+  measure the guarded helper path.
 - **Member write.** `Js::write($root, [$k1, $k2], $v)` → the receiver and
   key are read before the right-hand side runs, because JS evaluates the
   reference first and the value second and a right-hand side can replace the
@@ -549,35 +548,28 @@ Each path, before → after. `R`, `K`, `V` name compiler temporaries.
   capture only when it is a `const` local or a parameter the function never
   reassigns; a `let` can be reassigned by the right-hand side, so it is
   captured like any expression.
-  - Statement position (most writes): `R = <o>; K = \Zero\Js::key(<k>); R->p[K] = <v>;`
-    as separate statements, with `R`/`K` elided for an exempt receiver and a
-    literal key. Measured at parity with a direct write (§6).
+  - Statement position: `R = <o>; K = \Zero\Js::key(<k>); \Zero\Js::set(R, K, <v>);`
+    as separate statements. The helper checks a missing receiver after the
+    right-hand side has run and throws a catchable JS `TypeError`.
+    A direct PHP property write would instead throw a native error outside
+    the authored JS catch block. The original direct-write benchmark below
+    does not measure this guarded helper path.
   - Expression position, plain `=`: `\Zero\Js::set(<o>, \Zero\Js::key(<k>), <v>)`,
-    a helper whose arguments PHP evaluates left to right and which returns
-    the value. The `[R = …, write][1]` array form was measured at 2.3x and is
-    not used.
-  - `o.k += v` and `o.k ??= v`: `R`, `K` and the old value `O = R->p[K] ?? null`
-    are read before `<v>`, then `R->p[K] = <O op v>` where `<O op v>` is the
-    existing type-directed lowering of the binary operator (`binary()` in
-    the compiler: concatenation for strings, `Js::add` for numbers, and so
-    on), or `(O !== null ? O : R->p[K] = <v>)` for `??=`. JS reads the old
-    value before evaluating the right-hand side for compound assignment, and
-    logical assignment short-circuits on it. In statement position these are
-    separate statements. In expression position they use the compiler's
-    existing in-place sequencing form,
-    `[R = <o>, K = <k>, O = R->p[K] ?? null, R->p[K] = <O op v>][3]` (and
-    `[R, K, (($O = R->p[K] ?? null) !== null ? $O : R->p[K] = <v>)][2]` for
-    `??=`), which is how `assign()` sequences `pre` temporaries today. The
-    array literal evaluates exactly where the expression sits, so
-    `take ? (o.x += 1) : 0` runs the write only when `take` is true and
-    `[o.x, o.x += 1]` reads before it writes, and `<v>` runs in the enclosing
-    scope, so `(o.x ??= (n = 1))` writes the enclosing `n`. Neither a thunk
-    (a PHP arrow captures by value and would lose the write to `n`) nor
-    hoisting before the enclosing statement (which would run a conditional
-    write unconditionally and reorder siblings) is used. The array form's
-    extra allocation (2.3x a direct write, §6) is paid only by compound
-    assignments nested inside larger expressions, which the corpus and the
-    examples contain exactly once (`(text.s += "b") + 1`).
+    whose arguments evaluate left to right and which returns the value.
+  - Compound and logical writes capture `R`, `K`, then the old value through
+    checked `Js::prop` / `Js::get`, before evaluating the right side. A missing
+    receiver throws `TypeError` at this read, even for a short-circuited `&&=`.
+    Arithmetic compounds also snapshot property presence with `Js::has`.
+    Missing numeric values become `NaN`; present null values become zero.
+    `+=` uses `Js::plus` with the presence snapshot for JavaScript primitive
+    coercion (`undefined + "x"` is `"undefinedx"`, while `null + "x"` is
+    `"nullx"`). This local presence bit does not change the general undefined
+    representation in §2.6. Updates use the same presence and numeric rules.
+    Logical assignments short-circuit on the captured value.
+    Statement position emits separate statements. Expression position uses
+    the compiler's in-place sequencing array, so conditional branches stay
+    conditional and assignments on the right side update the enclosing scope.
+    No thunk or hoisting is used. All writes go through `Js::set` / `Js::setAt`.
   - `a[i] = v` → `\Zero\Js::setAt(<a>, <i>, <v>)` in both positions (a
     helper already).
 - **Destructuring.** The source is **always** captured in a temporary before

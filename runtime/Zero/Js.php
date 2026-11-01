@@ -982,14 +982,20 @@ final class Js
         return self::isInteger($i) && $i >= 0 && $i <= 4294967294 ? (int) $i : null;
     }
 
-    public static function get(JsArray $a, int|float $i): mixed
+    public static function get(?JsArray $a, int|float $i): mixed
     {
+        if ($a === null) {
+            throw new JsError('Cannot read properties of null or undefined', 'TypeError');
+        }
         $index = self::index($i);
         return $index === null ? null : ($a->a[$index] ?? null);
     }
 
-    public static function setAt(JsArray $a, int|float $i, mixed $value): mixed
+    public static function setAt(?JsArray $a, int|float $i, mixed $value): mixed
     {
+        if ($a === null) {
+            throw new JsError('Cannot set properties of null or undefined', 'TypeError');
+        }
         $index = self::index($i);
         if ($index === null || $index > count($a->a)) {
             throw new JsError('Zero arrays are dense: index ' . self::numStr($i) . ' is past length ' . count($a->a), 'RangeError');
@@ -1003,15 +1009,46 @@ final class Js
         return self::str($key);
     }
 
-    public static function prop(JsObject $o, mixed $key): mixed
+    public static function prop(?JsObject $o, mixed $key): mixed
     {
+        if ($o === null) {
+            throw new JsError('Cannot read properties of null or undefined', 'TypeError');
+        }
         return $o->p[self::key($key)] ?? null;
     }
 
-    public static function set(JsObject $o, string $key, mixed $value): mixed
+    public static function set(?JsObject $o, string $key, mixed $value): mixed
     {
+        if ($o === null) {
+            throw new JsError('Cannot set properties of null or undefined', 'TypeError');
+        }
         $o->p[$key] = $value;
         return $value;
+    }
+
+    /** Snapshot presence before a compound assignment evaluates its right side. */
+    public static function has(JsArray|JsObject $o, mixed $key): bool
+    {
+        if ($o instanceof JsArray) {
+            $index = self::index($key);
+            return $index !== null && $index < count($o->a);
+        }
+        return array_key_exists(self::key($key), $o->p);
+    }
+
+    /** += needs the actual primitive types, including an absent old property. */
+    public static function plus(mixed $a, mixed $b, bool $missing): mixed
+    {
+        if ($a instanceof JsArray || $a instanceof JsObject || $a instanceof RegExp) {
+            $a = self::str($a);
+        }
+        if ($b instanceof JsArray || $b instanceof JsObject || $b instanceof RegExp) {
+            $b = self::str($b);
+        }
+        if (is_string($a) || is_string($b)) {
+            return ($missing ? 'undefined' : self::str($a)) . self::str($b);
+        }
+        return self::add($missing ? NAN : self::toNumber($a), self::toNumber($b));
     }
 
     /** A fixed-length walk may read only elements that still exist. */
@@ -1577,6 +1614,10 @@ final class Js
 
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
+        if ($v instanceof \Closure) {
+            return null;
+        }
+        $v = self::jsonTree($v);
         if (is_string($indent)) {
             // The first 10 units. Cutting a surrogate pair there only matters if the gap is
             // written (a non-empty array or object): a scalar or empty result never uses it.
@@ -1599,7 +1640,7 @@ final class Js
             $gap = '';
         }
 
-        return $v instanceof \Closure ? null : self::encode(self::jsonTree($v), $gap, '');
+        return self::encode($v, $gap, '');
     }
 
     private static function encode(mixed $v, string $gap, string $indent): ?string

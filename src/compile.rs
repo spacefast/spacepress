@@ -133,8 +133,7 @@ struct Out {
 struct AssignmentPlace {
     read: Out,
     constraint: Ty,
-    /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
-    /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
+    /// A captured handle and key keep the reference stable while the right side runs.
     target: Option<WriteTarget>,
 }
 
@@ -2686,11 +2685,37 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(op) = op {
             let old = self.tmp_var();
             steps.push(format!("{old} = {read}"));
+            let present = if matches!(op, AssignOp::Bin(_)) {
+                match &write {
+                    CapturedPlace::Binding(_) => None,
+                    CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key } => {
+                        let present = self.tmp_var();
+                        steps.push(format!("{present} = \\Zero\\Js::has({receiver}, {key})"));
+                        Some(present)
+                    }
+                }
+            } else {
+                None
+            };
             let v = self.expr(value)?;
             let v = self.finish_value(v, value.span)?;
             let (result, ty) = match op {
                 AssignOp::Bin(b) => {
-                    let result = self.binary(b, Out::atom(old.clone(), place.read.ty), v, span)?;
+                    let mut left = Out::atom(old.clone(), place.read.ty.clone());
+                    if let Some(present) = &present {
+                        left.ty = place.constraint.non_null();
+                        if place.constraint.non_null().is_num() {
+                            left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
+                        }
+                    }
+                    let right = v.php.clone();
+                    let mut result = self.binary(b, left, v, span)?;
+                    if b == BinOp::Add
+                        && let Some(present) = present
+                    {
+                        result.php = format!("\\Zero\\Js::plus({old}, {right}, !{present})");
+                        result.atomic = true;
+                    }
                     if !(assignable(&result.ty, &place.constraint) || result.ty.is_num() && place.constraint.is_num()) {
                         return err(
                             span,
@@ -2701,7 +2726,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             ),
                         );
                     }
-                    (Self::write_place(&write, &result.php, statement), result.ty)
+                    (Self::write_place(&write, &result.php), result.ty)
                 }
                 AssignOp::Log(l) => {
                     if !assignable(&v.ty, &place.constraint) {
@@ -2720,10 +2745,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
                         LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
-                    (
-                        format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php, statement)),
-                        ty,
-                    )
+                    (format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php)), ty)
                 }
             };
             return Ok(Out::new(Self::assignment_sequence(steps, result, statement), ty));
@@ -2741,7 +2763,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         Ok(Out::new(
-            Self::assignment_sequence(steps, Self::write_place(&write, &v.php, statement), statement),
+            Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
             v.ty,
         ))
     }
@@ -2776,7 +2798,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let read = if target.array {
                     format!("\\Zero\\Js::get({receiver}, {key})")
                 } else {
-                    format!("({receiver}->p[{key}] ?? null)")
+                    format!("\\Zero\\Js::prop({receiver}, {key})")
                 };
                 let write = if target.array {
                     CapturedPlace::Array { receiver, key }
@@ -2788,10 +2810,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn write_place(write: &CapturedPlace, value: &str, statement: bool) -> String {
+    fn write_place(write: &CapturedPlace, value: &str) -> String {
         match write {
             CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
-            CapturedPlace::Object { receiver, key } if statement => format!("({receiver}->p[{key}] = {value})"),
             CapturedPlace::Object { receiver, key } => format!("\\Zero\\Js::set({receiver}, {key}, {value})"),
             CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
         }
@@ -2799,19 +2820,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
         let place = self.place(target)?;
-        let missing_index = place.target.as_ref().is_some_and(|target| target.array) && place.constraint.is_num();
-        if !missing_index {
+        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        if !property_number {
             self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
         }
         let (mut steps, read, write) = self.capture_place(place.target, &place.read);
         let old = self.tmp_var();
-        steps.push(if missing_index {
-            format!("{old} = ({read} ?? NAN)")
-        } else {
-            format!("{old} = {read}")
-        });
+        steps.push(format!("{old} = {read}"));
+        if property_number {
+            let (CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key }) = &write else {
+                unreachable!()
+            };
+            steps.push(format!(
+                "{old} = (\\Zero\\Js::has({receiver}, {key}) ? \\Zero\\Js::toNumber({old}) : NAN)"
+            ));
+        }
         let value = format!("\\Zero\\Js::add({old}, {})", if inc { "1" } else { "-1" });
-        let written = Self::write_place(&write, &value, false);
+        let written = Self::write_place(&write, &value);
         let result = if prefix {
             written
         } else {
@@ -3043,11 +3068,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let php = if optional && o.ty.is_nullable() || opt_field || map {
-                    format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop))
-                } else {
-                    format!("{}->p[{}]", o.wrapped(), php_str(prop))
-                };
+                let php = guarded(self, &|x| format!("\\Zero\\Js::prop({x}, {})", php_str(prop)));
                 let ft = if map || opt_field { ft.nullable() } else { ft };
                 let place = o.place.as_ref().map(|p| format!("{p}->p[{}]", php_str(prop)));
                 Out {

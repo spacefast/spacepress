@@ -118,6 +118,44 @@ const laneRefs = {
       Array.isArray(empty), Array.isArray(object), Array.isArray(parsedArray), Array.isArray(parsedObject),
       JSON.stringify({ empty, nested, object }), JSON.stringify({ parsedArray, parsedObject })];
   }),
+  refsMissingReceiverWrite: run(() => {
+    const a: { x: number }[] = []; let n = 0;
+    try { a[2]!.x = ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverCompound: run(() => {
+    const a: { x: number }[] = []; let n = 0;
+    try { a[0]!.x += ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverLogical: run(() => {
+    const a: { x: boolean }[] = [];
+    try { a[0]!.x &&= true; return false; } catch { return true; }
+  }),
+  refsMissingNestedReceiver: run(() => {
+    const a: { child: { x: number } }[] = []; let n = 0;
+    try { a[0]!.child.x = ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverUpdate: run(() => {
+    const a: { x: number }[] = [];
+    try { return a[0]!.x++; } catch { return "caught"; }
+  }),
+  refsMissingElementCompound: run(() => {
+    const numbers: number[] = []; numbers[0] += 1; numbers[1] -= 1;
+    const strings: string[] = []; strings[0] += "x";
+    const numericText: string[] = []; numericText[0] += 1;
+    const props: Record<string, number> = {}; props.x += 1; props.y++;
+    const nulls: (number | null)[] = [null]; nulls[0]!++;
+    return [numbers.map(n => isNaN(n)), strings, isNaN(Number(numericText[0])), isNaN(props.x!), isNaN(props.y!), nulls];
+  }),
+  refsMissingPresenceSnapshot: run(() => {
+    const a: number[] = [];
+    const rhs = () => { a.push(10); return 1; };
+    a[0] += rhs();
+    return isNaN(a[0]!);
+  }),
+  refsUnusedJsonGap: run(() => [JSON.stringify({}, null, "123456789🙂"), JSON.stringify([], null, "123456789🙂")]),
   refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
   refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
   refsIndexLogical: run(() => {

@@ -222,7 +222,10 @@ export default defineConfig({
     }),
     refsMapGrowth: run(() => { const a = [1, 2]; return a.map(x => { a.push(3); return x; }); }),
     refsMapWrite: run(() => { const a = [1, 2]; return a.map((x, i) => { a[1] = 9; return x; }); }),
-    refsNamedIdentity: run(() => [label === label, [label].includes(label)]),
+    refsNamedIdentity: run(() => {
+      const a = [1]; const alias = a; const o = { x: 1 };
+      return [a === alias, a === [1], o === { x: 1 }, [o].includes(o), [o].includes({ x: 1 }), label === label, [label].includes(label)];
+    }),
     refsKeyReceiver: run(() => {
       let o: Record<string, number> = { x: 1 }; const old = o;
       const key = () => { o = { x: 9 }; return 'x'; };

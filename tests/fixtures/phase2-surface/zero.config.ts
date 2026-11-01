@@ -8,7 +8,7 @@ const SHOW = "show";
 const YES = true;
 const NIL = null;
 function templateResult(): "show" { return `show`; }
-function updateNumeric(value: 0 | 1) { value++; if (value > 0) { value--; } value += 1; let record: { count: 0 | 1, values: (0 | 1)[], keep: 0 } = { count: 1, values: [1], keep: 0 }; if (value > 0) { record.count++; record.values[0]!--; } return { value, count: record.count, item: record.values[0], keep: record.keep }; }
+function updateNumeric(value: 0 | 1) { value++; if (value > 0) { value--; } value += 1; let record: { count: 0 | 1, values: (0 | 1)[], keep: 0 } = { count: 1, values: [1], keep: 0 }; if (value > 0) { record.count++; } return { value, count: record.count, item: record.values[0], keep: record.keep }; }
 function captureNumeric(value: 0 | 1) { const read = () => value; value++; return read(); }
 function invokeNumeric(value: 0 | 1) { const bump = () => { value++; }; bump(); return value; }
 function loopNumeric(value: 0 | 1) { while (true) { if (value > 1) return value; value++; } }

@@ -156,6 +156,9 @@ struct AssignmentPlace {
     /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
     /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
     path: Option<(String, Vec<String>)>,
+    /// The place is, or is reached through, an array element (`list[i]`, `list[i].x`): see
+    /// `element_write`.
+    through_element: bool,
 }
 
 impl Out {
@@ -1147,6 +1150,55 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(u) => self.expr(u)?.php,
                     None => String::new(),
                 };
+                // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
+                // it saw. PHP closures capture by reference, so a captured primitive loop variable
+                // moves to a fresh cell before each update (earlier closures keep theirs; `continue`
+                // too). A captured object or array loop variable is refused.
+                let fresh: Vec<String> = match init.as_deref() {
+                    Some(Stmt::Decl {
+                        kind: DeclKind::Let,
+                        pat,
+                        ..
+                    }) => {
+                        // Every binding the declaration introduces (`let { i } = ...` too).
+                        let mut bindings = Vec::new();
+                        pat_bindings(pat, &mut bindings);
+                        let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        let scope = self.fx().scopes.last().cloned().unwrap_or_default();
+                        let mut locals: Vec<&Local> =
+                            scope.values().filter(|l| captured.contains(&l.binding)).collect();
+                        locals.sort_by(|a, b| a.php.cmp(&b.php));
+                        // A cell copies the value: faithful for primitives only. JS's per-iteration
+                        // bindings of an object all point at one object; PHP copies would diverge.
+                        if let Some(l) = locals.iter().find(|l| !primitive(&l.ty)) {
+                            let name = l.php.trim_start_matches('$');
+                            return err_help(
+                                l.binding,
+                                format!(
+                                    "a closure captures the loop variable `{name}`, which holds an object or array: each iteration would get its own copy in compiled PHP"
+                                ),
+                                format!(
+                                    "loop over a number or string instead, or copy what the closure needs into a `const` inside the loop body (`const snapshot = {name}.x;`)"
+                                ),
+                            );
+                        }
+                        locals
+                            .into_iter()
+                            .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
+                            .collect()
+                    }
+                    _ => Vec::new(),
+                };
+                // JS also copies the initializer's bindings into the first iteration's: a closure
+                // made in the initializer keeps the initializer's binding.
+                for cell in &fresh {
+                    let _ = writeln!(out, "{p}{cell};");
+                }
+                let update_php = fresh
+                    .into_iter()
+                    .chain((!update_php.is_empty()).then_some(update_php))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let _ = writeln!(out, "{p}for (; {test_php}; {update_php}) {{");
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
@@ -1186,7 +1238,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 return err_help(
                                     pat.span(),
                                     "a mutating loop binding needs an object with required fields",
-                                    "change arrays, records, or optional fields through their source index instead",
+                                    "rebuild the array instead, for example with `map`",
                                 );
                             }
                             let source = match &it.place {
@@ -2141,7 +2193,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
             ExprKind::Update { inc, prefix, target } => {
-                let t = self.place(target)?.read;
+                let place = self.place(target)?;
+                element_write(place.through_element, target.span)?;
+                let t = place.read;
                 self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
                 // Past ±2^53 the variable becomes a double, as in JS (`Js::add`). Postfix returns the old value.
                 let d = if *inc { "1" } else { "-1" };
@@ -2701,7 +2755,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             read: t,
             constraint,
             path,
+            through_element,
         } = self.place(target)?;
+        element_write(through_element, span)?;
         // A place inside an object/Record (a path of keys under a root variable): the keys are
         // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
         // while the object still reads as it was, and Js::write unwraps empty-object markers only as
@@ -2869,6 +2925,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         l.ty
                     };
                     Ok(AssignmentPlace {
+                        through_element: false,
                         constraint: l.constraint,
                         path: Some((l.php.clone(), Vec::new())),
                         read: Out {
@@ -2894,6 +2951,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    through_element,
                 } = self.place_inner(obj, false)?;
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
                     return Err(self.no_field(&o.ty, prop, *prop_span));
@@ -2912,6 +2970,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     (root, keys)
                 });
                 Ok(AssignmentPlace {
+                    through_element,
                     constraint,
                     path,
                     read: Out {
@@ -2928,11 +2987,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     read: o,
                     constraint,
                     path,
+                    through_element,
                 } = self.place_inner(obj, false)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
+                let through_element = through_element || matches!(o.ty.non_null(), Ty::Array(_));
                 let (php, ty) = match o.ty.non_null() {
                     Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
                     Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
@@ -2959,6 +3020,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     other => return err(target.span, format!("can't assign into {}", other.describe())),
                 };
                 Ok(AssignmentPlace {
+                    through_element,
                     constraint,
                     path,
                     read: Out {
@@ -3178,7 +3240,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
-                format!("\\Zero\\Js::strAt({}, {})", o.php, i.php),
+                format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
                 wrap(Ty::Str.nullable()),
             ),
             _ => {
@@ -3247,6 +3309,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             _ => err(span, format!("`new {n}` isn't supported")),
         }
+    }
+
+    /// The PHP value model erases undefined into null. Only literal string-search positions are
+    /// accepted: runtime positions can hide that distinction through assertions, aliases or calls.
+    fn position_args(&mut self, args: &[ArrEl], position: usize, m: &str) -> Result<Vec<Out>> {
+        let mut argv = self.plain_args(args)?;
+        let Some(ArrEl::Item(p)) = args.get(position) else {
+            return Ok(argv);
+        };
+        let mut e: &Expr = p;
+        while let ExprKind::As(x, _) | ExprKind::NonNull(x) = &e.kind {
+            e = x;
+        }
+        match &e.kind {
+            ExprKind::Undefined => argv.truncate(position),
+            ExprKind::Null => argv[position] = Out::atom("0", Ty::Num),
+            _ if literal_position(e) => {}
+            _ => {
+                return err_help(
+                    p.span,
+                    format!("`{m}()`'s position must be a literal number, null or undefined"),
+                    "use a literal position (for example `0` or `-1`), or leave the argument out",
+                );
+            }
+        }
+        Ok(argv)
     }
 
     fn plain_args(&mut self, args: &[ArrEl]) -> Result<Vec<Out>> {
@@ -3881,7 +3969,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Str,
             ));
         }
-        let argv = self.plain_args(args)?;
+        // Only String.prototype.lastIndexOf reads an `undefined` position as omitted; everywhere
+        // else (and for arrays) null and undefined are both 0, which the runtime does.
+        let argv = match m {
+            "lastIndexOf" => self.position_args(args, 1, m)?,
+            _ => self.plain_args(args)?,
+        };
         let a = |i: usize| argv.get(i).map(|x| x.php.clone());
         let need_str = |i: usize, c: &Self| -> Result<String> {
             match argv.get(i) {
@@ -3902,6 +3995,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
             "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
+            "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
+                return err_help(
+                    span,
+                    format!("`{m}()` with a position isn't supported"),
+                    "slice the string first, for example `s.slice(start).startsWith(x)`",
+                );
+            }
             "includes" => Out::atom(format!("str_contains({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "startsWith" => Out::atom(format!("str_starts_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
             "endsWith" => Out::atom(format!("str_ends_with({}, {})", s.php, need_str(0, self)?), Ty::Bool),
@@ -5504,5 +5604,73 @@ fn check_aliasing(f: &Func) -> Result<()> {
     match &f.body {
         FnBody::Expr(e) => w.expr(e),
         FnBody::Block(b) => w.stmts(b),
+    }
+}
+
+/// Whether every value of `t` is a primitive (copied and shared alike in JS and PHP).
+fn primitive(t: &Ty) -> bool {
+    match t {
+        Ty::Union(ts) => ts.iter().all(primitive),
+        Ty::Num
+        | Ty::NumLit(_)
+        | Ty::FreshNumLit(_)
+        | Ty::Str
+        | Ty::StrLit(_)
+        | Ty::FreshStrLit(_)
+        | Ty::Bool
+        | Ty::BoolLit(_)
+        | Ty::FreshBoolLit(_)
+        | Ty::Null
+        | Ty::Date => true,
+        _ => false,
+    }
+}
+
+/// The binding spans a pattern introduces, in source order.
+fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
+    match p {
+        Pat::Id(_, span) => out.push(*span),
+        Pat::Default(p, _) => pat_bindings(p, out),
+        Pat::Obj { props, rest, .. } => {
+            for (_, p) in props {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
+        }
+        Pat::Arr { elems, rest, .. } => {
+            for p in elems.iter().flatten() {
+                pat_bindings(p, out);
+            }
+            if let Some((_, span)) = rest {
+                out.push(*span);
+            }
+        }
+    }
+}
+
+/// Writes into an array element, or through one (`list[i] = v`, `list[i] += v`, `list[i]++`,
+/// `list[i].x = v`), are refused. Past the end JS grows the array (holes read as `undefined`) while
+/// PHP adds a key and the array becomes an object (`[1, , 3]` vs `{"0":1,"2":3}`); a write through a
+/// missing element must throw a TypeError before the value runs. Doing either faithfully needs the
+/// array to be a handle, not a PHP value: that is the handle switch's job (design #79).
+fn element_write(through_element: bool, span: Span) -> Result<()> {
+    if !through_element {
+        return Ok(());
+    }
+    err_help(
+        span,
+        "changing an array element in place isn't supported: compiled PHP can't grow an array by index",
+        "build the new array instead (`list.map((v, j) => j === i ? next : v)`), or `list.push(value)` to append",
+    )
+}
+
+/// Numeric literals may have signs and erased type annotations, but no runtime computation.
+fn literal_position(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Num(_) => true,
+        ExprKind::As(x, _) | ExprKind::NonNull(x) | ExprKind::Unary(UnOp::Plus | UnOp::Neg, x) => literal_position(x),
+        _ => false,
     }
 }

@@ -123,8 +123,14 @@ object shape with required fields. Capturing a mutating array, open record, or
 object with optional fields is rejected with a located diagnostic; capture the
 needed scalar values instead. Mutating `for…of` bindings use the same fixed
 object representation; array/record/optional-field and destructured mutations
-must use the source index instead. Object spread/rest copy field values, and
-loop-local declarations receive a fresh binding on each execution.
+must rebuild the array instead (for example with `map`). Object spread/rest copy
+field values, and loop-local declarations receive a fresh binding on each execution. A captured
+`for (let …)` header variable gets a fresh `Js::cell` per iteration, which
+copies its value, so it must be primitive; an object or array one is rejected.
+Every write into or through an array element (`list[i] = v`, `list[i] += v`,
+`list[i]++`, `list[i].x = v`) is rejected: writing past the end would turn the
+PHP array into an object, and writing through a missing element must throw
+before the value runs. Both wait for arrays as handles (design #79).
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
@@ -483,13 +489,21 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
-`int|float`; `string` = PHP `string` (UTF-8, indexes count Unicode code
-points); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+`int|float`; `string` = PHP `string` (UTF-8; `length` and every index count UTF-16
+code units as in JS; a result that would split a surrogate pair throws a `RangeError`, because UTF-8 can't hold the lone half); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are PHP lists; plain objects are PHP assoc arrays; functions are
 `callable`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
+
+Configuration evaluation uses the same UTF-16 units for numeric string indexes,
+`slice` and `split("")`; a result containing a lone surrogate is rejected with a
+located build diagnostic. `split` applies its limit before converting units.
+
+String `lastIndexOf` accepts only literal number/null/undefined positions; a
+runtime position can hide the erased null/undefined distinction behind an alias,
+assertion or call. Omit the position or use a literal instead.
 
 Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
@@ -504,24 +518,26 @@ Conversions:
 - `isInteger(mixed $v): bool`, `isFinite(mixed $v): bool` (`Number.isInteger/isFinite`, no coercion).
 - `toFixed(int|float $n, int $digits = 0): string` — JS `toFixed`.
 
-Strings (all code-point based, negative/float/out-of-range arguments handled exactly like JS):
+Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; negative/float/out-of-range arguments handled exactly like JS):
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
-- `charAt(string $s, int|float $i): string`, `strAt(string $s, int|float $i): ?string`
-- `indexOf(string $s, string $needle, int|float $from = 0): int`, `lastIndexOf(string $s, string $needle): int`
+- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
+- `indexOf(string|array $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
-- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → code points)
+- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; splitting a surrogate pair throws)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
 - `trim(string $s): string`, `trimStart`, `trimEnd` (JS whitespace incl. Unicode spaces and line terminators)
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
 - `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
+- `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?array` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
 
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
+- Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
 Arrays (lists):
 - `find(array $a, callable $f): mixed` (null when none), `findIndex(array $a, callable $f): int`, `findLast`, `findLastIndex`
@@ -529,11 +545,10 @@ Arrays (lists):
 - Callbacks are invoked as `$f($item, $index)`; compiled callbacks declare the parameters they use, and PHP closures ignore extra arguments.
 - `filter(array $a, callable $f): array` (re-indexed list; callback result passed through `truthy`)
 - `map(array $a, callable $f): array` (`$f($item, $index)`)
-- `includes(array $a, mixed $v): bool` — SameValueZero (numbers numeric, NAN equals NAN)
-- `indexOf(array $a, mixed $v): int`, `lastIndexOf(array $a, mixed $v): int` — strict equality
+- `includes(array $a, mixed $v, mixed $from = 0): bool` — SameValueZero (numbers numeric, NAN equals NAN)
 - `join(array $a, string $sep = ','): string` (null elements → `""`, others `str`)
 - `arrSlice(array $a, int|float $start = 0, int|float|null $end = null): array`
-- `arrAt(array $a, int|float $i): mixed`
+- `arrAt(array $a, mixed $i = 0): mixed`
 - `splice(array &$a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): array`
 - `reverse(array &$a): array` (in place, returns the array)
 - `sort(array &$a, ?callable $cmp = null): array` — in place; default compares `str()` values by UTF-16 code units; comparator results may be floats; stable.

@@ -332,7 +332,7 @@ export default defineConfig({{ schema: {{ notes }}, actions: {{ encode: action({
 
 #[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
-    let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length]"#;
+    let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1)]"#;
     let node = Command::new("node")
         .args(["-e", &format!("process.stdout.write(JSON.stringify({expression}));")])
         .output()
@@ -340,12 +340,13 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     assert!(node.status.success());
     assert_eq!(
         serde_json::from_slice::<Value>(&node.stdout).unwrap(),
-        json!(["undefined", "object", "a", 2])
+        json!(["undefined", "object", "a", 2, "a", ["x"], false, 2])
     );
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
 import {{ collection, id, text, json, action, defineConfig }} from "zero";
-const notes = collection("notes", {{ id: id(), title: text().notNull(), result: json().default({expression}) }}, {{ title: "title" }});
+const measured = {expression};
+const notes = collection("notes", {{ id: id(), title: text().notNull(), result: json().default(measured) }}, {{ title: "title" }});
 export default defineConfig({{ name: "differences", schema: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
@@ -364,6 +365,21 @@ export default defineConfig({{ name: "differences", schema: {{ notes }}, actions
     );
     assert_eq!(
         result,
-        json!([["undefined", "object", "", 2], ["object", "object", "", 2]])
+        json!([
+            ["undefined", "object", "a", 2, "a", ["x"], false, 2],
+            ["object", "object", "a", 2, "a", ["x"], false, 2]
+        ])
+    );
+    std::fs::write(tmp.path().join("zero.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        report["diagnostics"].as_array().unwrap().iter().any(|d| {
+            d["message"].as_str().unwrap().contains("a lone UTF-16 surrogate")
+                && d["help"]
+                    .as_str()
+                    .is_some_and(|fix| fix.contains("character boundaries"))
+        }),
+        "{report}"
     );
 }

@@ -83,10 +83,10 @@ export default defineConfig({
       const after = ++i;
       let j = -(2 ** 53) + 1;
       j -= 2;
-      // Prefix/postfix on an index with a side effect evaluate the place once.
-      const a = [10, 20];
+      // Prefix/postfix on a key with a side effect evaluate the place once.
+      const a: Record<string, number> = { k0: 10, k1: 20 };
       let k = 0;
-      const pre = ++a[k++]!;
+      const pre = ++a["k" + k++]!;
       // Integer powers past 2^53 are doubles; exactly representable ones (2 ** 60) agree to the bit.
       let p = 2;
       p **= 60;
@@ -291,6 +291,7 @@ export default defineConfig({
       throw new Error("expected failure");
     }),
     ...laneDActions(),
+    ...laneSActions(),
   },
   jobs: laneDJobs(),
 });
@@ -323,6 +324,46 @@ function laneDActions() {
       return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
     } }),
     envRead: action({ input: {}, handler: () => [env("ZERO_LANE_D_UNSET") ?? "unset", typeof env("PATH")] }),
+  };
+}
+
+// ---- lane S: string units, positions and loop closures. JS counts strings in UTF-16 code
+// units and gives each `for (let ...)` iteration its own binding; compiled PHP must agree.
+function laneSActions() {
+  return {
+    loopClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let i = 0; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    loopPatternClosures: run(() => {
+      const fs: (() => number)[] = [];
+      for (let { i } = { i: 0 }; i < 3; i++) fs.push(() => i);
+      return fs.map((f) => f());
+    }),
+    // A closure made in the initializer keeps the initializer's binding, not the first iteration's.
+    initializerClosure: run(() => {
+      let seen = -1;
+      for (let { i, read = () => i }: { i: number; read?: () => number } = { i: 0 }; i < 1; i++) {
+        i = 5;
+        seen = read();
+      }
+      return seen;
+    }),
+    // A captured primitive loop binding of any kind (here a string) gets its own per-iteration cell.
+    stringLoopClosures: run(() => {
+      const fns: (() => string)[] = [];
+      for (let s = "a"; s.length < 4; s += "a") fns.push(() => s);
+      return fns.map((f) => f());
+    }),
+    // String lastIndexOf reads an undefined position as omitted and null as 0; the rest read both
+    // as 0.
+    nullishPositions: run(() => ["ab".lastIndexOf("b", undefined), "ab".lastIndexOf("b", 0), "ab".lastIndexOf("b", -1), "ab".lastIndexOf("b", null as unknown as number), [1, 2].lastIndexOf(2, undefined), [1, 2].includes(1, null as unknown as number), "ab".at(undefined as unknown as number), [1, 2].at(null as unknown as number), "ab".indexOf("b", undefined)]),
+    arrayFromIndex: run(() => [[1, 2].includes(1, 1), [1, 2].includes(2, -1), [1, 2, 1].lastIndexOf(1, 1), [1, 2, 1].lastIndexOf(1, -2), [1, 2].includes(1, 5), [1].lastIndexOf(1, -1e300), [1].lastIndexOf(1, -1e20), [1, 2].includes(1, -1e300), [1, 2, 1].lastIndexOf(1, 1e300)]),
+    utf16Units: run(() => {
+      const s = "\u{1F600}a\u00e9";
+      return [s.length, s[2.5] ?? "missing", s.indexOf("a"), s.lastIndexOf("\u00e9"), s.slice(2), s.substring(0, 2), s.charAt(2), s.at(-1), s.padStart(6, "-"), s.padEnd(5, "."), s.replace("a", (m, at: number) => `${m}@${at}`)];
+    }),
   };
 }
 

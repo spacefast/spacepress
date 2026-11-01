@@ -7,9 +7,9 @@ declare(strict_types=1);
  * compiler would emit for it. All JS runs in one `node` process (TZ=UTC); results
  * are compared with a typed comparison (NaN, ±Infinity and -0 are explicit).
  *
- * Strings: the runtime indexes by code point, JS by UTF-16 unit. Cases on astral
- * strings therefore run through CP(s, fn), which applies the native JS method to a
- * BMP stand-in of s, so the expected value is "native JS with code-point indexes".
+ * Strings: the runtime indexes by UTF-16 code unit, like JS, so astral cases are
+ * plain native JS. A lone surrogate can't exist in PHP's UTF-8 strings (it becomes
+ * U+FFFD); the one case that produces them maps the JS result through TextEncoder.
  */
 
 require __DIR__ . '/../../runtime/Zero/bootstrap.php';
@@ -84,23 +84,29 @@ $cases = [
     // ---- slice / substring / charAt / at / indexOf
     ['["héllo".slice(1, -1), "héllo".slice(-3), "héllo".slice(2.9), "héllo".slice(-1.5), "héllo".slice(4, 2), "héllo".slice(NaN, 2)]',
         fn () => [Js::slice('héllo', 1, -1), Js::slice('héllo', -3), Js::slice('héllo', 2.9), Js::slice('héllo', -1.5), Js::slice('héllo', 4, 2), Js::slice('héllo', NAN, 2)]],
-    ['CP("héllo🙂", s => [s.slice(-2), s.slice(5), s.slice(0, -1), s.substring(-3, 2), s.substring(6, 1.7), s.substring(4), s.substring(2, Infinity)])',
-        fn () => [Js::slice('héllo🙂', -2), Js::slice('héllo🙂', 5), Js::slice('héllo🙂', 0, -1), Js::substring('héllo🙂', -3, 2), Js::substring('héllo🙂', 6, 1.7), Js::substring('héllo🙂', 4), Js::substring('héllo🙂', 2, INF)]],
-    ['CP("a🙂b", s => [s.charAt(1), s.charAt(-1), s.charAt(3), s.at(-1), s.at(-4), s.at(1.9)])',
-        fn () => [Js::charAt('a🙂b', 1), Js::charAt('a🙂b', -1), Js::charAt('a🙂b', 3), Js::strAt('a🙂b', -1), Js::strAt('a🙂b', -4), Js::strAt('a🙂b', 1.9)]],
-    ['CP("🙂aé🙂aé", s => [s.indexOf("aé"), s.indexOf("aé", 2), s.indexOf("", 99), s.indexOf("a", -5), s.lastIndexOf("aé"), s.lastIndexOf("x"), s.lastIndexOf("")])',
-        fn () => [Js::indexOf('🙂aé🙂aé', 'aé'), Js::indexOf('🙂aé🙂aé', 'aé', 2), Js::indexOf('🙂aé🙂aé', '', 99), Js::indexOf('🙂aé🙂aé', 'a', -5), Js::lastIndexOf('🙂aé🙂aé', 'aé'), Js::lastIndexOf('🙂aé🙂aé', 'x'), Js::lastIndexOf('🙂aé🙂aé', '')]],
+    ['((s) => [s.slice(-2), s.slice(5), s.slice(0, s.length - 2), s.slice(s.indexOf("🙂")), s.substring(-3, 2), s.substring(7, 1.7), s.substring(4), s.substring(2, Infinity)])("héllo🙂")',
+        fn () => [Js::slice('héllo🙂', -2), Js::slice('héllo🙂', 5), Js::slice('héllo🙂', 0, Js::length('héllo🙂') - 2), Js::slice('héllo🙂', Js::indexOf('héllo🙂', '🙂')), Js::substring('héllo🙂', -3, 2), Js::substring('héllo🙂', 7, 1.7), Js::substring('héllo🙂', 4), Js::substring('héllo🙂', 2, INF)]],
+    ['((s) => [s.charAt(0), s.charAt(-1), s.charAt(3), s.charAt(4), s.at(-1), s.at(-4), s.at(-5), s[3], s[-1], s[3.5], s[NaN], s[-0]])("a🙂b")',
+        fn () => [Js::charAt('a🙂b', 0), Js::charAt('a🙂b', -1), Js::charAt('a🙂b', 3), Js::charAt('a🙂b', 4), Js::strAt('a🙂b', -1), Js::strAt('a🙂b', -4), Js::strAt('a🙂b', -5), Js::strIndex('a🙂b', 3), Js::strIndex('a🙂b', -1), Js::strIndex('a🙂b', 3.5), Js::strIndex('a🙂b', NAN), Js::strIndex('a🙂b', -0.0)]],
+    ['((s) => [s.indexOf("aé"), s.indexOf("aé", 3), s.indexOf("🙂", 1), s.indexOf("", 99), s.indexOf("a", -5), s.lastIndexOf("aé"), s.lastIndexOf("aé", 5), s.lastIndexOf("🙂", -3), s.lastIndexOf("x"), s.lastIndexOf(""), s.lastIndexOf("", NaN), "愀a愀".lastIndexOf("a"), "愀愀".lastIndexOf("a")])("🙂aé🙂aé")',
+        fn () => [Js::indexOf('🙂aé🙂aé', 'aé'), Js::indexOf('🙂aé🙂aé', 'aé', 3), Js::indexOf('🙂aé🙂aé', '🙂', 1), Js::indexOf('🙂aé🙂aé', '', 99), Js::indexOf('🙂aé🙂aé', 'a', -5), Js::lastIndexOf('🙂aé🙂aé', 'aé'), Js::lastIndexOf('🙂aé🙂aé', 'aé', 5), Js::lastIndexOf('🙂aé🙂aé', '🙂', -3), Js::lastIndexOf('🙂aé🙂aé', 'x'), Js::lastIndexOf('🙂aé🙂aé', ''), Js::lastIndexOf('🙂aé🙂aé', '', NAN), Js::lastIndexOf('愀a愀', 'a'), Js::lastIndexOf('愀愀', 'a')]],
+    // An explicit null position is ToNumber(null) = 0, not an omitted argument (compiled
+    // String.prototype.lastIndexOf gets `undefined` as omitted, decided at build time).
+    ['["ab".lastIndexOf("b", null), "ab".lastIndexOf("b"), [1, 2].lastIndexOf(2, null), [1, 2].includes(1, null), "ab".at(null), [1, 2].at(null), "ab".indexOf("b", null)]',
+        fn () => [Js::lastIndexOf('ab', 'b', null), Js::lastIndexOf('ab', 'b'), Js::lastIndexOf([1, 2], 2, null), Js::includes([1, 2], 1, null), Js::strAt('ab', null), Js::arrAt([1, 2], null), Js::indexOf('ab', 'b', null)]],
+    // Whole characters round-trip through unit indexes.
+    ['["a🙂b".slice(1, 3), "a🙂".charAt(0), "🙂x".slice(2), "a".padEnd(3, "🙂"), "🙂".at(-3) ?? null]',
+        fn () => [Js::slice('a🙂b', 1, 3), Js::charAt('a🙂', 0), Js::slice('🙂x', 2), Js::padEnd('a', 3, '🙂'), Js::strAt('🙂', -3)]],
 
     // ---- split
     ['["a,b,,c".split(",", 2), "abc".split(""), "".split(""), "".split(","), "a,b".split(",", 0), "ab".split("", -1), "a,b".split(",", 2.7)]',
         fn () => [Js::split('a,b,,c', ',', 2), Js::split('abc', ''), Js::split('', ''), Js::split('', ','), Js::split('a,b', ',', 0), Js::split('ab', '', -1), Js::split('a,b', ',', 2.7)]],
-    ['CP("a🙂b", s => s.split(""))', fn () => Js::split('a🙂b', '')],
     ['["a1b2c3".split(/\d/), "a1b2c3".split(/(\d)/, 4), "abc".split(/(?:)/), "".split(/x/), "".split(/(?:)/), "a, b ,c".split(/\s*,\s*/), "ab".split(/(x)?/)]',
         fn () => [Js::split('a1b2c3', $re('\d', '')), Js::split('a1b2c3', $re('(\d)', ''), 4), Js::split('abc', $re('(?:)', '')), Js::split('', $re('x', '')), Js::split('', $re('(?:)', '')), Js::split('a, b ,c', $re('\s*,\s*', '')), Js::split('ab', $re('(x)?', ''))]],
 
     // ---- pad / trim / repeat
-    ['["5".padStart(3, "0"), "abc".padStart(10, "123"), "abc".padStart(2), "abc".padEnd(6.9, "xy"), "x".padStart(3, ""), "é".padEnd(3, "ü")]',
-        fn () => [Js::padStart('5', 3, '0'), Js::padStart('abc', 10, '123'), Js::padStart('abc', 2), Js::padEnd('abc', 6.9, 'xy'), Js::padStart('x', 3, ''), Js::padEnd('é', 3, 'ü')]],
+    ['["5".padStart(3, "0"), "abc".padStart(10, "123"), "abc".padStart(2), "abc".padEnd(6.9, "xy"), "x".padStart(3, ""), "é".padEnd(3, "ü"), "🙂".padStart(4, "x"), "🙂".padStart(2, "x"), "a".padEnd(5, "🙂")]',
+        fn () => [Js::padStart('5', 3, '0'), Js::padStart('abc', 10, '123'), Js::padStart('abc', 2), Js::padEnd('abc', 6.9, 'xy'), Js::padStart('x', 3, ''), Js::padEnd('é', 3, 'ü'), Js::padStart('🙂', 4, 'x'), Js::padStart('🙂', 2, 'x'), Js::padEnd('a', 5, '🙂')]],
     ['[" ﻿ x  \t".trim(), " x ".trimStart(), " x ".trimEnd(), "​x".trim()]',
         fn () => [Js::trim("\u{a0}\u{feff} x \u{2028}\t"), Js::trimStart(' x '), Js::trimEnd(' x '), Js::trim("\u{200b}x")]],
     ['["ab".repeat(2.9), "x".repeat(0)]', fn () => [Js::repeat('ab', 2.9), Js::repeat('x', 0)]],
@@ -109,12 +115,17 @@ $cases = [
     // ---- replace / replaceAll
     ['["aaa".replace("a", "b"), "abc".replace("b", "[$&|$`|$\'|$$|$1]"), "abc".replace("x", "y"), "abc".replace("", "_")]',
         fn () => [Js::replace('aaa', 'a', 'b'), Js::replace('abc', 'b', '[$&|$`|$\'|$$|$1]'), Js::replace('abc', 'x', 'y'), Js::replace('abc', '', '_')]],
+    ['((seen) => ["🙂a".replaceAll("", (m, i) => { seen.push(i); return ""; }), "🙂🙂".replace(/(?:)/g, (m, i) => { seen.push(i); return ""; }), "🙂a🙂".match(/x*/g), seen])([])',
+        function () use ($re) { $seen = []; $f = function (string $m, int $i) use (&$seen) { $seen[] = $i; return ''; };
+            return [Js::replaceAll('🙂a', '', $f), Js::replace('🙂🙂', $re('(?:)', 'g'), $f), Js::strMatch('🙂a🙂', $re('x*', 'g')), $seen]; }],
+    ['["🙂".replaceAll("", "$&"), "🙂".replace(/()/g, (m, g) => g ?? "x"), "🙂".match(/^/g), "🙂".match(/\\b/g), "🙂".match(/\\B/g), "a🙂a".match(/\\B/g), "🙂a".match(/(?=a)/gu)]',
+        fn () => [Js::replaceAll('🙂', '', '$&'), Js::replace('🙂', $re('()', 'g'), fn ($m, $g) => $g ?? 'x'), Js::strMatch('🙂', $re('^', 'g')), Js::strMatch('🙂', $re('\b', 'g')), Js::strMatch('🙂', $re('\B', 'g')), Js::strMatch('a🙂a', $re('\B', 'g')), Js::strMatch('🙂a', $re('(?=a)', 'gu'))]],
     ['"2020-01-02".replace(/(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)/, "$<d>.$<m>.$<y> $<nope>|$2")',
         fn () => Js::replace('2020-01-02', $re('(?<y>\d{4})-(?<m>\d\d)-(?<d>\d\d)', ''), '$<d>.$<m>.$<y> $<nope>|$2')],
     ['["abc".replace(/(b)/g, "$1$1$2$<x>"), "abc".replace(/(b)/, "$10"), "abcabc".replace(/b/, "X"), "abcabc".replace(/B/gi, "X"), "aaa".replace(/a*?/g, "-")]',
         fn () => [Js::replace('abc', $re('(b)', 'g'), '$1$1$2$<x>'), Js::replace('abc', $re('(b)', ''), '$10'), Js::replace('abcabc', $re('b', ''), 'X'), Js::replace('abcabc', $re('B', 'gi'), 'X'), Js::replace('aaa', $re('a*?', 'g'), '-')]],
-    ['["a1b22".replace(/\d+/g, (m, off) => `[${m}@${off}]`), "x=1,y=2".replace(/(\w)=(\d)/g, (m, k, v) => v + k), "é1é2".replace(/\d/g, (m, o, s) => o + s.length), "ab".replace(/(x)?b/, (m, g) => g ?? "unset")]',
-        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('é1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + Js::length($s)), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => $g ?? 'unset')]],
+    ['["a1b22".replace(/\d+/g, (m, off) => `[${m}@${off}]`), "x=1,y=2".replace(/(\w)=(\d)/g, (m, k, v) => v + k), "🙂1é2".replace(/\d/g, (m, o, s) => o + s.length), "a🙂b".replace(/.?./gu, (m, at) => String(at)), "ab".replace(/(x)?b/, (m, g) => g ?? "unset")]',
+        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('🙂1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + Js::length($s)), Js::replace('a🙂b', $re('.?.', 'gu'), fn ($m, $at) => (string) $at), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => $g ?? 'unset')]],
     ['["a.b.c".replaceAll(".", "-"), "aaa".replaceAll("", "-"), "aXbX".replaceAll(/x/gi, (m) => m.toLowerCase())]',
         fn () => [Js::replaceAll('a.b.c', '.', '-'), Js::replaceAll('aaa', '', '-'), Js::replaceAll('aXbX', $re('x', 'gi'), fn ($m) => strtolower($m))]],
     ['"a".replaceAll(/a/, "b")', fn () => Js::replaceAll('a', $re('a', ''), 'b')],
@@ -162,8 +173,8 @@ $cases = [
     // ---- JSON
     ['JSON.stringify({a: [1, {b: 2}], c: "x/é \"", d: 1.0, e: NaN, f: -0, g: [], h: 1e21, i: () => 1, j: [() => 1, Infinity]}, null, 2)',
         fn () => Js::jsonStringify(['a' => [1, ['b' => 2]], 'c' => "x/é\u{2028}\"", 'd' => 1.0, 'e' => NAN, 'f' => -0.0, 'g' => [], 'h' => 1e21, 'i' => fn () => 1, 'j' => [fn () => 1, INF]], 2)],
-    ['[JSON.stringify([1, [2]], null, "\t"), JSON.stringify({a: 1}, null, 20), JSON.stringify({a: 1}, null, "abcdefghijklm"), JSON.stringify({b: 1, 2: 1, 1: 1}), JSON.stringify(() => 1), JSON.stringify("\u0007"), JSON.stringify([1], null, 0), JSON.stringify(0.1 + 0.2)]',
-        fn () => [Js::jsonStringify([1, [2]], "\t"), Js::jsonStringify(['a' => 1], 20), Js::jsonStringify(['a' => 1], 'abcdefghijklm'), Js::jsonStringify(['b' => 1, 2 => 1, 1 => 1]), Js::jsonStringify(fn () => 1), Js::jsonStringify("\u{7}"), Js::jsonStringify([1], 0), Js::jsonStringify(0.1 + 0.2)]],
+    ['[JSON.stringify([1, [2]], null, "\t"), JSON.stringify({a: 1}, null, 20), JSON.stringify({a: 1}, null, "abcd🙂🙂🙂🙂"), JSON.stringify({b: 1, 2: 1, 1: 1}), JSON.stringify(() => 1), JSON.stringify("\u0007"), JSON.stringify([1], null, 0), JSON.stringify(0.1 + 0.2)]',
+        fn () => [Js::jsonStringify([1, [2]], "\t"), Js::jsonStringify(['a' => 1], 20), Js::jsonStringify(['a' => 1], 'abcd🙂🙂🙂🙂'), Js::jsonStringify(['b' => 1, 2 => 1, 1 => 1]), Js::jsonStringify(fn () => 1), Js::jsonStringify("\u{7}"), Js::jsonStringify([1], 0), Js::jsonStringify(0.1 + 0.2)]],
     ['JSON.parse("{\"a\": [1, 2.5, null, \"x\"], \"b\": {\"c\": true}}")', fn () => Js::jsonParse('{"a": [1, 2.5, null, "x"], "b": {"c": true}}')],
     // {} stays an object through parse and stringify, also beside a key PHP objects can't hold ("\u0000k").
     // sameJson: structural equality that tells {} from [] (two decoded {} are equal; {} is not []).
@@ -194,13 +205,6 @@ const T = (v) => {
   if (v === undefined || v === null || typeof v === 'string' || typeof v === 'boolean') return v ?? null;
   if (Array.isArray(v)) return Array.from(v, T);
   return { o: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, T(x)])) };
-};
-const CP = (s, f) => {
-  const astral = [];
-  const bmp = Array.from(s, (c) => (c.length > 1 ? String.fromCharCode(0xf000 + astral.push(c) - 1) : c)).join('');
-  const back = (x) => typeof x === 'string' ? x.replace(/[-]/g, (c) => astral[c.charCodeAt(0) - 0xf000])
-    : Array.isArray(x) ? x.map(back) : x;
-  return back(f(bmp));
 };
 const out = [];
 const run = (f) => { try { out.push(T(f())); } catch (e) { out.push({ $err: e.name }); } };
@@ -271,6 +275,24 @@ $deviations = [
     ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
     ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
     ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
+    // A lone surrogate can't live in a UTF-8 string; any stand-in would merge distinct JS values.
+    ['inserting inside a surrogate pair throws', fn () => [Js::replaceAll('🙂', '', '-'), Js::replace('🙂', Js::re('(?:)', 'g'), '-')], ['$err' => 'RangeError']],
+    ['$` inside a surrogate pair throws', fn () => Js::replaceAll('🙂', '', '$`'), ['$err' => 'RangeError']],
+    ['global dots cannot combine code-point matches with UTF-16 offsets', fn () => Js::replace('a🙂b', Js::re('.?.', 'g'), fn ($m, $at) => (string) $at), ['$err' => 'RangeError']],
+    ['complemented shorthands need Unicode mode on astral text', fn () => Js::strMatch('a🙂b', Js::re('\\S?\\S', 'g')), ['$err' => 'RangeError']],
+    ['lookarounds on astral text need Unicode mode', fn () => Js::strMatch('🙂', Js::re('(?=.)', 'g')), ['$err' => 'RangeError']],
+    ['classes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B[^\uFDD0]?', 'g')), ['$err' => 'RangeError']],
+    ['surrogate escapes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B\uDE00?', 'g')), ['$err' => 'RangeError']],
+    ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
+    ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
+    ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['slice splitting a pair throws', fn () => Js::slice('🙂', 0, 1), ['$err' => 'RangeError']],
+    ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],
+    ['split("", limit) stops before a pair past the limit', fn () => Js::split('a🙂b', '', 1), ['a']],
+    ['split("", limit) splitting a pair within the limit throws', fn () => Js::split('a🙂b', '', 2), ['$err' => 'RangeError']],
+    ['padEnd cutting a pair throws', fn () => Js::padEnd('a', 2, '🙂'), ['$err' => 'RangeError']],
+    ['an unused JSON gap cut through a pair is fine', fn () => [Js::jsonStringify(1, '123456789🙂'), Js::jsonStringify([], '123456789🙂'), Js::jsonStringify(['f' => static fn () => 1], '123456789🙂')], ['1', '[]', '{}']],
+    ['a used JSON gap cut through a pair throws', fn () => Js::jsonStringify([1], '123456789🙂'), ['$err' => 'RangeError']],
 ];
 
 $passed = 0;

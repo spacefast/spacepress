@@ -1025,14 +1025,16 @@ impl<'p> Evaluator<'p> {
             } else {
                 Value::Undef
             }),
-            (Value::Str(s), Value::Num(n)) => Ok(if *n >= 0.0 && n.fract() == 0.0 {
-                s.chars()
-                    .nth(*n as usize)
-                    .map(|c| Value::str(&c.to_string()))
-                    .unwrap_or(Value::Undef)
-            } else {
-                Value::Undef
-            }),
+            (Value::Str(s), Value::Num(n)) => {
+                if *n >= 0.0 && n.fract() == 0.0 {
+                    match s.encode_utf16().nth(*n as usize) {
+                        Some(unit) => utf16_value(&[unit], span),
+                        None => Ok(Value::Undef),
+                    }
+                } else {
+                    Ok(Value::Undef)
+                }
+            }
             (_, Value::Str(k)) => self.get_prop(v, k, span),
             (_, Value::Num(n)) => self.get_prop(v, &js_number_to_string(*n), span),
             _ => err(span, format!("can't index {} with {}", v.describe(), i.describe())),
@@ -1721,8 +1723,21 @@ impl<'p> Evaluator<'p> {
                 }
                 acc
             }
-            "includes" => Value::Bool(items.iter().any(|x| x.same_value_zero(&f))),
-            "indexOf" => Value::Num(items.iter().position(|x| x.strict_eq(&f)).map_or(-1.0, |i| i as f64)),
+            "includes" | "indexOf" => {
+                let (start, _) = slice_bounds(items.len() as f64, &arg(1), &Value::Undef);
+                let found = items.iter().enumerate().skip(start).find(|(_, x)| {
+                    if m == "includes" {
+                        x.same_value_zero(&f)
+                    } else {
+                        x.strict_eq(&f)
+                    }
+                });
+                if m == "includes" {
+                    Value::Bool(found.is_some())
+                } else {
+                    Value::Num(found.map_or(-1.0, |(i, _)| i as f64))
+                }
+            }
             "join" => {
                 let sep = match arg(0) {
                     Value::Undef => ",".to_string(),
@@ -2268,10 +2283,21 @@ fn build_regex(pattern: &str, flags: &str, span: Span) -> R<regex::Regex> {
     })
 }
 
+fn utf16_value(units: &[u16], span: Span) -> R<Value> {
+    String::from_utf16(units).map(|s| Value::str(&s)).map_err(|_| {
+        Ctl::Err(
+            Diag::new(
+                span,
+                "this string result splits a character in two (a lone UTF-16 surrogate)",
+            )
+            .help("slice at character boundaries; strings cannot represent a lone surrogate"),
+        )
+    })
+}
+
 fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     let str_arg = |i: usize| arg(i).to_js_string().unwrap_or_default();
-    let chars: Vec<char> = s.chars().collect();
     Ok(match m {
         "toLowerCase" => Value::str(&s.to_lowercase()),
         "toUpperCase" => Value::str(&s.to_uppercase()),
@@ -2282,24 +2308,41 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
         "endsWith" => Value::Bool(s.ends_with(&str_arg(0))),
         "includes" => Value::Bool(s.contains(&str_arg(0))),
         "slice" => {
-            let (a, b) = slice_bounds(chars.len() as f64, &arg(0), &arg(1));
-            Value::str(&chars[a..b.max(a)].iter().collect::<String>())
+            let units: Vec<u16> = s.encode_utf16().collect();
+            let (a, b) = slice_bounds(units.len() as f64, &arg(0), &arg(1));
+            utf16_value(&units[a..b.max(a)], span)?
         }
-        "split" => match arg(0) {
-            Value::Str(sep) if sep.is_empty() => {
-                Value::array(chars.iter().map(|c| Value::str(&c.to_string())).collect())
+        "split" => {
+            let limit = match arg(1) {
+                Value::Undef => u32::MAX as usize,
+                v => {
+                    let n = to_number(&v);
+                    if n.is_finite() {
+                        n.trunc().rem_euclid(4294967296.0) as usize
+                    } else {
+                        0
+                    }
+                }
+            };
+            match arg(0) {
+                Value::Str(sep) if sep.is_empty() => Value::array(
+                    s.encode_utf16()
+                        .take(limit)
+                        .map(|u| utf16_value(&[u], span))
+                        .collect::<R<Vec<_>>>()?,
+                ),
+                Value::Str(sep) => Value::array(s.split(&*sep).take(limit).map(Value::str).collect()),
+                other => {
+                    return err(
+                        span,
+                        format!(
+                            "split() at build time needs a string separator, not {}",
+                            other.describe()
+                        ),
+                    );
+                }
             }
-            Value::Str(sep) => Value::array(s.split(&*sep).map(Value::str).collect()),
-            other => {
-                return err(
-                    span,
-                    format!(
-                        "split() at build time needs a string separator, not {}",
-                        other.describe()
-                    ),
-                );
-            }
-        },
+        }
         "repeat" => Value::str(&s.repeat(to_number(&arg(0)).max(0.0) as usize)),
         "replace" | "replaceAll" => {
             let Value::Str(rep) = arg(1) else {

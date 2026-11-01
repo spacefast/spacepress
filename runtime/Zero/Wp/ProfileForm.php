@@ -161,17 +161,9 @@ final class ProfileForm
         if (!$open && doing_action('user_register')) {
             return true; // the add/register forms render no structured fields: nothing posted is kept
         }
-        $def = $ctx['def'];
-        // Scf::updateValue: json re-encoded, a top-level timestamp from site time to UTC.
-        $js = Scf::fromScf($def, wp_unslash(Scf::updateValue($value, $postId, $field)), (string) $field['key']);
-        if ($ctx['structured']) {
-            $row = self::plugin()->db()->editorRow($ctx['collection'], $ctx['id']);
-            // Only a field the form rendered is read as the form wrote it; anything posted for one it
-            // never rendered goes to Zero as posted, refused or not on its own terms, never on what is stored.
-            $viewer = $open ? CoreAccess::viewer() : null;
-            $rendered = $viewer !== null && self::readable($ctx['collection'], $ctx['id'], $row, $ctx['col'], $def, $viewer);
-            $js = self::fromForm($def, $js, $rendered || !$open ? ($row[$ctx['col']] ?? null) : null, $rendered ? $viewer : null);
-        }
+        $js = $ctx['structured']
+            ? self::incoming($ctx, wp_unslash($value), $field, $open)
+            : Scf::fromScf($ctx['def'], wp_unslash(Scf::updateValue($value, $postId, $field)), (string) $field['key']);
         if ($open) {
             self::$open['patch'][$ctx['col']] = $js;
 
@@ -181,6 +173,27 @@ final class ProfileForm
         acf_flush_value_cache($postId, (string) $field['name']);
 
         return true;
+    }
+
+    /** SCF validates the same effective value that the profile save will write, before its AJAX gate. */
+    public static function validationValue(mixed $raw, array $field): mixed
+    {
+        $postId = acf_get_form_data('post_id') ?: ($_POST['_acf_post_id'] ?? null);
+        $ctx = self::member($postId, $field);
+
+        return $ctx !== null && $ctx['structured']
+            ? self::incoming($ctx, $raw, $field, true, true)
+            : Scf::fromScf($field['zero'], $raw, (string) $field['key'], true);
+    }
+
+    private static function incoming(array $ctx, mixed $raw, array $field, bool $form, bool $strict = false): mixed
+    {
+        $row = self::plugin()->db()->editorRow($ctx['collection'], $ctx['id']);
+        $viewer = $form ? CoreAccess::viewer() : null;
+        $rendered = $viewer !== null && self::readable($ctx['collection'], $ctx['id'], $row, $ctx['col'], $ctx['def'], $viewer);
+        // Never use a hidden field's stored value to interpret a guess submitted for it.
+        return self::fromForm($ctx['def'], Scf::fromScf($ctx['def'], $raw, (string) $field['key'], $strict),
+            $rendered || !$form ? ($row[$ctx['col']] ?? null) : null, $rendered ? $viewer : null, $raw, (string) $field['key']);
     }
 
     /** profile_update: write the changed member fields through Zero with the viewer, then commit. */
@@ -302,7 +315,7 @@ final class ProfileForm
     {
         $item = static function (array $fields, array $obj): array {
             foreach ($fields as $name => $sub) {
-                if (array_key_exists($name, $obj) && in_array($sub['type'] ?? '', self::STRUCTURED, true)) {
+                if (array_key_exists($name, $obj)) {
                     $obj[$name] = self::canonical($sub, $obj[$name]);
                 }
             }
@@ -311,6 +324,7 @@ final class ProfileForm
         };
 
         return match (true) {
+            $def['type'] === 'boolean' && $v === null => $def['default']['value'] ?? false,
             !is_array($v) => $v,
             $def['type'] === 'group' => self::isUnsetGroup($def['fields'] ?? [], $item($def['fields'] ?? [], $v)) ? null : $item($def['fields'] ?? [], $v),
             $def['type'] === 'repeater' => $v === [] ? null : array_map(static fn ($row) => is_array($row) ? $item($def['fields'] ?? [], $row) : $row, $v),
@@ -344,9 +358,9 @@ final class ProfileForm
      *   (a showIf hid and disabled it) keeps its saved value; in a new item, a sub-field the viewer may
      *   not set, posted at its default, is left to the default as the API would.
      */
-    private static function fromForm(array $def, mixed $posted, mixed $stored, ?\Zero\Viewer $viewer): mixed
+    private static function fromForm(array $def, mixed $posted, mixed $stored, ?\Zero\Viewer $viewer, mixed $raw, string $key): mixed
     {
-        $item = static function (array $fields, mixed $obj, mixed $before) use ($viewer): mixed {
+        $item = static function (array $fields, mixed $obj, mixed $before, mixed $input, string $prefix) use ($viewer): mixed {
             if (!is_array($obj)) {
                 return $obj;
             }
@@ -359,29 +373,47 @@ final class ProfileForm
                     }
                     continue;
                 }
+                if ($viewer !== null && $before !== null && array_key_exists($name, $before)
+                    && self::canonical($sub, $obj[$name]) === self::canonical($sub, $before[$name])) {
+                    $obj[$name] = $before[$name];
+                    continue;
+                }
                 if ($viewer !== null && $before === null && !$structured
                     && FieldAccess::unwritable('update', $sub, $viewer) && self::isDefault($sub, $obj[$name])) {
                     unset($obj[$name]);
                     continue;
                 }
-                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer);
+                $obj[$name] = self::fromForm($sub, $obj[$name], $before[$name] ?? null, $viewer,
+                    is_array($input) ? ($input[$prefix . $name] ?? $input[$name] ?? null) : null, $prefix . $name);
             }
 
             return $obj;
         };
         $old = is_array($stored) && array_is_list($stored) ? $stored : [];
+        $inputs = is_array($raw) ? array_filter($raw, static fn ($k) => $k !== 'acfcloneindex', ARRAY_FILTER_USE_KEY) : [];
+        $keys = array_keys($inputs);
+        $inputs = array_values($inputs);
+        $row = static function (mixed $value, int $i) use ($def, $old, $viewer, $keys, $inputs, $key, $item): mixed {
+            // The rendered row key names its saved index even after a deletion or a drag. New rows
+            // have generated keys; trusted code uses ordinary list positions.
+            $index = $viewer === null ? $i : (preg_match('/^row-(\d+)$/D', (string) ($keys[$i] ?? ''), $m) ? (int) $m[1] : null);
+            $before = $index === null ? null : ($old[$index] ?? null);
+            if ($def['type'] === 'blocks') {
+                $layout = is_array($value) ? ($value['layout'] ?? '') : '';
+                return $item($def['layouts'][$layout] ?? [], $value,
+                    ($before['layout'] ?? null) === $layout ? $before : null, $inputs[$i] ?? null, $key . '_' . $layout . '_');
+            }
+
+            return $item($def['fields'] ?? [], $value, $before, $inputs[$i] ?? null, $key . '_');
+        };
 
         return match ($def['type'] ?? '') {
             'timestamp' => self::wallToUtc($posted, $stored),
-            'group' => $item($def['fields'] ?? [], $posted, $stored),
+            'group' => $item($def['fields'] ?? [], $posted, $stored, $raw, $key . '_'),
             'repeater', 'blocks' => match (true) {
                 $posted === null => $stored === null && !($def['notNull'] ?? false) ? null : [],
                 !is_array($posted) => $posted,
-                // SCF posts rows in their order: a row at a saved row's place edits it.
-                $def['type'] === 'repeater' => array_map(static fn ($row, $i) => $item($def['fields'] ?? [], $row, $old[$i] ?? null), $posted, array_keys($posted)),
-                default => array_map(static fn ($row, $i) => is_array($row)
-                    ? $item($def['layouts'][$row['layout'] ?? ''] ?? [], $row, ($old[$i]['layout'] ?? null) === ($row['layout'] ?? null) ? ($old[$i] ?? null) : null)
-                    : $row, $posted, array_keys($posted)),
+                default => array_map($row, $posted, array_keys($posted)),
             },
             default => $posted,
         };
@@ -458,7 +490,7 @@ final class ProfileForm
             return false;
         }
 
-        return Js::jsonStringify($norm) === Js::jsonStringify($default);
+        return Js::jsonStringify(self::canonical($def, $norm)) === Js::jsonStringify(self::canonical($def, $default));
     }
 
     /** @return ?array{collection: string, id: int, col: string, def: array, structured: bool} a top-level member field on an existing user */

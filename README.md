@@ -2,7 +2,7 @@
 
 **Zero is a TypeScript framework for building backends, fast.**
 
-You write one `zero.config.ts`. `zero build --target wp` turns it into
+You write one `zero.config.ts`. `zero build` turns it into
 database migrations, REST endpoints, user authentication, a dashboard and a
 fully typed client library. Zero is frontend agnostic: the client is plain `fetch`, so it
 works with Next.js, Astro, TanStack Start, or anything else that can call
@@ -78,13 +78,13 @@ export default defineConfig({
 ## Everything out
 
 ```sh
-$ zero build --target wp
-built 2 collections, 0 globals, 1 hooks, 1 actions for wp -> .zero/wp-content in 6s
+$ zero build
+built 2 collections, 0 globals, 1 hooks, 1 actions -> .zero/wp-content in 6s
 ```
 
 | You get | Where |
 |---|---|
-| MySQL migrations, diffed against the last build | `zero/migrations/wp/0001_init.sql` |
+| MySQL migrations, diffed against the last build | `zero/migrations/0001_init.sql` |
 | A typed client: `zero.posts.list({ with: { author: true } })` and friends | `zero/client/` |
 | Editor types, so `db` in your hooks knows your schema | `zero.gen.ts` |
 | REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/zero/v1/...` |
@@ -119,7 +119,7 @@ plugin activated:
 ```sh
 git clone https://github.com/spacefast/zero && cd zero
 cargo build --release
-./target/release/zero dev examples/pantry --wp    # http://127.0.0.1:8787, admin / zero-test-admin
+./target/release/zero dev examples/pantry         # http://127.0.0.1:8787, admin / zero-test-admin
 ```
 
 It prints one JSON line with an application password for each test user.
@@ -133,14 +133,14 @@ curl -u "$AUTH" -X POST $BASE/locations -d '{"name":"Fridge","kind":"fridge"}'
 curl -u "$AUTH" -X POST $BASE/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
 curl $BASE/shopping_list                          # the afterCreate hook added Eggs
 curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
-./target/release/zero doctor examples/pantry --wp --site http://127.0.0.1:8787
+./target/release/zero doctor examples/pantry --site http://127.0.0.1:8787
 ```
 
-`zero check` compiles without writing anything; `zero build --target wp`
-writes the plugins to `.zero/wp-content/` without booting anything. Commit
+`zero check` compiles without writing anything; `zero build` writes the
+plugins to `.zero/wp-content/` without booting anything. Commit
 `zero/migrations/`, `zero/client/`, `zero.gen.ts` and
 `zero/wp-plugins.lock.json`; `.zero/` is build output. Stop the site with the
-`harness.sh down` command that `zero dev --wp` prints.
+`harness.sh down` command that `zero dev` prints.
 
 ## Use it from a frontend
 
@@ -150,7 +150,7 @@ the `journal` config from the top of this page: stop the pantry site, save the
 config as `journal/zero.config.ts`, then
 
 ```sh
-./target/release/zero dev journal --wp            # builds journal/zero/client/, boots WordPress on :8787
+./target/release/zero dev journal                 # builds journal/zero/client/, boots WordPress on :8787
 ```
 
 Node 22.18+ runs this as-is from the `journal` directory, with the admin
@@ -187,11 +187,10 @@ guests and server-to-server auth.
 | To run | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
 
-`zero build --target wp` downloads the required plugins at their pinned
-versions, verifies their checksums, and ships them next to yours. The runtime
-refuses to boot on a site that misses any of them and names each one;
-`zero doctor <project> --wp --site <url>` prints the same table from your
-terminal.
+`zero build` downloads the required plugins at their pinned versions,
+verifies their checksums, and ships them next to yours. The runtime refuses to
+boot on a site that misses any of them and names each one;
+`zero doctor <project> --site <url>` prints the same table from your terminal.
 
 ## What's in the box
 
@@ -261,9 +260,7 @@ sure WP-Cron or a real cron reaches the site.
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
 
-[`docs/examples.md`](docs/examples.md) walks through each one and how to run it;
-its blog tour still opens with the standalone target and is being rewritten
-with the WordPress-only cut, so follow its WordPress section.
+[`docs/examples.md`](docs/examples.md) walks through each one and how to run it.
 
 ## Docs
 
@@ -283,14 +280,16 @@ WordPress, and CI proves it on every change, but the config API, the wire
 format and the plugin layout will change before a first release. There are no
 binary releases yet; you build the compiler from source.
 
+In progress: Zero Admin, an optional admin plugin for Zero apps. Its source is
+in the repo under `runtime/admin/`, and `defineConfig({ admin: true })` ships
+it as a fourth plugin; its screens are still being completed.
+
 What's next, none of it shipped:
 
 - A website with an interactive config builder that loads your config into
   WordPress Playground, and one-click publish to Spacefast.
 - Zero Blocks: an optional add-on for authoring Gutenberg content and full
   block themes in TSX.
-- Zero Admin: an optional admin plugin for Zero apps. Its source is in the
-  repo under `runtime/admin/`; `zero build` does not emit it yet.
 
 ## License
 

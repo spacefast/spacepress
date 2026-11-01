@@ -9,8 +9,7 @@ Zero runs on WordPress using its posts, metadata, attachments, users, block
 editor, revisions and plugin lifecycle. Compiling a deployable `wp-content`
 tree does not replace WordPress core or execute a plugin's installation hooks.
 Extra plugins still depend on the deployed WordPress/PHP environment, compatible
-themes, their own activation and any external services they require. Standalone
-PHP provides the Zero API; it cannot run arbitrary WordPress plugins.
+themes, their own activation and any external services they require.
 
 ## Original Zero feature inventory
 
@@ -32,7 +31,7 @@ explicitly changed with the application's owner.
 | Canonical HTML edits, sealed content-model releases, rollback | Revisions exist; phase 2 plans content sync | Source/editor conflict protocol, writeback, byte verification, pinned version rendering and content-model rollback |
 | Shared context document and live Gutenberg collaboration | WordPress editor integration exists for collections | Context block binding, live editing/save arbitration and collaborative draft service integration |
 | Typed client, Preact/React hooks, subscriptions, invalidation | Dependency-free generated REST client exists | Old hook/loading/error contracts, realtime transport, invalidation rules, router and UI/context/kit/chart adapters |
-| Guests, signed-in users, atomic ownership transfer | Basic WordPress/standalone identity exists; phase 2 plans the identity plugin and frontend auth | Guest continuity, `onGuestUpgrade`, userId transfer atomicity and original app-user/session clients |
+| Guests, signed-in users, atomic ownership transfer | `zero-identity` provides sign-in, sessions, guests who keep their rows when they sign up, passkeys and MFA, with `auth.signIn()`/`auth.guest()`/`auth.upgrade()` in the typed client | Guest continuity, `onGuestUpgrade`, userId transfer atomicity and original app-user/session clients |
 | Sign-in providers, revocation, SSR session verification | Full identity integration is pending in phase 2 | Provider configuration and account/client mappings; confirm which behaviors came from platform services |
 | Private storage, upload URLs, revocable public read keys | Public media exists; phase 2 plans private file buckets | Storage API/key migration and revocation/authorization tests; uploads are not automatically migrated |
 | SHA/HMAC, timing-safe comparisons, secret-named crypto, EdDSA tokens | Not exposed through the old handler context API | PHP implementations and secret-boundary/key-rotation parity before migrating handlers |

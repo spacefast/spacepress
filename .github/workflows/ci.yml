@@ -184,7 +184,7 @@ jobs:
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/wp/run.sh
 
-  # `zero dev --wp` from a release binary outside the checkout (its embedded harness).
+  # `zero dev` from a release binary outside the checkout (its embedded harness).
   installed:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

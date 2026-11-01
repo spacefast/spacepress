@@ -6,13 +6,11 @@ GPL-2.0-or-later (full text in LICENSE-GPL)
 
   runtime/Zero/          the PHP runtime, shipped as the zero-runtime plugin
   runtime/identity/      the zero-identity plugin and its screens
-  runtime/admin/         the zero-admin plugin and its screens, not yet
-                         emitted by zero build
+  runtime/admin/         the zero-admin plugin and its screens, emitted
+                         with `admin: true`
   runtime/wp-plugin/     the zero-runtime and zero-app plugin templates
-  runtime/bin/           the runtime's command-line entry point, shipped
-                         inside zero-runtime
 
-  and every plugin that `zero build --target wp` emits from them.
+  and every plugin that `zero build` emits from them.
 
 MIT (full text in LICENSE-MIT)
 

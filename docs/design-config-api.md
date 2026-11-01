@@ -748,7 +748,15 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   has no foreign keys and users are deleted from wp-admin, WP-CLI and other
   plugins, so the rule runs on core's `delete_user` action (which fires
   before the row goes, with the reassignment target core offers), inside
-  one transaction that also contains core's own deletion. Transaction
+  one transaction that also contains core's own deletion. The contract is
+  single-site, as Zero is today (nothing in the runtime tests
+  `is_multisite()`): on a network, `wp_delete_user` removes a site
+  membership and keeps the global account, and `wpmu_delete_user` deletes
+  the account through a different action, so neither maps onto "the
+  referenced user is gone". Multisite support, if it comes, decides there
+  whether a reference means the account or the membership; until then the
+  plugin refuses to activate on a network, as it does not claim to run on
+  one. Transaction
   ownership follows the rule the editor-save path already uses
   (`Connection::begin()` is the outermost transaction and refuses to nest,
   `Connection.php:140`; Zero's own transactions join an open one): when
@@ -831,7 +839,12 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   `_zero_system` meta beside `status`, `publishedAt` and the slug
   (`snapshotKeys`, `:497`), and revision reads and `restoreRevision`
   (`Db.php:983`) take it from there, never from the revision post's
-  `post_author`. Revisions written before the mapping existed carry no
+  `post_author`; wp-admin's own restore excludes `post_author` from the
+  fields it copies back, so the editor-save path's restore hook
+  (`EditorSave::endRestore`, `EditorSave.php:205`, which today only
+  authorizes and commits) applies the owner from the revision's
+  `_zero_system` before it commits, so both restores agree. Revisions
+  written before the mapping existed carry no
   such key, but they do carry the old column's meta, because
   `snapshotRevision` copies the parent's field meta into every revision
   (`acf_copy_metadata`, `:539`); the migration that moves the column
@@ -849,7 +862,18 @@ export const members = collection({ name: text().notNull() }, { auth: true });
   REST. Both gain the author case: `strip` removes `author` and the
   `author` link when the owner column is hidden from the viewer, and
   `queryDenial` refuses the three author parameters with the same `403`
-  it gives a hidden slug (§7.1, PR 5). A content collection with two `user()` columns must say
+  it gives a hidden slug (§7.1, PR 5). wp-admin has the same two sides:
+  today the classic editor's content box and the slug box are blanked for
+  a viewer the column is hidden from (`adminContent`, `adminSlug`,
+  `CoreAccess.php:467,473`) and a blank control posted back does not
+  overwrite the stored value (`keepHidden`, `:484`). The author gets the
+  same pair: the author box and quick edit's author dropdown are removed
+  (`remove_meta_box` and the `quick_edit_dropdown_authors_args` filter)
+  when the owner column is hidden from the viewer, and `keepHidden` keeps
+  `post_author` when it is hidden, so a native save by such a viewer never
+  changes the owner. A forged `post_author` reaches `EditorSave` as a
+  write to a hidden column and is refused as one, as today for content
+  and slug. A content collection with two `user()` columns must say
   which is the author (`author: "assignedToId"`, a new designation beside
   `title` and `body`), or `author: false` for meta-only user columns; adding
   a second `user()` column without it is a build error, whether or not any
@@ -1557,8 +1581,10 @@ mapping), and the two can disagree, since an admin may have assigned an
 author record to another user while `post_author` kept the creating
 admin's id; the snapshot gains an `author` entry per content collection
 and the generated migration copies the meta value into `post_author`
-(`UPDATE wp_posts p JOIN wp_postmeta m … SET p.post_author = m.meta_value`,
-`0` where the meta is null) before dropping the meta, so the meta value,
+(`UPDATE wp_posts p LEFT JOIN wp_postmeta m … SET p.post_author =
+COALESCE(m.meta_value, 0) WHERE p.post_type = <type>`: a left join, because
+a nullable column with no meta row reads as `null` today and must become
+`0`, not keep the creating user's id) before dropping the meta, so the meta value,
 which was the one Zero read and enforced, wins over the core value nobody
 checked; the reverse move (`author: false` on a column that was
 `post_author`) copies `post_author` into new meta the same way; the body
@@ -1605,9 +1631,13 @@ columns. The build cannot know which databases have run it, so the gate
 is the runtime's, not the build's: the artifact ships with its backfill
 step, the first request of any kind applies pending migrations before
 Zero serves (`Plugin.php:102`), and while storage is behind the build
-Zero's REST and the core `/wp/v2` writes to its collections answer `503`
-(`:30,163`), so no request reads the new type before the backfill has
-run; the declared type and the stored rows never disagree;
+Zero's REST answers `503` and so do the core `/wp/v2` writes to its
+collections (`:30,163`); core `/wp/v2` reads are exempt today
+(`refuseCoreWrites` passes `GET`, `:166`) and prepare their response
+through the new schema (`PostsController.php:80`), so the gate is widened
+to reads of Zero's post types while storage is behind, and no request
+reads the new type before the backfill has run; the declared type and the
+stored rows never disagree;
 the automatic `createdAt`/
 `updatedAt` are added columns, and an app that had authored columns of those
 names drops its own (on content collections `updatedAt` reads
@@ -1626,10 +1656,13 @@ them.
   instead of `editor: false`, no `target`. Its "a required text field named
   `title` enables a post type" rule (`:276,665`) is narrower than §4.9.3 in
   two ways, and the importer writes the difference out rather than
-  inheriting the inference: an *optional* text field named `title` yields a
-  table today, where §4.9.3 would infer a content collection and then fail
-  the title rule, so the importer emits `content: false` for that
-  collection with a report entry saying why; and a source field that is
+  inheriting the inference: wherever the old rule made a table and §4.9.3
+  would infer a content collection, the importer emits `content: false`
+  with a report entry saying why (an *optional* text field named `title`,
+  which would also fail the title rule; a required single `select` named
+  `title`, a text kind to §4.9.3 but not to `:665`, which admits
+  `string`/`text`/`textarea` only; a rich-text column on a collection with
+  no title); and a source field that is
   optional but has a default (today `.default(x)` without `.notNull()`,
   `:627`) becomes `.nullable().default(x)`, because under §4.9.1 a bare
   `.default(x)` would make it required. Required fields keep
@@ -1649,7 +1682,9 @@ them.
   original-Zero multi-media field carries attachment ids with no type
   restriction and is emitted as `media({ multiple: true })` today
   (`:487`), which §4.1 now accepts for image galleries only. The importer
-  emits `repeater({ file: media() })` for it, with a report entry marked
+  emits `repeater({ file: media().notNull() })` for it (`.notNull()`
+  because the list normalizer refuses a null item today, `Schema.php:411`,
+  and a bare `media()` item would accept `{}`), with a report entry marked
   `changed` saying that the value shape moves from a list of ids to a list
   of `{ file: id }` objects, and `zero migrate site` writes the stored
   values in that shape. Everything else the importer emits is unchanged
@@ -1683,13 +1718,13 @@ them.
   of their files are edited here):
   - Localized relations: localized `many` loads under `with` are keyed by
     the inferred relation; nothing to add to the config.
-  - The `.d.ts` primary-key typing: `main` (#56) types row ids from the
-    actual primary key but the builder still records only nullability and
-    defaultability for `.primaryKey()` (`index.d.ts:180`), which cannot
-    tell a custom key from a defaulted required integer. §4.9.1 needs a
-    `TPrimary` flag on the builder to know whether to add `id`; it is the
-    first item of §7.1's PR 2, and `RowId<TCols>` then simplifies because
-    `id` is always present unless `TPrimary` says otherwise.
+  - The `.d.ts` primary-key typing: `main` types row ids from the actual
+    primary key and already gives the builder a `TPrimary` flag that
+    `.primaryKey()` sets (`index.d.ts:120,128,181`). §4.9.1 reuses it to
+    know whether to add `id`: the first item of §7.1's PR 2 is the
+    automatic `id` on top of that flag, not the flag itself, and
+    `RowId<TCols>` then simplifies because `id` is always present unless
+    `TPrimary` says otherwise.
   - Compiler aliasing: untouched; `ref("key")` is a string the extractor
     resolves, not an expression the compiler sees.
   - The README: its first example should be §5.2's first collection; a

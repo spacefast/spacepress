@@ -24,7 +24,7 @@ the order in which the change lands.
 | Compiler analysis | `src/compile/effects.rs` stays for what it does for types (capture detection for fresh loop bindings, numeric and tuple widening, tuple-shape restoration, refinement invalidation). Refinement invalidation becomes alias-aware: it follows the copy edges the analysis already records, and a refinement on a value that has escaped (passed, stored, captured, returned) dies at the next call. The by-reference half (`by_ref`, `shared_parameter`, `argument_by_ref`, `replaces_argument`, capture anchors) and the four aliasing refusals are deleted. |
 | Deleted | `check_aliasing`, `check_identity_eq`, `check_destructured_mutation`, by-ref parameters and `objectBinding`, capture anchors, `Js::write`/`at`/`obj`-marker/`copyObject`/`plain`, `Schema::plainOutsideJson` (moves into `Seam`), the empty-object marker and its 30 `instanceof JsObject` sites, `extract.rs`'s list-shaped-default refusal. |
 | Acceptance | The 65-row sharing corpus (`CORPUS.md` on `archive/s2-ownership-rule`: 58 compile and differ from Node, 3 agree, 4 are refused) plus `tests/differential` run under Node and compiled PHP; results must be identical. |
-| Cost | Measured as a representation microbenchmark (`docs/spikes/js-references-bench.php`): object build 2.8x per literal, member read/write 1.5x, a receiver-capturing write 1.0x in statement position and 1.6x inside an expression, `map`/`filter` 1.1–1.6x, JSON encode 1.04x, JSON decode 1.2–1.5x over today's decode walk, +56 bytes per handle. Pipeline cost (Seam traversals, per-callback cloning) is not measured yet; §6 says what the implementation PR must measure. |
+| Cost | Historical representation microbenchmarks are in §6. Checked member reads/writes (§4.2) supersede their direct-access paths. The measured warm WordPress/SQLite pipeline is 1.864 → 3.194 ms/request, with 505 validated requests per side and zero errors. Production impact remains inconclusive; see `docs/spikes/js-references-pipeline.md` for raw samples and limits. |
 | Rollout | Three PRs: a preparatory `Seam` extraction that changes no representation, one atomic representation switch (runtime, compiler, boundaries, corpus), then deletions. The switch bumps the runtime series to `0.3`; schema v3 remains unchanged, and older compiled callbacks are refused at load with a rebuild instruction. |
 
 ---
@@ -769,10 +769,10 @@ Reading the numbers:
   and no spread, which is nearly every literal.
 - Capturing the receiver of a member write (§4.2) costs nothing in statement
   position (13.7 versus 14.2 ms direct). In expression position the `Js::set`
-  helper is 1.6x a direct write and the array form 2.2x, which is why the
-  design emits statements where it can and the helper otherwise. Computed
-  keys and compound writes were not measured separately; they add one
-  `Js::key` call and one read.
+  helper is 1.6x a direct write and the array form 2.2x. These are historical
+  emission choices: §4.2 now uses checked reads and writes for catchable JS
+  errors and missing-property coercion. Computed keys and compound writes
+  were not measured separately by this microbenchmark.
 - Decode was already a PHP walk (`fromJson`), so the handle version is 1.2x
   to 1.5x of today, not the 2.3x an earlier draft claimed against raw
   `json_decode(…, true)`.
@@ -791,6 +791,11 @@ against MySQL and WordPress bootstrap; the PR proves or disproves it with
 numbers. A response-building action is used instead of a collection hook, whose
 return contract is a row or void; it exercises the query, callback, conversion,
 and response pipeline without adding an artificial collection lifecycle.
+The completed warm WordPress/SQLite experiment is in
+`docs/spikes/js-references-pipeline.md`: 1.864 → 3.194 ms/request, 505 validated
+requests per side, zero errors. It includes the final checked helpers. The
+shared-host CLI run has opcache disabled and no isolated MySQL/PHP-FPM profile,
+so it does not establish that overhead is small relative to bootstrap or MySQL.
 
 ---
 

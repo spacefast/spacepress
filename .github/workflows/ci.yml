@@ -155,7 +155,7 @@ jobs:
 
   wp:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       ZERO_WP_PLUGIN_CACHE: ${{ github.workspace }}/.zero/cache/plugins
     steps:

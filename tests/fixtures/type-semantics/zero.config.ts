@@ -6,7 +6,8 @@ type Draft = Entry;
 type Labels<T> = { [P in keyof T]: string };
 type Intersected = { note?: string } & { note: string | undefined };
 type OptionalConflict = { note?: string } & { note?: number };
-const labels: Labels<{ note?: number }> = {};
+const labels: Labels<{ note?: number }> = { note: undefined };
+const optionalSnapshot: { note?: string } = { note: undefined };
 const intersected: Intersected = { note: undefined };
 const optionalConflict: OptionalConflict = {};
 type Snapshot = Required<Pick<Draft, "id" | "note">>;
@@ -21,6 +22,7 @@ type Report = {
   labels: Labels<{ note?: number }>;
   intersected: Required<Intersected>;
   optionalConflict: OptionalConflict;
+  optionalSnapshot: { note?: string };
   snapshot: Snapshot;
   flags: Flags<"ready" | "visible">;
   state: State;
@@ -65,6 +67,7 @@ export default defineConfig({
           labels,
           intersected,
           optionalConflict,
+          optionalSnapshot,
           snapshot,
           flags,
           state: "draft",

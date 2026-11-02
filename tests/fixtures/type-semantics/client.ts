@@ -47,3 +47,13 @@ const absentIntersection: Actions["typeReport"]["output"]["intersected"] = {};
 // @ts-expect-error conflicting optional value domains admit no string
 const conflictString: Actions["typeReport"]["output"]["optionalConflict"] = { note: "value" };
 void [optionalLabels, intersectionNote, requiredIntersection, optionalConflict, definiteIntersection, absentIntersection, conflictString];
+
+const presentUndefined: Actions["typeReport"]["output"]["optionalSnapshot"] = { note: null };
+const nullableLabel: Actions["typeReport"]["output"]["labels"] = { note: null };
+if (report.optionalSnapshot.note !== undefined) {
+  const nullableNote: string | null = report.optionalSnapshot.note;
+  // @ts-expect-error a present optional value can be null on the PHP wire
+  const definiteNote: string = report.optionalSnapshot.note;
+  void [nullableNote, definiteNote];
+}
+void [presentUndefined, nullableLabel];

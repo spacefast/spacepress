@@ -324,7 +324,8 @@ export default defineConfig({
       const weak: { x: number } extends { y?: string } ? "yes" : "no" = "no";
       const intersection: { note?: string } & { note: string | undefined } = { note: undefined };
       const optionalConflict: { note?: string } & { note?: number } = {};
-      const directLabels: { [P in keyof { note?: number }]: string } = {};
+      const directLabels: { [P in keyof { note?: number }]: string } = { note: undefined };
+      const optionalSnapshot: { note?: string } = { note: undefined };
       const requiredUndefined: Required<{ label?: string | undefined }> = { label: "present" };
       const both: LanguageBoth = { id: 9, extra: "x" };
       const boxed: LanguageConstrained<{ id: number; title: string }> = { item: { id: 9, title: "extra" } };
@@ -333,7 +334,7 @@ export default defineConfig({
       const shadowed: Readonly<number> = { box: 7 };
       return { classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
         classInstance: boxedView.value instanceof LanguageView, classType: typeof LanguageDraftView,
-        required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, optionalConflict, directLabels, intersection: { note: intersection.note ?? null }, both, boxed, shadowed, collapsed,
+        required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, optionalConflict, directLabels: { note: directLabels.note ?? null }, optionalSnapshot: { note: optionalSnapshot.note ?? null }, intersection: { note: intersection.note ?? null }, both, boxed, shadowed, collapsed,
         missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
     }),
     refsReceiver: run(() => {

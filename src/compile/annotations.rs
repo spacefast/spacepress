@@ -851,7 +851,13 @@ fn runtime_type(t: Ty) -> Ty {
         Ty::Obj(fields) => Ty::Obj(
             fields
                 .into_iter()
-                .map(|(k, (t, opt))| (k, (runtime_type(t), opt)))
+                .map(|(k, (t, opt))| {
+                    // Optional presence also admits a present undefined value.
+                    // Keep this lift at the runtime boundary so Required can
+                    // remove optional undefined during annotation normalization.
+                    let t = if opt { Ty::union([t, Ty::Undefined]) } else { t };
+                    (k, (runtime_type(t), opt))
+                })
                 .collect(),
         ),
         Ty::Map(t) => Ty::Map(Box::new(runtime_type(*t))),

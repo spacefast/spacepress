@@ -1,14 +1,15 @@
-# Authoring direction: content, data and optional pages
+# Authoring direction: content, data, files and optional pages
 
 Selected direction, 2026-11-02. This is a design and implementation brief,
 not documentation of released APIs. Main at `2700ebc1` has the previous
-config surface. Explicit storage and class support are separate implementation
+config surface. Explicit storage, S3 uploads and class support are implementation
 changes in progress. The pages and agents proposal remains a draft.
 
 The latest owner requirements are explicit: collections and tables are
-different authoring concepts, both support relations, TypeScript support
-must grow, and the product must earn a better authoring experience than
-Payload, EmDash and Sanity. This supersedes #55's proposed storage inference.
+different authoring concepts, both support relations, files need an S3-compatible
+backend for all managed uploads, TypeScript support must grow, and the product
+must earn a better authoring experience than Payload, EmDash and Sanity.
+This supersedes #55's proposed storage inference.
 It does not approve every unrelated deletion or default in #55.
 
 ## The smallest app
@@ -104,6 +105,48 @@ different authority contracts. SQL joins, filters and pagination must not leak
 denied target rows. An SQL foreign-key declaration alone cannot provide
 referential integrity against shared `wp_posts`; Zero must validate the target
 kind and implement the declared delete behavior at its write boundary.
+
+## Files and stateless app replicas
+
+Files are the app-facing upload resource. An S3 bucket is a physical storage
+option, separate from a collection or SQL table. Keep logical file names,
+permissions and typed file references independent of provider bucket names.
+Both collections and tables can reference files and media.
+
+Configure a shared storage backend for managed uploads, with S3 bucket, region,
+optional compatible-service endpoint, path-style addressing and an app-specific
+object prefix. The implementation must settle the exact option spelling and
+provide an executable config; this brief does not introduce an accepted API.
+Runtime environment references supply credentials. Generated clients, public
+schemas, build artifacts and diagnostics must not contain credential values.
+
+The S3 backend must cover private files, public media originals, generated
+image sizes and crops, and uploads through the supported native editor. An
+S3 setting that only changes private-file downloads does not meet this
+requirement. Qualify any third-party upload integrations separately rather
+than claiming their support from a storage adapter alone.
+
+Keep file metadata, ownership, reference validation and cleanup state in the
+existing database. Keep durable bytes in object storage. A successful upload
+must be readable by another app replica after the first replica's local upload
+directory is removed. Temporary upload and image-processing files are allowed,
+must be cleaned up, and must not become the durable source. Database state also
+needs a shared durable database; moving bytes to S3 alone does not make a local
+database deployment stateless.
+
+Private reads retain authorization and bounded signed grants. Public media
+needs stable URLs for originals and derivatives. Provider failures must not
+report success or silently fall back to local durable storage. Upload rollback,
+deletion and retry must account for the separate database and object store;
+use existing durable jobs where cleanup needs recovery. Local storage can
+remain an explicit development option.
+
+Acceptance requires real WordPress and an actual S3-compatible service: upload
+a private non-image and an image with a derivative through one replica, then
+read and delete through a fresh replica without the first replica's local
+files. Existing access, MIME/size validation and reference behavior must hold.
+The implementation must also exercise provider failure and credential
+redaction through their existing test owners.
 
 ## Special files
 
@@ -209,6 +252,7 @@ criteria; it is not an executed current-version comparison of all products.
 |---|---|
 | Start a content app | One config and one dev command; working content editor/client, not plugin setup instructions on the main path |
 | Mix content and app data | Explicit collection/table choice, same field vocabulary and relation queries, no storage inference surprises |
+| Store uploads | One files surface with S3 options; private files and media survive replacement of an app replica |
 | Edit related content | Labeled searchable pickers, useful empty states and field errors; do not expose raw foreign-key IDs as the main editing flow |
 | Change the schema | Explain the migration and storage choice; preserve existing content and show located errors before changing output |
 | Publish content | Visible drafts/publish permissions, preview and editor recovery; no success message before durable completion |
@@ -230,14 +274,23 @@ capabilities and gaps rather than claiming full product equivalence.
 2. Run the current system against real disposable WordPress, its pinned plugins
    and database. Report exact revisions and failed checks, including editor,
    installed-system and migration seams; do not replace these with mocks.
-3. Reconcile this direction with the draft pages design. Keep the reviewed
+3. Implement and independently review S3 uploads, including media derivatives
+   and the replica-replacement proof. Complete the admin login and real
+   list/create/edit/save/reload journey; packaging and unit tests do not prove
+   browser reachability or usable screens.
+4. Reconcile this direction with the draft pages design. Keep the reviewed
    process/session drain, cache, password, private-memory and durable retirement
    contracts. Do not call them qualified because the design passed review.
-4. Implement optional pages and agents in dependency order. One qualified
+5. Implement optional pages and agents in dependency order. One qualified
    Action Scheduler runner, pinned DM adapter and qualified approval bridge
    remain acceptance gates, not claims about shipped code.
-5. Update executable examples, public docs and the explainer from the exact
+6. Update executable examples, public docs and the explainer from the exact
    merged implementation. Maintain one behavioral test owner per seam.
 
-The fresh system run and new implementation reviews are still in progress.
-This file makes no passing-test claim on their behalf.
+Fresh validation of the tracked tree at main `2700ebc1` passed its existing
+Rust, PHP, types/client, Docker WordPress, system/installed, legacy, identity,
+admin bundle and native/WASM/site owners. A separate real-browser audit found
+an admin login loop and missing or blank SPA routes; native Gutenberg saved
+successfully. Those admin gaps need implementation and a real browser journey.
+The baseline validation does not cover the collection/table, class or S3
+changes in progress, or qualify the draft pages/agents implementation.

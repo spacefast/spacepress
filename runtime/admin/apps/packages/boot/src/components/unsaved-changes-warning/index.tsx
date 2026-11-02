@@ -1,6 +1,7 @@
 import { useEffect } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
+import { useEntityValidity } from '@zero-admin/admin-toolkit';
 
 /**
  * Warns the user if there are unsaved changes before leaving the editor.
@@ -10,6 +11,9 @@ import { store as coreStore } from '@wordpress/core-data';
  * and empty returnValue for legacy browser compatibility.
  */
 export default function UnsavedChangesWarning() {
+	const { isEntityValid, documentChanges } = useEntityValidity();
+	const valid = isEntityValid && (documentChanges?.valid ?? true);
+	const documentDirty = documentChanges?.dirty ?? false;
 	const hasUnsavedChanges = useSelect((select) => {
 		const dirtyEntityRecords = select(coreStore).__experimentalGetDirtyEntityRecords();
 		return dirtyEntityRecords.length > 0;
@@ -17,7 +21,7 @@ export default function UnsavedChangesWarning() {
 
 	useEffect(() => {
 		// Performance optimization: only attach listener when there are unsaved changes
-		if (!hasUnsavedChanges) {
+		if (!hasUnsavedChanges && !documentDirty && valid) {
 			return;
 		}
 
@@ -39,7 +43,7 @@ export default function UnsavedChangesWarning() {
 		return () => {
 			window.removeEventListener('beforeunload', warnIfUnsavedChanges);
 		};
-	}, [hasUnsavedChanges]);
+	}, [hasUnsavedChanges, documentDirty, valid]);
 
 	return null;
 }

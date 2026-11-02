@@ -182,6 +182,11 @@ jobs:
             .zero/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: runtime/admin/apps
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: runtime/admin/apps
       - run: tests/wp/run.sh
       - name: Shared S3 storage across disposable replicas
         run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3

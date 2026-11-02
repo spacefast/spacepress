@@ -15,9 +15,6 @@ use function Zero\db;
 /** The media routes (phase-1 §4.6 + phase-2 §7.2 `PATCH /media/{id}`). */
 final class Module
 {
-    /** Fixed like the rest of media: editors change alt text and focal points. */
-    private const UPDATE = ['role' => 'editor'];
-
     public static function register(): void
     {
         Extensions::route('media', self::dispatch(...));
@@ -81,7 +78,7 @@ final class Module
     /** `PATCH /media/{id}` `{ alt?, focal? }`. */
     private static function update(int $id, string $body, Viewer $viewer): ?array
     {
-        Access::require(self::UPDATE, $viewer, 'update', null, 'update media');
+        Access::require(Access::MEDIA['update'], $viewer, 'update', null, 'update media');
         try {
             $in = trim($body) === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {

@@ -3,7 +3,11 @@
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/collections"
+		"path": "/"
 	},
-	"license": "GPL-2.0-or-later"
+	"license": "GPL-2.0-or-later",
+	"dependencies": {
+		"@zero-admin/schema": "workspace:*",
+		"@wordpress/route": "catalog:"
+	}
 }

@@ -67,6 +67,7 @@ final class WpMedia implements Media
     /** Register the sizes on every request, so wp-admin and core REST uploads get them too. */
     public static function boot(): void
     {
+        \Zero\Wp\Media\Rest::boot();
         add_action('init', static function (): void {
             // After Runtime::app's description hook (plugins_loaded), which reports platform versions.
             \Zero\Extensions::schemaDescribe(static function (array $description): array {
@@ -229,7 +230,7 @@ final class WpMedia implements Media
     }
 
     /** API writes refuse a partial set of sizes (the transaction rolls back and can be retried). */
-    private static function requireRendered(): void
+    public static function requireRendered(): void
     {
         if (self::$failed !== []) {
             $failed = self::$failed;

@@ -1,2 +1,2 @@
 import '__i18n__';
-function t(){return null}var n=t,r=void 0,c="/collections";export{r as inspector,c as path,n as stage};
+import{Overview as t}from"@zero-admin/schema";var p=t,s=void 0,a="/";export{s as inspector,a as path,p as stage};

@@ -11,17 +11,8 @@ import { harness, wp } from "./env.ts";
 const site = harness.url;
 const content = fileURLToPath(new URL("./.wp-content/", import.meta.url));
 
-/** A WordPress login cookie for a harness user, as a browser would carry it. */
-async function loginCookie(role: "editor" | "subscriber"): Promise<string> {
-  const res = await fetch(`${site}/wp-login.php`, {
-    method: "POST", redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
-    body: new URLSearchParams({ log: role, pwd: `zero-test-${role}`, testcookie: "1" }),
-  });
-  const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-  assert.ok(cookie.includes("wordpress_logged_in"), `${role} signed in: ${res.status}`);
-  return cookie;
-}
+import { loginCookie } from "./login.ts";
+
 
 test("the built artifact ships zero-admin and the harness activated it after the app", () => {
   const manifest = JSON.parse(readFileSync(`${content}zero-manifest.json`, "utf8"));
@@ -31,16 +22,49 @@ test("the built artifact ships zero-admin and the harness activated it after the
   assert.deepEqual([admin?.status, admin?.version], ["active", manifest.zero]);
   // Activation registered and persisted the one rewrite rule, so pretty URLs reach the app.
   assert.equal(wp("option", "get", "zero_admin_rewrite"), manifest.zero);
+  // Plugins may enqueue an admin asset before REST has registered its handle.
+  const assets = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.admin.id});
+    wp_deregister_script('wp-color-picker');
+    wp_deregister_style('wp-color-picker');
+    wp_register_script('wp-color-picker', '/wp-admin/js/color-picker.min.js', ['iris'], 'plugin-kept', true);
+    wp_add_inline_script('wp-color-picker', 'window.zeroPickerConfig = true;', 'before');
+    wp_register_style('wp-color-picker', '/wp-admin/css/color-picker.min.css', ['wp-components'], 'style-kept');
+    wp_enqueue_script('wp-color-picker');
+    wp_deregister_script('iris');
+    wp_deregister_script('xfn');
+    wp_enqueue_script('xfn');
+    wp_enqueue_style('wp-color-picker');
+    $request = new WP_REST_Request('GET', '/wp/v2/editor/assets');
+    $request->set_param('standalone', true);
+    $response = rest_do_request($request);
+    echo wp_json_encode(['status' => $response->get_status(), 'data' => $response->get_data()]);
+  `));
+  assert.equal(assets.status, 200);
+  assert.match(assets.data.scripts['wp-color-picker'].src, /color-picker/);
+  assert.match(assets.data.scripts.iris.src, /iris/);
+  assert.match(assets.data.scripts.xfn.src, /xfn/);
+  assert.match(assets.data.styles['wp-color-picker'].src, /color-picker/);
+  assert.equal(assets.data.scripts['wp-color-picker'].version, 'plugin-kept');
+  assert.equal(assets.data.styles['wp-color-picker'].version, 'style-kept');
+  assert.match(assets.data.inline_scripts.before['wp-color-picker'], /window.zeroPickerConfig = true/);
 });
 
 test("/zero-admin/ asks anonymous visitors to sign in and serves the committed build to users", async () => {
   const anon = await fetch(`${site}/zero-admin/`, { redirect: "manual" });
   assert.equal(anon.status, 302);
   assert.ok(anon.headers.get("location")!.startsWith(`${site}/wp-login.php?`), anon.headers.get("location")!);
+  const deepLink = `${site}/zero-admin/collections/posts?search=Draft`;
+  const deep = await fetch(deepLink, { redirect: "manual" });
+  assert.equal(deep.status, 302);
+  assert.equal(new URL(deep.headers.get("location")!).searchParams.get("redirect_to"), deepLink);
 
   for (const role of ["editor", "subscriber"] as const) {
-    const page = await fetch(`${site}/zero-admin/`, { headers: { cookie: await loginCookie(role) } });
+    const cookie = await loginCookie(site, role);
+    assert.equal(/(?:^|; )wordpress_(?:sec_)?[a-f0-9]+=/.test(cookie), false, 'frontend does not receive admin-scoped cookies');
+    const page = await fetch(`${site}/zero-admin/`, { headers: { cookie } });
     assert.equal(page.status, 200, `${role} is served the page`);
+    assert.match(page.headers.get('cache-control') ?? '', /no-cache|no-store/);
     const html = await page.text();
     assert.ok(html.includes('id="zero-admin-app"'), `${role} gets the app shell`);
     // The import map names the built boot module from the plugin's own build directory: the page

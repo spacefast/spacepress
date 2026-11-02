@@ -13,7 +13,7 @@ final class Access
     public const DEFAULT_READ = ['role' => 'anyone'];
     public const DEFAULT_WRITE = ['role' => 'editor'];
     /** The built-in media collection's fixed rules (§4.6). */
-    public const MEDIA = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'delete' => ['role' => 'editor']];
+    public const MEDIA = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']];
 
     /** @return array{read: array, create: array, update: array, delete: array} */
     public static function collectionRules(array $spec): array

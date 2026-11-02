@@ -1,2 +1,2 @@
 import '__i18n__';
-function e(o){return null}var l=e,r=void 0,c="/collections/$collection/$slug";export{r as inspector,c as path,l as stage};
+import{PlainDocument as t}from"@zero-admin/schema";var c=t,s=void 0,l="/collections/$collection/$slug";export{s as inspector,l as path,c as stage};

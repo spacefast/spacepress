@@ -43,7 +43,8 @@
 		"@zero-admin/theme": "workspace:*",
 		"clsx": "catalog:",
 		"react": "catalog:",
-		"react-dom": "catalog:"
+		"react-dom": "catalog:",
+		"@zero-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

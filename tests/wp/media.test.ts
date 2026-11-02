@@ -6,7 +6,7 @@ import { createClient, ZeroError } from "./app/zero/client/index.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
-import { api, auth, harness, http, ok, problem, sql, wp } from "./env.ts";
+import { api, auth, core, harness, http, ok, problem, run, sql, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
 function splitPng(): Buffer<ArrayBuffer> {
@@ -141,27 +141,180 @@ test("a crop that fails to render rolls the focal change back, and the same PATC
     assert.equal(failed.status, 500, JSON.stringify(failed.json));
     assert.equal((await ok("GET", `/media/${img.id}`)).focal, null, "the focal point did not commit");
     assert.deepEqual(sizeOnDisk(img.id, "zero_card"), before, "the previous crop is still in place");
+    const attachments = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
+    const disk = () => wp("eval", "echo wp_json_encode(glob(wp_upload_dir()['path'] . '/*'));");
+    const files = disk();
+    const form = new FormData();
+    form.append("file", new Blob([splitPng()], { type: "image/png" }), `failed-native-${run}.png`);
+    const nativeFailed = await http("POST", `${core}/media`, { as: "author", form });
+    assert.equal(nativeFailed.status, 400, JSON.stringify(nativeFailed.json));
+    assert.equal(nativeFailed.json.code, "rest_upload_image_type_not_supported", "core retains its image-editor validation");
+    assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n, attachments);
+    assert.equal(disk(), files);
   } finally {
     wp("option", "delete", "zero_test_editor_fails");
   }
   const retried = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
   assert.deepEqual(retried.focal, { x: 0, y: 0 });
   assert.deepEqual(sizeOnDisk(img.id, "zero_card").rgb, [255, 0]);
+
+  // A late refusal may refresh another attachment or create an edited attachment. Rollback
+  // owns only files actually created by this operation, never the committed source's metadata.
+  muPlugin("zero-test-native-upload", `<?php
+add_filter('wp_generate_attachment_metadata', function ($meta) {
+    if (get_option('zero_test_native_upload') === 'generate') throw new RuntimeException('Native metadata refused');
+    return $meta;
+}, 100);
+add_action('rest_after_insert_attachment', function () {
+    if (get_option('zero_test_native_upload') !== 'refresh') return;
+    $id = (int) get_option('zero_test_native_source');
+    wp_update_attachment_metadata($id, wp_get_attachment_metadata($id));
+    throw new RuntimeException('Native insert refused after existing metadata refresh');
+});
+add_filter('wp_edited_image_metadata', function ($meta) {
+    if (get_option('zero_test_native_upload') === 'edit') throw new RuntimeException('Native edited metadata refused');
+    return $meta;
+});
+`);
+  const source = await http("GET", `${core}/media/${img.id}`, { as: "editor" });
+  assert.equal(source.status, 200);
+  const current = await ok("GET", `/media/${img.id}`);
+  const sourceUrls = [source.json.source_url, ...Object.values(current.sizes).map((size) => {
+    assert.ok(typeof size === "object" && size !== null && "url" in size && typeof size.url === "string");
+    return size.url;
+  })];
+  const bytes = async (url: string) => {
+    const response = await fetch(url);
+    assert.equal(response.status, 200, url);
+    return Buffer.from(await response.arrayBuffer()).toString("base64");
+  };
+  const committedBytes = await Promise.all(sourceUrls.map(bytes));
+  const attachments = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
+  const disk = () => wp("eval", "echo wp_json_encode(glob(wp_upload_dir()['path'] . '/*'));");
+  const files = disk();
+  wp("option", "update", "zero_test_native_source", String(img.id));
+  try {
+    for (const phase of ["generate", "refresh", "edit"]) {
+      wp("option", "update", "zero_test_native_upload", phase);
+      const form = new FormData();
+      form.append("file", new Blob([splitPng()], { type: "image/png" }), `rollback-native-${phase}-${run}.png`);
+      const failed = phase === "edit"
+        ? await http("POST", `${core}/media/${img.id}/edit`, { as: "editor", body: { src: source.json.source_url, rotation: 90 } })
+        : await http("POST", `${core}/media`, { as: "author", form });
+      assert.equal(failed.status, 500, `${phase}: ${JSON.stringify(failed.json)}`);
+      assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n, attachments, phase);
+      assert.equal(disk(), files, `${phase}: new files roll back and committed files remain`);
+      assert.deepEqual(await Promise.all(sourceUrls.map(bytes)), committedBytes, `${phase}: committed source and renditions retain their bytes`);
+    }
+  } finally {
+    wp("option", "delete", "zero_test_native_upload");
+    wp("option", "delete", "zero_test_native_source");
+  }
+  const edited = await http("POST", `${core}/media/${img.id}/edit`, { as: "editor", body: { src: source.json.source_url, rotation: 90 } });
+  assert.equal(edited.status, 201, JSON.stringify(edited.json));
+  assert.notEqual(edited.json.id, img.id, "core creates a distinct edited attachment on retry");
+  assert.deepEqual([edited.json.media_details.width, edited.json.media_details.height], [200, 400]);
+  await bytes(edited.json.source_url);
+  assert.deepEqual(await Promise.all(sourceUrls.map(bytes)), committedBytes, "successful editing also preserves its source");
 });
 
-test("core uploads outside Zero get the zero_* sizes", async () => {
-  const imported = wp("eval", `
-    $tmp = wp_tempnam('core.png');
-    $img = imagecreatetruecolor(300, 300);
-    imagepng($img, $tmp);
-    require_once ABSPATH . 'wp-admin/includes/media.php';
-    require_once ABSPATH . 'wp-admin/includes/file.php';
-    require_once ABSPATH . 'wp-admin/includes/image.php';
-    echo media_handle_sideload(['name' => 'core.png', 'tmp_name' => $tmp], 0);
-  `);
-  const row = await ok("GET", `/media/${imported}`);
+test("native uploads enforce Zero authority and retain core validation, metadata, response and image sizes", async () => {
+  const parent = Number(wp("post", "create", "--post_type=post", "--post_status=draft", `--post_author=${harness.users.author.id}`, "--post_title=Native media parent", "--porcelain"));
+  const multipart = () => {
+    const form = new FormData();
+    form.append("file", new Blob([splitPng()], { type: "image/png" }), `native-${run}.png`);
+    for (const [name, value] of Object.entries({ post: String(parent), title: "Native title", caption: "Native caption", description: "Native description", alt_text: "Native upload alt" })) form.append(name, value);
+    return form;
+  };
+  // A real WP capability grant makes core's upload permission pass, without making this viewer
+  // a Zero author. The request must still be refused before any attachment is persisted.
+  wp("user", "add-cap", "subscriber", "upload_files");
+  try {
+    const before = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
+    const deniedForm = multipart();
+    deniedForm.delete("post");
+    const refused = await http("POST", `${core}/media`, { as: "subscriber", form: deniedForm });
+    assert.equal(refused.status, 403, JSON.stringify(refused.json));
+    assert.equal(refused.json.code, "forbidden");
+    assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n, before);
+  } finally {
+    wp("user", "remove-cap", "subscriber", "upload_files");
+  }
+  const uploaded = await http("POST", `${core}/media`, { as: "author", form: multipart() });
+  assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+  assert.deepEqual(
+    [uploaded.json.type, uploaded.json.post, uploaded.json.title.raw, uploaded.json.caption.raw, uploaded.json.description.raw, uploaded.json.alt_text],
+    ["attachment", parent, "Native title", "Native caption", "Native description", "Native upload alt"],
+  );
+  assert.equal(uploaded.json.mime_type, "image/png");
+  assert.equal(uploaded.json._links.self[0].href, `${core}/media/${uploaded.json.id}`);
+  const row = await ok("GET", `/media/${uploaded.json.id}`);
+  assert.equal(row.alt, "Native upload alt");
   assert.deepEqual([row.sizes.card.width, row.sizes.card.height, row.sizes.wide.width], [120, 120, 200]);
   assert.equal((await fetch(row.sizes.card.url)).status, 200);
+
+  // Gutenberg and other WP clients may send raw bytes instead of multipart. Keep core's
+  // Content-Disposition, hash and MIME validation instead of parsing this transport again.
+  const headers = { ...auth("author"), "content-type": "image/png", "content-disposition": `attachment; filename="raw-${run}.png"` };
+  const badHash = await fetch(`${core}/media`, { method: "POST", headers: { ...headers, "content-md5": "wrong" }, body: splitPng() });
+  assert.equal(badHash.status, 412, await badHash.text());
+  const raw = await fetch(`${core}/media?title=Raw%20title`, { method: "POST", headers, body: splitPng() });
+  const rawRow = await raw.json();
+  assert.equal(raw.status, 201, JSON.stringify(rawRow));
+  assert.equal(rawRow.title.raw, "Raw title");
+  assert.equal((await ok("GET", `/media/${rawRow.id}`)).mime, "image/png");
+  const invalid = new FormData();
+  invalid.append("file", new Blob(["<?php echo 'invalid';"], { type: "application/x-php" }), "invalid.php");
+  const invalidUpload = await http("POST", `${core}/media`, { as: "author", form: invalid });
+  assert.equal(invalidUpload.status, 500, JSON.stringify(invalidUpload.json));
+  assert.equal(invalidUpload.json.code, "rest_upload_unknown_error");
+});
+
+test("native alt/delete share Zero rules and reference cleanup while caption/title retain WP permissions", async () => {
+  const img = await uploadSplit();
+  const post = await ok("POST", "/posts", { as: "admin", body: { title: `Native reference ${run}`, cover: img.id } });
+  const refusedAlt = await http("POST", `${core}/media/${img.id}`, { as: "author", body: { alt_text: "Bypass", title: "Must not change" } });
+  assert.equal(refusedAlt.status, 403, JSON.stringify(refusedAlt.json));
+  assert.equal(refusedAlt.json.code, "forbidden");
+  assert.equal((await ok("GET", `/media/${img.id}`)).alt, null);
+  const ownCaption = await http("POST", `${core}/media/${img.id}`, { as: "author", body: { title: "WP title", caption: "WP caption" } });
+  assert.equal(ownCaption.status, 200, JSON.stringify(ownCaption.json));
+  assert.deepEqual([ownCaption.json.title.raw, ownCaption.json.caption.raw], ["WP title", "WP caption"]);
+  const other = await uploadSplit();
+  wp("post", "update", String(other.id), `--post_author=${harness.users.admin.id}`);
+  assert.equal((await http("POST", `${core}/media/${other.id}`, { as: "author", body: { caption: "Not mine" } })).status, 403, "WP still denies another owner's caption");
+  const edited = await http("POST", `${core}/media/${img.id}`, { as: "editor", body: { alt_text: "Editor alt" } });
+  assert.equal(edited.status, 200, JSON.stringify(edited.json));
+  assert.equal(edited.json.alt_text, "Editor alt");
+  assert.equal((await ok("GET", `/media/${img.id}`)).alt, "Editor alt");
+  const refusedDelete = await http("DELETE", `${core}/media/${img.id}?force=true`, { as: "author" });
+  assert.equal(refusedDelete.status, 403, JSON.stringify(refusedDelete.json));
+  assert.equal((await ok("GET", `/posts/${post.id}`, { as: "admin" })).cover, img.id);
+  assert.equal((await fetch(img.url)).status, 200);
+
+  // A real native-plugin refusal must undo the reference writes too, not merely keep the file.
+  muPlugin("zero-test-native-delete", "<?php\nadd_filter('pre_delete_attachment', fn ($delete) => get_option('zero_test_native_delete') === 'early' ? false : $delete);\nadd_action('rest_delete_attachment', function () { if (get_option('zero_test_native_delete') === 'late') throw new RuntimeException('Native deletion refused'); });\n");
+  try {
+    for (const phase of ["early", "late"]) {
+      wp("option", "update", "zero_test_native_delete", phase);
+      const failed = await http("DELETE", `${core}/media/${img.id}?force=true`, { as: "editor" });
+      assert.equal(failed.status, 500, JSON.stringify(failed.json));
+      assert.equal(failed.json.code, phase === "early" ? "rest_cannot_delete" : "internal");
+      assert.equal((await ok("GET", `/posts/${post.id}`, { as: "admin" })).cover, img.id);
+      assert.equal((await ok("GET", `/media/${img.id}`)).alt, "Editor alt");
+      assert.equal((await fetch(img.url)).status, 200);
+      assert.equal((await fetch(img.sizes.card.url)).status, 200);
+    }
+  } finally {
+    wp("option", "delete", "zero_test_native_delete");
+  }
+  const deleted = await http("DELETE", `${core}/media/${img.id}?force=true`, { as: "editor" });
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.json));
+  assert.deepEqual([deleted.json.deleted, deleted.json.previous.id, deleted.json.previous.alt_text], [true, img.id, "Editor alt"]);
+  assert.equal((await ok("GET", `/posts/${post.id}`, { as: "admin" })).cover, null);
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE ID = ${img.id}`)[0].n, "0");
+  assert.equal((await fetch(img.url)).status, 404);
+  assert.equal((await fetch(img.sizes.card.url)).status, 404);
 });
 
 test("core regeneration: the missing-sizes pass fills Zero sizes without touching a same-shape theme crop; a full pass replaces renditions", async () => {

@@ -3,8 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/media",
-		"beforeLoad": true
+		"path": "/media"
 	},
 	"dependencies": {
 		"@wordpress/block-editor": "catalog:",
@@ -31,7 +30,8 @@
 		"@zero-admin/fields-next": "workspace:*",
 		"@zero-admin/views": "workspace:*",
 		"clsx": "catalog:",
-		"dequal": "catalog:"
+		"dequal": "catalog:",
+		"@zero-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

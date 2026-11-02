@@ -46,6 +46,7 @@ if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
   exit
 fi
 node --test --test-concurrency=1 "$here"/*.test.ts
+"$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.
 "$here/admin/subdir-run.sh"
 # Lane M: an original Zero 0.8 site migrated in place, on a fresh stack running the migrated app.

@@ -53,6 +53,9 @@ export function usePostFields( { postType }: { postType: string } ) {
 
 		return [
 			...coreFields
+				// Attachment attribution is outside Zero's media editing scope. Core's
+				// author selector requests edit-context users, which editors cannot list.
+				.filter( ( field: Field< Post > ) => postType !== 'attachment' || field.id !== 'author' )
 				.map( ( rawField: Field< Post > ) => {
 					// Avoid including fields that are already included in a field collection.
 					if ( fieldCollectionsIds.has( rawField.id ) ) {

@@ -162,6 +162,7 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 			$defaults = new WP_Scripts();
 			foreach ( $defaults->registered as $handle => $dependency ) {
 				if ( ! isset( wp_scripts()->registered[ $handle ] ) ) {
+					wp_scripts()->add( $handle, $dependency->src, $dependency->deps, $dependency->ver, $dependency->args );
 					wp_scripts()->registered[ $handle ] = $dependency;
 				}
 			}
@@ -170,6 +171,7 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 			$defaults = new WP_Styles();
 			foreach ( $defaults->registered as $handle => $dependency ) {
 				if ( ! isset( wp_styles()->registered[ $handle ] ) ) {
+					wp_styles()->add( $handle, $dependency->src, $dependency->deps, $dependency->ver, $dependency->args );
 					wp_styles()->registered[ $handle ] = $dependency;
 				}
 			}

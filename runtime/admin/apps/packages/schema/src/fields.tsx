@@ -11,6 +11,7 @@ import {
 	ToggleControl,
 } from '@wordpress/components';
 import {
+	EditingObjects,
 	allowed,
 	defaults,
 	object,
@@ -32,7 +33,7 @@ import {
 function scalar(v: unknown): string {
 	return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
 }
-type FieldState = { created: WeakSet<object>; operation: 'create' | 'update' };
+type FieldState = { objects: EditingObjects; operation: 'create' | 'update' };
 const EditingState = createContext<FieldState | null>(null);
 function Reference({
 	column,
@@ -245,7 +246,7 @@ function Field({
 	onChange,
 	disabled,
 	editing,
-	created,
+	objects,
 	operation,
 }: {
 	column: Column;
@@ -253,7 +254,7 @@ function Field({
 	onChange: (v: unknown) => void;
 	disabled: boolean;
 	editing: boolean;
-	created: WeakSet<object>;
+	objects: EditingObjects;
 	operation: FieldState['operation'];
 }) {
 	const writable = (column: Column) =>
@@ -274,7 +275,7 @@ function Field({
 				: {};
 		const persisted =
 			editing && value != null &&
-			!(typeof value === 'object' && created.has(value));
+			!(typeof value === 'object' && objects.isNew(value));
 		return (
 			<fieldset>
 				<legend>{c.label}</legend>
@@ -284,7 +285,8 @@ function Field({
 					values={row}
 					onChange={(key, v) => {
 						const next = { ...row, [key]: v };
-						if (!persisted) created.add(next);
+						objects.replace(row, next);
+						if (!persisted) objects.mark(next);
 						onChange(next);
 					}}
 					editing={persisted}
@@ -307,14 +309,20 @@ function Field({
 						c.type === 'blocks' ? (c.layouts[layout] ?? {}) : c.fields;
 					const persisted =
 						editing &&
-						!(item !== null && typeof item === 'object' && created.has(item));
+						!(item !== null && typeof item === 'object' && objects.isNew(item));
 					const update = (v: unknown, fresh = false) => {
-						if ((!persisted || fresh) && v !== null && typeof v === 'object')
-							created.add(v);
+						if (v !== null && typeof v === 'object') {
+							if (item !== null && typeof item === 'object') objects.replace(item, v);
+							if (!persisted || fresh) objects.mark(v);
+						}
 						onChange(rows.map((r, i) => (i === index ? v : r)));
 					};
 					return (
-						<div className="zero-schema-repeat" key={index}>
+						<div className="zero-schema-repeat" key={
+							item !== null && typeof item === 'object'
+								? `${objects.key(item)}:${c.type === 'blocks' ? layout : ''}`
+								: index
+						}>
 							{c.type === 'mediaList' ? (
 								<Reference
 									column={{
@@ -368,7 +376,7 @@ function Field({
 							: c.type === 'blocks'
 								? { layout: layouts[0], ...defaults(c.layouts[layouts[0]], writable) }
 								: defaults(c.fields, writable);
-						if (item) created.add(item);
+						if (item) objects.mark(item);
 						onChange([...rows, item]);
 					}}
 				>
@@ -491,6 +499,7 @@ export function Fields({
 	editing = true,
 	disabled = false,
 	omit = [],
+	objects,
 }: {
 	fields: Columns;
 	values: Row;
@@ -498,12 +507,13 @@ export function Fields({
 	editing?: boolean;
 	disabled?: boolean;
 	omit?: string[];
+	objects?: EditingObjects;
 }) {
 	const { role } = bootstrap();
 	const inherited = useContext(EditingState);
-	const [local] = useState(() => new WeakSet<object>());
+	const [local] = useState(() => new EditingObjects());
 	const state: FieldState = inherited ?? {
-		created: local,
+		objects: objects ?? local,
 		operation: editing ? 'update' : 'create',
 	};
 	return (
@@ -526,7 +536,7 @@ export function Fields({
 							onChange={(v) => onChange(key, v)}
 							disabled={disabled || !allowed(state.operation === 'create' ? c.create : c.write, role)}
 							editing={editing}
-							created={state.created}
+							objects={state.objects}
 							operation={state.operation}
 						/>
 					))}

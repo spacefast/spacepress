@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginDocumentSettingPanel, store as editorStore } from '@wordpress/editor';
 import { useParams } from '@wordpress/route';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import {
+	EditingObjects,
 	Fields,
 	Loading,
 	collectionSpec,
@@ -38,6 +40,7 @@ function DocumentFields({
 	collection: string;
 	id: string;
 }) {
+	const [objects] = useState(() => new EditingObjects());
 	const state = useLoad(() => collectionSpec(collection), [collection]);
 	const transport = native(collection);
 	const record = useSelect(
@@ -84,7 +87,8 @@ function DocumentFields({
 			) : (
 				<Fields
 					fields={state.value.columns}
-					values={fromNative(state.value, record)}
+					values={fromNative(state.value, record, objects)}
+					objects={objects}
 					omit={[
 						state.value.primaryKey,
 						state.value.title ?? '',
@@ -94,7 +98,7 @@ function DocumentFields({
 						'publishedAt',
 					]}
 					onChange={(key, value) => {
-						const edits = toNative(state.value, { [key]: value });
+						const edits = toNative(state.value, { [key]: value }, objects);
 						void editEntityRecord('postType', transport.postType, id, {
 							acf: {
 								...object(object(pending ?? {}).acf ?? {}),

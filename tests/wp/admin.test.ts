@@ -22,6 +22,29 @@ test("the built artifact ships zero-admin and the harness activated it after the
   assert.deepEqual([admin?.status, admin?.version], ["active", manifest.zero]);
   // Activation registered and persisted the one rewrite rule, so pretty URLs reach the app.
   assert.equal(wp("option", "get", "zero_admin_rewrite"), manifest.zero);
+  // Plugins may enqueue an admin asset before REST has registered its handle.
+  const assets = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.admin.id});
+    wp_deregister_script('wp-color-picker');
+    wp_deregister_style('wp-color-picker');
+    wp_enqueue_script('wp-color-picker');
+    wp_deregister_script('xfn');
+    wp_enqueue_script('xfn');
+    wp_enqueue_style('wp-color-picker');
+    wp_register_script('zero-test-existing', '/zero-test-existing.js', [], 'kept');
+    wp_add_inline_script('zero-test-existing', 'window.zeroExisting = true;', 'before');
+    wp_enqueue_script('zero-test-existing');
+    $request = new WP_REST_Request('GET', '/wp/v2/editor/assets');
+    $request->set_param('standalone', true);
+    $response = rest_do_request($request);
+    echo wp_json_encode(['status' => $response->get_status(), 'data' => $response->get_data()]);
+  `));
+  assert.equal(assets.status, 200);
+  assert.match(assets.data.scripts['wp-color-picker'].src, /color-picker/);
+  assert.match(assets.data.scripts.xfn.src, /xfn/);
+  assert.match(assets.data.styles['wp-color-picker'].src, /color-picker/);
+  assert.equal(assets.data.scripts['zero-test-existing'].version, 'kept');
+  assert.match(assets.data.inline_scripts.before['zero-test-existing'], /window.zeroExisting = true/);
 });
 
 test("/zero-admin/ asks anonymous visitors to sign in and serves the committed build to users", async () => {

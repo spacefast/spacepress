@@ -2,58 +2,72 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Fields } from './fields';
-import { columns, type Row } from './model';
+import { EditingObjects, columns, type Row } from './model';
+import { fromNative, toNative } from './api';
 
-test('new repeater items retain all editable fields while returned items retain masking after removal', async () => {
-	window.zeroAdmin = { native: {}, readable: [], role: 'admin' };
+test('native repeater edits retain provenance, JSON row identity and returned-field masking after removal', async () => {
+	window.zeroAdmin = { native: { posts: { path: '/wp/v2/zero_posts', postType: 'zero_posts', metaPrefix: 'zero_' } }, readable: [], role: 'admin' };
 	const fields = columns({
 		entries: { type: 'repeater', fields: {
-			open: { type: 'text' }, sealed: { type: 'text' },
+			open: { type: 'text' }, sealed: { type: 'text' }, metadata: { type: 'json' },
 		} },
 	});
+	const collection = { name: 'posts', label: 'Posts', columns: fields, primaryKey: 'id', access: {} };
 	function Form() {
-		const [values, setValues] = useState<Row>({ entries: [{ open: 'Returned' }, {}] });
+		const [objects] = useState(() => new EditingObjects());
+		const [record, setRecord] = useState<Row>(() => toNative(collection, {
+			entries: [{ open: 'Returned', metadata: { owner: 'first' } }, { metadata: { owner: 'second' } }, {}],
+		}));
+		const values = fromNative(collection, record, objects);
 		return <>
-			<Fields fields={fields} values={values}
-				onChange={(key, value) => setValues({ ...values, [key]: value })} />
+			<Fields fields={fields} values={values} objects={objects}
+				onChange={(key, value) => setRecord(toNative(collection, { [key]: value }, objects))} />
 			<output>{JSON.stringify(values)}</output>
 		</>;
 	}
 	const user = userEvent.setup();
 	render(<Form />);
-	expect(screen.getAllByRole('textbox')).toHaveLength(1);
+	expect(screen.getAllByRole('textbox', { name: 'Open' })).toHaveLength(1);
 	expect(screen.queryByRole('textbox', { name: 'Sealed' })).not.toBeInTheDocument();
 	await user.click(screen.getByRole('button', { name: 'Add Entries' }));
 	await user.type(screen.getAllByRole('textbox', { name: 'Open' })[1], 'New');
 	await user.type(screen.getByRole('textbox', { name: 'Sealed' }), 'Complete');
 	await user.click(screen.getByRole('button', { name: 'Remove 1' }));
+	expect(screen.getAllByRole('textbox', { name: /Metadata/ })[0])
+		.toHaveValue(JSON.stringify({ owner: 'second' }, null, 2));
+	const json = screen.getAllByRole('textbox', { name: /Metadata/ })[1];
+	await user.clear(json);
+	await user.type(json, 'unfinished');
 	expect(screen.getByRole('textbox', { name: 'Sealed' })).toHaveValue('Complete');
 	await user.clear(screen.getByRole('textbox', { name: 'Open' }));
 	await user.type(screen.getByRole('textbox', { name: 'Open' }), 'Edited');
 	expect(JSON.parse(screen.getByRole('status').textContent ?? '')).toEqual({
-		entries: [{}, { open: 'Edited', sealed: 'Complete' }],
+		entries: [{ metadata: { owner: 'second' } }, {}, { open: 'Edited', sealed: 'Complete' }],
 	});
+	expect(json).toHaveValue('unfinished');
 });
 
 test('changing a returned block layout creates editable nested groups without exposing masked siblings', async () => {
 	window.zeroAdmin = { native: {}, readable: [], role: 'admin' };
 	const fields = columns({
 		sections: { type: 'blocks', layouts: {
-			old: { hidden: { type: 'text' } },
-			new: { details: { type: 'group', fields: {
+			old: { hidden: { type: 'text' }, payload: { type: 'json' } },
+			new: { payload: { type: 'json' }, details: { type: 'group', fields: {
 				first: { type: 'text' }, second: { type: 'text' },
 			} } },
 		} },
 	});
 	function Form() {
-		const [values, setValues] = useState<Row>({ sections: [{ layout: 'old' }] });
+		const [values, setValues] = useState<Row>({ sections: [{ layout: 'old', payload: { old: true } }] });
 		return <Fields fields={fields} values={values}
 			onChange={(key, value) => setValues({ ...values, [key]: value })} />;
 	}
 	const user = userEvent.setup();
 	render(<Form />);
-	expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+	expect(screen.queryByRole('textbox', { name: 'Hidden' })).not.toBeInTheDocument();
+	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveValue(JSON.stringify({ old: true }, null, 2));
 	await user.selectOptions(screen.getByRole('combobox', { name: 'Layout' }), 'new');
+	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveValue('null');
 	const group = screen.getByRole('group', { name: 'Details' });
 	await user.type(within(group).getByRole('textbox', { name: 'First' }), 'One');
 	await user.type(within(group).getByRole('textbox', { name: 'Second' }), 'Two');

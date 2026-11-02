@@ -49,6 +49,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(
 		page.getByRole('button', { name: 'New Posts', exact: true })
 	).toBeEnabled();
+
 	await page.getByRole('link', { name: 'Media', exact: true }).click();
 	await expect(
 		page.getByRole('button', { name: 'Add Media File', exact: true })
@@ -96,14 +97,20 @@ if (!subdir) {
 			.getByRole('textbox', { name: 'Add title', exact: true })
 			.fill(`${title} edited`);
 		const excerpt = page.getByRole('textbox', { name: 'Excerpt', exact: true });
-		if (!(await excerpt.isVisible())) {
-			await page.getByRole('button', { name: 'Fields', exact: true }).click();
+		const fieldsToggle = page.getByRole('button', { name: 'Fields', exact: true });
+		await expect(fieldsToggle).toBeVisible();
+		if ((await fieldsToggle.getAttribute('aria-expanded')) !== 'true') {
+			await fieldsToggle.click();
 		}
+		await expect(excerpt).toBeVisible();
 		await page
 			.getByRole('textbox', { name: 'Excerpt', exact: true })
 			.fill('Edited in native Fields');
 		await page.getByRole('combobox', { name: 'Author Id', exact: true }).fill(authorName);
 		await page.getByRole('option', { name: authorName, exact: true }).click();
+		await page.getByRole('button', { name: 'Add Sections', exact: true }).click();
+		const section = page.getByRole('group', { name: 'Sections', exact: true });
+		await section.getByRole('textbox', { name: 'Heading', exact: true }).fill('Native structured fields');
 		await page.getByRole('button', { name: 'Block Inserter', exact: true }).click();
 		await page.getByRole('option', { name: 'Image', exact: true }).click();
 		const chooser = page.waitForEvent('filechooser');
@@ -161,6 +168,7 @@ if (!subdir) {
 			title: `${title} edited`,
 			excerpt: 'Edited in native Fields',
 			authorId,
+			sections: [{ layout: 'hero', heading: 'Native structured fields' }],
 		});
 		// The table uses the Zero endpoint and a readable cross-kind relation picker.
 		await page.goto(`${site}/zero-admin/collections/comments`);

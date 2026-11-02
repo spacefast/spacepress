@@ -19,6 +19,23 @@ export type Column = {
 	write?: string | boolean;
 	initial?: unknown;
 };
+/** Form-owned identity and provenance; never serialized into document values. */
+export class EditingObjects {
+	private created = new WeakSet<object>();
+	private keys = new WeakMap<object, number>();
+	private next = 0;
+	isNew(value: object): boolean { return this.created.has(value); }
+	mark(value: object): void { this.created.add(value); }
+	key(value: object): number {
+		let key = this.keys.get(value);
+		if (key === undefined) { key = this.next++; this.keys.set(value, key); }
+		return key;
+	}
+	replace(source: object, target: object): void {
+		if (this.isNew(source)) this.mark(target);
+		this.keys.set(target, this.key(source));
+	}
+}
 export type Columns = Record<string, Column>;
 export type Collection = {
 	name: string;
@@ -35,10 +52,12 @@ export type Schema = {
 	collections: Record<string, Collection>;
 	globals: Record<string, { label: string; fields: Columns; access: Row }>;
 };
+function isRow(value: unknown): value is Row {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 export function object(value: unknown): Row {
-	if (!value || typeof value !== 'object' || Array.isArray(value))
-		throw new Error('Expected an object from the API.');
-	return Object.fromEntries(Object.entries(value));
+	if (!isRow(value)) throw new Error('Expected an object from the API.');
+	return value;
 }
 export function map(value: unknown): Row {
 	return Array.isArray(value) && value.length === 0 ? {} : object(value);

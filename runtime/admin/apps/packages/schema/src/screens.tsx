@@ -124,7 +124,10 @@ export function CollectionList() {
 			...(await list(c, { page, perPage, search: query, orderBy, direction })),
 		};
 	}, [collection, page, perPage, query, orderBy, direction]);
-	const [layout, setLayout] = useState<View>({ type: 'table', fields: [] });
+	const [saved, setLayout] = useState<{ collection: string; view: View }>({
+		collection, view: { type: 'table', fields: [] },
+	});
+	const layout: View = saved.collection === collection ? saved.view : { type: 'table', fields: [] };
 	if (state.kind !== 'ready')
 		return (
 			<Page title="Collection">
@@ -142,11 +145,10 @@ export function CollectionList() {
 			.map((f) => f.id)
 			.filter((id) => id !== c.title && id !== c.primaryKey),
 	].slice(0, 5);
+	const kept = (layout.fields ?? []).filter((id) => available.includes(id));
 	const view: View = {
 		...layout,
-		fields: layout.fields?.length
-			? layout.fields.filter((id) => available.includes(id))
-			: initial,
+		fields: kept.length ? kept : initial,
 		titleField,
 		page,
 		perPage,
@@ -179,7 +181,7 @@ export function CollectionList() {
 				fields={fields}
 				view={view}
 				onChangeView={(next) => {
-					setLayout(next);
+					setLayout({ collection, view: next });
 					void navigate({
 						to: `/collections/${collection}`,
 						search: {

@@ -1,6 +1,7 @@
 import apiFetch from '@wordpress/api-fetch';
 import { useEffect, useState } from 'react';
 import {
+	EditingObjects,
 	object,
 	map,
 	parseSchema,
@@ -102,7 +103,8 @@ export function useLoad<T>(
 function scfValue(
 	column: Column | undefined,
 	value: unknown,
-	outgoing: boolean
+	outgoing: boolean,
+	objects?: EditingObjects
 ): unknown {
 	if (!column || value == null || value === false) return value;
 	if (column.type === 'json') {
@@ -117,33 +119,38 @@ function scfValue(
 		}
 	}
 	if (column.type === 'group')
-		return scfFields(column.fields, object(value), outgoing);
+		return scfFields(column.fields, object(value), outgoing, objects);
 	if (column.type === 'repeater' && Array.isArray(value))
 		return value.map((v: unknown) =>
-			scfFields(column.fields, object(v), outgoing)
+			scfFields(column.fields, object(v), outgoing, objects)
 		);
 	if (column.type === 'blocks' && Array.isArray(value))
 		return value.map((v: unknown) => {
 			const row = object(v),
 				layout = text(row.layout) ?? text(row.acf_fc_layout) ?? '';
-			const converted = scfFields(column.layouts[layout] ?? {}, row, outgoing);
+			const converted = scfFields(column.layouts[layout] ?? {}, row, outgoing, objects);
 			delete converted.layout;
 			delete converted.acf_fc_layout;
-			return { [outgoing ? 'acf_fc_layout' : 'layout']: layout, ...converted };
+			const result = { [outgoing ? 'acf_fc_layout' : 'layout']: layout, ...converted };
+			objects?.replace(row, result);
+			return result;
 		});
 	return value;
 }
 function scfFields(
 	fields: Record<string, Column>,
 	values: Row,
-	outgoing: boolean
+	outgoing: boolean,
+	objects?: EditingObjects
 ): Row {
-	return Object.fromEntries(
+	const result = Object.fromEntries(
 		Object.entries(values).map(([k, v]) => [
 			k,
-			scfValue(fields[k], v, outgoing),
+			scfValue(fields[k], v, outgoing, objects),
 		])
 	);
+	objects?.replace(values, result);
+	return result;
 }
 export function collectionForPostType(postType: string): string {
 	return (
@@ -152,7 +159,7 @@ export function collectionForPostType(postType: string): string {
 		)?.[0] ?? postType
 	);
 }
-export function fromNative(c: Collection, value: unknown): Row {
+export function fromNative(c: Collection, value: unknown, objects?: EditingObjects): Row {
 	const r = object(value),
 		result: Row =
 			r.acf && !Array.isArray(r.acf)
@@ -170,7 +177,8 @@ export function fromNative(c: Collection, value: unknown): Row {
 								scfValue(
 									c.columns[k.slice(native(c.name).metaPrefix.length)],
 									v,
-									false
+									false,
+									objects
 								),
 							])
 					)
@@ -191,7 +199,7 @@ export function fromNative(c: Collection, value: unknown): Row {
 	if (result.status === 'future') result.status = 'scheduled';
 	return result;
 }
-export function toNative(c: Collection, values: Row): Row {
+export function toNative(c: Collection, values: Row, objects?: EditingObjects): Row {
 	const result: Row = {},
 		acf: Row = {};
 	for (const [key, v] of Object.entries(values)) {
@@ -204,7 +212,7 @@ export function toNative(c: Collection, values: Row): Row {
 				v === 'published' ? 'publish' : v === 'scheduled' ? 'future' : v;
 		else if (key === 'publishedAt') result.date_gmt = v;
 		else
-			acf[native(c.name).metaPrefix + key] = scfValue(c.columns[key], v, true);
+			acf[native(c.name).metaPrefix + key] = scfValue(c.columns[key], v, true, objects);
 	}
 	if (Object.keys(acf).length) result.acf = acf;
 	return result;

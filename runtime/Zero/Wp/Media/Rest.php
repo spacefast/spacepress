@@ -56,7 +56,7 @@ final class Rest
                 return $db->transaction(static function () use ($plugin, $db, $viewer, $id, $endpoint, $method, $request, $handler) {
                     // Keep core's file validation (multipart AND raw uploads), metadata, additional
                     // REST fields, plugin hooks, response links and status; never reconstruct them.
-                    $run = static fn () => self::native($plugin, $handler, $request, $id === null, $endpoint === 'sideload');
+                    $run = static fn () => self::native($plugin, $handler, $request);
                     if ($id !== null) {
                         $plugin->connection()->touchPost($id);
                     }
@@ -86,33 +86,53 @@ final class Rest
     }
 
     /** Keep native local-file effects within the same commit/rollback boundary as Zero's writes. */
-    private static function native(Plugin $plugin, array $handler, \WP_REST_Request $request, bool $upload, bool $sideload): mixed
+    private static function native(Plugin $plugin, array $handler, \WP_REST_Request $request): mixed
     {
         $connection = $plugin->connection();
-        $moved = static function (array $file) use ($connection): array {
-            if (isset($file['file'])) {
-                $path = $file['file'];
+        $directories = [];
+        $owned = [];
+        // Observe destination contents before core writes. Metadata may mention files belonging
+        // to an older attachment, so it cannot establish ownership of a rollback deletion.
+        $remember = static function (string $directory) use (&$directories): void {
+            $directory = wp_normalize_path($directory);
+            if (!isset($directories[$directory])) {
+                $files = @scandir($directory);
+                if ($files !== false) {
+                    $directories[$directory] = array_fill_keys($files, true);
+                }
+            }
+        };
+        $created = static function (string $path) use ($connection, &$directories, &$owned): string {
+            $original = $path;
+            $path = wp_normalize_path($path);
+            $directory = dirname($path);
+            if (isset($directories[$directory]) && !isset($directories[$directory][basename($path)]) && !isset($owned[$path])) {
+                $owned[$path] = true;
                 $connection->onRollback(static fn () => @unlink($path));
+            }
+
+            return $original;
+        };
+        $unique = static function (string $filename, string $extension, string $directory) use ($remember): string {
+            $remember($directory);
+
+            return $filename;
+        };
+        $moved = static function (array $file) use ($created): array {
+            if (isset($file['file'])) {
+                $created($file['file']);
             }
 
             return $file;
         };
         $inserted = static fn (int $id) => $connection->touchPost($id);
-        $metadata = static function (array $meta, int $id) use ($connection): array {
-            $file = (string) get_attached_file($id);
-            $paths = [$file];
-            foreach ($meta['sizes'] ?? [] as $size) {
-                $paths[] = dirname($file) . '/' . $size['file'];
+        $id = (int) $request->get_param('id');
+        if ($id > 0) {
+            $file = get_attached_file($id);
+            if (is_string($file) && $file !== '') {
+                $remember(dirname($file));
             }
-            if (isset($meta['original_image'])) {
-                $paths[] = dirname($file) . '/' . $meta['original_image'];
-            }
-            foreach ($paths as $path) {
-                $connection->onRollback(static fn () => @unlink($path));
-            }
-
-            return $meta;
-        };
+        }
         // Previous filters retain ownership (for example an offload plugin may return an empty
         // path). Defer only the local unlink core itself would have performed, without filtering twice.
         $delete = static function (string $path) use ($connection): string {
@@ -122,15 +142,14 @@ final class Rest
 
             return '';
         };
-        if ($upload || $sideload) {
-            add_filter('wp_handle_upload', $moved, PHP_INT_MAX);
-        }
-        if ($upload) {
-            add_action('add_attachment', $inserted);
-            add_filter('wp_generate_attachment_metadata', $metadata, PHP_INT_MAX, 2);
-            // Core saves sub-size metadata incrementally, before the final generation filter.
-            add_filter('wp_update_attachment_metadata', $metadata, PHP_INT_MAX, 2);
-        }
+        // A native edit creates a new attachment too. Unique-name selection precedes the
+        // original write; image-save observations cover core sub-sizes even before metadata
+        // filters run or throw. Never sweep a directory: concurrent requests own their files.
+        add_filter('wp_unique_filename', $unique, PHP_INT_MAX, 3);
+        add_filter('image_make_intermediate_size', $created, PHP_INT_MIN);
+        add_filter('wp_handle_upload', $moved, PHP_INT_MIN);
+        add_filter('wp_handle_sideload', $moved, PHP_INT_MIN);
+        add_action('add_attachment', $inserted, PHP_INT_MIN);
         if ($request->get_method() === 'DELETE') {
             add_filter('wp_delete_file', $delete, PHP_INT_MAX);
         }
@@ -143,10 +162,11 @@ final class Rest
 
             return $response;
         } finally {
-            remove_filter('wp_handle_upload', $moved, PHP_INT_MAX);
-            remove_action('add_attachment', $inserted);
-            remove_filter('wp_generate_attachment_metadata', $metadata, PHP_INT_MAX);
-            remove_filter('wp_update_attachment_metadata', $metadata, PHP_INT_MAX);
+            remove_filter('wp_unique_filename', $unique, PHP_INT_MAX);
+            remove_filter('image_make_intermediate_size', $created, PHP_INT_MIN);
+            remove_filter('wp_handle_upload', $moved, PHP_INT_MIN);
+            remove_filter('wp_handle_sideload', $moved, PHP_INT_MIN);
+            remove_action('add_attachment', $inserted, PHP_INT_MIN);
             remove_filter('wp_delete_file', $delete, PHP_INT_MAX);
         }
     }

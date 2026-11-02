@@ -1,1 +1,1 @@
-<?php return array('name' => 'collection-edit', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => '7aa50c20545ebe563077');
+<?php return array('name' => 'collection-edit', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => 'c03a01f1ffc57644a96f');

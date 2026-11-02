@@ -11,7 +11,9 @@ import { useEntityValidity } from '@zero-admin/admin-toolkit';
  * and empty returnValue for legacy browser compatibility.
  */
 export default function UnsavedChangesWarning() {
-	const { isEntityValid } = useEntityValidity();
+	const { isEntityValid, documentChanges } = useEntityValidity();
+	const valid = isEntityValid && (documentChanges?.valid ?? true);
+	const documentDirty = documentChanges?.dirty ?? false;
 	const hasUnsavedChanges = useSelect((select) => {
 		const dirtyEntityRecords = select(coreStore).__experimentalGetDirtyEntityRecords();
 		return dirtyEntityRecords.length > 0;
@@ -19,7 +21,7 @@ export default function UnsavedChangesWarning() {
 
 	useEffect(() => {
 		// Performance optimization: only attach listener when there are unsaved changes
-		if (!hasUnsavedChanges && isEntityValid) {
+		if (!hasUnsavedChanges && !documentDirty && valid) {
 			return;
 		}
 
@@ -41,7 +43,7 @@ export default function UnsavedChangesWarning() {
 		return () => {
 			window.removeEventListener('beforeunload', warnIfUnsavedChanges);
 		};
-	}, [hasUnsavedChanges, isEntityValid]);
+	}, [hasUnsavedChanges, documentDirty, valid]);
 
 	return null;
 }

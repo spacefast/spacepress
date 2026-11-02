@@ -110,6 +110,9 @@ function scfValue(
 	if (column.type === 'json') {
 		if (outgoing) return JSON.stringify(value);
 		if (typeof value === 'string') {
+			// SCF's empty textarea represents no JSON value. An actual empty
+			// JSON string arrives encoded as '""' and still parses to a string.
+			if (value === '') return null;
 			try {
 				const parsed: unknown = JSON.parse(value);
 				return parsed;
@@ -223,6 +226,17 @@ export async function read(c: Collection, id: string): Promise<Row> {
 		path: `${endpoint(c.name)}/${encodeURIComponent(id)}${native(c.name) ? `?context=${context}` : ''}`,
 	});
 	return native(c.name) ? fromNative(c, v) : object(unwrap(v));
+}
+/** Gutenberg writes core fields; use a partial form when one is masked or read-only. */
+export function nativeEditor(c: Collection, row: Row): boolean {
+	const role = bootstrap().role;
+	const writable = (rule: unknown) =>
+		(rule === undefined || rule === true || rule === 'anyone' ||
+			['guest', 'subscriber', 'author', 'editor', 'admin'].includes(String(rule))) &&
+		allowed(rule, role);
+	return Boolean(native(c.name) && c.content && allowed(c.access.update, role) &&
+		[c.content, c.title, c.slug, 'status', 'publishedAt'].every((key) =>
+			!key || !c.columns[key] || (key in row && writable(c.columns[key].write))));
 }
 export async function save(
 	c: Collection,

@@ -1,4 +1,4 @@
-import { allowed, bootstrap, collectionSpec, native } from '@zero-admin/schema';
+import { allowed, bootstrap, collectionSpec, native, nativeEditor, read } from '@zero-admin/schema';
 export const route = {
 	canvas: async ({
 		params,
@@ -9,6 +9,13 @@ export const route = {
 			transport = native(params.collection);
 		if (!transport || !c.content || !allowed(c.access.update, bootstrap().role))
 			return undefined;
+		try {
+			if (!nativeEditor(c, await read(c, params.slug))) return undefined;
+		} catch {
+			// The document screen presents transport/permission failures in its
+			// normal loading/error state rather than breaking the whole router.
+			return undefined;
+		}
 		return {
 			postType: transport.postType,
 			postId: params.slug,

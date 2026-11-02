@@ -1,5 +1,5 @@
 import { allowed, columns, defaults, parseSchema, visible } from './model';
-import { fromNative, toNative } from './api';
+import { fromNative, toNative, nativeEditor } from './api';
 
 test('schema metadata describes labels, help, explicit kind and defaults independently of editor preferences', () => {
 	const s = parseSchema({
@@ -72,7 +72,7 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 			excerpt: { type: 'text' },
 			sections: {
 				type: 'blocks',
-				layouts: { hero: { heading: { type: 'text' } } },
+				layouts: { hero: { heading: { type: 'text' }, configuration: { type: 'json' } } },
 			},
 		}),
 	};
@@ -87,6 +87,8 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 			zero_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
 		},
 	});
+	expect(nativeEditor(c, row)).toBe(true);
+	expect(nativeEditor({ ...c, columns: { ...c.columns, body: { ...c.columns.body, write: 'admin' } } }, row)).toBe(false);
 	expect(row).toEqual({
 		id: 7,
 		headline: 'Title',
@@ -98,6 +100,14 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 		title: 'Changed',
 		acf: { zero_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
 	});
+	// Captured SCF textarea representation of an absent/saved-null JSON scalar.
+	const nullRow = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
+	expect(nullRow.sections).toEqual([{ layout: 'hero', configuration: null }]);
+	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
+	const emptyString = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+	expect(emptyString.sections).toEqual([{ layout: 'hero', configuration: '' }]);
+	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { Page, RouterLink } from '@zero-admin/admin-toolkit';
+import { Page, RouterLink, useDocumentChanges } from '@zero-admin/admin-toolkit';
 import { DataViews, type Field, type View } from '@zero-admin/dataviews';
 import {
+	EditingObjects,
 	allowed,
 	defaults,
 	object,
@@ -19,6 +20,7 @@ import {
 	list,
 	message,
 	native,
+	nativeEditor,
 	read,
 	save,
 	schema,
@@ -26,7 +28,7 @@ import {
 	useLoad,
 	type Load,
 } from './api';
-import { Fields } from './fields';
+import { Fields, useFieldDrafts } from './fields';
 import './style.scss';
 
 export function Loading({ state }: { state: Load<unknown> }) {
@@ -212,6 +214,7 @@ export function DocumentForm({
 	disabled,
 	submit,
 	label = 'Save changes',
+	onSaved,
 }: {
 	fields: Columns;
 	initial: Row;
@@ -220,40 +223,57 @@ export function DocumentForm({
 	disabled: boolean;
 	submit: (changes: Row) => Promise<Row | void>;
 	label?: string;
+	onSaved?: (result: Row) => Promise<void>;
 }) {
 	const [values, setValues] = useState(initial),
 		[changes, setChanges] = useState<Row>({}),
 		[error, setError] = useState(''),
 		[busy, setBusy] = useState(false),
 		[saved, setSaved] = useState(false);
+	const [objects] = useState(() => new EditingObjects());
+	const drafts = useFieldDrafts({ fields, values, objects, editing, omit });
 	const dirty = Object.keys(changes).length > 0;
+	const saving = useRef(false);
+	const [savedResult, setSavedResult] = useState<Row | null>(null);
+	const saveChanges = useCallback(async () => {
+		if (disabled || !drafts.valid) throw new Error('Fix errors before saving.');
+		if (saving.current) throw new Error('A save is already in progress.');
+		saving.current = true;
+		setBusy(true);
+		setError('');
+		setSaved(false);
+		try {
+			const result = await submit(editing ? changes : values);
+			if (result) setValues(result);
+			setChanges({});
+			setSaved(true);
+			return result;
+		} catch (e: unknown) {
+			setError(message(e));
+			throw e;
+		} finally {
+			saving.current = false;
+			setBusy(false);
+		}
+	}, [disabled, drafts.valid, submit, editing, changes, values]);
+	const sharedChanges = useDocumentChanges({ dirty, valid: drafts.valid, saving: busy, save: saveChanges });
+	// Navigate only after the clean document state has reached the shared blocker.
+	// Saving from that blocker's dialog instead follows its original destination.
 	useEffect(() => {
-		if (!dirty) return;
-		const warn = (e: BeforeUnloadEvent) => {
-			e.preventDefault();
-		};
-		window.addEventListener('beforeunload', warn);
-		return () => window.removeEventListener('beforeunload', warn);
-	}, [dirty]);
+		if (!savedResult || !onSaved || !sharedChanges || sharedChanges.dirty ||
+			sharedChanges.saving || !sharedChanges.valid) return;
+		setSavedResult(null);
+		void onSaved(savedResult).catch((e: unknown) => setError(message(e)));
+	}, [savedResult, onSaved, sharedChanges]);
 	return (
 		<form
 			className="zero-schema-form"
 			onSubmit={(e) => {
 				e.preventDefault();
-				if (disabled || busy) return;
-				setBusy(true);
-				setError('');
-				setSaved(false);
-				submit(editing ? changes : values)
-					.then(
-						(result) => {
-							if (result) setValues(result);
-							setChanges({});
-							setSaved(true);
-						},
-						(e: unknown) => setError(message(e))
-					)
-					.finally(() => setBusy(false));
+				if (disabled || busy || !drafts.valid) return;
+				void saveChanges().then((result) => {
+					if (result && onSaved) setSavedResult(result);
+				}).catch(() => undefined);
 			}}
 		>
 			{error && (
@@ -269,6 +289,8 @@ export function DocumentForm({
 			<Fields
 				fields={fields}
 				values={values}
+				objects={objects}
+				jsonDrafts={drafts}
 				editing={editing}
 				omit={omit}
 				disabled={disabled || busy}
@@ -282,7 +304,7 @@ export function DocumentForm({
 				type="submit"
 				variant="primary"
 				isBusy={busy}
-				disabled={disabled || busy || (editing && !dirty)}
+				disabled={disabled || busy || !drafts.valid || (editing && !dirty)}
 			>
 				{label}
 			</Button>
@@ -331,8 +353,8 @@ export function NewDocument() {
 				omit={[c.primaryKey]}
 				disabled={!allowed(c.access.create, bootstrap().role)}
 				label="Create record"
-				submit={async (values) => {
-					const row = await save(c, values);
+				submit={(values) => save(c, values)}
+				onSaved={async (row) => {
 					await navigate({
 						to: `/collections/${collection}/${encodeURIComponent(String(row[c.primaryKey]))}`,
 					});
@@ -357,7 +379,7 @@ export function PlainDocument() {
 		);
 	const { c, row } = state.value;
 	// Content collections are rendered by the native canvas/editor route, not a second form.
-	if (c.content && native(collection) && allowed(c.access.update, bootstrap().role)) return null;
+	if (nativeEditor(c, row)) return null;
 	return (
 		<Page
 			title={`Edit ${c.label}`}

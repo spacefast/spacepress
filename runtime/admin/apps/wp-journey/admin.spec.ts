@@ -223,6 +223,25 @@ if (!subdir) {
 			postId: Number(id),
 			body: 'Edited table record',
 		});
+		// A rejected save keeps both the route and the draft; correction can retry.
+		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('http://rejected.example');
+		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
+		const leave = page.getByRole('dialog');
+		const refused = page.waitForResponse((r) =>
+			new URL(r.url()).pathname.endsWith(`/zero/v1/comments/${commentId}`) &&
+			['POST', 'PATCH'].includes(r.request().method()));
+		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
+		expect((await refused).status()).toBe(422);
+		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/comments/${commentId}`);
+		await leave.getByRole('button', { name: 'Close', exact: true }).click();
+		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveValue('http://rejected.example');
+		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Corrected table record');
+		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
+		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/comments`);
+		const corrected = await request.get(`${site}/wp-json/zero/v1/comments/${commentId}`, { headers });
+		expect((await corrected.json()).data.body).toBe('Corrected table record');
 		// A reference may name a unique column instead of the target's primary key.
 		const code = Date.now();
 		const root = await request.post(`${site}/wp-json/zero/v1/key_roots`, {
@@ -289,6 +308,24 @@ if (!subdir) {
 		const savedEvent = (await eventRead.json()).data;
 		expect(savedEvent.payload).toEqual({ committed: false, corrected: true });
 		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
+		await page.reload();
+		if ((await jsonFields.getAttribute('aria-expanded')) !== 'true') await jsonFields.click();
+		await expect(payload).toHaveValue(JSON.stringify(savedEvent.payload, null, 2));
+		await payload.fill('{"edited":true}');
+		await page.getByRole('button', { name: 'Undo', exact: true }).click();
+		await expect(payload).toHaveValue(JSON.stringify(savedEvent.payload, null, 2));
+		await expect(sections.locator('textarea').first()).toHaveValue('null');
+		await page.getByRole('button', { name: 'Add Sections', exact: true }).click();
+		const siblingSaved = page.waitForResponse((r) =>
+			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_dossier/${eventId}`) &&
+			['POST', 'PUT'].includes(r.request().method()));
+		await eventSave.click();
+		expect((await siblingSaved).status()).toBe(200);
+		const siblingRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
+		expect((await siblingRead.json()).data).toMatchObject({
+			payload: savedEvent.payload,
+			sections: [{ layout: 'second', configuration: null }, { layout: 'first', configuration: null }],
+		});
 		await page.getByRole('button', { name: 'Add Entries', exact: true }).click();
 		await page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea').fill('unfinished row');
 		await expect(eventSave).toBeDisabled();
@@ -300,9 +337,50 @@ if (!subdir) {
 		await jsonFields.click();
 		await expect(page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea')).toHaveCount(0);
 		await page.screenshot({ path: test.info().outputPath('retired-json-drafts.png'), animations: 'disabled' });
+		// Plain forms use the same document-level leave flow, including invalid-only drafts.
+		const plain = await request.post(`${site}/wp-json/zero/v1/events`, {
+			headers: adminHeaders, data: { title: 'Plain saved title', extra: { saved: true } },
+		});
+		expect(plain.status(), await plain.text()).toBe(201);
+		const plainId = (await plain.json()).data.id;
+		await page.goto(`${site}/zero-admin/collections/events/${plainId}`);
+		const extra = page.locator('.zero-schema-json').filter({ hasText: 'Extra' }).locator('textarea');
+		await extra.fill('plain invalid-only draft');
+		await expect(extra).toHaveAttribute('aria-invalid', 'true');
+		expect(await page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		})).toBe(true);
+		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
+		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
+		await page.getByRole('button', { name: 'Continue editing', exact: true }).click();
+		await expect(extra).toHaveValue('plain invalid-only draft');
+		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
+		await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/events`);
+		await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible();
+		await expect.poll(() => page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		})).toBe(false);
+		await page.goto(`${site}/zero-admin/collections/events/${plainId}`);
+		await expect(extra).toHaveValue(JSON.stringify({ saved: true }, null, 2));
+		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Plain saved on leave');
+		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
+		await expect(page.getByRole('dialog')).toContainText('Save changes before leaving?');
+		const plainSaved = page.waitForResponse((r) =>
+			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_events/${plainId}`) &&
+			r.request().method() === 'POST');
+		await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
+		expect((await plainSaved).status()).toBe(200);
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/events`);
+		const plainRead = await request.get(`${site}/wp-json/zero/v1/events/${plainId}`, { headers: adminHeaders });
+		expect((await plainRead.json()).data).toMatchObject({ title: 'Plain saved on leave', extra: { saved: true } });
 		expect(errors).toEqual([]);
 	});
-	test('a subscriber sees explicit denial for an editor-only collection', async ({
+	test('field masking permits authorized edits and denies restricted collection access', async ({
 		page,
 		request,
 	}) => {
@@ -319,7 +397,7 @@ if (!subdir) {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 			},
-			data: { title },
+			data: { title, body: '<p>Private original body</p>' },
 		});
 		expect(dossier.status(), await dossier.text()).toBe(201);
 		const dossierId = (await dossier.json()).data.id;
@@ -348,6 +426,18 @@ if (!subdir) {
 		await expect(
 			page.getByRole('button', { name: 'Publish', exact: true })
 		).toHaveCount(0);
+		await page.context().clearCookies();
+		await login(page, 'editor');
+		await page.goto(`${site}/zero-admin/collections/dossier/${dossierId}`);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeEnabled();
+		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveCount(0);
+		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(`${title} edited`);
+		await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+		await expect(page.locator('.components-notice__content').getByText('Saved.', { exact: true })).toBeVisible();
+		const readback = await request.get(`${site}/wp-json/zero/v1/dossier/${dossierId}`, {
+			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
+		});
+		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
 	});
 	test('global and media forms save through their canonical APIs', async ({
 		page,

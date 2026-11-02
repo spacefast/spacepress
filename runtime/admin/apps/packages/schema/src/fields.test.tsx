@@ -8,6 +8,7 @@ import { fromNative, toNative } from './api';
 test('native repeater edits retain provenance, JSON row identity and returned-field masking after removal', async () => {
 	window.zeroAdmin = { native: { posts: { path: '/wp/v2/zero_posts', postType: 'zero_posts', metaPrefix: 'zero_' } }, readable: [], role: 'admin' };
 	const fields = columns({
+		payload: { type: 'json' },
 		entries: { type: 'repeater', fields: {
 			open: { type: 'text' }, sealed: { type: 'text' }, metadata: { type: 'json' },
 		} },
@@ -17,6 +18,7 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 		const [objects] = useState(() => new EditingObjects());
 		const [shown, setShown] = useState(true);
 		const [record, setRecord] = useState<Row>(() => toNative(collection, {
+			payload: { saved: true },
 			entries: [{ open: 'Returned', metadata: { owner: 'first' } }, { metadata: { owner: 'second' } }, {}],
 		}));
 		const values = fromNative(collection, record, objects);
@@ -24,10 +26,11 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 		return <>
 			{shown && <Fields fields={fields} values={values} objects={objects}
 				jsonDrafts={drafts}
-				onChange={(key, value) => setRecord(toNative(collection, { [key]: value }, objects))} />}
+				onChange={(key, value) => setRecord(toNative(collection, { ...values, [key]: value }, objects))} />}
 			<button disabled={!drafts.valid}>Save</button>
 			<button onClick={() => setShown(!shown)}>Toggle fields</button>
-			<button onClick={() => setRecord(toNative(collection, { entries: [] }, objects))}>External remove rows</button>
+			<button onClick={() => setRecord(toNative(collection, { ...values, entries: [] }, objects))}>External remove rows</button>
+			<button onClick={() => setRecord(toNative(collection, { ...values, payload: { restored: true } }, objects))}>External restore payload</button>
 			<output>{JSON.stringify(values)}</output>
 		</>;
 	}
@@ -48,6 +51,7 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 	await user.clear(screen.getByRole('textbox', { name: 'Open' }));
 	await user.type(screen.getByRole('textbox', { name: 'Open' }), 'Edited');
 	expect(JSON.parse(screen.getByRole('status').textContent ?? '')).toEqual({
+		payload: { saved: true },
 		entries: [{ metadata: { owner: 'second' } }, {}, { open: 'Edited', sealed: 'Complete' }],
 	});
 	expect(json).toHaveValue('unfinished');
@@ -65,6 +69,11 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
 	await user.click(screen.getByRole('button', { name: 'Toggle fields' }));
 	expect(screen.queryByRole('textbox', { name: /Metadata/ })).not.toBeInTheDocument();
+	await user.clear(screen.getByRole('textbox', { name: /Payload/ }));
+	await user.type(screen.getByRole('textbox', { name: /Payload/ }), '123');
+	await user.click(screen.getByRole('button', { name: 'External restore payload' }));
+	expect(JSON.parse(screen.getByRole('status').textContent ?? '').payload).toEqual({ restored: true });
+	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveValue(JSON.stringify({ restored: true }, null, 2));
 
 });
 

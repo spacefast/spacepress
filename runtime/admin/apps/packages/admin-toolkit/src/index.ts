@@ -31,6 +31,7 @@ export {
 	EntityValidityProvider,
 	useEntityValidity,
 	useSetEntityValidity,
+	useDocumentChanges,
 } from './hooks/use-entity-validity';
 export { default as useAutoRefresh } from './hooks/use-auto-refresh';
 export { default as useIsTabActive } from './hooks/use-is-tab-active';

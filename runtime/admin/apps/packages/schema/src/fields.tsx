@@ -282,9 +282,13 @@ function JsonField({
 	path: string;
 }) {
 	const validation = useContext(EditingState)?.validation;
-	const [source, setSource] = useState(
-		() => validation?.drafts.get(path) ?? JSON.stringify(value ?? null, null, 2)
-	);
+	const serialized = JSON.stringify(value ?? null);
+	const [accepted, setAccepted] = useState(() => ({ value: serialized, source: JSON.stringify(value ?? null, null, 2) }));
+	if (accepted.value !== serialized) {
+		setAccepted({ value: serialized, source: JSON.stringify(value ?? null, null, 2) });
+	}
+	const source = validation?.drafts.get(path) ??
+		(accepted.value === serialized ? accepted.source : JSON.stringify(value ?? null, null, 2));
 	const invalid = validation?.drafts.has(path) ?? false;
 	return (
 		<label className="zero-schema-json">
@@ -297,9 +301,9 @@ function JsonField({
 				rows={8}
 				onChange={(e) => {
 					const v = e.target.value;
-					setSource(v);
 					try {
 						const parsed: unknown = JSON.parse(v);
+						setAccepted({ value: JSON.stringify(parsed), source: v });
 						onChange(parsed);
 						validation?.change(path);
 						e.target.setCustomValidity('');

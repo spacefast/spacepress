@@ -77,7 +77,7 @@ export const tours: Tour[] = [
         config: { file: "zero.config.ts", lines: { from: "beforeCreate(data) {", to: "afterUpdate: restock," } },
         outputs: [
           { file: { artifact: "functions.php" }, lines: { from: "function items__beforeCreate", toLine: "}" } },
-          { file: { artifact: "functions.php" }, lines: { from: "function slugify", toLine: "}" } },
+          { file: { artifact: "functions.php" }, lines: { from: "function slugify(", toLine: "}" } },
           { file: { artifact: "schema.php" }, lines: { from: "'hooks' => ['beforeCreate' => 'items__beforeCreate'", to: "items__afterUpdate']," } },
         ],
       },

@@ -580,7 +580,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ collection, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ schema: {{ n: collection('n', {{ id: id() }}, {{ editor: false }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ table, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{ id: id() }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]

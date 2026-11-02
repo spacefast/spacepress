@@ -190,7 +190,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
 type Box<T> = { value: T };
 ${aliases}
 class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
-export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
   ${prime ? "new C();" : ""}
   const x: ${nestedType} = ${nestedValue}; return x;
 } }) } });`;

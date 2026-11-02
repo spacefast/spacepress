@@ -50,7 +50,7 @@ function read(item: Draft, key: keyof Projection<Draft, "title" | "state">): str
 }
 
 export default defineConfig({
-  schema: {},
+  tables: {},
   actions: {
     typeReport: action({
       input: { entry: json().$type<Projection<Draft>>().notNull() },

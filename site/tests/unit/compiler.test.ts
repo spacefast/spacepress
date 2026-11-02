@@ -226,6 +226,11 @@ export default defineConfig({ schema: {}, actions: { run: action({ input: {}, ha
         value: `tag: "t0", ${wideValue}`,
         error: /type expansion.*16384-step limit/,
       },
+      {
+        parts: [`{ ${wideFields} }`, `(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
     ]) {
       const source = `import { action, defineConfig } from "zero";
 type Expanded = ${probe.parts.join(" & ")};

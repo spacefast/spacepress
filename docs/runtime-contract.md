@@ -647,7 +647,7 @@ per root annotation (including independent roots reached during class
 compilation), and 512 keys per finite key operation. Intersection distribution
 checks a maximum of 512 candidate alternatives before expansion; this conservative
 limit applies before incompatible or duplicate alternatives are removed. Its
-recursive calls and object-property merges also consume the root resolution
+recursive calls, copied type nodes and object-property merges also consume the root resolution
 budget. Recursive types produce a located diagnostic. Unsupported types are not replaced with
 `unknown` or an unrestricted string key.
 

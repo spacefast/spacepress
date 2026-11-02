@@ -778,6 +778,31 @@ fn type_step(steps: &mut usize, span: Span) -> Result<()> {
     Ok(())
 }
 
+fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
+    type_step(steps, span)?;
+    match t {
+        Ty::Array(t) | Ty::Map(t) | Ty::Promise(t) | Ty::Instance(_, t) => type_copy(t, span, steps)?,
+        Ty::Tuple(parts) | Ty::ArrayLiteral(parts) | Ty::Union(parts) => {
+            for t in parts {
+                type_copy(t, span, steps)?;
+            }
+        }
+        Ty::Obj(fields) => {
+            for (t, _) in fields.values() {
+                type_copy(t, span, steps)?;
+            }
+        }
+        Ty::Fn(params, ret) => {
+            for t in params {
+                type_copy(t, span, steps)?;
+            }
+            type_copy(ret, span, steps)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
     type_step(steps, span)?;
     if a == b || b == Ty::Unknown {
@@ -802,12 +827,18 @@ fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
     match (a, b) {
         (Ty::Union(xs), b) => Ok(Ty::union(
             xs.into_iter()
-                .map(|a| intersect(a, b.clone(), span, steps))
+                .map(|a| {
+                    type_copy(&b, span, steps)?;
+                    intersect(a, b.clone(), span, steps)
+                })
                 .collect::<Result<Vec<_>>>()?,
         )),
         (a, Ty::Union(ys)) => Ok(Ty::union(
             ys.into_iter()
-                .map(|b| intersect(a.clone(), b, span, steps))
+                .map(|b| {
+                    type_copy(&a, span, steps)?;
+                    intersect(a.clone(), b, span, steps)
+                })
                 .collect::<Result<Vec<_>>>()?,
         )),
         (Ty::Obj(mut fields), Ty::Obj(other)) => {

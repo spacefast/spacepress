@@ -527,6 +527,11 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             "new C()",
             "can't assign number | null",
         ),
+        (
+            "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
+            "new D()",
+            "`this` outside a class",
+        ),
         ("class C { #secret = 1; }", "new C()", "private class fields"),
         (
             "class C { constructor(public toJSON: () => number) {} }",

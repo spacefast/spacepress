@@ -758,7 +758,7 @@ impl Lowerer {
         if self.super_call.get() {
             self.class_context.set(false);
         }
-        let params = self.params(&f.params);
+        let params = self.params(&f.params, context);
         self.class_context.set(context);
         Ok(Rc::new(Func {
             name: f.id.as_ref().map(|i| i.name.to_string()),
@@ -783,7 +783,7 @@ impl Lowerer {
         };
         Ok(Rc::new(Func {
             name: None,
-            params: self.params(&f.params)?,
+            params: self.params(&f.params, false)?,
             body,
             is_async: f.r#async,
             ret: f
@@ -797,10 +797,10 @@ impl Lowerer {
         }))
     }
 
-    fn params(&self, p: &a::FormalParameters<'_>) -> Result<Vec<Param>> {
+    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool) -> Result<Vec<Param>> {
         let mut out = Vec::new();
         for item in &p.items {
-            if (item.accessibility.is_some() || item.readonly) && !self.class_context.get() {
+            if (item.accessibility.is_some() || item.readonly) && !parameter_properties {
                 return self.unsupported(item.span, "parameter properties", "");
             }
             out.push(Param {

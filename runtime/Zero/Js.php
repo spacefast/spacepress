@@ -412,7 +412,7 @@ final class Js
             is_string($v) => 'string',
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
-            $v instanceof \Closure => 'function',
+            $v instanceof \Closure, $v instanceof JsClass => 'function',
             default => 'object',
         };
     }

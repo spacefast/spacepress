@@ -238,7 +238,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         self.classes.get_mut(&id).unwrap().methods = methods;
         let env = self.class_environment(class);
-        let no_db = self.fx.as_ref().is_some_and(|f| f.no_db);
+        // Helpers are shared across callers; class_access_guard rejects execution in access rules.
+        let no_db = false;
         let constructing_env = Scope::new(Some(env.clone()), env.module);
         constructing_env.vars.borrow_mut().insert(
             ":constructing".into(),

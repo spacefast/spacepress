@@ -1,4 +1,4 @@
-import { collection, id, defineConfig, action } from "zero";
+import { collection, id, defineConfig, action, db } from "zero";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -18,8 +18,7 @@ class ClassCounter {
 }
 class ClassDouble extends ClassCounter {
   count = 10;
-  extra = 7;
-  constructor(label: string) { super(label, 4); this.count++; }
+  constructor(label: string, public extra: number = 7) { super(label, 4); this.count++; }
   inc(n: number): number { return super.inc(n * 2); }
   static bump(): number { return super.bump() + 10; }
 }
@@ -53,6 +52,10 @@ class ClassStaticAlias {
 const classStaticBuild = { count: 0 };
 function classStaticNext(): number { classStaticBuild.count++; return classStaticBuild.count; }
 class ClassStaticSeed { static first = classStaticNext(); }
+class ClassDatabase {
+  static allowed = true;
+  async rows() { return await db.query.n.findMany(); }
+}
 const laneClasses = {
   classesMutation: run(() => {
     const c = new ClassDefault("child");
@@ -63,6 +66,7 @@ const laneClasses = {
       keys: Object.keys(c), copy: { ...c }, yes: c instanceof ClassCounter,
       child: c instanceof ClassDouble, no: {} instanceof ClassCounter,
       cloned: structuredClone(c) instanceof ClassCounter,
+      constructorType: typeof ClassCounter, instanceType: typeof c,
       static: ClassDouble.bump(), baseStatic: ClassCounter.total,
       staticSeed: ClassStaticSeed.first, staticEvaluations: classStaticBuild.count };
   }),
@@ -84,4 +88,4 @@ const laneClasses = {
   classesBaseArgument: run(() => classAsBase(new ClassDouble("base argument"))),
 };
 
-export default defineConfig({ name: "class-tests", schema: { n: collection("n", { id: id() }, { editor: false }) }, actions: laneClasses });
+export default defineConfig({ name: "class-tests", schema: { n: collection("n", { id: id() }, { editor: false, access: { read: () => ClassDatabase.allowed } }) }, actions: laneClasses });

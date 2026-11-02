@@ -1891,7 +1891,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &v.ty {
             Ty::Class(_) => err(
                 span,
-                "class values can only be used with new, instanceof, or static member access",
+                "class values can only be used with new, instanceof, typeof, or static member access",
             ),
             Ty::Builder(_) => err_help(span, "this database call never runs", "add `await` in front of it"),
             Ty::Promise(_) => err_help(
@@ -2054,7 +2054,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
                 let v = self.expr(x)?;
-                let v = self.finish_value(v, x.span)?;
+                let v = if matches!(op, UnOp::TypeOf) && matches!(v.ty, Ty::Class(_)) {
+                    v
+                } else {
+                    self.finish_value(v, x.span)?
+                };
                 match op {
                     UnOp::Not => {
                         let ty = match (truthiness_part(&v.ty, true), truthiness_part(&v.ty, false)) {

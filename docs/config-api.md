@@ -486,7 +486,8 @@ with named exports. Construct them inside actions, hooks and other compiled
 callbacks. Public instance fields, ordinary methods, `this` member reads and
 writes, `new`, identity comparisons, named `extends`, overrides, `super(...)`,
 `super.method(...)` and `instanceof` are supported. Arrows inside methods keep
-that method's `this`. Extracting a prototype method is refused; use
+that method's `this`. `typeof Counter` returns `"function"`; instances return
+`"object"`. Extracting a prototype method is refused; use
 `() => instance.method()` when passing a callback.
 
 ```ts
@@ -545,8 +546,9 @@ anonymous/local/abstract/ambient/generic classes;
 decorators; private/protected/`#` members; accessors; static blocks; computed names;
 generic/rest methods; dynamic or built-in inheritance; constructor return values;
 prototype/reflection machinery and custom coercion/serialization protocol members.
-Optional/indexed class member syntax and recursive class field types are also
-refused. Class values are limited to construction, `instanceof` and static access.
+Indexed class members and recursive class field types are also refused.
+Uninitialized optional fields follow the same missing-to-null boundary. Class
+values are limited to construction, `instanceof`, `typeof` and static access.
 Method calls and escaping instances during construction/initialization are refused
 to avoid partially initialized virtual receivers. Construction and method calls
 inside access rules are refused; return filters from plain functions instead.

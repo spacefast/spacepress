@@ -361,7 +361,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         for col in annotated {
             let (ann, module) = col.ts_type.as_ref().expect("annotated column");
-            let ty = self.resolve_runtime_ann(ann, *module)?;
+            let authored = self.resolve_annotation_root(ann, *module)?;
+            let ty = annotations::runtime_type(authored.clone());
             if classes::wire_type(&ty) != ty {
                 return err_help(
                     annotations::annotation_span(ann),
@@ -369,7 +370,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "describe the stored own fields with an object type; JSON does not restore methods or instanceof identity",
                 );
             }
-            JSON_TYPES.with(|m| m.borrow_mut().insert(col as *const Column as usize, ty));
+            JSON_TYPES.with(|m| {
+                m.borrow_mut()
+                    .insert(col as *const Column as usize, types::JsonType { authored, runtime: ty })
+            });
         }
         Ok(())
     }

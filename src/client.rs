@@ -83,6 +83,10 @@ impl From<bool> for Mode {
 
 /// The value type, before nullability. Sub-field objects follow the mode's optionality.
 fn value_ts(c: &Column, mode: impl Into<Mode>) -> String {
+    value_ts_with(c, mode, &crate::types::json_ty)
+}
+
+fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) -> Ty) -> String {
     let insert = mode.into();
     let enum_union = |e: &Vec<String>| e.iter().map(|v| lit(v)).collect::<Vec<_>>().join(" | ");
     match c.ty {
@@ -95,14 +99,17 @@ fn value_ts(c: &Column, mode: impl Into<Mode>) -> String {
         ColType::Email | ColType::Url | ColType::Slug | ColType::RichText | ColType::Timestamp | ColType::Date => {
             "string".into()
         }
-        ColType::Json => ty_ts(&crate::types::json_ty(c), &[]),
+        ColType::Json => ty_ts(&json_type(c), &[]),
         ColType::MediaList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
             c.enum_values.as_ref().map(enum_union).unwrap_or("string".into())
         ),
-        ColType::Group => fields_ts(c.fields.as_ref().expect("fields"), insert),
-        ColType::Repeater => format!("{}[]", fields_ts(c.fields.as_ref().expect("fields"), insert)),
+        ColType::Group => fields_ts_with(c.fields.as_ref().expect("fields"), insert, json_type),
+        ColType::Repeater => format!(
+            "{}[]",
+            fields_ts_with(c.fields.as_ref().expect("fields"), insert, json_type)
+        ),
         ColType::Blocks => {
             let items: Vec<String> = c
                 .layouts
@@ -110,7 +117,7 @@ fn value_ts(c: &Column, mode: impl Into<Mode>) -> String {
                 .expect("layouts")
                 .iter()
                 .map(|(name, fields)| {
-                    let inner = fields_ts(fields, insert);
+                    let inner = fields_ts_with(fields, insert, json_type);
                     let body = inner
                         .trim_start_matches("{ ")
                         .trim_end_matches(" }")
@@ -128,7 +135,11 @@ fn value_ts(c: &Column, mode: impl Into<Mode>) -> String {
 }
 
 fn col_ts(c: &Column, mode: impl Into<Mode>) -> String {
-    let v = value_ts(c, mode);
+    col_ts_with(c, mode, &crate::types::json_ty)
+}
+
+fn col_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) -> Ty) -> String {
+    let v = value_ts_with(c, mode, json_type);
     if c.not_null { v } else { format!("{v} | null") }
 }
 
@@ -152,6 +163,14 @@ fn may_keep(c: &Column) -> bool {
 }
 
 fn fields_ts(fields: &IndexMap<String, Column>, mode: impl Into<Mode>) -> String {
+    fields_ts_with(fields, mode, &crate::types::json_ty)
+}
+
+fn fields_ts_with(
+    fields: &IndexMap<String, Column>,
+    mode: impl Into<Mode>,
+    json_type: &dyn Fn(&Column) -> Ty,
+) -> String {
     let insert = mode.into();
     if fields.is_empty() {
         return "{}".into();
@@ -165,7 +184,7 @@ fn fields_ts(fields: &IndexMap<String, Column>, mode: impl Into<Mode>) -> String
                 Mode::Read => may_hide(f),
             };
             let opt = if optional { "?" } else { "" };
-            format!("{}{opt}: {}", key(&f.name), col_ts(f, insert))
+            format!("{}{opt}: {}", key(&f.name), col_ts_with(f, insert, json_type))
         })
         .collect();
     format!("{{ {} }}", parts.join("; "))
@@ -234,6 +253,8 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
         Ty::Bool | Ty::FreshBoolLit(_) => "boolean".into(),
         Ty::BoolLit(value) => value.to_string(),
         Ty::Null => "null".into(),
+        Ty::Undefined => "undefined".into(),
+        Ty::Void => "void".into(),
         Ty::Never => "never".into(),
         Ty::Array(el) => {
             let inner = ty_ts(el, rows);
@@ -619,5 +640,5 @@ pub fn files(
 
 /// The value type used by the backend registry, independently of config exports.
 pub(crate) fn registry_value(c: &Column) -> String {
-    value_ts(c, false)
+    value_ts_with(c, false, &crate::types::json_authored_ty)
 }

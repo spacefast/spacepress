@@ -51,22 +51,23 @@ impl Compiler<'_, '_> {
                 d
             });
         self.annotation_depth -= 1;
-        if self.annotation_depth == 0 {
-            result.map(runtime_type)
-        } else {
-            result
-        }
+        result
     }
 
     /// PHP compilation and cached class shapes need runtime types even when class
     /// dispatch reenters compilation from inside an alias normalization.
     pub(super) fn resolve_runtime_ann(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
-        // A runtime annotation is a new root, even when class dispatch reaches
+        self.resolve_annotation_root(a, module).map(runtime_type)
+    }
+
+    /// Resolve the authored domain before PHP/wire null normalization.
+    pub(super) fn resolve_annotation_root(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
+        // Each annotation is a new root, even when class dispatch reaches
         // it while another annotation is being normalized. Restore both budgets
         // before propagating errors; class readiness guards remain independent.
         let saved = (self.annotation_depth, self.annotation_steps);
         (self.annotation_depth, self.annotation_steps) = (0, 0);
-        let result = self.resolve_ann(a, module, &HashMap::new()).map(runtime_type);
+        let result = self.resolve_ann(a, module, &HashMap::new());
         (self.annotation_depth, self.annotation_steps) = saved;
         result
     }
@@ -892,7 +893,7 @@ fn without_undefined(t: Ty) -> Ty {
 
 /// Annotation-only distinctions end here. PHP's null/undefined representation is
 /// unchanged, including nested array elements, properties and callback results.
-fn runtime_type(t: Ty) -> Ty {
+pub(super) fn runtime_type(t: Ty) -> Ty {
     match t {
         Ty::Undefined | Ty::Void => Ty::Null,
         Ty::Array(t) => Ty::Array(Box::new(runtime_type(*t))),

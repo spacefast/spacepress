@@ -346,16 +346,30 @@ fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     if c.not_null { base } else { base.nullable() }
 }
 
+pub struct JsonType {
+    pub authored: Ty,
+    pub runtime: Ty,
+}
+
 thread_local! {
-    /// Resolved annotations keyed by schema column identity, reset for each compilation.
-    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, Ty>> = Default::default();
+    /// Resolved domains keyed by schema column identity, reset for each compilation.
+    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, JsonType>> = Default::default();
 }
 
 pub fn json_ty(c: &Column) -> Ty {
     JSON_TYPES.with(|m| {
         m.borrow()
             .get(&(c as *const Column as usize))
-            .cloned()
+            .map(|t| t.runtime.clone())
+            .unwrap_or(Ty::Unknown)
+    })
+}
+
+pub fn json_authored_ty(c: &Column) -> Ty {
+    JSON_TYPES.with(|m| {
+        m.borrow()
+            .get(&(c as *const Column as usize))
+            .map(|t| t.authored.clone())
             .unwrap_or(Ty::Unknown)
     })
 }

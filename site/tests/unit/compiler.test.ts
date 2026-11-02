@@ -181,6 +181,32 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
+    // Backend queries retain the authored JSON domain; wire types retain nulls.
+    const storedSource = `import { table, group, json, defineConfig, action, db } from "zero";
+type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
+type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
+class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
+const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull() });
+export default defineConfig({ tables: { documents }, actions: { read: action({ input: {}, handler: async () => {
+  const row = await db.query.documents.findFirst();
+  return !row ? null : new View(row.payload).read() + new View(row.metadata.payload).read();
+} }) } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
+    const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
+    assert.equal(stored.envelope, nativeCheck(dir));
+    assert.equal(stored.check.ok, true, stored.envelope);
+    const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(storedBuild.status, 0, storedBuild.stderr);
+    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
+const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
+void wire;`);
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
+      include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
+    }));
+    const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
+
     // Each annotation root fits its own budget. Compiling C from the nested
     // annotation must accept the same program as compiling it from new C first.
     const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
@@ -234,7 +260,7 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
     ]) {
       const source = `import { action, defineConfig } from "zero";
 type Expanded = ${probe.parts.join(" & ")};
-export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
   const x: Expanded = { ${probe.value} }; return x;
 } }) } });`;
       writeFileSync(path.join(dir, "zero.config.ts"), source);

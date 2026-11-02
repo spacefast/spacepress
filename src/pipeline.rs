@@ -174,15 +174,6 @@ pub fn build(
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
             let canonical = crate::schema::physical_name(stored);
-            // A surviving canonical sibling already owned separate storage, so
-            // removing the old spelling cannot be a rename into any new resource.
-            if &canonical != stored
-                && !schema.collections.contains_key(stored)
-                && tables.contains_key(&canonical)
-                && schema.collections.contains_key(&canonical)
-            {
-                continue;
-            }
             if &canonical != stored
                 && !schema.collections.contains_key(stored)
                 && schema.collections.contains_key(&canonical)

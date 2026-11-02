@@ -1425,44 +1425,6 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
 /// Validates a constant default against its column and returns it as JSON.
 /// True when a JSON object nested in `v` can't survive PHP: `json_decode(.., true)` turns an object
 /// into an array, and one whose keys are exactly `"0".."n-1"` (in any order; the store sorts integer
-/// keys) then reads back as a list. The empty object `{}` survives (the runtime's JsObject marker).
-pub(crate) fn has_list_shaped_object(v: &Json) -> bool {
-    match v {
-        Json::Object(o) => {
-            (!o.is_empty() && (0..o.len()).all(|i| o.contains_key(&i.to_string())))
-                || o.values().any(has_list_shaped_object)
-        }
-        Json::Array(a) => a.iter().any(has_list_shaped_object),
-        _ => false,
-    }
-}
-
-/// True when a json() value inside this column's default (the column, or a json sub-field of a
-/// group/repeater/blocks item) is list-shaped and would read back as an array.
-fn json_leaves_lossy(b: &ColBuilder, v: &Json) -> bool {
-    let fields = |fields: &IndexMap<String, Rc<ColBuilder>>, item: &Json| {
-        fields
-            .iter()
-            .any(|(name, f)| item.get(name).is_some_and(|x| json_leaves_lossy(f, x)))
-    };
-    match (b.ty, v) {
-        (ColType::Json, v) => has_list_shaped_object(v),
-        (ColType::Group, item) => b.fields.as_ref().is_some_and(|f| fields(f, item)),
-        (ColType::Repeater, Json::Array(items)) => {
-            b.fields.as_ref().is_some_and(|f| items.iter().any(|i| fields(f, i)))
-        }
-        (ColType::Blocks, Json::Array(items)) => b.layouts.as_ref().is_some_and(|layouts| {
-            items.iter().any(|i| {
-                i.get("layout")
-                    .and_then(Json::as_str)
-                    .and_then(|l| layouts.get(l))
-                    .is_some_and(|f| fields(f, i))
-            })
-        }),
-        _ => false,
-    }
-}
-
 /// A timestamp/date sub-field inside a group/repeater/blocks default that the runtime codec would
 /// reject when the default is applied. Returns the sub-field's name.
 fn bad_date_leaf(b: &ColBuilder, v: &Json) -> Option<String> {
@@ -1510,15 +1472,6 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
             format!("`{name}` defaults to a `{field}` value that isn't a real ISO 8601 date or timestamp"),
         )
         .help("use \"YYYY-MM-DD\" for dates and an ISO string like \"2026-01-31T09:00:00Z\" for timestamps"));
-    }
-    // group/repeater/blocks defaults are normalized against their fields; an opaque json value
-    // (the column itself or a json sub-field) is stored as given.
-    if json_leaves_lossy(b, &json) {
-        return Err(Diag::new(
-            span,
-            format!("`{name}` defaults to a JSON object that the PHP runtime reads back as an array"),
-        )
-        .help("PHP decodes {} and objects keyed \"0\", \"1\", ... as lists; use null, an array, or other keys"));
     }
     let bad = |what: &str| -> Result<Json> {
         Err(Diag::new(

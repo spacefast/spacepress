@@ -55,6 +55,35 @@ test("wp zero abilities lists every operation of the app with schemas from schem
   assert.equal(text, readFileSync(fixture, "utf8"), "tests/wp/fixtures/abilities.json is stale; rerun with ZERO_UPDATE_FIXTURES=1");
 });
 
+test("abilities convert empty input, JSON inputs and function-valued results at the wire", async () => {
+  const empty = await runAbility("blog/refs-empty", {}, "editor");
+  assert.deepEqual([empty.status, empty.json], [200, {}]);
+  const wire = await runAbility("blog/refs-wire", {}, "editor");
+  assert.deepEqual([wire.status, wire.json], [200, { a: [null, null] }]);
+  const structuredInput = { meta: {}, info: {} };
+  const structured = await runAbility("blog/refs-echo", structuredInput, "editor");
+  const direct = await http("POST", api + "/actions/refsEcho", { as: "editor", body: structuredInput });
+  assert.deepEqual([structured.status, structured.json], [200, direct.json.data]);
+  assert.equal(direct.status, 200, JSON.stringify(direct.json));
+  const groupId = zero("insert", "gated", JSON.stringify({ title: `Ability group ${run}`, notes: { open: "old", sealed: "old" } }))[0].id;
+  const groupPatch = await runAbility("blog/gated-update", { id: groupId, patch: { notes: {} } }, "admin");
+  assert.deepEqual([groupPatch.status, groupPatch.json.notes], [200, { open: null, sealed: null }]);
+  for (const items of [{}, { oops: { tag: "kept" } }]) {
+    const invalid = { meta: {}, items };
+    const viaAbility = await runAbility("blog/refs-echo", invalid, "editor");
+    const viaRest = await http("POST", api + "/actions/refsEcho", { as: "editor", body: invalid });
+    assert.deepEqual(outcome(viaAbility), { status: 422, code: "invalid_input" });
+    assert.deepEqual(outcome(viaAbility), outcome(viaRest));
+  }
+  for (const meta of [{}, { "1": 1, "0": 2 }, { "\u0000": 1 }]) {
+    const echo = await runAbility("blog/refs-echo", { meta }, "editor");
+    assert.deepEqual([echo.status, echo.json], [200, { meta }]);
+    assert.deepEqual(JSON.parse(wp("zero", "run", "blog/refs-echo", `--input=${JSON.stringify({ meta })}`, "--user=editor")).data, { meta });
+    const row = await runAbility("blog/events-create", { title: `Wire ${run}`, extra: meta }, "editor");
+    assert.deepEqual([row.status, row.json.extra], [200, meta]);
+  }
+});
+
 test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and annotations", async () => {
   // Every page: lanes keep adding collections to the shared test app, past one page of 100.
   const listed: any[] = [];

@@ -96,10 +96,12 @@ Hooks and actions are compiled, not interpreted. Your `beforeCreate` becomes
 plain PHP:
 
 ```php
-function posts__beforeCreate(array &$data)
+function posts__beforeCreate(\Zero\JsObject $data)
 {
-    $data['title'] = \Zero\Js::trim($data['title']);
-    if ($data['title'] === '') {
+    $__t1 = $data;
+    $__t2 = 'title';
+    \Zero\Js::set($__t1, $__t2, \Zero\Js::trim(\Zero\Js::prop($data, 'title')));
+    if (\Zero\Js::strictEq(\Zero\Js::prop($data, 'title'), '')) {
         throw new \Zero\HttpError((int) 422, 'invalid_input', 'A post needs a title');
     }
 }

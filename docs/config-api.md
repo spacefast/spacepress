@@ -422,7 +422,7 @@ What the design specifies and this build doesn't do yet:
 Supported: `const`/`let`, functions, arrows, closures, destructuring,
 spread, template literals, `if`/`for`/`for...of`/`while`/`switch`/`try`,
 `?.`, `??`, objects, arrays, type annotations, type aliases, interfaces,
-generics (erased).
+generics (erased), `structuredClone`.
 
 `encodeURI(value)` and `encodeURIComponent(value)` accept exactly one string in
 configuration evaluation and compiled handlers. Both preserve `-_.!~*'()`;
@@ -440,28 +440,36 @@ entry is missing (Zero represents `undefined` as PHP null). Check the fetched
 value or supply a default with `??` or a destructuring initializer. A non-null
 assertion (`values[0]!`) is available when your code guarantees the entry exists.
 
-Mutating a tuple broadens its positional reads to the union of its element
-types; its authored assignment constraints remain unchanged. Optional parameters
-include null in body reads, while a default initializer supplies the missing value.
+Objects and arrays have reference identity: assignment, argument passing,
+spreads and closures share their descendants as in JavaScript. Use
+`structuredClone(value)` for an independent graph; shared descendants and
+cycles survive cloning. Captured module-level objects live for the PHP process
+(one web request, or the worker's lifetime), as module data does in Node.
+
+Arrays are dense. Writing at `length` appends; writing past `length`, at a
+negative or fractional index, or at `NaN`/`Infinity` throws `RangeError`.
+Grow arrays with `push` or `Array.from({ length: n }, mapper)`.
+Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
+`reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
+callback removed. Shrinkage after the final visit or an early return is fine;
+growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
+read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+non-numeric index types are compile errors.
+
+Zero represents `undefined` as `null`: `typeof undefined` gives `"object"`,
+`JSON.stringify({ x: undefined })` gives `{"x":null}`, `String(undefined)`
+gives `"null"`, and destructuring defaults also fire on explicit `null`.
+Optional parameters include null in body reads; defaults supply missing values.
 
 Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
 `==` (except `== null`), `in`, `instanceof`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook, mutating an
-object after storing it in another (PHP copies on store), changing an array
-element in place (`list[i] = v`, `list[i] += v`, `list[i]++`, `list[i].x = v`;
-use `push`, or build the new array with `map`; PHP turns a hole into a key), a closure
-capturing a `for (let …)` variable that holds an object or array (copy what it
-needs into a `const` inside the loop body),
+`eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
-(use a literal position or omit it; PHP erases runtime undefined into null), reassigning a
-parameter that also mutates its object or array (use a separate local
-binding for the replacement), mutating a nested container through a
-destructured parameter (accept the whole parameter), replacing an earlier
-object/array argument passed to a mutating parameter while evaluating a
-later argument (evaluate them in separate statements), `await` on anything that isn't a Zero API call or your own `async` function, an
-`async` call without `await`.
+(use a literal position or omit it; PHP erases runtime undefined into null), `await` on
+anything that isn't a Zero API call or your own `async` function, an `async`
+call without `await`.
 
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.

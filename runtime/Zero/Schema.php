@@ -17,7 +17,7 @@ namespace Zero;
  */
 final class Schema
 {
-    public const SERIES = '0.2';
+    public const SERIES = '0.3';
 
     /** The role ladder, lowest first; guests (§6.2) sit below subscribers. */
     public const ROLES = ['guest', 'subscriber', 'author', 'editor', 'admin'];
@@ -38,12 +38,12 @@ final class Schema
             throw new \RuntimeException("$file must return an array");
         }
         if (($raw['version'] ?? null) !== 3) {
-            throw new \RuntimeException('schema.php version 3 required');
+            throw new \RuntimeException('schema.php version 3 required; rebuild with this Zero version');
         }
 
         if (($raw['runtime'] ?? null) !== self::SERIES) {
             $series = $raw['runtime'] ?? '(missing)';
-            throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES);
+            throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES . '; rebuild with this Zero version');
         }
 
         return new self($raw);
@@ -244,11 +244,12 @@ final class Schema
     }
 
     /** Resolve a `default` / `onUpdate` spec. */
-    public static function generate(array $spec, string $type): mixed
+    public static function generate(array $spec, array $col): mixed
     {
+        $type = $col['type'];
         if (isset($spec['json'])) {
             // Compiler-produced literals have already been validated; the request depth limit does not apply.
-            return Js::decodeJson($spec['json'], 2147483647);
+            return Seam::generated($col, Js::decodeJson($spec['json'], 2147483647));
         }
         if (array_key_exists('value', $spec)) {
             return $spec['value'];
@@ -257,9 +258,10 @@ final class Schema
             return $type === 'date' ? gmdate('Y-m-d', intdiv(Js::now(), 1000)) : Js::iso(Js::now());
         }
         if (isset($spec['fn'])) {
-            $fn = '\\ZeroApp\\' . $spec['fn'];
+            $slot = $spec['fn'];
+            $fn = is_string($slot) ? '\\ZeroApp\\' . $slot : $slot;
 
-            return $fn();
+            return Seam::generated($col, $fn());
         }
 
         throw new \LogicException('Invalid generator spec');
@@ -285,7 +287,6 @@ final class Schema
      */
     public static function normalize(array $col, mixed $v, string $name, string $pointer): mixed
     {
-        $v = Seam::toPhp($v, $col);
         if ($v === null) {
             if ($col['notNull'] ?? false) {
                 throw HttpError::invalidInput("$name is required", $pointer);
@@ -343,7 +344,7 @@ final class Schema
      */
     public static function normalizeFields(array $fields, mixed $obj, string $base): array
     {
-        $obj = Seam::container($obj) ?? [];
+        $obj = Seam::toPhp($obj, $fields) ?? [];
         if (!self::isObject($obj)) {
             throw HttpError::invalidInput('Expected an object', $base);
         }
@@ -358,7 +359,7 @@ final class Schema
             $ptr = $base . HttpError::seg($name);
             if (!array_key_exists($name, $obj)) {
                 if (isset($f['default'])) {
-                    $obj[$name] = self::generate($f['default'], $f['type']);
+                    $obj[$name] = self::generate($f['default'], $f);
                 } elseif ($f['notNull'] ?? false) {
                     throw HttpError::invalidInput("$name is required", $ptr);
                 } else {
@@ -538,7 +539,7 @@ final class Schema
             'boolean' => (bool) (int) $v,
             // A json() value keeps `{}` as an object (the JsObject marker); structured columns are
             // normalized against their fields, so plain arrays are exact there.
-            'json' => is_string($v) ? self::json($v) : $v,
+            'json' => ($col['system'] ?? false) ? Seam::toPhp(is_string($v) ? self::json($v) : $v) : (is_string($v) ? self::json($v) : $v),
             'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
             'group' => self::fillFields($col['fields'] ?? [], Seam::toPhp(is_string($v) ? self::json($v) : $v, $col)),
             'repeater' => array_map(
@@ -592,11 +593,13 @@ final class Schema
      *
      * @throws HttpError invalid_input
      */
-    public static function checkRules(array $col, mixed $v, string $name, string $pointer, array $ctx): void
+    public static function checkRules(array $col, mixed $v, string $name, string $pointer, array $ctx, ?array $dataShape = null, ?array $path = null): void
     {
         if ($v === null) {
             return;
         }
+        $dataShape ??= [$name => $col];
+        $path ??= [$name];
         $type = $col['type'];
         $rules = $col['rules'] ?? [];
         if (isset($rules['min']) || isset($rules['max'])) {
@@ -624,10 +627,16 @@ final class Schema
             }
         }
         if (isset($rules['validate'])) {
-            $fn = '\\ZeroApp\\' . $rules['validate'];
-            $value = Seam::toJs($v, $col);
-            $ctx = Seam::ctx($ctx);
-            $r = $fn($value, $ctx);
+            $slot = $rules['validate'];
+            if (is_string($slot)) {
+                $fn = '\\ZeroApp\\' . $slot;
+                $jsCtx = Seam::ctx($ctx, $dataShape ?? [$name => $col]);
+                $value = $jsCtx->p['data'];
+                foreach ($path ?? [$name] as $key) { $value = Seam::container($value)[$key] ?? null; }
+                $r = $fn($value, $jsCtx);
+            } else {
+                $r = $slot($v, $ctx);
+            }
             if (is_string($r)) {
                 throw HttpError::invalidInput($r, $pointer);
             }
@@ -636,14 +645,14 @@ final class Schema
             }
         }
         match ($type) {
-            'group' => self::checkFields($col['fields'] ?? [], $v, $pointer, $ctx),
+            'group' => self::checkFields($col['fields'] ?? [], $v, $pointer, $ctx, $dataShape, $path ?? [$name]),
             'repeater' => array_map(
-                static fn ($item, $i) => self::checkFields($col['fields'] ?? [], $item, "$pointer/$i", $ctx),
+                static fn ($item, $i) => self::checkFields($col['fields'] ?? [], $item, "$pointer/$i", $ctx, $dataShape, [...($path ?? [$name]), $i]),
                 $v,
                 array_keys($v),
             ),
             'blocks' => array_map(
-                static fn ($item, $i) => self::checkFields($col['layouts'][$item['layout']] ?? [], $item, "$pointer/$i", $ctx),
+                static fn ($item, $i) => self::checkFields($col['layouts'][$item['layout']] ?? [], $item, "$pointer/$i", $ctx, $dataShape, [...($path ?? [$name]), $i]),
                 $v,
                 array_keys($v),
             ),
@@ -651,10 +660,10 @@ final class Schema
         };
     }
 
-    public static function checkFields(array $fields, array $obj, string $base, array $ctx): void
+    public static function checkFields(array $fields, array $obj, string $base, array $ctx, ?array $dataShape = null, array $path = []): void
     {
         foreach ($fields as $name => $f) {
-            self::checkRules($f, $obj[$name] ?? null, (string) $name, $base . HttpError::seg($name), $ctx);
+            self::checkRules($f, $obj[$name] ?? null, (string) $name, $base . HttpError::seg($name), $ctx, $dataShape ?? $fields, [...$path, $name]);
         }
     }
 

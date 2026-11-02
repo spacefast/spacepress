@@ -1,7 +1,7 @@
 // Positive checks: inferred types are exactly what the spec says.
 import {
   action, db, defineConfig, integer, text, job, email,
-  type AccessCtx, type BlockValue, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
+  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "zero";
 import { authors, comments, items, locations, posts, relations, schema, settings, shoppingList } from "./schema";
 
@@ -127,7 +127,8 @@ export default defineConfig({
     posts: {
       // Hooks get a trailing ctx: who's writing, and where.
       async beforeCreate(data, ctx) {
-        expectType<Equal<typeof ctx, HookCtx>>();
+        expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
+        expectType<Equal<typeof ctx.data, typeof data>>();
         if (data.authorId == null && ctx.user) {
           const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
           if (author) data.authorId = author.id;

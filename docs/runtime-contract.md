@@ -101,36 +101,38 @@ Column keys are also the SQL column names (always double-quoted in SQL).
 Generated. `namespace ZeroApp;`. Contains plain PHP functions. The runtime
 calls them by the names in schema.php (prefix `\ZeroApp\`):
 
-| Hook | Call | Return handling |
+| Compiled callback | Call | Return handling |
 |---|---|---|
-| beforeCreate | `$r = $fn($data)` | if `is_array($r)`, `$data = $r` |
-| afterCreate | `$fn($row)` | ignored |
-| beforeUpdate | `$r = $fn($patch, $existing)` | if `is_array($r)`, `$patch = $r` |
-| afterUpdate | `$fn($row, $previous)` | ignored |
-| beforeDelete | `$fn($row)` | ignored |
-| afterDelete | `$fn($row)` | ignored |
-| default fn / onUpdate fn | `$v = $fn()` | the value |
-| action handler | `$out = $fn($input)` | returned as `data` |
+| beforeCreate | `$r = $fn($data, $ctx)` | a `JsObject` replaces data; otherwise retain mutations to `$data` |
+| afterCreate | `$fn($row, $ctx)` | ignored |
+| beforeUpdate | `$r = $fn($patch, $existing, $ctx)` | a `JsObject` replaces the patch; otherwise retain mutations to `$patch` |
+| afterUpdate | `$fn($row, $previous, $ctx)` | ignored |
+| beforeDelete / afterDelete | `$fn($row, $ctx)` | ignored |
+| default fn / onUpdate fn | `$v = $fn()` | converted through `Seam::generated` for the column |
+| action handler | `$out = $fn($input)` | converted to wire values and returned as `data` |
 
-The runtime always passes variables (never literals), because a compiled
-function may declare a by-reference parameter (`array &$data`) when the
-source mutates it.
+A string in a schema callback slot names compiled code. `Seam` converts its
+schema-shaped input and context to `JsObject` / `JsArray` handles. Each callback
+receives a fresh graph; before-hooks' `$data` / `$patch` shares identity with
+`$ctx->p['data']`, so in-place mutations are retained without a replacement
+return. After-hook and delete-hook return values are ignored. Native non-string
+callables retain PHP array inputs and contexts; before-hooks replace data or
+patches only when their return is a native array.
 
-Captured mutating object parameters have a separate local binding whose fields
-share storage with the supplied object. Replacing the caller's variable does
-not retarget the capture; field mutations remain visible. This requires a fixed
-object shape with required fields. Capturing a mutating array, open record, or
-object with optional fields is rejected with a located diagnostic; capture the
-needed scalar values instead. Mutating `for…of` bindings use the same fixed
-object representation; array/record/optional-field and destructured mutations
-must rebuild the array instead (for example with `map`). Object spread/rest copy
-field values, and loop-local declarations receive a fresh binding on each execution. A captured
-`for (let …)` header variable gets a fresh `Js::cell` per iteration, which
-copies its value, so it must be primitive; an object or array one is rejected.
-Every write into or through an array element (`list[i] = v`, `list[i] += v`,
-`list[i]++`, `list[i].x = v`) is rejected: writing past the end would turn the
-PHP array into an object, and writing through a missing element must throw
-before the value runs. Both wait for arrays as handles (design #79).
+Compiled object and array parameters pass handles by value: member mutations
+are shared, but rebinding a parameter does not replace the caller's binding.
+Captured bindings retain that JavaScript behavior, including arrays, open
+records and optional fields. Object spread/rest copies field values shallowly.
+Loop-local declarations receive a fresh binding on each execution, and a
+captured `for (let …)` header variable receives a fresh `Js::cell` per iteration.
+The cell copies its value; copying a handle preserves the referenced container.
+
+Arrays remain dense. Indexed writes may replace an existing element or append
+at the current length; writes past the end throw a catchable `RangeError`.
+Writing through a missing receiver throws `TypeError`. Assignments evaluate
+the receiver and key before the value; read-modify-write operations read the
+old value before evaluating the right-hand side. These are runtime semantics,
+not a blanket refusal of writes into array elements.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
@@ -375,8 +377,10 @@ transactions. `Store` exposes `afterCommit(callable)` and
 fields, with `(field, definition, column, spec)`. Top-level `spec` is the
 collection/global; nested `spec.fields` contains sibling definitions.
 
-Schema loading requires v3 and runtime series `0.2` (phase-2 design §3.1); v2
-and missing or incompatible series are refused. `Schema::version()` and
+Schema loading requires v3 and runtime series `0.3`; v2 and missing or
+incompatible series are refused with a rebuild instruction. Series `0.3`
+requires handle-based compiled callbacks; schemas from the `0.2` compiler
+cannot load under this runtime. `Schema::version()` and
 `Schema::runtime()` report the loaded contract. New feature metadata passes
 through unchanged; feature modules own its behavior. Lazy scheduled promotion
 remains at the start of requests/commands, so due records are visible in that
@@ -489,10 +493,9 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
-`int|float`; `string` = PHP `string` (UTF-8; `length` and every index count UTF-16
-code units as in JS; a result that would split a surrogate pair throws a `RangeError`, because UTF-8 can't hold the lone half); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
-arrays are PHP lists; plain objects are PHP assoc arrays; functions are
-`callable`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
+`int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
+with identity; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
@@ -510,11 +513,15 @@ Conversions:
 - `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits, exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
 - `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
 - `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So Zero ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
-- `JsObject` — the empty JS object `{}` (PHP's `[]` is also the empty list). `decodeJson(string)` (request bodies, stored `json()` values, SCF JSON, `JSON.parse`) returns it for `{}`; compiled `{}` literals and empty captured objects are it; it encodes as `{}`, reads like an empty array and is immutable: compiled writes into an object place go through `write(&$root, $keys, $value)`, which unwraps it only as it writes (keys and value evaluate first, JS order). Only `json()` values keep it: Db flattens it (`plain()`) for every other column before field access, rules and hooks.
+- `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
+- Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
+- Arrays are dense: `get` returns null for an invalid/missing index; `setAt` permits overwrite or append at length and throws `RangeError` otherwise. Fixed-length walks throw if they reach an index removed by their callback; live-length `from` and `for…of` allow shrinking and growing.
+- `get`/`prop` and `setAt`/`set` throw catchable JS `TypeError` for a missing receiver. Writes evaluate their value first; read-modify-write operations read first.
+- `has` snapshots property presence for arithmetic compounds and updates. `plus` implements `+=` primitive coercion with that snapshot, distinguishing a missing old value from present null.
 - `parseInt(string $s, int|float|null $radix = null): int|float`, `parseFloat(string $s): int|float` — exact JS semantics, NAN when nothing parses.
-- `truthy(mixed $v): bool` — null, false, 0, -0.0, NAN, `""` are falsy; every array (even empty) is truthy.
-- `typeOf(mixed $v): string` — `"object"` for null/arrays, `"number"`, `"string"`, `"boolean"`, `"function"` for Closure.
-- `strictEq(mixed $a, mixed $b): bool` — `===` for primitives: int/float compare numerically, NAN never equal.
+- `truthy(mixed $v): bool` — null, false, 0, -0.0, NAN, `""` are falsy; every handle (even empty) is truthy.
+- `typeOf(mixed $v): string` — `"object"` for null/handles, `"number"`, `"string"`, `"boolean"`, `"function"` for Closure.
+- `strictEq(mixed $a, mixed $b): bool` — `===` for primitives: int/float compare numerically, NAN never equal; handles compare by identity.
 - `isInteger(mixed $v): bool`, `isFinite(mixed $v): bool` (`Number.isInteger/isFinite`, no coercion).
 - `toFixed(int|float $n, int $digits = 0): string` — JS `toFixed`.
 
@@ -522,9 +529,9 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
 - `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
-- `indexOf(string|array $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
+- `indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
-- `split(string $s, string|RegExp $sep, int|float|null $limit = null): array` (`""` separator → UTF-16 code units; splitting a surrogate pair throws)
+- `split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray` (`""` separator → UTF-16 code units; splitting a pair throws)
 - `padStart(string $s, int|float $len, string $fill = ' '): string`, `padEnd(...)`
 - `trim(string $s): string`, `trimStart`, `trimEnd` (JS whitespace incl. Unicode spaces and line terminators)
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).
@@ -532,41 +539,43 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `repeat(string $s, int|float $n): string`
 - `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
 - `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
-- `strMatch(string $s, RegExp $re): ?array` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
+- `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
+
+Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
+depends on `mb_internal_encoding()`.
 
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
 - Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
-Arrays (lists):
-- `find(array $a, callable $f): mixed` (null when none), `findIndex(array $a, callable $f): int`, `findLast`, `findLastIndex`
-- `some(array $a, callable $f): bool`, `every(array $a, callable $f): bool`
-- Callbacks are invoked as `$f($item, $index)`; compiled callbacks declare the parameters they use, and PHP closures ignore extra arguments.
-- `filter(array $a, callable $f): array` (re-indexed list; callback result passed through `truthy`)
-- `map(array $a, callable $f): array` (`$f($item, $index)`)
-- `includes(array $a, mixed $v, mixed $from = 0): bool` — SameValueZero (numbers numeric, NAN equals NAN)
-- `join(array $a, string $sep = ','): string` (null elements → `""`, others `str`)
-- `arrSlice(array $a, int|float $start = 0, int|float|null $end = null): array`
-- `arrAt(array $a, mixed $i = 0): mixed`
-- `splice(array &$a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): array`
-- `reverse(array &$a): array` (in place, returns the array)
-- `sort(array &$a, ?callable $cmp = null): array` — in place; default compares `str()` values by UTF-16 code units; comparator results may be floats; stable.
-- `sorted(array $a, ?callable $cmp = null): array` — `toSorted`
-- `reduce(array $a, callable $f, mixed ...$init): mixed` — `$f($acc, $item, $index)`; empty array without init → `JsError` TypeError
-- `flat(array $a, int|float $depth = 1): array`, `flatMap(array $a, callable $f): array`
-- `fill(array &$a, mixed $v, int|float $start = 0, int|float|null $end = null): array`
-- `max(int|float ...$n): int|float`, `min(...)` — JS `Math.max/min` (no args → -INF/INF, any NAN → NAN)
-- `range(int $n, callable $f): array` — `Array.from({ length: n }, (_, i) => f(i))`
+Arrays (`JsArray`):
+- `find(JsArray $a, callable $f): mixed`, `findLast`; `findIndex`/`findLastIndex`: int (null/-1 when absent).
+- `some(JsArray $a, callable $f): bool`, `every(...)`: bool.
+- Callbacks receive `(value, index, array)`; fixed-length walks read each value live and keep the value read before the callback.
+- `filter(JsArray $a, callable $f): JsArray`, `map(...)`: JsArray, `forEach(...)`: void.
+- `includes(JsArray $a, mixed $v): bool` uses SameValueZero; `indexOf`/`lastIndexOf` use strict equality.
+- `join(JsArray $a, string $sep = ','): string` (null elements → `""`; cyclic arrays render a revisited handle as `""`).
+- `arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray`, `arrAt(JsArray $a, int|float $i): mixed`.
+- `splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray`.
+- `push(JsArray $a, mixed ...$items): int`, `unshift(...)`: int; `pop(JsArray $a): mixed`, `shift(...)`: mixed.
+- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable and retains a comparator-pushed tail; default comparison uses UTF-16 code units.
+- `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
+- `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
+- `flat(JsArray $a, int|float $depth = 1): JsArray`, `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
+- `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument.
+- `from(JsArray|string $source, ?callable $f = null): JsArray` uses live iterator length; strings iterate code points. `range(int $n, callable $f): JsArray` is the fixed-count `{ length: n }` path, passing `(null, index)`.
+- `max(int|float ...$n): int|float`, `min(...)` are JS Math helpers.
 
-Objects (assoc arrays):
-- `keys(array $o): array` (keys as strings), `values(array $o): array`, `entries(array $o): array` (`[[string key, value], ...]`), `fromEntries(iterable $e): array`
-- `omit(array $o, array $keys): array` — object rest after destructuring.
-- `hasOwn(array $o, string $k): bool`
+Objects (`JsObject`):
+- `keys(JsObject $o): JsArray`, `values(...)`: JsArray, `entries(...)`: JsArray of JsArray pairs; `fromEntries(JsArray $entries): JsObject`.
+- `obj(array ...$parts): JsObject` writes per key in source order; `omit(JsObject $o, array $keys): JsObject` implements object rest.
+- `hasOwn(JsObject|JsArray $o, mixed $key): bool`; `key(mixed $key): string` coerces computed keys as JS does.
+- `clone(mixed $v): mixed` preserves aliases and cycles; closures throw `DataCloneError`. Internal `detach` preserves closures and RegExp by reference while copying containers for runtime ownership.
 
 JSON:
-- `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Indent number (clamped 10) or string, exactly as JS formats it.
-- `jsonParse(string $s): mixed` — assoc arrays; invalid → `JsError` named `SyntaxError`.
+- `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Cycles throw `TypeError`; `jsonTree` provides the same value tree for foreign encoders. Indent number (clamped 10) or string, exactly as JS formats it.
+- `jsonParse(string $s): mixed` — handles; invalid → `JsError` named `SyntaxError`.
 
 Misc:
 - `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; unlike V8 it has no legacy fallback (`10/30/2026` → NAN). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.

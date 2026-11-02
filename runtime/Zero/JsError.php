@@ -11,4 +11,15 @@ class JsError extends \Exception
     {
         parent::__construct($message);
     }
+
+    /** Receipt snapshots persist JS-visible fields, never PHP frames containing callbacks. */
+    public function __serialize(): array
+    {
+        return [$this->getMessage(), $this->jsName];
+    }
+
+    public function __unserialize(array $data): void
+    {
+        $this->__construct($data[0], $data[1]);
+    }
 }

@@ -248,7 +248,7 @@ export default defineConfig({{ name: "uri", schema: {{ notes }}, actions: {{ enc
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
         $fn = '\\ZeroApp\\' . $schema['actions']['encode']['handler'];
-        echo json_encode([$schema['collections']['notes']['columns']['result']['default']['value'], $fn([], ['user' => null, 'target' => 'wp'])]);
+        echo \Zero\Js::jsonStringify([\Zero\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
     "#,
         &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
     );
@@ -359,7 +359,7 @@ export default defineConfig({{ name: "differences", schema: {{ notes }}, actions
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
         $fn = '\\ZeroApp\\' . $schema['actions']['measure']['handler'];
-        echo json_encode([$schema['collections']['notes']['columns']['result']['default']['value'], $fn([], ['user' => null, 'target' => 'wp'])]);
+        echo \Zero\Js::jsonStringify([\Zero\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
     "#,
         &[
             &content.join("plugins/zero-runtime/zero/bootstrap.php"),

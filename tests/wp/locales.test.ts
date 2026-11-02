@@ -33,6 +33,7 @@ test("translationOf puts both posts in one Polylang group and copies synced colu
   assert.deepEqual([fr.locale, fr.price, fr.tags, fr.summary, fr.translations], ["fr", 3, ["tea"], null, { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(en.id), ["en", { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(fr.id), ["fr", { en: en.id, fr: fr.id }]);
+  assert.deepEqual(await ok("POST", "/actions/refsTranslations", { as: "editor", body: { id: en.id } }), ["en", "fr"]);
   await problem("POST", "/tours", { as: "editor", body: { title: "Again", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
   assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id }, "a refused join leaves Polylang's group as it was");
 });

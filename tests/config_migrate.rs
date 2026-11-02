@@ -162,7 +162,7 @@ fn payload_default_row() -> Value {
     let (_dir, app, base) = payload_app();
     run_php(
         &app,
-        "echo json_encode($app->db->insert('notes', $arg, true)[0]);",
+        "echo \\Zero\\Js::jsonStringify($app->db->insert('notes', $arg, true)[0]);",
         &base,
     )
 }
@@ -718,19 +718,18 @@ fn emdash_required_json_rejects_only_the_empty_string() {
 }
 
 #[test]
-fn json_defaults_with_list_shaped_objects_are_refused_at_the_default() {
-    let dir = tempfile::tempdir().unwrap();
-    let input = dir.path().join("emdash.json");
-    std::fs::write(
-        &input,
+fn json_defaults_keep_numeric_keyed_objects() {
+    let (_dir, app) = migrated_app(
+        "emdash",
+        "emdash.json",
         r#"{"version":"1","collections":[{"slug":"notes","fields":[{"slug":"title","type":"string","required":true},{"slug":"data","type":"json","defaultValue":{"nested":{"1":"b","0":"a"}}}]}]}"#,
-    )
-    .unwrap();
-    let out = migrate("emdash", &input, &dir.path().join("app/zero.config.ts"));
-    assert_eq!(out.status.code(), Some(1));
-    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(report["errors"][0]["pointer"], "/collections/0/fields/1/defaultValue");
-    assert!(!dir.path().join("app").exists());
+    );
+    let value = run_php(
+        &app,
+        "echo \\Zero\\Js::jsonStringify($app->db->insert('notes', ['title' => 't'], true)[0]['data']);",
+        &Value::Null,
+    );
+    assert_eq!(value, json!({"nested": {"0": "a", "1": "b"}}));
 }
 
 /// A migrated original-Zero app with a required `project` and an optional self `helper` reference,

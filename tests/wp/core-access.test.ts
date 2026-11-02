@@ -408,7 +408,18 @@ test("a data-dependent update filter must match the row as it was: no taking ove
   assert.equal(zero("find", "claims", JSON.stringify({ where: { id: theirs } }))[0].ownerId, author + 1000);
   const own = await http("POST", `${core}/zero_claims/${mine}`, { as: "author", body: { title: `Mine ${run} edited` } });
   assert.equal(own.status, 200, JSON.stringify(own.json));
+  const invalid = await http("PATCH", `${api}/claims/${mine}`, { as: "author", body: { unexpected: {} } });
+  assert.deepEqual([invalid.status, invalid.json.code, invalid.json.pointer], [422, "invalid_input", "/unexpected"]);
   assert.equal(wp("eval", `wp_set_current_user(${author}); var_export(current_user_can('edit_post', ${mine}));`), "false", "edit_post (revisions, wp-admin) stays strict");
+  const jsonId = zero("insert", "claims", JSON.stringify({ title: `JSON cover ${run}`, meta: {} }))[0].id;
+  const editor = await adminSession("admin");
+  const allowed = await editor.save(jsonId, { post_title: `JSON cover ${run} edited`, post_type: "zero_claims" });
+  assert.equal(allowed.status, 302);
+  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
+  const refused = await editor.save(jsonId, { post_title: "restricted", post_type: "zero_claims" });
+  assert.equal(refused.status, 403, "a filter for [] cannot reuse authorization from a filter for {}");
+  assert.equal(zero("find", "claims", JSON.stringify({ where: { id: jsonId } }))[0].title, `JSON cover ${run} edited`);
+
 });
 
 test("wp-admin's Custom Fields box can't write a Zero column", async () => {

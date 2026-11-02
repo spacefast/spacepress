@@ -70,9 +70,13 @@ final class App
         }
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user']);
-        $fn = '\\ZeroApp\\' . $action['handler'];
-        $input = Seam::toJs($input, $action['input'] ?? []);
-        $ctx = Seam::ctx($ctx);
+        $slot = $action['handler'];
+        $fn = $slot;
+        if (is_string($slot)) {
+            $fn = '\\ZeroApp\\' . $slot;
+            $input = Seam::toJs($input, $action['input'] ?? []);
+            $ctx = Seam::ctx($ctx);
+        }
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
             static fn (): Response => Response::json($fn($input, $ctx)));

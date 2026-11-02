@@ -238,7 +238,7 @@ final class Migrate
                 // A column the original app never had takes its declared default, normalized and
                 // checked like any written value (Model::map refused defaults it can't write).
                 if (isset($col['default'])) {
-                    $row[$column] = Schema::normalize($col, Schema::generate($col['default'], $col['type']), $column, $at);
+                    $row[$column] = Schema::normalize($col, Schema::generate($col['default'], $col), $column, $at);
                     $out[$column] = Schema::store($col, $row[$column]);
                 } elseif ($col['notNull'] ?? false) {
                     throw HttpError::invalidInput("$column is required in the new app and has no original field", $at);
@@ -262,7 +262,7 @@ final class Migrate
         foreach ($spec['columns'] as $column => $col) {
             $column = (string) $column;
             if (array_key_exists($column, $row) && $column !== $spec['primaryKey'] && !($col['system'] ?? false)) {
-                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null]);
+                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null], $spec['columns']);
             }
         }
 

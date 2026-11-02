@@ -619,12 +619,6 @@ fn field(
         "defaultValue"
     };
     if let Some(value) = o.get(default_key) {
-        if crate::extract::has_list_shaped_object(value) {
-            return Err(fail(
-                &pointer(at, default_key),
-                "Zero's PHP runtime reads objects keyed \"0\", \"1\", ... back as arrays; choose another default explicitly",
-            ));
-        }
         builder.push_str(&format!(".default({value})"));
     } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
         builder.push_str(".default(false)");

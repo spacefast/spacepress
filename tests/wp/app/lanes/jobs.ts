@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, env, HttpError, id, integer, job, jobs, once, text } from "zero";
+import { action, boolean, collection, db, env, group, HttpError, id, integer, job, jobs, json, once, repeater, text } from "zero";
 
 export const jobNotes = collection("jobNotes", {
   id: id(),
@@ -19,14 +19,24 @@ export const schema = { jobNotes, hookNotes };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {
+  refsEnqueue: action({
+    input: { noteId: integer().notNull(), meta: json().notNull() }, access: "editor",
+    handler: async (input) => {
+      const queued = await jobs.stamp.enqueue({ noteId: input.noteId, meta: input.meta, info: {}, rows: [{}] });
+      return { id: queued.id, sent: JSON.stringify(input.meta) };
+    },
+  }),
   jobsOnce: action({
     input: { note: text().notNull() },
     access: "editor",
     idempotent: true,
-    handler: async (input) => await once(`note-${input.note}`, async () => {
-      const rows = await db.insert(jobNotes).values({ title: `once ${input.note}` }).returning();
-      return { ids: rows.map((r) => r.id) };
-    }),
+    handler: async (input) => {
+      const result = await once(`note-${input.note}`, async () => {
+        const rows = await db.insert(jobNotes).values({ title: `once ${input.note}` }).returning();
+        return { ids: rows.map((r) => r.id) };
+      });
+      return { ...result, f: () => 1 };
+    },
   }),
   // Inbound webhook: an HMAC over the raw body replaces the access rule.
   jobsInbound: action({
@@ -54,16 +64,18 @@ export const config = {
   webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hookNotes.created"] }],
   jobs: {
     stamp: job({
-      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false) },
+      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json(), info: group({ fields: {} }), rows: repeater({ fields: {} }) },
       retries: 2,
       agents: true, // also the `blog/job-stamp` ability (lane F)
       handler: async (input, ctx) => {
+        if (input.info !== null && Object.keys(input.info!).length !== 0) throw new Error("empty group changed");
+        if (input.rows !== null && input.rows.length > 0 && Object.keys(input.rows![0]!).length !== 0) throw new Error("empty repeater item changed");
         if (input.fail) {
           // Write first: the failure must roll this back on WordPress's connection.
           await db.update(jobNotes).set({ stamped: `partial ${ctx.attempt}` }).where({ id: input.noteId });
           throw new Error(`stamp failed on attempt ${ctx.attempt}`);
         }
-        await db.update(jobNotes).set({ stamped: `${ctx.jobId}:${ctx.attempt}` }).where({ id: input.noteId });
+        await db.update(jobNotes).set({ stamped: input.meta !== null ? JSON.stringify(input.meta) : `${ctx.jobId}:${ctx.attempt}` }).where({ id: input.noteId });
       },
     }),
   },

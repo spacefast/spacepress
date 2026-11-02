@@ -121,7 +121,7 @@ problem('a media default', fn () => $member(['avatar' => ['type' => 'media', 'de
 problem('a private file default', fn () => $member(['brief' => ['type' => 'file', 'bucket' => 'briefs', 'default' => ['value' => 999]]]), 422, 'legacy_unmappable', '/users/5/brief');
 problem('...or one nested in a group', fn () => $member(['profile' => ['type' => 'group', 'fields' => ['cv' => ['type' => 'file', 'bucket' => 'briefs']], 'default' => ['value' => ['cv' => 999]]]]), 422, 'legacy_unmappable', '/users/5/profile');
 problem('a reference default', fn () => $member(['teamId' => ['type' => 'integer', 'default' => ['value' => 1], 'references' => ['collection' => 'teams', 'column' => 'id']]]), 422, 'legacy_unmappable', '/users/5/teamId');
-eval('namespace ZeroApp; function legacy_role_check($v, $ctx) { return ($ctx["data"]["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
+eval('namespace ZeroApp; function legacy_role_check($v, $ctx) { return ($ctx->p["data"]->p["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
 problem('validators see the user\'s role (a subscriber can\'t default to pro)', fn () => $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]]), 422, 'invalid_input', '/users/5/plan');
 eq('...and an admin can', $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]], 'admin')['plan'], 'pro');
 

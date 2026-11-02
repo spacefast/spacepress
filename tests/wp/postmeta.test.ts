@@ -76,6 +76,8 @@ test("a json() meta value keeps {} apart from [] on WordPress", async () => {
   const patch = { id: e.id, patch: { extra: { c: {} } } };
   wp("zero", "run", "blog/events-update", `--input=${JSON.stringify(patch)}`, "--user=editor");
   assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { c: {} });
+  await ok("PATCH", `/events/${e.id}`, { as: "editor", body: { extra: { "1": 1, "0": 2 } } });
+  assert.deepEqual((await ok("GET", `/events/${e.id}`)).extra, { "0": 2, "1": 1 });
 });
 
 test("relation filters and `with` across post↔post and post↔table", async () => {

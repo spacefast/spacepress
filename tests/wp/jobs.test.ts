@@ -40,6 +40,15 @@ test("a hook's enqueue becomes an Action Scheduler action, and AS runs the handl
   assert.equal(stamped.stamped, `${id}:1`, "the handler's write is visible through the API");
 });
 
+test("an action's nested JSON reaches the queued handler byte for byte", async () => {
+  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `json ${run}` } });
+  const queued = await ok("POST", "/actions/refsEnqueue", { as: "editor", body: { noteId: note.id, meta: { "1": 1, "0": 2, empty: {} } } });
+  runPending(queued.id);
+  const [stored] = await ok("GET", `/jobNotes?where=${encodeURIComponent(JSON.stringify({ id: note.id }))}`, { as: "editor" });
+  assert.equal(stored.stamped, queued.sent);
+  assert.equal(queued.sent, '{"0":2,"1":1,"empty":{}}');
+});
+
 test("a rolled-back request leaves no job, outbox row or AS action", async () => {
   const before = sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'zero_job'")[0].n;
   await problem("POST", "/jobNotes", { as: "editor", body: { title: "Explode" } }, { status: 500, code: "boom", pointer: undefined });

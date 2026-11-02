@@ -72,7 +72,7 @@ final class FieldAccess
             if (!array_key_exists($name, $item)) {
                 continue;
             }
-            if (!self::readable($def, $data, $viewer, $page)) {
+            if (!self::readable($def, $data, $viewer, $page, $fields)) {
                 unset($item[$name]);
             } elseif ($item[$name] !== null && in_array($def['type'], self::STRUCTURED, true) && self::hasRule(self::nested($def), 'read')) {
                 $item[$name] = self::mapItems($def, $item[$name], static fn (array $sub, array $value) => self::stripItem($sub, $value, $viewer, $page));
@@ -82,7 +82,7 @@ final class FieldAccess
         return $item;
     }
 
-    private static function readable(array $def, array $enclosing, Viewer $viewer, array &$page): bool
+    private static function readable(array $def, array $enclosing, Viewer $viewer, array &$page, array $shape): bool
     {
         $rule = $def['access']['read'] ?? null;
         if ($rule === null) {
@@ -92,7 +92,7 @@ final class FieldAccess
             return $page[json_encode($rule)] ??= self::allows($rule, $viewer, 'read', null);
         }
 
-        return self::allows($rule, $viewer, 'read', $enclosing);
+        return self::allows($rule, $viewer, 'read', $enclosing, $shape);
     }
 
     // ================================================================ query
@@ -221,7 +221,7 @@ final class FieldAccess
             if ($def === null || !array_key_exists($name, $incoming)) {
                 continue; // consumed virtual input; unknown keys are rejected by the pipeline
             }
-            $data[$name] = self::guard($op, $def, (string) $name, $stored ? $provided[$name] : $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name), resolved: $stored ? $incoming[$name] : null);
+            $data[$name] = self::guard($op, $def, (string) $name, $stored ? $provided[$name] : $incoming[$name], $incoming, $existing, $viewer, $page, HttpError::seg($name), resolved: $stored ? $incoming[$name] : null, shape: $columns);
         }
     }
 
@@ -229,16 +229,16 @@ final class FieldAccess
      * One supplied value at any depth. $ctx is what its rule sees as data (the patch at the top level,
      * the resolved effective item for sub-fields); $storedIn is the stored enclosing row or item.
      */
-    private static function guard(string $op, array $def, string $name, mixed $value, array $ctx, ?array $storedIn, Viewer $viewer, array &$page, string $ptr, bool $merge = true, mixed $resolved = null): mixed
+    private static function guard(string $op, array $def, string $name, mixed $value, array $ctx, ?array $storedIn, Viewer $viewer, array &$page, string $ptr, bool $merge = true, mixed $resolved = null, array $shape = []): mixed
     {
         $before = $storedIn !== null && array_key_exists($name, $storedIn) ? $storedIn[$name] : null;
         // An allowing update rule explicitly opts into write-only input, at every nesting depth.
         if ($op === 'update' && !isset($def['access']['update'])
-            && ($storedIn === null ? self::mayHideSelf($def, $viewer) : !self::readable($def, $storedIn, $viewer, $page))) {
+            && ($storedIn === null ? self::mayHideSelf($def, $viewer) : !self::readable($def, $storedIn, $viewer, $page, $shape))) {
             throw self::denied($viewer, $name, $ptr);
         }
         $rule = $def['access'][$op] ?? null;
-        if ($rule !== null && !self::allows($rule, $viewer, $op, $ctx) && !self::unchangedVisible($def, $name, $value, $storedIn, $viewer, $page)) {
+        if ($rule !== null && !self::allows($rule, $viewer, $op, $ctx, $shape) && !self::unchangedVisible($def, $name, $value, $storedIn, $viewer, $page, $shape)) {
             throw self::denied($viewer, $name, $ptr);
         }
 
@@ -299,7 +299,7 @@ final class FieldAccess
         foreach ($fields as $sub => $sdef) {
             $sub = (string) $sub;
             if (array_key_exists($sub, $supplied)) {
-                $resolved[$sub] = self::guard($op, $sdef, $sub, $supplied[$sub], $resolved, $before, $viewer, $page, $ptr . HttpError::seg($sub), $merge, $resolved[$sub]);
+                $resolved[$sub] = self::guard($op, $sdef, $sub, $supplied[$sub], $resolved, $before, $viewer, $page, $ptr . HttpError::seg($sub), $merge, $resolved[$sub], $fields);
             }
         }
 
@@ -349,7 +349,7 @@ final class FieldAccess
                 && (self::mayHide($sdef, $viewer) || self::unwritable($op, $sdef, $viewer))) {
                 $out[$sub] = $before[$sub]; // kept, not written: the response is stripped like any read
             } elseif (isset($sdef['default'])) {
-                $out[$sub] = Schema::generate($sdef['default'], $sdef['type']);
+                $out[$sub] = Schema::generate($sdef['default'], $sdef);
             }
         }
 
@@ -417,12 +417,12 @@ final class FieldAccess
      * An update may resend a stored value unchanged when the viewer saw all of it: the field is
      * readable and stripping removes nothing inside it.
      */
-    private static function unchangedVisible(array $def, string $name, mixed $value, ?array $storedIn, Viewer $viewer, array &$page): bool
+    private static function unchangedVisible(array $def, string $name, mixed $value, ?array $storedIn, Viewer $viewer, array &$page, array $shape): bool
     {
         if ($storedIn === null || !array_key_exists($name, $storedIn) || !self::same($value, $storedIn[$name])) {
             return false;
         }
-        $seen = self::stripItem([$name => $def], $storedIn, $viewer, $page);
+        $seen = self::stripItem($shape, $storedIn, $viewer, $page);
 
         return array_key_exists($name, $seen) && self::same($seen[$name], $storedIn[$name]);
     }
@@ -436,6 +436,12 @@ final class FieldAccess
     private static function canon(mixed $v): string
     {
         $norm = static function (mixed $v) use (&$norm): mixed {
+            if ($v instanceof JsArray) { return new JsArray(array_map($norm, $v->a)); }
+            if ($v instanceof JsObject) {
+                $props = array_filter(array_map($norm, $v->p), static fn ($x) => $x !== null);
+                ksort($props, SORT_STRING);
+                return new JsObject($props);
+            }
             if (!is_array($v)) {
                 return $v;
             }
@@ -501,9 +507,9 @@ final class FieldAccess
         return $schema->hasCollection($collection) ? $schema->collection($collection)['columns'] : [];
     }
 
-    private static function allows(array $rule, Viewer $viewer, string $op, ?array $data): bool
+    private static function allows(array $rule, Viewer $viewer, string $op, ?array $data, ?array $dataShape = null): bool
     {
-        $r = Access::evaluate($rule, $viewer, $op, $data);
+        $r = Access::evaluate($rule, $viewer, $op, $data, $dataShape);
         if (is_array($r)) {
             throw new \LogicException("A field $op rule returned a filter; field rules return a boolean");
         }
@@ -571,6 +577,12 @@ final class FieldAccess
     private static function same(mixed $a, mixed $b): bool
     {
         $form = static function (mixed $v) use (&$form): mixed {
+            if ($v instanceof JsArray) { return ['l' => array_map($form, $v->a)]; }
+            if ($v instanceof JsObject) {
+                $o = array_map($form, $v->p);
+                ksort($o, SORT_STRING);
+                return ['o' => array_map(null, array_map('strval', array_keys($o)), array_values($o))];
+            }
             if (!is_array($v)) {
                 return $v;
             }

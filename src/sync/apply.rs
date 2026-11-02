@@ -397,7 +397,7 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         .map_err(|p| report.problem("could not read the site's schema", &p))?;
     let site = schema["site"]["id"]
         .as_str()
-        .ok_or("the site's /_schema has no site id; is it running zero 0.2?")?
+        .ok_or("the site's /_schema has no site id; rebuild and deploy with this Zero version")?
         .to_string();
     let mut bases = Bases::load(project)?;
     let known = bases.knows_site(&site);

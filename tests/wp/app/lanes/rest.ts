@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under Zero's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { blocks, collection, db, group, HttpError, id, integer, repeater, richText, slug, text } from "zero";
+import { blocks, collection, db, group, HttpError, id, integer, json, repeater, richText, slug, text } from "zero";
 
 export const vault = collection("vault", { id: id(), title: text().notNull(), code: text() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -48,11 +48,11 @@ export const dossier = collection("dossier", {
 }, { title: "title", content: "body", access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 // An update rule that needs the data: without it nothing; with it, only rows the viewer owns.
-export const claims = collection("claims", { id: id(), title: text().notNull(), ownerId: integer() }, {
+export const claims = collection("claims", { id: id(), title: text().notNull(), ownerId: integer(), meta: json() }, {
   access: {
     read: "anyone",
     create: "authenticated",
-    update: (ctx) => ctx.data == null ? false : { ownerId: ctx.user?.id ?? -1 },
+    update: (ctx) => ctx.user?.role === "admin" ? { meta: { eq: ctx.data?.title === "restricted" ? [] : {} } } : ctx.data == null ? false : { ownerId: ctx.user?.id ?? -1 },
     delete: "admin",
   },
 });

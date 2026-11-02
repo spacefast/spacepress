@@ -24,7 +24,7 @@ $ctx = ['data' => [], 'user' => null];
 /** normalize + rules, like the write pipeline does for one column. */
 $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed {
     $n = Schema::normalize($col, $v, $name, '/' . $name);
-    Schema::checkRules($col, $n, $name, '/' . $name, $ctx);
+    Schema::checkRules($col, $n, $name, '/' . $name, ['data' => [$name => $n]] + array_diff_key($ctx, ['data' => true]), [$name => $col]);
 
     return $n;
 };
@@ -33,8 +33,8 @@ $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed 
 
 $tmp = tempnam(sys_get_temp_dir(), 'zs');
 foreach ([
-    ['version' => 2, 'runtime' => '0.2'],
-    ['version' => 3, 'runtime' => '0.1'],
+    ['version' => 2, 'runtime' => Schema::SERIES],
+    ['version' => 3, 'runtime' => '0.2'],
     ['version' => 3],
 ] as $raw) {
     file_put_contents($tmp, '<?php return ' . var_export($raw, true) . ';');
@@ -42,13 +42,13 @@ foreach ([
         Schema::load($tmp);
         check('incompatible schema is refused', false);
     } catch (RuntimeException $e) {
-        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required'
-            : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.2';
+        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this Zero version'
+            : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this Zero version';
         eq('incompatible schema is refused', $e->getMessage(), $expected);
     }
 }
 unlink($tmp);
-eq('v3 reader reports its contract', [$schema->version(), $schema->runtime()], [3, '0.2']);
+eq('v3 reader reports its contract', [$schema->version(), $schema->runtime()], [3, '0.3']);
 
 $phase2Raw = json_decode(file_get_contents(__DIR__ . '/../fixtures/phase2.schema.json'), true, 512, JSON_THROW_ON_ERROR);
 $phase2 = new Schema($phase2Raw);
@@ -122,7 +122,7 @@ $box = ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'extra' =
 $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson('{"a":{}}')], 'box', '/box');
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
-eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], 'json')), '{"a":{}}');
+eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

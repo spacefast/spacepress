@@ -117,9 +117,10 @@ final class Wire
      * @param ?array $current the stored row being updated: a body that reads back as the same text is
      *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
      */
-    public static function decode(string $collection, array $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?\Zero\Viewer $viewer = null): array
+    public static function decode(string $collection, array|\Zero\JsObject $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?\Zero\Viewer $viewer = null): array
     {
         $spec = db()->schema()->collection($collection);
+        $record = \Zero\Seam::sync($collection, ['record' => $record])['record'];
         $fields = $record['fields'] ?? [];
         $fields = \Zero\Seam::container($fields); // `fields: {}`; nested json() values keep theirs
         if (!is_array($fields) || ($fields !== [] && array_is_list($fields))) {

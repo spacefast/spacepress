@@ -525,17 +525,21 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
         std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
-    // Removing an old name is unambiguous when its canonical sibling already existed.
+    // Removing an old name remains unambiguous with an unrelated addition when its canonical sibling survives.
     let mut siblings = canonical.clone();
     siblings["tables"]["stockItems"] = canonical["tables"]["stock_items"].clone();
     std::fs::write(&ledger, serde_json::to_vec(&siblings).unwrap()).unwrap();
+    std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}), orders: table({}) } });").unwrap();
     let removed = zero().arg("build").arg(&conflict).output().unwrap();
     assert!(removed.status.success(), "{}", String::from_utf8_lossy(&removed.stderr));
     let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
-    assert_eq!(actual, canonical);
+    assert_eq!(actual["tables"]["stock_items"], canonical["tables"]["stock_items"]);
+    assert!(actual["tables"]["orders"].is_object(), "{actual}");
+    assert_eq!(actual["tables"].as_object().unwrap().len(), 2);
     let sql = std::fs::read_to_string(conflict.join("zero/migrations/0002_update.sql")).unwrap();
     assert!(sql.contains("DROP TABLE `{prefix}zero_stockItems`"), "{sql}");
     assert!(!sql.contains("DROP TABLE `{prefix}zero_stock_items`"), "{sql}");
+    assert!(sql.contains("CREATE TABLE `{prefix}zero_orders`"), "{sql}");
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");

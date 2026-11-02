@@ -25,9 +25,14 @@ pub(super) fn read(path: &Path, source: Source) -> Result<Value, Failure> {
         return Err(fail("", format!("invalid TypeScript: {}", e.message)));
     }
     let file = diag::register_file(path, &text);
-    let body = Lowerer { file, module: 0 }
-        .program(&parsed.program)
-        .map_err(|d| fail("", diag::render(&d, path.parent().unwrap_or(Path::new(".")))))?;
+    let body = Lowerer {
+        file,
+        module: 0,
+        class_context: std::cell::Cell::new(false),
+        super_call: std::cell::Cell::new(false),
+    }
+    .program(&parsed.program)
+    .map_err(|d| fail("", diag::render(&d, path.parent().unwrap_or(Path::new(".")))))?;
     let mut reader = Reader {
         source,
         values: HashMap::new(),

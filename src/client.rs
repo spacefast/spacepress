@@ -226,6 +226,7 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
         return name.clone();
     }
     match t {
+        Ty::Instance(_, fields) => ty_ts(fields, rows),
         Ty::Num | Ty::FreshNumLit(_) | Ty::Date => "number".into(),
         Ty::NumLit(value) => value.to_string(),
         Ty::Str => "string".into(),

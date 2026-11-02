@@ -155,6 +155,14 @@
       "fixture": "tests/fixtures/reject-type-merging",
       "message": "type declaration merging",
       "guidance": "Combine interface declarations explicitly or use interface extends. Repeated declarations never silently replace earlier fields."
+    },
+    {
+      "id": "conditional-check-provenance",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-conditional-alias",
+      "message": "conditional check expressions need",
+      "guidance": "Use direct type parameters for distributive checks, or tuple-wrap alias/type-operation checks to make non-distributivity explicit. Alias reduction can otherwise change TypeScript distributivity before instantiation."
     }
   ]
 }

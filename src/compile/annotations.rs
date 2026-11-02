@@ -110,6 +110,9 @@ impl Compiler<'_, '_> {
             ),
             TyAnn::Ref(name, args, span) => {
                 if let Some(t) = generics.get(name) {
+                    if !args.is_empty() {
+                        return err(*span, "a bound type parameter doesn't accept type arguments");
+                    }
                     return Ok(t.ty.clone());
                 }
                 if args.is_empty() {
@@ -340,12 +343,36 @@ impl Compiler<'_, '_> {
                 no,
                 span,
             } => {
-                let checked = self.resolve_ann(check, module, generics)?;
-                // Only a naked bound type parameter distributes. Tuple-wrapped checks do not.
+                // Preserve the distinction between a naked parameter and structural wrappers.
+                // Alias/union/index expressions can reduce to a parameter before instantiation
+                // in TypeScript. Refuse those check positions until that provenance is modeled.
                 let parameter = match check.as_ref() {
                     TyAnn::Ref(name, args, _) if args.is_empty() && generics.contains_key(name) => Some(name),
                     _ => None,
                 };
+                if parameter.is_none()
+                    && !matches!(
+                        check.as_ref(),
+                        TyAnn::Num
+                            | TyAnn::NumLit(_)
+                            | TyAnn::Str
+                            | TyAnn::StrLit(_)
+                            | TyAnn::Bool
+                            | TyAnn::BoolLit(_)
+                            | TyAnn::Null
+                            | TyAnn::Undefined
+                            | TyAnn::Never
+                            | TyAnn::Array(_)
+                            | TyAnn::Tuple(_)
+                            | TyAnn::Obj(_)
+                    )
+                {
+                    return err(
+                        *span,
+                        "conditional check expressions need a direct type parameter or a scalar/object/array/tuple wrapper; wrap aliases and type operations in a tuple to avoid ambiguous distributivity",
+                    );
+                }
+                let checked = self.resolve_ann(check, module, generics)?;
                 let parts = if parameter.is_some() {
                     union_parts(checked)
                 } else {

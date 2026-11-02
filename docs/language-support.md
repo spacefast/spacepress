@@ -167,3 +167,11 @@ Status: **refused**. Diagnostic: `Z4001`.
 Combine interface declarations explicitly or use interface extends. Repeated declarations never silently replace earlier fields.
 
 [Evidence](../tests/fixtures/reject-type-merging)
+
+## conditional-check-provenance
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Use direct type parameters for distributive checks, or tuple-wrap alias/type-operation checks to make non-distributivity explicit. Alias reduction can otherwise change TypeScript distributivity before instantiation.
+
+[Evidence](../tests/fixtures/reject-type-conditional-alias)

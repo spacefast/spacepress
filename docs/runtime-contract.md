@@ -644,7 +644,11 @@ code with strict TypeScript as well as `zero check`.
 
 Normalization is bounded: 96 nested annotation levels, 16,384 resolution steps
 per root annotation (including independent roots reached during class
-compilation), and 512 keys per finite key operation. Recursive types produce a located diagnostic. Unsupported types are not replaced with
+compilation), and 512 keys per finite key operation. Intersection distribution
+checks a maximum of 512 candidate alternatives before expansion; this conservative
+limit applies before incompatible or duplicate alternatives are removed. Its
+recursive calls and object-property merges also consume the root resolution
+budget. Recursive types produce a located diagnostic. Unsupported types are not replaced with
 `unknown` or an unrestricted string key.
 
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)

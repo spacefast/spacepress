@@ -208,6 +208,44 @@ export default defineConfig({ schema: {}, actions: { run: action({ input: {}, ha
       const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
       assert.equal(strict.status, 0, strict.stdout + strict.stderr);
     }
+
+    // Compact intersections must be bounded before their Cartesian expansion.
+    // Nine binary unions reach the supported boundary; fifteen used to create
+    // 32,768 distinct objects without exhausting the annotation-visit budget.
+    const binaryParts = (count: number) => Array.from({ length: count }, (_, i) => `({ k${i}: "a" } | { k${i}: "b" })`);
+    const binaryValue = (count: number) => Array.from({ length: count }, (_, i) => `k${i}: "a"`).join(", ");
+    const wideFields = Array.from({ length: 512 }, (_, i) => `field${i}: number`).join("; ");
+    const wideValue = Array.from({ length: 512 }, (_, i) => `field${i}: 1`).join(", ");
+    for (const probe of [
+      { parts: binaryParts(9), value: binaryValue(9), error: null },
+      { parts: binaryParts(15), value: binaryValue(15), error: /intersection expansion.*512-alternative limit/ },
+      // Thirty-two alternatives fit the candidate limit, but merging 512
+      // properties into each must consume the shared resolution-work budget.
+      {
+        parts: [`(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`, `{ ${wideFields} }`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
+    ]) {
+      const source = `import { action, defineConfig } from "zero";
+type Expanded = ${probe.parts.join(" & ")};
+export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+  const x: Expanded = { ${probe.value} }; return x;
+} }) } });`;
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, probe.error === null, result.envelope);
+      if (probe.error === null) {
+        assert.ok(result.output);
+      } else {
+        assert.equal(result.output, null);
+        assert.match(result.check.diagnostics[0]?.message ?? "", probe.error);
+        assert.equal(result.check.diagnostics[0]?.location?.file, "zero.config.ts");
+      }
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

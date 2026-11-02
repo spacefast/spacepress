@@ -33,10 +33,7 @@ impl Compiler<'_, '_> {
         if self.annotation_depth == 0 {
             self.annotation_steps = 0;
         }
-        self.annotation_steps += 1;
-        if self.annotation_steps > 16_384 {
-            return err(annotation_span(a), "type expansion exceeds Zero's 16384-step limit");
-        }
+        type_step(&mut self.annotation_steps, annotation_span(a))?;
         if self.annotation_depth >= 96 {
             return err(
                 annotation_span(a),
@@ -290,7 +287,8 @@ impl Compiler<'_, '_> {
             TyAnn::Intersection(parts, span) => {
                 let mut out = Ty::Unknown;
                 for part in parts {
-                    out = intersect(out, self.resolve_ann(part, module, generics)?, *span)?;
+                    let part = self.resolve_ann(part, module, generics)?;
+                    out = intersect(out, part, *span, &mut self.annotation_steps)?;
                 }
                 out
             }
@@ -772,7 +770,16 @@ fn literal_key_domain(a: &TyAnn) -> bool {
     }
 }
 
-fn intersect(a: Ty, b: Ty, span: Span) -> Result<Ty> {
+fn type_step(steps: &mut usize, span: Span) -> Result<()> {
+    *steps += 1;
+    if *steps > 16_384 {
+        return err(span, "type expansion exceeds Zero's 16384-step limit");
+    }
+    Ok(())
+}
+
+fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
+    type_step(steps, span)?;
     if a == b || b == Ty::Unknown {
         return Ok(a);
     }
@@ -782,19 +789,30 @@ fn intersect(a: Ty, b: Ty, span: Span) -> Result<Ty> {
     if a == Ty::Never || b == Ty::Never {
         return Ok(Ty::Never);
     }
+    // Bound candidates before cloning or distributing either operand. Even
+    // distinct small unions can otherwise create an exponential number of
+    // objects while visiting only a handful of source annotations.
+    let alternatives = |t: &Ty| match t {
+        Ty::Union(parts) => parts.len(),
+        _ => 1,
+    };
+    if alternatives(&a).saturating_mul(alternatives(&b)) > 512 {
+        return err(span, "intersection expansion exceeds Zero's 512-alternative limit");
+    }
     match (a, b) {
         (Ty::Union(xs), b) => Ok(Ty::union(
             xs.into_iter()
-                .map(|a| intersect(a, b.clone(), span))
+                .map(|a| intersect(a, b.clone(), span, steps))
                 .collect::<Result<Vec<_>>>()?,
         )),
         (a, Ty::Union(ys)) => Ok(Ty::union(
             ys.into_iter()
-                .map(|b| intersect(a.clone(), b, span))
+                .map(|b| intersect(a.clone(), b, span, steps))
                 .collect::<Result<Vec<_>>>()?,
         )),
         (Ty::Obj(mut fields), Ty::Obj(other)) => {
             for (k, (t, optional)) in other {
+                type_step(steps, span)?;
                 let value = match fields.shift_remove(&k) {
                     Some((old, old_opt)) => {
                         // Without exactOptionalPropertyTypes, optional members
@@ -802,7 +820,7 @@ fn intersect(a: Ty, b: Ty, span: Span) -> Result<Ty> {
                         // Intersect those value domains before combining presence.
                         let old = if old_opt { Ty::union([old, Ty::Undefined]) } else { old };
                         let t = if optional { Ty::union([t, Ty::Undefined]) } else { t };
-                        let t = intersect(old, t, span)?;
+                        let t = intersect(old, t, span, steps)?;
                         if t == Ty::Never && !(optional && old_opt) {
                             return err(
                                 span,

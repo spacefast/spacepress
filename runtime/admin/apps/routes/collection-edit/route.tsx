@@ -10,7 +10,8 @@ export const route = {
 		if (!transport || !c.content || !allowed(c.access.update, bootstrap().role))
 			return undefined;
 		try {
-			if (!nativeEditor(c, await read(c, params.slug))) return undefined;
+			const { row, editable } = await read(c, params.slug);
+			if (!nativeEditor(c, row, editable)) return undefined;
 		} catch {
 			// The document screen presents transport/permission failures in its
 			// normal loading/error state rather than breaking the whole router.

@@ -221,21 +221,35 @@ export function toNative(c: Collection, values: Row, objects?: EditingObjects): 
 	if (Object.keys(acf).length) result.acf = acf;
 	return result;
 }
-export async function read(c: Collection, id: string): Promise<Row> {
-	const context = allowed(c.access.update, bootstrap().role) ? 'edit' : 'view';
-	const v = await apiFetch({
-		path: `${endpoint(c.name)}/${encodeURIComponent(id)}${native(c.name) ? `?context=${context}` : ''}`,
-	});
-	return native(c.name) ? fromNative(c, v) : object(unwrap(v));
+export async function read(c: Collection, id: string): Promise<{ row: Row; editable: boolean }> {
+	const path = `${endpoint(c.name)}/${encodeURIComponent(id)}`;
+	let editable = allowed(c.access.update, bootstrap().role);
+	if (!native(c.name)) {
+		return { row: object(unwrap(await apiFetch({ path }))), editable };
+	}
+	let value: unknown;
+	try {
+		value = await apiFetch({ path: `${path}?context=${editable ? 'edit' : 'view'}` });
+	} catch (error: unknown) {
+		const problem = object(error);
+		const data = problem.data && typeof problem.data === 'object' ? object(problem.data) : {};
+		const status = Number(problem.status ?? data.status);
+		if (!editable || ![401, 403].includes(status)) throw error;
+		// Function access summaries cannot establish row-level edit authority.
+		// A readable record still opens, with the native editor and writes disabled.
+		value = await apiFetch({ path: `${path}?context=view` });
+		editable = false;
+	}
+	return { row: fromNative(c, value), editable };
 }
 /** Gutenberg writes core fields; use a partial form when one is masked or read-only. */
-export function nativeEditor(c: Collection, row: Row): boolean {
+export function nativeEditor(c: Collection, row: Row, editable: boolean): boolean {
 	const role = bootstrap().role;
 	const writable = (rule: unknown) =>
 		(rule === undefined || rule === true || rule === 'anyone' ||
 			['guest', 'subscriber', 'author', 'editor', 'admin'].includes(String(rule))) &&
 		allowed(rule, role);
-	return Boolean(native(c.name) && c.content && allowed(c.access.update, role) &&
+	return Boolean(native(c.name) && c.content && editable &&
 		[c.content, c.title, c.slug, 'status', 'publishedAt'].every((key) =>
 			!key || !c.columns[key] || (key in row && writable(c.columns[key].write))));
 }

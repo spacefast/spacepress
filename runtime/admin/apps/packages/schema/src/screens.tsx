@@ -369,7 +369,7 @@ export function PlainDocument() {
 	});
 	const state = useLoad(async () => {
 		const c = await collectionSpec(collection);
-		return { c, row: await read(c, id) };
+		return { c, ...await read(c, id) };
 	}, [collection, id]);
 	if (state.kind !== 'ready')
 		return (
@@ -377,9 +377,9 @@ export function PlainDocument() {
 				<Loading state={state} />
 			</Page>
 		);
-	const { c, row } = state.value;
+	const { c, row, editable } = state.value;
 	// Content collections are rendered by the native canvas/editor route, not a second form.
-	if (nativeEditor(c, row)) return null;
+	if (nativeEditor(c, row, editable)) return null;
 	return (
 		<Page
 			title={`Edit ${c.label}`}
@@ -399,7 +399,7 @@ export function PlainDocument() {
 				initial={row}
 				editing
 				omit={[c.primaryKey]}
-				disabled={!allowed(c.access.update, bootstrap().role)}
+				disabled={!editable}
 				submit={(changes) => save(c, changes, id)}
 			/>
 		</Page>

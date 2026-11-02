@@ -87,8 +87,9 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 			zero_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
 		},
 	});
-	expect(nativeEditor(c, row)).toBe(true);
-	expect(nativeEditor({ ...c, columns: { ...c.columns, body: { ...c.columns.body, write: 'admin' } } }, row)).toBe(false);
+	expect(nativeEditor(c, row, true)).toBe(true);
+	expect(nativeEditor(c, row, false)).toBe(false);
+	expect(nativeEditor({ ...c, columns: { ...c.columns, body: { ...c.columns.body, write: 'admin' } } }, row, true)).toBe(false);
 	expect(row).toEqual({
 		id: 7,
 		headline: 'Title',

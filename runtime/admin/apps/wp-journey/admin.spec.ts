@@ -384,11 +384,12 @@ if (!subdir) {
 		page,
 		request,
 	}) => {
+		const postTitle = `Read-only browser ${Date.now()}`;
 		const seeded = await request.post(`${site}/wp-json/zero/v1/posts`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 			},
-			data: { title: `Read-only browser ${Date.now()}`, status: 'published' },
+			data: { title: postTitle, status: 'published' },
 		});
 		expect(seeded.status(), await seeded.text()).toBe(201);
 		const { id } = (await seeded.json()).data;
@@ -401,6 +402,13 @@ if (!subdir) {
 		});
 		expect(dossier.status(), await dossier.text()).toBe(201);
 		const dossierId = (await dossier.json()).data.id;
+		const claimTitle = `Readable foreign claim ${Date.now()}`;
+		const claim = await request.post(`${site}/wp-json/zero/v1/claims`, {
+			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
+			data: { title: claimTitle, ownerId: harness.users.admin.id, meta: {} },
+		});
+		expect(claim.status(), await claim.text()).toBe(201);
+		const claimId = (await claim.json()).data.id;
 		await login(page, 'subscriber');
 		await expect(
 			page.getByRole('link', { name: 'signups', exact: true })
@@ -413,9 +421,8 @@ if (!subdir) {
 			page.getByRole('button', { name: /New signups/i })
 		).toHaveCount(0);
 		await page.goto(`${site}/zero-admin/collections/posts/${id}`);
-		await expect(page.getByRole('alert')).toContainText(
-			/not allowed|permission|forbidden/i
-		);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(postTitle);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
 		await page.goto(`${site}/zero-admin/collections/dossier/${dossierId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
 			.toHaveValue(title);
@@ -438,6 +445,26 @@ if (!subdir) {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 		});
 		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
+		await page.goto(`${site}/zero-admin/collections/claims`);
+		await page.getByRole('link', { name: claimTitle, exact: true }).first().click();
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/claims/${claimId}`);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
+		await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled();
+		await page.reload();
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
+		await page.screenshot({ path: test.info().outputPath('readable-rule-record.png'), animations: 'disabled' });
+		const denied = await request.patch(`${site}/wp-json/zero/v1/claims/${claimId}`, {
+			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
+			data: { title: 'Forbidden update' },
+		});
+		// Row-filtered updates conceal rows outside the caller's update scope.
+		expect(denied.status()).toBe(404);
+		const claimReadback = await request.get(`${site}/wp-json/zero/v1/claims/${claimId}`, {
+			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
+		});
+		expect(claimReadback.status()).toBe(200);
+		expect((await claimReadback.json()).data.title).toBe(claimTitle);
 	});
 	test('global and media forms save through their canonical APIs', async ({
 		page,

@@ -285,7 +285,7 @@ final class Uploads
             $next[$rel] = isset($old[$rel]) && hash_file('sha256', $path) === $old[$rel]['sha'] ? $old[$rel] : self::object($path);
         }
         Runtime::plugin()?->connection()->touchPost($id);
-        if ($next !== $old && update_post_meta($id, self::MANIFEST, $next) === false) {
+        if ($next !== $old && update_post_meta($id, self::MANIFEST, wp_slash($next)) === false) {
             throw S3::unavailable();
         }
         $retained = array_column($next, 'key');

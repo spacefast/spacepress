@@ -516,6 +516,10 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     assert.equal(publicJson.includes("ZERO_TEST_UPLOAD_SECRET"), false);
     assert.equal(publicJson.includes("1111111111111111111111111111111111111111111111111111111111111111"), false);
     const fileKey = sql(`SELECT path FROM wp_zero__files WHERE id=${file.id}`)[0].path.slice(3);
+    const unsignedObject = "http://garage:3900/zero-uploads/" + fileKey.split("/").map(encodeURIComponent).join("/");
+    assert.equal(wp("eval", `echo wp_remote_retrieve_response_code(wp_remote_get(${JSON.stringify(unsignedObject)}));`), "403", "the provider denies unsigned private-object reads");
+    // Provisioning can run again after uploads without replacing the bucket, key or objects.
+    execFileSync(fileURLToPath(new URL("./harness.sh", import.meta.url)), ["s3-setup"], { stdio: "pipe" });
     // New container, independent WP volume, same database and bucket. No A upload bytes survive.
     compose("exec", "-T", "wordpress", "sh", "-c", "rm -rf /var/www/html/wp-content/uploads/* /tmp/zero-uploads-*");
     compose("--profile", "replica", "up", "-d", "replica");
@@ -594,6 +598,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     await replica.media.delete(image.id);
     assert.equal((await fetch(focal.url)).status, 404);
     compose("up", "-d", "--wait", "garage");
+    assert.equal(replicaPhp("echo as_has_scheduled_action('zero_uploads_maintain', [], 'zero') ? 'scheduled' : 'missing';"), "scheduled", "cleanup has durable Action Scheduler delivery");
     // Durable maintenance retries failed deletes; a committed editor attachment remains referenced.
     const recovered: { remaining: string[] } = JSON.parse(replicaPhp(String.raw`
       \Zero\Wp\Uploads::reconcile(time() + 1);
@@ -606,5 +611,6 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     assert.equal(replicaPhp("echo count(glob(sys_get_temp_dir() . '/zero-uploads-*') ?: []);"), "0", "successful requests clean processing scratch data");
     const logs = compose("logs", "--no-color", "replica");
     assert.equal(logs.includes("1111111111111111111111111111111111111111111111111111111111111111"), false, "credentials never enter server logs");
+    assert.equal(logs.includes("GK111111111111111111111111"), false, "provider identity never enters server logs");
   });
 }

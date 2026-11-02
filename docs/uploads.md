@@ -41,6 +41,74 @@ runtime` reproduces the committed bundle and licenses. No signer is implemented
 in Zero. S3 reads/uploads stream with bounded memory and finite HTTP deadlines;
 image processing still needs PHP's normal memory and temporary disk budget.
 
+## Installation, activation and readiness
+
+The provider adapter ships inside `zero-runtime`; no offload plugin, Composer run
+or credentials are needed at build time. As with [plugin dependencies](wp-plugins.md),
+installing the generated artifact does not activate it. Deploy and activate the
+manifest's dependencies, runtime and app in dependency order. Runtime registration
+installs the site's namespace once and schedules one recurring cleanup action;
+repeated requests/activation preserve that namespace, unrelated plugin options and
+existing media. The adapter does not configure or activate another offload plugin.
+Do not run competing upload-directory or attachment-offload integrations together.
+
+Activation is not provider readiness. The deployment owner still provisions the
+bucket and least-privilege grant, injects environment values on every replica,
+and runs Action Scheduler reliably. Zero does not create cloud accounts, buckets,
+IAM policies or migrate existing disk uploads. Before routing traffic, upload and
+read a private file and image, generate a size on another replica, then delete
+them. A successful build, plugin activation or schema response alone proves none
+of those provider permissions. Configured S3 errors fail closed at the operation.
+
+The disposable [WordPress acceptance lane](../tests/wp/README.md) performs actual
+provider setup: it initializes a pinned Garage node, creates its isolated bucket,
+imports a dedicated test key and grants access. It repeats setup after objects
+exist, then proves read/write/list/delete and image processing across replicas.
+This is test provisioning, not a production cloud provisioning command.
+
+## Dependency choice
+
+The reviewed alternatives are existing PHP implementations; no JavaScript S3 or
+WordPress offload implementation is translated or copied. The adapter calls
+AsyncAWS's `S3Client::putObject`, `getObject`, `deleteObject` and `listObjectsV2`;
+the SDK owns signing, HTTP and XML. It leaves file identity, grants, transactions
+and durable cleanup with Zero's existing database owners. The exact SDK source is
+[`43b1f00d16f2c5c05b37337ccdc2aa1b1a24a18a`](https://github.com/async-aws/s3/tree/43b1f00d16f2c5c05b37337ccdc2aa1b1a24a18a),
+version 3.5.0 (MIT); Composer locks its transitives and scoped vendoring retains
+licenses. See [dependency reproduction](dependencies.md).
+
+Two maintained WordPress alternatives were inspected at fixed releases:
+
+- [Human Made S3 Uploads 3.0.13](https://github.com/humanmade/S3-Uploads/tree/c09bd3057747b181eeb9c22e380da9d904ba260a)
+  (GPL-2.0-or-later) provides an S3 stream wrapper, remote image editors and an
+  existing-media migration CLI. `S3_UPLOADS_OBJECT_ACL` and
+  `s3_uploads_is_attachment_private` support private objects;
+  `s3_uploads_s3_client_params` can configure a compatible endpoint. Its
+  `Plugin::add_s3_signed_params_to_attachment_url` issues expiring provider URLs
+  (six hours by default), while `delete_attachment_files` and
+  `Stream_Wrapper::unlink` delete objects during core's deletion hook. Stream
+  flush writes to the pathname's object key. Zero would need to replace those
+  URL, mutation and deletion lifecycles to preserve stable editor URLs, immutable
+  rollback and after-commit deletion. Its attachment hooks also do not represent
+  Zero's private file rows or their owner grants.
+- [WP Offload Media Lite 3.4.4](https://plugins.svn.wordpress.org/amazon-s3-and-cloudfront/tags/3.4.4/)
+  (GPLv2) has attachment upload/download/remove handlers, supports local-file
+  removal, and can mark each variant private through
+  `as3cf_upload_object_key_as_private`. `AS3CF_SETTINGS` can supply runtime
+  settings; `as3cf_aws_s3_client_args` can customize the SDK. Its item/offloaded-file
+  tables own provider manifests separately from Zero. In
+  `classes/integrations/media-library.php`, `delete_attachment` invokes the
+  remove-provider handler and deletes the item immediately. Adapting it requires
+  an additional item source for private file rows and coordination of both
+  manifests, grants and transaction lifecycles. The inspected release archive's
+  SHA-256 is `8f7dd3b3929e51542f2148f2350eed400a0d8daa30d575d37db86da7f8296930`.
+
+Both are useful attachment-offload products. Neither is adopted as a second
+owner of Zero's upload state in this unit. The smaller SDK transport is the chosen
+reuse boundary. These are source/API assessments, not claims that the alternative
+plugins passed this project's replica acceptance test. No plugin settings or
+existing provider media are overwritten to make the chosen adapter work.
+
 ## Serving and processing
 
 Private files retain their existing MIME/size limits, uploader ownership and

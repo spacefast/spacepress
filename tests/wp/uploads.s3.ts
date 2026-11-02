@@ -6,6 +6,7 @@ export default {
   region: "garage",
   endpoint: env("ZERO_TEST_UPLOAD_ENDPOINT"),
   pathStyle: true,
-  prefix: "test",
+  // Exercise object-key escaping through WP postmeta and SQL LIKE during cleanup.
+  prefix: "test/scope_\\quoted%",
   credentials: { accessKeyId: env("ZERO_TEST_UPLOAD_KEY"), secretAccessKey: env("ZERO_TEST_UPLOAD_SECRET") },
 };

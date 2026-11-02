@@ -39,6 +39,26 @@ compose() {
 wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
 
+# Provider provisioning is separate from installing/activating the WordPress artifact.
+# Only the named disposable resources are owned here; a repeated setup retains their bytes.
+s3_setup() {
+  [[ ${ZERO_WP_S3:-0} == 1 ]] || { echo 's3-setup requires ZERO_WP_S3=1' >&2; exit 2; }
+  local node layout_version
+  layout_version=$(compose exec -T garage /garage json-api GetClusterLayout | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+  if [[ $layout_version == 0 ]]; then
+    node=$(compose exec -T garage /garage node id | cut -d@ -f1)
+    compose exec -T garage /garage layout assign -z test -c 1G "$node" >/dev/null
+    compose exec -T garage /garage layout apply --version 1 >/dev/null
+  fi
+  if ! compose exec -T garage /garage bucket info zero-uploads >/dev/null 2>&1; then
+    compose exec -T garage /garage bucket create zero-uploads >/dev/null
+  fi
+  if ! compose exec -T garage /garage key info GK111111111111111111111111 >/dev/null 2>&1; then
+    compose exec -T garage /garage key import --yes -n zero-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
+  fi
+  compose exec -T garage /garage bucket allow --read --write --owner zero-uploads --key GK111111111111111111111111 >/dev/null
+}
+
 up() {
   local content="${ZERO_WP_CONTENT}" env=0 bare=0 subdir=""
   while [[ $# -gt 0 ]]; do
@@ -82,13 +102,7 @@ PINS
   local url="http://127.0.0.1:${ZERO_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
   if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
-    local node
-    node=$(compose exec -T garage /garage node id | cut -d@ -f1)
-    compose exec -T garage /garage layout assign -z test -c 1G "$node" >/dev/null
-    compose exec -T garage /garage layout apply --version 1 >/dev/null
-    compose exec -T garage /garage bucket create zero-uploads >/dev/null
-    compose exec -T garage /garage key import --yes -n zero-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
-    compose exec -T garage /garage bucket allow --read --write --owner zero-uploads --key zero-test >/dev/null
+    s3_setup
   fi
   if [[ -n $subdir ]]; then
     [[ $subdir =~ ^[a-z0-9-]+$ ]] || { echo '--path must be one lowercase path segment' >&2; exit 2; }
@@ -172,6 +186,7 @@ case "$cmd" in
   wp) wp "$@" ;;
   sql) sql "$1" ;;
   compose) compose "$@" ;;
+  s3-setup) s3_setup ;;
   down)
     if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
       compose --profile replica down -v --remove-orphans >/dev/null 2>&1

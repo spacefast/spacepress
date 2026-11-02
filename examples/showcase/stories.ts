@@ -41,4 +41,3 @@ export const stories = collection(
     },
   },
 );
-

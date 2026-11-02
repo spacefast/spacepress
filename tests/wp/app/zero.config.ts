@@ -1,8 +1,8 @@
 // The WP test app: the frozen phase-1 blog's schema (tests/fixtures/blog), relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
-import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, json, real, select, text, timestamp, HttpError } from "zero";
-import { schema, settings, comments } from "../../fixtures/blog/zero.config.ts";
+import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, json, real, select, text, timestamp, HttpError, table } from "zero";
+import { collections, tables, users, entities, settings, comments } from "../../fixtures/blog/zero.config.ts";
 import blog from "../../fixtures/blog/zero.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
 import * as fields from "./lanes/fields.ts";
@@ -17,15 +17,16 @@ import * as runtime from "./lanes/runtime.ts";
 import { merge, mergeHooks } from "./compose.ts";
 const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtime];
 
-// An `editor: false` table with a real SQL UNIQUE index (the blog has none).
-export const signups = collection("signups", {
+// A `table()` with a real SQL UNIQUE index (the blog has none).
+export const signups = table({
   id: id(),
   email: email().notNull().unique().max(191),
-  postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
-}, { editor: false, access: { create: "anyone", read: "editor" } });
+  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }),
+  teamId: integer().references(() => fields.fieldTeams.id, { onDelete: "set null" }),
+}, { access: { create: "anyone", read: "editor" } });
 
 // A post-backed collection with one column of every scalar meta kind, for the postmeta filter suite.
-export const events = collection("events", {
+export const events = collection({
   id: id(),
   title: text().notNull(),
   seats: integer(),
@@ -34,7 +35,7 @@ export const events = collection("events", {
   day: date(),
   startsAt: timestamp().default("2030-01-01"), // a bare-date default: editor saves store it as full ISO
   kinds: select({ options: ["talk", "workshop", "social"], multiple: true }).notNull().default([]),
-  postId: integer().references(() => schema.posts.id, { onDelete: "set null" }),
+  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }),
   extra: json(), // a json() meta column: `{}` must stay an object through postmeta
 }, {
   access: {
@@ -45,13 +46,17 @@ export const events = collection("events", {
   },
 });
 
-const appSchema = merge("collection", [schema, { signups, events }, ...lanes.map((l) => l.schema)]);
+const appCollections = merge("collection", [collections, { events }, ...lanes.map((l) => l.collections)]);
+const appTables = merge("table", [tables, { signups }, ...lanes.map((l) => l.tables)]);
+const appUsers = merge("user projection", [users, ...lanes.map((l) => l.users)]);
+const appSchema = merge("registered key", [appCollections, appTables, appUsers]);
 // The blog's relations, plus events → posts and posts → signups (an editor-only relation target).
 const appRelations = defineRelations(appSchema, (r) => merge("relations for", [{
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments(), signups: r.many.signups({ from: r.posts.id, to: r.signups.postId }) },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
   events: { post: r.one.posts({ from: r.events.postId, to: r.posts.id }) },
+  signups: { team: r.one.fieldTeams({ from: r.signups.teamId, to: r.fieldTeams.id }) },
 }, ...lanes.map((l) => l.relations(r))]));
 
 // Lane-owned config options (jobs, webhooks, files, media, locales...): one owner per option.
@@ -61,7 +66,7 @@ export default defineConfig({
   ...laneConfig,
   name: "blog",
   admin: true, // the suite proves the opt-in path; examples/blog keeps proving the default
-  schema: appSchema,
+  collections: appCollections, tables: appTables, users: appUsers,
   relations: appRelations,
   globals: merge("global", [{ settings }, ...lanes.map((l) => l.globals)]),
   actions: merge("action", [blog.actions, {

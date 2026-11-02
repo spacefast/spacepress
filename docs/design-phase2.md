@@ -1,5 +1,9 @@
 # Zero phase 2 — design and work plan
 
+Authoring now uses explicit storage registries; see [the current config API](config-api.md).
+User projections are registered under `users` and always use native WordPress users.
+Storage flags in PHP examples below are emitted metadata, not builder options.
+
 Status: frozen for implementation. Extends `docs/design-wp-parity.md` (rev 2,
 "phase 1"); where this document is silent, phase 1 holds. Where it changes
 phase 1 it says so with **CHANGES §x.y**. Many agents build from this in
@@ -39,7 +43,7 @@ in §1. Problem codes are RFC 9457 as in phase 1. New system tables are named
 | Third-party PHP | Composer is used **at maintainer time** to install and prefix (Strauss) a small, justified dependency set per plugin; the prefixed tree is committed under `vendor-prefixed/` with a drift guard, embedded in the binary and emitted into the built plugins. `zero build` needs no PHP, Composer or Strauss on the user's machine (§3.3). |
 | Identity | spacefast-identity moves into this repo as `runtime/identity/` → plugin `zero-identity`, namespace `Zero\Identity`, GPL-2.0-or-later. Keeps webauthn-lib (passkeys), firebase/php-jwt, spomky-labs/otphp; drops league/oauth2-server + jumbojett + nyholm + defuse + lcobucci in favour of ~300 lines of plain PHP (the plugin already implemented most of OIDC itself). |
 | Leans on plugins | Jobs → Action Scheduler. Abilities/MCP → core Abilities API (WP 6.9+, `meta.public` 7.1) + the WordPress MCP Adapter plugin. Localization → Polylang free (one post per locale, Zero emits `wpml-config.xml` + `pll_*` calls; WPML-compatible by the same file). Markdown ⇄ blocks → WordPress php-toolkit (`wp-php-toolkit/markdown`). Images → core (`add_image_size` + `wp_get_image_editor`, focal via `image_resize_dimensions`), with an **optional** Jetpack Image CDN adapter. Private files, identity, field access, webhooks → no plugin (nothing suitable exists; justified per feature). |
-| Feature 4 on WP | `zero-identity` owns accounts, sessions, PKCE authorize, token endpoint (gains refresh rotation), suspension. `zero-runtime` resolves its Bearer tokens, creates guests, and maps `auth: true` collections onto `wp_users`. |
+| Feature 4 on WP | `zero-identity` owns accounts, sessions, PKCE authorize, token endpoint (gains refresh rotation), suspension. `zero-runtime` resolves its Bearer tokens, creates guests, and maps user projections onto `wp_users`. |
 | Field access | `.access({ read, update })` per column, evaluated in the pipeline per row; hidden columns are stripped from rows and refused in filters. wp-admin ignores it (WP caps govern there, as phase 1 §1.6). |
 | Conditional fields | `.showIf(filter)` static sibling filter → SCF `conditional_logic`; UI + `/_schema` metadata only, no pipeline effect. |
 | Sync | Markdown/JSON files with YAML front matter ⇄ records, per-field three-way merge in the Rust CLI, `.zero/sync-base.json` keyed by site id, conflict files `.zero/conflicts/<uid>.md`, `zr_` uids as a system column. Sync REST `/sync/*` on both targets; on WP also abilities. Media bytes don't sync in phase 2. |
@@ -168,7 +172,7 @@ System tables shared by every app (`zero__jobs`, `zero__outbox`,
 `zero__receipts`, `zero__files`, `zero__sessions` on WP) are created by the
 **runtime** plugin's activation hook and on `admin_init` when
 `get_option('zero_runtime_tables') !== Runtime::SERIES`; app-specific tables
-(`editor: false` collections, `zero__revisions`) stay with the app plugin's
+(`table()` definitions, `zero__revisions`) stay with the app plugin's
 migrator as in phase 1.
 
 ### 2.3 Standalone output
@@ -219,7 +223,7 @@ migrations. Standalone: PHP version, extensions (`pdo_sqlite`,
 `.zero/wp/` is deleted by the next `zero build`; `tests/wp/run.sh` stages
 `.zero/wp-content` instead of `tests/wp/.plugin`. The phase-1 plugin's options
 (`zero_<app>_schema`) keep their names; existing post types, meta keys, SCF keys
-and `editor: false` tables are untouched, so activating `zero-runtime` +
+and `table()` definitions are untouched, so activating `zero-runtime` +
 `zero-app-<name>` over a site that ran the phase-1 `zero-<name>` plugin
 (deactivated first) keeps all data. There is no in-place upgrade from the
 phase-1 plugin slug: deactivate it, activate the three, done.
@@ -616,7 +620,7 @@ export interface CollectionOptions<T> {
 `sync: "content/posts/*.md"` → dir `content/posts`, format `md`. `md` requires
 a `content` designation (the body); `json` is allowed with or without one (the
 content column is then an ordinary key named `body`). Rejected:
-`sync` on `auth: true` collections, on `media`, two collections syncing into the
+`sync` on user projections, on `media`, two collections syncing into the
 same directory, a dir outside the project, `.md` without a content column.
 
 ### 5.2 File format
@@ -977,11 +981,11 @@ The blog gets `jobs: { notifyEditors }` enqueued from `comments.afterCreate`
 and one webhook on `posts.*`; the pantry gets `notifyLowStock`. `zero dev`
 shows the worker draining; `tests/wp/jobs.test.ts` green.
 
-### 6.2 Feature 4 — frontend sign-in + `auth: true` collections
+### 6.2 Feature 4 — frontend sign-in + user projections
 
 Targets: WP (full, via zero-identity) and standalone (password/guest issuer).
 Lanes **E1** (identity plugin move + additions §3) and **E2** (runtime auth +
-`auth: true` + client), E2 stacks on E1.
+user projection + client), E2 stacks on E1.
 
 #### Zero auth routes (both targets, `runtime/Zero/Auth/Routes.php`)
 
@@ -992,7 +996,7 @@ Lanes **E1** (identity plugin move + additions §3) and **E2** (runtime auth +
 | `POST /auth/guest` → `{ accessToken, refreshToken, expiresIn, user: { …, role: "guest" } }` | yes | yes (`Accounts::issueForUser` on a new `zero_guest` WP user, client `app_zero_guest` auto-registered by the runtime) | 404 |
 | `POST /auth/guest/upgrade` `{ name, password }` (standalone) / identity email flow (WP, §3.5) | yes | via hosted screens | — |
 | `DELETE /auth/session` (current access token) → `{ data: true }` | yes | yes (delegates to identity's revoke) | 404 |
-| `GET /me` | user + `member` (the `auth: true` row, when any) | same | same |
+| `GET /me` | user + `member` (the user projection row, when any) | same | same |
 | `GET /auth/config` → `{ issuer, clientId?, guests }` | `{ issuer: null, guests }` | `{ issuer: home_url('/identity'), guests }` | `{ issuer: null }` |
 
 `Auth::resolve` on WP: core (cookies/app passwords) then `Zero\Identity\Bearer`.
@@ -1015,17 +1019,18 @@ rule `"subscriber"` excludes them; `User.role` type gains `"guest"`. Guests
 without any owned row older than 30 days are pruned by the jobs worker /
 an Action Scheduler recurring action (`zero.prune-guests`).
 
-#### `auth: true` collections
+#### user projections
 
 ```ts
-export const members = collection("members", {
+export const members = userProjection({
   id: id(),
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),
   plan: select({ options: ["free", "pro"] }).notNull().default("free"),
-}, { auth: true, access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
+}, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
-export interface CollectionOptions<T> { /** Rows are users. At most one per config. Implies editor: false, drafts: false, revisions: false. Needs `email: email().notNull().unique()`. */ auth?: boolean }
+export default defineConfig({ users: { members } });
+
 export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;   // "self" only on auth collections (read/update/delete)
 ```
 
@@ -1064,15 +1069,15 @@ options as in phase 1.
 
 #### schema.php
 
-`auth` block (§3.1); collection `auth: true`; the `role` column
+`auth` block (§3.1); user projection; the `role` column
 `['type' => 'text', 'enum' => [...ladder], 'system' => true, 'default' => ['value' => 'subscriber'], 'access' => ['update' => ['role' => 'admin']]]`;
 hidden columns carry `'hidden' => true` (omitted from `/_schema`, rows, and
 the client types).
 
 #### Rejected
 
-Two `auth: true` collections; `auth: true` without the email column shape;
-`auth: true` with `editor: true`, `drafts`, `revisions`, `sync`, or a `slug()`;
+Two user projections; a projection without the email column shape;
+A user projection with drafts, revisions, sync, or a slug;
 `"self"` on a non-auth collection or on `create`; a column named `password`,
 `role`, `passwordHash` on an auth collection.
 
@@ -1080,7 +1085,7 @@ Leans on: `zero-identity` (our own, from spacefast-identity) because no
 Automattic or wordpress.org plugin offers an OIDC issuer with PKCE, refresh
 rotation, passkeys and MFA for headless frontends; core Application Passwords
 stay the server-to-server path; WP core roles/`wp_users`/usermeta hold
-`auth: true` rows so every other plugin sees them as normal users.
+user projection rows so every other plugin sees them as normal users.
 
 #### Owner files
 
@@ -1414,7 +1419,7 @@ booleans, dates ("translate text, not values; put it in a localized `group`
 if it must vary"); `.localized()` without `locales`; `locales.default` not in
 `all`; a locale not matching `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`; `.unique()`
 on a localized column (uniqueness is per locale: hint "add a second column or
-use `slug()`"); `auth: true` on a localized collection; `editor: true`
+use `slug()`"); a localized user projection; `editor: true`
 localized collections when the target is WP are fine; user columns named
 `locale`/`translations`/`translationOf`/`translationGroup`.
 
@@ -1459,7 +1464,7 @@ fallback for an untranslated group; the generated plugin ships
 See §10 for the ones that need the user. Fixed here:
 
 - `agents` defaults `true` for collections/actions/globals, `false` for jobs.
-- `sync` never includes media bytes or `auth: true` rows.
+- `sync` never includes media bytes or user projection rows.
 - Localized collections are one row per locale everywhere; synced columns are
   synced by the pipeline, Polylang only owns language + group on WP.
 - Third-party PHP is bundled via Strauss at maintainer time (§3.3); a new
@@ -1746,7 +1751,7 @@ the `Platform` constants, in one PR.
    non-localized columns is the design that stays true when Phase 4 lands
    (a translation group is the same concept). What you give up vs. the
    previous map-per-column design: `GET /posts` for a locale is "one row per
-   group" via a `NOT IN` subquery (fine for CMS sizes; `editor: false` is the
+   group" via a `NOT IN` subquery (fine for CMS sizes; `table()` is the
    fast path as ever), and a translation is its own row with its own uid,
    slug, status and revisions. Polylang **free** suffices (REST `lang` and
    ACF per-field toggles are Pro-only, but Zero does both itself); Polylang's

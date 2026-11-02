@@ -225,6 +225,19 @@ impl Column {
                 .is_some_and(|ls| ls.values().any(|fs| fs.values().any(Column::translated)))
     }
 
+    /// The declaration model describes generated values, not nullable backing storage.
+    pub fn authored_not_null(&self) -> bool {
+        self.not_null || self.derived || self.system && self.name == "uid"
+    }
+
+    pub fn authored_has_default(&self) -> bool {
+        self.default.is_some()
+            || self.auto_increment
+            || self.derived
+            || self.system && self.name == "uid"
+            || self.ty == ColType::Slug && self.source.is_some()
+    }
+
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         !self.not_null || self.default.is_some() || self.auto_increment
@@ -321,9 +334,9 @@ pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
 
 #[derive(Debug, Clone)]
 pub struct Collection {
-    /// Key under `schema` in the config (`shoppingList`).
+    /// Logical registry key in the config (`shoppingList`).
     pub key: String,
-    /// Table name and REST path segment (`shopping_list`).
+    /// Derived physical name and REST path segment (`shopping_list`).
     pub table: String,
     pub label: String,
     pub editor: bool,
@@ -521,4 +534,24 @@ pub fn title_case(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// A registry key has one deterministic storage/route identity. Split camel case,
+/// retaining existing snake-case names and acronym boundaries.
+pub fn physical_name(key: &str) -> String {
+    let chars: Vec<char> = key.chars().collect();
+    let mut out = String::new();
+    for (i, c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase()
+            && i > 0
+            && chars[i - 1] != '_'
+            && (chars[i - 1].is_ascii_lowercase()
+                || chars[i - 1].is_ascii_digit()
+                || chars.get(i + 1).is_some_and(char::is_ascii_lowercase))
+        {
+            out.push('_');
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
 }

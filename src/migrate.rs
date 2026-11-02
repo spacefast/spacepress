@@ -5,7 +5,7 @@
 //! (`zero/migrations/snapshot.json`, committed with the project) and writes the
 //! next numbered migration into `zero/migrations/`.
 //!
-//! Only `editor: false` collections get a table, `{prefix}zero_<table>`, plus
+//! Only `table()` definitions get a table, `{prefix}zero_<table>`, plus
 //! the `{prefix}zero__revisions` system table. Post-backed collections live in
 //! `wp_posts`/`wp_postmeta` and get no table. Changes are `ALTER TABLE`
 //! (add/modify/drop), never rebuilds. Foreign keys exist only when both sides
@@ -60,7 +60,7 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
         table["auth"] = true.into();
     }
     if c.localized {
-        // §7.3: an `editor: false` table links a translation group with this column (post-backed
+        // §7.3: a SQL table links a translation group with this column (post-backed
         // groups live in Polylang, not in this column).
         let mut group = crate::schema::Column::new("translationGroup", crate::schema::ColType::Text);
         group.system = true;

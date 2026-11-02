@@ -2,20 +2,23 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, env, group, HttpError, id, integer, job, jobs, json, once, repeater, text } from "zero";
+import { action, boolean, collection, db, env, group, HttpError, id, integer, job, jobs, json, once, repeater, text, table } from "zero";
 
-export const jobNotes = collection("jobNotes", {
+export const jobNotes = table({
   id: id(),
   title: text().notNull(),
   fail: boolean().notNull().default(false),
   stamped: text(),
-}, { editor: false, access: { create: "editor", read: "editor", update: "editor" } });
+}, { access: { create: "editor", read: "editor", update: "editor" } });
 
 // Webhooks (D2) listen only here, so the job tests above never see webhook deliveries.
-export const hookNotes = collection("hookNotes", { id: id(), title: text().notNull() },
-  { editor: false, access: { create: "editor", read: "editor" } });
+export const hookNotes = table({ id: id(), title: text().notNull() },
+  { access: { create: "editor", read: "editor" } });
 
-export const schema = { jobNotes, hookNotes };
+export const collections = {  };
+export const tables = { jobNotes, hookNotes };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {
@@ -61,7 +64,7 @@ export const hooks = {
 };
 /** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
 export const config = {
-  webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hookNotes.created"] }],
+  webhooks: [{ url: env("ZERO_WP_HOOK_URL"), secret: env("ZERO_WP_HOOK_SECRET"), events: ["hook_notes.created"] }],
   jobs: {
     stamp: job({
       input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json(), info: group({ fields: {} }), rows: repeater({ fields: {} }) },

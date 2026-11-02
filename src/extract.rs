@@ -38,8 +38,6 @@ pub struct Extracted {
     pub roots: Vec<Root>,
     /// Schema-key → collection value, for resolving captured collections.
     pub collections: Vec<Rc<CollectionVal>>,
-    /// Module that holds `export const relations` / `schema`, for zero.gen.ts.
-    pub register_name: Option<&'static str>,
     /// Non-fatal advice printed by `zero build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
     pub plugins: Option<crate::wp_plugins::Config>,
@@ -47,7 +45,9 @@ pub struct Extracted {
 
 const CONFIG_KEYS: &[&str] = &[
     "name",
-    "schema",
+    "collections",
+    "tables",
+    "users",
     "relations",
     "globals",
     "hooks",
@@ -61,8 +61,8 @@ const CONFIG_KEYS: &[&str] = &[
     "admin",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
+    "storageName",
     "label",
-    "editor",
     "drafts",
     "revisions",
     "title",
@@ -71,7 +71,6 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "api",
     "sync",
     "uid",
-    "auth",
     "agents",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
@@ -141,7 +140,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         schema: Schema::default(),
         roots: Vec::new(),
         collections: Vec::new(),
-        register_name: None,
         hints: Vec::new(),
         plugins: None,
     };
@@ -176,97 +174,129 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         out.plugins = Some(plugins);
     }
 
-    // Collections
-    let schema_val = match cfg_map.get("schema") {
-        Some(v @ Value::Object(_)) => v.clone(),
-        Some(other) => {
-            return Err(Diag::new(
-                span_of(ev, config, "schema", config_span),
-                format!("`schema` must be an object of collections, not {}", other.describe()),
-            ));
+    for registry in ["collections", "tables", "users"] {
+        if let Some((_, span)) = ev.duplicate_key(config, Some(registry)) {
+            return Err(Diag::new(span, format!("duplicate `{registry}` registry")));
         }
-        None => {
-            return Err(Diag::new(config_span, "defineConfig() needs a `schema`")
-                .help("pass your collections: `defineConfig({ schema: { items } })`"));
-        }
-    };
-    out.register_name = Some("schema");
-    let Value::Object(schema_map) = &schema_val else {
-        unreachable!()
-    };
-    let schema_entries = schema_map.borrow().clone();
-    for (key, v) in &schema_entries {
-        let span = span_of(ev, &schema_val, key, config_span);
-        let Value::Collection(c) = v else {
+    }
+
+    // Bind every identity before evaluating columns or reference closures. The shared schema
+    // remains the runtime/migration model, so relations do not depend on storage kind.
+    for kind in [StorageKind::Collection, StorageKind::Table, StorageKind::UserProjection] {
+        let registry = kind.registry();
+        let Some(registry_val) = cfg_map.get(registry) else {
+            continue;
+        };
+        let Value::Object(entries) = registry_val else {
             return Err(Diag::new(
-                span,
-                format!("schema entry `{key}` is {}, not a collection", v.describe()),
+                span_of(ev, config, registry, config_span),
+                format!("`{registry}` must be an object of {}() values", kind.builder()),
             ));
         };
-        if out.schema.collections.contains_key(&c.table) {
-            return Err(Diag::new(
-                span,
-                format!("two collections use the table name \"{}\"", c.table),
-            ));
+        if let Some((key, span)) = ev.duplicate_key(registry_val, None) {
+            return Err(Diag::new(span, format!("duplicate registration `{registry}.{key}`")));
         }
-        if !valid_ident(&c.table) {
-            return Err(
-                Diag::new(c.span, format!("\"{}\" isn't a valid collection name", c.table))
-                    .help("use letters, digits, and underscores, starting with a letter"),
+        for (key, v) in entries.borrow().iter() {
+            let span = span_of(ev, registry_val, key, config_span);
+            let Value::Collection(c) = v else {
+                return Err(Diag::new(
+                    span,
+                    format!("`{registry}.{key}` must be {}(), not {}", kind.builder(), v.describe()),
+                ));
+            };
+            if c.kind != kind {
+                return Err(Diag::new(
+                    span,
+                    format!(
+                        "{}() belongs in `{}`, not `{registry}`",
+                        c.kind.builder(),
+                        c.kind.registry()
+                    ),
+                ));
+            }
+            if !valid_ident(key) {
+                return Err(Diag::new(span, format!("`{key}` isn't a valid registry key"))
+                    .help("use letters, digits, and underscores, starting with a letter"));
+            }
+            let canonical = physical_name(key);
+            if RESERVED_COLLECTIONS.contains(&canonical.as_str()) {
+                return Err(Diag::new(
+                    c.span,
+                    format!("\"{canonical}\" is reserved: Zero serves a built-in route with that name"),
+                ));
+            }
+            let table = match c.options.as_ref().and_then(|options| {
+                let Value::Object(options) = options else {
+                    unreachable!()
+                };
+                options.borrow().get("storageName").cloned()
+            }) {
+                None | Some(Value::Undef) => canonical,
+                Some(Value::Str(name)) if valid_ident(&name) => name.to_string(),
+                Some(_) => {
+                    return Err(
+                        Diag::new(span, "`storageName` must be an identifier starting with a letter")
+                            .help("use the existing physical name without the WordPress or zero_ prefix"),
+                    );
+                }
+            };
+            if RESERVED_COLLECTIONS
+                .iter()
+                .any(|reserved| reserved.eq_ignore_ascii_case(&table))
+            {
+                return Err(Diag::new(
+                    c.span,
+                    format!("\"{table}\" is reserved: Zero serves a built-in route with that name"),
+                ));
+            }
+            if let Some(other) = out.schema.collections.get(&table) {
+                return Err(Diag::new(
+                    span,
+                    format!("`{key}` and `{}` share the physical name `{table}`", other.key),
+                ));
+            }
+            if out.schema.collections.values().any(|other| other.key == *key) {
+                return Err(Diag::new(span, format!("duplicate logical registration `{key}`")));
+            }
+            if c.table.set(table.clone()).is_err() {
+                return Err(Diag::new(span, "a definition can only be registered once"));
+            }
+            out.collections.push(c.clone());
+            out.schema.collections.insert(
+                c.table().to_string(),
+                Collection {
+                    key: key.clone(),
+                    table: c.table().to_string(),
+                    label: title_case(c.table()),
+                    editor: true,
+                    drafts: true,
+                    revisions: true,
+                    title: None,
+                    content: None,
+                    slug: None,
+                    columns: IndexMap::new(),
+                    relations: IndexMap::new(),
+                    hooks: IndexMap::new(),
+                    before_create_fills: Vec::new(),
+                    access: IndexMap::new(),
+                    uid: false,
+                    sync: None,
+                    auth: false,
+                    agents: true,
+                    localized: false,
+                    api: Api {
+                        list: true,
+                        get: true,
+                        create: true,
+                        update: true,
+                        delete: true,
+                    },
+                },
             );
         }
-        if ["media", "files"].contains(&key.as_str()) && c.table != *key {
-            return Err(Diag::new(
-                span,
-                format!("`{key}` is reserved: the typed client serves built-in {key} under that name"),
-            )
-            .help("pick another schema key"));
-        }
-        if RESERVED_COLLECTIONS.contains(&c.table.as_str()) {
-            return Err(Diag::new(
-                c.span,
-                format!(
-                    "\"{}\" is reserved: Zero serves a built-in route with that name",
-                    c.table
-                ),
-            )
-            .help("pick another name, e.g. \"assets\" instead of \"media\""));
-        }
-        out.collections.push(c.clone());
-        out.schema.collections.insert(
-            c.table.clone(),
-            Collection {
-                key: key.clone(),
-                table: c.table.clone(),
-                label: title_case(&c.table),
-                editor: true,
-                drafts: true,
-                revisions: true,
-                title: None,
-                content: None,
-                slug: None,
-                columns: IndexMap::new(),
-                relations: IndexMap::new(),
-                hooks: IndexMap::new(),
-                before_create_fills: Vec::new(),
-                access: IndexMap::new(),
-                uid: false,
-                sync: None,
-                auth: false,
-                agents: true,
-                localized: false,
-                api: Api {
-                    list: true,
-                    get: true,
-                    create: true,
-                    update: true,
-                    delete: true,
-                },
-            },
-        );
     }
     for c in out.collections.clone() {
-        let owner = Owner::Collection(c.table.clone());
+        let owner = Owner::Collection(c.table().to_string());
         let mut columns = IndexMap::new();
         for (name, b) in &c.columns {
             let col = column(name, b, &owner, &[], Place::Top, ev, &mut out)?;
@@ -275,17 +305,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let pks: Vec<&Column> = columns.values().filter(|c| c.primary_key).collect();
         if pks.is_empty() {
             return Err(
-                Diag::new(c.span, format!("collection \"{}\" has no primary key", c.table)).help("add `id: id()`"),
+                Diag::new(c.span, format!("collection \"{}\" has no primary key", c.table())).help("add `id: id()`"),
             );
         }
         if pks.len() > 1 {
             return Err(Diag::new(
                 c.span,
-                format!("collection \"{}\" has more than one primary key", c.table),
+                format!("collection \"{}\" has more than one primary key", c.table()),
             ));
         }
         let opts = collection_options(&c, &columns, ev, &mut out)?;
-        let coll = out.schema.collections.get_mut(&c.table).expect("collection");
+        let coll = out.schema.collections.get_mut(c.table()).expect("collection");
         coll.columns = columns;
         coll.label = opts.label;
         coll.editor = opts.editor;
@@ -319,7 +349,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     // Relations
     if let Some(rel) = cfg_map.get("relations") {
         relations(rel, ev, &mut out, span_of(ev, config, "relations", config_span))?;
-        out.register_name = Some("relations");
     }
 
     // Globals
@@ -349,7 +378,10 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         for (key, per) in hooks.borrow().iter() {
             let kspan = span_of(ev, hooks_val, key, hspan);
             let Some(coll) = out.schema.by_key(key) else {
-                let mut d = Diag::new(kspan, format!("`hooks.{key}` doesn't match a collection in `schema`"));
+                let mut d = Diag::new(
+                    kspan,
+                    format!("`hooks.{key}` doesn't match a registered collection, table, or user projection"),
+                );
                 let keys: Vec<&str> = out.schema.collections.values().map(|c| c.key.as_str()).collect();
                 if let Some(s) = suggest(key, keys) {
                     d = d.help(format!("did you mean `{s}`?"));
@@ -621,7 +653,7 @@ fn collection_options(
         }
     }
     let label = match o.get("label") {
-        None | Some(Value::Undef) => title_case(&c.table),
+        None | Some(Value::Undef) => title_case(c.table()),
         Some(Value::Str(s)) => s.to_string(),
         Some(other) => {
             return Err(Diag::new(
@@ -630,50 +662,56 @@ fn collection_options(
             ));
         }
     };
-    let auth = flag("auth")?.unwrap_or(false);
+    let auth = c.kind == StorageKind::UserProjection;
+    let editor = c.kind == StorageKind::Collection;
     if auth {
-        for key in ["editor", "drafts", "revisions"] {
+        for key in ["drafts", "revisions"] {
             if flag(key)? == Some(true) {
-                return Err(Diag::new(span(key), format!("auth: true requires {key}: false"))
-                    .help(format!("remove {key} or set it to false")));
+                return Err(Diag::new(span(key), format!("userProjection() requires {key}: false"))
+                    .help("remove this option; WordPress owns user history"));
             }
         }
     }
-    let editor = flag("editor")?.unwrap_or(!auth);
     let drafts = match flag("drafts")? {
         Some(false) if editor => {
-            return Err(Diag::new(span("drafts"), "`drafts: false` needs `editor: false`")
-                .help("WordPress posts always have a status; set `editor: false` for a plain table"));
+            return Err(Diag::new(span("drafts"), "collections always have native draft status"));
         }
         Some(d) => d,
         None => editor,
     };
-    let revisions = flag("revisions")?.unwrap_or(editor);
+    let revisions = match flag("revisions")? {
+        Some(false) if editor => {
+            return Err(Diag::new(span("revisions"), "collections always have native revisions")
+                .help("remove this option; use table() for application data"));
+        }
+        Some(r) => r,
+        None => editor,
+    };
 
-    if editor && c.table.len() > MAX_POST_TYPE_TABLE {
+    if editor && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
             c.span,
             format!(
                 "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and Zero prefixes `zero_`",
-                c.table
+                c.table()
             ),
         )
         .help(format!(
-            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or set `editor: false`"
+            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data"
         )));
     }
     if editor
         && let Some(pk) = columns.values().find(|c| c.primary_key)
-        && !(pk.ty == ColType::Integer && pk.auto_increment)
+        && !(pk.name == "id" && pk.ty == ColType::Integer && pk.auto_increment)
     {
         return Err(Diag::new(
             c.columns[&pk.name].span,
             format!(
                 "\"{}\" is an editor collection, so its primary key is the WordPress post ID",
-                c.table
+                c.table()
             ),
         )
-        .help("use `id: id()`, or set `editor: false`"));
+        .help("use `id: id()`, or use table() for SQL data"));
     }
 
     let sync = match o.get("sync") {
@@ -708,7 +746,7 @@ fn collection_options(
             c.columns[t].span
         };
         match columns.get(t) {
-            None => return Err(no_column(&c.table, t, columns, sp, "title")),
+            None => return Err(no_column(c.table(), t, columns, sp, "title")),
             Some(col) if !(col.ty == ColType::Text && col.not_null) => {
                 return Err(Diag::new(
                     sp,
@@ -723,8 +761,8 @@ fn collection_options(
         }
     } else if editor {
         return Err(
-            Diag::new(c.span, format!("editor collection \"{}\" has no title", c.table))
-                .help("add a `title: text().notNull()` column or `title:` option, or set `editor: false`"),
+            Diag::new(c.span, format!("editor collection \"{}\" has no title", c.table()))
+                .help("add a `title: text().notNull()` column or `title:` option, or use table() for SQL data"),
         );
     }
 
@@ -740,7 +778,7 @@ fn collection_options(
     if let Some(t) = &content {
         let sp = span("content");
         match columns.get(t) {
-            None => return Err(no_column(&c.table, t, columns, sp, "content")),
+            None => return Err(no_column(c.table(), t, columns, sp, "content")),
             Some(col) if col.ty != ColType::RichText => {
                 return Err(Diag::new(
                     sp,
@@ -759,7 +797,7 @@ fn collection_options(
     if slugs.len() > 1 {
         return Err(Diag::new(
             c.columns[&slugs[1].name].span,
-            format!("\"{}\" has more than one slug() column", c.table),
+            format!("\"{}\" has more than one slug() column", c.table()),
         )
         .help("a collection has at most one slug; use text() for the others"));
     }
@@ -769,7 +807,7 @@ fn collection_options(
     {
         let sp = c.columns[&s.name].span;
         match columns.get(src) {
-            None => return Err(no_column(&c.table, src, columns, sp, "slug source")),
+            None => return Err(no_column(c.table(), src, columns, sp, "slug source")),
             Some(col) if col.ty != ColType::Text => {
                 return Err(Diag::new(
                     sp,
@@ -791,13 +829,13 @@ fn collection_options(
                     b.span,
                     format!("`{reserved}` is reserved: drafts add these (status, publishedAt)"),
                 )
-                .help("rename the column, or set `drafts: false` with `editor: false`"));
+                .help("rename the column; tables may also set `drafts: false`"));
             }
         }
     }
 
     // access
-    let owner = Owner::Collection(c.table.clone());
+    let owner = Owner::Collection(c.table().to_string());
     let mut access: IndexMap<String, Access> = ACCESS_OPS
         .iter()
         .map(|op| {
@@ -829,7 +867,7 @@ fn collection_options(
                 }
                 return Err(d);
             }
-            let name = format!("{}__access__{op}", c.table);
+            let name = format!("{}__access__{op}", c.table());
             access.insert(op.clone(), access_rule(rule, sp, &owner, op, name, out)?);
         }
     }
@@ -904,17 +942,12 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
                 Owner::Collection(t) => out
                     .collections
                     .iter()
-                    .find(|c| &c.table == t)
-                    .and_then(|c| c.options.as_ref())
-                    .is_some_and(|v| match v {
-                        Value::Object(o) => matches!(o.borrow().get("auth"), Some(Value::Bool(true))),
-                        _ => false,
-                    }),
+                    .any(|c| c.table() == t && c.kind == StorageKind::UserProjection),
                 _ => false,
             };
             if !auth || op == "create" {
                 return Err(
-                    Diag::new(span, "self is only allowed on auth collection read/update/delete rules")
+                    Diag::new(span, "self is only allowed on user projection read/update/delete rules")
                         .help("use a role or a boolean create rule"),
                 );
             }
@@ -923,7 +956,7 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
         Value::Str(s) if &**s == "owner" => {
             if !matches!(owner, Owner::FileBucket(_)) {
                 return Err(Diag::new(span, "owner is only allowed in files access")
-                    .help("use self on auth collections or a role"));
+                    .help("use self on user projections or a role"));
             }
             Access::Owner
         }
@@ -1056,7 +1089,7 @@ fn postmeta_hints(out: &mut Extracted) {
     }
     for (t, col) in hints {
         let h = format!(
-            "\"{t}.{col}\" is filtered through postmeta on WordPress; set editor: false on \"{t}\" if this list grows large"
+            "\"{t}.{col}\" is filtered through postmeta on WordPress; use table() for SQL data if this list grows large"
         );
         if !out.hints.contains(&h) {
             out.hints.push(h);
@@ -1264,8 +1297,8 @@ fn column(
                 return Err(Diag::new(
                     *span,
                     format!(
-                        "`{name}` references collection \"{}\", which isn't in `schema`",
-                        r.collection.table
+                        "`{name}` references collection \"{}\", which is not registered",
+                        r.collection.table()
                     ),
                 ));
             }
@@ -1276,7 +1309,7 @@ fn column(
                     format!(
                         "`{name}` is {}() but references {}.{}, which is {}()",
                         b.ty.name(),
-                        r.collection.table,
+                        r.collection.table(),
                         r.column,
                         target_col.ty.name()
                     ),
@@ -1287,7 +1320,8 @@ fn column(
                     *span,
                     format!(
                         "{}.{} must be a primary key or unique to be referenced",
-                        r.collection.table, r.column
+                        r.collection.table(),
+                        r.column
                     ),
                 ));
             }
@@ -1298,7 +1332,7 @@ fn column(
                 ));
             }
             Some(Reference {
-                collection: r.collection.table.clone(),
+                collection: r.collection.table().to_string(),
                 column: r.column.clone(),
                 on_delete: *on_delete,
                 on_update: *on_update,
@@ -1660,7 +1694,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
     let col_ref = |v: Option<&Value>, what: &str, rspan: Span| -> Result<Option<(String, String)>> {
         match v {
             None | Some(Value::Undef) => Ok(None),
-            Some(Value::ColRef(r)) => Ok(Some((r.collection.table.clone(), r.column.clone()))),
+            Some(Value::ColRef(r)) => Ok(Some((r.collection.table().to_string(), r.column.clone()))),
             Some(other) => Err(Diag::new(
                 rspan,
                 format!(
@@ -1676,7 +1710,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
         let Some(coll) = out.schema.by_key(key) else {
             return Err(Diag::new(
                 kspan,
-                format!("relations for `{key}`, which isn't in `schema`"),
+                format!("relations for `{key}`, which is not registered"),
             ));
         };
         let table = coll.table.clone();
@@ -2299,7 +2333,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     let mut auth_owner = None;
     let mut dirs = std::collections::HashSet::new();
     for b in &out.collections {
-        let c = out.schema.collections.get_mut(&b.table).unwrap();
+        let c = out.schema.collections.get_mut(b.table()).unwrap();
         for name in ["locale", "translations", "translationOf", "translationGroup"] {
             if let Some(col) = b.columns.get(name) {
                 return Err(
@@ -2322,7 +2356,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         }
         if let Some(sync) = &c.sync {
             if c.auth {
-                return Err(Diag::new(b.span, "auth collections cannot sync").help("remove sync"));
+                return Err(Diag::new(b.span, "user projections cannot sync").help("remove sync"));
             }
             if sync["format"] == "md" && c.content.is_none() {
                 return Err(Diag::new(b.span, "Markdown sync needs a content designation")
@@ -2351,13 +2385,14 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         }
         if c.auth {
             if auth_owner.replace(c.table.clone()).is_some() {
-                return Err(Diag::new(b.span, "at most one auth: true collection is allowed")
-                    .help("keep one members collection"));
+                return Err(
+                    Diag::new(b.span, "at most one userProjection() is allowed").help("keep one members collection")
+                );
             }
             if c.primary_key()
                 .is_none_or(|pk| pk.name != "id" || pk.ty != ColType::Integer)
             {
-                return Err(Diag::new(b.span, "auth: true needs the primary key id: id()")
+                return Err(Diag::new(b.span, "userProjection() needs the primary key id: id()")
                     .help("members are users: their row id is the user id"));
             }
             if !c
@@ -2365,19 +2400,21 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
                 .get("email")
                 .is_some_and(|c| c.ty == ColType::Email && c.not_null && c.unique)
             {
-                return Err(Diag::new(b.span, "auth: true needs email: email().notNull().unique()")
-                    .help("add the required unique email column with .max(191)"));
+                return Err(
+                    Diag::new(b.span, "userProjection() needs email: email().notNull().unique()")
+                        .help("add the required unique email column with .max(191)"),
+                );
             }
             if c.slug.is_some() || c.localized {
                 return Err(
-                    Diag::new(b.span, "auth collections cannot have slug() or localized fields")
+                    Diag::new(b.span, "user projections cannot have slug() or localized fields")
                         .help("keep translated content in a separate collection"),
                 );
             }
             for name in ["password", "role", "passwordHash", "suspendedAt", "guest"] {
                 if b.columns.contains_key(name) {
                     return Err(
-                        Diag::new(b.columns[name].span, format!("{name} is reserved on auth collections"))
+                        Diag::new(b.columns[name].span, format!("{name} is reserved on user projections"))
                             .help("remove this column; auth owns it"),
                     );
                 }
@@ -2434,15 +2471,15 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         }
     }
     for b in &out.collections {
-        field_conditions(&out.schema.collections[&b.table].columns, &b.columns, false)?;
+        field_conditions(&out.schema.collections[b.table()].columns, &b.columns, false)?;
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         // Sync pages records by an increasing integer key and creates rows without one (§5.3).
         if let Some(pk) = c.primary_key()
-            && !(pk.ty == ColType::Integer && pk.auto_increment)
+            && !(pk.name == "id" && pk.ty == ColType::Integer && pk.auto_increment)
         {
             return Err(Diag::new(
-                out.collections.iter().find(|b| b.table == c.table).unwrap().columns[&pk.name].span,
+                out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&pk.name].span,
                 format!("\"{}\" syncs with files, so its primary key must be id()", c.table),
             )
             .help("use `id: id()`; the uid is the record's identity across sites and files"));
@@ -2452,7 +2489,7 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
                 && !out.schema.collections[&r.collection].uid
             {
                 return Err(Diag::new(
-                    out.collections.iter().find(|b| b.table == c.table).unwrap().columns[&col.name]
+                    out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&col.name]
                         .span_of("references"),
                     format!("sync references need uid: true on {}", r.collection),
                 )

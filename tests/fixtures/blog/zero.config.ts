@@ -3,9 +3,10 @@
 import {
   collection, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, db, HttpError,
+  table,
 } from "zero";
 
-export const authors = collection("authors", {
+export const authors = collection({
   id: id(),
   name: text().notNull().max(80),
   email: email().notNull().unique().max(191),
@@ -14,7 +15,7 @@ export const authors = collection("authors", {
   userId: integer(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export const posts = collection("posts", {
+export const posts = collection({
   id: id(),
   title: text().notNull().min(1).max(120),
   slug: slug({ source: "title" }),
@@ -47,7 +48,7 @@ export const posts = collection("posts", {
   },
 });
 
-export const comments = collection("comments", {
+export const comments = table({
   id: id(),
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   name: text().notNull().max(60),
@@ -55,13 +56,15 @@ export const comments = collection("comments", {
   approved: boolean().notNull().default(false),
   createdAt: timestamp().notNull().defaultNow(),
 }, {
-  editor: false,
   access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
-export const schema = { authors, posts, comments };
+export const collections = { authors, posts };
+export const tables = { comments };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations(entities, (r) => ({
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
@@ -76,7 +79,7 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "blog",
-  schema,
+  collections, tables, users,
   relations,
   globals: { settings },
   hooks: {

@@ -51,22 +51,23 @@ impl Compiler<'_, '_> {
                 d
             });
         self.annotation_depth -= 1;
-        if self.annotation_depth == 0 {
-            result.map(runtime_type)
-        } else {
-            result
-        }
+        result
     }
 
     /// PHP compilation and cached class shapes need runtime types even when class
     /// dispatch reenters compilation from inside an alias normalization.
     pub(super) fn resolve_runtime_ann(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
-        // A runtime annotation is a new root, even when class dispatch reaches
+        self.resolve_annotation_root(a, module).map(runtime_type)
+    }
+
+    /// Resolve the authored domain before PHP/wire null normalization.
+    pub(super) fn resolve_annotation_root(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
+        // Each annotation is a new root, even when class dispatch reaches
         // it while another annotation is being normalized. Restore both budgets
         // before propagating errors; class readiness guards remain independent.
         let saved = (self.annotation_depth, self.annotation_steps);
         (self.annotation_depth, self.annotation_steps) = (0, 0);
-        let result = self.resolve_ann(a, module, &HashMap::new()).map(runtime_type);
+        let result = self.resolve_ann(a, module, &HashMap::new());
         (self.annotation_depth, self.annotation_steps) = saved;
         result
     }
@@ -226,8 +227,19 @@ impl Compiler<'_, '_> {
                     ("Pick" | "Omit", [t, k]) => {
                         let t = self.resolve_ann(t, module, generics)?;
                         let keys = finite_keys(&self.resolve_ann(k, module, generics)?, *span)?;
-                        let Ty::Obj(mut fields) = t else {
-                            return err(*span, "Pick/Omit need a finite object type");
+                        let mut fields = if let Ty::Obj(fields) = t {
+                            fields
+                        } else {
+                            // Pick/Omit map over keyof T, which is the common key
+                            // set for unions, rather than distributing the utility.
+                            type_copy(&t, *span, &mut self.annotation_steps)?;
+                            finite_keys(&keys_of(&t, *span)?, *span)?
+                                .into_iter()
+                                .map(|key| {
+                                    let field = t.field(&key).expect("common object key");
+                                    (key, field)
+                                })
+                                .collect()
                         };
                         if name == "Pick" {
                             for key in &keys {
@@ -268,11 +280,24 @@ impl Compiler<'_, '_> {
                     }
                     ("InferSelectModel" | "InferInsertModel", [TyAnn::Query(path, qspan)]) => {
                         let table = self.collection_from_query(path, *qspan, module)?;
-                        if name == "InferSelectModel" {
-                            types::row(self.schema, &table)
-                        } else {
-                            types::insert(self.schema, &table)
+                        self.resolve_json_columns(&self.schema.collections[&table].columns)?;
+                        model_work(
+                            &self.schema.collections[&table].columns,
+                            *qspan,
+                            &mut self.annotation_steps,
+                        )?;
+                        let collection = &self.schema.collections[&table];
+                        if name == "InferInsertModel" && collection.localized {
+                            // Both authored translation alternatives copy their column domains.
+                            model_work(&collection.columns, *qspan, &mut self.annotation_steps)?;
+                        } else if collection.localized {
+                            // The finite translations map repeats the primary-key domain.
+                            let primary = collection.primary_key().expect("primary key");
+                            for _ in collection.columns["locale"].enum_values.as_ref().expect("locales") {
+                                model_column_work(primary, *qspan, &mut self.annotation_steps)?;
+                            }
                         }
+                        types::authored_model(collection, name == "InferInsertModel")
                     }
                     _ => return err(*span, format!("unknown type `{name}`")),
                 }
@@ -803,6 +828,39 @@ fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
     Ok(())
 }
 
+fn model_work(columns: &IndexMap<String, Column>, span: Span, steps: &mut usize) -> Result<()> {
+    for col in columns.values() {
+        model_column_work(col, span, steps)?;
+    }
+    Ok(())
+}
+
+fn model_column_work(col: &Column, span: Span, steps: &mut usize) -> Result<()> {
+    type_step(steps, span)?;
+    if let Some(values) = &col.enum_values {
+        // Finite values and the localized translation map are materialized too.
+        for _ in values {
+            type_step(steps, span)?;
+            type_step(steps, span)?;
+        }
+    }
+    JSON_TYPES.with(|m| {
+        if let Some(t) = m.borrow().get(&(col as *const Column as usize)) {
+            type_copy(&t.authored, span, steps)?;
+        }
+        Ok(())
+    })?;
+    if let Some(fields) = &col.fields {
+        model_work(fields, span, steps)?;
+    }
+    if let Some(layouts) = &col.layouts {
+        for fields in layouts.values() {
+            model_work(fields, span, steps)?;
+        }
+    }
+    Ok(())
+}
+
 fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
     type_step(steps, span)?;
     if a == b || b == Ty::Unknown {
@@ -892,7 +950,7 @@ fn without_undefined(t: Ty) -> Ty {
 
 /// Annotation-only distinctions end here. PHP's null/undefined representation is
 /// unchanged, including nested array elements, properties and callback results.
-fn runtime_type(t: Ty) -> Ty {
+pub(super) fn runtime_type(t: Ty) -> Ty {
     match t {
         Ty::Undefined | Ty::Void => Ty::Null,
         Ty::Array(t) => Ty::Array(Box::new(runtime_type(*t))),

@@ -367,8 +367,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if argv.len() > params.len() || params.iter().skip(argv.len()).any(|t| !t.is_nullable()) {
             return err(span, "wrong number of class arguments");
         }
-        for (arg, want) in argv.iter().zip(params) {
-            if !assignable(&arg.ty, want) {
+        for ((arg, want), syntax) in argv.iter().zip(params).zip(args) {
+            let ArrEl::Item(expression) = syntax else {
+                unreachable!("plain_args rejects spreads")
+            };
+            // Match ordinary calls: mutation effects can broaden a read view
+            // without changing the binding's authored argument contract.
+            if !assignable(&arg.ty, want)
+                && (arg.ty.is_nullable() && !want.is_nullable()
+                    || !self
+                        .argument_constraint(expression)
+                        .is_some_and(|ty| assignable(&ty, want)))
+            {
                 return err(
                     span,
                     format!("class argument is {}, expected {}", arg.ty.describe(), want.describe()),

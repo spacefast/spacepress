@@ -1,6 +1,6 @@
-import { collection, id, text, defineConfig, db } from "zero";
-const a = collection("a", { id: id(), name: text().notNull() }, { editor: false });
+import { collection, id, text, defineConfig, db, table } from "zero";
+const a = table({ id: id(), name: text().notNull() });
 export default defineConfig({
-  schema: { a },
+  tables: { a },
   hooks: { a: { async afterCreate(row) { await db.query.a.findMany({ where: { nmae: "x" } }); } } },
 });

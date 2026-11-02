@@ -6,12 +6,12 @@
 // drafts and trash against real WordPress.
 import { collection, id, integer, richText, select, slug, text, HttpError } from "zero";
 
-export const writers = collection("writers", {
+export const writers = collection({
   id: id(),
   name: text().notNull().max(80),
 }, { title: "name", uid: true });
 
-export const guides = collection("guides", {
+export const guides = collection({
   id: id(),
   title: text().notNull().max(120),
   slug: slug({ source: "title" }),
@@ -26,18 +26,21 @@ export const guides = collection("guides", {
 
 // Content behind field access: `briefs` hides its body from everyone below admin; `memos` lets
 // editors read the body but only admins change it.
-export const briefs = collection("briefs", {
+export const briefs = collection({
   id: id(),
   title: text().notNull(),
   body: richText().access({ read: "admin" }),
 }, { title: "title", content: "body", sync: "content/briefs/*.md" });
-export const memos = collection("memos", {
+export const memos = collection({
   id: id(),
   title: text().notNull(),
   body: richText().access({ update: "admin" }),
 }, { title: "title", content: "body", sync: "content/memos/*.md" });
 
-export const schema = { writers, guides, briefs, memos };
+export const collections = { writers, guides, briefs, memos };
+export const tables = {  };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};

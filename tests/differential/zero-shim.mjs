@@ -7,7 +7,9 @@ const chain = (meta = {}) =>
     apply: () => chain(meta),
   });
 const builder = () => chain();
-export const collection = (name, cols, options = {}) => ({ name, cols, options });
+export const collection = (cols, options = {}) => ({ cols, options });
+export const table = (cols, options = {}) => ({ cols, options });
+export const userProjection = (cols, options = {}) => ({ cols, options });
 export const global = (name, fields, options = {}) => ({ name, fields, options });
 export const id = builder, integer = builder, real = builder, text = builder, boolean = builder;
 export const date = builder, timestamp = builder, json = builder, email = builder, url = builder;

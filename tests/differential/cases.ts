@@ -1,9 +1,9 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks } from "zero";
+import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once, env } from "zero"; // lane D
 
-const n = collection("n", { id: id() }, { editor: false });
+const n = table({ id: id() });
 
 // Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
 export const ACCESS_CTXS = [
@@ -25,7 +25,7 @@ export const VALIDATE_CTX = { data: { title: "x", score: 1, info: { meta: { x: 0
 
 const RANK = ["subscriber", "author", "editor", "admin"];
 
-export const docs = collection("docs", {
+export const docs = collection({
   id: id(),
   title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
   score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)),
@@ -295,7 +295,7 @@ const laneRefs = {
 };
 
 export default defineConfig({
-  schema: { n, docs, fieldDocs: fieldDocs() },
+  collections: { docs }, tables: { n, field_docs: fieldDocs() },
   actions: {
     ...laneRefs,
     languageTypes: run(() => {
@@ -716,13 +716,13 @@ export const FIELD_CTXS = [
 
 // A hoisted function, so the collection can live in this block below the default export.
 function fieldDocs() {
-  return collection("fieldDocs", {
+  return table({
     id: id(),
     ownerId: integer(),
     salary: integer().access({
       read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
       update: (ctx) => ctx.user?.role === "admin" || (ctx.data.salary !== null && ctx.op === "update"),
     }),
-  }, { editor: false });
+  });
 }
 

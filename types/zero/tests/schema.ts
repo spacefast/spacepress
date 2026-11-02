@@ -1,9 +1,10 @@
 // Fixture schema for the type tests (self-contained). `locations`/`items`/`shoppingList` mirror the
-// pantry example (custom tables: `editor: false`); `authors`/`posts`/`comments`/`settings` mirror the
+// pantry example (custom tables: `table()`); `authors`/`posts`/`comments`/`settings` mirror the
 // blog example (design §1.9) and carry the v1 additions.
 import {
   blocks, boolean, collection, date, defineRelations, email, global, group, id, integer, json, media,
   repeater, richText, select, slug, text, timestamp, url,
+  table,
 } from "zero";
 
 export const UNITS = ["pcs", "g", "kg"] as const;
@@ -13,13 +14,13 @@ const timestamps = {
   updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
 };
 
-export const locations = collection("locations", {
+export const locations = table({
   id: id(),
   name: text().notNull(),
   kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
-}, { editor: false });
+});
 
-export const items = collection("items", {
+export const items = table({
   id: id(),
   name: text().notNull(),
   quantity: integer().notNull().default(1),
@@ -30,25 +31,25 @@ export const items = collection("items", {
   tags: json().$type<string[]>().notNull().$default(() => []),
   meta: json(),
   ...timestamps,
-}, { editor: false });
+});
 
-export const shoppingList = collection("shopping_list", {
+export const shoppingList = table({
   id: id(),
   itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
   name: text().notNull(),
   done: boolean().notNull().default(false),
-}, { editor: false });
+});
 
-export const authors = collection("authors", {
+export const authors = collection({
   id: id(),
   name: text().notNull().max(80),
   email: email().notNull().unique().max(191),
   bio: text({ multiline: true }).max(500),
   avatar: media({ accept: "image" }),
   userId: integer(),
-}, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
+}, { storageName: "authors", label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export const posts = collection("posts", {
+export const posts = collection({
   id: id(),
   title: text().notNull().min(1).max(120).pattern(/\S/),
   slug: slug({ source: "title" }),
@@ -79,12 +80,12 @@ export const posts = collection("posts", {
   },
 });
 
-export const comments = collection("comments", {
+export const comments = table({
   id: id(),
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   body: text({ multiline: true }).notNull().validate((v, ctx) => v.includes("http://") && ctx.user === null ? "No links" : true),
   approved: boolean().notNull().default(false),
-}, { editor: false, access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
+}, { access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
 
 export const settings = global("settings", {
   siteTitle: text().notNull().default("My blog").max(80),
@@ -93,9 +94,12 @@ export const settings = global("settings", {
   social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
 }, { label: "Site settings", access: { update: "admin" } });
 
-export const schema = { locations, items, shoppingList, authors, posts, comments };
+export const collections = { authors, posts };
+export const tables = { locations, items, shoppingList, comments };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations(entities, (r) => ({
   items: { location: r.one.locations({ from: r.items.locationId, to: r.locations.id }) },
   locations: { items: r.many.items() },
   shoppingList: {

@@ -344,6 +344,7 @@ element("copy-check").addEventListener("click", async () => {
 });
 for (const [id, file] of [
   ["source-ts", "source.ts.txt"],
+  ["source-pantry", "pantry.ts.txt"],
   ["source-php", "compiled.php.txt"],
 ]) {
   fetch(`./${file}`)

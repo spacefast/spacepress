@@ -31,3 +31,9 @@ Media stays in WordPress's existing media system. Zero's existing media API
 applies its access rules to uploads, deletes, alt text and focal points; core
 WordPress REST owns media reads and caption/title editing. Existing plugin
 ownership and storage configuration remain in place.
+
+Collections in the sidebar expands to the app's readable collections. Choose
+All collections to return to the overview. Classic admin opens the full native
+WordPress admin, including its sidebar and plugin screens. Choose Zero in the
+WordPress sidebar to return to Zero Admin. WordPress manages users, settings,
+themes and plugins through these native screens.

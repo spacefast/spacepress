@@ -16,12 +16,13 @@ function zero_admin_navigation() {
     return $readable;
 }
 add_action( 'zero_admin_init', static function () {
-    zero_admin_register_menu_item( 'collections', array( 'to' => '/', 'label' => __( 'Collections', 'zero-admin' ), 'icon' => 'dashicons-database' ) );
+    zero_admin_register_menu_item( 'collections', array( 'parent_type' => 'dropdown', 'label' => __( 'Collections', 'zero-admin' ), 'icon' => 'dashicons-database' ) );
+    zero_admin_register_menu_item( 'all-collections', array( 'to' => '/', 'label' => __( 'All collections', 'zero-admin' ), 'parent' => 'collections' ) );
     foreach ( zero_admin_navigation() as $name ) {
         $collection = \Zero\Wp\Runtime::plugin()->schema->collection( $name );
         zero_admin_register_menu_item( 'collection-' . $name, array( 'to' => '/collections/' . rawurlencode( $name ), 'label' => $collection['label'] ?? $name, 'parent' => 'collections' ) );
     }
     zero_admin_register_menu_item( 'media', array( 'to' => '/media', 'label' => __( 'Media', 'zero-admin' ), 'icon' => 'dashicons-format-image' ) );
     zero_admin_register_menu_item( 'globals', array( 'to' => '/globals', 'label' => __( 'Globals', 'zero-admin' ), 'icon' => 'dashicons-admin-settings' ) );
-    zero_admin_register_menu_item( 'classic', array( 'to' => '/legacy/index.php', 'label' => __( 'Classic admin', 'zero-admin' ), 'icon' => 'dashicons-wordpress' ) );
+    zero_admin_register_menu_item( 'classic', array( 'to' => admin_url(), 'label' => __( 'Classic admin', 'zero-admin' ), 'icon' => 'dashicons-wordpress' ) );
 } );

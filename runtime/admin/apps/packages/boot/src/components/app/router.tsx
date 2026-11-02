@@ -363,7 +363,12 @@ export const getRouter = ( routes: Route[] = [] ) => {
 		defaultPreload: 'intent',
 		basepath: mountPath,
 		defaultNotFoundComponent: NotFoundComponent,
-		defaultViewTransition: true,
+		defaultViewTransition: {
+			types: () =>
+				'activeViewTransition' in document && document.activeViewTransition
+					? false
+					: [],
+		},
 	} );
 };
 /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access */

@@ -9,8 +9,11 @@
   </head>
   <body>
     <header class="bar">
-      <a class="brand" href="./">zero<span> / field notes</span></a
-      ><a href="/zero-admin/">Open the editor ↗</a>
+      <a class="brand" href="./">zero<span> / field notes</span></a>
+      <nav aria-label="Main">
+        <a href="#pantry">Pantry</a><a href="/zero-admin/">Zero admin ↗</a
+        ><a href="/wp-admin/">Classic admin ↗</a>
+      </nav>
     </header>
     <main>
       <section class="intro">
@@ -27,8 +30,31 @@
         <p class="hint">
           Local demo login: <code>editor</code> / <code>zero-test-editor</code>
         </p>
+        <details class="wordpress-tour">
+          <summary>Explore WordPress, SCF &amp; installed plugins</summary>
+          <p>
+            For the full WordPress admin, sign in as <code>admin</code> /
+            <code>zero-test-admin</code>. The editor account manages content;
+            the admin account also manages plugins, fields, themes and settings.
+          </p>
+          <p>
+            Zero’s generated SCF fields appear on the native story editor. The
+            SCF field-group manager lets you create your own groups.
+          </p>
+          <div class="actions">
+            <a
+              href="/wp-login.php?reauth=1&amp;redirect_to=%2Fwp-admin%2Fplugins.php"
+              >Sign in as admin ↗</a
+            ><a href="/wp-admin/plugins.php">Installed plugins ↗</a
+            ><a href="/wp-admin/edit.php?post_type=zero_stories"
+              >Stories &amp; SCF fields ↗</a
+            ><a href="/wp-admin/edit.php?post_type=acf-field-group"
+              >SCF field groups ↗</a
+            >
+          </div>
+        </details>
       </section>
-      <section aria-labelledby="stories-title">
+      <section id="notebook" aria-labelledby="stories-title">
         <div class="section-title">
           <h2 id="stories-title">From the notebook</h2>
           <button id="refresh" type="button" data-refresh>
@@ -43,6 +69,50 @@
           Reading from the API…
         </p>
         <div id="stories" class="stories"></div>
+      </section>
+      <section id="pantry" class="pantry" aria-labelledby="pantry-title">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">A real pantry tracker</p>
+            <h2 id="pantry-title">A little less food waste.</h2>
+          </div>
+          <button id="pantry-refresh" type="button">Refresh pantry ↻</button>
+        </div>
+        <p>
+          Use what you have. Low stock lands on your shopping list; restocking
+          checks it off. Edit the same records in Zero Admin or the classic
+          WordPress admin.
+        </p>
+        <div class="pantry-tools">
+          <label for="pantry-location"
+            >Location
+            <select id="pantry-location">
+              <option value="">Everywhere</option>
+            </select></label
+          ><a href="/zero-admin/collections/items/-/new">Add an item ↗</a
+          ><a href="/zero-admin/collections/locations">Edit locations ↗</a
+          ><a href="/wp-admin/admin.php?page=zero-showcase-pantry"
+            >Classic pantry admin ↗</a
+          >
+        </div>
+        <p id="pantry-session" class="hint"></p>
+        <p id="pantry-status" role="status" aria-atomic="true">
+          Opening the pantry…
+        </p>
+        <div class="pantry-grid">
+          <div>
+            <h3>On the shelf <span id="pantry-count"></span></h3>
+            <div id="pantry-items" class="pantry-items"></div>
+          </div>
+          <aside class="shopping">
+            <h3>Shopping list</h3>
+            <p class="hint">Buy enough to get above the low-stock threshold.</p>
+            <div id="pantry-shopping"></div>
+            <a href="/zero-admin/collections/shoppingList"
+              >Edit shopping list ↗</a
+            >
+          </aside>
+        </div>
       </section>
       <section class="workbench" aria-labelledby="workbench-title">
         <div>
@@ -134,6 +204,10 @@
           <pre id="source-ts"></pre>
         </details>
         <details>
+          <summary>Pantry tables, hooks &amp; actions · TypeScript</summary>
+          <pre id="source-pantry"></pre>
+        </details>
+        <details>
           <summary>Compiled PHP</summary>
           <pre id="source-php"></pre>
         </details>
@@ -144,5 +218,6 @@
       has its own Garage acceptance lane; this demo uses local storage.
     </footer>
     <script type="module" src="./app.js"></script>
+    <script type="module" src="./pantry.js"></script>
   </body>
 </html>

@@ -3,7 +3,6 @@ import {
   blocks,
   boolean,
   collection,
-  db,
   defineConfig,
   defineRelations,
   global,
@@ -16,6 +15,14 @@ import {
   table,
   text,
 } from "zero";
+import {
+  consume,
+  itemHooks,
+  items,
+  locations,
+  restock,
+  shoppingList,
+} from "./pantry";
 
 export const stories = collection(
   {
@@ -66,10 +73,29 @@ export const tasks = table(
   },
 );
 
-export const relations = defineRelations({ stories, tasks }, (r) => ({
-  stories: { tasks: r.many.tasks() },
-  tasks: { story: r.one.stories({ from: r.tasks.storyId, to: r.stories.id }) },
-}));
+export const relations = defineRelations(
+  { stories, tasks, items, locations, shoppingList },
+  (r) => ({
+    stories: { tasks: r.many.tasks() },
+    tasks: {
+      story: r.one.stories({ from: r.tasks.storyId, to: r.stories.id }),
+    },
+    items: {
+      location: r.one.locations({
+        from: r.items.locationId,
+        to: r.locations.id,
+      }),
+      shoppingEntry: r.one.shoppingList({
+        from: r.items.id,
+        to: r.shoppingList.itemId,
+      }),
+    },
+    locations: { items: r.many.items() },
+    shoppingList: {
+      item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id }),
+    },
+  }),
+);
 
 class Headline {
   constructor(public text: string) {}
@@ -90,7 +116,7 @@ export default defineConfig({
   name: "showcase",
   admin: true,
   collections: { stories },
-  tables: { tasks },
+  tables: { tasks, locations, items, shoppingList },
   relations,
   globals: {
     settings: global(
@@ -104,6 +130,7 @@ export default defineConfig({
   },
   media: { sizes: { card: { width: 960, height: 600, fit: "cover" } } },
   hooks: {
+    items: itemHooks,
     tasks: {
       beforeCreate(data) {
         data.title = data.title.trim();
@@ -111,6 +138,8 @@ export default defineConfig({
     },
   },
   actions: {
+    consume,
+    restock,
     previewHeadline: action({
       access: "anyone",
       input: { title: text().notNull().min(1).max(120) },

@@ -299,7 +299,7 @@ function coverPng() {
   });
 }
 
-async function seed(saved) {
+async function seedClassic(saved) {
   const { editor } = await clients(saved);
   if (
     wp(
@@ -371,12 +371,277 @@ async function seed(saved) {
   wp("option", "update", "zero_showcase_seeded", "1");
 }
 
+async function seedPantry(saved) {
+  if (
+    wp(
+      "eval",
+      "echo get_option('zero_showcase_pantry_seeded', false) ? 'yes' : 'no';",
+    ) === "yes"
+  )
+    return;
+  const { editor } = await clients(saved);
+  const fridge = await editor.locations.create({
+    name: "Fridge",
+    kind: "fridge",
+  });
+  const cupboard = await editor.locations.create({
+    name: "Kitchen cupboard",
+    kind: "pantry",
+  });
+  const freezer = await editor.locations.create({
+    name: "Freezer",
+    kind: "freezer",
+  });
+  const inDays = (days) =>
+    new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  for (const item of [
+    {
+      name: "Eggs",
+      quantity: 2,
+      unit: "pcs",
+      lowStockAt: 2,
+      locationId: fridge.id,
+      expiresOn: inDays(7),
+    },
+    {
+      name: "Milk",
+      quantity: 800,
+      unit: "ml",
+      lowStockAt: 250,
+      locationId: fridge.id,
+      expiresOn: inDays(3),
+    },
+    {
+      name: "Chickpeas",
+      quantity: 3,
+      unit: "pcs",
+      lowStockAt: 1,
+      locationId: cupboard.id,
+    },
+    {
+      name: "Rolled oats",
+      quantity: 750,
+      unit: "g",
+      lowStockAt: 150,
+      locationId: cupboard.id,
+    },
+    {
+      name: "Frozen peas",
+      quantity: 600,
+      unit: "g",
+      lowStockAt: 150,
+      locationId: freezer.id,
+    },
+    {
+      name: "Lemons",
+      quantity: 0,
+      unit: "pcs",
+      lowStockAt: 1,
+      locationId: fridge.id,
+    },
+  ])
+    await editor.items.create(item);
+  const coffee = await editor.items.create({
+    name: "Coffee bags",
+    quantity: 0,
+    unit: "pcs",
+    lowStockAt: 1,
+    locationId: cupboard.id,
+  });
+  await editor.actions.restock({ itemId: coffee.id, amount: 3 });
+  wp("option", "update", "zero_showcase_pantry_seeded", "1");
+}
+
+async function seed(saved) {
+  await seedClassic(saved);
+  await seedPantry(saved);
+}
+
+async function checkPantry(publicClient, editor) {
+  let location, item, anonymousItem, failure;
+  try {
+    await assert.rejects(
+      async () => {
+        anonymousItem = await publicClient.items.create({
+          name: "Must be denied",
+        });
+      },
+      (error) => error.status === 401 || error.status === 403,
+    );
+    location = await editor.locations.create({
+      name: "Temporary check shelf",
+      kind: "pantry",
+    });
+    item = await editor.items.create({
+      name: "  Temporary chickpeas  ",
+      quantity: 1,
+      lowStockAt: 1,
+      locationId: location.id,
+    });
+    assert.equal(
+      item.name,
+      "Temporary chickpeas",
+      "Pantry hook trims item names",
+    );
+    const publicItems = await publicClient.items.list({
+      where: { id: item.id },
+      with: { location: true },
+    });
+    assert.equal(publicItems.length, 1);
+    assert.equal(
+      publicItems[0].location.id,
+      location.id,
+      "Public pantry reads resolve location",
+    );
+    const shelves = await publicClient.locations.list({
+      where: { id: location.id },
+      with: { items: true },
+    });
+    assert.deepEqual(
+      shelves[0].items.map((row) => row.id),
+      [item.id],
+    );
+    const initial = await publicClient.shoppingList.list({
+      where: { itemId: item.id },
+      with: { item: true },
+    });
+    assert.equal(
+      initial.length,
+      1,
+      "Low-stock creation adds one shopping entry",
+    );
+    assert.equal(initial[0].done, false);
+    assert.equal(initial[0].item.id, item.id);
+    for (const action of ["consume", "restock"]) {
+      await assert.rejects(
+        () => publicClient.actions[action]({ itemId: item.id, amount: 1 }),
+        (error) => error.status === 401 || error.status === 403,
+      );
+      await assert.rejects(
+        () => editor.actions[action]({ itemId: item.id, amount: 0 }),
+        (error) => error.status === 400 || error.status === 422,
+      );
+    }
+    await assert.rejects(
+      () => editor.items.update(item.id, { quantity: -1 }),
+      (error) => error.status === 400 || error.status === 422,
+    );
+    let result = await editor.actions.restock({ itemId: item.id, amount: 3 });
+    assert.equal(result.item.quantity, 4);
+    let entries = await publicClient.shoppingList.list({
+      where: { itemId: item.id },
+    });
+    assert.equal(
+      entries[0].done,
+      true,
+      "Buying enough completes the shopping entry",
+    );
+    result = await editor.actions.consume({ itemId: item.id, amount: 3 });
+    assert.equal(result.item.quantity, 1);
+    entries = await publicClient.shoppingList.list({
+      where: { itemId: item.id },
+    });
+    assert.equal(entries.length, 1);
+    assert.equal(
+      entries[0].id,
+      initial[0].id,
+      "Next low-stock crossing reuses the same entry",
+    );
+    assert.equal(entries[0].done, false);
+    result = await editor.actions.consume({ itemId: item.id, amount: 10 });
+    assert.equal(
+      result.item.quantity,
+      0,
+      "Consumption never makes stock negative",
+    );
+    result = await editor.actions.restock({ itemId: item.id, amount: 1 });
+    assert.equal(result.item.quantity, 1);
+    entries = await publicClient.shoppingList.list({
+      where: { itemId: item.id },
+    });
+    assert.equal(
+      entries.length,
+      1,
+      "Repeated low stock never duplicates shopping rows",
+    );
+    assert.equal(
+      entries[0].done,
+      false,
+      "Partial restock stays on the shopping list",
+    );
+    result = await editor.actions.restock({ itemId: item.id, amount: 3 });
+    assert.equal(result.item.quantity, 4);
+    const renamed = await editor.items.update(item.id, {
+      name: "  Renamed chickpeas  ",
+    });
+    assert.equal(renamed.name, "Renamed chickpeas");
+    entries = await publicClient.shoppingList.list({
+      where: { itemId: item.id },
+    });
+    assert.equal(entries[0].name, renamed.name);
+    assert.equal(entries[0].done, true);
+    await editor.locations.delete(location.id);
+    const unplaced = await publicClient.items.list({ where: { id: item.id } });
+    assert.equal(
+      unplaced[0].locationId,
+      null,
+      "Removing a location preserves its items",
+    );
+    location = undefined;
+    await editor.items.delete(item.id);
+    assert.deepEqual(
+      await publicClient.shoppingList.list({ where: { itemId: item.id } }),
+      [],
+      "Removing an item removes its shopping entry",
+    );
+    item = undefined;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    const failures = [];
+    for (const owned of [item, anonymousItem]) {
+      if (!owned) continue;
+      try {
+        const entries = await editor.shoppingList.list({
+          where: { itemId: owned.id },
+        });
+        for (const entry of entries) await editor.shoppingList.delete(entry.id);
+      } catch (error) {
+        failures.push(
+          `shopping entries for item ${owned.id}: ${error.message}`,
+        );
+      }
+      try {
+        await editor.items.delete(owned.id);
+      } catch (error) {
+        failures.push(`item ${owned.id}: ${error.message}`);
+      }
+    }
+    if (location) {
+      try {
+        await editor.locations.delete(location.id);
+      } catch (error) {
+        failures.push(`location ${location.id}: ${error.message}`);
+      }
+    }
+    if (failures.length)
+      throw new Error(
+        `${failure ? `${failure.message}\n` : ""}Pantry check cleanup failed:\n${failures.join("\n")}`,
+      );
+  }
+  console.log(
+    "PASS pantry public relations, stock constraints, editor actions, shopping lifecycle and cleanup",
+  );
+}
+
 async function check(saved) {
   const { publicClient, editor } = await clients(saved);
   assert.deepEqual(
     await publicClient.actions.previewHeadline({ title: "  Hello, Zero!  " }),
     { title: "Hello, Zero!", slug: "hello-zero", characters: 12 },
   );
+  await checkPantry(publicClient, editor);
   let task, story, cover, anonymousTask, failure;
   try {
     await assert.rejects(
@@ -517,7 +782,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nAdmin:    ${saved.url}/zero-admin/\nLogin:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nClassic:  ${saved.url}/wp-admin/\nLogin:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
@@ -568,6 +833,7 @@ async function main() {
   );
   mkdirSync(app, { recursive: true });
   copyFileSync(join(example, "zero.config.ts"), join(app, "zero.config.ts"));
+  copyFileSync(join(example, "pantry.ts"), join(app, "pantry.ts"));
   cpSync(join(example, "public"), join(app, "public"), { recursive: true });
   run(zero, ["build", app, "--quiet"]);
   mkdirSync(join(app, "public/client"), { recursive: true });
@@ -585,6 +851,7 @@ async function main() {
     join(app, "public/client/LICENSE"),
   );
   copyFileSync(join(app, "zero.config.ts"), join(app, "public/source.ts.txt"));
+  copyFileSync(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));
   copyFileSync(
     join(
       app,
@@ -596,6 +863,12 @@ async function main() {
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
   run("rsync", ["-a", "--delete", `${app}/.zero/wp-content/`, `${content}/`]);
+  const classic = join(content, "plugins/zero-showcase-classic-admin");
+  mkdirSync(classic, { recursive: true });
+  copyFileSync(
+    join(example, "classic-admin.php"),
+    join(classic, "zero-showcase-classic-admin.php"),
+  );
   // Private copy gives this demo its own harness state; parallel suites keep their state.
   for (const file of [
     "harness.sh",
@@ -656,6 +929,7 @@ async function main() {
   wp("option", "update", "siteurl", publicUrl);
   writeFileSync(receiptFile, JSON.stringify(saved, null, 2), { mode: 0o600 });
   chmodSync(receiptFile, 0o600);
+  wp("plugin", "activate", "zero-showcase-classic-admin");
   wp("option", "update", "blogname", "Zero showcase");
   await seed(saved);
   await check(saved);

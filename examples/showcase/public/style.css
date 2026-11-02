@@ -504,3 +504,201 @@ footer {
     white-space: nowrap;
   }
 }
+
+.bar nav {
+  display: flex;
+  gap: 22px;
+  font-size: 13px;
+}
+.pantry {
+  margin-top: 65px;
+  scroll-margin-top: 24px;
+}
+.pantry .section-title h2 {
+  margin-top: 0;
+  font-size: 38px;
+}
+.pantry .eyebrow {
+  margin-bottom: 10px;
+}
+.pantry-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: center;
+  font-size: 13px;
+  margin: 24px 0 12px;
+}
+.pantry-tools select {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px;
+  background: #fafaf6;
+  margin-left: 8px;
+}
+.pantry-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 28px;
+  margin-top: 28px;
+}
+.pantry-grid h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+#pantry-count {
+  color: var(--muted);
+  font-size: 14px;
+}
+.pantry-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.pantry-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafaf6;
+  padding: 22px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pantry-item-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pantry-item h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.stock {
+  font-size: 20px;
+  white-space: nowrap;
+  color: var(--accent);
+}
+.low-stock {
+  background: #f0dfbb;
+  color: #694314;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.pantry-item-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin: 20px 0 16px;
+  font-size: 12px;
+}
+.pantry-item button {
+  background: var(--accent);
+  color: white;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.pantry-item button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.restock-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.restock-form label {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+.restock-form input {
+  width: 70px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: white;
+  color: #20251f;
+}
+.shopping {
+  background: #e7eadf;
+  border-radius: 8px;
+  padding: 8px 24px 24px;
+  align-self: start;
+}
+.shopping > a {
+  font-size: 12px;
+}
+.shopping-list {
+  list-style: none;
+  padding: 0;
+}
+.shopping-list li {
+  border-bottom: 1px solid #ccd2c1;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.shopping-list small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.shopping-done {
+  margin: 20px 0;
+  font-size: 13px;
+}
+.shopping-done summary {
+  cursor: pointer;
+}
+#pantry-status {
+  font-size: 13px;
+}
+select:focus-visible {
+  outline: 3px solid #b54d20;
+  outline-offset: 5px;
+}
+@media (max-width: 1000px) {
+  .pantry-items {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .bar nav {
+    gap: 12px;
+    font-size: 11px;
+  }
+  .pantry-grid {
+    grid-template-columns: 1fr;
+  }
+  .pantry .section-title h2 {
+    font-size: 28px;
+  }
+  .pantry .section-title {
+    align-items: flex-start;
+  }
+  .pantry .section-title button {
+    flex-shrink: 0;
+  }
+}
+
+.wordpress-tour {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 18px;
+  font-size: 13px;
+}
+.wordpress-tour summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+.wordpress-tour .actions {
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  margin: 18px 0 0;
+}

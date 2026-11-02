@@ -46,11 +46,11 @@ export default function SidebarNavigationItem( {
 	badge,
 	to,
 }: SidebarNavigationItemProps ) {
-	// Check if the 'to' prop is an external URL. `window.origin`, not
-	// `location.origin`: in the Content frame (about:srcdoc) the latter is "null".
-	const isExternal = ! String( new URL( to, window.origin ) ).startsWith(
-		window.origin
-	);
+	// In the Content frame (about:srcdoc), location.origin is "null".
+	const isExternal = new URL( to, window.origin ).origin !== window.origin;
+	// Absolute URLs point outside the SPA, including WordPress's own admin_url().
+	const isDocumentNavigation =
+		isExternal || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test( to );
 
 	const content = (
 		<Stack
@@ -66,21 +66,20 @@ export default function SidebarNavigationItem( {
 		</Stack>
 	);
 
-	if ( isExternal ) {
-		// Render as a regular anchor tag for external URLs
+	if ( isDocumentNavigation ) {
 		return (
 			<Item
 				as="a"
 				href={ to }
-				target="_blank"
-				rel="noopener noreferrer"
+				target={ isExternal ? '_blank' : undefined }
+				rel={ isExternal ? 'noopener noreferrer' : undefined }
 				className={ clsx(
 					'zero-admin-sidebar-navigation-item',
 					className
 				) }
 			>
 				{ content }
-				<Icon icon={ arrowUpRight } size={ 20 } />
+				{ isExternal && <Icon icon={ arrowUpRight } size={ 20 } /> }
 			</Item>
 		);
 	}

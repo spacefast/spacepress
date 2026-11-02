@@ -651,6 +651,15 @@ recursive calls, copied type nodes and object-property merges also consume the r
 budget. Recursive types produce a located diagnostic. Unsupported types are not replaced with
 `unknown` or an unrestricted string key.
 
+JSON `$type` annotations retain the authored domain through `InferSelectModel`
+and `InferInsertModel`, including nested JSON columns. Their dependencies resolve
+independently of registry order. Recursive model dependencies and chains exceeding
+96 JSON annotations receive located refusals. Copying inferred model fields and
+cached JSON types also consumes the root's 16,384-step work budget, before cloning.
+PHP compilation and public client
+types apply null normalization after model expansion; generated backend query
+types retain the authored domain.
+
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
 with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`

@@ -269,10 +269,16 @@ impl Compiler<'_, '_> {
                     }
                     ("InferSelectModel" | "InferInsertModel", [TyAnn::Query(path, qspan)]) => {
                         let table = self.collection_from_query(path, *qspan, module)?;
+                        self.resolve_json_columns(&self.schema.collections[&table].columns)?;
+                        model_work(
+                            &self.schema.collections[&table].columns,
+                            *qspan,
+                            &mut self.annotation_steps,
+                        )?;
                         if name == "InferSelectModel" {
-                            types::row(self.schema, &table)
+                            types::row_of_with(&self.schema.collections[&table], &types::json_authored_ty)
                         } else {
-                            types::insert(self.schema, &table)
+                            types::insert_with(self.schema, &table, &types::json_authored_ty)
                         }
                     }
                     _ => return err(*span, format!("unknown type `{name}`")),
@@ -800,6 +806,27 @@ fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
             type_copy(ret, span, steps)?;
         }
         _ => {}
+    }
+    Ok(())
+}
+
+fn model_work(columns: &IndexMap<String, Column>, span: Span, steps: &mut usize) -> Result<()> {
+    for col in columns.values() {
+        type_step(steps, span)?;
+        JSON_TYPES.with(|m| {
+            if let Some(t) = m.borrow().get(&(col as *const Column as usize)) {
+                type_copy(&t.authored, span, steps)?;
+            }
+            Ok(())
+        })?;
+        if let Some(fields) = &col.fields {
+            model_work(fields, span, steps)?;
+        }
+        if let Some(layouts) = &col.layouts {
+            for fields in layouts.values() {
+                model_work(fields, span, steps)?;
+            }
+        }
     }
     Ok(())
 }

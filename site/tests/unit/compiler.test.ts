@@ -182,14 +182,19 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
     // Backend queries retain the authored JSON domain; wire types retain nulls.
-    const storedSource = `import { table, group, json, defineConfig, action, db } from "zero";
+    const storedSource = `import { table, group, json, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
-const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull() });
-export default defineConfig({ tables: { documents }, actions: { read: action({ input: {}, handler: async () => {
+const source = table({ body: json().$type<Payload>().notNull() });
+type Selected = InferSelectModel<typeof source>;
+type Inserted = InferInsertModel<typeof source>;
+class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
+class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
+const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull() });
+export default defineConfig({ tables: { documents, source }, actions: { read: action({ input: {}, handler: async () => {
   const row = await db.query.documents.findFirst();
-  return !row ? null : new View(row.payload).read() + new View(row.metadata.payload).read();
+  return !row ? null : new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read();
 } }) } });`;
     writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
     const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
@@ -199,13 +204,39 @@ export default defineConfig({ tables: { documents }, actions: { read: action({ i
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
     writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
 const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
-void wire;`);
+const selected: Document["selected"] = { id: 1, body: wire };
+const inserted: Document["inserted"] = { body: wire };
+void selected; void inserted;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
       include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
     }));
     const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
+
+    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+type Payload = InferSelectModel<typeof source>;
+const source = table({ body: json().$type<Payload>() });
+export default defineConfig({ tables: { source } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), recursiveModel);
+    const recursive = browserCheck({ name, files: { "zero.config.ts": recursiveModel } });
+    assert.equal(recursive.envelope, nativeCheck(dir));
+    assert.equal(recursive.check.ok, false);
+    assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
+    assert.equal(recursive.check.diagnostics[0]?.location?.file, "zero.config.ts");
+
+    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull(), right: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull() });`).join("\n");
+    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+${modelTables}
+export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), modelExpansion);
+    const expandedModel = browserCheck({ name, files: { "zero.config.ts": modelExpansion } });
+    assert.equal(expandedModel.envelope, nativeCheck(dir));
+    assert.equal(expandedModel.check.ok, false);
+    assert.match(expandedModel.check.diagnostics[0]?.message ?? "", /type expansion.*16384-step limit/);
+    assert.equal(expandedModel.check.diagnostics[0]?.location?.file, "zero.config.ts");
+    const modelTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(modelTypes.status, 0, modelTypes.stdout + modelTypes.stderr);
 
     // Each annotation root fits its own budget. Compiling C from the nested
     // annotation must accept the same program as compiling it from new C first.

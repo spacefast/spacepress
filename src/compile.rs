@@ -253,6 +253,7 @@ pub struct Compiler<'a, 'p> {
     duplicate_type_aliases: HashSet<(usize, String)>,
     annotation_depth: usize,
     annotation_steps: usize,
+    resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
     helper_values: HashMap<usize, String>,
@@ -294,6 +295,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             duplicate_type_aliases,
             annotation_depth: 0,
             annotation_steps: 0,
+            resolving_json_types: HashSet::new(),
             async_callback: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
@@ -330,37 +332,58 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Resolves all JSON annotations before any function is compiled, including nested handler inputs.
     pub fn resolve_json_types(&mut self) -> Result<()> {
-        fn collect<'a>(columns: &'a IndexMap<String, Column>, out: &mut Vec<&'a Column>) {
-            for col in columns.values() {
-                if col.ts_type.is_some() {
-                    out.push(col);
-                }
-                if let Some(fields) = &col.fields {
-                    collect(fields, out);
-                }
-                if let Some(layouts) = &col.layouts {
-                    for fields in layouts.values() {
-                        collect(fields, out);
-                    }
+        JSON_TYPES.with(|m| m.borrow_mut().clear());
+        for collection in self.schema.collections.values() {
+            self.resolve_json_columns(&collection.columns)?;
+        }
+        for global in self.schema.globals.values() {
+            self.resolve_json_columns(&global.fields)?;
+        }
+        for action in self.schema.actions.values() {
+            self.resolve_json_columns(&action.input)?;
+        }
+        for job in self.schema.jobs.values() {
+            self.resolve_json_columns(&job.input)?;
+        }
+        Ok(())
+    }
+
+    fn resolve_json_columns(&mut self, columns: &IndexMap<String, Column>) -> Result<()> {
+        for col in columns.values() {
+            self.resolve_json_column(col)?;
+            if let Some(fields) = &col.fields {
+                self.resolve_json_columns(fields)?;
+            }
+            if let Some(layouts) = &col.layouts {
+                for fields in layouts.values() {
+                    self.resolve_json_columns(fields)?;
                 }
             }
         }
-        JSON_TYPES.with(|m| m.borrow_mut().clear());
-        let mut annotated = Vec::new();
-        for collection in self.schema.collections.values() {
-            collect(&collection.columns, &mut annotated);
+        Ok(())
+    }
+
+    fn resolve_json_column(&mut self, col: &Column) -> Result<()> {
+        let Some((ann, module)) = &col.ts_type else {
+            return Ok(());
+        };
+        let key = col as *const Column as usize;
+        if JSON_TYPES.with(|m| m.borrow().contains_key(&key)) {
+            return Ok(());
         }
-        for global in self.schema.globals.values() {
-            collect(&global.fields, &mut annotated);
+        if self.resolving_json_types.len() >= 96 {
+            return err(
+                annotations::annotation_span(ann),
+                "JSON model expansion exceeds Zero's 96-level limit",
+            );
         }
-        for action in self.schema.actions.values() {
-            collect(&action.input, &mut annotated);
+        if !self.resolving_json_types.insert(key) {
+            return err(
+                annotations::annotation_span(ann),
+                "recursive JSON model annotations aren't supported",
+            );
         }
-        for job in self.schema.jobs.values() {
-            collect(&job.input, &mut annotated);
-        }
-        for col in annotated {
-            let (ann, module) = col.ts_type.as_ref().expect("annotated column");
+        let result = (|| {
             let authored = self.resolve_annotation_root(ann, *module)?;
             let ty = annotations::runtime_type(authored.clone());
             if classes::wire_type(&ty) != ty {
@@ -370,12 +393,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "describe the stored own fields with an object type; JSON does not restore methods or instanceof identity",
                 );
             }
-            JSON_TYPES.with(|m| {
-                m.borrow_mut()
-                    .insert(col as *const Column as usize, types::JsonType { authored, runtime: ty })
-            });
-        }
-        Ok(())
+            JSON_TYPES.with(|m| m.borrow_mut().insert(key, types::JsonType { authored, runtime: ty }));
+            Ok(())
+        })();
+        self.resolving_json_types.remove(&key);
+        result
     }
 
     /// Compiles every root (hooks, actions, defaults) and returns slot → PHP function name.

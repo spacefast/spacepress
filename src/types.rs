@@ -380,7 +380,11 @@ fn pk_ty(c: &Collection) -> Ty {
 }
 
 pub fn row_of(c: &Collection) -> Ty {
-    let mut row = columns_row(&c.columns, &json_ty);
+    row_of_with(c, &json_ty)
+}
+
+pub fn row_of_with(c: &Collection, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
+    let mut row = columns_row(&c.columns, json_ty);
     if c.localized
         && let Ty::Obj(fields) = &mut row
         && let Some(t) = fields.get_mut("translations")
@@ -405,8 +409,12 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 }
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
+    insert_with(schema, table, &json_ty)
+}
+
+pub fn insert_with(schema: &Schema, table: &str, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     let c = &schema.collections[table];
-    let mut t = columns_insert(&c.columns, &json_ty);
+    let mut t = columns_insert(&c.columns, json_ty);
     if c.localized
         && let Ty::Obj(fields) = &mut t
     {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
 import { repo, zeroBinary, wasmPath } from "./helpers.ts";
@@ -44,6 +45,7 @@ function browserCheck(request: Request) {
 }
 
 const compiler = await Compiler.load(readFileSync(wasmPath()));
+const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 test("a config that builds on the command line builds in the browser, to the same outputs", () => {
   const dir = path.join(repo, "examples/pantry");
@@ -144,6 +146,111 @@ test("a project without zero.config.ts is the command line's diagnostic", () => 
     const { envelope, output } = browserCheck({ name: `tmp/${name}`, files: {} });
     assert.equal(envelope, native);
     assert.equal(output, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// This seam owns browser/native normalization and generated-client typing; the
+// differential oracle owns PHP execution of the language constructs.
+test("finite type algebra preserves native outputs and strict client boundaries in WASM", () => {
+  const fixture = path.join(repo, "tests/fixtures/type-semantics");
+  const name = `zero-type-semantics-${process.pid}`;
+  const dir = path.join("/tmp", name);
+  mkdirSync(dir, { recursive: true });
+  try {
+    const files = sources(fixture);
+    for (const [rel, text] of Object.entries(files)) {
+      writeFileSync(path.join(dir, rel), text);
+    }
+    const { envelope, check, output } = browserCheck({ name, files });
+    assert.equal(envelope, nativeCheck(dir));
+    assert.equal(check.ok, true);
+    assert.ok(output);
+    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const plugins = path.join(dir, ".zero/wp-content/plugins");
+    const app = readdirSync(plugins).find((name) => name.startsWith("zero-app-"));
+    assert.ok(app);
+    assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "zero/app/functions.php"), "utf8"));
+    for (const [name, text] of Object.entries(output.client)) {
+      assert.equal(text, readFileSync(path.join(dir, "zero/client", name), "utf8"));
+    }
+    const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(typed.status, 0, typed.stdout + typed.stderr);
+    const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
+    assert.equal(client.status, 0, client.stdout + client.stderr);
+
+    // Each annotation root fits its own budget. Compiling C from the nested
+    // annotation must accept the same program as compiling it from new C first.
+    const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
+    const nestedType = "Box<".repeat(75) + "C" + ">".repeat(75);
+    const nestedValue = "{ value: ".repeat(75) + "new C()" + " }".repeat(75);
+    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "zero";
+type Box<T> = { value: T };
+${aliases}
+class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
+export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+  ${prime ? "new C();" : ""}
+  const x: ${nestedType} = ${nestedValue}; return x;
+} }) } });`;
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
+      include: ["zero.config.ts"],
+    }));
+    for (const prime of [false, true]) {
+      const source = budgetSource(prime);
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, true, result.envelope);
+      assert.ok(result.output);
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
+
+    // Compact intersections must be bounded before their Cartesian expansion.
+    // Nine binary unions reach the supported boundary; fifteen used to create
+    // 32,768 distinct objects without exhausting the annotation-visit budget.
+    const binaryParts = (count: number) => Array.from({ length: count }, (_, i) => `({ k${i}: "a" } | { k${i}: "b" })`);
+    const binaryValue = (count: number) => Array.from({ length: count }, (_, i) => `k${i}: "a"`).join(", ");
+    const wideFields = Array.from({ length: 512 }, (_, i) => `field${i}: number`).join("; ");
+    const wideValue = Array.from({ length: 512 }, (_, i) => `field${i}: 1`).join(", ");
+    for (const probe of [
+      { parts: binaryParts(9), value: binaryValue(9), error: null },
+      { parts: binaryParts(15), value: binaryValue(15), error: /intersection expansion.*512-alternative limit/ },
+      // Thirty-two alternatives fit the candidate limit, but merging 512
+      // properties into each must consume the shared resolution-work budget.
+      {
+        parts: [`(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`, `{ ${wideFields} }`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
+      {
+        parts: [`{ ${wideFields} }`, `(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
+    ]) {
+      const source = `import { action, defineConfig } from "zero";
+type Expanded = ${probe.parts.join(" & ")};
+export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+  const x: Expanded = { ${probe.value} }; return x;
+} }) } });`;
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, probe.error === null, result.envelope);
+      if (probe.error === null) {
+        assert.ok(result.output);
+      } else {
+        assert.equal(result.output, null);
+        assert.match(result.check.diagnostics[0]?.message ?? "", probe.error);
+        assert.equal(result.check.diagnostics[0]?.location?.file, "zero.config.ts");
+      }
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -29,6 +29,11 @@ pub enum Ty {
     FreshBoolLit(bool),
     /// `null` and `undefined` (both PHP null).
     Null,
+    /// Type-only undefined, retained during annotation normalization and collapsed
+    /// to Null before annotations reach the PHP compiler.
+    Undefined,
+    /// Type-only void; it is not equivalent to undefined in conditional types.
+    Void,
     /// Values whose shape isn't known (untyped `json()` columns, `JSON.parse`).
     Unknown,
     Never,
@@ -157,16 +162,23 @@ impl Ty {
 
     pub fn non_null(&self) -> Ty {
         match self {
-            Ty::Union(items) => Ty::union(items.iter().filter(|t| **t != Ty::Null).cloned()),
-            Ty::Null => Ty::Never,
+            Ty::Union(items) => Ty::union(
+                items
+                    .iter()
+                    .filter(|t| **t != Ty::Null && **t != Ty::Undefined)
+                    .cloned(),
+            ),
+            Ty::Null | Ty::Undefined => Ty::Never,
             other => other.clone(),
         }
     }
 
     pub fn is_nullable(&self) -> bool {
         match self {
-            Ty::Null | Ty::Unknown => true,
-            Ty::Union(items) => items.contains(&Ty::Null),
+            Ty::Null | Ty::Undefined | Ty::Void | Ty::Unknown => true,
+            Ty::Union(items) => {
+                items.contains(&Ty::Null) || items.contains(&Ty::Undefined) || items.contains(&Ty::Void)
+            }
             _ => false,
         }
     }
@@ -209,6 +221,8 @@ impl Ty {
             Ty::Bool => "boolean".into(),
             Ty::BoolLit(value) | Ty::FreshBoolLit(value) => value.to_string(),
             Ty::Null => "null".into(),
+            Ty::Undefined => "undefined".into(),
+            Ty::Void => "void".into(),
             Ty::Unknown => "unknown".into(),
             Ty::Never => "never".into(),
             Ty::Array(t) => format!("{}[]", t.describe()),

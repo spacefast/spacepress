@@ -10,9 +10,17 @@ String semantics here describe the current implementation; changes require updat
 
 ## classes
 
+Status: **supported**.
+
+Named module-level classes compile inside callbacks: constructors, public fields and typed parameter properties, methods, lexical this in arrows, static members, named inheritance, super and instanceof. Instances share object identity; JSON and clone boundaries expose only own fields and drop class identity. See config-api.md for initialization, inference and refusal limits.
+
+[Evidence](../tests/compiler_contracts.rs) (`classes_match_node_through_generated_php_and_wire_client_types`)
+
+## class-metaprogramming
+
 Status: **refused**. Diagnostic: `Z1101`.
 
-Use plain objects and functions.
+Use concrete named classes with public fields and methods. See config-api.md for the supported surface.
 
 [Evidence](../tests/fixtures/reject-class)
 
@@ -84,7 +92,7 @@ Field .ui() metadata survives nested schema emission and schema description and 
 
 Status: **supported**.
 
-Finite object interface inheritance and intersections, generic aliases/interfaces with constraints and defaults, finite keyof/indexed access and dynamic key reads, mapped types and selected utility/conditional types retain literal and optional boundaries. See runtime-contract.md (TypeScript type normalization) for the supported domains and refusals; the strict type-semantics fixture also checks generated-client boundaries and native/WASM parity.
+Finite object interface inheritance and intersections, generic aliases/interfaces with constraints and defaults, finite keyof/indexed access and dynamic key reads, mapped types and selected utility/conditional types retain literal and optional boundaries. Concrete aliases also preserve class identity, typed fields/constructor parameter properties and method results while generated clients erase methods at the wire boundary. See runtime-contract.md (TypeScript type normalization) for the supported domains and refusals; the strict type-semantics fixture also checks generated-client boundaries and native/WASM parity.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 

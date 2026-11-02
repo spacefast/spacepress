@@ -220,6 +220,9 @@ fn invalidate_paths(paths: &HashSet<Place>, binding: Span, view: &[Step], ty: &T
 // Dropping a narrowing must not undo a tuple/number view widened by a prior mutation.
 fn restore_constraint(ty: &Ty, constraint: &Ty) -> Ty {
     match (ty, constraint) {
+        (Ty::Instance(id, fields), Ty::Instance(_, original)) => {
+            Ty::Instance(id.clone(), Box::new(restore_constraint(fields, original)))
+        }
         (Ty::Num, t) if t.is_num() => Ty::Num,
         (Ty::Array(t), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => Ty::Array(Box::new(Ty::union(
             std::iter::once((**t).clone()).chain(ts.iter().cloned()),
@@ -246,6 +249,9 @@ fn restore_constraint(ty: &Ty, constraint: &Ty) -> Ty {
 }
 
 fn restore(ty: &Ty, constraint: &Ty, path: &[Step]) -> Ty {
+    if let (Ty::Instance(id, fields), Ty::Instance(_, original)) = (ty, constraint) {
+        return Ty::Instance(id.clone(), Box::new(restore(fields, original, path)));
+    }
     let Some((step, rest)) = path.split_first() else {
         return restore_constraint(ty, constraint);
     };
@@ -312,6 +318,9 @@ fn restore(ty: &Ty, constraint: &Ty, path: &[Step]) -> Ty {
 }
 
 fn widen(ty: &Ty, path: &[Step]) -> Ty {
+    if let Ty::Instance(id, fields) = ty {
+        return Ty::Instance(id.clone(), Box::new(widen(fields, path)));
+    }
     let Some((step, rest)) = path.split_first() else {
         return match ty {
             Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => Ty::Num,
@@ -355,7 +364,12 @@ fn widen(ty: &Ty, path: &[Step]) -> Ty {
     }
 }
 
+pub(super) fn class_static_read(ty: &Ty) -> Ty {
+    widen(ty, &[Step::Descendants])
+}
+
 struct Call {
+    receiver: Option<Place>,
     callee: Place,
     args: Vec<Option<Place>>,
     result: Place,
@@ -364,8 +378,22 @@ struct Call {
     prior: HashSet<Span>,
 }
 
+impl Call {
+    fn arguments(&self, method: bool) -> Vec<Option<Place>> {
+        if method {
+            std::iter::once(self.receiver.clone())
+                .chain(self.args.clone())
+                .collect()
+        } else {
+            self.args.clone()
+        }
+    }
+}
+
 #[derive(Default)]
 struct Graph {
+    classes: HashSet<usize>,
+    methods: HashSet<Span>,
     captured: HashSet<Span>,
     roots: HashSet<Span>,
     reachable: HashSet<Span>,
@@ -594,10 +622,83 @@ impl Graph {
             return Some(p.clone());
         }
         match env.lookup(name)?.value {
+            Value::Class(c) => Some(self.class_place(&c)),
             Value::Closure(c) => Some(self.function(&c.func, &[], &c.env)),
             value @ (Value::Array(_) | Value::Object(_)) => self.data_place(&value),
             _ => None,
         }
+    }
+
+    fn class_place(&mut self, class: &Rc<ClassValue>) -> Place {
+        let place = Place::new(class.class.span);
+        if !self.classes.insert(Rc::as_ptr(class) as usize) {
+            return place;
+        }
+        self.external.insert(place.binding);
+        self.reachable.insert(Span::NONE);
+        for (name, value) in &class.statics {
+            let data = self.data_place(value);
+            self.copy(data, Some(place.at(Step::Field(name.clone()))), Span::NONE);
+        }
+        if let Some(base) = &class.base {
+            let parent = self.class_place(base);
+            self.copy(Some(parent), Some(place.clone()), Span::NONE);
+        }
+        let env = Scope::new(Some(class.env.clone()), class.env.module);
+        env.vars.borrow_mut().insert(
+            ":class".into(),
+            Binding {
+                value: Value::Class(class.clone()),
+                mutable: false,
+                module_level: false,
+                ann: None,
+            },
+        );
+        for (name, is_static, f) in &class.class.methods {
+            self.methods.insert(f.span);
+            let method_env = Scope::new(Some(env.clone()), env.module);
+            method_env.vars.borrow_mut().insert(
+                ":static".into(),
+                Binding {
+                    value: Value::Bool(*is_static),
+                    mutable: false,
+                    module_level: false,
+                    ann: None,
+                },
+            );
+            let function = self.function(f, &[], &method_env);
+            let receiver = if *is_static {
+                place.clone()
+            } else {
+                place.at(Step::Field(":prototype".into()))
+            };
+            self.copy(Some(function), Some(receiver.at(Step::Field(name.clone()))), Span::NONE);
+        }
+        if let Some(f) = &class.class.constructor {
+            self.methods.insert(f.span);
+            let function = self.function(f, &[], &env);
+            self.copy(
+                Some(function),
+                Some(place.at(Step::Field(":constructor".into()))),
+                Span::NONE,
+            );
+        }
+        for field in class.class.fields.iter().filter(|f| !f.is_static) {
+            if let Some(f) = field.initializer(class.env.module) {
+                self.methods.insert(f.span);
+                let function = self.function(&f, &[], &env);
+                self.copy(
+                    Some(function),
+                    Some(
+                        place
+                            .at(Step::Field(":fields".into()))
+                            .at(Step::Field(field.name.clone())),
+                    ),
+                    Span::NONE,
+                );
+            }
+        }
+        place
     }
 
     fn expr(&mut self, e: &Expr, names: &mut Names, env: &Rc<Scope>, owner: Span) -> Option<Place> {
@@ -643,6 +744,21 @@ impl Graph {
                 return Some(self.function(f, names, env));
             }
             ExprKind::Member { obj, prop, .. } => {
+                if matches!(&obj.kind, ExprKind::Ident(n) if n == "super")
+                    && let Some(Value::Class(class)) = env.lookup(":class").map(|b| b.value)
+                    && let Some(base) = &class.base
+                {
+                    let base = self.class_place(base);
+                    let is_static = matches!(env.lookup(":static").map(|b| b.value), Some(Value::Bool(true)));
+                    return Some(
+                        if is_static {
+                            base
+                        } else {
+                            base.at(Step::Field(":prototype".into()))
+                        }
+                        .at(Step::Field(prop.clone())),
+                    );
+                }
                 return self
                     .expr(obj, names, env, owner)
                     .map(|p| p.at(Step::Field(prop.clone())));
@@ -694,6 +810,64 @@ impl Graph {
                         self.expr(e, names, env, owner)
                     })
                     .collect();
+                if matches!(&callee.kind, ExprKind::Ident(n) if n == "super")
+                    && let Some(Value::Class(class)) = env.lookup(":class").map(|b| b.value)
+                    && let Some(base) = &class.base
+                {
+                    let root = self.class_place(base);
+                    let receiver = self.ident("this", names, env);
+                    self.calls.push(Call {
+                        receiver,
+                        callee: root.at(Step::Field(":constructor".into())),
+                        args: argv,
+                        result: value.clone(),
+                        owner,
+                        span: e.span,
+                        prior: self.history.get(&owner).cloned().unwrap_or_default(),
+                    });
+                    self.history.entry(owner).or_default().insert(e.span);
+                    return Some(value);
+                }
+                if matches!(e.kind, ExprKind::New { .. })
+                    && let ExprKind::Ident(name) = &callee.kind
+                    && let Some(Value::Class(class)) = env.lookup(name).map(|b| b.value)
+                {
+                    let class_place = self.class_place(&class);
+                    self.copy(
+                        Some(class_place.at(Step::Field(":prototype".into()))),
+                        Some(value.clone()),
+                        owner,
+                    );
+                    self.calls.push(Call {
+                        receiver: Some(value.clone()),
+                        callee: class_place.at(Step::Field(":constructor".into())),
+                        args: argv,
+                        result: Place::new(e.span).at(Step::Result),
+                        owner,
+                        span: e.span,
+                        prior: self.history.get(&owner).cloned().unwrap_or_default(),
+                    });
+                    let mut ancestor = Some(class);
+                    while let Some(class) = ancestor {
+                        let root = self.class_place(&class);
+                        for field in class.class.fields.iter().filter(|f| !f.is_static && f.init.is_some()) {
+                            self.calls.push(Call {
+                                receiver: Some(value.clone()),
+                                callee: root
+                                    .at(Step::Field(":fields".into()))
+                                    .at(Step::Field(field.name.clone())),
+                                args: vec![],
+                                result: value.at(Step::Field(field.name.clone())),
+                                owner,
+                                span: e.span,
+                                prior: self.history.get(&owner).cloned().unwrap_or_default(),
+                            });
+                        }
+                        ancestor = class.base.clone();
+                    }
+                    self.history.entry(owner).or_default().insert(e.span);
+                    return Some(value);
+                }
                 // Known scalar/container builtins do not retain their arguments or
                 // execute user code. Callback methods still form a call boundary.
                 let builtin = matches!(&callee.kind, ExprKind::Member { prop, .. } if matches!(prop.as_str(),
@@ -769,6 +943,7 @@ impl Graph {
                     {
                         if prop == "reduce" {
                             self.calls.push(Call {
+                                receiver: None,
                                 callee: callback.clone(),
                                 args: vec![Some(result.clone()), element.clone(), None, recv.clone()],
                                 result: result.clone(),
@@ -785,6 +960,7 @@ impl Graph {
                             });
                         }
                         self.calls.push(Call {
+                            receiver: None,
                             callee: callback.clone(),
                             args,
                             result: result.clone(),
@@ -868,7 +1044,18 @@ impl Graph {
                     }
                 }
                 if let Some(callee) = callee_value {
+                    let receiver = if matches!(&e.kind, ExprKind::Call { callee, .. } if matches!(&callee.kind, ExprKind::Member { obj, .. } if matches!(&obj.kind, ExprKind::Ident(n) if n == "super")))
+                    {
+                        self.ident("this", names, env)
+                    } else if matches!(&e.kind, ExprKind::Call { callee, .. } if matches!(callee.kind, ExprKind::Member { .. }))
+                    {
+                        let mut p = callee.clone();
+                        p.path.pop().map(|_| p)
+                    } else {
+                        None
+                    };
                     self.calls.push(Call {
+                        receiver,
                         callee,
                         args: argv,
                         result: value.clone(),
@@ -925,7 +1112,7 @@ impl Graph {
                     self.copy(src, Some(value.clone()), owner);
                 }
             }
-            ExprKind::Binary(_, a, b) => {
+            ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) => {
                 self.expr(a, names, env, owner);
                 self.expr(b, names, env, owner);
             }
@@ -938,6 +1125,7 @@ impl Graph {
                 }
             }
             ExprKind::Num(_)
+            | ExprKind::Class(_)
             | ExprKind::Str(_)
             | ExprKind::Bool(_)
             | ExprKind::Null
@@ -1156,7 +1344,7 @@ impl Graph {
                 for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
                     self.reachable.insert(*function);
                     let params = &self.functions[function];
-                    for (arg, param) in call.args.iter().zip(params) {
+                    for (arg, param) in call.arguments(self.methods.contains(function)).iter().zip(params) {
                         if let Some(arg) = arg {
                             self.copies.insert((arg.clone(), param.clone(), call.owner));
                         }
@@ -1214,7 +1402,8 @@ impl Graph {
                     continue;
                 }
                 for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                    for (arg, param) in call.args.iter().zip(&self.functions[function]) {
+                    let arguments = call.arguments(self.methods.contains(function));
+                    for (arg, param) in arguments.iter().zip(&self.functions[function]) {
                         let Some(arg) = arg else {
                             continue;
                         };
@@ -1270,7 +1459,7 @@ impl Graph {
                             if p.path.is_empty() {
                                 continue;
                             }
-                            let Some(Some(arg)) = call.args.get(i) else {
+                            let Some(Some(arg)) = arguments.get(i) else {
                                 continue;
                             };
                             let mut target = arg.clone();
@@ -1297,7 +1486,7 @@ impl Graph {
                             if p.path.is_empty() {
                                 continue;
                             }
-                            let Some(Some(arg)) = call.args.get(i) else {
+                            let Some(Some(arg)) = arguments.get(i) else {
                                 continue;
                             };
                             let mut target = arg.clone();

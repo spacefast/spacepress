@@ -7,6 +7,7 @@
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
 mod annotations;
+mod classes;
 mod effects;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -244,6 +245,7 @@ struct FnCtx {
 }
 
 pub struct Compiler<'a, 'p> {
+    classes: HashMap<usize, classes::CompiledClass>,
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
@@ -284,6 +286,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             collect_aliases(&m.body, m.id, &mut type_aliases, &mut duplicate_type_aliases);
         }
         Compiler {
+            classes: HashMap::new(),
             schema,
             ev,
             collections: &ext.collections,
@@ -358,7 +361,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         for col in annotated {
             let (ann, module) = col.ts_type.as_ref().expect("annotated column");
-            let ty = self.resolve_ann(ann, *module, &HashMap::new())?;
+            let ty = self.resolve_runtime_ann(ann, *module)?;
+            if classes::wire_type(&ty) != ty {
+                return err_help(
+                    annotations::annotation_span(ann),
+                    "JSON schemas cannot use class instance types",
+                    "describe the stored own fields with an object type; JSON does not restore methods or instanceof identity",
+                );
+            }
             JSON_TYPES.with(|m| m.borrow_mut().insert(col as *const Column as usize, ty));
         }
         Ok(())
@@ -500,11 +510,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "use generic type aliases with concrete function signatures",
             );
         }
-        let generics = HashMap::new();
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
             let declared = match &p.ann {
-                Some(a) => Some(self.resolve_ann(a, f.module, &generics)?),
+                Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
             };
             let given = params.as_ref().and_then(|ps| ps.get(i)).cloned();
@@ -526,7 +535,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             param_tys.push(parameter_input_type(p, t));
         }
         if let Some(r) = &f.ret {
-            let t = self.resolve_ann(r, f.module, &generics)?;
+            let t = self.resolve_runtime_ann(r, f.module)?;
             fx.ret = Some(match t {
                 Ty::Promise(inner) if f.is_async => *inner,
                 t => t,
@@ -675,7 +684,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             fx.tmp += 1;
             format!("${}_{}", name, fx.tmp)
         } else {
-            format!("${name}")
+            if name == "this" {
+                "$__zero_this".into()
+            } else {
+                format!("${name}")
+            }
         };
         fx.declared.push(php.trim_start_matches('$').to_string());
         fx.scopes.last_mut().expect("scope").insert(
@@ -841,7 +854,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let declared = match ann {
                     Some(a) => {
                         let module = self.fx().module;
-                        Some(self.resolve_ann(a, module, &HashMap::new())?)
+                        Some(self.resolve_runtime_ann(a, module)?)
                     }
                     None => None,
                 };
@@ -1722,7 +1735,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Rejects values that can't exist at runtime as plain data (unawaited calls, builders).
     fn finish_value(&mut self, v: Out, span: Span) -> Result<Out> {
+        if self.constructing_class() && matches!(v.ty.non_null(), Ty::Instance(..)) {
+            return err_help(
+                span,
+                "instances cannot escape during construction",
+                "assign fields through this; pass or capture the instance after new returns",
+            );
+        }
         match &v.ty {
+            Ty::Class(_) => err(
+                span,
+                "class values can only be used with new, instanceof, typeof, or static member access",
+            ),
             Ty::Builder(_) => err_help(span, "this database call never runs", "add `await` in front of it"),
             Ty::Promise(_) => err_help(
                 span,
@@ -1744,6 +1768,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn expr(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
         let out = match &e.kind {
+            ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
+            ExprKind::Instanceof(left, right) => {
+                let left = self.expr(left)?;
+                let right = self.expr(right)?;
+                if !matches!(right.ty, Ty::Class(_)) {
+                    return err(span, "instanceof requires a named Zero class");
+                }
+                Out::atom(
+                    format!("\\Zero\\JsClass::isInstance({}, {})", left.php, right.php),
+                    Ty::Bool,
+                )
+            }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
@@ -1836,7 +1872,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         Prop::Spread(x) => {
                             let v = self.expr(x)?;
-                            match v.ty.non_null() {
+                            let shape = match v.ty.non_null() {
+                                Ty::Instance(_, fields) => *fields,
+                                ty => ty,
+                            };
+                            match shape {
                                 Ty::Obj(f) => {
                                     for (k, t) in f {
                                         fields.shift_remove(&k);
@@ -1868,7 +1908,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
                 let v = self.expr(x)?;
-                let v = self.finish_value(v, x.span)?;
+                let v = if matches!(op, UnOp::TypeOf) && matches!(v.ty, Ty::Class(_)) {
+                    v
+                } else {
+                    self.finish_value(v, x.span)?
+                };
                 match op {
                     UnOp::Not => {
                         let ty = match (truthiness_part(&v.ty, true), truthiness_part(&v.ty, false)) {
@@ -2007,7 +2051,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
                 let module = self.fx().module;
-                let t = self.resolve_ann(ann, module, &HashMap::new())?;
+                let t = self.resolve_runtime_ann(ann, module)?;
+                if classes::wire_type(&t) != t && !assignable(&v.ty, &t) {
+                    return err(
+                        span,
+                        "a class instance must come from new; assertions cannot restore class identity",
+                    );
+                }
                 if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown) {
                     return err(span, format!("can't treat {} as {}", v.ty.describe(), t.describe()));
                 }
@@ -2175,6 +2225,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         match &v {
+            Value::Class(class) => self.class_value(class),
             Value::Closure(c) => {
                 let key = closure_key(c);
                 let helper_key = (key, self.fx().no_db);
@@ -2255,7 +2306,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             data => {
                 validate_captured_data(data, span, &mut HashSet::new())?;
                 let ty = match &b.ann {
-                    Some((ann, module)) => self.resolve_ann(ann, *module, &HashMap::new())?,
+                    Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
                     None => inferred_binding_type(&ty_of_data(data), false),
                 };
                 let ty = self.effects.captured_data_type(data, &ty);
@@ -2355,6 +2406,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
         let (read, initialization) = self.initialize_parameter(parameter, &php, ty, indent)?;
+        let read = if name == "this" {
+            self.constructor_receiver_read(&read)
+        } else {
+            read
+        };
         body.push_str(&initialization);
         let local = self
             .fx()
@@ -2431,7 +2487,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let given = params.and_then(|ps| ps.get(i));
             let t = match &p.ann {
                 Some(a) => {
-                    let declared = self.resolve_ann(a, module, &HashMap::new())?;
+                    let declared = self.resolve_runtime_ann(a, module)?;
                     if let Some(given) = given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
                     } else if params.is_some() && !p.optional && p.default.is_none() {
@@ -2474,7 +2530,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         self.async_callback = false;
         if let Some(r) = &f.ret {
-            inner.ret = Some(match self.resolve_ann(r, module, &HashMap::new())? {
+            inner.ret = Some(match self.resolve_runtime_ann(r, module)? {
                 Ty::Promise(t) if f.is_async => *t,
                 t => t,
             });
@@ -2749,7 +2805,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
-                if !matches!(o.ty.non_null(), Ty::Obj(_) | Ty::Map(_) | Ty::Union(_)) {
+                if let Ty::Class(id) = o.ty {
+                    o.ty = self.class_shape(id);
+                }
+                if !matches!(
+                    o.ty.non_null(),
+                    Ty::Obj(_) | Ty::Map(_) | Ty::Union(_) | Ty::Instance(..)
+                ) {
                     return err(target.span, "can't assign this property");
                 }
                 let Some((ft, optional)) = o.ty.non_null().field(prop) else {
@@ -2855,6 +2917,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
         }
         let o = self.expr(obj)?;
+        if matches!(o.ty.non_null(), Ty::Instance(..) | Ty::Class(_)) {
+            if optional {
+                return err(
+                    span,
+                    "optional class member reads are unsupported; check the instance first",
+                );
+            }
+            return self.class_member(o, prop, prop_span);
+        }
         match &o.ty {
             Ty::Db if prop == "query" => return Ok(Out::atom("\\Zero\\db()", Ty::DbQuery)),
             Ty::Db if prop == "globals" => return Ok(Out::atom("\\Zero\\db()", Ty::DbGlobals)),
@@ -3084,6 +3155,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if let ExprKind::Ident(n) = &callee.kind
+            && let Resolved::Value(Value::Class(class), _) = self.resolve(n, callee.span)?
+        {
+            return self.construct_class(&class, args, span);
+        }
         let ExprKind::Ident(n) = &callee.kind else {
             return err(span, "`new` only works with Date, Error, and HttpError");
         };
@@ -3201,6 +3277,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
+        if let ExprKind::Ident(name) = &callee.kind
+            && let Some(out) = self.class_internal_call(name, args, span)?
+        {
+            return Ok(out);
+        }
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
@@ -3214,6 +3295,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 optional: opt,
                 prop_span,
             } => {
+                if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
+                    return self.super_method(prop, args, span);
+                }
                 // Static functions on globals: Math.max, Object.keys, ...
                 if let ExprKind::Ident(n) = &obj.kind
                     && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -3311,7 +3395,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(Out::atom(
             format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
-            Ty::Promise(Box::new(ret)),
+            Ty::Promise(Box::new(classes::wire_type(&ret))),
         ))
     }
 
@@ -3436,7 +3520,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a0 = argv.first();
         Ok(match (g, a0) {
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
-            ("structuredClone", Some(v)) => Out::atom(format!("\\Zero\\Js::clone({})", v.php), v.ty.clone()),
+            ("structuredClone", Some(v)) => {
+                Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
+            }
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
@@ -3610,7 +3696,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn obj_arg(&self, a: Option<&Out>, span: Span) -> Result<String> {
         match a {
-            Some(v) if v.ty.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_))) && !v.ty.is_nullable() => Ok(v.php.clone()),
+            Some(v) if v.ty.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Instance(..))) && !v.ty.is_nullable() => {
+                Ok(v.php.clone())
+            }
             Some(v) => err(span, format!("this needs an object, not {}", v.ty.describe())),
             None => err(span, "missing argument"),
         }
@@ -3627,6 +3715,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         args: &[ArrEl],
         span: Span,
     ) -> Result<Out> {
+        if matches!(recv.ty.non_null(), Ty::Instance(..) | Ty::Class(_)) {
+            if optional {
+                return err(span, "optional class calls are unsupported; check the receiver first");
+            }
+            return self.class_method(recv, m, args, span);
+        }
         let recv_span = recv_expr.span;
         match recv.ty.clone() {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
@@ -4739,6 +4833,8 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
+        Ty::Instance(..) => "\\Zero\\JsObject ",
+        Ty::Class(_) => "\\Zero\\JsClass ",
         Ty::Obj(_) | Ty::Map(_) => "\\Zero\\JsObject ",
         Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\Zero\\JsArray ",
         t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => "?\\Zero\\JsObject ",
@@ -4804,6 +4900,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
         Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Never => t.clone(),
         Ty::Array(_)
+        | Ty::Instance(..)
+        | Ty::Class(_)
         | Ty::Tuple(_)
         | Ty::ArrayLiteral(_)
         | Ty::Obj(_)
@@ -4912,6 +5010,8 @@ fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
 
 fn widen_fresh_literals(t: &Ty) -> Ty {
     match t {
+        Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(widen_fresh_literals(fields))),
+        Ty::Class(_) => t.clone(),
         Ty::FreshNumLit(_) => Ty::Num,
         Ty::FreshStrLit(_) => Ty::Str,
         Ty::FreshBoolLit(_) => Ty::Bool,
@@ -4960,6 +5060,16 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
+        (Ty::Instance(id, fields), Ty::Instance(other, want)) => {
+            (id.id == other.id || id.ancestors.contains(&other.id))
+                && match (&**fields, &**want) {
+                    (Ty::Obj(have), Ty::Obj(need)) => need.iter().all(|(key, (ty, optional))| {
+                        have.get(key).map_or(*optional, |(value, _)| assignable(value, ty))
+                    }),
+                    _ => false,
+                }
+        }
+        (Ty::Instance(_, fields), Ty::Obj(_)) => assignable(fields, b),
         (Ty::NumLit(_) | Ty::FreshNumLit(_), Ty::Num) => true,
         (Ty::NumLit(x), Ty::FreshNumLit(y)) | (Ty::FreshNumLit(x), Ty::NumLit(y)) => x == y,
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,

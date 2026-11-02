@@ -134,6 +134,37 @@ the receiver and key before the value; read-modify-write operations read the
 old value before evaluating the right-hand side. These are runtime semantics,
 not a blanket refusal of writes into array elements.
 
+## Compiled classes
+
+Generated class methods are plain `ZeroApp` functions with an explicit first
+receiver argument. They use `JsObject` handles for instances, so aliases,
+closures, member mutations and strict identity use the existing object model.
+`JsObject::$class` is readonly descriptor metadata; only `JsObject::$p` contains
+enumerable own fields. PHP inheritance and PHP method binding are not used.
+
+`JsClass` descriptors contain the parent, constructor and ordered field
+initializer closures, instance/static method tables, and a static `JsObject`.
+Generated descriptor factory functions cache one descriptor per class per process.
+The compiler emits these runtime operations:
+
+- `construct(...$args): JsObject` allocates a fresh handle and initializes it.
+- `initialize(JsObject $instance, array $args): void` runs a constructor on the
+  existing receiver. Base fields precede constructor defaults; generated derived
+  constructors call the parent's initializer, then their own field initializer.
+- `invoke($receiver, $name, $args, $static): mixed` selects the actual receiver's
+  descriptor. `invokeOn(...)` starts at the lexical parent for `super` calls while
+  retaining that receiver. Methods receive the hidden receiver explicitly.
+- `get`, `has` and `set` implement static field inheritance. Reads search parents;
+  writes create an own field on the actual class descriptor.
+- `isInstance($value, $expected): bool` walks descriptor ancestry, never field
+  shapes. Plain/cloned/deserialized objects do not acquire class identity.
+
+`Js::prop`, `has` and `set` also accept descriptors for compiled static field
+updates. Spread, object keys and JSON visit own properties only. `Js::clone`
+and `Seam` detachment copy the own-field graph into plain handles; descriptors
+and method tables are not traversed or serialized. Generated client types erase
+instance identity recursively at the wire boundary.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -495,7 +526,8 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 Static methods on `final class Js`. Value model: JS `number` = PHP
 `int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
-with identity; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
+with identity; class instances are `JsObject` handles with a non-enumerable
+`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
@@ -593,7 +625,8 @@ code with strict TypeScript as well as `zero check`.
 
 | Surface | Support | Boundary |
 |---|---|---|
-| Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused; runtime class types are outside this type-only support. |
+| Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused. Class references use the separate nominal class dispatch described below; finite object operations do not model class prototype keys. |
+| Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation normalizes annotation-only `undefined`/`void` to null at every runtime boundary, including reentrant class compilation. This does not add generic classes or class-prototype type introspection. |
 | Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Impossible object intersections and function/array intersections are refused. |
 | Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
 | `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |
@@ -620,8 +653,15 @@ with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
 
 ```json
-{"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
+{"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"missing":null,"label":"draft"},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
 ```
+
+The fixture also imports a derived class with public constructor parameter
+properties typed through `Projection`, a `Required` snapshot result, and an
+`undefined` field and `void` method. Its class reference is nested in a generic
+object alias before construction; this exercises class compilation reached
+from type normalization. The generated client exposes `classView.missing: null`
+and `classView.label: "draft"`, and omits class methods at the JSON boundary.
 
 The generated output type retains `state: "draft"`, `key: "common"`,
 `snapshot: { id: number; note: string | null }`, and `missing: string | null`.

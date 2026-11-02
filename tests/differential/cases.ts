@@ -93,6 +93,27 @@ function languageRead(item: LanguageEntry, key: keyof LanguageProjection<Languag
   return item[key];
 }
 
+type LanguageBox<T> = { value: T };
+class LanguageView {
+  missing: undefined = undefined;
+  entry: LanguageCopy<LanguageEntry> = { id: 0, state: "draft", title: "" };
+  constructor(entry: LanguageCopy<LanguageEntry>) { this.entry = entry; }
+  snapshot(): Required<Pick<LanguageEntry, "id" | "note">> {
+    return { id: this.entry.id, note: this.entry.note ?? null };
+  }
+  clear(): void {
+    const empty: undefined = undefined;
+    this.missing = empty;
+  }
+}
+class LanguageDraftView extends LanguageView {
+  label: Exclude<"draft" | "published", "published"> = "draft";
+  constructor(entry: LanguageCopy<LanguageEntry>, label: Exclude<"draft" | "published", "published">) {
+    super(entry);
+    this.label = label;
+  }
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 
@@ -281,7 +302,9 @@ export default defineConfig({
       const item: LanguageCopy<LanguageEntry> = { id: 7, state: "draft", title: "Hello" };
       const optional: Partial<Omit<LanguageEntry, "id">> = {};
       const projectedOptional: LanguageProjection<LanguageEntry, "note"> = {};
-      const required: Required<Pick<LanguageEntry, "id" | "note">> = { id: item.id, note: null };
+      const boxedView: LanguageBox<LanguageDraftView> = { value: new LanguageDraftView(item, "draft") };
+      boxedView.value.clear();
+      const required: Required<Pick<LanguageEntry, "id" | "note">> = boxedView.value.snapshot();
       const mapped: LanguageRequired<LanguageProjection<LanguageEntry, "id" | "note">> = { id: item.id, note: "set" };
       const flags: Record<"ready" | "visible", boolean> = { ready: true, visible: false };
       const changed: LanguageFlags<"ready" | "visible"> = flags;
@@ -305,7 +328,9 @@ export default defineConfig({
       const collapsed: LanguageLiteral<string | "draft"> = "broad";
       const onlyFalse: Exclude<boolean, true> = false;
       const shadowed: Readonly<number> = { box: 7 };
-      return { required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, both, boxed, shadowed, collapsed,
+      return { classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
+        classInstance: boxedView.value instanceof LanguageView, classType: typeof LanguageDraftView,
+        required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, both, boxed, shadowed, collapsed,
         missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
     }),
     refsReceiver: run(() => {

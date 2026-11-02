@@ -85,10 +85,10 @@ fn registered_refusals_have_live_codes_and_no_stale_fixture_links() {
 #[test]
 fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     let tmp = tempfile::tempdir().unwrap();
-    let source = "import './a';\nimport './b';\n/*😀*/ class First {}\nclass Second {}\nconst clock = Date.now();\n";
+    let source = "import './a';\nimport './b';\n/*😀*/ abstract class First {}\nabstract class Second {}\nconst clock = Date.now();\n";
     std::fs::write(tmp.path().join("zero.config.ts"), source).unwrap();
     for name in ["a.ts", "b.ts"] {
-        std::fs::write(tmp.path().join(name), "class Imported {}\n").unwrap();
+        std::fs::write(tmp.path().join(name), "abstract class Imported {}\n").unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
@@ -108,7 +108,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     );
     let loc = &report["diagnostics"][0]["location"];
     assert_eq!(loc["file"], "zero.config.ts");
-    assert_eq!(loc["start"], source.find("class First").unwrap());
+    assert_eq!(loc["start"], source.find("abstract class First").unwrap());
     assert_eq!(loc["column"], "/*😀*/ ".encode_utf16().count() + 1);
     assert_eq!(loc["line"], 3);
     assert_eq!(report, checked(tmp.path()).1, "diagnostics must be deterministic");
@@ -118,7 +118,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     assert!(!report.to_string().contains("Z2101"));
     let human = zero().arg("check").arg(tmp.path()).output().unwrap();
     assert_eq!(human.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&human.stderr).contains("Zero code doesn't support classes"));
+    assert!(String::from_utf8_lossy(&human.stderr).contains("abstract, ambient or generic classes"));
 }
 
 #[test]
@@ -385,4 +385,211 @@ export default defineConfig({{ name: "differences", schema: {{ notes }}, actions
         }),
         "{report}"
     );
+}
+
+#[test]
+fn classes_match_node_through_generated_php_and_wire_client_types() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config = root().join("tests/differential/classes.ts");
+    std::fs::copy(&config, tmp.path().join("zero.config.ts")).unwrap();
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(config)
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&transpiled.stdout),
+        String::from_utf8_lossy(&transpiled.stderr)
+    );
+    let node = Command::new("node")
+        .arg(root().join("tests/differential/run-node.mjs"))
+        .arg(js.join("classes.js"))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let cases = expected["cases"].as_object().unwrap();
+    assert_eq!(cases.len(), 5);
+    assert!(cases.values().all(|result| result.get("data").is_some()), "{expected}");
+    let content = build_wp(tmp.path());
+    let runtime = content.join("plugins/zero-runtime/zero/bootstrap.php");
+    let app = content.join("plugins/zero-app-class-tests/zero/app");
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\ZeroApp\\' . $action['handler'];
+            try { $out[$name] = ['data' => $fn()]; }
+            catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+        }
+        echo \Zero\Js::jsonStringify($out);
+    "#,
+        &[&runtime, &app],
+    );
+    assert_eq!(actual, expected["cases"], "compiled class behavior differs from Node");
+    // The schema seam drops class identity and detaches fields, without traversing descriptors.
+    let seam = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $fn = '\\ZeroApp\\' . $schema['actions']['classesWire']['handler'];
+        $instance = $fn();
+        $stored = \Zero\Seam::toPhp($instance, ['type' => 'json']);
+        $input = \Zero\Seam::toJs($stored, ['type' => 'json']);
+        $stored->p['count'] = 99;
+        echo \Zero\Js::jsonStringify([
+            'wire' => \Zero\Seam::toWire($instance),
+            'identity' => [$instance->class !== null, $stored->class === null, $input->class === null],
+            'detached' => [$instance->p['count'], $stored->p['count'], $input->p['count']],
+        ]);
+    "#,
+        &[&runtime, &app],
+    );
+    assert_eq!(seam["wire"], expected["cases"]["classesWire"]["data"]);
+    assert_eq!(seam["identity"], json!([true, true, true]));
+    assert_eq!(seam["detached"], json!([5, 99, 5]));
+    std::fs::write(
+        tmp.path().join("class-client.ts"),
+        r#"
+import type { Actions } from './zero/client/types';
+declare const instance: Actions['classesWire']['output'];
+const count: number = instance.count;
+const label: string = instance.label;
+declare const derived: Actions['classesMutation']['output']['c'];
+const inherited: string = derived.label;
+const overridden: number = derived.count;
+const extra: number = derived.extra;
+declare const baseCall: Actions['classesBaseArgument']['output'];
+const virtualResult: number = baseCall;
+// @ts-expect-error Methods are not restored by JSON.
+instance.inc(1);
+declare const effects: Actions['classesEffects']['output'];
+const changed: number = effects.count;
+// @ts-expect-error A method mutation widens the numeric literal read.
+const literal: 0 | 1 = effects.count;
+// @ts-expect-error The class method clears the narrowed value.
+const narrowed: { n: number } = effects.maybe;
+// @ts-expect-error A virtual override clears the helper's argument.
+const virtual: { n: number } = effects.virtual;
+// @ts-expect-error Static updates widen literal reads.
+const staticLiteral: 0 | 1 = effects.staticCount;
+// @ts-expect-error Static object fields share captured module data.
+const sharedLiteral: 0 | 1 = effects.sharedCount;
+"#,
+    )
+    .unwrap();
+    let types = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+        ])
+        .arg(tmp.path().join("class-client.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        types.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&types.stdout),
+        String::from_utf8_lossy(&types.stderr)
+    );
+}
+
+#[test]
+fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
+    for (declarations, handler, message) in [
+        (
+            "const state = { n: 0 }; function next(): number { state.n++; return state.n; } class C { value = next(); }",
+            "new C()",
+            "this field needs a type annotation",
+        ),
+        (
+            "class C { static value: number = 'wrong'; }",
+            "C.value",
+            "static field initializer does not match",
+        ),
+        (
+            "class C { constructor(public n: number = 1, public prior: number = this.n) {} }",
+            "new C()",
+            "can't assign number | null",
+        ),
+        (
+            "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
+            "new D()",
+            "`this` outside a class",
+        ),
+        ("class C { #secret = 1; }", "new C()", "private class fields"),
+        (
+            "class C { constructor(public toJSON: () => number) {} }",
+            "new C(() => 1)",
+            "protocol class members",
+        ),
+        (
+            "class C { get value() { return 1; } }",
+            "new C()",
+            "accessor class methods",
+        ),
+        (
+            "class C {} const factory = () => C; class D extends factory() {}",
+            "new D()",
+            "dynamic class inheritance",
+        ),
+        (
+            "class C { value = 1; read(): number { return this.value; } }",
+            "(() => { const c = new C(); return c.read; })()",
+            "extracting class methods",
+        ),
+        (
+            "class C { value = 1; constructor() { this.read(); } read(): number { return this.value; } }",
+            "new C()",
+            "method calls during construction",
+        ),
+        (
+            "class C {} class D extends C { constructor() { super(); super(); } }",
+            "new D()",
+            "super() outside the first",
+        ),
+        (
+            "class C { value = 1; }",
+            "(JSON.parse('{}') as C)",
+            "assertions cannot restore class identity",
+        ),
+        (
+            "class C { value = 1; }",
+            "1",
+            "JSON schemas cannot use class instance types",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let input = if message == "JSON schemas cannot use class instance types" {
+            "{ value: json().$type<C>() }"
+        } else {
+            "{}"
+        };
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ collection, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ schema: {{ n: collection('n', {{ id: id() }}, {{ editor: false }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{message}: {report}");
+        let diagnostic = report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["message"].as_str().unwrap().contains(message))
+            .unwrap_or_else(|| panic!("expected {message}: {report}"));
+        assert_eq!(diagnostic["location"]["file"], "zero.config.ts", "{report}");
+        assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
+    }
 }

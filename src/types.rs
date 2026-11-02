@@ -6,7 +6,16 @@ use crate::schema::{ColType, Collection, Column, ROLES, RelKind, Schema};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ClassIdentity {
+    pub id: usize,
+    pub ancestors: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
+    /// Instance own fields, with a nominal dispatch identity. Methods are not JSON fields.
+    Instance(ClassIdentity, Box<Ty>),
+    Class(usize),
     Num,
     NumLit(f64),
     FreshNumLit(f64),
@@ -203,6 +212,8 @@ impl Ty {
 
     pub fn describe(&self) -> String {
         match self {
+            Ty::Instance(_, fields) => format!("an instance with {}", fields.describe()),
+            Ty::Class(_) => "a class".into(),
             Ty::Num | Ty::FreshNumLit(_) => "number".into(),
             Ty::NumLit(value) => value.to_string(),
             Ty::Str => "string".into(),
@@ -246,6 +257,7 @@ impl Ty {
 
     pub fn field(&self, name: &str) -> Option<(Ty, bool)> {
         match self {
+            Ty::Instance(_, fields) => fields.field(name),
             Ty::Obj(fields) => fields.get(name).cloned(),
             Ty::Map(t) => Some(((**t).clone(), false)),
             // A union of objects (blocks items): fields every member has.

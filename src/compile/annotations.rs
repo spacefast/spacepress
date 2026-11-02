@@ -61,6 +61,12 @@ impl Compiler<'_, '_> {
         }
     }
 
+    /// PHP compilation and cached class shapes need runtime types even when class
+    /// dispatch reenters compilation from inside an alias normalization.
+    pub(super) fn resolve_runtime_ann(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
+        self.resolve_ann(a, module, &HashMap::new()).map(runtime_type)
+    }
+
     fn resolve_ann_inner(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, BoundType>) -> Result<Ty> {
         Ok(match a {
             TyAnn::Num => Ty::Num,
@@ -114,6 +120,22 @@ impl Compiler<'_, '_> {
                         return err(*span, "a bound type parameter doesn't accept type arguments");
                     }
                     return Ok(t.ty.clone());
+                }
+                if args.is_empty()
+                    && let Some(Value::Class(class)) = self
+                        .ev
+                        .module_scope(module)
+                        .and_then(|s| s.lookup(name))
+                        .map(|b| b.value)
+                {
+                    let id = self.ensure_class(&class)?;
+                    if !self.classes[&id].fields_ready {
+                        return err(
+                            *span,
+                            "recursive class field types are unsupported; use a plain data type",
+                        );
+                    }
+                    return Ok(self.classes[&id].instance.clone());
                 }
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
@@ -477,7 +499,7 @@ impl Compiler<'_, '_> {
     }
 }
 
-fn annotation_span(a: &TyAnn) -> Span {
+pub(super) fn annotation_span(a: &TyAnn) -> Span {
     match a {
         TyAnn::Ref(_, _, s)
         | TyAnn::Query(_, s)
@@ -486,6 +508,17 @@ fn annotation_span(a: &TyAnn) -> Span {
         | TyAnn::Intersection(_, s)
         | TyAnn::Mapped { span: s, .. }
         | TyAnn::Conditional { span: s, .. } => *s,
+        TyAnn::Array(t) | TyAnn::Map(t) => annotation_span(t),
+        TyAnn::Obj(fields) => fields
+            .iter()
+            .map(|(_, t, _)| annotation_span(t))
+            .find(|s| *s != Span::NONE)
+            .unwrap_or(Span::NONE),
+        TyAnn::Tuple(ts) | TyAnn::Union(ts) => ts
+            .iter()
+            .map(annotation_span)
+            .find(|s| *s != Span::NONE)
+            .unwrap_or(Span::NONE),
         _ => Span::NONE,
     }
 }
@@ -787,6 +820,7 @@ fn runtime_type(t: Ty) -> Ty {
                 .collect(),
         ),
         Ty::Map(t) => Ty::Map(Box::new(runtime_type(*t))),
+        Ty::Instance(identity, fields) => Ty::Instance(identity, Box::new(runtime_type(*fields))),
         Ty::Union(ts) => Ty::union(ts.into_iter().map(runtime_type)),
         Ty::Fn(ps, ret) => Ty::Fn(ps.into_iter().map(runtime_type).collect(), Box::new(runtime_type(*ret))),
         Ty::Promise(t) => Ty::Promise(Box::new(runtime_type(*t))),

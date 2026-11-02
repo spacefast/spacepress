@@ -443,7 +443,7 @@ assertion (`values[0]!`) is available when your code guarantees the entry exists
 Objects and arrays have reference identity: assignment, argument passing,
 spreads and closures share their descendants as in JavaScript. Use
 `structuredClone(value)` for an independent graph; shared descendants and
-cycles survive cloning. Captured module-level objects live for the PHP process
+cycles survive cloning. Class instances become plain own-field objects when cloned. Captured module-level objects live for the PHP process
 (one web request, or the worker's lifetime), as module data does in Node.
 
 Arrays are dense. Writing at `length` appends; writing past `length`, at a
@@ -461,8 +461,8 @@ Zero represents `undefined` as `null`: `typeof undefined` gives `"object"`,
 gives `"null"`, and destructuring defaults also fire on explicit `null`.
 Optional parameters include null in body reads; defaults supply missing values.
 
-Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
-`==` (except `== null`), `in`, `instanceof`, `delete`, generators,
+Rejected with a located error and a fix: `this` outside class methods or their
+arrows, `var`, `enum`, `==` (except `== null`), `in`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
@@ -477,3 +477,82 @@ and `db`, and stops runaway loops with a step budget.
 Imports: type-only imports (erased), relative `.ts` files (compiled with the
 config), and `"zero"`. npm packages are rejected unless they ship TypeScript
 source that fits the subset (not implemented yet: today they're rejected).
+
+
+### Classes in callbacks
+
+Declare concrete named classes at module scope, including in relative modules
+with named exports. Construct them inside actions, hooks and other compiled
+callbacks. Public instance fields, ordinary methods, `this` member reads and
+writes, `new`, identity comparisons, named `extends`, overrides, `super(...)`,
+`super.method(...)` and `instanceof` are supported. Arrows inside methods keep
+that method's `this`. `typeof Counter` returns `"function"`; instances return
+`"object"`. Extracting a prototype method is refused; use
+`() => instance.method()` when passing a callback.
+
+```ts
+class Counter {
+  value = 0;
+  constructor(public label: string) {}
+  add(n: number): number { this.value += n; return this.value; }
+  reader(): () => number { return () => this.value; }
+}
+class DoubleCounter extends Counter {
+  add(n: number): number { return super.add(n * 2); }
+}
+const countVisits = action({
+  input: {},
+  handler: () => {
+    const counter = new DoubleCounter("visits");
+    const read = counter.reader();
+    counter.add(2);
+    return { value: read(), isCounter: counter instanceof Counter }; // 4, true
+  },
+});
+```
+
+Base fields initialize in declaration order before constructor parameter defaults.
+Derived fields initialize immediately after `super(...)`, before the rest of the
+constructor. A derived constructor must call `super(...)` as its first statement;
+an omitted constructor forwards arguments to the parent. Public/readonly typed
+TypeScript parameter properties create own fields, then receive their parameter
+values before authored constructor statements. Defaults and other field
+initializers cannot read those parameter values yet, matching TypeScript's ES2022 class-field emit.
+Uninitialized fields read as nullable because missing/undefined is PHP null.
+
+Field types infer from plain data initializers; annotate fields initialized from
+`this` or calls. Parameters need a type or a primitive default. Annotate recursive,
+forward or overridden method returns when inference cannot establish a signature.
+Derived instances can pass to helpers expecting their base. Mutation effects
+include receivers, arguments, constructors, inherited methods and captured values;
+numeric updates widen literal reads and writes invalidate prior narrowing.
+
+Static fields start from pure build-time data and live for the PHP process.
+Static methods inherit and dispatch with the actual class receiver. A subclass
+write to an inherited static field creates its own value; nested objects retain
+their shared identity. Static initializers cannot use runtime `this`, construct
+instances or perform I/O.
+
+Instances retain identity through assignment, arguments and closures. JSON
+responses and generated client types contain own fields only; they do not
+include methods or class metadata. Object spread copies own fields shallowly.
+`structuredClone`, stored JSON, callback inputs and persistent `once` results
+produce plain data without class identity. Use object types in `json().$type<T>()`;
+class types and assertions that would pretend to hydrate a class are refused.
+
+These class features remain outside the supported surface, with located errors:
+class expressions, default-export class declarations and
+anonymous/local/abstract/ambient/generic classes;
+decorators; private/protected/`#` members; accessors; static blocks; computed names;
+generic/rest methods; dynamic or built-in inheritance; constructor return values;
+prototype/reflection machinery and custom coercion/serialization protocol members.
+Indexed class members and recursive class field types are also refused.
+Uninitialized optional fields follow the same missing-to-null boundary. Class
+values are limited to construction, `instanceof`, `typeof` and static access.
+Method calls and escaping instances during construction/initialization are refused
+to avoid partially initialized virtual receivers. Construction and method calls
+inside access rules are refused; return filters from plain functions instead.
+
+See [class compilation and library reuse](class-compilation.md) for the runtime
+representation, validation owners and the OXC/SWC assessment. This support does
+not enable arbitrary npm execution.

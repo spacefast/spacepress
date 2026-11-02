@@ -178,7 +178,13 @@ fn parse(source: &str, path: &Path, file: u32, module: usize, diagnostics: &mut 
     if syntax_failed {
         return Ok(Vec::new());
     }
-    let (body, errors) = Lowerer { file, module }.program_diagnostics(&ret.program);
+    let (body, errors) = Lowerer {
+        file,
+        module,
+        class_context: std::cell::Cell::new(false),
+        super_call: std::cell::Cell::new(false),
+    }
+    .program_diagnostics(&ret.program);
     diagnostics.extend(errors);
     Ok(body)
 }

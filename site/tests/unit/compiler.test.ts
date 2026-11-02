@@ -56,6 +56,22 @@ test("a config that builds on the command line builds in the browser, to the sam
   assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "zero/client/types.ts"), "utf8"));
   assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "zero/client/schema.ts"), "utf8"));
   assert.equal(output.genTs, readFileSync(path.join(dir, "zero.gen.ts"), "utf8"));
+  // Class lowering and inference run through this same core in both environments.
+  const classDir = path.join(repo, "tests/differential");
+  const classFiles = { "zero.config.ts": readFileSync(path.join(classDir, "classes.ts"), "utf8") };
+  const className = `zero-classes-${process.pid}`;
+  const classProject = path.join("/tmp", className);
+  mkdirSync(classProject, { recursive: true });
+  try {
+    // Native check takes a project, while the browser holds the identical source in memory.
+    writeFileSync(path.join(classProject, "zero.config.ts"), classFiles["zero.config.ts"]);
+    const classes = browserCheck({ name: `tmp/${className}`, files: classFiles, previous: null });
+    assert.equal(classes.envelope, nativeCheck(classProject));
+    assert.equal(classes.check.ok, true);
+    assert.ok(classes.output);
+  } finally {
+    rmSync(classProject, { recursive: true, force: true });
+  }
 });
 
 test("the previous snapshot and migration files drive the next migration like they do on disk", () => {

@@ -29,6 +29,10 @@ type Entities = {
   'items': Collection<'items', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;
     'name': ColumnBuilder<'text', string, true, false, false, false>;
+    'brand': ColumnBuilder<'text', string, false, false, false, false>;
+    'notes': ColumnBuilder<'text', string, false, false, false, false>;
+    'opened': ColumnBuilder<'boolean', boolean, true, true, false, false>;
+    'storyId': ColumnBuilder<'integer', number, false, false, false, false>;
     'quantity': ColumnBuilder<'integer', number, true, true, false, false>;
     'unit': ColumnBuilder<'text', "pcs" | "g" | "ml", true, true, false, false>;
     'lowStockAt': ColumnBuilder<'integer', number, true, true, false, false>;
@@ -45,6 +49,7 @@ type Entities = {
 type Graph = {
   'stories': {
     'tasks': Many<'tasks'>;
+    'pantryItems': Many<'items'>;
   };
   'tasks': {
     'story': One<'stories', true>;
@@ -53,6 +58,7 @@ type Graph = {
     'items': Many<'items'>;
   };
   'items': {
+    'story': One<'stories', true>;
     'location': One<'locations', true>;
     'shoppingEntry': One<'shoppingList', true>;
   };

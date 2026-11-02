@@ -15,6 +15,7 @@ let items = [];
 let shopping = [];
 let busy = false;
 let refreshing = false;
+const expandedItems = new Set();
 
 function editLink(collection, id, label) {
   const link = node("a", "", label);
@@ -61,6 +62,22 @@ async function session() {
   );
 }
 
+function storyCover(story) {
+  const value = story.cover?.sizes?.card?.url ?? story.cover?.url;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value, window.location.href);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    const image = node("img");
+    image.src = url.href;
+    image.alt = story.cover.alt ?? "";
+    image.loading = "lazy";
+    return image;
+  } catch {
+    return null;
+  }
+}
+
 function render() {
   const selected = element("pantry-location").value;
   const visible = items.filter(
@@ -83,6 +100,46 @@ function render() {
     if (item.expiresOn) details.push(`Expires ${item.expiresOn}`);
     card.append(heading, node("p", "hint", details.join(" · ")));
     if (low) card.append(node("span", "low-stock", "Low stock"));
+    const description = node("details", "pantry-item-details");
+    description.open = expandedItems.has(item.id);
+    description.append(node("summary", "", "Details & cooking notes"));
+    description.addEventListener("toggle", () => {
+      if (description.open) expandedItems.add(item.id);
+      else expandedItems.delete(item.id);
+    });
+    const facts = node("dl", "pantry-facts");
+    for (const [label, value] of [
+      ["Brand", item.brand || "Not specified"],
+      ["Pack", item.opened ? "Opened" : "Unopened"],
+      ["Storage", item.location?.name || "No location"],
+    ]) facts.append(node("dt", "", label), node("dd", "", value));
+    description.append(facts);
+    if (item.notes) description.append(node("p", "pantry-notes", item.notes));
+    if (item.story) {
+      const story = node("div", "pantry-story");
+      const cover = storyCover(item.story);
+      if (cover) story.append(cover);
+      story.append(node("h5", "", item.story.title));
+      if (item.story.details?.subtitle)
+        story.append(node("p", "", item.story.details.subtitle));
+      const read = node("a", "", "Read cooking notes ↓");
+      read.href = `#story-${encodeURIComponent(item.story.id)}`;
+      read.addEventListener("click", () => {
+        const storyCard = document.getElementById(`story-${item.story.id}`);
+        const disclosure = storyCard?.matches("details")
+          ? storyCard
+          : storyCard?.querySelector("details");
+        if (disclosure) disclosure.open = true;
+      });
+      const native = node("a", "", "Edit story in WordPress ↗");
+      native.href = `/wp-admin/post.php?post=${encodeURIComponent(item.story.id)}&action=edit`;
+      story.append(read, document.createTextNode(" · "), native);
+      description.append(story);
+    } else
+      description.append(
+        node("p", "hint", "No cooking story linked. Link a native WordPress story in the item editor."),
+      );
+    card.append(description);
     const actions = node("div", "pantry-item-actions");
     const consume = node("button", "", "Use 1");
     consume.type = "button";
@@ -154,15 +211,26 @@ function render() {
   }
 }
 
+async function listAll(collection, options = {}) {
+  const rows = [];
+  for (let offset = 0; ; offset += 100) {
+    const page = await collection.list({
+      ...options,
+      orderBy: { id: "asc" },
+      limit: 100,
+      offset,
+    });
+    rows.push(...page);
+    if (page.length < 100)
+      return rows.sort((left, right) => left.name.localeCompare(right.name));
+  }
+}
+
 async function load() {
   const [newItems, locations, newShopping] = await Promise.all([
-    publicClient.items.list({
-      with: { location: true },
-      orderBy: { name: "asc" },
-      limit: 100,
-    }),
-    publicClient.locations.list({ limit: 100 }),
-    publicClient.shoppingList.list({ with: { item: true }, limit: 100 }),
+    listAll(publicClient.items, { with: { location: true, story: true } }),
+    listAll(publicClient.locations),
+    listAll(publicClient.shoppingList, { with: { item: true } }),
   ]);
   items = newItems;
   shopping = newShopping;

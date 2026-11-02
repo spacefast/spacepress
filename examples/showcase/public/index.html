@@ -6,12 +6,14 @@
     <meta name="color-scheme" content="light dark" />
     <title>Zero / A working example</title>
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./source-lab.css" />
   </head>
   <body>
     <header class="bar">
       <a class="brand" href="./">zero<span> / field notes</span></a>
       <nav aria-label="Main">
-        <a href="#pantry">Pantry</a><a href="/zero-admin/">Zero admin ↗</a
+        <a href="#pantry">Pantry</a><a href="#source-lab">Config lab</a
+        ><a href="/zero-admin/">Zero admin ↗</a
         ><a href="/wp-admin/">Classic admin ↗</a>
       </nav>
     </header>
@@ -196,21 +198,9 @@
           ><button id="copy-check" type="button">Copy</button>
         </div>
       </section>
-      <section class="sources">
-        <h2>See what shipped.</h2>
-        <p>The full config and emitted PHP come from this build.</p>
-        <details>
-          <summary>TypeScript config</summary>
-          <pre id="source-ts"></pre>
-        </details>
-        <details>
-          <summary>Pantry tables, hooks &amp; actions · TypeScript</summary>
-          <pre id="source-pantry"></pre>
-        </details>
-        <details>
-          <summary>Compiled PHP</summary>
-          <pre id="source-php"></pre>
-        </details>
+      <section id="source-lab" class="sources" aria-label="Config lab">
+        <h2>The complete config. Yours to try.</h2>
+        <p>Loading the source editor and generated code…</p>
       </section>
     </main>
     <footer>
@@ -219,5 +209,6 @@
     </footer>
     <script type="module" src="./app.js"></script>
     <script type="module" src="./pantry.js"></script>
+    <script type="module" src="./source-lab.js"></script>
   </body>
 </html>

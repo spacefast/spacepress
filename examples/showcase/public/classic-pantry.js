@@ -13,7 +13,8 @@ const client = createClient({
 });
 let items = [],
   locations = [],
-  shopping = [];
+  shopping = [],
+  stories = [];
 let editing = null,
   dirty = false,
   busy = false,
@@ -34,7 +35,7 @@ function message(text, error = false) {
 function lock(value) {
   busy = value;
   root.setAttribute("aria-busy", String(value));
-  for (const control of root.querySelectorAll("button, input, select"))
+  for (const control of root.querySelectorAll("button, input, select, textarea"))
     control.disabled = value || (reconciliationRequired && control !== refresh);
 }
 
@@ -59,15 +60,18 @@ async function listAll(collection, options = {}) {
     });
     rows.push(...page);
     if (page.length < 100)
-      return rows.sort((left, right) => left.name.localeCompare(right.name));
+      return rows.sort((left, right) =>
+        (left.name ?? left.title).localeCompare(right.name ?? right.title),
+      );
   }
 }
 
 async function load() {
-  [items, locations, shopping] = await Promise.all([
-    listAll(client.items),
+  [items, locations, shopping, stories] = await Promise.all([
+    listAll(client.items, { with: { story: true } }),
     listAll(client.locations),
     listAll(client.shoppingList, { with: { item: true } }),
+    listAll(client.stories),
   ]);
 }
 
@@ -153,6 +157,10 @@ function field(form, label, name, value, options = {}) {
       option.value = String(key);
       input.append(option);
     }
+  } else if (options.multiline) {
+    input = node("textarea");
+    input.rows = 4;
+    input.className = "large-text";
   } else {
     input = node("input");
     input.type = options.type ?? "text";
@@ -221,6 +229,25 @@ function editorForm() {
     maxLength: section === "locations" ? 80 : 120,
   });
   if (section === "items") {
+    field(form, "Brand", "brand", record?.brand ?? "", { maxLength: 80 });
+    field(form, "Storage / cooking notes", "notes", record?.notes ?? "", {
+      multiline: true,
+      maxLength: 2000,
+    });
+    field(form, "Opened", "opened", record?.opened ?? false, { type: "checkbox" });
+    field(form, "Cooking story", "storyId", record?.storyId ?? "", {
+      choices: [
+        ["", "No linked story"],
+        ...stories.map((story) => [story.id, story.title]),
+      ],
+    });
+    if (record?.story) {
+      const related = node("p");
+      const link = node("a", `Edit “${record.story.title}” in the native editor`);
+      link.href = `/wp-admin/post.php?post=${encodeURIComponent(record.story.id)}&action=edit`;
+      related.append(link);
+      form.append(related);
+    }
     field(form, "Quantity", "quantity", record?.quantity ?? 1, {
       type: "number",
       required: true,
@@ -284,6 +311,10 @@ function editorForm() {
     const values = { name: data.get("name") };
     if (section === "items") {
       Object.assign(values, {
+        brand: data.get("brand") || null,
+        notes: data.get("notes") || null,
+        opened: data.has("opened"),
+        storyId: data.get("storyId") ? Number(data.get("storyId")) : null,
         quantity: Number(data.get("quantity")),
         unit: data.get("unit"),
         lowStockAt: Number(data.get("lowStockAt")),
@@ -299,7 +330,7 @@ function editorForm() {
     const patch = record
       ? Object.fromEntries(
           Object.entries(values).filter(
-            ([key, value]) => value !== record[key],
+            ([key, value]) => value !== (record[key] ?? null),
           ),
         )
       : values;
@@ -337,7 +368,7 @@ function list() {
   const table = node("table", undefined, "widefat fixed striped");
   const headings =
     section === "items"
-      ? ["Item", "Stock", "Location", "Expires", "Actions"]
+      ? ["Item", "Stock", "Location", "Details", "Actions"]
       : section === "locations"
         ? ["Location", "Kind", "Items", "Actions"]
         : ["Shopping entry", "Current stock", "Status", "Actions"];
@@ -370,7 +401,14 @@ function list() {
             `${row.quantity} ${row.unit}${row.quantity <= row.lowStockAt ? " — Low stock" : ""}`,
             locations.find((place) => place.id === row.locationId)?.name ??
               "No location",
-            row.expiresOn ?? "—",
+            [
+              row.brand,
+              row.opened ? "Opened" : "Unopened",
+              row.expiresOn ? `Expires ${row.expiresOn}` : null,
+              row.story?.title ? `Story: ${row.story.title}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
           ]
         : section === "locations"
           ? [

@@ -10,6 +10,7 @@ import {
   type CollectionHooks,
   type InferSelectModel,
 } from "zero";
+import { stories } from "./stories";
 
 export const locations = table(
   {
@@ -32,6 +33,10 @@ export const locations = table(
 export const items = table(
   {
     name: text().notNull().min(1).max(120),
+    brand: text().max(80),
+    notes: text({ multiline: true }).max(2000),
+    opened: boolean().notNull().default(false),
+    storyId: integer().references(() => stories.id, { onDelete: "set null" }),
     quantity: integer().notNull().min(0).default(1),
     unit: text({ enum: ["pcs", "g", "ml"] })
       .notNull()

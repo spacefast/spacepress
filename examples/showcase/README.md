@@ -11,7 +11,23 @@ uploads an original cover image, and retains the two stories and three linked
 tasks from the classic demo. It runs a short HTTP check before printing the URLs.
 Open the printed showcase URL for the pantry tracker and original publication
 tour on the same page. The source tabs show the actual TypeScript and compiled
-PHP. Edit the same records in `/zero-admin/` or the classic WordPress admin’s **Pantry** menu, then refresh. The classic menu provides items, locations and the shopping list using the same generated client and server rules.
+PHP. The **Config lab** shows every config source file, including the pantry and
+story definitions. Edit a file and select **Compile preview** to run the real
+Zero compiler in a browser worker. Syntax highlighting and split/unified diffs
+use the same locally bundled `@pierre/diffs` viewer as the website. Source changes
+are compared with source; generated PHP changes are compared with generated PHP.
+The output selector also exposes the schema, typed client and SQL migrations.
+
+Drafts stay in this browser, with diagnostics and the last successful output
+retained on errors. Copy or download a file, or download all sources as JSON.
+Previewing does not apply migrations, execute PHP or change the running
+WordPress app. To change the running app, edit the matching files under
+`examples/showcase/` and rerun the launcher. The lab uses the running build's
+schema snapshot when previewing migration changes.
+
+Edit records in `/zero-admin/` or the classic WordPress admin’s **Pantry** menu,
+then refresh. The classic menu provides items, locations and the shopping list
+using the same generated client and server rules.
 
 The pantry tracks quantities, low-stock thresholds, expiry dates and storage
 locations. Consuming stock never takes it below zero. Reaching the low-stock
@@ -22,6 +38,14 @@ the public page uses the current WordPress login for stock actions. Readers
 can browse without signing in. These actions and table writes require editor
 access on the server. Shopping updates run in the request; this demo has no
 background notification job. The launcher also installs the showcase companion plugin that places pantry CRUD screens inside classic WordPress; it uses the generated client and the same REST permissions and hooks, with no separate copy of the data.
+
+Items also have a brand, multiline storage notes and opened-pack status. Link
+an item to a native WordPress cooking story to combine SQL stock with a block
+editor body, SCF groups/repeaters/layouts/JSON and a story cover. The seeded
+**A pantry supper** links tomato passata and dried pasta; expand **Details &
+cooking notes** on either item, then follow the story. A separate details seed
+marker adds these examples once to existing demos without rewriting existing
+stock or story records. Subsequent starts preserve their edits and deletions.
 
 At the default address, open [the pantry](http://127.0.0.1:8860/wp-content/plugins/zero-app-showcase/public/#pantry)
 or [the classic stories](http://127.0.0.1:8860/wp-content/plugins/zero-app-showcase/public/#notebook).
@@ -35,8 +59,13 @@ production access. Application passwords stay in the ignored
 `.zero/showcase/receipt.json`; the public page contains none.
 
 The prerequisites are the repository's normal Rust, PHP (including GD), Node
-22.18+, Docker Compose, Bash 4+, Python, curl, sha256sum and rsync toolchain; see
-[Contributing](../../CONTRIBUTING.md#toolchain). No front-end install is needed.
+22.18+ with npm, Docker Compose, Bash 4+, Python, curl, sha256sum and rsync toolchain;
+see [Contributing](../../CONTRIBUTING.md#toolchain). The Rust
+`wasm32-unknown-unknown` target is needed for the browser compiler, as for the
+website. The launcher builds the current WASM compiler and installs the pinned
+code-viewer dependencies automatically with `npm ci` in `code-tools/`. All viewer
+code, grammars, themes and compiler bytes are served locally; the browser does
+not fetch a CDN. Dependency licenses are linked from the lab.
 The launcher checks prerequisites before building or starting containers and
 reports unavailable commands, missing PHP GD, and Docker connection failures.
 It also rejects an occupied host port before starting a new stack.

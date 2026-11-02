@@ -257,6 +257,20 @@ function storyCard(story, openStories) {
   return card;
 }
 
+async function listAll(collection, options = {}) {
+  const rows = [];
+  for (let offset = 0; ; offset += 100) {
+    const page = await collection.list({
+      ...options,
+      orderBy: { id: "asc" },
+      limit: 100,
+      offset,
+    });
+    rows.push(...page);
+    if (page.length < 100) return rows;
+  }
+}
+
 async function refresh() {
   const focusedRefresh = document.activeElement?.matches("[data-refresh]")
     ? document.activeElement
@@ -270,11 +284,10 @@ async function refresh() {
   try {
     const [settings, stories, tasks] = await Promise.all([
       zero.globals.settings.get(),
-      zero.stories.list({
-        orderBy: { id: "asc" },
+      listAll(zero.stories, {
         with: { tasks: true, cover: true },
       }),
-      zero.tasks.list({ orderBy: { id: "asc" }, with: { story: true } }),
+      listAll(zero.tasks, { with: { story: true } }),
     ]);
     element("site-title").textContent = settings.title;
     element("description").textContent = settings.description;
@@ -342,21 +355,4 @@ element("copy-check").addEventListener("click", async () => {
     element("copy-check").textContent = "Select command to copy";
   }
 });
-for (const [id, file] of [
-  ["source-ts", "source.ts.txt"],
-  ["source-pantry", "pantry.ts.txt"],
-  ["source-php", "compiled.php.txt"],
-]) {
-  fetch(`./${file}`)
-    .then((response) => {
-      if (!response.ok) throw new Error("Source unavailable");
-      return response.text();
-    })
-    .then((source) => {
-      element(id).textContent = source;
-    })
-    .catch((error) => {
-      element(id).textContent = error.message;
-    });
-}
 await refresh();

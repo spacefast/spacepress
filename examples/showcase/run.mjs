@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -110,6 +111,7 @@ function prerequisites(mode) {
     mode === "up"
       ? [
           ["cargo", ["--version"]],
+          ["npm", ["--version"]],
           ["bash", ["-c", "(( BASH_VERSINFO[0] >= 4 ))"]],
           ["python3", ["--version"]],
           ["curl", ["--version"]],
@@ -455,9 +457,83 @@ async function seedPantry(saved) {
 async function seed(saved) {
   await seedClassic(saved);
   await seedPantry(saved);
+  await seedPantryDetails(saved);
 }
 
-async function checkPantry(publicClient, editor) {
+async function seedPantryDetails(saved) {
+  if (
+    wp(
+      "eval",
+      "echo get_option('zero_showcase_details_seeded', false) ? 'yes' : 'no';",
+    ) === "yes"
+  )
+    return;
+  const { editor } = await clients(saved);
+  const [location] = await editor.locations.list({
+    where: { kind: "pantry" },
+    orderBy: { id: "asc" },
+    limit: 1,
+  });
+  const story = await editor.stories.create({
+    title: "A pantry supper",
+    status: "published",
+    body: "<p>Cook the pasta, warm the tomatoes with a little olive oil, and bring them together with a splash of pasta water.</p><p>This cooking note lives in WordPress. Its ingredients are real SQL pantry records. Edit either side and refresh to see the relation.</p>",
+    details: {
+      subtitle:
+        "Native content, structured fields and pantry stock in one small meal.",
+      featured: false,
+    },
+    links: [
+      {
+        label: "Edit the pantry",
+        href: `${saved.url}/wp-admin/admin.php?page=zero-showcase-pantry`,
+      },
+    ],
+    sections: [
+      {
+        layout: "callout",
+        heading: "Use what is open",
+        body: "Check the opened pack first. Stock changes happen in the pantry; cooking instructions stay in this story.",
+      },
+      {
+        layout: "quote",
+        text: "A recipe can be content. Its ingredients can be data.",
+        cite: "The pantry notebook",
+      },
+    ],
+    metadata: { serves: 2, minutes: 20, tags: ["vegetarian", "weeknight"] },
+  });
+  for (const data of [
+    {
+      name: "Tomato passata",
+      quantity: 2,
+      unit: "pcs",
+      lowStockAt: 1,
+      brand: "Pantry favourites",
+      opened: false,
+      notes:
+        "Keep in a cool cupboard.\nOnce opened, refrigerate and use within three days.",
+    },
+    {
+      name: "Dried pasta",
+      quantity: 600,
+      unit: "g",
+      lowStockAt: 150,
+      brand: "The corner shop",
+      opened: true,
+      notes:
+        "The open pack is clipped shut.\nUse 200 g for the linked supper; the stock action accepts an amount in grams.",
+    },
+  ])
+    await editor.items.create({
+      ...data,
+      locationId: location?.id ?? null,
+      storyId: story.id,
+    });
+  wp("option", "update", "zero_showcase_details_seeded", "1");
+}
+
+async function checkPantry(publicClient, editor, story) {
   let location, item, anonymousItem, failure;
   try {
     await assert.rejects(
@@ -477,6 +553,10 @@ async function checkPantry(publicClient, editor) {
       quantity: 1,
       lowStockAt: 1,
       locationId: location.id,
+      brand: "Check brand",
+      notes: "Keep cool.\nUse the opened pack first.",
+      opened: true,
+      storyId: story.id,
     });
     assert.equal(
       item.name,
@@ -485,13 +565,32 @@ async function checkPantry(publicClient, editor) {
     );
     const publicItems = await publicClient.items.list({
       where: { id: item.id },
-      with: { location: true },
+      with: { location: true, story: true },
     });
     assert.equal(publicItems.length, 1);
     assert.equal(
       publicItems[0].location.id,
       location.id,
       "Public pantry reads resolve location",
+    );
+    assert.equal(publicItems[0].brand, "Check brand");
+    assert.equal(
+      publicItems[0].notes,
+      "Keep cool.\nUse the opened pack first.",
+    );
+    assert.equal(publicItems[0].opened, true);
+    assert.equal(
+      publicItems[0].story.id,
+      story.id,
+      "SQL item resolves its native cooking story",
+    );
+    const [cookingStory] = await publicClient.stories.list({
+      where: { id: story.id },
+      with: { pantryItems: true },
+    });
+    assert.deepEqual(
+      cookingStory.pantryItems.map((row) => row.id),
+      [item.id],
     );
     const shelves = await publicClient.locations.list({
       where: { id: location.id },
@@ -641,7 +740,6 @@ async function check(saved) {
     await publicClient.actions.previewHeadline({ title: "  Hello, Zero!  " }),
     { title: "Hello, Zero!", slug: "hello-zero", characters: 12 },
   );
-  await checkPantry(publicClient, editor);
   let task, story, cover, anonymousTask, failure;
   try {
     await assert.rejects(
@@ -662,6 +760,7 @@ async function check(saved) {
       status: "published",
       cover: cover.id,
     });
+    await checkPantry(publicClient, editor, story);
     task = await editor.tasks.create({
       title: "  Smoke check  ",
       storyId: story.id,
@@ -832,9 +931,21 @@ async function main() {
     "debug/zero",
   );
   mkdirSync(app, { recursive: true });
-  copyFileSync(join(example, "zero.config.ts"), join(app, "zero.config.ts"));
-  copyFileSync(join(example, "pantry.ts"), join(app, "pantry.ts"));
+  const sourceFiles = readdirSync(example).filter(
+    (name) => name.endsWith(".ts") && name !== "zero.gen.ts",
+  );
+  for (const name of sourceFiles)
+    copyFileSync(join(example, name), join(app, name));
   cpSync(join(example, "public"), join(app, "public"), { recursive: true });
+  run("node", [join(repo, "site/scripts/build-wasm.mjs")]);
+  run("npm", ["ci", "--no-audit", "--no-fund"], {
+    cwd: join(example, "code-tools"),
+  });
+  run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
+  copyFileSync(
+    join(repo, "site/public/zero.wasm"),
+    join(app, "public/zero.wasm"),
+  );
   run(zero, ["build", app, "--quiet"]);
   mkdirSync(join(app, "public/client"), { recursive: true });
   for (const name of ["index", "schema"]) {
@@ -858,6 +969,46 @@ async function main() {
       ".zero/wp-content/plugins/zero-app-showcase/zero/app/functions.php",
     ),
     join(app, "public/compiled.php.txt"),
+  );
+  const generated = join(
+    app,
+    ".zero/wp-content/plugins/zero-app-showcase/zero/app",
+  );
+  const migrationDir = join(app, "zero/migrations");
+  const migrationFiles = readdirSync(migrationDir).filter((name) =>
+    name.endsWith(".sql"),
+  );
+  const compilerOutput = {
+    "schema.php": readFileSync(join(generated, "schema.php"), "utf8"),
+    "functions.php": readFileSync(join(generated, "functions.php"), "utf8"),
+    "client/types.ts": readFileSync(join(app, "zero/client/types.ts"), "utf8"),
+    "client/schema.ts": readFileSync(
+      join(app, "zero/client/schema.ts"),
+      "utf8",
+    ),
+    ...Object.fromEntries(
+      migrationFiles.map((name) => [
+        `migrations/${name}`,
+        readFileSync(join(migrationDir, name), "utf8"),
+      ]),
+    ),
+  };
+  writeFileSync(
+    join(app, "public/sources.json"),
+    JSON.stringify({
+      name: "showcase",
+      files: Object.fromEntries(
+        sourceFiles.map((name) => [
+          name,
+          readFileSync(join(app, name), "utf8"),
+        ]),
+      ),
+      output: compilerOutput,
+      previous: JSON.parse(
+        readFileSync(join(migrationDir, "snapshot.json"), "utf8"),
+      ),
+      migrationFiles,
+    }),
   );
   run(zero, ["build", app, "--quiet"]);
   const content = join(state, "wp-content");

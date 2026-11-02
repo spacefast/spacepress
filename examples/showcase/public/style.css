@@ -507,8 +507,53 @@ footer {
 
 .bar nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 22px;
   font-size: 13px;
+}
+.pantry-item-details {
+  margin: 16px 0;
+  font-size: 13px;
+}
+.pantry-item-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.pantry-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+}
+.pantry-facts dt {
+  color: var(--muted);
+}
+.pantry-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pantry-notes {
+  white-space: pre-wrap;
+}
+.pantry-story {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.pantry-story h5 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.pantry-story a {
+  display: inline-block;
+  margin-top: 6px;
+}
+.pantry-story img {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 10px;
 }
 .pantry {
   margin-top: 65px;

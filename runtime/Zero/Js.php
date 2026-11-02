@@ -1009,30 +1009,33 @@ final class Js
         return self::str($key);
     }
 
-    public static function prop(?JsObject $o, mixed $key): mixed
+    public static function prop(JsObject|JsClass|null $o, mixed $key): mixed
     {
         if ($o === null) {
             throw new JsError('Cannot read properties of null or undefined', 'TypeError');
         }
+        if ($o instanceof JsClass) { return $o->get(self::key($key)); }
         return $o->p[self::key($key)] ?? null;
     }
 
-    public static function set(?JsObject $o, string $key, mixed $value): mixed
+    public static function set(JsObject|JsClass|null $o, string $key, mixed $value): mixed
     {
         if ($o === null) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
+        if ($o instanceof JsClass) { return $o->set($key, $value); }
         $o->p[$key] = $value;
         return $value;
     }
 
     /** Snapshot presence before a compound assignment evaluates its right side. */
-    public static function has(JsArray|JsObject $o, mixed $key): bool
+    public static function has(JsArray|JsObject|JsClass $o, mixed $key): bool
     {
         if ($o instanceof JsArray) {
             $index = self::index($key);
             return $index !== null && $index < count($o->a);
         }
+        if ($o instanceof JsClass) { return $o->has(self::key($key)); }
         return array_key_exists(self::key($key), $o->p);
     }
 

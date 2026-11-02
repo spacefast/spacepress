@@ -705,6 +705,40 @@ impl<'p> Evaluator<'p> {
     pub fn eval(&mut self, e: &Expr, scope: &Rc<Scope>) -> R<Value> {
         self.tick(e.span)?;
         Ok(match &e.kind {
+            ExprKind::Class(class) => {
+                if !scope.is_module_scope() {
+                    return err(e.span, "class declarations must be at module scope");
+                }
+                let base = match &class.base {
+                    Some(name) => match self.lookup(name, scope, e.span)? {
+                        Value::Class(c) => Some(c),
+                        _ => {
+                            return err(
+                                e.span,
+                                "extend a named Zero class; built-in and dynamic inheritance are unsupported",
+                            );
+                        }
+                    },
+                    None => None,
+                };
+                let mut statics = IndexMap::new();
+                for field in &class.fields {
+                    if field.is_static {
+                        let value = match &field.init {
+                            Some(e) => self.eval_static_data(e, scope)?,
+                            None => Value::Undef,
+                        };
+                        statics.insert(field.name.clone(), value);
+                    }
+                }
+                Value::Class(Rc::new(ClassValue {
+                    class: class.clone(),
+                    base,
+                    env: scope.clone(),
+                    statics,
+                }))
+            }
+            ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
             ExprKind::Num(n) => Value::Num(*n),
             ExprKind::Str(s) => Value::str(s),
             ExprKind::Bool(b) => Value::Bool(*b),
@@ -904,6 +938,12 @@ impl<'p> Evaluator<'p> {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
                 match f {
+                    Value::Class(_) => {
+                        return err(
+                            e.span,
+                            "class instances are only constructed inside compiled callbacks; configuration stays plain data",
+                        );
+                    }
                     Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
                         for value in &argv {
                             require_static_data(value, e.span)?;

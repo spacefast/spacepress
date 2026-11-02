@@ -46,6 +46,53 @@ pub struct Param {
     pub span: Span,
 }
 
+#[derive(Debug)]
+pub struct Class {
+    pub name: String,
+    pub base: Option<String>,
+    pub fields: Vec<ClassField>,
+    pub methods: Vec<(String, bool, Rc<Func>)>,
+    pub constructor: Option<Rc<Func>>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct ClassField {
+    pub name: String,
+    pub is_static: bool,
+    pub ann: Option<TyAnn>,
+    pub init: Option<Expr>,
+    pub span: Span,
+}
+
+impl ClassField {
+    pub fn initializer(&self, module: usize) -> Option<Rc<Func>> {
+        Some(Rc::new(Func {
+            name: None,
+            params: vec![Param {
+                pat: Pat::Id(
+                    "this".into(),
+                    Span {
+                        end: self.span.start,
+                        ..self.span
+                    },
+                ),
+                ann: None,
+                default: None,
+                optional: false,
+                rest: false,
+                span: self.span,
+            }],
+            body: FnBody::Expr(self.init.as_ref()?.clone()),
+            is_async: false,
+            ret: self.ann.clone(),
+            type_params: vec![],
+            span: self.span,
+            module,
+        }))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Pat {
     Id(String, Span),
@@ -185,7 +232,7 @@ pub enum Stmt {
     Exported(P<Stmt>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
@@ -223,26 +270,28 @@ pub enum LogOp {
     Nullish,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ArrEl {
     Item(Expr),
     Spread(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PropKey {
     Static(String),
     Computed(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Prop {
     KV(PropKey, Expr),
     Spread(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind {
+    Class(Rc<Class>),
+    Instanceof(P<Expr>, P<Expr>),
     Num(f64),
     Str(String),
     Bool(bool),

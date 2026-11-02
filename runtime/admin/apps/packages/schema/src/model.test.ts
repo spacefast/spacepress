@@ -107,7 +107,11 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 	const emptyString = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
 	expect(emptyString.sections).toEqual([{ layout: 'hero', configuration: '' }]);
 	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
-
+	const falseRow = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	expect(falseRow.sections).toEqual([{ layout: 'hero', configuration: false }]);
+	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	// Incoming SCF false still denotes an empty structured/platform field.
+	expect(fromNative(c, { acf: { zero_sections: false } }).sections).toBe(false);
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {

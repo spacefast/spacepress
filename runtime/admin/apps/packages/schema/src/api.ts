@@ -106,9 +106,10 @@ function scfValue(
 	outgoing: boolean,
 	objects?: EditingObjects
 ): unknown {
-	if (!column || value == null || value === false) return value;
+	if (!column || value == null) return value;
+	if (column.type === 'json' && outgoing) return JSON.stringify(value);
+	if (value === false) return value;
 	if (column.type === 'json') {
-		if (outgoing) return JSON.stringify(value);
 		if (typeof value === 'string') {
 			// SCF's empty textarea represents no JSON value. An actual empty
 			// JSON string arrives encoded as '""' and still parses to a string.

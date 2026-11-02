@@ -289,7 +289,7 @@ if (!subdir) {
 		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
 		await page.getByRole('button', { name: 'Continue editing', exact: true }).click();
 		await expect(payload).toHaveValue('unfinished');
-		await payload.fill('{"committed":false,"corrected":true}');
+		await payload.fill('false');
 		await expect(eventSave).toBeEnabled();
 		const sections = page.getByRole('group', { name: 'Sections', exact: true });
 		const configuration = sections.locator('textarea');
@@ -306,7 +306,7 @@ if (!subdir) {
 		expect((await jsonSaved).status()).toBe(200);
 		const eventRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
 		const savedEvent = (await eventRead.json()).data;
-		expect(savedEvent.payload).toEqual({ committed: false, corrected: true });
+		expect(savedEvent.payload).toBe(false);
 		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
 		await page.reload();
 		if ((await jsonFields.getAttribute('aria-expanded')) !== 'true') await jsonFields.click();
@@ -521,9 +521,65 @@ if (!subdir) {
 			{ headers }
 		);
 		expect((await media.json()).data.alt).toBe('Browser image description');
-		await page.screenshot({
-			path: test.info().outputPath('media-details.png'),
+		// Media and native captions share one leave flow, with independent save baselines.
+		const alt = page.getByRole('textbox', { name: 'Alt text', exact: true });
+		const caption = page.getByRole('textbox', { name: 'Caption', exact: true });
+		const originalCaption = await caption.inputValue();
+		await alt.fill('Saved on media leave');
+		await caption.fill('Saved caption on leave');
+		await expect.poll(() => page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		})).toBe(true);
+		// Send a genuinely invalid native payload: WordPress rejects it after Zero saves.
+		const captionUrl = (url: URL) => url.pathname.endsWith(`/wp/v2/media/${mediaId}`);
+		await page.route(captionUrl, async (route) => {
+			if (route.request().method() !== 'POST') return route.continue();
+			const data: unknown = route.request().postDataJSON();
+			if (!data || typeof data !== 'object') throw new Error('Expected caption request.');
+			await route.continue({ postData: JSON.stringify({ ...data, status: 'not-a-wordpress-status' }) });
 		});
+		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
+		const leave = page.getByRole('dialog');
+		const failedCaption = page.waitForResponse((r) => captionUrl(new URL(r.url())) && r.request().method() === 'POST');
+		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
+		expect((await failedCaption).status()).toBe(400);
+		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
+		await expect(page).toHaveURL(`${site}/zero-admin/media/${mediaId}`);
+		await leave.getByRole('button', { name: 'Close', exact: true }).click();
+		await expect(caption).toHaveValue('Saved caption on leave');
+		const partial = await request.get(`${site}/wp-json/zero/v1/media/${mediaId}`, { headers });
+		expect((await partial.json()).data.alt).toBe('Saved on media leave');
+		await page.unroute(captionUrl);
+		await caption.fill(originalCaption);
+		await expect.poll(() => page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		})).toBe(false);
+		await caption.fill('Saved caption on leave');
+		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
+		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
+		await expect(page).toHaveURL(`${site}/zero-admin/media`);
+		const coreMedia = await request.get(`${site}/wp-json/wp/v2/media/${mediaId}?context=edit`, { headers });
+		expect((await coreMedia.json()).caption.raw).toBe('Saved caption on leave');
+		await expect.poll(() => page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		})).toBe(false);
+		await page.getByRole('link', { name, exact: true }).click();
+		await expect(alt).toHaveValue('Saved on media leave');
+		await alt.fill('Discard this media draft');
+		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
+		await leave.getByRole('button', { name: 'Discard changes', exact: true }).click();
+		await expect(page).toHaveURL(`${site}/zero-admin/media`);
+		await page.getByRole('link', { name, exact: true }).click();
+		await expect(alt).toHaveValue('Saved on media leave');
+		await page.screenshot({ path: test.info().outputPath('media-details.png') });
+		// Confirmed deletion retires even dirty drafts without a second leave prompt.
+		await alt.fill('Deleted media draft');
 		await page
 			.getByRole('button', { name: 'Delete media', exact: true })
 			.click();

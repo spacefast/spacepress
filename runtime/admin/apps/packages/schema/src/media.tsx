@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useParams, useNavigate, useSearch } from '@wordpress/route';
 import {
@@ -9,7 +9,7 @@ import {
 	TextControl,
 	TextareaControl,
 } from '@wordpress/components';
-import { Page, RouterLink } from '@zero-admin/admin-toolkit';
+import { Page, RouterLink, useDocumentChanges } from '@zero-admin/admin-toolkit';
 import { DataViews, type View, type Field } from '@zero-admin/dataviews';
 import { uploadAttachment } from '@zero-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
@@ -193,7 +193,16 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 		navigate = useNavigate();
 	const canCaption = 'raw' in object(core.title);
 	const canUpdate = allowed('editor', bootstrap().role);
-	async function mutate(task: () => Promise<unknown>, success: string) {
+	const [mediaBaseline, setMediaBaseline] = useState({ alt, point });
+	const [captionBaseline, setCaptionBaseline] = useState({ title, caption });
+	const [deleted, setDeleted] = useState(false);
+	const saving = useRef(false), deletionNavigation = useRef(false);
+	const mediaDirty = canUpdate && (alt !== mediaBaseline.alt ||
+		point.x !== mediaBaseline.point.x || point.y !== mediaBaseline.point.y);
+	const captionDirty = canCaption && (title !== captionBaseline.title || caption !== captionBaseline.caption);
+	const mutate = useCallback(async (task: () => Promise<unknown>, success: string) => {
+		if (saving.current) throw new Error('A save is already in progress.');
+		saving.current = true;
 		setBusy(true);
 		setError('');
 		setSaved('');
@@ -202,10 +211,44 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 			setSaved(success);
 		} catch (e: unknown) {
 			setError(message(e));
+			throw e;
 		} finally {
+			saving.current = false;
 			setBusy(false);
 		}
-	}
+	}, []);
+	const saveMedia = useCallback(async () => {
+		if (!canUpdate) throw new Error('Media cannot be edited.');
+		const snapshot = { alt, point };
+		await apiFetch({
+			path: `/zero/v1/media/${encodeURIComponent(id)}`,
+			method: 'PATCH', data: { alt: snapshot.alt, focal: snapshot.point },
+		});
+		setMediaBaseline(snapshot);
+	}, [canUpdate, id, alt, point]);
+	const saveCaption = useCallback(async () => {
+		if (!canCaption) throw new Error('Caption and title cannot be edited.');
+		const snapshot = { title, caption };
+		await apiFetch({
+			path: `/wp/v2/media/${encodeURIComponent(id)}`,
+			method: 'POST', data: snapshot,
+		});
+		setCaptionBaseline(snapshot);
+	}, [canCaption, id, title, caption]);
+	const saveChanges = useCallback(() => mutate(async () => {
+		if (mediaDirty) await saveMedia();
+		if (captionDirty) await saveCaption();
+	}, 'Media saved.'), [mutate, mediaDirty, captionDirty, saveMedia, saveCaption]);
+	const sharedChanges = useDocumentChanges({
+		dirty: !deleted && (mediaDirty || captionDirty), valid: true,
+		saving: busy, save: saveChanges,
+	});
+	// Successful deletion retires drafts before the shared blocker sees navigation.
+	useEffect(() => {
+		if (!deleted || !sharedChanges || sharedChanges.dirty || sharedChanges.saving || deletionNavigation.current) return;
+		deletionNavigation.current = true;
+		void navigate({ to: '/media' }).catch((e: unknown) => setError(message(e)));
+	}, [deleted, sharedChanges, navigate]);
 	return (
 		<div className="zero-schema-form">
 			{error && (
@@ -228,22 +271,14 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 			<form
 				onSubmit={(e) => {
 					e.preventDefault();
-					void mutate(
-						() =>
-							apiFetch({
-								path: `/zero/v1/media/${encodeURIComponent(id)}`,
-								method: 'PATCH',
-								data: { alt, focal: point },
-							}),
-						'Media saved.'
-					);
+					void mutate(saveMedia, 'Media saved.').catch(() => undefined);
 				}}
 			>
 				<TextControl
 					label="Alt text"
 					value={alt}
 					onChange={setAlt}
-					disabled={!canUpdate || busy}
+					disabled={!canUpdate || busy || deleted}
 				/>
 				{canUpdate && text(core.media_type) === 'image' && (
 					<FocalPointPicker
@@ -253,7 +288,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 						onChange={setPoint}
 					/>
 				)}
-				<Button type="submit" variant="primary" disabled={!canUpdate || busy}>
+				<Button type="submit" variant="primary" disabled={!canUpdate || busy || deleted}>
 					Save media
 				</Button>
 			</form>
@@ -261,15 +296,7 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 				className="zero-schema-caption-form"
 				onSubmit={(e) => {
 					e.preventDefault();
-					void mutate(
-						() =>
-							apiFetch({
-								path: `/wp/v2/media/${encodeURIComponent(id)}`,
-								method: 'POST',
-								data: { title, caption },
-							}),
-						'Caption and title saved.'
-					);
+					void mutate(saveCaption, 'Caption and title saved.').catch(() => undefined);
 				}}
 			>
 				<h2>Caption and title</h2>
@@ -278,18 +305,18 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 					label="Title"
 					value={title}
 					onChange={setTitle}
-					disabled={!canCaption || busy}
+					disabled={!canCaption || busy || deleted}
 				/>
 				<TextareaControl
 					label="Caption"
 					value={caption}
 					onChange={setCaption}
-					disabled={!canCaption || busy}
+					disabled={!canCaption || busy || deleted}
 				/>
 				<Button
 					type="submit"
 					variant="secondary"
-					disabled={!canCaption || busy}
+					disabled={!canCaption || busy || deleted}
 				>
 					Save caption and title
 				</Button>
@@ -311,8 +338,8 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 											path: `/zero/v1/media/${encodeURIComponent(id)}`,
 											method: 'DELETE',
 										});
-										await navigate({ to: '/media' });
-									}, 'Deleted.');
+										setDeleted(true);
+									}, 'Deleted.').catch(() => undefined);
 								}}
 							>
 								Confirm delete

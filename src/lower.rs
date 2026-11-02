@@ -223,23 +223,27 @@ impl Lowerer {
             a::Declaration::TSTypeAliasDeclaration(t) => {
                 out.push(Stmt::TypeAlias {
                     name: t.id.name.to_string(),
-                    params: self.type_params(t.type_parameters.as_deref()),
+                    params: self.alias_params(t.type_parameters.as_deref())?,
                     ty: self.ty(&t.type_annotation)?,
                 });
                 Ok(())
             }
             a::Declaration::TSInterfaceDeclaration(i) => {
-                if !i.extends.is_empty() {
-                    return self.unsupported(
-                        i.span,
-                        "`interface ... extends`",
-                        "use a type alias with `&`, or list the fields",
-                    );
+                let mut parts = Vec::new();
+                for base in &i.extends {
+                    let args = base
+                        .type_arguments
+                        .as_ref()
+                        .map(|args| args.params.iter().map(|t| self.ty(t)).collect::<Result<Vec<_>>>())
+                        .transpose()?
+                        .unwrap_or_default();
+                    parts.push(TyAnn::Ref(self.type_name(&base.type_name), args, self.sp(base.span)));
                 }
+                parts.push(self.members(&i.body.body)?);
                 out.push(Stmt::TypeAlias {
                     name: i.id.name.to_string(),
-                    params: self.type_params(i.type_parameters.as_deref()),
-                    ty: self.members(&i.body.body)?,
+                    params: self.alias_params(i.type_parameters.as_deref())?,
+                    ty: TyAnn::Intersection(parts, self.sp(i.span)),
                 });
                 Ok(())
             }
@@ -293,6 +297,30 @@ impl Lowerer {
             });
         }
         Ok(())
+    }
+
+    fn alias_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Result<Vec<TypeParam>> {
+        t.map(|t| {
+            t.params
+                .iter()
+                .map(|p| {
+                    if p.r#in || p.out || p.r#const {
+                        return self.unsupported(
+                            p.span,
+                            "variance or const type parameters",
+                            "use an ordinary type parameter",
+                        );
+                    }
+                    Ok(TypeParam {
+                        name: p.name.name.to_string(),
+                        constraint: p.constraint.as_ref().map(|t| self.ty(t)).transpose()?,
+                        default: p.default.as_ref().map(|t| self.ty(t)).transpose()?,
+                        span: self.sp(p.span),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
     }
 
     fn type_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Vec<String> {
@@ -1282,20 +1310,10 @@ impl Lowerer {
                 TyAnn::Tuple(items)
             }
             T::TSUnionType(u) => TyAnn::Union(u.types.iter().map(|t| self.ty(t)).collect::<Result<_>>()?),
-            T::TSIntersectionType(i) => {
-                // Only object intersections: merge fields.
-                let mut fields = Vec::new();
-                for part in &i.types {
-                    match self.ty(part)? {
-                        TyAnn::Obj(f) => fields.extend(f),
-                        other => {
-                            let r = TyAnn::Ref("&".into(), vec![other], self.sp(i.span));
-                            return Ok(TyAnn::Union(vec![TyAnn::Obj(fields), r]));
-                        }
-                    }
-                }
-                TyAnn::Obj(fields)
-            }
+            T::TSIntersectionType(i) => TyAnn::Intersection(
+                i.types.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+                self.sp(i.span),
+            ),
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
                 a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
@@ -1306,7 +1324,13 @@ impl Lowerer {
                     };
                     TyAnn::StrLit(js(cooked, self.sp(q.span))?)
                 }
-                a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
+                a::TSLiteral::TemplateLiteral(t) => {
+                    return self.unsupported(
+                        t.span,
+                        "interpolated template literal types",
+                        "use a finite union of string literals",
+                    );
+                }
                 a::TSLiteral::NumericLiteral(n) => TyAnn::NumLit(n.value),
                 a::TSLiteral::BooleanLiteral(value) => TyAnn::BoolLit(value.value),
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
@@ -1323,6 +1347,13 @@ impl Lowerer {
             },
             T::TSTypeLiteral(lit) => self.members(&lit.members)?,
             T::TSFunctionType(f) => {
+                if f.type_parameters.is_some() || f.params.rest.is_some() || f.params.items.iter().any(|p| p.optional) {
+                    return self.unsupported(
+                        f.span,
+                        "generic, optional or rest parameters in function types",
+                        "use a concrete function type with required parameters",
+                    );
+                }
                 let mut params = Vec::new();
                 for p in &f.params.items {
                     let ann = p
@@ -1340,14 +1371,6 @@ impl Lowerer {
                     Some(a) => a.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
                     None => vec![],
                 };
-                if name == "Record" && args.len() == 2 {
-                    let mut args = args;
-                    return Ok(TyAnn::Map(Box::new(args.pop().expect("value type"))));
-                }
-                if name == "Array" && args.len() == 1 {
-                    let mut args = args;
-                    return Ok(TyAnn::Array(Box::new(args.pop().expect("element type"))));
-                }
                 TyAnn::Ref(name, args, self.sp(r.span))
             }
             T::TSTypeQuery(q) => match &q.expr_name {
@@ -1359,20 +1382,41 @@ impl Lowerer {
                     TyAnn::Query(name.split('.').map(str::to_string).collect(), self.sp(q.span))
                 }
             },
-            T::TSIndexedAccessType(i) => {
-                let key = match &i.index_type {
-                    T::TSLiteralType(l) => match &l.literal {
-                        a::TSLiteral::StringLiteral(s) => js(s.value, self.sp(s.span))?,
-                        _ => {
-                            return self.unsupported(i.span, "this indexed access type", "index with a string literal");
-                        }
-                    },
-                    _ => return self.unsupported(i.span, "this indexed access type", "index with a string literal"),
+            T::TSIndexedAccessType(i) => TyAnn::Indexed(
+                Box::new(self.ty(&i.object_type)?),
+                Box::new(self.ty(&i.index_type)?),
+                self.sp(i.span),
+            ),
+            T::TSMappedType(m) => {
+                if m.name_type.is_some() {
+                    return self.unsupported(
+                        m.span,
+                        "mapped type key remapping",
+                        "use a finite mapped type without `as`",
+                    );
+                }
+                let Some(value) = &m.type_annotation else {
+                    return self.unsupported(m.span, "untyped mapped types", "provide a value type");
                 };
-                TyAnn::Indexed(Box::new(self.ty(&i.object_type)?), key)
+                TyAnn::Mapped {
+                    key: m.key.name.to_string(),
+                    keys: Box::new(self.ty(&m.constraint)?),
+                    value: Box::new(self.ty(value)?),
+                    optional: m.optional.map(|o| !matches!(o, a::TSMappedTypeModifierOperator::Minus)),
+                    span: self.sp(m.span),
+                }
             }
+            T::TSConditionalType(c) => TyAnn::Conditional {
+                check: Box::new(self.ty(&c.check_type)?),
+                extends: Box::new(self.ty(&c.extends_type)?),
+                yes: Box::new(self.ty(&c.true_type)?),
+                no: Box::new(self.ty(&c.false_type)?),
+                span: self.sp(c.span),
+            },
             T::TSTypeOperatorType(o) => match o.operator {
-                a::TSTypeOperatorOperator::Keyof => TyAnn::Str,
+                a::TSTypeOperatorOperator::Keyof => {
+                    TyAnn::KeyOf(Box::new(self.ty(&o.type_annotation)?), self.sp(o.span))
+                }
                 a::TSTypeOperatorOperator::Readonly => self.ty(&o.type_annotation)?,
                 a::TSTypeOperatorOperator::Unique => return self.unsupported(o.span, "`unique symbol`", ""),
             },
@@ -1393,6 +1437,13 @@ impl Lowerer {
         for m in members {
             match m {
                 a::TSSignature::TSPropertySignature(p) => {
+                    if matches!(p.key, a::PropertyKey::NumericLiteral(_)) {
+                        return self.unsupported(
+                            p.span,
+                            "numeric property names in types",
+                            "use string property names",
+                        );
+                    }
                     let Some(key) = p.key.static_name() else {
                         return self.unsupported(p.span, "computed keys in types", "");
                     };
@@ -1403,6 +1454,16 @@ impl Lowerer {
                     fields.push((js(key, self.sp(p.span))?, ty, p.optional));
                 }
                 a::TSSignature::TSIndexSignature(i) => {
+                    if !matches!(
+                        i.parameter.type_annotation.type_annotation,
+                        a::TSType::TSStringKeyword(_)
+                    ) {
+                        return self.unsupported(
+                            i.span,
+                            "non-string index signatures",
+                            "use a finite Record of string keys",
+                        );
+                    }
                     if !fields.is_empty() || members.len() > 1 {
                         return self.unsupported(
                             i.span,
@@ -1413,6 +1474,23 @@ impl Lowerer {
                     return Ok(TyAnn::Map(Box::new(self.ty(&i.type_annotation.type_annotation)?)));
                 }
                 a::TSSignature::TSMethodSignature(ms) => {
+                    if matches!(ms.key, a::PropertyKey::NumericLiteral(_)) {
+                        return self.unsupported(
+                            ms.span,
+                            "numeric property names in types",
+                            "use string property names",
+                        );
+                    }
+                    if ms.type_parameters.is_some()
+                        || ms.params.rest.is_some()
+                        || ms.params.items.iter().any(|p| p.optional)
+                    {
+                        return self.unsupported(
+                            ms.span,
+                            "generic, optional or rest parameters in method types",
+                            "use concrete required parameters",
+                        );
+                    }
                     let Some(key) = ms.key.static_name() else {
                         return self.unsupported(ms.span, "computed keys in types", "");
                     };

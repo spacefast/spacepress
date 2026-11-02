@@ -58,7 +58,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn class_parameter(&mut self, p: &Param, module: usize) -> Result<Ty> {
         let ty = match &p.ann {
-            Some(a) => self.resolve_ann(a, module, &HashMap::new())?,
+            Some(a) => self.resolve_runtime_ann(a, module)?,
             None => match p.default.as_ref().map(|e| &e.kind) {
                 Some(ExprKind::Num(_)) => Ty::Num,
                 Some(ExprKind::Str(_)) => Ty::Str,
@@ -83,7 +83,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .map(|p| self.class_parameter(p, f.module))
             .collect::<Result<Vec<_>>>()?;
         let ret = match &f.ret {
-            Some(a) => self.resolve_ann(a, f.module, &HashMap::new())?,
+            Some(a) => self.resolve_runtime_ann(a, f.module)?,
             None => Ty::Unknown,
         };
         Ok(Ty::Fn(
@@ -156,7 +156,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err(field.span, "fields cannot shadow inherited methods");
             }
             let ty = match &field.ann {
-                Some(a) => self.resolve_ann(a, class.env.module, &HashMap::new())?,
+                Some(a) => self.resolve_runtime_ann(a, class.env.module)?,
                 None => {
                     let Some(init) = &field.init else {
                         return err(field.span, "uninitialized class fields need a type");
@@ -547,24 +547,6 @@ pub(super) fn wire_type(ty: &Ty) -> Ty {
         Ty::Map(t) => Ty::Map(Box::new(wire_type(t))),
         Ty::Union(ts) => Ty::union(ts.iter().map(wire_type)),
         t => t.clone(),
-    }
-}
-
-pub(super) fn annotation_span(ann: &TyAnn) -> Span {
-    match ann {
-        TyAnn::Ref(_, _, span) | TyAnn::Query(_, span) => *span,
-        TyAnn::Array(a) | TyAnn::Map(a) | TyAnn::Indexed(a, _) => annotation_span(a),
-        TyAnn::Obj(fields) => fields
-            .iter()
-            .map(|(_, t, _)| annotation_span(t))
-            .find(|s| *s != Span::NONE)
-            .unwrap_or(Span::NONE),
-        TyAnn::Union(ts) | TyAnn::Tuple(ts) => ts
-            .iter()
-            .map(annotation_span)
-            .find(|s| *s != Span::NONE)
-            .unwrap_or(Span::NONE),
-        _ => Span::NONE,
     }
 }
 

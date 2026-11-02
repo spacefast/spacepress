@@ -106,6 +106,13 @@ directory; existing fixture migration output is left alone.
 
 The admin browser journey is part of `tests/wp/run.sh` and runs against the
 shipped plugin on the same disposable stack, then checks mounting under `/blog`.
+The harness explicitly activates manifest dependencies, the runtime, identity
+when included, the app, and finally Zero Admin. This setup is a prerequisite for
+the browser proof: `zero build` packages plugins but does not activate or configure
+them on a site. For a site installation, follow the generated manifest and the
+[admin installation steps](runtime/admin/readme.txt), preserving existing plugin
+settings and completing each plugin's own setup.
+
 Install its browser once before running the lane:
 
 ```sh

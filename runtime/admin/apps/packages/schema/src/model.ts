@@ -11,7 +11,7 @@ export type Column = {
 	options: string[];
 	fields: Columns;
 	layouts: Record<string, Columns>;
-	reference?: string;
+	reference?: { collection: string; column: string };
 	bucket?: string;
 	showIf?: Row;
 	read?: string | boolean;
@@ -55,6 +55,15 @@ function summary(value: unknown): string | boolean | undefined {
 		? value
 		: undefined;
 }
+function reference(value: unknown): Column['reference'] {
+	if (value == null) return undefined;
+	const r = object(value),
+		collection = text(r.collection),
+		column = text(r.column);
+	if (!collection || !column)
+		throw new Error('Missing referenced collection or column.');
+	return { collection, column };
+}
 export function columns(value: unknown): Columns {
 	return Object.fromEntries(
 		Object.entries(map(value)).map(([name, raw]) => {
@@ -89,9 +98,7 @@ export function columns(value: unknown): Columns {
 							)
 						: {},
 					bucket: text(c.bucket),
-					reference: c.references
-						? text(object(c.references).collection)
-						: undefined,
+					reference: reference(c.references),
 					showIf: c.showIf ? object(c.showIf) : undefined,
 					read: summary(access.read),
 					write: summary(access.update),

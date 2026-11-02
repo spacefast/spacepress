@@ -18,6 +18,10 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 						notNull: true,
 					},
 					enabled: { type: 'boolean', default: { value: false } },
+					rootCode: {
+						type: 'integer',
+						references: { collection: 'roots', column: 'code' },
+					},
 				},
 				access: { read: 'anyone' },
 			},
@@ -31,6 +35,9 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 		required: true,
 	});
 	expect(defaults(s.collections.things.columns)).toEqual({ enabled: false });
+	expect(s.collections.things.columns.rootCode.reference).toEqual({
+		collection: 'roots', column: 'code',
+	});
 });
 test('native mapping retains only returned fields and round-trips SCF values without core-field duplication', () => {
 	window.zeroAdmin = {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import {
 	Button,
@@ -32,6 +32,7 @@ import {
 function scalar(v: unknown): string {
 	return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
 }
+const CreatedValues = createContext<WeakSet<object> | null>(null);
 function Reference({
 	column,
 	value,
@@ -46,16 +47,21 @@ function Reference({
 	const [search, setSearch] = useState('');
 	const options = useLoad(async () => {
 		if (column.reference) {
-			const target = await collectionSpec(column.reference);
+			const reference = column.reference;
+			const target = await collectionSpec(reference.collection);
 			// The target endpoint supplies its own row filtering and field masking.
 			const result = await list(target, { page: 1, perPage: 30, search });
-			return result.rows.map((r) => ({
-				value: String(r[target.primaryKey]),
-				label:
-					target.title && r[target.title] != null
-						? scalar(r[target.title])
-						: `#${scalar(r[target.primaryKey])}`,
-			}));
+			return result.rows.flatMap((r) => {
+				const key = r[reference.column];
+				if (typeof key !== 'string' && typeof key !== 'number') return [];
+				return [{
+					value: String(key),
+					label:
+						target.title && r[target.title] != null
+							? scalar(r[target.title])
+							: `#${scalar(r[target.primaryKey])}`,
+				}];
+			});
 		}
 		const response: unknown = await apiFetch({
 			path: `/wp/v2/media?per_page=30&search=${encodeURIComponent(search)}`,
@@ -69,12 +75,12 @@ function Reference({
 				label: text(title.rendered) || `#${String(r.id)}`,
 			};
 		});
-	}, [column.reference, search]);
+	}, [column.reference?.collection, column.reference?.column, search]);
 	const selected = scalar(value);
 	const choices = options.kind === 'ready' ? options.value : [];
 	// Retain the identity without inventing a label for an inaccessible target.
 	const all =
-		selected && !choices.some((o) => o.value === selected)
+		value != null && !choices.some((o) => o.value === selected)
 			? [{ value: selected, label: `#${selected} (current)` }, ...choices]
 			: choices;
 	return (
@@ -85,12 +91,12 @@ function Reference({
 					column.help ||
 					'Search readable records. Clear to remove the reference.'
 				}
-				value={selected || null}
+				value={value == null ? null : selected}
 				options={all}
 				onFilterValueChange={setSearch}
 				onChange={(v) =>
 					onChange(
-						v
+						v !== null
 							? column.type === 'integer' ||
 								column.type === 'media' ||
 								column.type === 'mediaList'
@@ -238,12 +244,14 @@ function Field({
 	onChange,
 	disabled,
 	editing,
+	created,
 }: {
 	column: Column;
 	value: unknown;
 	onChange: (v: unknown) => void;
 	disabled: boolean;
 	editing: boolean;
+	created: WeakSet<object>;
 }) {
 	if (c.reference || c.type === 'media')
 		return (
@@ -259,6 +267,9 @@ function Field({
 			value && typeof value === 'object' && !Array.isArray(value)
 				? object(value)
 				: {};
+		const persisted =
+			editing && value != null &&
+			!(typeof value === 'object' && created.has(value));
 		return (
 			<fieldset>
 				<legend>{c.label}</legend>
@@ -266,8 +277,12 @@ function Field({
 				<Fields
 					fields={c.fields}
 					values={row}
-					onChange={(key, v) => onChange({ ...row, [key]: v })}
-					editing={editing && value != null}
+					onChange={(key, v) => {
+						const next = { ...row, [key]: v };
+						if (!persisted) created.add(next);
+						onChange(next);
+					}}
+					editing={persisted}
 					disabled={disabled}
 				/>
 			</fieldset>
@@ -285,8 +300,14 @@ function Field({
 					const layout = text(row.layout) ?? layouts[0];
 					const fields =
 						c.type === 'blocks' ? (c.layouts[layout] ?? {}) : c.fields;
-					const update = (v: unknown) =>
+					const persisted =
+						editing &&
+						!(item !== null && typeof item === 'object' && created.has(item));
+					const update = (v: unknown, fresh = false) => {
+						if ((!persisted || fresh) && v !== null && typeof v === 'object')
+							created.add(v);
 						onChange(rows.map((r, i) => (i === index ? v : r)));
+					};
 					return (
 						<div className="zero-schema-repeat" key={index}>
 							{c.type === 'mediaList' ? (
@@ -309,7 +330,7 @@ function Field({
 											options={layouts.map((l) => ({ value: l, label: l }))}
 											disabled={disabled}
 											onChange={(v) =>
-												update({ layout: v, ...defaults(c.layouts[v]) })
+												update({ layout: v, ...defaults(c.layouts[v]) }, true)
 											}
 										/>
 									)}
@@ -317,9 +338,7 @@ function Field({
 										fields={fields}
 										values={row}
 										onChange={(key, v) => update({ ...row, [key]: v })}
-										editing={
-											editing && Object.keys(row).some((key) => key in fields)
-										}
+										editing={persisted}
 										disabled={disabled}
 									/>
 								</>
@@ -338,16 +357,15 @@ function Field({
 				<Button
 					variant="secondary"
 					disabled={disabled}
-					onClick={() =>
-						onChange([
-							...rows,
-							c.type === 'mediaList'
-								? null
-								: c.type === 'blocks'
-									? { layout: layouts[0], ...defaults(c.layouts[layouts[0]]) }
-									: defaults(c.fields),
-						])
-					}
+					onClick={() => {
+						const item = c.type === 'mediaList'
+							? null
+							: c.type === 'blocks'
+								? { layout: layouts[0], ...defaults(c.layouts[layouts[0]]) }
+								: defaults(c.fields);
+						if (item) created.add(item);
+						onChange([...rows, item]);
+					}}
 				>
 					Add {c.label}
 				</Button>
@@ -477,26 +495,32 @@ export function Fields({
 	omit?: string[];
 }) {
 	const { role } = bootstrap();
+	const inherited = useContext(CreatedValues);
+	const [local] = useState(() => new WeakSet<object>());
+	const created = inherited ?? local;
 	return (
-		<div className="zero-schema-fields">
-			{Object.entries(fields)
-				.filter(
-					([key, c]) =>
-						!omit.includes(key) &&
-						!c.generated &&
-						(editing ? key in values : allowed(c.read, role)) &&
-						visible(c.showIf, values)
-				)
-				.map(([key, c]) => (
-					<Field
-						key={key}
-						column={c}
-						value={values[key]}
-						onChange={(v) => onChange(key, v)}
-						disabled={disabled || !allowed(c.write, role)}
-						editing={editing}
-					/>
-				))}
-		</div>
+		<CreatedValues.Provider value={created}>
+			<div className="zero-schema-fields">
+				{Object.entries(fields)
+					.filter(
+						([key, c]) =>
+							!omit.includes(key) &&
+							!c.generated &&
+							(editing ? key in values : allowed(c.read, role)) &&
+							visible(c.showIf, values)
+					)
+					.map(([key, c]) => (
+						<Field
+							key={key}
+							column={c}
+							value={values[key]}
+							onChange={(v) => onChange(key, v)}
+							disabled={disabled || !allowed(c.write, role)}
+							editing={editing}
+							created={created}
+						/>
+					))}
+			</div>
+		</CreatedValues.Provider>
 	);
 }

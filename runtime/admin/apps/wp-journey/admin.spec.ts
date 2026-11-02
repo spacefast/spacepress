@@ -12,7 +12,7 @@ const harness = JSON.parse(
 );
 const site: string = harness.url;
 const subdir = new URL(site).pathname !== '/';
-async function login(page: Page, role: 'editor' | 'subscriber') {
+async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await page.goto(`${site}/zero-admin/`);
 	await expect(page.locator('#user_login')).toBeVisible();
 	await page.locator('#user_login').fill(role);
@@ -173,6 +173,32 @@ if (!subdir) {
 			postId: Number(id),
 			body: 'Edited table record',
 		});
+		// A reference may name a unique column instead of the target's primary key.
+		const adminHeaders = {
+			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
+		};
+		const code = Date.now();
+		const root = await request.post(`${site}/wp-json/zero/v1/key_roots`, {
+			headers: adminHeaders, data: { code },
+		});
+		expect(root.status(), await root.text()).toBe(201);
+		const rootId = (await root.json()).data.id;
+		await page.context().clearCookies();
+		await login(page, 'admin');
+		await page.goto(`${site}/zero-admin/collections/key_links/-/new`);
+		await page.getByRole('combobox', { name: 'Root Code', exact: true }).click();
+		await page.getByRole('option', { name: `#${rootId}`, exact: true }).click();
+		await page.getByRole('button', { name: 'Create record', exact: true }).click();
+		await expect(page).toHaveURL(/\/collections\/key_links\/\d+$/);
+		const linkId = new URL(page.url()).pathname.split('/').pop();
+		await page.reload();
+		await expect(page.getByRole('combobox', { name: 'Root Code', exact: true }))
+			.toHaveValue(`#${rootId}`);
+		const link = await request.get(`${site}/wp-json/zero/v1/key_links/${linkId}`, {
+			headers: adminHeaders,
+		});
+		expect(link.status()).toBe(200);
+		expect((await link.json()).data.rootCode).toBe(code);
 		expect(errors).toEqual([]);
 	});
 	test('a subscriber sees explicit denial for an editor-only collection', async ({

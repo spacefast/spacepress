@@ -64,7 +64,14 @@ impl Compiler<'_, '_> {
     /// PHP compilation and cached class shapes need runtime types even when class
     /// dispatch reenters compilation from inside an alias normalization.
     pub(super) fn resolve_runtime_ann(&mut self, a: &TyAnn, module: usize) -> Result<Ty> {
-        self.resolve_ann(a, module, &HashMap::new()).map(runtime_type)
+        // A runtime annotation is a new root, even when class dispatch reaches
+        // it while another annotation is being normalized. Restore both budgets
+        // before propagating errors; class readiness guards remain independent.
+        let saved = (self.annotation_depth, self.annotation_steps);
+        (self.annotation_depth, self.annotation_steps) = (0, 0);
+        let result = self.resolve_ann(a, module, &HashMap::new()).map(runtime_type);
+        (self.annotation_depth, self.annotation_steps) = saved;
+        result
     }
 
     fn resolve_ann_inner(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, BoundType>) -> Result<Ty> {
@@ -318,10 +325,21 @@ impl Compiler<'_, '_> {
                         Some(MappedSource::Object(_)) | Some(MappedSource::Unresolved) => {
                             return err(*span, "mapped key constraints need a direct keyof of one finite object");
                         }
-                        _ => None,
+                        Some(MappedSource::None) => None,
+                        None => {
+                            return err(
+                                *span,
+                                "mapped keys need direct keyof, a direct constrained parameter or literal keys; aliased key expressions can change optional presence",
+                            );
+                        }
                     }
-                } else {
+                } else if literal_key_domain(keys) {
                     None
+                } else {
+                    return err(
+                        *span,
+                        "mapped keys need direct keyof, a direct constrained parameter or literal keys; reduced key expressions can change optional presence",
+                    );
                 };
                 let mut fields = IndexMap::new();
                 for name in names {
@@ -468,8 +486,10 @@ impl Compiler<'_, '_> {
                 }
                 let mapped_source = match &p.constraint {
                     Some(TyAnn::KeyOf(source, _)) => MappedSource::Object(self.resolve_ann(source, owner, &g)?),
-                    Some(TyAnn::Ref(..)) => MappedSource::Unresolved,
-                    _ => MappedSource::None,
+                    Some(constraint) if matches!(constraint, TyAnn::Str) || literal_key_domain(constraint) => {
+                        MappedSource::None
+                    }
+                    _ => MappedSource::Unresolved,
                 };
                 g.insert(p.name.clone(), BoundType { ty: t, mapped_source });
             }
@@ -742,6 +762,16 @@ fn check_structural_predicate(a: &Ty, b: &Ty, span: Span) -> Result<()> {
     Ok(())
 }
 
+// Restrict fresh mapped key sets to syntax whose reduction cannot hide keyof
+// provenance. In particular, `keyof T | never` is not a literal union here.
+fn literal_key_domain(a: &TyAnn) -> bool {
+    match a {
+        TyAnn::StrLit(_) | TyAnn::Never => true,
+        TyAnn::Union(parts) => parts.iter().all(literal_key_domain),
+        _ => false,
+    }
+}
+
 fn intersect(a: Ty, b: Ty, span: Span) -> Result<Ty> {
     if a == b || b == Ty::Unknown {
         return Ok(a);
@@ -767,8 +797,13 @@ fn intersect(a: Ty, b: Ty, span: Span) -> Result<Ty> {
             for (k, (t, optional)) in other {
                 let value = match fields.shift_remove(&k) {
                     Some((old, old_opt)) => {
+                        // Without exactOptionalPropertyTypes, optional members
+                        // admit undefined even when their annotation omits it.
+                        // Intersect those value domains before combining presence.
+                        let old = if old_opt { Ty::union([old, Ty::Undefined]) } else { old };
+                        let t = if optional { Ty::union([t, Ty::Undefined]) } else { t };
                         let t = intersect(old, t, span)?;
-                        if t == Ty::Never {
+                        if t == Ty::Never && !(optional && old_opt) {
                             return err(
                                 span,
                                 format!(

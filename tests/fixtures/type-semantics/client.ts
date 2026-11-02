@@ -35,3 +35,15 @@ report.flags.other;
 // @ts-expect-error the inherited id remains required after Projection and Required
 const noId: Actions["typeReport"]["output"]["snapshot"] = { note: null };
 void [classMissing, classState, classId, classUndefined, collapsed, undefinedType, nullType, requiredLabel, id, note, missing, state, key, flag, together, returned, args, input, nonnullNote, present, otherKey, published, noId];
+
+const optionalLabels: Actions["typeReport"]["output"]["labels"] = {};
+const intersectionNote: string | null = report.intersected.note;
+const requiredIntersection: Actions["typeReport"]["output"]["intersected"] = { note: null };
+const optionalConflict: Actions["typeReport"]["output"]["optionalConflict"] = {};
+// @ts-expect-error required presence retains the optional side's allowed undefined as null
+const definiteIntersection: string = report.intersected.note;
+// @ts-expect-error Required does not make the intersection property optional
+const absentIntersection: Actions["typeReport"]["output"]["intersected"] = {};
+// @ts-expect-error conflicting optional value domains admit no string
+const conflictString: Actions["typeReport"]["output"]["optionalConflict"] = { note: "value" };
+void [optionalLabels, intersectionNote, requiredIntersection, optionalConflict, definiteIntersection, absentIntersection, conflictString];

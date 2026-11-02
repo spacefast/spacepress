@@ -170,6 +170,14 @@
       "fixture": "tests/fixtures/reject-type-conditional-alias",
       "message": "conditional check expressions need",
       "guidance": "Use direct type parameters for distributive checks, or tuple-wrap alias/type-operation checks to make non-distributivity explicit. Alias reduction can otherwise change TypeScript distributivity before instantiation."
+    },
+    {
+      "id": "mapped-key-provenance",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-mapped-provenance",
+      "message": "mapped keys need direct keyof",
+      "guidance": "Use direct keyof T, a direct key parameter constrained by keyof T, or literal key domains. Aliased or reduced mapped key expressions (including Keys<T>, Identity<K> and keyof T | never) are refused before shape emission because reduction can change optional presence. Aliased or reduced key-parameter constraints are also refused."
     }
   ]
 }

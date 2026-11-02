@@ -3,6 +3,12 @@ import { DraftEntryView } from "./shapes";
 import type { Entry, Projection, Flags, Tags, Together, Absent, BoolChoice, LiteralCheck } from "./shapes";
 
 type Draft = Entry;
+type Labels<T> = { [P in keyof T]: string };
+type Intersected = { note?: string } & { note: string | undefined };
+type OptionalConflict = { note?: string } & { note?: number };
+const labels: Labels<{ note?: number }> = {};
+const intersected: Intersected = { note: undefined };
+const optionalConflict: OptionalConflict = {};
 type Snapshot = Required<Pick<Draft, "id" | "note">>;
 type Copy<T> = { [K in keyof T]: T[K] };
 type Mandatory<T> = { [K in keyof T]-?: T[K] };
@@ -12,6 +18,9 @@ type Values<T> = T[keyof T];
 type Box<T> = { value: T };
 type Report = {
   classView: DraftEntryView;
+  labels: Labels<{ note?: number }>;
+  intersected: Required<Intersected>;
+  optionalConflict: OptionalConflict;
   snapshot: Snapshot;
   flags: Flags<"ready" | "visible">;
   state: State;
@@ -53,6 +62,9 @@ export default defineConfig({
         const projectedOptional: Projection<Draft, "note"> = {};
         return {
           classView: boxed.value,
+          labels,
+          intersected,
+          optionalConflict,
           snapshot,
           flags,
           state: "draft",

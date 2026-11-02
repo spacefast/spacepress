@@ -183,3 +183,11 @@ Status: **refused**. Diagnostic: `Z4001`.
 Use direct type parameters for distributive checks, or tuple-wrap alias/type-operation checks to make non-distributivity explicit. Alias reduction can otherwise change TypeScript distributivity before instantiation.
 
 [Evidence](../tests/fixtures/reject-type-conditional-alias)
+
+## mapped-key-provenance
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Use direct keyof T, a direct key parameter constrained by keyof T, or literal key domains. Aliased or reduced mapped key expressions (including Keys<T>, Identity<K> and keyof T | never) are refused before shape emission because reduction can change optional presence. Aliased or reduced key-parameter constraints are also refused.
+
+[Evidence](../tests/fixtures/reject-type-mapped-provenance)

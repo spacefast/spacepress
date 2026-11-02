@@ -627,7 +627,7 @@ code with strict TypeScript as well as `zero check`.
 |---|---|---|
 | Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused. Class references use the separate nominal class dispatch described below; finite object operations do not model class prototype keys. |
 | Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation normalizes annotation-only `undefined`/`void` to null at every runtime boundary, including reentrant class compilation. This does not add generic classes or class-prototype type introspection. |
-| Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Impossible object intersections and function/array intersections are refused. |
+| Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Optional properties include implicit `undefined` in overlapping value domains under strict TypeScript without `exactOptionalPropertyTypes`; required presence does not remove that value. Conflicting optional domains still allow absence. Impossible object intersections and function/array intersections are refused. |
 | Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
 | `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |
 | Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads include `undefined` during normalization and become nullable at the PHP boundary. |
@@ -637,14 +637,14 @@ code with strict TypeScript as well as `zero check`.
 | `Pick`, `Omit` | Partial | One finite object and finite string key unions; `Pick` validates every key. They do not distribute across object unions. |
 | `NonNullable` | Partial | Concrete types; removes both `null` and `undefined` before PHP normalization. `unknown` and `void` are refused. |
 | `Extract`, `Exclude`, conditional types | Partial | Concrete scalar, array/tuple and finite object comparisons, including structural object matching. Direct naked bound parameters distribute over unions (including boolean); tuple-wrapped checks do not. Check positions must be direct parameters, scalars or object/array/tuple wrappers; aliases and other type operations in check position need an explicit tuple wrapper, because they can change distributivity before instantiation. `null` and `undefined` remain distinct until the PHP boundary. `infer`, unresolved `unknown`, `void`, function/runtime predicates and boxed primitive/array property matching are refused. |
-| Mapped types | Partial | Finite string key domains; optional modifiers and homomorphic identity mappings preserve presence. `-?` requires a homomorphic identity mapping. Homomorphic mappings need one finite object; key parameters constrained by a direct `keyof T` preserve presence too. Aliased key constraints are refused. Key remapping, template literal expansion, symbols and open maps are refused. |
+| Mapped types | Partial | Finite string key domains; optional modifiers and homomorphic identity mappings preserve presence. `-?` requires a homomorphic identity mapping. Homomorphic mappings need one finite object; key parameters constrained by a direct `keyof T` preserve presence too. Fresh key sets use literal unions (optionally including `never`), or direct parameters constrained by `string` or literal unions. Aliased or reduced key expressions and constraints, such as `Keys<T>`, `Identity<K>`, `keyof T | never` and `K | never`, are refused: their reductions can hide optional presence. Rewrite them as direct `keyof T` or a direct key parameter constrained by `keyof T`. Key remapping, template literal expansion, symbols and open maps are refused. |
 | `ReturnType`, `Parameters` | Partial | Concrete function type annotations with required parameters. Generic, optional/rest parameter and overloaded function type transforms are refused. General `typeof` queries remain limited to the existing schema inference operations. |
 | `Awaited` | Partial | Nested `Promise` wrappers ending in concrete scalar/array values. Thenable-object, union and `unknown` normalization are refused. |
 | Modules | Existing subset | Direct named type imports from relative TS modules, with arguments resolved in the caller's module and bodies/defaults in the declaration's module. No new npm, namespace-import, type re-export/barrel or module-augmentation support. |
 
 Normalization is bounded: 96 nested annotation levels, 16,384 resolution steps
-per root annotation, and 512 keys per finite key operation. Recursive types
-produce a located diagnostic. Unsupported types are not replaced with
+per root annotation (including independent roots reached during class
+compilation), and 512 keys per finite key operation. Recursive types produce a located diagnostic. Unsupported types are not replaced with
 `unknown` or an unrestricted string key.
 
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
@@ -653,7 +653,7 @@ with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
 
 ```json
-{"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"missing":null,"label":"draft"},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
+{"classView":{"entry":{"id":7,"title":"Hello","state":"draft","active":true},"missing":null,"label":"draft"},"labels":{},"intersected":{"note":null},"optionalConflict":{},"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
 ```
 
 The fixture also imports a derived class with public constructor parameter
@@ -662,6 +662,14 @@ properties typed through `Projection`, a `Required` snapshot result, and an
 object alias before construction; this exercises class compilation reached
 from type normalization. The generated client exposes `classView.missing: null`
 and `classView.label: "draft"`, and omits class methods at the JSON boundary.
+
+It also captures `{ note: undefined }` under
+`{ note?: string } & { note: string | undefined }`. The required output property
+is `note: string | null`, including after `Required` because its presence was
+already required. In contrast, `Required<{ label?: string | undefined }>`
+removes optional undefined and keeps `label: string`. Direct mapped labels
+retain optional presence and return `{}`. Conflicting optional intersections
+also accept `{}` and admit only undefined (PHP null) when present.
 
 The generated output type retains `state: "draft"`, `key: "common"`,
 `snapshot: { id: number; note: string | null }`, and `missing: string | null`.

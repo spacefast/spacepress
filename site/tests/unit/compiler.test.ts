@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
 import { repo, zeroBinary, wasmPath } from "./helpers.ts";
@@ -44,6 +45,7 @@ function browserCheck(request: Request) {
 }
 
 const compiler = await Compiler.load(readFileSync(wasmPath()));
+const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 test("a config that builds on the command line builds in the browser, to the same outputs", () => {
   const dir = path.join(repo, "examples/pantry");
@@ -174,10 +176,38 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     for (const [name, text] of Object.entries(output.client)) {
       assert.equal(text, readFileSync(path.join(dir, "zero/client", name), "utf8"));
     }
-    const typed = spawnSync("tsc", ["-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
+    const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(typed.status, 0, typed.stdout + typed.stderr);
-    const client = spawnSync("tsc", ["--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
+    const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
+
+    // Each annotation root fits its own budget. Compiling C from the nested
+    // annotation must accept the same program as compiling it from new C first.
+    const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
+    const nestedType = "Box<".repeat(75) + "C" + ">".repeat(75);
+    const nestedValue = "{ value: ".repeat(75) + "new C()" + " }".repeat(75);
+    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "zero";
+type Box<T> = { value: T };
+${aliases}
+class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
+export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+  ${prime ? "new C();" : ""}
+  const x: ${nestedType} = ${nestedValue}; return x;
+} }) } });`;
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
+      include: ["zero.config.ts"],
+    }));
+    for (const prime of [false, true]) {
+      const source = budgetSource(prime);
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, true, result.envelope);
+      assert.ok(result.output);
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

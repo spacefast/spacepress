@@ -41,7 +41,7 @@ fn rejects(fixture: &str, message: &str, at: &str) {
 fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-class",
-        "Zero code doesn't support classes",
+        "abstract, ambient or generic classes",
         "zero.config.ts:2:1",
     );
     rejects(

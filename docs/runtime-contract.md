@@ -134,6 +134,37 @@ the receiver and key before the value; read-modify-write operations read the
 old value before evaluating the right-hand side. These are runtime semantics,
 not a blanket refusal of writes into array elements.
 
+## Compiled classes
+
+Generated class methods are plain `ZeroApp` functions with an explicit first
+receiver argument. They use `JsObject` handles for instances, so aliases,
+closures, member mutations and strict identity use the existing object model.
+`JsObject::$class` is readonly descriptor metadata; only `JsObject::$p` contains
+enumerable own fields. PHP inheritance and PHP method binding are not used.
+
+`JsClass` descriptors contain the parent, constructor and ordered field
+initializer closures, instance/static method tables, and a static `JsObject`.
+Generated descriptor factory functions cache one descriptor per class per process.
+The compiler emits these runtime operations:
+
+- `construct(...$args): JsObject` allocates a fresh handle and initializes it.
+- `initialize(JsObject $instance, array $args): void` runs a constructor on the
+  existing receiver. Base fields precede constructor defaults; generated derived
+  constructors call the parent's initializer, then their own field initializer.
+- `invoke($receiver, $name, $args, $static): mixed` selects the actual receiver's
+  descriptor. `invokeOn(...)` starts at the lexical parent for `super` calls while
+  retaining that receiver. Methods receive the hidden receiver explicitly.
+- `get`, `has` and `set` implement static field inheritance. Reads search parents;
+  writes create an own field on the actual class descriptor.
+- `isInstance($value, $expected): bool` walks descriptor ancestry, never field
+  shapes. Plain/cloned/deserialized objects do not acquire class identity.
+
+`Js::prop`, `has` and `set` also accept descriptors for compiled static field
+updates. Spread, object keys and JSON visit own properties only. `Js::clone`
+and `Seam` detachment copy the own-field graph into plain handles; descriptors
+and method tables are not traversed or serialized. Generated client types erase
+instance identity recursively at the wire boundary.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -495,7 +526,8 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 Static methods on `final class Js`. Value model: JS `number` = PHP
 `int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
 arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
-with identity; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
+with identity; class instances are `JsObject` handles with a non-enumerable
+`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.

@@ -15,6 +15,7 @@ pub type Arr = Rc<RefCell<Vec<Value>>>;
 
 #[derive(Clone, Debug)]
 pub enum Value {
+    Class(Rc<ClassValue>),
     Undef,
     Null,
     Bool(bool),
@@ -37,6 +38,14 @@ pub enum Value {
     Env(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
+}
+
+#[derive(Debug)]
+pub struct ClassValue {
+    pub class: Rc<crate::ir::Class>,
+    pub base: Option<Rc<ClassValue>>,
+    pub env: Rc<Scope>,
+    pub statics: IndexMap<String, Value>,
 }
 
 #[derive(Debug)]
@@ -241,7 +250,7 @@ impl Value {
             Value::Bool(_) => "boolean",
             Value::Num(_) => "number",
             Value::Str(_) => "string",
-            Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
+            Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
             _ => "object",
         }
     }
@@ -249,6 +258,7 @@ impl Value {
     /// A short description for error messages.
     pub fn describe(&self) -> String {
         match self {
+            Value::Class(c) => format!("class {}", c.class.name),
             Value::Undef => "undefined".into(),
             Value::Null => "null".into(),
             Value::Bool(b) => b.to_string(),
@@ -301,6 +311,7 @@ impl Value {
 
     pub fn strict_eq(&self, other: &Value) -> bool {
         match (self, other) {
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
             (Value::Undef, Value::Undef) | (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Num(a), Value::Num(b)) => a == b,

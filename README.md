@@ -265,6 +265,7 @@ sure WP-Cron or a real cron reaches the site.
 
 | Example | Shows |
 |---|---|
+| [`examples/kitchen-sink`](examples/kitchen-sink) | the playground default: WordPress pages, events, users, custom fields, settings, media, translations, jobs and plugins |
 | [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
 | [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, translations, with a browser page |
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |

@@ -1,0 +1,94 @@
+---
+import path from "node:path";
+import { readFileSync } from "node:fs";
+import Page from "../layouts/Page.astro";
+import { example, repo } from "../lib/examples.ts";
+import { playgroundExamples, wordpressFiles } from "../lib/playground-catalog.ts";
+
+const examples = Object.fromEntries(await Promise.all(
+  playgroundExamples.map(async ({ name }) => [name, (await example(name)).files]),
+));
+const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Page title="Playground" description="Edit a Zero config and see the complete generated PHP, SQL migrations and TypeScript client in your browser.">
+  <main class="playground" data-wasm={`${base}/zero.wasm`}>
+    <div class="intro">
+      <div>
+        <h1>Config in. PHP out.</h1>
+        <p class="lede">Edit the source and see exactly what Zero generates. Everything compiles in your browser.</p>
+      </div>
+      <div class="example-controls">
+        <label for="example">Example</label>
+        <select id="example">{playgroundExamples.map(({ name, label }) => <option value={name}>{label}</option>)}</select>
+        <button id="reset" type="button">Reset example</button>
+      </div>
+    </div>
+    <p id="example-description" class="note">{playgroundExamples[0].description}</p>
+    <nav class="wordpress-links" aria-label="WordPress integration">
+      <span>Inside WordPress</span>
+      {wordpressFiles.slice(0, 8).map(({ path: file, label }) => <button type="button" data-runtime-file={file}>{label}</button>)}
+    </nav>
+    <p id="compile-status" role="status" aria-live="polite" data-state="loading">Loading the compiler…</p>
+    <pre id="diagnostics" role="alert" hidden></pre>
+    <div class="editors">
+      <section class="editor-pane" aria-labelledby="source-heading">
+        <div class="pane-heading">
+          <h2 id="source-heading">Source</h2>
+          <label class="sr-only" for="source-file">Source file</label>
+          <select id="source-file"></select>
+        </div>
+        <label class="sr-only" for="source">Source code</label>
+        <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" disabled></textarea>
+      </section>
+      <section class="editor-pane" aria-labelledby="output-heading">
+        <div class="pane-heading">
+          <h2 id="output-heading">Output &amp; WordPress</h2>
+          <label class="sr-only" for="generated-file">Generated file</label>
+          <select id="generated-file" disabled></select>
+          <button id="download" type="button" disabled>Download file</button>
+        </div>
+        <p id="file-description" class="file-description">Generated from your config. Changes as you edit.</p>
+        <label class="sr-only" for="generated">Generated code</label>
+        <textarea id="generated" readonly spellcheck="false" wrap="off" placeholder="Generated files appear here after a successful compile."></textarea>
+      </section>
+    </div>
+    <p class="note">The file menu includes full generated PHP, SQL and TypeScript, plus the shared WordPress runtime and plugin templates. Runtime files are shared by apps; generated files change with your config.</p>
+    <noscript>Enable JavaScript to edit and compile a config.</noscript>
+  </main>
+  <script id="playground-examples" type="application/json" set:html={JSON.stringify(examples).replace(/</g, "\\u003c")} />
+  <script id="playground-runtime" type="application/json" set:html={JSON.stringify(runtime).replace(/</g, "\\u003c")} />
+  <script src="../lib/playground.ts"></script>
+</Page>
+
+<style>
+  main.playground { max-width: 100rem; }
+  .intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+  .example-controls, .pane-heading { display: flex; align-items: center; gap: 0.65rem; }
+  .example-controls { flex-wrap: wrap; padding-top: 0.25rem; font-size: 0.9rem; }
+  .wordpress-links { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; font-size: 0.8rem; }
+  .wordpress-links span { color: var(--muted); margin-right: 0.2rem; }
+  .file-description { padding: 0.6rem 0.8rem; margin: 0; color: var(--muted); font-size: 0.8rem; min-height: 3.7rem; border-bottom: 1px solid var(--line); }
+  select, button { border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; padding: 0.45rem 0.6rem; }
+  select { min-width: 0; }
+  button { cursor: pointer; white-space: nowrap; }
+  button:hover:enabled { background: var(--tint); }
+  button:disabled { cursor: default; opacity: 0.5; }
+  :is(button, select, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #compile-status { color: var(--muted); font-size: 0.9rem; margin: 1.2rem 0 0.8rem; }
+  #compile-status[data-state="ok"] { color: #166534; }
+  #compile-status[data-state="diagnostics"], #compile-status[data-state="failed"] { color: #a52222; }
+  #diagnostics { margin-bottom: 1rem; border-color: #e8b5b5; background: #fff7f7; white-space: pre-wrap; max-height: 14rem; }
+  .editors { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+  .editor-pane { min-width: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .pane-heading { min-height: 3.5rem; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); background: var(--tint); flex-wrap: wrap; font-size: 0.8rem; }
+  .pane-heading h2 { font-size: 0.9rem; margin: 0; }
+  .pane-heading select { flex: 1; font-family: var(--mono); }
+  textarea { display: block; width: 100%; height: 65dvh; min-height: 28rem; resize: vertical; border: 0; border-radius: 0; padding: 1rem; background: var(--paper); color: var(--ink); font: 0.8rem/1.65 var(--mono); tab-size: 2; }
+  #generated { background: #fafaf9; }
+  .note { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  @media (max-width: 64rem) { .intro { flex-direction: column; gap: 0.5rem; } }
+  @media (max-width: 48rem) { .editors { grid-template-columns: minmax(0, 1fr); } textarea { height: 28rem; min-height: 18rem; } }
+</style>

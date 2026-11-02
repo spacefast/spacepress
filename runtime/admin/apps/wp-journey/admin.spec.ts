@@ -265,6 +265,18 @@ if (!subdir) {
 		});
 		expect(link.status()).toBe(200);
 		expect((await link.json()).data.rootCode).toBe(code);
+		expect(errors).toEqual([]);
+	});
+	test('native and plain JSON drafts survive validation, undo and navigation', async ({
+		page,
+		request,
+	}) => {
+		const errors: string[] = [];
+		page.on('pageerror', (e) => errors.push(e.message));
+		const adminHeaders = {
+			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
+		};
+		await login(page, 'admin');
 		// Invalid JSON is an unsaved draft even when core-data has no edits.
 		const event = await request.post(`${site}/wp-json/zero/v1/dossier`, {
 			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true }, entries: [], sections: [{ layout: 'first', configuration: { initial: true } }] },

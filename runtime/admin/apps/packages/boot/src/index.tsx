@@ -1,4 +1,3 @@
-import './media-api';
 export { default as init } from './components/app';
 export {
 	updateMenuItem,

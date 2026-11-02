@@ -1,5 +1,5 @@
 import { registerPlugin } from '@wordpress/plugins';
-import { PluginDocumentSettingPanel } from '@wordpress/editor';
+import { PluginDocumentSettingPanel, store as editorStore } from '@wordpress/editor';
 import { useParams } from '@wordpress/route';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -20,7 +20,15 @@ function ContentFieldsPanel() {
 		from: '/collections/$collection/$slug',
 		shouldThrow: false,
 	});
+	const { postId, postType } = useSelect((select) => ({
+		postId: select(editorStore).getCurrentPostId(),
+		postType: select(editorStore).getCurrentPostType(),
+	}), []);
 	if (!params?.collection || !params.slug) return null;
+	// PluginArea also renders before the native editor mounts. Resolving its record
+	// then would cache empty blocks before the editor's block types are registered.
+	if (String(postId) !== params.slug || postType !== native(params.collection)?.postType)
+		return null;
 	return <DocumentFields collection={params.collection} id={params.slug} />;
 }
 function DocumentFields({

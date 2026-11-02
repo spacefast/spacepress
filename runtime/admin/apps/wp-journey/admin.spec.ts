@@ -64,6 +64,16 @@ if (!subdir) {
 	}) => {
 		const errors: string[] = [];
 		page.on('pageerror', (e) => errors.push(e.message));
+		const adminHeaders = {
+			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
+		};
+		const authorName = `Browser author ${Date.now()}`;
+		const author = await request.post(`${site}/wp-json/zero/v1/authors`, {
+			headers: adminHeaders,
+			data: { name: authorName, email: `browser-${Date.now()}@example.com` },
+		});
+		expect(author.status(), await author.text()).toBe(201);
+		const authorId = (await author.json()).data.id;
 		await login(page, 'editor');
 		await page.getByRole('link', { name: 'Posts', exact: true }).last().click();
 		await page.getByRole('button', { name: 'New Posts', exact: true }).click();
@@ -92,6 +102,32 @@ if (!subdir) {
 		await page
 			.getByRole('textbox', { name: 'Excerpt', exact: true })
 			.fill('Edited in native Fields');
+		await page.getByRole('combobox', { name: 'Author Id', exact: true }).fill(authorName);
+		await page.getByRole('option', { name: authorName, exact: true }).click();
+		await page.getByRole('button', { name: 'Block Inserter', exact: true }).click();
+		await page.getByRole('option', { name: 'Image', exact: true }).click();
+		const chooser = page.waitForEvent('filechooser');
+		await editor.getByRole('button', { name: 'Upload', exact: true }).click();
+		const uploaded = page.waitForResponse(
+			(r) => new URL(r.url()).pathname.endsWith('/wp/v2/media') &&
+				r.request().method() === 'POST'
+		);
+		await (await chooser).setFiles({
+			name: `native-browser-${Date.now()}.png`,
+			mimeType: 'image/png',
+			buffer: Buffer.from(
+				'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+				'base64'
+			),
+		});
+		const upload = await uploaded;
+		expect(upload.status(), await upload.text()).toBe(201);
+		const media = await upload.json();
+		expect(media).toMatchObject({ type: 'attachment', media_type: 'image' });
+		await expect(editor.locator('figure img')).toHaveAttribute('src', media.source_url);
+		await page.getByRole('button', { name: 'Close Block Inserter', exact: true }).click();
+		await page.getByRole('textbox', { name: 'Alternative text', exact: true })
+			.fill('Native browser image');
 		const save = page.getByRole('button', { name: 'Save draft', exact: true });
 		await expect(save).toBeEnabled();
 		const saved = page.waitForResponse(
@@ -106,6 +142,11 @@ if (!subdir) {
 		await expect(
 			editor.getByRole('textbox', { name: 'Add title', exact: true })
 		).toHaveText(`${title} edited`);
+		await expect(editor.getByRole('img', { name: 'Native browser image', exact: true }))
+			.toHaveAttribute('src', media.source_url);
+		const image = await request.get(media.source_url);
+		expect(image.status()).toBe(200);
+		expect(image.headers()['content-type']).toContain('image/png');
 		await page.screenshot({
 			path: test.info().outputPath('native-editor.png'),
 		});
@@ -119,6 +160,7 @@ if (!subdir) {
 		expect((await persisted.json()).data).toMatchObject({
 			title: `${title} edited`,
 			excerpt: 'Edited in native Fields',
+			authorId,
 		});
 		// The table uses the Zero endpoint and a readable cross-kind relation picker.
 		await page.goto(`${site}/zero-admin/collections/comments`);
@@ -174,9 +216,6 @@ if (!subdir) {
 			body: 'Edited table record',
 		});
 		// A reference may name a unique column instead of the target's primary key.
-		const adminHeaders = {
-			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
-		};
 		const code = Date.now();
 		const root = await request.post(`${site}/wp-json/zero/v1/key_roots`, {
 			headers: adminHeaders, data: { code },

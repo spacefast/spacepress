@@ -253,8 +253,11 @@ export async function list(
 	const q = new URLSearchParams();
 	if (native(c.name)) {
 		q.set('context', 'view');
-		if (['author', 'editor', 'admin'].includes(bootstrap().role))
-			q.set('status', 'publish,draft,pending,private,future');
+		const statuses = c.columns.status?.options ?? [];
+		if (statuses.length && ['author', 'editor', 'admin'].includes(bootstrap().role))
+			q.set('status', statuses.map((status) =>
+				status === 'published' ? 'publish' : status === 'scheduled' ? 'future' : status
+			).join(','));
 		q.set('per_page', String(opts.perPage));
 		q.set('page', String(opts.page));
 		if (opts.search) q.set('search', opts.search);

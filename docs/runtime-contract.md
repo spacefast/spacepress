@@ -101,36 +101,38 @@ Column keys are also the SQL column names (always double-quoted in SQL).
 Generated. `namespace ZeroApp;`. Contains plain PHP functions. The runtime
 calls them by the names in schema.php (prefix `\ZeroApp\`):
 
-| Hook | Call | Return handling |
+| Compiled callback | Call | Return handling |
 |---|---|---|
-| beforeCreate | `$r = $fn($data)` | if `is_array($r)`, `$data = $r` |
-| afterCreate | `$fn($row)` | ignored |
-| beforeUpdate | `$r = $fn($patch, $existing)` | if `is_array($r)`, `$patch = $r` |
-| afterUpdate | `$fn($row, $previous)` | ignored |
-| beforeDelete | `$fn($row)` | ignored |
-| afterDelete | `$fn($row)` | ignored |
-| default fn / onUpdate fn | `$v = $fn()` | the value |
-| action handler | `$out = $fn($input)` | returned as `data` |
+| beforeCreate | `$r = $fn($data, $ctx)` | a `JsObject` replaces data; otherwise retain mutations to `$data` |
+| afterCreate | `$fn($row, $ctx)` | ignored |
+| beforeUpdate | `$r = $fn($patch, $existing, $ctx)` | a `JsObject` replaces the patch; otherwise retain mutations to `$patch` |
+| afterUpdate | `$fn($row, $previous, $ctx)` | ignored |
+| beforeDelete / afterDelete | `$fn($row, $ctx)` | ignored |
+| default fn / onUpdate fn | `$v = $fn()` | converted through `Seam::generated` for the column |
+| action handler | `$out = $fn($input)` | converted to wire values and returned as `data` |
 
-The runtime always passes variables (never literals), because a compiled
-function may declare a by-reference parameter (`array &$data`) when the
-source mutates it.
+A string in a schema callback slot names compiled code. `Seam` converts its
+schema-shaped input and context to `JsObject` / `JsArray` handles. Each callback
+receives a fresh graph; before-hooks' `$data` / `$patch` shares identity with
+`$ctx->p['data']`, so in-place mutations are retained without a replacement
+return. After-hook and delete-hook return values are ignored. Native non-string
+callables retain PHP array inputs and contexts; before-hooks replace data or
+patches only when their return is a native array.
 
-Captured mutating object parameters have a separate local binding whose fields
-share storage with the supplied object. Replacing the caller's variable does
-not retarget the capture; field mutations remain visible. This requires a fixed
-object shape with required fields. Capturing a mutating array, open record, or
-object with optional fields is rejected with a located diagnostic; capture the
-needed scalar values instead. Mutating `for…of` bindings use the same fixed
-object representation; array/record/optional-field and destructured mutations
-must rebuild the array instead (for example with `map`). Object spread/rest copy
-field values, and loop-local declarations receive a fresh binding on each execution. A captured
-`for (let …)` header variable gets a fresh `Js::cell` per iteration, which
-copies its value, so it must be primitive; an object or array one is rejected.
-Every write into or through an array element (`list[i] = v`, `list[i] += v`,
-`list[i]++`, `list[i].x = v`) is rejected: writing past the end would turn the
-PHP array into an object, and writing through a missing element must throw
-before the value runs. Both wait for arrays as handles (design #79).
+Compiled object and array parameters pass handles by value: member mutations
+are shared, but rebinding a parameter does not replace the caller's binding.
+Captured bindings retain that JavaScript behavior, including arrays, open
+records and optional fields. Object spread/rest copies field values shallowly.
+Loop-local declarations receive a fresh binding on each execution, and a
+captured `for (let …)` header variable receives a fresh `Js::cell` per iteration.
+The cell copies its value; copying a handle preserves the referenced container.
+
+Arrays remain dense. Indexed writes may replace an existing element or append
+at the current length; writes past the end throw a catchable `RangeError`.
+Writing through a missing receiver throws `TypeError`. Assignments evaluate
+the receiver and key before the value; read-modify-write operations read the
+old value before evaluating the right-hand side. These are runtime semantics,
+not a blanket refusal of writes into array elements.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

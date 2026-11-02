@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Zero / A working example</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <a class="brand" href="./">zero<span> / field notes</span></a
+      ><a href="/zero-admin/">Open the editor ↗</a>
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">A working example · WordPress + Zero</p>
+        <h1 id="site-title">The small things,<br />shipped.</h1>
+        <p id="description">
+          A real publication. Edit a story, complete a task, or try a little
+          TypeScript running as PHP.
+        </p>
+        <div class="actions">
+          <a class="button" href="/zero-admin/">Try the admin ↗</a
+          ><a href="#try-it">Run some code ↓</a>
+        </div>
+        <p class="hint">
+          Local demo login: <code>editor</code> / <code>zero-test-editor</code>
+        </p>
+      </section>
+      <section aria-labelledby="stories-title">
+        <div class="section-title">
+          <h2 id="stories-title">From the notebook</h2>
+          <button id="refresh" type="button">Refresh from Zero ↻</button>
+        </div>
+        <p id="load-status" role="status">Reading from the API…</p>
+        <div id="stories" class="stories"></div>
+      </section>
+      <section class="workbench" aria-labelledby="workbench-title">
+        <div>
+          <p class="eyebrow">Two kinds of data, one app</p>
+          <h2 id="workbench-title">A story has a to-do list.</h2>
+          <p>
+            Stories use WordPress posts and the native block editor. Tasks live
+            in a SQL table. The relation joins them through Zero.
+          </p>
+          <a href="/zero-admin/">Edit both in the admin ↗</a>
+        </div>
+        <div id="tasks" class="task-list"></div>
+      </section>
+      <section id="try-it" class="try-it">
+        <div>
+          <p class="eyebrow">TypeScript → PHP</p>
+          <h2>Give it a headline.</h2>
+          <p>
+            This form calls a compiled action. A TypeScript class trims the
+            title and generates a slug on the PHP backend.
+          </p>
+          <form id="headline-form">
+            <label for="headline">Your headline</label>
+            <div class="input-row">
+              <input
+                id="headline"
+                name="title"
+                value="  A little less boilerplate  "
+                required
+                maxlength="120"
+              /><button class="button" type="submit">Run action ↗</button>
+            </div>
+          </form>
+          <pre id="result" role="status">Ready when you are.</pre>
+        </div>
+        <div class="code-card">
+          <span>zero.config.ts · compiled at build time</span>
+          <pre><code>class Headline {
+  constructor(public text: string) {}
+  preview() {
+    const title = this.text.trim();
+    return {
+      title,
+      slug: title.toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, ""),
+      characters: title.length,
+    };
+  }
+}</code></pre>
+        </div>
+      </section>
+      <section class="tour">
+        <p class="eyebrow">A five-minute tour</p>
+        <h2>Go change something.</h2>
+        <ol>
+          <li>
+            <strong>Edit a story.</strong> Sign in as editor. Open Stories,
+            change a title in the native editor, save, and refresh this page.
+          </li>
+          <li>
+            <strong>Try structured fields.</strong> Open the Fields panel: a
+            group, repeater, layout blocks, JSON, and an image picker all come
+            from the config.
+          </li>
+          <li>
+            <strong>Follow the relation.</strong> Open Tasks in the admin.
+            Change a task or its story, then refresh this page.
+          </li>
+          <li>
+            <strong>Check the boundary.</strong> Public readers can read; edits
+            and editor notes require an editor. The command below checks this
+            with real HTTP requests.
+          </li>
+        </ol>
+        <div class="command">
+          <code>node examples/showcase/run.mjs check</code
+          ><button id="copy-check" type="button">Copy</button>
+        </div>
+      </section>
+      <section class="sources">
+        <h2>See what shipped.</h2>
+        <p>The full config and emitted PHP come from this build.</p>
+        <details>
+          <summary>TypeScript config</summary>
+          <pre id="source-ts"></pre>
+        </details>
+        <details>
+          <summary>Compiled PHP</summary>
+          <pre id="source-php"></pre>
+        </details>
+      </section>
+    </main>
+    <footer>
+      Built with Zero. Local disk media · disposable WordPress + MariaDB.<br />S3
+      has its own Garage acceptance lane; this demo uses local storage.
+    </footer>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

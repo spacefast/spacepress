@@ -116,6 +116,12 @@ Composer.
 
 ## Quick start
 
+Want a seeded app to click through? Run `node examples/showcase/run.mjs` from
+this checkout. It builds Zero, starts a real WordPress site, and prints a demo
+and admin URL. [The showcase](examples/showcase/README.md) includes structured
+fields, collection/table relations, image delivery and a compiled class/action,
+with a repeatable HTTP smoke check.
+
 There's no binary release or npm package yet. Build the compiler from source
 with Rust 1.96 (the checkout pins it). Booting the throwaway WordPress needs
 Docker with Compose, plus `bash` 4+, `python3`, `curl`, `sha256sum` and a PHP

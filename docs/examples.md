@@ -1,14 +1,20 @@
 # The examples
 
 Each example's committed `zero/client/` and `zero/migrations/` are what
-`zero build` produces, so a fresh build changes nothing.
+`zero build` produces, so a fresh build changes nothing. The showcase instead
+builds its disposable app under `.zero/showcase/`, leaving its sources unchanged.
 
 | Example | What it shows |
 | --- | --- |
+| [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |
+
+Start the showcase with `node examples/showcase/run.mjs`. It prints the local
+site and admin URLs. Run `node examples/showcase/run.mjs check` for its HTTP
+smoke check, or `node examples/showcase/run.mjs down` to remove the demo stack.
 
 ## The blog
 

@@ -53,6 +53,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - run: target/debug/zero check examples/showcase
 
   php:
     runs-on: ubuntu-24.04
@@ -150,6 +151,7 @@ jobs:
       - run: tsc -p types/zero/tests
       - run: tsc -p examples/pantry
       - run: tsc -p examples/blog
+      - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
       - run: node --test runtime/client/index.test.ts
 

@@ -90,6 +90,21 @@ function zero_admin_get_boot_context() {
 	);
 }
 
+// Transport comes from registered native types, independently of editor preferences.
+$zero_admin_native = array();
+foreach ( \Zero\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
+    $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
+    if ( $type && $type->show_in_rest ) {
+        $zero_admin_native[ $name ] = array( 'postType' => $type->name, 'metaPrefix' => $collection['wp']['metaPrefix'] ?? 'zero_', 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
+    }
+}
+wp_add_inline_script( 'wp-api-fetch', 'window.zeroAdmin = ' . wp_json_encode( array(
+    'native' => $zero_admin_native,
+    'readable' => zero_admin_navigation(),
+    'role' => \Zero\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
+    'mount' => zero_admin_url(),
+), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
+
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.
 $zero_admin_preload_paths = array(
 	// Config for the `postType` entity kind (fetched by Gutenberg `loadPostTypeEntities`).

@@ -11,17 +11,8 @@ import { harness, wp } from "./env.ts";
 const site = harness.url;
 const content = fileURLToPath(new URL("./.wp-content/", import.meta.url));
 
-/** A WordPress login cookie for a harness user, as a browser would carry it. */
-async function loginCookie(role: "editor" | "subscriber"): Promise<string> {
-  const res = await fetch(`${site}/wp-login.php`, {
-    method: "POST", redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
-    body: new URLSearchParams({ log: role, pwd: `zero-test-${role}`, testcookie: "1" }),
-  });
-  const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-  assert.ok(cookie.includes("wordpress_logged_in"), `${role} signed in: ${res.status}`);
-  return cookie;
-}
+import { loginCookie } from "./login.ts";
+
 
 test("the built artifact ships zero-admin and the harness activated it after the app", () => {
   const manifest = JSON.parse(readFileSync(`${content}zero-manifest.json`, "utf8"));
@@ -37,10 +28,17 @@ test("/zero-admin/ asks anonymous visitors to sign in and serves the committed b
   const anon = await fetch(`${site}/zero-admin/`, { redirect: "manual" });
   assert.equal(anon.status, 302);
   assert.ok(anon.headers.get("location")!.startsWith(`${site}/wp-login.php?`), anon.headers.get("location")!);
+  const deepLink = `${site}/zero-admin/collections/posts?search=Draft`;
+  const deep = await fetch(deepLink, { redirect: "manual" });
+  assert.equal(deep.status, 302);
+  assert.equal(new URL(deep.headers.get("location")!).searchParams.get("redirect_to"), deepLink);
 
   for (const role of ["editor", "subscriber"] as const) {
-    const page = await fetch(`${site}/zero-admin/`, { headers: { cookie: await loginCookie(role) } });
+    const cookie = await loginCookie(site, role);
+    assert.equal(/(?:^|; )wordpress_(?:sec_)?[a-f0-9]+=/.test(cookie), false, 'frontend does not receive admin-scoped cookies');
+    const page = await fetch(`${site}/zero-admin/`, { headers: { cookie } });
     assert.equal(page.status, 200, `${role} is served the page`);
+    assert.match(page.headers.get('cache-control') ?? '', /no-cache|no-store/);
     const html = await page.text();
     assert.ok(html.includes('id="zero-admin-app"'), `${role} gets the app shell`);
     // The import map names the built boot module from the plugin's own build directory: the page

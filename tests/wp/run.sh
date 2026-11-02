@@ -36,6 +36,7 @@ rsync -a --delete "$build_app/.zero/wp-content/" tests/wp/.wp-content/
 cat "$here/.harness.json"
 
 node --test --test-concurrency=1 "$here"/*.test.ts
+"$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.
 "$here/admin/subdir-run.sh"
 # Lane M: an original Zero 0.8 site migrated in place, on a fresh stack running the migrated app.

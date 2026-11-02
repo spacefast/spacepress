@@ -17,7 +17,9 @@
 		"@wordpress/element": "catalog:",
 		"@wordpress/i18n": "catalog:",
 		"@wordpress/media-utils": "catalog:",
-		"@wordpress/notices": "catalog:"
+		"@wordpress/notices": "catalog:",
+		"@wordpress/api-fetch": "catalog:",
+		"@wordpress/data": "catalog:"
 	},
 	"license": "GPL-2.0-or-later"
 }

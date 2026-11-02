@@ -1,7 +1,19 @@
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginDocumentSettingPanel } from '@wordpress/editor';
 import { useParams } from '@wordpress/route';
-import CollectionDocument from '../../../../../routes/collection-edit/stage';
+import { useSelect, useDispatch } from '@wordpress/data';
+import { store as coreStore } from '@wordpress/core-data';
+import {
+	Fields,
+	Loading,
+	collectionSpec,
+	fromNative,
+	native,
+	toNative,
+	useLoad,
+	object,
+	map,
+} from '@zero-admin/schema';
 
 function ContentFieldsPanel() {
 	const params = useParams({
@@ -9,14 +21,82 @@ function ContentFieldsPanel() {
 		shouldThrow: false,
 	});
 	if (!params?.collection || !params.slug) return null;
+	return <DocumentFields collection={params.collection} id={params.slug} />;
+}
+function DocumentFields({
+	collection,
+	id,
+}: {
+	collection: string;
+	id: string;
+}) {
+	const state = useLoad(() => collectionSpec(collection), [collection]);
+	const transport = native(collection);
+	const record = useSelect(
+		(select) => {
+			if (!transport) return undefined;
+			const base = select(coreStore).getEntityRecord(
+				'postType',
+				transport.postType,
+				id
+			);
+			const edited = select(coreStore).getEditedEntityRecord(
+				'postType',
+				transport.postType,
+				id
+			);
+			if (!base || !edited) return undefined;
+			return {
+				...edited,
+				acf: {
+					...map(object(base).acf ?? {}),
+					...map(object(edited).acf ?? {}),
+				},
+			};
+		},
+		[collection, id]
+	);
+	const pending = useSelect(
+		(select) =>
+			transport
+				? select(coreStore).getEntityRecordEdits(
+						'postType',
+						transport.postType,
+						id
+					)
+				: undefined,
+		[collection, id]
+	);
+	const { editEntityRecord } = useDispatch(coreStore);
+	if (!transport || !record) return null;
 	return (
-		<PluginDocumentSettingPanel
-			name="zero-admin-content-fields"
-			title="Document details"
-		>
-			<CollectionDocument embedded />
+		<PluginDocumentSettingPanel name="zero-admin-content-fields" title="Fields">
+			{state.kind !== 'ready' ? (
+				<Loading state={state} />
+			) : (
+				<Fields
+					fields={state.value.columns}
+					values={fromNative(state.value, record)}
+					omit={[
+						state.value.primaryKey,
+						state.value.title ?? '',
+						state.value.content ?? '',
+						state.value.slug ?? '',
+						'status',
+						'publishedAt',
+					]}
+					onChange={(key, value) => {
+						const edits = toNative(state.value, { [key]: value });
+						void editEntityRecord('postType', transport.postType, id, {
+							acf: {
+								...object(object(pending ?? {}).acf ?? {}),
+								...object(edits.acf ?? {}),
+							},
+						});
+					}}
+				/>
+			)}
 		</PluginDocumentSettingPanel>
 	);
 }
-
 registerPlugin('zero-admin-content-fields', { render: ContentFieldsPanel });

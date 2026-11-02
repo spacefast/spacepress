@@ -104,6 +104,27 @@ migrations cannot contaminate a fresh database's migration ledger. It stages the
 generated client at the test import path and the plugins in a stable bind-mount
 directory; existing fixture migration output is left alone.
 
+The admin browser journey is part of `tests/wp/run.sh` and runs against the
+shipped plugin on the same disposable stack, then checks mounting under `/blog`.
+Install its browser once before running the lane:
+
+```sh
+cd runtime/admin/apps
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+pnpm typecheck
+pnpm test --runInBand
+pnpm build
+```
+
+From the repository root, `tests/wp/admin/browser-run.sh` reruns only the browser
+owner against an existing harness receipt (`ZERO_WP_HARNESS` selects another
+receipt). `ZERO_WP_PROJECT` and `ZERO_WP_PORT` isolate the Docker stack.
+`ZERO_WP_SKIP_BROWSER=1` is an explicit opt-out for PHP-only iteration; missing
+browser dependencies otherwise fail the lane. Screenshots and failure traces
+are written below the system temporary directory, or `ZERO_ADMIN_BROWSER_OUTPUT`.
+The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
+
 ## Layout
 
 | Path | What |

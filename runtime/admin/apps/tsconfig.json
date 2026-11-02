@@ -21,7 +21,8 @@
 		"**/test/**",
 		"**/*.stories.tsx",
 		"**/stories/**",
-		"**/*.mdx"
+		"**/*.mdx",
+		"wp-journey/**"
 	],
 	"references": [
 		{

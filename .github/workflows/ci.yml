@@ -182,6 +182,11 @@ jobs:
             .zero/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: runtime/admin/apps
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: runtime/admin/apps
       - run: tests/wp/run.sh
 
   # `zero dev` from a release binary outside the checkout (its embedded harness).

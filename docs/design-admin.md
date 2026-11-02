@@ -24,7 +24,7 @@ build of it.
 | Area | Decision |
 |---|---|
 | Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build` only when `defineConfig({ admin: true })`. No admin by default. |
-| Mount | Full-page app at `/zero-admin/` (rewrite rule, `auth_redirect()`), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
+| Mount | Full-page app at `/zero-admin/` (rewrite rule, frontend logged-in session check), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
 | Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. It is public metadata (it always was: the typed client, `zero doctor` and MCP read it) and stays so. The admin derives list fields and edit forms from it; what a viewer may *see* is decided by the data endpoints, never by the schema (§5). |
 | Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for upload, delete, alt text and focal point; core `/wp/v2/media` only for reads and for the two attachment fields Zero has no column for, caption and title (§5.3). Image cropping is dropped. The admin plugin registers **no REST route that reads or writes Zero data**. |
 | Scope | Collections, media, globals, the block editor, and a "classic admin" escape hatch. Users, themes, plugins, settings, design and taxonomy screens are dropped: they duplicate wp-admin with no Zero gain. |
@@ -279,7 +279,7 @@ the manifest lists `zero-admin`, prints one row:
 | `permalinks: false` | ✗ "plain permalinks: /zero-admin/ needs a permalink structure" |
 | `rewrite: false` | ✗ "rewrite rule not persisted: deactivate and reactivate zero-admin" |
 | site WordPress minor above the floor | ✗ "WordPress <version> is newer than the tested 7.1.x" (§3.3 step 3b). `doctor` has no warning level: any ✗ makes `ok` false and exits 1, and this row is no exception; a site on a newer WordPress is outside the admin's supported range until the floor moves |
-| all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and `auth_redirect()` fired), anything else is ✗ with the status |
+| all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and the frontend logged-in session check fired), anything else is ✗ with the status |
 
 That probe is the only new request `doctor` makes; it reuses the HTTP client
 `doctor.rs` already has for `/_schema`.
@@ -287,7 +287,7 @@ That probe is the only new request `doctor` makes; it reuses the HTTP client
 ### 2.4 Mount and boot
 
 `/zero-admin/` and everything under it is served by the plugin (rewrite rule
-to `index.php?zero_admin=1`, `auth_redirect()`, then the page template). The
+to `index.php?zero_admin=1`, the frontend logged-in session check, then the page template). The
 page:
 
 1. runs `set_current_screen()` and `do_action('zero_admin_init')` so the menu

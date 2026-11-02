@@ -43,6 +43,7 @@ function zero_admin_boot() {
 	require_once __DIR__ . '/lib/load-libs.php';
 
 	add_action( 'init', 'zero_admin_add_rewrite_rule' );
+	add_filter( 'rest_request_before_callbacks', 'zero_admin_rest_transport_query', 10, 3 );
 	add_action( 'admin_init', 'zero_admin_persist_rewrite_rule' );
 	add_filter( 'query_vars', 'zero_admin_query_vars' );
 	add_action( 'template_redirect', 'zero_admin_render_page', 0 );
@@ -130,7 +131,24 @@ function zero_admin_render_page() {
 	if ( '1' !== get_query_var( 'zero_admin' ) ) {
 		return;
 	}
-	auth_redirect();
+	$request = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' );
+	$mount = wp_parse_url( zero_admin_url(), PHP_URL_PATH );
+	$return_url = zero_admin_url( str_starts_with( $request, $mount ) ? substr( $request, strlen( $mount ) ) : '/' );
+	// This is a frontend page: WordPress authenticates it with the logged-in
+	// session cookie, whose scope includes the site (not the wp-admin cookie).
+	if ( force_ssl_admin() && ! is_ssl() ) {
+		wp_safe_redirect( set_url_scheme( $return_url, 'https' ) );
+		exit;
+	}
+	if ( ! is_user_logged_in() ) {
+		nocache_headers();
+		wp_safe_redirect( wp_login_url( $return_url ) );
+		exit;
+	}
+	if ( ! current_user_can( 'read' ) || \Zero\Wp\CoreAccess::viewer() === null ) {
+		wp_die( esc_html__( 'You cannot access Zero Admin.', 'zero-admin' ), '', array( 'response' => 403 ) );
+	}
+	nocache_headers();
 	if ( ! function_exists( 'set_current_screen' ) ) {
 		require_once ABSPATH . 'wp-admin/includes/admin.php';
 	}
@@ -167,4 +185,17 @@ function zero_admin_plugin_meta_links( $links, $file ) {
 		$links[] = '<a href="' . esc_url( zero_admin_url( '/' ) ) . '">' . esc_html__( 'Open Zero Admin', 'zero-admin' ) . '</a>';
 	}
 	return $links;
+}
+
+/**
+ * apiFetch adds WordPress's locale hint to every request. WordPress has consumed
+ * it before callbacks run; it is transport metadata, not a Zero list option.
+ */
+function zero_admin_rest_transport_query( $response, $handler, $request ) {
+    if ( str_starts_with( $request->get_route(), '/zero/v1/' ) ) {
+        $query = $request->get_query_params();
+        unset( $query['_locale'] );
+        $request->set_query_params( $query );
+    }
+    return $response;
 }

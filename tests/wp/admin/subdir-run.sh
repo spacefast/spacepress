@@ -18,6 +18,7 @@ plugin="$content/plugins/zero-admin"
 rm -rf "$plugin"; mkdir -p "$plugin"
 for f in zero-admin.php routes.js LICENSE NOTICE readme.txt; do cp "$repo/runtime/admin/$f" "$plugin/$f"; done
 cp -r "$repo/runtime/admin/lib" "$plugin/lib"
+cp -r "$repo/runtime/admin/build" "$plugin/build"
 sed -i "s/{{zeroVersion}}/$version/g; s/{{wpVersion}}/$wp_floor/g; s/{{phpVersion}}/$php_floor/g" "$plugin/zero-admin.php"
 
 "$wp/harness.sh" down
@@ -27,3 +28,7 @@ sed -i "s/{{zeroVersion}}/$version/g; s/{{wpVersion}}/$wp_floor/g; s/{{phpVersio
 # below is that first load, and it wants the page it asked for.
 "$wp/harness.sh" wp transient delete pll_activation_redirect >/dev/null
 ZERO_WP_HARNESS="$wp/.harness-admin.json" node --test --test-concurrency=1 "$here/subdir.test.ts"
+
+ZERO_WP_HARNESS="$wp/.harness-admin.json" \
+ZERO_ADMIN_BROWSER_OUTPUT="${ZERO_ADMIN_BROWSER_OUTPUT:-${TMPDIR:-/tmp}/zero-admin-browser}/subdirectory" \
+"$wp/admin/browser-run.sh"

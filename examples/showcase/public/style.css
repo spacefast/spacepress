@@ -141,6 +141,7 @@ p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 26px;
+  align-items: start;
 }
 .story {
   border: 1px solid var(--line);
@@ -167,13 +168,14 @@ p {
   top: 35px;
   right: -25px;
 }
-.story img {
+.story-art img {
   width: 100%;
   height: 200px;
   object-fit: cover;
 }
 .story-content {
   padding: 28px;
+  overflow-wrap: anywhere;
 }
 .story h3 {
   font-size: 25px;
@@ -191,9 +193,116 @@ p {
 .story p {
   font-size: 14px;
 }
-.story-content .body {
-  color: var(--muted);
+/* Native disclosures keep reading and editing in the same story context. */
+.story-details {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 16px;
+  overflow-wrap: anywhere;
+}
+.story-details summary {
+  cursor: pointer;
   font-size: 14px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.story-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 24px;
+  font-size: 13px;
+}
+.story-edit button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 12px;
+  color: inherit;
+  font-size: 12px;
+}
+.story-details .hint {
+  font-size: 12px;
+}
+.story-field {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 18px;
+}
+.story-field h4 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.story-field h5 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 12px 0;
+}
+.story-field p {
+  margin: 10px 0;
+}
+.story-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.story-body figure {
+  margin: 16px 0;
+}
+.story-body figcaption,
+.story-field .empty {
+  font-size: 12px;
+  color: var(--muted);
+}
+.story-field blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 18px;
+  margin: 18px 0;
+}
+.story-field cite {
+  font-size: 12px;
+  color: var(--muted);
+}
+.story-links,
+.story-body ul,
+.story-body ol {
+  padding-left: 22px;
+  font-size: 14px;
+}
+.story-links li + li {
+  margin-top: 8px;
+}
+.story-callout,
+.story-json {
+  background: #e7eadf;
+  padding: 16px;
+  border-radius: 5px;
+}
+.story-callout + .story-callout {
+  margin-top: 12px;
+}
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.task > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.story-details .task:first-child {
+  padding-top: 0;
+}
+#load-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+#load-status.error {
+  color: #a12c15;
 }
 .workbench,
 .try-it {

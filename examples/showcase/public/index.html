@@ -31,9 +31,17 @@
       <section aria-labelledby="stories-title">
         <div class="section-title">
           <h2 id="stories-title">From the notebook</h2>
-          <button id="refresh" type="button">Refresh from Zero ↻</button>
+          <button id="refresh" type="button" data-refresh>
+            Refresh from Zero ↻
+          </button>
         </div>
-        <p id="load-status" role="status">Reading from the API…</p>
+        <p class="hint">
+          Open a story to read its body, inspect its fields, and follow its
+          tasks.
+        </p>
+        <p id="load-status" role="status" aria-atomic="true">
+          Reading from the API…
+        </p>
         <div id="stories" class="stories"></div>
       </section>
       <section class="workbench" aria-labelledby="workbench-title">
@@ -46,7 +54,7 @@
           </p>
           <a href="/zero-admin/">Edit both in the admin ↗</a>
         </div>
-        <div id="tasks" class="task-list"></div>
+        <ul id="tasks" class="task-list" aria-label="All tasks"></ul>
       </section>
       <section id="try-it" class="try-it">
         <div>
@@ -92,17 +100,20 @@
         <h2>Go change something.</h2>
         <ol>
           <li>
-            <strong>Edit a story.</strong> Sign in as editor. Open Stories,
-            change a title in the native editor, save, and refresh this page.
+            <strong>Edit a story.</strong> Open “Read story &amp; fields” on a
+            story, then “Edit this story”. Sign in as editor. Change a title or
+            paragraph, save, return here, and refresh.
           </li>
           <li>
             <strong>Try structured fields.</strong> Open the Fields panel: a
             group, repeater, layout blocks, JSON, and an image picker all come
-            from the config.
+            from the config. Change a link, quote, or JSON value, save, then
+            refresh the open story to see it here.
           </li>
           <li>
             <strong>Follow the relation.</strong> Open Tasks in the admin.
-            Change a task or its story, then refresh this page.
+            Change a task or its story, then refresh. The task’s status and
+            related story update here too.
           </li>
           <li>
             <strong>Check the boundary.</strong> Public readers can read; edits

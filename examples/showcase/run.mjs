@@ -5,23 +5,31 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
+import * as nodeModule from "node:module";
+import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const example = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(example, "../..");
-const state = join(repo, ".zero/showcase");
+const state = resolve(
+  repo,
+  process.env.ZERO_SHOWCASE_STATE_DIR ?? ".zero/showcase",
+);
 const app = join(state, "app");
 const harness = join(state, "harness/wp/harness.sh");
 const receiptFile = join(state, "receipt.json");
 const ownerFile = join(state, "owner.json");
+const ownerLabel = "io.zero.showcase.state";
+const ownerId = createHash("sha256").update(state).digest("hex");
 const knownFile = existsSync(ownerFile) ? ownerFile : receiptFile;
 const known = existsSync(knownFile)
   ? JSON.parse(readFileSync(knownFile, "utf8"))
@@ -30,7 +38,7 @@ const command = process.argv[2] ?? "up";
 const project =
   process.env.ZERO_SHOWCASE_PROJECT ??
   known?.project ??
-  `zero-showcase-${createHash("sha256").update(repo).digest("hex").slice(0, 8)}`;
+  `zero-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
 const port = process.env.ZERO_SHOWCASE_PORT ?? known?.port ?? "8860";
 if (
   !/^[a-z0-9][a-z0-9_-]*$/.test(project) ||
@@ -44,7 +52,7 @@ if (
 }
 if (known && (known.project !== project || known.port !== port)) {
   throw new Error(
-    "This checkout already owns a showcase. Use its saved project/port settings.",
+    `This state directory already owns a showcase. Use its saved project/port settings: ${state}`,
   );
 }
 const env = {
@@ -52,18 +60,77 @@ const env = {
   ZERO_WP_PROJECT: project,
   ZERO_WP_PORT: port,
   ZERO_WP_HARNESS: dirname(harness),
+  ZERO_WP_CONTENT: join(state, "wp-content"),
+  ZERO_WP_S3: "0",
+  ZERO_WP_UID: String(process.getuid()),
+  ZERO_WP_GID: String(process.getgid()),
 };
 const run = (file, args, options = {}) =>
   execFileSync(file, args, { cwd: repo, env, stdio: "inherit", ...options });
+const http = (url, options) =>
+  fetch(url, { ...options, signal: AbortSignal.timeout(15000) });
 const wp = (...args) =>
   run("bash", [harness, "wp", ...args], {
     stdio: ["ignore", "pipe", "inherit"],
     encoding: "utf8",
   }).trim();
 
+const invocation = process.env.ZERO_SHOWCASE_STATE_DIR
+  ? `ZERO_SHOWCASE_STATE_DIR='${state.replaceAll("'", "'\\''")}' node examples/showcase/run.mjs`
+  : "node examples/showcase/run.mjs";
+
+function prerequisites(mode) {
+  const problems = [];
+  if (
+    mode !== "down" &&
+    (typeof nodeModule.stripTypeScriptTypes !== "function" ||
+      Number(process.versions.node.split(".")[0]) < 22 ||
+      (process.versions.node.startsWith("22.") &&
+        Number(process.versions.node.split(".")[1]) < 18))
+  )
+    problems.push("Node 22.18+ is required");
+  const probes =
+    mode === "up"
+      ? [
+          ["cargo", ["--version"]],
+          ["bash", ["-c", "(( BASH_VERSINFO[0] >= 4 ))"]],
+          ["python3", ["--version"]],
+          ["curl", ["--version"]],
+          ["sha256sum", ["--version"]],
+          ["rsync", ["--version"]],
+        ]
+      : [];
+  if (mode !== "down")
+    probes.push(["php", ["-r", 'exit(extension_loaded("gd") ? 0 : 1);']]);
+  if (mode !== "check")
+    probes.push(
+      ["docker", ["compose", "version"]],
+      ["docker", ["info", "--format", "{{.ServerVersion}}"]],
+    );
+  for (const [file, args] of probes) {
+    try {
+      run(file, args, { stdio: "pipe", timeout: 15000 });
+    } catch (error) {
+      const detail =
+        error.code === "ENOENT"
+          ? "not found on PATH"
+          : file === "php"
+            ? "PHP with GD is required"
+            : file === "bash"
+              ? "Bash 4+ is required"
+              : error.stderr?.toString().trim() || error.message;
+      problems.push(`${file} ${args.slice(0, 2).join(" ")}: ${detail}`);
+    }
+  }
+  if (problems.length)
+    throw new Error(
+      `Missing or unavailable prerequisites:\n- ${problems.join("\n- ")}\nSee CONTRIBUTING.md#toolchain.`,
+    );
+}
+
 function receipt() {
   if (!existsSync(receiptFile))
-    throw new Error("Start the showcase first: node examples/showcase/run.mjs");
+    throw new Error(`Start the showcase first: ${invocation}`);
   const saved = JSON.parse(readFileSync(receiptFile, "utf8"));
   if (saved.project !== project || saved.port !== port)
     throw new Error(
@@ -72,14 +139,135 @@ function receipt() {
   return saved;
 }
 
+function verifyOwnership() {
+  const capture = (args) =>
+    run("docker", args, { stdio: "pipe", encoding: "utf8" }).trim();
+  const foreign = [];
+  const ownedContainers = new Set();
+  let ownsPort = false;
+  for (const [kind, list, names] of [
+    [
+      "container",
+      ["ps", "-aq"],
+      ["db", "wordpress", "cli"].map((service) => `${project}-${service}-1`),
+    ],
+    ["volume", ["volume", "ls", "-q"], [`${project}_wp`]],
+    ["network", ["network", "ls", "-q"], [`${project}_default`]],
+  ]) {
+    const ids = new Set(
+      capture([
+        ...list,
+        "--filter",
+        `label=com.docker.compose.project=${project}`,
+      ])
+        .split("\n")
+        .filter(Boolean),
+    );
+    // Also catch same-named resources with missing or different project labels.
+    for (const name of names) {
+      const match = capture([...list, "--filter", `name=^/?${name}$`]);
+      for (const id of match.split("\n").filter(Boolean)) ids.add(id);
+    }
+    if (!ids.size) continue;
+    const resources = JSON.parse(capture([kind, "inspect", ...ids]));
+    for (const resource of resources) {
+      const labels =
+        kind === "container" ? resource.Config.Labels : resource.Labels;
+      const owned =
+        labels?.[ownerLabel] === ownerId &&
+        labels?.["com.docker.compose.project"] === project;
+      const sameConfig =
+        kind !== "container" ||
+        (labels?.["com.docker.compose.project.config_files"] ===
+          join(dirname(harness), "compose.yml") &&
+          labels?.["com.docker.compose.project.working_dir"] ===
+            dirname(harness));
+      if (!owned || !sameConfig)
+        foreign.push(`${kind} ${resource.Name ?? resource.Id}`);
+      else if (kind === "container") {
+        ownedContainers.add(resource.Id);
+        if (
+          resource.State.Running &&
+          labels["com.docker.compose.service"] === "wordpress" &&
+          resource.NetworkSettings.Ports?.["80/tcp"]?.some(
+            (binding) =>
+              binding.HostIp === "127.0.0.1" && binding.HostPort === port,
+          )
+        )
+          ownsPort = true;
+      }
+      if (
+        kind === "network" &&
+        Object.keys(resource.Containers ?? {}).some(
+          (id) => !ownedContainers.has(id),
+        )
+      )
+        foreign.push(
+          `network ${resource.Name} has foreign attached containers`,
+        );
+      if (kind === "volume") {
+        const users = capture([
+          "ps",
+          "-aq",
+          "--no-trunc",
+          "--filter",
+          `volume=${resource.Name}`,
+        ])
+          .split("\n")
+          .filter(Boolean);
+        if (users.some((id) => !ownedContainers.has(id)))
+          foreign.push(
+            `volume ${resource.Name} has foreign attached containers`,
+          );
+      }
+    }
+  }
+  if (foreign.length)
+    throw new Error(
+      `Refusing to change a Compose project with unverified resources:\n- ${foreign.join("\n- ")}\nUse a different ZERO_SHOWCASE_PROJECT and state directory. A saved receipt is not proof of Docker ownership; older unlabeled showcases require explicit manual inspection/cleanup.`,
+    );
+  return ownsPort;
+}
+
+async function verifyPort(ownsPort) {
+  if (ownsPort) return;
+  const publishers = run(
+    "docker",
+    ["ps", "--filter", `publish=${port}`, "--format", "{{.Names}}"],
+    { stdio: "pipe", encoding: "utf8" },
+  ).trim();
+  if (publishers)
+    throw new Error(
+      `Cannot bind showcase port 127.0.0.1:${port}: already published by Docker (${publishers.replaceAll("\n", ", ")}). Choose another ZERO_SHOWCASE_PORT on a new state directory.`,
+    );
+  await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", (error) =>
+      reject(
+        new Error(
+          `Cannot bind showcase port 127.0.0.1:${port}: ${error.message}. Choose another ZERO_SHOWCASE_PORT on a new state directory.`,
+        ),
+      ),
+    );
+    server.listen(
+      { host: "127.0.0.1", port: Number(port), exclusive: true },
+      () => server.close(resolve),
+    );
+  });
+}
+
 async function clients(saved) {
   const { createClient } = await import(
     pathToFileURL(join(app, "public/client/index.js")).href
   );
   return {
-    publicClient: createClient({ url: `${saved.url}/wp-json/zero/v1` }),
+    publicClient: createClient({
+      url: `${saved.url}/wp-json/zero/v1`,
+      fetch: http,
+    }),
     editor: createClient({
       url: `${saved.url}/wp-json/zero/v1`,
+      fetch: http,
       headers: {
         authorization: `Basic ${Buffer.from(`editor:${saved.users.editor.appPassword}`).toString("base64")}`,
       },
@@ -87,13 +275,23 @@ async function clients(saved) {
   };
 }
 
-async function seed(saved) {
-  const { editor } = await clients(saved);
-  if ((await editor.stories.list({ limit: 1 })).length > 0) return;
+function coverPng() {
   // Original, generated artwork; no external image fetch or additional package.
-  const png = run("php", [join(example, "cover.php")], {
+  return run("php", [join(example, "cover.php")], {
     stdio: ["ignore", "pipe", "inherit"],
   });
+}
+
+async function seed(saved) {
+  const { editor } = await clients(saved);
+  if (
+    wp(
+      "eval",
+      "echo get_option('zero_showcase_seeded', false) ? 'yes' : 'no';",
+    ) === "yes"
+  )
+    return;
+  const png = coverPng();
   const cover = await editor.media.upload(
     new Blob([png], { type: "image/png" }),
     {
@@ -153,40 +351,38 @@ async function seed(saved) {
       done,
       editorNote: "Only signed-in editors can read this note.",
     });
+  wp("option", "update", "zero_showcase_seeded", "1");
 }
 
 async function check(saved) {
   const { publicClient, editor } = await clients(saved);
-  const stories = await publicClient.stories.list({
-    with: { tasks: true, cover: true },
-  });
-  assert.ok(stories.length >= 2, "Seeded stories are publicly readable");
-  const tasks = await publicClient.tasks.list({ with: { story: true } });
-  assert.ok(
-    tasks.some((task) => task.story && task.story.id === task.storyId),
-    "SQL task resolves its WordPress story",
-  );
-  assert.equal(
-    tasks.some((task) => "editorNote" in task),
-    false,
-    "Public reads mask editor notes",
-  );
   assert.deepEqual(
     await publicClient.actions.previewHeadline({ title: "  Hello, Zero!  " }),
     { title: "Hello, Zero!", slug: "hello-zero", characters: 12 },
   );
-  console.log(
-    "PASS public reads, cross-kind relation, field masking, compiled class/action",
-  );
-  await assert.rejects(
-    () => publicClient.tasks.create({ title: "Must be denied" }),
-    (error) => error.status === 401 || error.status === 403,
-  );
-  let task;
+  let task, story, cover, anonymousTask, failure;
   try {
+    await assert.rejects(
+      async () => {
+        anonymousTask = await publicClient.tasks.create({
+          title: "Must be denied",
+        });
+      },
+      (error) => error.status === 401 || error.status === 403,
+    );
+    const png = coverPng();
+    cover = await editor.media.upload(new Blob([png], { type: "image/png" }), {
+      filename: "zero-smoke-check.png",
+      alt: "Temporary showcase smoke check",
+    });
+    story = await editor.stories.create({
+      title: "Temporary showcase smoke check",
+      status: "published",
+      cover: cover.id,
+    });
     task = await editor.tasks.create({
       title: "  Smoke check  ",
-      storyId: stories[0].id,
+      storyId: story.id,
       editorNote: "Private smoke check",
     });
     assert.equal(
@@ -197,34 +393,146 @@ async function check(saved) {
     assert.equal(task.editorNote, "Private smoke check");
     const updated = await editor.tasks.update(task.id, { done: true });
     assert.equal(updated.done, true);
+    const stories = await publicClient.stories.list({
+      where: { id: story.id },
+      with: { tasks: true, cover: true },
+    });
+    assert.equal(stories.length, 1, "Published story appears in public list");
+    const readable = stories[0];
+    assert.equal(
+      readable.title,
+      story.title,
+      "Published stories are publicly readable",
+    );
+    assert.equal(readable.cover.id, cover.id, "Story resolves its media");
+    assert.deepEqual(
+      readable.tasks.map((row) => row.id),
+      [task.id],
+    );
+    const tasks = await publicClient.tasks.list({
+      where: { id: task.id },
+      with: { story: true },
+    });
+    assert.equal(tasks.length, 1, "SQL task appears in public list");
+    const linked = tasks[0];
+    assert.equal(
+      linked.story.id,
+      story.id,
+      "SQL task resolves its WordPress story",
+    );
+    assert.equal(
+      "editorNote" in linked,
+      false,
+      "Public reads mask editor notes",
+    );
+    assert.equal(
+      "editorNote" in readable.tasks[0],
+      false,
+      "Nested public reads mask editor notes",
+    );
+    console.log(
+      "PASS public reads, cross-kind relations, field masking, compiled class/action",
+    );
+
+    const original = await http(cover.url);
+    assert.equal(original.status, 200);
+    assert.deepEqual(
+      Buffer.from(await original.arrayBuffer()),
+      png,
+      "HTTP serves the uploaded PNG bytes",
+    );
+    assert.ok(cover.sizes.card, "Upload has a generated card derivative");
+    const card = await http(cover.sizes.card.url);
+    assert.equal(card.status, 200);
+    assert.equal(card.headers.get("content-type")?.split(";")[0], "image/png");
+    const dimensions = run(
+      "php",
+      [
+        "-r",
+        "$image = imagecreatefromstring(stream_get_contents(STDIN)); if (!$image) exit(1); echo json_encode([imagesx($image), imagesy($image)]);",
+      ],
+      {
+        input: Buffer.from(await card.arrayBuffer()),
+        stdio: ["pipe", "pipe", "inherit"],
+        encoding: "utf8",
+      },
+    );
+    assert.deepEqual(
+      JSON.parse(dimensions),
+      [960, 600],
+      "HTTP derivative decodes to the configured dimensions",
+    );
+    const page = await http(
+      `${saved.url}/wp-content/plugins/zero-app-showcase/public/`,
+    );
+    assert.equal(page.status, 200);
+    console.log(
+      "PASS original media bytes, decoded card derivative and showcase page",
+    );
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
-    if (task) await editor.tasks.delete(task.id);
+    // Try every cleanup even when one fails; preserve the evidence of any failure.
+    const failures = [];
+    for (const [name, row, collection] of [
+      ["task", task, editor.tasks],
+      ["unexpected anonymous task", anonymousTask, editor.tasks],
+      ["story", story, editor.stories],
+      ["media", cover, editor.media],
+    ]) {
+      if (!row) continue;
+      try {
+        await collection.delete(row.id);
+      } catch (error) {
+        failures.push(`${name} ${row.id}: ${error.message}`);
+      }
+    }
+    if (failures.length)
+      throw new Error(
+        `${failure ? `${failure.message}\n` : ""}Smoke check cleanup failed:\n${failures.join("\n")}`,
+      );
   }
   console.log(
     "PASS write authority, hook, editor field access, update and cleanup",
   );
-  const cover = stories.find((story) => story.cover)?.cover;
-  assert.ok(cover?.sizes.card, "Seed image has a generated card derivative");
-  assert.equal((await fetch(cover.sizes.card.url)).status, 200);
-  const page = await fetch(
-    `${saved.url}/wp-content/plugins/zero-app-showcase/public/`,
-  );
-  assert.equal(page.status, 200);
-  console.log("PASS generated media delivery and showcase page");
 }
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nAdmin:    ${saved.url}/zero-admin/\nLogin:    editor / zero-test-editor\n\nCheck: node examples/showcase/run.mjs check\nStop:  node examples/showcase/run.mjs down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nAdmin:    ${saved.url}/zero-admin/\nLogin:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
 async function main() {
-  if (command === "check") return check(receipt());
+  if (command === "check") {
+    const saved = receipt();
+    prerequisites("check");
+    return check(saved);
+  }
   if (command === "down") {
     if (!known)
-      throw new Error("No showcase has been started in this checkout.");
-    if (existsSync(harness)) run("bash", [harness, "down"]);
+      throw new Error(`No showcase is owned by this state directory: ${state}`);
+    prerequisites("down");
+    verifyOwnership();
+    // Compose can remove a partially started stack even if the private harness is missing.
+    const compose = join(dirname(harness), "compose.yml");
+    run("docker", [
+      "compose",
+      "-p",
+      project,
+      "-f",
+      existsSync(compose) ? compose : join(repo, "tests/wp/compose.yml"),
+      "down",
+      "-v",
+      "--remove-orphans",
+    ]);
+    for (const file of [
+      receiptFile,
+      ownerFile,
+      join(dirname(harness), ".harness-state"),
+    ])
+      rmSync(file, { force: true });
     console.log(
       "Showcase stopped. Its disposable database and uploads were removed.",
     );
@@ -232,8 +540,9 @@ async function main() {
   }
   if (command !== "up")
     throw new Error("Usage: node examples/showcase/run.mjs [up|check|down]");
-  mkdirSync(state, { recursive: true });
-  writeFileSync(ownerFile, JSON.stringify({ project, port }), { mode: 0o600 });
+  prerequisites("up");
+  await verifyPort(verifyOwnership());
+  mkdirSync(state, { recursive: true, mode: 0o700 });
   run("cargo", ["build", "--locked", "--quiet"]);
   const zero = resolve(
     repo,
@@ -249,10 +558,9 @@ async function main() {
     const source = readFileSync(join(app, `zero/client/${name}.ts`), "utf8");
     writeFileSync(
       join(app, `public/client/${name}.js`),
-      stripTypeScriptTypes(source).replace(
-        /(from\s+["']\.\/[\w-]+)\.ts(["'])/g,
-        "$1.js$2",
-      ),
+      nodeModule
+        .stripTypeScriptTypes(source)
+        .replace(/(from\s+["']\.\/[\w-]+)\.ts(["'])/g, "$1.js$2"),
     );
   }
   copyFileSync(
@@ -291,17 +599,42 @@ async function main() {
       '"127.0.0.1:${ZERO_WP_PORT:-8790}:80"',
     ),
   );
+  // Resolve the existing harness configuration, then label every resource it creates.
+  // JSON is valid YAML and avoids maintaining another Compose implementation.
+  const configuration = JSON.parse(
+    run(
+      "docker",
+      ["compose", "-p", project, "-f", compose, "config", "--format", "json"],
+      {
+        stdio: "pipe",
+        encoding: "utf8",
+      },
+    ),
+  );
+  for (const resources of [
+    configuration.services,
+    configuration.volumes,
+    configuration.networks,
+  ]) {
+    for (const resource of Object.values(resources ?? {}))
+      resource.labels = { ...resource.labels, [ownerLabel]: ownerId };
+  }
+  writeFileSync(compose, JSON.stringify(configuration, null, 2));
   mkdirSync(join(state, "harness/fixtures"), { recursive: true });
   copyFileSync(
     join(repo, "tests/fixtures/platform.json"),
     join(state, "harness/fixtures/platform.json"),
   );
+  await verifyPort(verifyOwnership());
+  writeFileSync(ownerFile, JSON.stringify({ project, port }), { mode: 0o600 });
+  chmodSync(ownerFile, 0o600);
   const output = run("bash", [harness, "up", "--wp-content", content], {
     stdio: ["ignore", "pipe", "inherit"],
     encoding: "utf8",
   });
   const saved = { ...JSON.parse(output.trim()), project, port };
   writeFileSync(receiptFile, JSON.stringify(saved, null, 2), { mode: 0o600 });
+  chmodSync(receiptFile, 0o600);
   wp("option", "update", "blogname", "Zero showcase");
   await seed(saved);
   await check(saved);
@@ -312,7 +645,7 @@ main().catch((error) => {
   console.error(`Showcase failed: ${error.message}`);
   if (existsSync(ownerFile))
     console.error(
-      "Inspect the running demo, or stop it with: node examples/showcase/run.mjs down",
+      `A showcase may still own resources. Inspect it, retry with ${invocation}, or remove it with: ${invocation} down`,
     );
   process.exitCode = 1;
 });

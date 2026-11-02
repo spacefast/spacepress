@@ -182,19 +182,21 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
     // Backend queries retain the authored JSON domain; wire types retain nulls.
-    const storedSource = `import { table, group, json, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
+    const storedSource = `import { table, group, json, text, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
-const source = table({ body: json().$type<Payload>().notNull() });
+const source = table({ body: json().$type<Payload>().notNull().localized(), label: text({ enum: ["first", "second"] }).notNull(), details: group({ fields: { nullable: text(), defaulted: text().notNull().default("source") } }) });
 type Selected = InferSelectModel<typeof source>;
 type Inserted = InferInsertModel<typeof source>;
 class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
+type WithoutLocale = Omit<Inserted, "locale">;
 class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
-const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull() });
-export default defineConfig({ tables: { documents, source }, actions: { read: action({ input: {}, handler: async () => {
+class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
+const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull(), translation: json().$type<WithoutLocale>().notNull() });
+export default defineConfig({ tables: { documents, source }, locales: { default: "en", all: ["en", "de"] }, actions: { read: action({ input: {}, handler: async () => {
   const row = await db.query.documents.findFirst();
-  return !row ? null : new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read();
+  return !row ? null : new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
 } }) } });`;
     writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
     const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
@@ -204,8 +206,9 @@ export default defineConfig({ tables: { documents, source }, actions: { read: ac
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
     writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
 const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
-const selected: Document["selected"] = { id: 1, body: wire };
-const inserted: Document["inserted"] = { body: wire };
+const selected: Document["selected"] = { id: 1, body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
+const inserted: Document["inserted"] = { body: wire, label: "second" };
+const translated: Document["inserted"] = { body: wire, translationOf: 1 };
 void selected; void inserted;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },

@@ -227,8 +227,19 @@ impl Compiler<'_, '_> {
                     ("Pick" | "Omit", [t, k]) => {
                         let t = self.resolve_ann(t, module, generics)?;
                         let keys = finite_keys(&self.resolve_ann(k, module, generics)?, *span)?;
-                        let Ty::Obj(mut fields) = t else {
-                            return err(*span, "Pick/Omit need a finite object type");
+                        let mut fields = if let Ty::Obj(fields) = t {
+                            fields
+                        } else {
+                            // Pick/Omit map over keyof T, which is the common key
+                            // set for unions, rather than distributing the utility.
+                            type_copy(&t, *span, &mut self.annotation_steps)?;
+                            finite_keys(&keys_of(&t, *span)?, *span)?
+                                .into_iter()
+                                .map(|key| {
+                                    let field = t.field(&key).expect("common object key");
+                                    (key, field)
+                                })
+                                .collect()
                         };
                         if name == "Pick" {
                             for key in &keys {
@@ -275,11 +286,18 @@ impl Compiler<'_, '_> {
                             *qspan,
                             &mut self.annotation_steps,
                         )?;
-                        if name == "InferSelectModel" {
-                            types::row_of_with(&self.schema.collections[&table], &types::json_authored_ty)
-                        } else {
-                            types::insert_with(self.schema, &table, &types::json_authored_ty)
+                        let collection = &self.schema.collections[&table];
+                        if name == "InferInsertModel" && collection.localized {
+                            // Both authored translation alternatives copy their column domains.
+                            model_work(&collection.columns, *qspan, &mut self.annotation_steps)?;
+                        } else if collection.localized {
+                            // The finite translations map repeats the primary-key domain.
+                            let primary = collection.primary_key().expect("primary key");
+                            for _ in collection.columns["locale"].enum_values.as_ref().expect("locales") {
+                                model_column_work(primary, *qspan, &mut self.annotation_steps)?;
+                            }
                         }
+                        types::authored_model(collection, name == "InferInsertModel")
                     }
                     _ => return err(*span, format!("unknown type `{name}`")),
                 }
@@ -812,20 +830,32 @@ fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
 
 fn model_work(columns: &IndexMap<String, Column>, span: Span, steps: &mut usize) -> Result<()> {
     for col in columns.values() {
-        type_step(steps, span)?;
-        JSON_TYPES.with(|m| {
-            if let Some(t) = m.borrow().get(&(col as *const Column as usize)) {
-                type_copy(&t.authored, span, steps)?;
-            }
-            Ok(())
-        })?;
-        if let Some(fields) = &col.fields {
-            model_work(fields, span, steps)?;
+        model_column_work(col, span, steps)?;
+    }
+    Ok(())
+}
+
+fn model_column_work(col: &Column, span: Span, steps: &mut usize) -> Result<()> {
+    type_step(steps, span)?;
+    if let Some(values) = &col.enum_values {
+        // Finite values and the localized translation map are materialized too.
+        for _ in values {
+            type_step(steps, span)?;
+            type_step(steps, span)?;
         }
-        if let Some(layouts) = &col.layouts {
-            for fields in layouts.values() {
-                model_work(fields, span, steps)?;
-            }
+    }
+    JSON_TYPES.with(|m| {
+        if let Some(t) = m.borrow().get(&(col as *const Column as usize)) {
+            type_copy(&t.authored, span, steps)?;
+        }
+        Ok(())
+    })?;
+    if let Some(fields) = &col.fields {
+        model_work(fields, span, steps)?;
+    }
+    if let Some(layouts) = &col.layouts {
+        for fields in layouts.values() {
+            model_work(fields, span, steps)?;
         }
     }
     Ok(())

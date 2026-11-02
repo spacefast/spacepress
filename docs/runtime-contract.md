@@ -634,7 +634,7 @@ code with strict TypeScript as well as `zero check`.
 | Dynamic property reads | Supported for finite string keys | `object[key]` works when every possible key belongs to the fixed object. Arbitrary string keys need `Record<string, T>`. This does not add dynamic writes to fixed objects. |
 | `Record<K, V>` | Partial | Finite string unions produce required fixed properties; `string` produces the existing open map. Numeric/symbol keys are refused. |
 | `Partial`, `Required`, `Readonly` | Partial | Finite objects and unions of finite objects. `Required` removes optional presence and its `undefined`, retaining explicit `null`. Readonly is type-only; PHP handles retain their existing identity/mutation semantics. Open-map and array utility transforms are refused. |
-| `Pick`, `Omit` | Partial | One finite object and finite string key unions; `Pick` validates every key. They do not distribute across object unions. |
+| `Pick`, `Omit` | Partial | Finite objects and finite string key unions; object unions use their common keys, with combined value types and presence. `Pick` validates every key. They do not distribute across object unions. |
 | `NonNullable` | Partial | Concrete types; removes both `null` and `undefined` before PHP normalization. `unknown` and `void` are refused. |
 | `Extract`, `Exclude`, conditional types | Partial | Concrete scalar, array/tuple and finite object comparisons, including structural object matching. Direct naked bound parameters distribute over unions (including boolean); tuple-wrapped checks do not. Check positions must be direct parameters, scalars or object/array/tuple wrappers; aliases and other type operations in check position need an explicit tuple wrapper, because they can change distributivity before instantiation. `null` and `undefined` remain distinct until the PHP boundary. `infer`, unresolved `unknown`, `void`, function/runtime predicates and boxed primitive/array property matching are refused. |
 | Mapped types | Partial | Finite string key domains; optional modifiers and homomorphic identity mappings preserve presence. `-?` requires a homomorphic identity mapping. Homomorphic mappings need one finite object; key parameters constrained by a direct `keyof T` preserve presence too. Fresh key sets use literal unions (optionally including `never`), or direct parameters constrained by `string` or literal unions. Aliased or reduced key expressions and constraints, such as `Keys<T>`, `Identity<K>`, `keyof T \| never` and `K \| never`, are refused: their reductions can hide optional presence. Rewrite them as direct `keyof T` or a direct key parameter constrained by `keyof T`. Key remapping, template literal expansion, symbols and open maps are refused. |
@@ -652,7 +652,11 @@ budget. Recursive types produce a located diagnostic. Unsupported types are not 
 `unknown` or an unrestricted string key.
 
 JSON `$type` annotations retain the authored domain through `InferSelectModel`
-and `InferInsertModel`, including nested JSON columns. Their dependencies resolve
+and `InferInsertModel`, including nested JSON columns. Authored model expansion
+retains finite enums/locales, finite translation maps, structured write presence,
+and distinct fresh-row/translation insert alternatives. Runtime insert
+approximations remain separate; query rows retain their finite schema domains.
+Their dependencies resolve
 independently of registry order. Recursive model dependencies and chains exceeding
 96 JSON annotations receive located refusals. Copying inferred model fields and
 cached JSON types also consumes the root's 16,384-step work budget, before cloning.

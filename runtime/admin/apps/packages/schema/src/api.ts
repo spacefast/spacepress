@@ -254,7 +254,8 @@ export async function list(
 	if (native(c.name)) {
 		q.set('context', 'view');
 		const statuses = c.columns.status?.options ?? [];
-		if (statuses.length && ['author', 'editor', 'admin'].includes(bootstrap().role))
+		if (statuses.length && allowed(c.access.update, bootstrap().role) &&
+			['author', 'editor', 'admin'].includes(bootstrap().role))
 			q.set('status', statuses.map((status) =>
 				status === 'published' ? 'publish' : status === 'scheduled' ? 'future' : status
 			).join(','));

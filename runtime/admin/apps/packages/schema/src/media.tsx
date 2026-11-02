@@ -70,11 +70,13 @@ export function MediaLibrary() {
 							const files = Array.from(event.target.files ?? []);
 							setBusy(true);
 							setError('');
-							Promise.all(files.map(uploadAttachment))
-								.then(
-									() => setRevision((v) => v + 1),
-									(e: unknown) => setError(message(e))
-								)
+							Promise.allSettled(files.map(uploadAttachment))
+								.then((results) => {
+									setError(results.flatMap((result) =>
+										result.status === 'rejected' ? [message(result.reason)] : []
+									).join(' '));
+									setRevision((v) => v + 1);
+								})
 								.finally(() => setBusy(false));
 						}}
 						render={({ openFileDialog }) => (

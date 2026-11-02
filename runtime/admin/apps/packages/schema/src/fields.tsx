@@ -32,7 +32,8 @@ import {
 function scalar(v: unknown): string {
 	return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
 }
-const CreatedValues = createContext<WeakSet<object> | null>(null);
+type FieldState = { created: WeakSet<object>; operation: 'create' | 'update' };
+const EditingState = createContext<FieldState | null>(null);
 function Reference({
 	column,
 	value,
@@ -245,6 +246,7 @@ function Field({
 	disabled,
 	editing,
 	created,
+	operation,
 }: {
 	column: Column;
 	value: unknown;
@@ -252,7 +254,10 @@ function Field({
 	disabled: boolean;
 	editing: boolean;
 	created: WeakSet<object>;
+	operation: FieldState['operation'];
 }) {
+	const writable = (column: Column) =>
+		allowed(operation === 'create' ? column.create : column.write, bootstrap().role);
 	if (c.reference || c.type === 'media')
 		return (
 			<Reference
@@ -330,7 +335,7 @@ function Field({
 											options={layouts.map((l) => ({ value: l, label: l }))}
 											disabled={disabled}
 											onChange={(v) =>
-												update({ layout: v, ...defaults(c.layouts[v]) }, true)
+												update({ layout: v, ...defaults(c.layouts[v], writable) }, true)
 											}
 										/>
 									)}
@@ -361,8 +366,8 @@ function Field({
 						const item = c.type === 'mediaList'
 							? null
 							: c.type === 'blocks'
-								? { layout: layouts[0], ...defaults(c.layouts[layouts[0]]) }
-								: defaults(c.fields);
+								? { layout: layouts[0], ...defaults(c.layouts[layouts[0]], writable) }
+								: defaults(c.fields, writable);
 						if (item) created.add(item);
 						onChange([...rows, item]);
 					}}
@@ -495,18 +500,22 @@ export function Fields({
 	omit?: string[];
 }) {
 	const { role } = bootstrap();
-	const inherited = useContext(CreatedValues);
+	const inherited = useContext(EditingState);
 	const [local] = useState(() => new WeakSet<object>());
-	const created = inherited ?? local;
+	const state: FieldState = inherited ?? {
+		created: local,
+		operation: editing ? 'update' : 'create',
+	};
 	return (
-		<CreatedValues.Provider value={created}>
+		<EditingState.Provider value={state}>
 			<div className="zero-schema-fields">
 				{Object.entries(fields)
 					.filter(
 						([key, c]) =>
 							!omit.includes(key) &&
 							!c.generated &&
-							(editing ? key in values : allowed(c.read, role)) &&
+							(editing ? key in values :
+								allowed(state.operation === 'create' ? c.create : c.read, role)) &&
 							visible(c.showIf, values)
 					)
 					.map(([key, c]) => (
@@ -515,12 +524,13 @@ export function Fields({
 							column={c}
 							value={values[key]}
 							onChange={(v) => onChange(key, v)}
-							disabled={disabled || !allowed(c.write, role)}
+							disabled={disabled || !allowed(state.operation === 'create' ? c.create : c.write, role)}
 							editing={editing}
-							created={created}
+							created={state.created}
+							operation={state.operation}
 						/>
 					))}
 			</div>
-		</CreatedValues.Provider>
+		</EditingState.Provider>
 	);
 }

@@ -298,9 +298,10 @@ export function NewDocument() {
 			</Page>
 		);
 	const c = state.value;
-	const initial = defaults(c.columns);
+	const initial = defaults(c.columns, (column) => allowed(column.create, bootstrap().role));
 	// A content author can review blocks before publishing.
-	if (c.content && c.columns.status?.options.includes('draft'))
+	if (c.content && c.columns.status?.options.includes('draft') &&
+		allowed(c.columns.status.create, bootstrap().role))
 		initial.status = 'draft';
 	return (
 		<Page
@@ -354,7 +355,7 @@ export function PlainDocument() {
 		);
 	const { c, row } = state.value;
 	// Content collections are rendered by the native canvas/editor route, not a second form.
-	if (c.content && native(collection)) return null;
+	if (c.content && native(collection) && allowed(c.access.update, bootstrap().role)) return null;
 	return (
 		<Page
 			title={`Edit ${c.label}`}

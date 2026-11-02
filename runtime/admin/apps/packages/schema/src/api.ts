@@ -6,6 +6,7 @@ import {
 	parseSchema,
 	text,
 	strings,
+	allowed,
 	type Row,
 	type Collection,
 	type Column,
@@ -209,8 +210,9 @@ export function toNative(c: Collection, values: Row): Row {
 	return result;
 }
 export async function read(c: Collection, id: string): Promise<Row> {
+	const context = allowed(c.access.update, bootstrap().role) ? 'edit' : 'view';
 	const v = await apiFetch({
-		path: `${endpoint(c.name)}/${encodeURIComponent(id)}${native(c.name) ? '?context=edit' : ''}`,
+		path: `${endpoint(c.name)}/${encodeURIComponent(id)}${native(c.name) ? `?context=${context}` : ''}`,
 	});
 	return native(c.name) ? fromNative(c, v) : object(unwrap(v));
 }

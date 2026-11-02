@@ -59,3 +59,35 @@ test('changing a returned block layout creates editable nested groups without ex
 	await user.type(within(group).getByRole('textbox', { name: 'Second' }), 'Two');
 	expect(within(group).getByRole('textbox', { name: 'First' })).toHaveValue('One');
 });
+
+test('create permissions differ from update permissions even for new items inside an existing record', async () => {
+	window.zeroAdmin = { native: {}, readable: [], role: 'editor' };
+	const fields = columns({
+		createOnly: { type: 'text', access: { read: false, create: 'anyone', update: false } },
+		updateOnly: { type: 'text', access: { create: false, update: 'editor' } },
+		entries: { type: 'repeater', fields: {
+			value: { type: 'text', access: { create: false, update: 'editor' } },
+		} },
+	});
+	function Form() {
+		const [editing, setEditing] = useState(false);
+		const [values, setValues] = useState<Row>({ entries: [] });
+		return <>
+			<Fields fields={fields} values={values} editing={editing}
+				onChange={(key, value) => setValues({ ...values, [key]: value })} />
+			<button onClick={() => {
+				setEditing(true);
+				setValues({ updateOnly: 'Returned', entries: [] });
+			}}>Load saved record</button>
+		</>;
+	}
+	const user = userEvent.setup();
+	render(<Form />);
+	expect(screen.getByRole('textbox', { name: 'Create Only' })).toBeEnabled();
+	expect(screen.queryByRole('textbox', { name: 'Update Only' })).not.toBeInTheDocument();
+	await user.click(screen.getByRole('button', { name: 'Load saved record' }));
+	expect(screen.queryByRole('textbox', { name: 'Create Only' })).not.toBeInTheDocument();
+	expect(screen.getByRole('textbox', { name: 'Update Only' })).toBeEnabled();
+	await user.click(screen.getByRole('button', { name: 'Add Entries' }));
+	expect(screen.getByRole('textbox', { name: 'Value' })).toBeEnabled();
+});

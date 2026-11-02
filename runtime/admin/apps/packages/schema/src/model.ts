@@ -15,6 +15,7 @@ export type Column = {
 	bucket?: string;
 	showIf?: Row;
 	read?: string | boolean;
+	create?: string | boolean;
 	write?: string | boolean;
 	initial?: unknown;
 };
@@ -101,6 +102,7 @@ export function columns(value: unknown): Columns {
 					reference: reference(c.references),
 					showIf: c.showIf ? object(c.showIf) : undefined,
 					read: summary(access.read),
+					create: summary(access.create),
 					write: summary(access.update),
 					initial: d.value,
 				},
@@ -159,10 +161,13 @@ export function allowed(rule: unknown, role: string): boolean {
 		roles.indexOf(role) >= roles.indexOf(rule)
 	);
 }
-export function defaults(fields: Columns): Row {
+export function defaults(
+	fields: Columns,
+	writable: (column: Column) => boolean = () => true
+): Row {
 	return Object.fromEntries(
 		Object.entries(fields)
-			.filter(([, c]) => !c.generated && c.initial !== undefined)
+			.filter(([, c]) => !c.generated && c.initial !== undefined && writable(c))
 			.map(([k, c]) => [k, c.initial])
 	);
 }

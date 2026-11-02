@@ -213,6 +213,15 @@ if (!subdir) {
 		});
 		expect(seeded.status(), await seeded.text()).toBe(201);
 		const { id } = (await seeded.json()).data;
+		const title = `Readable dossier ${Date.now()}`;
+		const dossier = await request.post(`${site}/wp-json/zero/v1/dossier`, {
+			headers: {
+				Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
+			},
+			data: { title },
+		});
+		expect(dossier.status(), await dossier.text()).toBe(201);
+		const dossierId = (await dossier.json()).data.id;
 		await login(page, 'subscriber');
 		await expect(
 			page.getByRole('link', { name: 'signups', exact: true })
@@ -228,6 +237,13 @@ if (!subdir) {
 		await expect(page.getByRole('alert')).toContainText(
 			/not allowed|permission|forbidden/i
 		);
+		await page.goto(`${site}/zero-admin/collections/dossier/${dossierId}`);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
+			.toHaveValue(title);
+		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
+			.toBeDisabled();
+		await expect(page.getByRole('button', { name: 'Save changes', exact: true }))
+			.toBeDisabled();
 		await expect(
 			page.getByRole('button', { name: 'Publish', exact: true })
 		).toHaveCount(0);
@@ -269,8 +285,8 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Media', exact: true }).click();
 		const name = `browser-${Date.now()}`;
 		const uploaded = page.waitForResponse(
-			(r) =>
-				r.url().includes('/zero/v1/media') && r.request().method() === 'POST'
+				(r) =>
+					r.url().includes('/zero/v1/media') && r.request().method() === 'POST' && r.status() === 201
 		);
 		const chooser = page.waitForEvent('filechooser');
 		await page
@@ -278,17 +294,22 @@ if (!subdir) {
 			.click();
 		await (
 			await chooser
-		).setFiles({
+		).setFiles([{
 			name: `${name}.png`,
 			mimeType: 'image/png',
 			buffer: Buffer.from(
 				'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
 				'base64'
 			),
-		});
+		}, {
+			name: `${name}.exe`, mimeType: 'application/octet-stream',
+			buffer: Buffer.from('Not an allowed media file'),
+		}]);
 		const uploadResponse = await uploaded;
 		expect(uploadResponse.status(), await uploadResponse.text()).toBe(201);
 		const mediaId = (await uploadResponse.json()).data.id;
+		await expect(page.locator('.components-notice.is-error'))
+			.toContainText(/not allowed|invalid|file type|mime|upload/i);
 		await page.getByRole('link', { name, exact: true }).click();
 		await expect(page).toHaveURL(`${site}/zero-admin/media/${mediaId}`);
 		await page

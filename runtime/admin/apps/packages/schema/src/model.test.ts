@@ -1,4 +1,4 @@
-import { columns, defaults, parseSchema, visible } from './model';
+import { allowed, columns, defaults, parseSchema, visible } from './model';
 import { fromNative, toNative } from './api';
 
 test('schema metadata describes labels, help, explicit kind and defaults independently of editor preferences', () => {
@@ -18,6 +18,10 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 						notNull: true,
 					},
 					enabled: { type: 'boolean', default: { value: false } },
+					serverDefault: {
+						type: 'text', default: { value: 'Server supplies this' },
+						access: { create: false, update: 'editor' },
+					},
 					rootCode: {
 						type: 'integer',
 						references: { collection: 'roots', column: 'code' },
@@ -34,7 +38,9 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 		help: 'Shown publicly',
 		required: true,
 	});
-	expect(defaults(s.collections.things.columns)).toEqual({ enabled: false });
+	expect(defaults(s.collections.things.columns, (c) => allowed(c.create, 'editor')))
+		.toEqual({ enabled: false });
+	expect(s.collections.things.columns.serverDefault.create).toBe(false);
 	expect(s.collections.things.columns.rootCode.reference).toEqual({
 		collection: 'roots', column: 'code',
 	});

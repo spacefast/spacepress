@@ -159,10 +159,20 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 		// Register core's admin dependencies now, before plugins enqueue editor
 		// assets such as SCF's alpha picker (which depends on Iris's Color global).
 		if ( ! wp_script_is( 'wp-color-picker', 'registered' ) ) {
-			wp_default_scripts( wp_scripts() );
+			$defaults = new WP_Scripts();
+			foreach ( $defaults->registered as $handle => $dependency ) {
+				if ( ! isset( wp_scripts()->registered[ $handle ] ) ) {
+					wp_scripts()->registered[ $handle ] = $dependency;
+				}
+			}
 		}
 		if ( ! wp_style_is( 'wp-color-picker', 'registered' ) ) {
-			wp_default_styles( wp_styles() );
+			$defaults = new WP_Styles();
+			foreach ( $defaults->registered as $handle => $dependency ) {
+				if ( ! isset( wp_styles()->registered[ $handle ] ) ) {
+					wp_styles()->registered[ $handle ] = $dependency;
+				}
+			}
 		}
 
 		// Remove unwanted scripts/styles.

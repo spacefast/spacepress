@@ -363,9 +363,10 @@ final class Migrate
     private function checkReferences(Model $model, array $plan): void
     {
         $w = $this->db->wpdb();
+        $resources = array_flip(array_map(static fn (array $map): string => $map['collection'], $model->collections));
         foreach ($plan as $resource => $records) {
-            $spec = $this->schema->collection($resource);
             $map = $model->collections[$resource];
+            $spec = $this->schema->collection($map['collection']);
             foreach ($spec['columns'] as $column => $col) {
                 $column = (string) $column;
                 $target = $col['references']['collection'] ?? null;
@@ -380,7 +381,7 @@ final class Migrate
                     }
                     $at = "/records/$id" . HttpError::seg($this->sourceName($map, $column));
                     if ($target !== null) {
-                        if (!isset($plan[$target][(int) $v]) && !$this->isRowOf($target, (int) $v)) {
+                        if (!isset($plan[$resources[$target]][(int) $v]) && !$this->isRowOf($target, (int) $v)) {
                             throw new HttpError(409, 'reference_violation', "record $id references $v, which is not a $target record", $at);
                         }
                         continue;
@@ -422,8 +423,8 @@ final class Migrate
     {
         $w = $this->db->wpdb();
         foreach ($plan as $resource => $records) {
-            $spec = $this->schema->collection($resource);
             $map = $model->collections[$resource];
+            $spec = $this->schema->collection($map['collection']);
             $live = "p.post_type = ? AND p.post_status NOT IN ('trash', 'auto-draft', 'inherit')";
             foreach ($spec['columns'] as $column => $col) {
                 $column = (string) $column;

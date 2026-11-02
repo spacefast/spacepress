@@ -177,6 +177,7 @@ pub fn build(
             if &canonical != stored
                 && !schema.collections.contains_key(stored)
                 && schema.collections.contains_key(&canonical)
+                && !tables.contains_key(&canonical)
             {
                 return Err(Diag::new(config_span, format!(
                     "stored resource `{stored}` conflicts with canonical physical name `{canonical}`; an authoring change cannot rename persisted storage"

@@ -30,8 +30,11 @@ zero migrate config --from zero capsule.ts --out app/zero.config.ts
 ```
 
 The report (JSON on stdout) lists every mapping and every review item. Each
-collection becomes a WordPress post type `zero_<name>`, and each field a
-column:
+collection keeps its authored key and becomes a WordPress post type with a
+canonical storage name: `stockItems` becomes `zero_stock_items`. The site
+migration resolves release IDs through those authored keys, including relation
+targets; do not set a mixed-case `storageName` to match the old release. Each
+field becomes a column:
 
 | Original field | New column |
 | --- | --- |

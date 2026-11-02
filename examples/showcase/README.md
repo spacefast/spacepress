@@ -30,11 +30,11 @@ changing an existing field or its storage is refused; use preview to inspect
 those changes. Actions and hooks can be rebuilt too. Apply briefly puts the demo
 in maintenance mode, then reloads the generated plugin and runs its migrations.
 Select **Reload updated demo** after success to load the accepted sources and client.
-Existing records are retained; browser-applied sources and migration history
-survive subsequent launcher runs. The explicit `check` command still verifies
-the original demo contract: deliberately changing its actions or hooks can make
-that check fail. Rebuild controls remain available so you can correct the app. They live in the selected private state
-directory, not the repository: download sources to keep or commit your changes.
+Existing records are retained. Browser-applied sources and migration history
+live in the selected private state directory and survive launcher reruns;
+download sources to keep or commit them. The explicit `check` command still
+verifies the original demo contract: deliberately changing its actions or hooks
+can make that check fail. Rebuild controls remain available to correct the app.
 
 An invalid compile or refused migration leaves the running app unchanged.
 If a request loses its response, **Check build status** recovers that exact job;
@@ -81,10 +81,18 @@ or [the classic stories](http://127.0.0.1:8860/wp-content/plugins/zero-app-showc
 Use the printed origin instead when running on a different port or through
 Tailscale.
 
-Login: **editor** / **zero-test-editor**. Admin is **admin** /
-**zero-test-admin** for SCF, Plugins, Themes and Settings. Open `/wp-admin/plugins.php` to inspect active plugins and `/wp-admin/edit.php?post_type=acf-field-group` for the SCF field-group manager. The public tour includes a sign-in link to switch accounts. Zero’s generated story fields are registered from code and appear on the native story editor; they are not editable SCF field-group definitions. These are
-intentionally tracked disposable local credentials with no customer or
-production access. Application passwords stay in the ignored
+The default showcase login is **admin** / **zero-test-admin**, with the full
+WordPress sidebar, plugin installation, SCF, Themes, Users, Tools and Settings.
+The public page links directly to those screens. Use **editor** /
+**zero-test-editor** when testing content-only permissions. The public page has
+a sign-in link to switch accounts. Extra plugins installed through WordPress
+survive launcher rebuilds; rebuilding refreshes Zero's generated plugins and
+pinned dependencies. `down` still removes this disposable site's database and
+uploads. Open `/wp-admin/plugins.php` for plugins and
+`/wp-admin/edit.php?post_type=acf-field-group` for SCF. Zero's generated SCF fields
+are code-owned and appear on the native story editor; create separate field
+groups in SCF. These are intentionally tracked disposable local credentials
+with no customer or production access. Application passwords stay in the ignored
 `.zero/showcase/receipt.json`; the public page contains none.
 
 The prerequisites are the repository's normal Rust, PHP (including GD), Node

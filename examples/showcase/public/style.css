@@ -738,9 +738,9 @@ select:focus-visible {
   padding-top: 18px;
   font-size: 13px;
 }
-.wordpress-tour summary {
-  cursor: pointer;
-  color: var(--accent);
+.wordpress-tour h2 {
+  margin: 0 0 14px;
+  font-size: 23px;
 }
 .wordpress-tour .actions {
   flex-wrap: wrap;

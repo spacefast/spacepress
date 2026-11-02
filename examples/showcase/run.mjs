@@ -883,7 +883,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nClassic:  ${saved.url}/wp-admin/\nLogin:    editor / zero-test-editor\nConfig:   admin / zero-test-admin\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / zero-test-admin\nEditor:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
@@ -952,7 +952,20 @@ async function main() {
   });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
-  run("rsync", ["-a", "--delete", `${app}/.zero/wp-content/`, `${content}/`]);
+  const builtContent = join(app, ".zero/wp-content");
+  // Refresh generated files without deleting plugins installed through WordPress.
+  run("rsync", ["-a", "--exclude=/plugins/", `${builtContent}/`, `${content}/`]);
+  const builtPlugins = join(builtContent, "plugins");
+  const installedPlugins = join(content, "plugins");
+  mkdirSync(installedPlugins, { recursive: true });
+  for (const entry of readdirSync(builtPlugins, { withFileTypes: true })) {
+    const source = join(builtPlugins, entry.name);
+    const destination = join(installedPlugins, entry.name);
+    if (entry.isDirectory()) {
+      mkdirSync(destination, { recursive: true });
+      run("rsync", ["-a", "--delete", `${source}/`, `${destination}/`]);
+    } else copyFileSync(source, destination);
+  }
   const classic = join(content, "plugins/zero-showcase-classic-admin");
   mkdirSync(classic, { recursive: true });
   copyFileSync(

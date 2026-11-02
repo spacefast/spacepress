@@ -14,7 +14,7 @@
       <nav aria-label="Main">
         <a href="#pantry">Pantry</a><a href="#source-lab">Config lab</a
         ><a href="/zero-admin/">Zero admin ↗</a
-        ><a href="/wp-admin/">Classic admin ↗</a>
+        ><a href="/wp-admin/">WordPress admin ↗</a>
       </nav>
     </header>
     <main>
@@ -26,18 +26,22 @@
           TypeScript running as PHP.
         </p>
         <div class="actions">
-          <a class="button" href="/zero-admin/">Try the admin ↗</a
+          <a class="button" href="/wp-admin/">Open WordPress admin ↗</a
           ><a href="#try-it">Run some code ↓</a>
         </div>
         <p class="hint">
-          Local demo login: <code>editor</code> / <code>zero-test-editor</code>
+          Full demo login: <code>admin</code> / <code>zero-test-admin</code>
         </p>
-        <details class="wordpress-tour">
-          <summary>Explore WordPress, SCF &amp; installed plugins</summary>
+        <section
+          id="wordpress"
+          class="wordpress-tour"
+          aria-labelledby="wordpress-title"
+        >
+          <h2 id="wordpress-title">The whole WordPress admin.</h2>
           <p>
-            For the full WordPress admin, sign in as <code>admin</code> /
-            <code>zero-test-admin</code>. The editor account manages content;
-            the admin account also manages plugins, fields, themes and settings.
+            Browse installed plugins, install your own, switch themes and change
+            settings. Sign in with the admin account above for full access to
+            this disposable demo.
           </p>
           <p>
             Zero’s generated SCF fields appear on the native story editor. The
@@ -48,13 +52,24 @@
               href="/wp-login.php?reauth=1&amp;redirect_to=%2Fwp-admin%2Fplugins.php"
               >Sign in as admin ↗</a
             ><a href="/wp-admin/plugins.php">Installed plugins ↗</a
+            ><a href="/wp-admin/plugin-install.php">Add plugins ↗</a
+            ><a href="/wp-admin/options-general.php">Settings ↗</a
+            ><a href="/wp-admin/themes.php">Themes ↗</a
+            ><a href="/wp-admin/users.php">Users ↗</a
+            ><a href="/wp-admin/tools.php">Tools ↗</a
+            ><a href="/wp-admin/edit.php?post_type=page">Pages ↗</a
+            ><a href="/zero-admin/">Zero admin ↗</a
             ><a href="/wp-admin/edit.php?post_type=zero_stories"
               >Stories &amp; SCF fields ↗</a
             ><a href="/wp-admin/edit.php?post_type=acf-field-group"
               >SCF field groups ↗</a
             >
           </div>
-        </details>
+          <p class="hint">
+            To try content-only permissions, use <code>editor</code> /
+            <code>zero-test-editor</code> instead.
+          </p>
+        </section>
       </section>
       <section id="notebook" aria-labelledby="stories-title">
         <div class="section-title">
@@ -173,7 +188,7 @@
         <ol>
           <li>
             <strong>Edit a story.</strong> Open “Read story &amp; fields” on a
-            story, then “Edit this story”. Sign in as editor. Change a title or
+            story, then “Edit this story”. Sign in as admin. Change a title or
             paragraph, save, return here, and refresh.
           </li>
           <li>

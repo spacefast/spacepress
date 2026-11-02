@@ -42,7 +42,7 @@ async function session() {
       if (user && ["admin", "editor"].includes(user.role)) {
         editorClient = client;
         text.textContent =
-          "Signed in as an editor. Stock changes are saved immediately.";
+          `Signed in as ${user.role === "admin" ? "an administrator" : "an editor"}. Stock changes are saved immediately.`;
         return;
       }
     }
@@ -57,7 +57,7 @@ async function session() {
   text.append(
     login,
     document.createTextNode(
-      ", then refresh the pantry. Demo: editor / zero-test-editor.",
+      ", then refresh the pantry. Demo: admin / zero-test-admin.",
     ),
   );
 }

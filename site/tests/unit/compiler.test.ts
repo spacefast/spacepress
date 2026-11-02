@@ -181,6 +181,75 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
+    // Backend queries retain the authored JSON domain; wire types retain nulls.
+    const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
+type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
+type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
+class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
+const source = table({ body: json().$type<Payload>().notNull().localized(), label: text({ enum: ["first", "second"] }).notNull(), slug: slug({ source: "label" }).notNull(), details: group({ fields: { nullable: text(), defaulted: text().notNull().default("source") } }) }, { uid: true });
+type Selected = InferSelectModel<typeof source>;
+type Inserted = InferInsertModel<typeof source>;
+const members = userProjection({ email: email().notNull().unique().max(191), name: text().notNull() });
+type Member = InferSelectModel<typeof members>;
+class MemberView { constructor(public row: Member) {} read(): string { return this.row.name; } }
+class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
+type WithoutLocale = Omit<Inserted, "locale">;
+class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
+class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
+const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull(), translation: json().$type<WithoutLocale>().notNull() });
+export default defineConfig({ tables: { documents, source }, users: { members }, locales: { default: "en", all: ["en", "de"] }, actions: { read: action({ input: {}, handler: async () => {
+  const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
+  const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
+  const member = await db.query.members.findFirst();
+  const memberName = !member ? "" : new MemberView(member).read();
+  const selected = await db.query.source.findFirst();
+  const sourceTitle = !selected ? "" : new SelectedView(selected).read();
+  const row = await db.query.documents.findFirst();
+  return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
+} }) } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
+    const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
+    assert.equal(stored.envelope, nativeCheck(dir));
+    assert.equal(stored.check.ok, true, stored.envelope);
+    const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(storedBuild.status, 0, storedBuild.stderr);
+    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
+const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
+const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
+const inserted: Document["inserted"] = { body: wire, label: "second" };
+const translated: Document["inserted"] = { body: wire, translationOf: 1 };
+void selected; void inserted;`);
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] } },
+      include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
+    }));
+    const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
+
+    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+type Payload = InferSelectModel<typeof source>;
+const source = table({ body: json().$type<Payload>() });
+export default defineConfig({ tables: { source } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), recursiveModel);
+    const recursive = browserCheck({ name, files: { "zero.config.ts": recursiveModel } });
+    assert.equal(recursive.envelope, nativeCheck(dir));
+    assert.equal(recursive.check.ok, false);
+    assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
+    assert.equal(recursive.check.diagnostics[0]?.location?.file, "zero.config.ts");
+
+    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull(), right: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull() });`).join("\n");
+    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+${modelTables}
+export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), modelExpansion);
+    const expandedModel = browserCheck({ name, files: { "zero.config.ts": modelExpansion } });
+    assert.equal(expandedModel.envelope, nativeCheck(dir));
+    assert.equal(expandedModel.check.ok, false);
+    assert.match(expandedModel.check.diagnostics[0]?.message ?? "", /type expansion.*16384-step limit/);
+    assert.equal(expandedModel.check.diagnostics[0]?.location?.file, "zero.config.ts");
+    const modelTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(modelTypes.status, 0, modelTypes.stdout + modelTypes.stderr);
+
     // Each annotation root fits its own budget. Compiling C from the nested
     // annotation must accept the same program as compiling it from new C first.
     const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
@@ -190,7 +259,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
 type Box<T> = { value: T };
 ${aliases}
 class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
-export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
   ${prime ? "new C();" : ""}
   const x: ${nestedType} = ${nestedValue}; return x;
 } }) } });`;
@@ -234,7 +303,7 @@ export default defineConfig({ schema: {}, actions: { run: action({ input: {}, ha
     ]) {
       const source = `import { action, defineConfig } from "zero";
 type Expanded = ${probe.parts.join(" & ")};
-export default defineConfig({ schema: {}, actions: { run: action({ input: {}, handler: () => {
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
   const x: Expanded = { ${probe.value} }; return x;
 } }) } });`;
       writeFileSync(path.join(dir, "zero.config.ts"), source);

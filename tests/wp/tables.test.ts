@@ -1,10 +1,11 @@
-// `editor: false` custom tables (§4.2): rows live in wp_zero_<table> in the §3.4 storage form, the
+// `table()` custom tables (§4.2): rows live in wp_zero_<table> in the §3.4 storage form, the
 // cross-kind reference (comments.postId → a post) is checked and cascaded by the pipeline, and a
 // MySQL UNIQUE violation maps to a 409 `unique_violation` with the column pointer. Also: db.globals from
 // compiled code.
 import { test } from "node:test";
+import { createClient, ZeroError } from "./app/zero/client/index.ts";
 import assert from "node:assert/strict";
-import { api, core, harness, http, ok, problem, run, sql, wp, wpTry, zero } from "./env.ts";
+import { api, auth, core, harness, http, ok, problem, run, sql, wp, wpTry, zero } from "./env.ts";
 
 test("comments are rows in wp_zero_comments; references to posts are checked and cascade", async () => {
   const post = await ok("POST", "/posts", { as: "editor", body: { title: `Table ${run}` } });
@@ -23,12 +24,36 @@ test("comments are rows in wp_zero_comments; references to posts are checked and
   assert.deepEqual(sql(`SELECT id FROM wp_zero_comments WHERE id = ${c.id}`), [], "onDelete: cascade ran in the pipeline");
 });
 
+test("table relations use the generated client, SQL joins and the target's access rules", async () => {
+  const editor = createClient({ url: api, headers: auth("editor") });
+  const anonymous = createClient({ url: api });
+  const team = await editor.fieldTeams.create({ name: `Relational ${run}`, budget: 250 });
+  const signup = await editor.signups.create({ email: `relation-${run}@example.test`, teamId: team.id });
+  const matches = await editor.signups.list({ where: { team: { name: team.name } }, with: { team: true } });
+  assert.deepEqual(matches.map(row => [row.id, row.team?.id, row.team?.budget]), [[signup.id, team.id, undefined]]);
+  const reverse = await editor.fieldTeams.get(team.id, { with: { signups: { where: { email: signup.email } } } });
+  assert.deepEqual(reverse.signups.map(row => row.id), [signup.id]);
+  await assert.rejects(anonymous.fieldTeams.get(team.id, { with: { signups: true } }), (error: unknown) => {
+    assert.ok(error instanceof ZeroError);
+    assert.deepEqual([error.status, error.code], [401, "unauthenticated"], "a relation load must enforce target read access");
+    return true;
+  });
+  await assert.rejects(editor.signups.list({ where: { team: { budget: 250 } } }), (error: unknown) => {
+    assert.ok(error instanceof ZeroError);
+    assert.deepEqual([error.status, error.code, error.pointer], [403, "forbidden", "/where/team/budget"]);
+    return true;
+  });
+  assert.deepEqual(sql(`SELECT teamId FROM wp_zero_signups WHERE id = ${signup.id}`), [{ teamId: String(team.id) }]);
+  await editor.signups.delete(signup.id);
+  await editor.fieldTeams.delete(team.id);
+});
+
 test("unique() maps to 409 with a pointer: the meta check on posts, SQL UNIQUE on tables", async () => {
   // authors.email is unique meta on a post-backed collection: no SQL constraint exists, the store checks.
   zero("insert", "authors", JSON.stringify({ name: "U1", email: `u-${run}@example.test` }));
   const dup = JSON.parse(wpTry("zero", "insert", "authors", JSON.stringify({ name: "U2", email: `u-${run}@example.test` })));
   assert.deepEqual([dup.error.status, dup.error.code, dup.error.pointer], [409, "unique_violation", "/email"]);
-  // signups (tests/wp/app) is an editor:false table with a real UNIQUE index: MySQL error 1062, mapped.
+  // signups (tests/wp/app) is an SQL table with a real UNIQUE index: MySQL error 1062, mapped.
   await ok("POST", "/signups", { as: "editor", body: { email: `s-${run}@example.test` } });
   for (const email of [`s-${run}@example.test`, `free-${run}@example.test`]) {
     await problem("POST", "/signups", { body: { email } }, { status: 401, code: "unauthenticated", pointer: "/email" });

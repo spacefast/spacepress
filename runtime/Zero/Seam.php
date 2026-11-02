@@ -155,6 +155,11 @@ final class Seam
         if (!$schema->hasCollection($collection)) { return self::media($row); }
         $spec = $schema->collection($collection);
         $fields = $spec['columns'];
+        // Compiled app rows follow the authored model. Internal PHP stores keep
+        // hidden metadata (for example translationGroup) for their own work.
+        foreach ($fields as $name => $column) {
+            if ($column['hidden'] ?? false) { unset($row[$name]); }
+        }
         foreach ($spec['relations'] ?? [] as $name => $relation) {
             $fields[$name] = ['type' => $relation['kind'] === 'many' ? 'rows' : 'row', 'collection' => $relation['collection']];
         }

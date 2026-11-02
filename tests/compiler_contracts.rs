@@ -139,14 +139,14 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
     let config = r#"import { collection, defineConfig, id, text, group, repeater, blocks, json } from "zero";
-const notes = collection("notes", {
+const notes = collection({
   id: id(), title: text().notNull(),
   seo: group({ fields: { summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }) } }).ui({ label: "SEO" }),
   rows: repeater({ fields: { value: text().ui({ label: "Row value", help: undefined, placeholder: undefined, width: undefined }) } }),
   content: blocks({ layouts: { hero: { heading: text().ui({ label: "Heading" }) } } }),
   metadata: json(),
 }, { title: "title" });
-export default defineConfig({ name: "presentation", schema: { notes } });"#;
+export default defineConfig({ name: "presentation", collections: { notes } });"#;
     std::fs::write(tmp.path().join("zero.config.ts"), config).unwrap();
     let content = build_wp(tmp.path());
     let schema = content.join("plugins/zero-app-presentation/zero/app/schema.php");
@@ -216,7 +216,7 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), title: text().ui({ui}) }}, {{ title: 'title' }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection({{ id: id(), title: text().ui({ui}) }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
@@ -237,8 +237,8 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
 import {{ collection, id, text, json, action, defineConfig }} from "zero";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
-const notes = collection("notes", {{ id: id(), title: text().notNull(), result: json().default(encoded) }}, {{ title: "title" }});
-export default defineConfig({{ name: "uri", schema: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
+const notes = collection({{ id: id(), title: text().notNull(), result: json().default(encoded) }}, {{ title: "title" }});
+export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/zero-app-uri/zero/app");
@@ -322,8 +322,8 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
             std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
 import {{ collection, id, text, action, defineConfig }} from "zero";
 const result = {invocation};
-const notes = collection("notes", {{ id: id(), title: text().notNull() }}, {{ title: "title" }});
-export default defineConfig({{ schema: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
+const notes = collection({{ id: id(), title: text().notNull() }}, {{ title: "title" }});
+export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
 "#, handler_body = if handler { "result".to_string() } else { "() => result".to_string() })).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
@@ -349,8 +349,8 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
 import {{ collection, id, text, json, action, defineConfig }} from "zero";
 const measured = {expression};
-const notes = collection("notes", {{ id: id(), title: text().notNull(), result: json().default(measured) }}, {{ title: "title" }});
-export default defineConfig({{ name: "differences", schema: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
+const notes = collection({{ id: id(), title: text().notNull(), result: json().default(measured) }}, {{ title: "title" }});
+export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -580,7 +580,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ collection, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ schema: {{ n: collection('n', {{ id: id() }}, {{ editor: false }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{ table, id, json, action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{ id: id() }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]

@@ -3,23 +3,22 @@
 // settings. tests/system drives a whole user journey through this app on both targets (WordPress and
 // standalone).
 import {
-  collection, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
+  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, job, jobs, env, file, files, db, HttpError,
+  table, userProjection,
 } from "zero";
 
 // Who works on the site. Everyone else (anonymous readers, guests, signed-in members) is a reader.
 const STAFF = ["author", "editor", "admin"];
 
-export const authors = collection("authors", {
-  id: id(),
+export const authors = collection({
   name: text().notNull().max(80),
   bio: text({ multiline: true }).max(500),
   avatar: media({ accept: "image" }),
   userId: integer(),                       // the User.id that writes as this author
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export const posts = collection("posts", {
-  id: id(),
+export const posts = collection({
   // Translated per locale. The other fields are shared by a post's translations, except each
   // row's own slug, status and dates.
   title: text().notNull().min(1).max(120).localized(),
@@ -56,48 +55,45 @@ export const posts = collection("posts", {
   },
 });
 
-export const comments = collection("comments", {
-  id: id(),
+export const comments = table({
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   name: text().notNull().max(60),
   body: text({ multiline: true }).notNull().min(1).max(2000),
   approved: boolean().notNull().default(false),
   createdAt: timestamp().notNull().defaultNow(),
 }, {
-  editor: false,
-  // Readers (anonymous, guests, members) see approved comments only; staff see the moderation queue.
   access: { read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
 // Newsletter sign-ups are acknowledged by subscribeNewsletter and processed privately on the queue.
 // Direct writes and subscriber identities stay admin-only.
-export const subscribers = collection("subscribers", {
-  id: id(),
+export const subscribers = table({
   email: email().notNull().unique().max(191),
   postId: integer().references(() => posts.id, { onDelete: "set null" }),
   createdAt: timestamp().notNull().defaultNow(),
-}, { editor: false, access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
+}, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
 
 // Staff see announcement receipts; exact counts stay with the subscriber administrators.
-export const announcements = collection("announcements", {
-  id: id(),
+export const announcements = table({
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   recipients: integer().notNull().access({ read: "admin", update: "admin" }),
   attempt: integer().notNull(),
-}, { editor: false, access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
+}, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 // Readers who sign in: WordPress users through the zero-identity screens, or a password on
 // standalone. Readers see and edit their own row; administrators can read the identities they manage.
-export const members = collection("members", {
-  id: id(),
+export const members = userProjection({
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),
   plan: select({ options: ["free", "supporter"] }).notNull().default("free"),
-}, { auth: true, access: { read: (ctx) => ctx.user?.role === "admin" ? true : ctx.user ? { id: ctx.user.id } : false, update: "self", create: "admin", delete: "admin" } });
+}, { access: { read: (ctx) => ctx.user?.role === "admin" ? true : ctx.user ? { id: ctx.user.id } : false, update: "self", create: "admin", delete: "admin" } });
 
-export const schema = { authors, posts, comments, subscribers, announcements, members };
+export const collections = { authors, posts };
+export const tables = { comments, subscribers, announcements };
+export const users = { members };
+export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations(entities, (r) => ({
   posts: {
     author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }),
     comments: r.many.comments(),
@@ -118,7 +114,7 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "site",
-  schema,
+  collections, tables, users,
   relations,
   globals: { settings },
   locales: { default: "en", all: ["en", "de"] },

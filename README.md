@@ -21,18 +21,16 @@ software. The API will move. Read [Status](#status) before you build on it.
 ```ts
 // zero.config.ts
 import {
-  collection, id, text, richText, slug, integer, timestamp, media,
+  collection, table, text, richText, slug, integer, timestamp, media,
   defineRelations, defineConfig, action, db, HttpError,
 } from "zero";
 
-export const authors = collection("authors", {
-  id: id(),
+export const authors = collection({
   name: text().notNull().max(80),
   avatar: media({ accept: "image" }),
 }, { title: "name" });
 
-export const posts = collection("posts", {
-  id: id(),
+export const posts = collection({
   title: text().notNull().max(120),
   slug: slug({ source: "title" }),
   body: richText(),
@@ -43,16 +41,22 @@ export const posts = collection("posts", {
   access: { read: "anyone", create: "author", update: "author", delete: "editor" },
 });
 
-export const schema = { authors, posts };
+export const collections = { authors, posts };
+export const stock = table({
+  postId: integer().references(() => posts.id),
+  quantity: integer().notNull().default(0),
+});
+export const tables = { stock };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations({ ...collections, ...tables }, (r) => ({
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }) },
   authors: { posts: r.many.posts() },
+  stock: { post: r.one.posts({ from: r.stock.postId, to: r.posts.id }) },
 }));
 
 export default defineConfig({
   name: "journal",
-  schema,
+  collections, tables,
   relations,
   hooks: {
     posts: {
@@ -234,12 +238,16 @@ depend on:
 | `zero-identity` | accounts, passkeys, MFA and an OpenID Connect issuer |
 | `zero-app-<name>` | your app: schema, compiled hooks and actions, MySQL migrations |
 
-Each collection with an editor is a custom post type (`zero_<name>`) with a
+Each `collection(fields, options?)` is a custom post type (`zero_<name>`) with a
 Secure Custom Fields group, so your content shows up in WordPress admin with
 revisions, and in the block editor when the collection has a `content` field,
 next to whatever the site already does.
-Collections with `editor: false` are plain tables, and an `auth: true`
-collection's rows are WordPress users. Core `/wp/v2` routes and
+Use `table(fields, options?)` for app data in its own SQL table. Both kinds
+support references and one/many relations to either kind, with typed client
+queries and target access rules. The registry key supplies the name once:
+`shoppingList` stays `zero.shoppingList` in the client and stores in
+`wp_zero_shopping_list`. `userProjection()` in `users` projects existing
+WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
 admin screens for Zero's post types follow Zero's access rules. Need other
 plugins at exact versions? [Declare them in the config](docs/wp-plugins.md)
 and the build pins and ships them too.

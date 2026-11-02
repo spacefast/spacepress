@@ -6,7 +6,7 @@ use crate::ir::{Func, TyAnn};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use indexmap::IndexMap;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -57,7 +57,7 @@ pub struct Closure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
     // "zero" exports
-    Collection,
+    Collection(StorageKind),
     Column(ColType),
     Id,
     /// email, url, slug, richText, media, select, group, repeater, blocks
@@ -146,12 +146,46 @@ pub enum DefaultVal {
     Fn(Rc<Closure>),
 }
 
+/// Authored storage is explicit; user projections retain WordPress's identity store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    Collection,
+    Table,
+    UserProjection,
+}
+
+impl StorageKind {
+    pub fn builder(self) -> &'static str {
+        match self {
+            Self::Collection => "collection",
+            Self::Table => "table",
+            Self::UserProjection => "userProjection",
+        }
+    }
+
+    pub fn registry(self) -> &'static str {
+        match self {
+            Self::Collection => "collections",
+            Self::Table => "tables",
+            Self::UserProjection => "users",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CollectionVal {
-    pub table: String,
+    pub kind: StorageKind,
+    /// Bound exactly once from the registry key, before references are extracted.
+    pub table: OnceCell<String>,
     pub columns: IndexMap<String, Rc<ColBuilder>>,
     pub options: Option<Value>,
     pub span: Span,
+}
+
+impl CollectionVal {
+    pub fn table(&self) -> &str {
+        self.table.get().map(String::as_str).unwrap_or("<unregistered>")
+    }
 }
 
 #[derive(Debug)]
@@ -269,8 +303,8 @@ impl Value {
             Value::Closure(_) | Value::Bound(..) => "a function".into(),
             Value::Builtin(b) => format!("{b:?}"),
             Value::Column(c) => format!("a {} column", c.ty.name()),
-            Value::Collection(c) => format!("collection \"{}\"", c.table),
-            Value::ColRef(r) => format!("column {}.{}", r.collection.table, r.column),
+            Value::Collection(c) => format!("collection \"{}\"", c.table()),
+            Value::ColRef(r) => format!("column {}.{}", r.collection.table(), r.column),
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
             Value::Job(_) => "a job".into(),

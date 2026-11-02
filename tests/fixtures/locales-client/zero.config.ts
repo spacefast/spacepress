@@ -1,11 +1,14 @@
 // Localized collections keyed by a number (id()) and by text: translation ids follow the key type.
-import { collection, defineConfig, id, integer, text } from "zero";
+import { collection, defineConfig, id, integer, text, table } from "zero";
 
-const guides = collection("guides", { id: id(), title: text().notNull().localized(), price: integer().notNull() }, { editor: false });
-const codes = collection("codes", { id: text().primaryKey(), label: text().localized(), rank: integer() }, { editor: false });
+const guides = table({ id: id(), title: text().notNull().localized(), price: integer().notNull() });
+const codes = table({ id: text().primaryKey(), label: text().localized(), rank: integer() });
 
 // A collection keyed `locales` must not collide with the generated `Locale` type.
-const locales = collection("locales", { id: id(), name: text().notNull() }, { editor: false });
+const locales = table({ id: id(), name: text().notNull() });
 
-export const schema = { guides, codes, locales };
-export default defineConfig({ name: "localesclient", schema, locales: { default: "en", all: ["en", "de"] } });
+export const collections = {  };
+export const tables = { guides, codes, locales };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
+export default defineConfig({ name: "localesclient", collections, tables, users, locales: { default: "en", all: ["en", "de"] } });

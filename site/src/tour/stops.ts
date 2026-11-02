@@ -44,10 +44,10 @@ export const tours: Tour[] = [
         slug: "a-collection",
         title: "A collection becomes a table",
         prose: [
-          "A collection is a table: columns with types, constraints and defaults. `id()` is the primary key, `notNull()` and `default()` mean what they say in SQL, and `enum` is recorded in `schema.php` for the runtime to check on every write.",
+          "A table holds app data in SQL; collections hold editorial content in WordPress. An implicit `id()` is the primary key, `notNull()` and `default()` mean what they say in SQL, and `enum` is recorded in `schema.php` for the runtime to check on every write.",
           "The first build writes `0001_init.sql`; the next build diffs the schema against the committed snapshot and writes only what changed.",
         ],
-        config: { file: "zero.config.ts", lines: { from: 'collection("locations"', to: "{ editor: false });" } },
+        config: { file: "zero.config.ts", lines: { from: 'export const locations = table(', to: "}));" } },
         outputs: [
           { file: { artifact: "migration" }, lines: { from: "CREATE TABLE `{prefix}zero_locations`", to: "ENGINE=InnoDB" } },
           { file: { artifact: "schema.php" }, lines: { from: "'kind' => ['type' => 'text', 'notNull' => true, 'enum' => ['fridge', 'freezer', 'pantry']", to: "'kind' => ['type' => 'text', 'notNull' => true, 'enum' => ['fridge', 'freezer', 'pantry']" } },
@@ -60,7 +60,7 @@ export const tours: Tour[] = [
           "The config is evaluated at build time by Zero's own evaluator, so helpers, factories and spreads work as you expect: `named()` adds an id and a name to any set of columns, and `...timestamps` comes from another file.",
           "The evaluator has no file system and no clock. What it produces is the schema as plain data, which is all the next steps need.",
         ],
-        config: { file: "zero.config.ts", lines: { from: 'export const items = collection("items"', to: "}), { editor: false });" } },
+        config: { file: "zero.config.ts", lines: { from: 'export const items = table(', to: "}));" } },
         inputs: [
           { file: "zero.config.ts", lines: { from: "const named =", to: "const named =" } },
           { file: "lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
@@ -157,10 +157,10 @@ export const tours: Tour[] = [
         slug: "members",
         title: "Readers who sign in",
         prose: [
-          "`auth: true` on a collection makes its rows accounts: the zero-identity plugin provides the sign-in screens, sessions, passkeys and MFA. In hooks and access rules `ctx.user` is the signed-in identity (`id`, `name`, `role`); the member's own row comes from `/me`.",
+          "`userProjection()` in `users` projects native WordPress accounts: the zero-identity plugin provides the sign-in screens, sessions, passkeys and MFA. In hooks and access rules `ctx.user` is the signed-in identity (`id`, `name`, `role`); the member's own row comes from `/me`.",
           "`\"self\"` is the rule for a member's own row: here both `read` and `update` are `\"self\"`, so a member reads and edits their row and nobody else's. An operation without a rule takes the default: reads are open to anyone, writes need an editor.",
         ],
-        config: { file: "zero.config.ts", lines: { from: 'collection("members"', to: 'access: { read: "self", update: "self"' } },
+        config: { file: "zero.config.ts", lines: { from: 'userProjection(', to: 'access: { read: "self", update: "self"' } },
         outputs: [{ file: { artifact: "schema.php" }, lines: { from: "'auth' => ['collection' => 'members'", to: "'auth' => ['collection' => 'members'" } }],
       },
       {

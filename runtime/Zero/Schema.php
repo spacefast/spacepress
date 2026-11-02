@@ -97,6 +97,11 @@ final class Schema
         return $this->raw['media'] ?? ['sizes' => []];
     }
 
+    public function uploads(): array
+    {
+        return $this->raw['uploads'] ?? ['backend' => 'local'];
+    }
+
     public function files(): array
     {
         return $this->raw['files'] ?? [];

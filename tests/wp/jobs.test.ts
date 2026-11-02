@@ -26,7 +26,7 @@ const runPending = (id: string) => {
 };
 
 test("a hook's enqueue becomes an Action Scheduler action, and AS runs the handler", async () => {
-  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `stamp ${run}` } });
+  const note = await ok("POST", "/job_notes", { as: "editor", body: { title: `stamp ${run}` } });
   const [id] = jobFor(note.id);
   assert.ok(id, "the hook enqueued a job");
   assert.equal(jobRow(id).state, "pending");
@@ -36,30 +36,30 @@ test("a hook's enqueue becomes an Action Scheduler action, and AS runs the handl
   runQueue();
   assert.deepEqual({ state: jobRow(id).state, attempts: jobRow(id).attempts }, { state: "done", attempts: "1" });
   assert.deepEqual(actions(id), ["complete"]);
-  const [stamped] = await ok("GET", `/jobNotes?where=${encodeURIComponent(JSON.stringify({ id: note.id }))}`, { as: "editor" });
+  const [stamped] = await ok("GET", `/job_notes?where=${encodeURIComponent(JSON.stringify({ id: note.id }))}`, { as: "editor" });
   assert.equal(stamped.stamped, `${id}:1`, "the handler's write is visible through the API");
 });
 
 test("an action's nested JSON reaches the queued handler byte for byte", async () => {
-  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `json ${run}` } });
+  const note = await ok("POST", "/job_notes", { as: "editor", body: { title: `json ${run}` } });
   const queued = await ok("POST", "/actions/refsEnqueue", { as: "editor", body: { noteId: note.id, meta: { "1": 1, "0": 2, empty: {} } } });
   runPending(queued.id);
-  const [stored] = await ok("GET", `/jobNotes?where=${encodeURIComponent(JSON.stringify({ id: note.id }))}`, { as: "editor" });
+  const [stored] = await ok("GET", `/job_notes?where=${encodeURIComponent(JSON.stringify({ id: note.id }))}`, { as: "editor" });
   assert.equal(stored.stamped, queued.sent);
   assert.equal(queued.sent, '{"0":2,"1":1,"empty":{}}');
 });
 
 test("a rolled-back request leaves no job, outbox row or AS action", async () => {
   const before = sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'zero_job'")[0].n;
-  await problem("POST", "/jobNotes", { as: "editor", body: { title: "Explode" } }, { status: 500, code: "boom", pointer: undefined });
-  assert.deepEqual(sql("SELECT id FROM wp_zero_jobNotes WHERE title = 'Explode'"), []);
+  await problem("POST", "/job_notes", { as: "editor", body: { title: "Explode" } }, { status: 500, code: "boom", pointer: undefined });
+  assert.deepEqual(sql("SELECT id FROM wp_zero_job_notes WHERE title = 'Explode'"), []);
   assert.deepEqual(sql("SELECT id FROM wp_zero__outbox"), []);
-  assert.deepEqual(sql("SELECT id FROM wp_zero__jobs WHERE JSON_VALUE(input, '$.noteId') NOT IN (SELECT id FROM wp_zero_jobNotes)"), []);
+  assert.deepEqual(sql("SELECT id FROM wp_zero__jobs WHERE JSON_VALUE(input, '$.noteId') NOT IN (SELECT id FROM wp_zero_job_notes)"), []);
   assert.equal(sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'zero_job'")[0].n, before);
 });
 
 test("a failing job is retried through Action Scheduler with backoff, then dead after `retries`", async () => {
-  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `fail ${run}`, fail: true } });
+  const note = await ok("POST", "/job_notes", { as: "editor", body: { title: `fail ${run}`, fail: true } });
   const [id] = jobFor(note.id);
   runQueue();
   const first = jobRow(id);
@@ -78,7 +78,7 @@ test("a failing job is retried through Action Scheduler with backoff, then dead 
   assert.deepEqual({ state: dead.state, attempts: dead.attempts }, { state: "dead", attempts: "2" });
   assert.match(dead.lastError, /stamp failed on attempt 2/);
   assert.deepEqual(actions(id), ["complete", "complete"], "a dead job schedules nothing more");
-  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_jobNotes WHERE id = ${note.id}`), [{ stamped: "NULL" }], "each failed attempt's write rolled back");
+  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_job_notes WHERE id = ${note.id}`), [{ stamped: "NULL" }], "each failed attempt's write rolled back");
   assert.deepEqual(zero("jobs", "list", "--state=dead").map((j: { id: string }) => j.id).filter((j: string) => j === id), [id]);
 });
 
@@ -147,7 +147,7 @@ async function contend(body: string, blockedSql: string) {
 }
 
 test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS runs it, subscribers are refused", async () => {
-  const note = await ok("POST", "/jobNotes", { as: "editor", body: { title: `ability ${run}` } });
+  const note = await ok("POST", "/job_notes", { as: "editor", body: { title: `ability ${run}` } });
   runQueue(); // the hook's own job
   const run1 = (who: "editor" | "subscriber") =>
     http("POST", `${harness.url}/wp-json/wp-abilities/v1/abilities/blog/job-stamp/run`, { as: who, body: { input: { noteId: note.id } } });
@@ -158,7 +158,7 @@ test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS 
   assert.deepEqual(actions(r.json.id), ["pending"], "the ability's enqueue reached Action Scheduler after commit");
   runQueue();
   assert.equal(jobRow(r.json.id).state, "done");
-  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_jobNotes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
+  assert.deepEqual(sql(`SELECT stamped FROM wp_zero_job_notes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
 });
 
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
@@ -200,7 +200,7 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
   const second = await call();
   assert.equal(first.status, 200, JSON.stringify(first.json));
   assert.deepEqual(second.json, first.json, "once() returned the stored result");
-  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_jobNotes WHERE title = 'once ${run}'`)[0].n, "1");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_job_notes WHERE title = 'once ${run}'`)[0].n, "1");
 
   const keyed = await call(`k-${run}`);
   const replay = await call(`k-${run}`);
@@ -249,7 +249,7 @@ test("a committed write reaches a local receiver through Action Scheduler, signe
   for (const [name, value] of constants) wp("config", "set", name, value, "--type=constant");
   t.after(() => { for (const [name] of constants) wp("config", "delete", name, "--type=constant"); });
 
-  const note = await ok("POST", "/hookNotes", { as: "editor", body: { title: `hook ${run}` } });
+  const note = await ok("POST", "/hook_notes", { as: "editor", body: { title: `hook ${run}` } });
   const [job] = sql(`SELECT id, state FROM wp_zero__jobs WHERE job = 'zero.webhook' AND JSON_VALUE(input, '$.id') = ${note.id}`);
   assert.equal(job.state, "pending");
   assert.deepEqual(actions(job.id), ["pending"]);
@@ -266,9 +266,9 @@ test("a committed write reaches a local receiver through Action Scheduler, signe
   assert.equal(mine().length, 2, "the retry delivered again with the same event id");
   const last = mine()[1];
   const event = JSON.parse(last.body);
-  assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hookNotes.created", collection: "hookNotes", at: undefined, data: { row: note } });
+  assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hook_notes.created", collection: "hook_notes", at: undefined, data: { row: note } });
   assert.equal(last.headers["zero-event-id"], job.id);
-  assert.equal(last.headers["zero-event"], "hookNotes.created");
+  assert.equal(last.headers["zero-event"], "hook_notes.created");
   const [, ts, v1] = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(last.headers["zero-signature"]))!;
   assert.equal(v1, createHmac("sha256", secret).update(`${ts}.${last.body}`).digest("hex"), "the receiver can verify the signature");
   assert.ok(Math.abs(Date.now() / 1000 - Number(ts)) < 120);
@@ -284,7 +284,7 @@ test("an inbound action with signature runs for a valid zero signature and rejec
   const now = Math.floor(Date.now() / 1000);
   const accepted = await send(sign(now));
   assert.deepEqual([accepted.status, await accepted.json()], [200, { data: { user: null } }]);
-  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_jobNotes WHERE title = 'inbound ${run}'`)[0].n, "1");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_zero_job_notes WHERE title = 'inbound ${run}'`)[0].n, "1");
   // The stale/missing/rotated matrix lives in tests/php/webhooks_test.php; WordPress proves the transport.
   const forged = await send(sign(now, "forged"));
   assert.deepEqual([forged.status, (await forged.json()).code], [401, "invalid_signature"]);

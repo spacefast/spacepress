@@ -20,15 +20,19 @@ final class Module
         Extensions::route('media', self::dispatch(...));
         Files::register();
         if (defined('ABSPATH') && function_exists('add_action')) {
+            \Zero\Wp\Uploads::boot();
             \Zero\Wp\WpMedia::boot();
             \Zero\Wp\WpFiles::boot();
         }
     }
 
-    /** @return array{int, mixed} */
-    public static function dispatch(string $method, array $segments, array $query, string $body, Viewer $viewer, array $files, array $form): array
+    /** @return array{int, mixed}|\Zero\Response */
+    public static function dispatch(string $method, array $segments, array $query, string $body, Viewer $viewer, array $files, array $form): array|\Zero\Response
     {
         $n = count($segments);
+        if ($n >= 5 && $segments[2] === 'file') {
+            return \Zero\Wp\Uploads::dispatch($method, $segments);
+        }
         if ($n === 1) {
             App::allow($method, ['GET', 'POST']);
             if ($method === 'GET') {

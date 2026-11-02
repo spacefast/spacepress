@@ -1,10 +1,9 @@
-import { collection, defineConfig, id, text } from "zero";
+import { collection, defineConfig, text } from "zero";
 import { seoFields } from "./seo";
 
-const articles = collection("articles", {
-  id: id(),
+const articles = collection({
   title: text().notNull(),
   ...seoFields(),
 }, { title: "title" });
 
-export default defineConfig({ name: "recipes", schema: { articles } });
+export default defineConfig({ name: "recipes", collections: { articles } });

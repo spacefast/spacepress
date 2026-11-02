@@ -1,3 +1,3 @@
 import { collection, id, text, defineConfig } from "zero";
-const notes = collection("notes", { id: id(), body: text() });
-export default defineConfig({ schema: { notes } });
+const notes = collection({ id: id(), body: text() });
+export default defineConfig({ collections: { notes } });

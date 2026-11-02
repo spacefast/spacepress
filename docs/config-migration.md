@@ -67,7 +67,7 @@ add support for nested fields or executable admin components.
 
 A required text field named `title` enables a WordPress custom post type with
 the target's draft/revision behavior. Otherwise the imported collection uses a
-custom table (`editor: false`). The report calls out this storage choice and the
+SQL table (`table()` in `tables`). The report calls out this storage choice and the
 need to review publishing behavior. Import does not adopt existing WordPress
 post types. Original Zero's native `posts`, `pages` and `media` declarations are
 refused because creating new stores would change their ownership.

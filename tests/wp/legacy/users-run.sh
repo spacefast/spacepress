@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lane M2 (legacy app users), run by ../run.sh after legacy/run.sh: boot WordPress with a members
-# app (`auth: true`, design §6.2), seed app users the way the ORIGINAL Space stored them, run
+# app (user projection, design §6.2), seed app users the way the ORIGINAL Space stored them, run
 # users.test.ts. With ZERO_ORIGINAL the original identity plugin (from that checkout's
 # runtime/identity/spacefast-identity.zip) creates them; ZERO_UPDATE_FIXTURES=1 refreshes users.json.
 # Otherwise replay-users.php loads users.json.

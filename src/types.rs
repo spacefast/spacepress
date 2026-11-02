@@ -351,7 +351,7 @@ fn fields_obj(fields: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty
 
 fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     let base = col_base(c, json_ty, insert);
-    if c.not_null { base } else { base.nullable() }
+    if c.authored_not_null() { base } else { base.nullable() }
 }
 
 pub struct JsonType {
@@ -393,6 +393,9 @@ pub fn row_of(c: &Collection) -> Ty {
 
 pub fn row_of_with(c: &Collection, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     let mut row = columns_row(&c.columns, json_ty);
+    if let Ty::Obj(fields) = &mut row {
+        fields.retain(|name, _| !c.columns[name].hidden);
+    }
     if c.localized
         && let Ty::Obj(fields) = &mut row
         && let Some(t) = fields.get_mut("translations")
@@ -479,7 +482,10 @@ pub fn authored_model(c: &Collection, insert: bool) -> Ty {
                 } else {
                     authored_column(col, insert)
                 };
-                (col.name.clone(), (ty, insert && col.optional_on_insert()))
+                (
+                    col.name.clone(),
+                    (ty, insert && (!col.authored_not_null() || col.authored_has_default())),
+                )
             })
             .chain((insert && c.auth).then(|| ("password".into(), (Ty::Str, true))))
             .collect::<IndexMap<_, _>>()
@@ -527,7 +533,7 @@ fn authored_column(col: &Column, insert: bool) -> Ty {
         )))),
         _ => col_base(col, &json_authored_ty, false),
     };
-    let ty = if col.not_null { base } else { base.nullable() };
+    let ty = if col.authored_not_null() { base } else { base.nullable() };
     if insert && matches!(col.ty, ColType::Group | ColType::Repeater | ColType::Blocks) {
         authored_structured_write(ty)
     } else {

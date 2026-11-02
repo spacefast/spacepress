@@ -404,11 +404,8 @@ pub fn gen_ts(schema: &Schema) -> String {
                 php_str(&col.name),
                 php_str(kind),
                 value,
-                col.not_null || translations,
-                col.default.is_some()
-                    || col.auto_increment
-                    || col.derived
-                    || col.ty == crate::schema::ColType::Slug && col.source.is_some(),
+                col.authored_not_null(),
+                col.authored_has_default(),
                 col.localized,
                 col.primary_key
             );

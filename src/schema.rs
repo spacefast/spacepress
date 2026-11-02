@@ -225,6 +225,19 @@ impl Column {
                 .is_some_and(|ls| ls.values().any(|fs| fs.values().any(Column::translated)))
     }
 
+    /// The declaration model describes generated values, not nullable backing storage.
+    pub fn authored_not_null(&self) -> bool {
+        self.not_null || self.derived || self.system && self.name == "uid"
+    }
+
+    pub fn authored_has_default(&self) -> bool {
+        self.default.is_some()
+            || self.auto_increment
+            || self.derived
+            || self.system && self.name == "uid"
+            || self.ty == ColType::Slug && self.source.is_some()
+    }
+
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         !self.not_null || self.default.is_some() || self.auto_increment

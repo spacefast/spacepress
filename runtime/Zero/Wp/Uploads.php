@@ -55,10 +55,37 @@ final class Uploads
     public static function discard(string $key): void
     {
         try {
-            self::store()->delete($key);
+            self::deleteUnreferenced($key);
         } catch (\Throwable) {
             error_log('Zero upload cleanup deferred');
         }
+    }
+
+    private static function deleteUnreferenced(string $key): void
+    {
+        // A retired or compensated object no longer proves request-local reuse is safe.
+        foreach (self::$written as $cache => $entry) {
+            if ($entry['key'] === $key) {
+                unset(self::$written[$cache]);
+            }
+        }
+        $plugin = Runtime::plugin() ?? throw S3::unavailable();
+        $db = $plugin->connection();
+        // Commit/rollback callbacks must consult final durable state, not WP's metadata cache.
+        if ($db->run('SELECT id FROM `' . $db->prefix() . 'zero__files` WHERE app = ? AND path = ? LIMIT 1', [$plugin->schema->name(), 's3:' . $key]) !== []) {
+            return;
+        }
+        $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $key) . '%';
+        $rows = $db->run('SELECT m.meta_value FROM `' . $db->wpdb()->postmeta . '` m INNER JOIN `' . $db->wpdb()->posts . '` p ON p.ID = m.post_id WHERE p.post_type = ? AND m.meta_key = ? AND m.meta_value LIKE ?', ['attachment', self::MANIFEST, $pattern]);
+        foreach ($rows as $row) {
+            $manifest = unserialize($row['meta_value'], ['allowed_classes' => false]);
+            foreach (is_array($manifest) ? $manifest : [] as $entry) {
+                if (($entry['key'] ?? null) === $key) {
+                    return;
+                }
+            }
+        }
+        self::store()->delete($key);
     }
 
     public static function boot(): void
@@ -347,7 +374,6 @@ final class Uploads
         if (!self::active() || $plugin?->unavailable() !== null) {
             return;
         }
-        $db = $plugin->connection();
         $option = 'zero_upload_cursor_' . hash('sha256', self::prefix());
         $cursor = get_option($option);
         [$objects, $next] = self::store()->page(self::prefix(), is_string($cursor) && $cursor !== '' ? $cursor : null);
@@ -356,22 +382,7 @@ final class Uploads
             if ($object['time'] === null || $object['time'] >= $olderThan) {
                 continue;
             }
-            $key = $object['key'];
-            if ($db->run('SELECT id FROM `' . $db->prefix() . 'zero__files` WHERE app = ? AND path = ? LIMIT 1', [$plugin->schema->name(), 's3:' . $key]) !== []) {
-                continue;
-            }
-            $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $key) . '%';
-            $rows = $db->run('SELECT m.meta_value FROM `' . $db->wpdb()->postmeta . '` m INNER JOIN `' . $db->wpdb()->posts . '` p ON p.ID = m.post_id WHERE p.post_type = ? AND m.meta_key = ? AND m.meta_value LIKE ?', ['attachment', self::MANIFEST, $pattern]);
-            $referenced = false;
-            foreach ($rows as $row) {
-                $manifest = unserialize($row['meta_value'], ['allowed_classes' => false]);
-                foreach (is_array($manifest) ? $manifest : [] as $entry) {
-                    $referenced = $referenced || ($entry['key'] ?? null) === $key;
-                }
-            }
-            if (!$referenced) {
-                self::store()->delete($key);
-            }
+            self::deleteUnreferenced($object['key']);
         }
         update_option($option, $next ?? '', false);
         if ($next !== null && as_schedule_single_action(time() + 60, self::MAINTAIN, [], 'zero') === 0) {

@@ -146,6 +146,9 @@ an error. Zero's request transaction rolls back metadata, and new objects have
 rollback compensation. Replacements use immutable object keys, so rollback keeps
 the previous committed version. Deletions revoke database-backed download URLs at
 commit and try provider deletion afterwards. Failed deletes do not resurrect rows.
+Deletion and rollback compensation check live database references before removing
+bytes, so a temporary metadata transition cannot delete a final manifest's objects.
+Retirement also invalidates request-local reuse of those objects.
 Provider details and signed requests are excluded from public errors and logs.
 
 A DB-backed Action Scheduler action reconciles one page of at most 100 objects

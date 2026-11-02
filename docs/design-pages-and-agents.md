@@ -1,47 +1,40 @@
 # Zero pages, components, layouts, sync, publish and agents
 
-Status: the locked design for Zero's next layer. It records the owner's
-rulings of 2026-11-01 verbatim (§2), states how it relates to the config API
-redesign in PR #55 (§5), reconciles the research reports that preceded it
-where they disagree with the rulings (§6), and fixes the order of pull
-requests (§9). Nothing in it is implemented yet; every API named under
-`zero/pages`, `zero/agents`, `@spacefast/zero-blocks/universal` and
-`Zero\Pages\*` / `Zero\Agents\*` is new. Where a WordPress or Data Machine
-behaviour is cited, it was checked against WordPress 7.1 / core source
-`7c9c8b62`, Data Machine 0.200.4 at `b07be213`, and Agents API at
-`952db6cb` (the revision Data Machine's lockfile resolves).
+Status: implementation proposal under the owner's binding rulings (§2).
+Nothing here is implemented. The selected design below resolves the research
+and review findings; it does not approve PR #55 or a change to the Blocks
+isolation ruling. Those owner decisions and the remaining scope choices are
+listed in §10. Dependent implementation waits for them.
 
-Two of its decisions wait on the owner: narrowing the Blocks isolation
-ruling (§10 q1) and adopting #55's config API (§10 q2). The rollout (§9)
-does not start PRs that depend on either until the owner has ruled.
+New names under `zero/pages`, `zero/agents`,
+`@spacefast/zero-blocks/universal`, `Zero\Pages` and `Zero\Agents` describe
+contracts to implement, not existing APIs. WordPress, Data Machine and SEO
+claims were inspected at the exact revisions in §11. That inspection is
+source evidence, not a passing runtime qualification.
 
-Conventions: "error" means the build fails with `file:line:col` and nothing
-is written. "WP" is WordPress 7.1, the pinned platform. "Blocks" is the
-`@spacefast/zero-blocks` package. "DM" is Data Machine. "Decision" marks a
-choice this document makes; "Ruling" marks one the owner made. Examples are
-written in #55's config API (§5.3).
+"Ruling" means an owner instruction. "Selected" means this proposal's
+implementation choice. "Owner-open" means no approval is inferred. Examples
+use #55's proposed config syntax conditionally (§5). Build errors carry
+`file:line:column` and leave the previous output intact.
 
 ## 0. Decisions in one screen
 
-| Area | Decision |
+| Area | Selected contract |
 |---|---|
-| Pages | `pages/**/page.tsx` beside `zero.config.ts`, discovered by `zero build`; `layout.tsx` nests by directory; `(group)` adds no segment; `[param]` binds one segment. No `pages/` directory means no routes, no theme, no new dependency. |
-| Page identity | Every static code page owns a WordPress Page record (`post_type: page`), keyed by a Zero route id in post meta. Collection pages (`collectionPage()`) use the row's own post. Table collections cannot have a `collectionPage` in v1. |
-| Rendering | TSX → checked IR → three outputs: static Gutenberg block markup (the pinned core serializer), block bindings for scalar slots (`zero/page-field` source), generated dynamic blocks with PHP for structure that depends on the request (conditionals, loops, derived values, loaders). The page body is `post_content`; the layout chain is the template. |
-| Component contract | One TSX source compiles for React (normal `react/jsx-runtime`) and for WordPress (IR). Universal components are pure functions of serializable props using `@spacefast/zero-blocks/universal` primitives. Hooks, effects, events, context, browser globals: error when reachable from a WordPress page. |
-| Document | A Zero canvas selected through `template_include`, calling `wp_head()`, `wp_body_open()`, `wp_footer()`, with body and assets prepared before the head, and printing exactly one `<title>`. Theme output is an explicit mode: `pages/theme.config.ts` present → layouts compile to a block theme. |
-| Templates | Canvas mode: templates are code-owned files rendered by the plugin; the Site Editor does not see them. Theme mode: templates and parts are theme files under WordPress's own customization model; a publish never overwrites a customization. |
-| Head / SEO | `export const metadata` or `generateMetadata()`; resolved before output; one emitter per field family. Explicit fields win through the active SEO plugin's filters (Yoast, Rank Math, The SEO Framework); unspecified fields stay plugin-owned; core plus a small Zero emitter when no plugin owns the head. SEO values an editor should change are ordinary columns the page reads. |
-| CSS | `import "./x.css"` is global, `*.module.css` is scoped with a generated class map and types; content-hashed files, a per-route manifest, `wp_enqueue_style` on `wp_enqueue_scripts`. Tokens in `styles/tokens.ts` emit CSS variables and, in theme mode, `theme.json` presets. |
-| Public collections | `collectionPage(c)` is the only way a collection becomes viewable: it registers the CPT `public: true` with a rewrite slug. The collection must be a content collection whose read rule is `"anyone"` or a filter and whose title and body carry no stricter field rule; the filter is applied to every front-end `WP_Query` over the type. |
-| Editing | One owner per surface, chosen by file: `page.tsx` is code-owned (a read-only screen in wp-admin, publish rewrites it); `page.md` / `page.blocks.html` is content-owned (seeded once by publish, then owned by the editor and `zero sync`). Layouts and templates are code-owned. |
-| Sync | Optional, switched by `defineConfig({ pages: { sync } })` for pages and `sync:` per collection. On: round-trip through the existing UID / base / three-way-merge engine, raw block markup as the body format. Off: Zero refuses dashboard, REST and Zero-API edits to its managed records. |
-| Build / publish | `zero build` writes `.zero/wp-content`. `zero publish --site` pushes a digest-verified release to `zero-runtime`'s publish endpoint, which stages it beside the current release; a second request activates it and a third, running on the new code, migrates and reconciles. Hosts whose production code is read-only (VIP, Pantheon) get the honest split: `--content-only` ships records; code goes through the host pipeline. |
-| Agents | Data Machine is the runtime. `defineConfig({ agents })` compiles to a manifest; a versioned Zero adapter (`Dm02004`) provisions DM agents, pipelines, flows and tool projections through DM's own abilities. Zero owns schema, abilities, action-level `approval`, the manifest and `zero doctor`. No Zero run ledger. |
-| Rename | The exposure flag on collections, globals, actions and jobs (`agents` today, kept as `agents?: false` in #55) is renamed `abilities`. The word `agents` is the top-level `defineConfig` key for AI agents and nothing else. |
-| Config API | This design builds on #55's API (`collection({ cols }, opts)`, `ref()`, `user()`, `collections:`, hooks beside columns, `Row<T>`), adds `pages?` and `agents?` to `defineConfig`, `approval?` to `action()`, and supersedes #55's `agents?` flag. Contingent on the owner approving #55 (§10 q2). |
-| Blocks boundary | `zero.config.ts` never names a page. Blocks never reads `zero.config.ts`. `zero build` invokes Blocks' serializer as a build tool only when `pages/` exists; backend-only builds have no Blocks dependency. Contingent on the owner narrowing the Blocks ruling (§10 q1). |
-| Queue | One Action Scheduler backend, two logical job domains (Zero jobs, DM runs). One qualified AS version and runner policy; `zero doctor` reports the loaded class source. |
+| Optional pages | `pages/**/page.tsx` beside config, nested `layout.tsx`, optional content-owned `page.md` and `page.blocks.html`. Backend-only produces no page or theme output and invokes no page serializer. DM is required only for declared agents or approvals. |
+| Identity | Hidden code-owned WordPress Pages for static code routes. Content-owned Pages for optional content files. Collection item routes use the item's existing post. One injective route ID encoding (§4.1). |
+| Rendering | Build-time Gutenberg markup, PHP dynamic regions and viewer-bound scalar bindings. Checked universal components can also compile for React. |
+| Editing | TSX never editor-mutable. Hidden code Pages have a separate authorized Zero routes screen. Content-owned files and collection content can round-trip through optional sync. |
+| Routing | Reconciled route-to-post map owns inbound rewrites, outbound permalinks and canonical redirects. Root Page is never another route's parent. |
+| Head | Metadata resolves before output. Title calculation and the single title emitter have separate owners. Qualified SEO adapters preserve unspecified plugin values (§4.4). |
+| Layouts | Plugin canvas by default. Optional block theme with unique route template slugs, stable theme identity and preserved Site Editor customizations. |
+| Publish | Local build is separate from authenticated, signed publish. Durable DB operation ownership spans stage, activate and finalize. A reader barrier drains every app-schema consumer before migration. Readiness lives in DB, not a release file. |
+| Immutable hosts | Content-only endpoint plus host-owned code deploy, installed-digest acknowledgments and explicit finalize handshake. No executable PHP in the DB. |
+| Agents | DM core owns runs, conversations, memory and approvals. Zero compiles manifests and adapts pinned DM abilities. No second agent loop or run ledger. |
+| Approvals | DM required even without declared agents. Proposed `ZeroApprovalBridgeV1` supplies human review, atomic local application, unknown-outcome recovery and durable pipeline continuation. Missing bridge fails closed. |
+| Naming | Existing exposure flag becomes `abilities`; top-level `agents` means AI agents. |
+| Unapproved dependencies | #55 stays a proposal. Any config or core coupling to optional Blocks requires the owner's explicit exception. |
+| Queue | One qualified Action Scheduler installation and runner policy for Zero jobs and DM runs, with separate existing logical owners. |
 
 ## 1. Why
 
@@ -96,7 +89,8 @@ binding; the rest of the document is read under them.
 
 ## 3. Project layout
 
-The journal example, complete. Everything under `pages/`, `components/`,
+The journal project shape and config excerpt. Everything under `pages/`,
+`components/`,
 `islands/`, `styles/` and `agents/` is optional; `zero.config.ts` alone is
 still a whole Zero app.
 
@@ -141,10 +135,11 @@ journal/
 └── .zero/
     ├── sync-base.json             # committed
     └── wp-content/                # build output, ignored
+        ├── mu-plugins/zero-loader.php            # host-installed early admission gate
         ├── plugins/zero-runtime/                 # includes the publish endpoint (§4.9)
         ├── plugins/zero-identity/
         ├── plugins/zero-app-journal/
-        │   ├── zero-app-journal.php              # includes releases/current/ (§4.9)
+        │   ├── zero-app-journal.php              # stable bootstrap reads the DB release tuple (§4.9)
         │   └── releases/<digest>/
         │       ├── app/                          # today's generated plugin tree
         │       ├── pages/routes.php              # route table, rewrites, Page reconciler, canvas selection
@@ -155,9 +150,10 @@ journal/
         │       ├── pages/canvas.php              # the document
         │       ├── blocks/<region>/              # block.json, render.php, body.html, index.js, index.asset.php
         │       ├── assets/*.css|*.js             # hashed
+        │       ├── theme/                        # optional immutable theme payload (§4.6)
         │       └── agents/manifest.php           # §4.10
         ├── plugins/zero-admin/                   # only with admin: true
-        └── themes/journal/                       # only with pages/theme.config.ts
+        └── themes/zero-journal/                  # stable stylesheet path; theme-mode only
             ├── style.css
             ├── theme.json
             ├── templates/*.html
@@ -231,33 +227,50 @@ top-priority rewrite rule (§4.7) because WordPress places CPT permastruct
 rules ahead of Page rules, and the compiler adds a reserved-slug check on the
 collection so no row can take `featured`.
 
-**Route id.** Each route has an id equal to its normalized URL path with the
-leading slash removed and `/` turned into `.` (`about`, `posts.index`,
-`posts.show`; the root is `index`). Renaming a directory is a new route and
-retires the old one (§4.7). An author who wants to rename the URL without a
-new identity sets `export const route = { id: "about" }` in `page.tsx`; the
-id is then pinned and the URL may move.
+**Route identity.** The canonical pattern has a leading `/`, no trailing
+slash except `/`, NFC literal segments and named `[param]` segments. Groups
+are removed. Refuse dot segments, empty segments, encoded separators and
+literal brackets in segment names. Match decoded URL segments once, rejecting
+malformed escapes. WordPress's configured trailing-slash policy formats the
+public URL, not the identity.
 
-**Request lifecycle.** WordPress parses the request and runs its main query
-unchanged. The app plugin registers, from the reconciled route map, an
-explicit rewrite rule (`add_rewrite_rule(..., 'index.php?page_id=<id>', 'top')`)
-for every static route whose URL WordPress would not derive from the Page
-hierarchy on its own: the front page, routes with missing ancestors, and
-static routes under a collection directory. Other static pages resolve by
-their Page permalink. For a `collectionPage` the CPT is registered viewable
-with `rewrite: { slug: <directory>, with_front: false }`, and the row's
-permalink is the route. Rules are flushed on activation and when the route
-hash in `manifest.json` changes.
+Without an explicit ID, the route ID is `p:` followed by lowercase hex of
+the UTF-8 canonical pattern. Thus `/` is `p:2f`, `/index` is
+`p:2f696e646578`, `/a.b` is `p:2f612e62`, and `/a/b` is `p:2f612f62`.
+There is no special `.index` or `.show` inference. An explicit
+`export const route = { id: "posts.show" }` produces `u:posts.show`.
+Explicit IDs match `[a-z][a-z0-9._-]{0,63}`; content files use `routeId` in
+front matter. All IDs are unique within the app. A duplicate matching
+pattern is still an error even with different IDs.
+For this check parameter names do not distinguish `/posts/[id]` from
+`/posts/[slug]`; their URL shapes collide. IDs are qualified by
+site/blog and app everywhere they are persisted.
 
-On `template_redirect` the route matcher runs: it compares the request path
-to the claimed patterns. If a pattern matches and the main query holds a
-Zero-managed Page or a readable Zero collection post for that route, the
-request is a Zero page. If a pattern matches and the query holds no such
-object (missing row, draft, filtered out by the read rule), Zero sends
-`status_header(404)`, `nocache_headers()` and renders `not-found.tsx` in the
-canvas; the theme's 404 is not used for claimed URLs. If no pattern matches,
-Zero does nothing and the active theme serves the request. `template_include`
-returns `canvas.php` for Zero pages only.
+An explicit ID survives a URL move. Without one, a directory rename retires
+the old route. Generated filenames, block names and theme slugs use a
+checked manifest key `k` (lowercase SHA-256 of the length-prefixed app ID
+and full route ID), never a lossy punctuation replacement. Detect a digest
+collision at build time. The manifest maps `k` back to the full ID. Region
+`n` has block name `zero/r<k>-<n>` and directory `blocks/r<k>-<n>/`.
+
+**Request lifecycle.** The reconciler creates the route-to-post map before
+readiness. Every static route has an explicit top rewrite to its mapped
+`page_id`; the collection permastruct uses its route directory and existing
+post. A static sibling wins over a dynamic pattern and reserves that slug
+at every supported collection write entry, including core REST and SCF;
+the reserved-slug validator cannot exist only in Zero CRUD. Flush rules
+only when the ready route-map hash changes. Refuse plain-permalink
+installations for page output in v1.
+
+WordPress still performs the main query. At `template_redirect:0`, before
+core canonical redirects, Zero
+claims only its normalized route patterns. A matching readable managed
+object selects that route. A missing, draft or access-denied item becomes
+a real 404 with `nocache_headers()` and the Zero not-found body. An
+unclaimed URL remains the active theme's responsibility. The default
+`template_include` result for claimed routes is the plugin canvas; theme
+mode follows §4.6. Canonical links and redirects use §4.7's route map,
+including URLs the Page hierarchy cannot represent.
 
 **Loaders.** `export async function load(ctx)` runs once per request before
 metadata and rendering. `ctx.params`, `ctx.url`, `ctx.viewer` (with
@@ -265,7 +278,9 @@ metadata and rendering. `ctx.params`, `ctx.url`, `ctx.viewer` (with
 `ctx.content.query.<collection>.findMany|findFirst` are available;
 `ctx.content` is a read-only, viewer-bound query API. The trusted `db` from
 `"zero"` is refused in page modules with a diagnostic pointing at
-`ctx.content`. A null viewer is never passed; an anonymous visitor is
+`ctx.content`. This check follows the loader/render import graph; importing
+a collection declaration does not execute its trusted hooks/actions. A null
+viewer is never passed; an anonymous visitor is
 `Viewer(null)`, which `Db` already distinguishes from the trusted null. The
 loader's return value is the page's props and is memoized in
 `Zero\Pages\Request` for bindings and regions to read.
@@ -286,6 +301,7 @@ error.
 import { PostCard } from "../../components/PostCard";
 import type { Metadata, PageContext, PageProps } from "zero/pages";
 
+export const route = { id: "posts.index" };
 export const metadata = { title: "Posts" } satisfies Metadata;
 
 export async function load({ content, url }: PageContext) {
@@ -333,7 +349,7 @@ it.
 `@spacefast/zero-blocks/universal` exports real React implementations of
 `Group`, `Heading`, `Paragraph`, `Image`, `Buttons`, `Button`, `Columns`,
 `Column`, `List`, `ListItem`, `Separator`, `Spacer`, `Cover`, `Quote`,
-`RichText` (renders trusted stored HTML) and the WordPress contextual
+`RichText` (renders authorized, save-sanitized stored content) and the WordPress contextual
 primitives `PostContent`, `PostTitle`, `PostDate`, `PostFeaturedImage`,
 `Navigation`, `QueryLoop`. Each primitive's React output carries the classes
 the pinned core block's `save()` emits (`wp-block-group`,
@@ -392,8 +408,8 @@ node:
 | Node | Output | Rule |
 |---|---|---|
 | Literal element, literal text and attributes, universal primitive with literal props | **Static block markup.** The subtree is serialized once at build time by Blocks' pinned core serializer (`createBlock` + `serialize`, reparsed for validity). | Everything is static until proven otherwise. |
-| A supported scalar slot whose value is a `loader-field` or a `derived` string/URL over loader fields: `Heading`/`Paragraph` content, `Button` text and `url`, `Image` `url`/`alt`, a link `href` | **Block binding.** `metadata.bindings.<attr> = { source: "zero/page-field", args: { route, field } }`. For a `derived` value the compiler emits a PHP accessor for the expression and registers the result as a named field of the route. | WordPress 6.5+ bindings replace supported attributes at render; the source reads only compiler-registered fields of the memoized request. |
-| A conditional whose test depends on the request, a `.map` over loader rows, a `derived` value in a non-bindable position, a contextual primitive with request-dependent props | **PHP region**: a generated dynamic block `zero/<app>-<route>-r<n>` with `block.json` (`render: file:./render.php`, `supports.inserter: false`), `render.php` compiled by Zero's existing expression compiler, and a minimal `index.js` (`edit` shows a labelled placeholder, `save: () => null`). | Structure that changes per request is PHP by ruling 2. |
+| A supported scalar slot whose value is a `loader-field` or a `derived` string/URL over loader fields: `Heading`/`Paragraph` content, `Button` text and `url`, `Image` `url`/`alt` (only attributes registered as bindable by the pin) | **Block binding.** `metadata.bindings.<attr> = { source: "zero/page-field", args: { route, field } }`. For a `derived` value the compiler emits a PHP accessor for the expression and registers the result as a named field of the route. | Pinned WordPress bindings replace only their supported attributes at render; the source reads only compiler-registered fields of the memoized request. |
+| A conditional whose test depends on the request, a `.map` over loader rows, a `derived` value in a non-bindable position, a contextual primitive with request-dependent props | **PHP region**: a generated dynamic block `zero/r<k>-<n>` with `block.json` (`render: file:./render.php`, `supports.inserter: false`), `render.php` compiled by Zero's existing expression compiler, and a minimal `index.js` (`edit` shows a labelled placeholder, `save: () => null`). | Structure that changes per request is PHP by ruling 2. |
 
 Inside a PHP region the compiler keeps block markup as the output language:
 each branch of a conditional and the body of a loop is a serialized block
@@ -415,11 +431,13 @@ which `core/post-content`, `core/post-title` and friends do not know. So on
 such a route `PostTitle`, `PostContent`, `PostDate` and `PostFeaturedImage`
 compile to bindings and regions over the viewer-bound `item` (title → a
 binding on `item.title`; `PostContent` and `RichText value={item.body}` → a
-region that runs the already-authorized body through `do_blocks` and
-`wp_kses_post` under the current post context), never to `core/post-*`
+region that renders the already-authorized, save-sanitized body through
+the qualified content pipeline under the current post context), never to `core/post-*`
 blocks. `core/post-*` blocks are emitted only when the queried post is a
 core type (a Zero Page record, or a core `post` inside an inherited
-`QueryLoop`). `Navigation` and `QueryLoop inherit` compile to their core
+`QueryLoop`). `PostContent` targeting its own code-owned Page is refused
+to prevent recursively rendering the stored compiled body. `Navigation`
+and `QueryLoop inherit` compile to their core
 blocks unchanged. `QueryLoop` with an explicit Zero collection is refused in
 v1: a listing over Zero rows is `load()` plus `.map`, which is a region and
 therefore viewer-bound. Theme and plugin queries from outside Zero's pages
@@ -440,6 +458,7 @@ import { posts } from "../../../zero.config";
 import { PostCard } from "../../../components/PostCard";
 import styles from "./post.module.css";
 
+export const route = { id: "posts.show" };
 export const page = collectionPage(posts);
 type Props = CollectionPageProps<typeof page>;
 
@@ -463,143 +482,86 @@ export default function PostPage({ item, href }: Props) {
 }
 ```
 
-Output (indentation and default attributes normalized for reading; the real
-files come from the serializer). The route template is one flat document:
-the root layout's header and footer are inlined, because in canvas mode
-`core/template-part` would resolve only against the active theme (§4.6).
+The manifest identifies this example as `u:posts.show`. Its artifact key
+`k` determines `pages/templates/r<k>.html` and `blocks/r<k>-<n>/`; the
+source ID never becomes a filename by replacing dots or slashes.
 
-```html
-<!-- releases/<digest>/pages/templates/posts.show.html : root layout → posts layout → page -->
-<!-- wp:group {"tagName":"header","className":"site-header"} -->
-<header class="wp-block-group site-header">
-  <!-- wp:zero/journal-layout-nav /-->
-</header>
-<!-- /wp:group -->
-<!-- wp:group {"tagName":"main"} -->
-<main class="wp-block-group">
-  <!-- wp:group {"tagName":"section","ariaLabel":"Journal posts"} -->
-  <section class="wp-block-group" aria-label="Journal posts">
-    <!-- wp:paragraph --><p>From the team</p><!-- /wp:paragraph -->
-    <!-- wp:zero/journal-posts-show-r0 /-->
-  </section>
-  <!-- /wp:group -->
-</main>
-<!-- /wp:group -->
-<!-- wp:group {"tagName":"footer"} -->
-<footer class="wp-block-group"><!-- wp:paragraph --><p>Made with Zero.</p><!-- /wp:paragraph --></footer>
-<!-- /wp:group -->
-```
+The outer `<article className={styles.article}>` maps to `core/group`
+with `tagName: "article"` and the module class preserved. It is static
+block structure. `PostCard` expands to a Group, Heading, Buttons and Button;
+its title and URL use bindings, its conditional excerpt becomes a region,
+and `RichText` becomes another region. The entire article does not become
+raw PHP merely because it has a class or a dynamic descendant.
 
-The page body is one region (`r0`) because `<article className={styles.article}>`
-has no core block (a classed `<article>` would become a Group and lose the
-module class on the element the author styled), and because `RichText` is
-request-time. Inside the region the `PostCard` subtree is static block markup
-with two bindings and one nested region for the conditional excerpt:
+The serializer writes those static subtrees and region references at build
+time. PHP evaluates only request-dependent structure, then renders the
+precompiled block templates. Unsupported attributes fail instead of being
+dropped. No handwritten substitute for a core block's `save()` markup is
+part of this contract.
 
-```html
-<!-- releases/<digest>/blocks/journal-posts-show-r0/body.html -->
-<!-- wp:group {"tagName":"article","className":"post-card-x7f2"} -->
-<article class="wp-block-group post-card-x7f2">
-  <!-- wp:heading {"metadata":{"bindings":{"content":{"source":"zero/page-field","args":{"route":"posts.show","field":"item.title"}}}}} -->
-  <h2 class="wp-block-heading"></h2>
-  <!-- /wp:heading -->
-  <!-- wp:zero/journal-posts-show-r1 /-->
-  <!-- wp:buttons -->
-  <div class="wp-block-buttons">
-    <!-- wp:button {"metadata":{"bindings":{"url":{"source":"zero/page-field","args":{"route":"posts.show","field":"href"}}}}} -->
-    <div class="wp-block-button"><a class="wp-block-button__link wp-element-button">Read post</a></div>
-    <!-- /wp:button -->
-  </div>
-  <!-- /wp:buttons -->
-</article>
-<!-- /wp:group -->
-```
-
-```php
-<?php // releases/<digest>/blocks/journal-posts-show-r0/render.php
-$page = \Zero\Pages\Request::current('posts.show');
-if ($page === null) { return; }
-$out = new \Zero\Pages\HtmlBuffer();
-$out->literal('<article class="');
-$out->attribute(\Zero\Pages\Assets::cls('posts.show', 'article'));   // post_abc123_article
-$out->literal('">');
-$out->child(\Zero\Pages\Blocks::render(__DIR__ . '/body.html'));      // do_blocks of the template above
-$out->child(\Zero\Pages\RichText::render($page->item->p['body'] ?? '', $page->post));
-$out->literal('</article>');
-echo $out->finish();
-```
-
-```php
-<?php // releases/<digest>/blocks/journal-posts-show-r1/render.php  (the conditional excerpt)
-$page = \Zero\Pages\Request::current('posts.show');
-if ($page === null) { return; }
-$excerpt = $page->item->p['excerpt'] ?? '';
-if (\Zero\Js::truthy(\Zero\Js::strictNotEqual($excerpt, ''))) {
-    echo \Zero\Pages\Blocks::render(__DIR__ . '/branch-0.html', ['excerpt' => $excerpt]);
-}
-```
-
-```php
-<?php // releases/<digest>/pages/register.php (excerpt)
-add_action('init', static function (): void {
-    register_block_bindings_source('zero/page-field', [
-        'label' => 'Zero page field',
-        'get_value_callback' => [\Zero\Pages\Bindings::class, 'pageField'],   // reads only registered fields
-    ]);
-    register_block_bindings_source('zero/region-field', [
-        'label' => 'Zero region field',
-        'get_value_callback' => [\Zero\Pages\Bindings::class, 'regionField'],
-    ]);
-    foreach (glob(__DIR__ . '/../blocks/*/block.json') as $block) {
-        register_block_type(dirname($block));
-    }
-    \Zero\Pages\Routes::register(require __DIR__ . '/manifest.php');
-});
-```
-
-`Bindings::pageField` returns `esc_html` text for content attributes and
-`esc_url` for `url` attributes, and `null` for any (route, field, block,
-attribute) tuple the manifest does not list. Static Page records receive
-their compiled body (`pages/content/<route>.html`) in `post_content` at
-publish (§4.7); collection routes have no content file because the row is
-the post.
+`zero/page-field` and `zero/region-field` callbacks accept only manifest-listed
+(route ID, field, block, attribute) tuples in the current request scope.
+Bindings follow the pinned block attribute's text, HTML or URL contract;
+the adapter applies its required escaping exactly once. Arbitrary field
+paths and cross-route reads return `null`. Store sanitization happens at the
+write boundary; a blanket `wp_kses_post` after dynamic block rendering is
+not a replacement for context escaping and would strip legitimate output.
+Static Page records receive the compiled body in `post_content`; collection
+routes use their existing content post and have no duplicate body record.
 
 ### 4.4 Head and SEO
 
-**Decision.** A page or layout exports `metadata` (static) or
-`generateMetadata(props)` (per request), never both. Fields: `title`
-(string or `{ default, template }`), `description`, `canonical`, `robots`,
-`openGraph { title, description, type, images }`, `twitter`, `alternates`,
-`jsonLd`. Merge: leaf title with the nearest ancestor template applied once;
-leaf description replaces; Open Graph merges by key, `images` replaces;
-canonical and `og:url` default to the route's permalink from the site URL,
-never from the Host header. The result is resolved in the route controller
-before any output. SEO values an editor should control are ordinary columns
-(the `seo` group in §3) that `generateMetadata` reads; there is no SEO
-builder in the config.
+A page or layout exports `metadata` or `generateMetadata(props)`, never
+both. Fields are `title`, `description`, `canonical`, `robots`,
+`openGraph`, `twitter`, `alternates` and `jsonLd`. The title accepts a string
+or `{ default, template }`. Apply the nearest ancestor title template once.
+Leaf descriptions replace, Open Graph merges by key, and image lists
+replace. Canonical and `og:url` default to the route-map permalink under
+`home_url()`, never the request Host header. Resolve loaders and metadata
+before output. Editorial SEO values stay ordinary readable columns.
 
-Emission has one owner per field family:
+Title calculation and title emission are separate contracts. Zero owns
+exactly one unconditional `<title>` callback on `wp_head` for its routes in
+both canvas and theme modes. With no SEO provider it uses the resolved Zero
+title or `wp_get_document_title()`. With a qualified provider it preserves
+that provider's calculated default and overrides it only for an explicit
+Zero title:
 
-| Active SEO plugin | Title | Description, canonical, robots | Open Graph / Twitter | JSON-LD |
-|---|---|---|---|---|
-| none | the canvas prints `<title>` itself from `wp_get_document_title()` with `pre_get_document_title` supplying the complete title, and removes `_wp_render_title_tag` for Zero routes (as core's `template-canvas.php` does), so exactly one title appears whether or not the active theme declares `title-tag` | `wp_robots` filter; Zero emits description and canonical on `wp_head` at priority 1; core `rel_canonical` removed for Zero routes only | Zero emits on `wp_head` | Zero emits one graph |
-| Yoast SEO | `wpseo_title`; the canvas prints no title (Yoast's presenter does) | `wpseo_metadesc`, `wpseo_canonical`, `wpseo_robots_array` | `wpseo_opengraph_*`, `wpseo_twitter_*` | `wpseo_schema_graph_pieces` |
-| Rank Math | `rank_math/frontend/title`; the canvas prints no title | `/description`, `/canonical`, `/robots` | `rank_math/opengraph/facebook/*`, `/twitter/*` | `rank_math/json_ld` |
-| The SEO Framework | `the_seo_framework_pre_get_document_title`; the canvas prints no title | `the_seo_framework_meta_render_data`, `_robots_meta_array` | `the_seo_framework_meta_render_data` | `the_seo_framework_schema_graph_data` |
+| Provider | Title calculation | Other field adapters |
+|---|---|---|
+| Yoast | provider presentation, `wpseo_title` | `wpseo_metadesc`, `wpseo_canonical`, `wpseo_robots_array`, Open Graph, Twitter and schema filters |
+| Rank Math | provider-filtered document title, `rank_math/frontend/title` | frontend description, canonical and robots filters; Open Graph and `rank_math/json_ld` |
+| The SEO Framework | provider-filtered document title, `the_seo_framework_pre_get_document_title` | `the_seo_framework_meta_render_data`, robots and schema graph filters |
 
-Explicit Zero fields win their field through the plugin's filter, scoped to
-the current Zero route; fields the page did not set remain the plugin's. An
-unrecognized SEO plugin gets no adapter: Zero emits nothing that would
-duplicate a head tag, prints no title, and `zero doctor` reports the gap.
-Static metadata also writes the Page record's `post_title` at publish so
-menus, the admin list and the plugin's own analysis see the right title.
-Yoast's content analysis reads `post_content`; for a code page that is the
-compiled body (§4.7), which is what the visitor sees minus the regions. This
-limit is documented, not hidden.
+After provider setup and final template selection, before head emission,
+the route adapter removes core's `_wp_render_title_tag` and
+`_block_template_render_title_tag`, removes only Yoast's title presenter,
+and removes Rank Math's relocated `_wp_render_title_tag` callback and its
+legacy title-rewrite output buffer for this route. TSF supplies title
+filters, not a title element. Reconcile at the final `template_include`
+stage and verify callback ownership before `wp_head` output. The adapter
+returns a plain title from the provider calculation (normalizing
+provider HTML entities), then the emitter escapes it once. TSF's
+`set_document_title` already escapes; do not escape that string twice.
+It must work under a classic theme
+without `title-tag` support as well as core's block canvas.
 
-Sitemaps: Page records and `collectionPage` posts are `public: true` post
-types, so core's `WP_Sitemaps_Posts` includes them; each plugin's own
-provider is verified individually in PR 7's proof.
+For other families, the active qualified provider emits; explicit Zero
+values pass through its field filters and unspecified values stay plugin-owned.
+Without a provider, Zero emits description, canonical, Open Graph, Twitter
+and JSON-LD, uses `wp_robots`, and removes core `rel_canonical` only for
+claimed routes. Do not disable a provider's entire head to solve a title
+collision. Multiple active SEO providers or an unsupported emitting provider
+make pages unready until disabled or qualified with an explicit adapter.
+There is no "emit nothing" fallback promising a valid head.
+
+Code Page `post_title` is a static navigation label from metadata's default
+or the route label. Per-request SEO titles never mutate the Page. Content
+Page titles and collection titles stay content-owned. SEO analysis of a
+code Page sees the stored static body and region references, not the fully
+rendered request. Sitemaps, menus and provider canonical output must use the
+same permalink map (§4.7); test inclusion per provider rather than infer it
+from `public: true`.
 
 ### 4.5 CSS, assets and islands
 
@@ -632,105 +594,142 @@ PHP compiler. React or Preact client islands are refused in v1 (§7).
 
 ### 4.6 Layouts → themes
 
-**Decision.** `layout.tsx` is authored as in Next or TanStack Start:
-`export default function Layout({ children })`. The compiler fills `children`
-with the nested subtree. Two output modes, chosen by one file, with different
-ownership models:
+`layout.tsx` takes `{ children }`; the compiler substitutes the nested
+subtree. Default canvas output inlines the layout chain into
+`pages/templates/r<k>.html`. It uses neither theme template registration nor
+`core/template-part`, which would resolve against a different active theme.
+The plugin canvas buffers the body before `wp_head`, then calls
+`wp_body_open` and `wp_footer`. Active theme functions and global styles
+still load. `<TemplatePart>` is refused in canvas mode.
 
-- **Plugin canvas (default).** Each route's layout chain compiles to one
-  flat `pages/templates/<route>.html`; shared chrome is deduplicated as a
-  file at build time and inlined at serialization. The plugin does not
-  register these with `register_block_template()` and emits no
-  `core/template-part`: the former would invite Site Editor customizations
-  that the canvas, rendering from files, would not honour, and the latter
-  resolves a part only against the active theme's stylesheet. Templates in
-  canvas mode are therefore code-owned, invisible to the Site Editor, and
-  rendered by `canvas.php` through `do_blocks` inside `<!doctype html>` …
-  `<title>` … `wp_head()` … `wp_body_open()` … `wp_footer()`. The active
-  theme stays installed and its `functions.php` runs; only its template
-  markup is bypassed for Zero routes. A `<TemplatePart slug>` in a layout is
-  a build error in canvas mode with the fix named (theme mode).
-- **Theme output.** When `pages/theme.config.ts` exists (Blocks'
-  `defineTheme`: header plus typed `theme.json`), the layout chains become
-  `templates/*.html` named by the hierarchy (`page-<slug>.html` per static
-  route, `single-zero_posts.html` per collection route, `index.html`
-  required), `<TemplatePart slug>` becomes `parts/<slug>.html` and
-  `core/template-part`, tokens become `theme.json` presets, and the output is
-  a real installable theme. Regions, bindings and routes stay in the app
-  plugin, so the theme is data and the plugin survives a theme switch. The
-  theme declares the app plugin in its `readme.txt`; `zero doctor` reports a
-  theme active without its plugin. In theme mode WordPress's own model
-  applies: a Site Editor customization shadows the file as a `wp_template`
-  post until the user resets; a publish never overwrites a customization,
-  and `zero doctor` lists customized templates as drift. In theme mode the
-  canvas is not used; core's block template canvas renders the theme.
+Owner-open theme output uses `pages/theme.config.ts` and Blocks'
+`defineTheme`. Each static route gets a unique custom template slug
+`zero-r<k>`, emitted as `templates/zero-r<k>.html` and declared in
+`theme.json.customTemplates` for `page`. The reconciler assigns that slug
+through `_wp_page_template`. Core adds the assigned name before
+`page-<slug>` in the hierarchy and resolves the block template. Therefore
+`/company/team` and `/support/team` cannot both select `page-team.html`.
+The collection's single route uses `single-zero_<key>.html`; only one item
+route per collection is allowed. `index.html` is required; root and claimed
+404 selection explicitly prepend their route template through
+`frontpage_template_hierarchy` and `404_template_hierarchy`, ahead of generic
+front-page and 404 candidates. Template parts use `parts/<slug>.html`.
 
-The paused `p3/blocks-theme` branch supplies the theme builder, hierarchy
-table, `theme.json` schema validation and the Site Editor proof harness; PR 9
-(§9) lands it under this contract instead of the filename-hierarchy authoring
-model it was built for.
+Theme identity is the stable stylesheet `zero-<app>`, never a digest-named
+stylesheet that would abandon customizations on each publish. Theme payloads
+are immutable and paired with the app digest in the release manifest.
+Writable hosts stage both payloads, then the exclusive finalizer switches a
+server-created stable theme-directory link to the selected theme payload.
+That link is outside the uploaded archive; uploaded symlinks remain refused.
+The probe must qualify atomic link replacement and same-filesystem layout.
+Hosts without it use the host deployment path rather than copy an active
+theme file by file. Immutable hosts install the full theme at the stable
+stylesheet path through their rollout. Directory filters alone are not
+assumed to redirect every `WP_Theme` file lookup.
+
+For an active managed theme, the admission fence covers all requests using
+that theme, including ordinary WordPress routes and the Site Editor. A
+crash between a theme-link change and DB selection leaves admissions closed;
+recovery compares the real installed theme digest with the operation's
+recorded pair. No request serves a mismatched app/theme pair. Clear theme
+file-discovery, `theme.json`, object-cache and opcache entries at cutover.
+
+First theme activation is explicit (`zero publish --activate-theme`),
+authorized and recorded in the publish operation. While admissions are
+closed, finalization installs/selects the paired theme and calls
+`switch_theme('zero-<app>')` when the stylesheet changes. It checkpoints
+`theme_boot_required` and returns a continuation without reopening. A
+subsequent finalize request loads the selected theme from the start, runs
+WordPress's deferred `after_switch_theme` work and verifies `template`,
+`stylesheet` and the request's loaded theme digest against the release
+tuple before ready. The same bootstrap boundary applies after a theme-link
+change under an unchanged stylesheet. An include or `switch_theme` call
+cannot unload the old theme's PHP in its current request. An
+ordinary publish refuses an unexpected active theme; it never silently
+activates or overwrites one. Canvas mode leaves the theme alone.
+
+Site Editor customizations stay under the stable stylesheet and shadow
+theme files according to WordPress's model. Publish never overwrites their
+`wp_template`, `wp_template_part` or global-style posts. `zero doctor`
+reports drift; region references in customizations must remain available or
+publish refuses retirement until the customization is reset. Rollback
+restores the recorded app/theme pair and prior theme options under the same
+admission barrier, calls `switch_theme` when needed, invalidates caches and
+rechecks readiness. It is refused after an incompatible schema migration
+(§4.9). The paused Blocks theme work supplies the builder and Site Editor
+proof, not a second routing convention.
 
 ### 4.7 Editing and Page records
 
-**Decision (ruling 1).** The app plugin owns a **route reconciler** that runs
-at publish finalization (§4.9), on activation, and from `zero doctor --fix`.
-For each static route it ensures one `page` post exists with meta
-`_zero_route = <route id>` and `_zero_app = <app>`, `post_name` = the last
-path segment, `post_parent` = the nearest ancestor route's Page (or `0`),
-and for code-owned routes `post_status = publish`, `post_title` from static
-metadata and `post_content` = the compiled body, recording the body digest in
-`_zero_content_digest`. For content-owned routes (`page.md`,
-`page.blocks.html`) the reconciler **creates** the record from the file on
-first contact (status and title from front matter) and never updates it
-afterwards; later changes in either direction belong to `zero sync` (§4.8),
-which has the base and digest protocol for them.
+The route reconciler runs during closed-admission finalization and explicit
+`zero doctor --fix`, never as an uncoordinated frontend repair. A unique
+(site/blog, app, full route ID) mapping owns one static Page. Persist the
+mapping in a Zero control table with a unique key, plus `_zero_app` and
+`_zero_route` post meta for discovery. Post meta alone has no uniqueness
+constraint. Collection routes map to existing item posts.
 
-- **Front page.** `pages/page.tsx` is `/`. The reconciler sets
-  `show_on_front = page` and `page_on_front` to its record and marks both
-  options Zero-owned. A site whose front page is already a non-Zero Page is a
-  reconcile error (below), resolved by `adopt`.
-- **Missing ancestors.** `pages/company/team/page.tsx` with no
-  `pages/company/page.tsx` is legal. The record's `post_parent` is the
-  nearest existing ancestor route's Page (here `/`), and the route gets an
-  explicit top rewrite rule for `^company/team/?$`, because the Page
-  hierarchy alone would give it `/team`. The same rule mechanism serves the
-  front page and static routes under a collection directory (§4.1).
-- **Collisions.** An existing Page at the same path that is not Zero-managed
-  is a reconcile error: the route stays unserved, publish reports it, and
-  the operator either renames the route or runs `zero pages adopt <route>`
-  to claim the record (the existing content is kept for a content-owned
-  route and replaced for a code-owned route, with the old revision
-  preserved). A collision with a collection rewrite slug or a reserved
-  WordPress path is a build error.
-- **Retirement.** A route that disappears from the build has its Page moved
-  to trash with `_zero_retired_at`; publish prints the list. Trash, not
-  delete, so an accidental rename is recoverable.
-- **Reset.** `zero pages reset <route>` rewrites a code-owned record from
-  the build.
-- **What editors see.** Pages appear in the Pages list with a "Code" or
-  "Content" badge. For a code-owned Page, `get_edit_post_link` is filtered
-  to a Zero-owned read-only screen (`admin.php?page=zero-page&route=about`)
-  that shows the compiled body in a non-editable block preview, the regions
-  as labelled placeholders, and the notice "Managed by
-  `pages/about/page.tsx`. Edit the file and run `zero publish`." The core
-  edit screen is not used because the lock below denies `edit_post`, and
-  `post.php` refuses to open without it.
-- **The lock.** `map_meta_cap` returns `do_not_allow` for `edit_post`,
-  `delete_post` and `publish_post` on code-owned records, which closes
-  wp-admin, core REST, quick edit, autosave and XML-RPC. Zero exposes no
-  `/zero/v1` route over `page`, so its own CRUD path cannot reach these
-  records. As a last guard, `wp_insert_post_data` rejects a body or status
-  change to a locked record unless the request carries the publish or sync
-  receipt. Direct SQL is not blocked; the plugin cannot be that boundary,
-  and says so.
-- **Content-owned pages** are editable when `pages.sync` is on (§4.8) and
-  locked the same way when it is off (ruling 3), after the one-time seed.
-- **Collection rows** keep today's behaviour: editors edit them in wp-admin
-  and Zero Admin; the item route's template is code-owned.
+Code Pages store compiled `post_content`, its digest, a static navigation
+`post_title` and `post_status = publish`. A content file seeds its Page once;
+later title, body and status changes belong to sync, not publish. Route path
+and template assignment remain code/file-owned for both. Check and report
+unexpected body drift before replacing code content; an explicit force
+operation preserves a revision and records the overwritten digest.
 
-A code-owned body changed out of band (a privileged plugin, SQL) fails the
-digest check at finalization; publish refuses to overwrite it without
-`--force` and shows the diff.
+**Hierarchy and canonical URLs.** Set `post_parent` only to a managed Page
+for the exact immediate parent path, excluding `/`. If it does not exist,
+use `0`, not the nearest surviving ancestor. Core may suffix an internal
+slug for uniqueness when two orphan routes end in `team`; public URLs still
+come from the route map, not that storage slug. The root Page is the front
+page, never a container for `/about` or `/company/team`. Store its own
+non-publicly-significant slug without allowing that slug into child URLs.
+
+Explicit rewrites handle every claimed static URL. For managed Pages the
+`page_link` filter returns the stored canonical path under `home_url()` and
+WordPress's slash policy; `get_canonical_url` and route-scoped
+`redirect_canonical` agree. `get_permalink`, menu links, core and provider
+sitemaps must therefore return `/company/team/` even if the row's natural
+hierarchical URI is `/team/`. A natural URI that resolves to this managed
+Page redirects to its canonical path, unless that path belongs to another
+route or ordinary Page; it never steals that owner's URL. Pinned-ID URL
+moves record old canonical paths as redirects only after collision checks.
+Aliases never redirect a valid different object. No missing ancestor Pages
+are manufactured.
+
+`pages/page.tsx` claims `/` by setting `show_on_front = page` and
+`page_on_front` to the root record. Existing non-Zero front-page ownership,
+an ordinary Page at a claimed path, reserved WordPress paths and conflicting
+CPT permastructs cause reconciliation failure before ready. The operator
+renames the route or explicitly adopts a record with a preserved revision.
+Removed static routes move their records to trash with retirement metadata.
+`zero pages reset <id>` is an authorized reconciler operation. A URL move
+with an explicit ID preserves the record and its navigation references.
+
+**Hidden means outside the editing workspace.** Code Pages are absent from
+the normal Pages list, its search and counts, editor pickers and Zero Admin
+content lists. Core REST `context=edit` lists and search omit them. Hide
+them at those scoped query/response boundaries, not by making the public
+post private or filtering every Page query. Frontend queries, public REST
+read contexts, navigation references and sitemaps retain their public
+identity. A Zero routes screen lists source paths and diagnostics under a
+separate view authorization; its links are generated by Zero, not
+`get_edit_post_link`, whose filter never runs when `edit_post` is denied.
+Existing menu references work; a route picker in that screen can supply
+public Page IDs and URLs without exposing a mutable code Page editor.
+
+`map_meta_cap` denies core `edit_post` and `delete_post` on code Pages;
+route-specific REST, autosave, revision restore, XML-RPC and admin write
+paths also deny changes. Direct navigation to `post.php` fails. There is no
+Zero CRUD endpoint for these Pages. The defense at `wp_insert_post_data`
+returns the stored owned fields for unauthorized updates (and reports the
+refusal at API boundaries); this array filter cannot return `WP_Error`.
+Only a private, request-local reconciler authorization can change owned
+fields, never a public input flag. Trusted PHP that bypasses core APIs and
+direct SQL are outside this boundary and are detected by digest checks.
+
+Content-owned Pages enter the normal editor only when `pages.sync` is on;
+otherwise the same write lock applies after seeding. Collection item bodies
+and fields stay content-owned under their ordinary access rules; their
+TSX template is always code-owned. Collection sync policy is in §4.8.
 
 ### 4.8 Sync
 
@@ -743,7 +742,7 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
   collection `sync: "pattern"`. "Sync off" for the whole project means no
   collection declares `sync` and `pages.sync` is false or absent.
 - **Body format.** Raw serialized block markup, in `page.blocks.html` with
-  YAML front matter (`uid`, `title`, `slug`, `status`, metadata fields).
+  YAML front matter (`uid`, optional `routeId`, `title`, `status`, metadata fields).
   Markdown (`page.md`) stays the opt-in prose format through the existing
   `Markdown::fromBlocks` gate: a body the converter cannot represent is a
   `422 not_representable` and the file is left alone, never flattened. Pulls
@@ -751,99 +750,193 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
   block comes back as its self-closing reference.
 - **Identity.** The Page record's `_zero_uid` (minted by the existing `Uid`
   runtime) in front matter; `_zero_route` ties it to the route. A renamed
-  file keeps its UID. Two files with one UID is an error, as today.
+  file keeps its UID and an explicit route ID when identity must survive.
+  Directory paths own Page URLs; core slug/parent edits are locked, not
+  silently interpreted as file renames. Collection slugs remain ordinary
+  synced fields under their reserved-slug guard. Two files with one UID
+  or route ID are an error.
 - **Scope.** Code-owned pages, templates and regions are never synced: TSX
   has no inverse in block markup and this design does not pretend otherwise.
 - **Two-sided block edits** go through the existing line merger only when
   `BlockMarkupMergeValidator` accepts the result and block boundaries are
   unchanged; otherwise a conflict file.
 - **Media bytes** do not sync in v1 (unchanged from phase 2).
-- **Sync off.** With `pages.sync` off, content-owned records are seeded once
-  and then locked exactly as code-owned ones (§4.7): `map_meta_cap` for
-  core paths, and for synced collections Zero's own CRUD path additionally
-  refuses writes to a managed row with `409 managed_record` unless the
-  request carries the sync receipt. Turning sync on establishes a base
-  first; turning it off refuses while unexported edits exist
-  (`zero sync --check` exits 2).
+- **Sync off.** With `pages.sync` off, content-owned Pages seed once and
+  use §4.7's write lock. Collections with no sync history remain ordinarily
+  editable. Removing a collection's sync declaration requires a clean
+  export (`zero sync --check` exits 2 for unexported edits); its previously
+  managed rows retain their management provenance and lock until an
+  authorized ownership-release operation. This does not lock unrelated rows
+  or collections. All core and Zero write entries enforce the lock; Zero
+  CRUD returns `409 managed_record`. An authenticated sync validates its
+  base before receiving private write authorization. Turning page sync on
+  establishes a base first; turning it off refuses unexported edits.
 
 ### 4.9 Build and publish, with hosting constraints
 
-**Decision (ruling 4).** `zero build` is unchanged in shape: it writes
-`.zero/wp-content/` with the platform plugins, `zero-runtime`,
-`zero-identity`, `zero-app-<name>` (now laid out as `releases/<digest>/`
-plus a one-line `releases/current` pointer the main file includes),
-optionally `zero-admin` and the theme. With `pages/` present it additionally
-runs the Blocks serializer (Node ≥ 22, pinned core packages) as a build
-tool; a missing or mismatched toolchain is a build diagnostic, not a
-fallback.
+`zero build` writes `.zero/wp-content/` locally. It never contacts or
+mutates a site. With pages enabled it needs the pinned Node serializer;
+missing tools fail the build. Backend-only builds invoke no page tool.
+Platform plugins and the stable release bootstrap are installed and
+upgraded by the host platform path, not self-replaced by this publish
+endpoint. An app release contains immutable app code, page assets and an
+optional theme payload, plus a digest manifest.
 
-`zero publish [dir] --site <url> --app-password <user:pass>` builds, then
-makes three requests to `zero-runtime`'s publish endpoint. The split exists
-because PHP code loaded in a request cannot be replaced within that request:
+The stable bootstrap reads an authoritative, uncached DB tuple per site/app:
+active app digest, theme digest and mode, schema generation, readiness and
+admission epoch. There is no mutable PHP include pointer or `.ready` file
+inside an immutable release. A request loads only the exact locally
+installed tuple. Missing files or an incompatible runtime ABI fail closed.
+A host-installed must-use loader establishes admission before ordinary
+plugins can load app code. Normal plugin load order is not the barrier.
+Stable publish/status/recovery routes skip ordinary generated-code boot and
+never first take a consumer fence that they would need to upgrade. Only the
+authorized finalizer loads the selected release behind its exclusive fence.
+A control request may install/switch a pending theme while the prior theme
+is still loaded, but it runs no app migration or domain callback until a
+fresh bootstrap attests the selected theme digest. A tuple mismatch never
+opens ordinary serving.
+If the early loader is absent, app readiness fails. The loader acquires
+fences for generated plugins in a stable app-key order before booting them.
+It may conservatively return site maintenance when any required app is
+closed; URL matching is not permission to boot an unready plugin. All
+requests using a managed theme are covered too.
+Release readiness covers safe code/schema/theme admission. Feature readiness
+is separate: a missing approval bridge disables approval-bearing actions and
+flows, and an unsupported SEO provider disables page delivery. Neither can
+silently bypass its guard or disable an unrelated qualified read-only agent.
+Only stable control-schema code can answer status/recovery while release
+readiness is closed.
 
-1. **Probe.** `GET /zero/v1/publish/capabilities` returns whether the app
-   plugin directory is writable (an actual write-and-unlink in a staging
-   subdirectory, not a guess from `ABSPATH`),
-   `wp_is_file_mod_allowed('zero_publish')`, free space, PHP/WP versions,
-   the installed runtime version, the current release digest and whether a
-   publish lock is held.
-2. **Stage.** `POST /zero/v1/publish/stage` with a zip of the app plugin
-   (and the theme when present) and a manifest (file list with SHA-256,
-   release digest, expected current release, idempotency key). Requires
-   HTTPS, an application password and the `zero_publish` capability
-   (granted to administrators by the runtime; nothing lower). The endpoint
-   takes `GET_LOCK('zero_publish_<app>')` for the whole publish, validates
-   every path against the server-chosen target
-   (`plugins/zero-app-<name>/releases/<digest>/`), rejects traversal,
-   symlinks, absolute paths, oversized entries and unexpected files,
-   verifies every file's digest after extraction, and leaves the release
-   staged. The digests detect corruption; the application password is what
-   authenticates the publisher.
-3. **Activate.** `POST /zero/v1/publish/activate` (old code) checks the
-   expected current release and the lock, writes `releases/current` to the
-   new digest (write, then `rename`), invalidates opcache for the old tree,
-   and returns. From the next request the app plugin boots the new release.
-   Until finalization writes `.ready`, the new release boots in maintenance
-   for Zero routes and the app's API (503 with `Retry-After`; wp-admin and
-   the publish endpoint excluded), so no request runs new code against an
-   unmigrated schema.
-4. **Finalize.** `POST /zero/v1/publish/finalize` (new code) runs the
-   migrations, the route reconciler (§4.7), the agents reconciler (§4.10),
-   the code-owned body writes with the digest check, writes `.ready`, and
-   releases the lock. The CLI prints the receipt.
+**Authentication and signing.** HTTPS and a WP application password identify
+the publisher; `zero_publish` authorizes the operation. During an explicit
+initial enrollment that capability binds a publisher public key to the
+site/app. The CLI uses that enrolled key to sign an RFC 8785 canonical JSON manifest
+with Ed25519. The manifest binds site/blog ID, app ID, expected active
+digest, new digests, protocol version, idempotency key and file SHA-256s. Verification rejects wrong-site,
+wrong-app or changed bytes. A signature does not bypass WP authorization.
+Enrollment/rotation is administrator-only and auditable. Secrets are never
+printed. Digests alone prove integrity, not publisher identity.
 
-A repeat of any step with the same idempotency key returns the stored
-receipt; a mismatched expected-current is a 409; a second publisher while the
-lock is held is a 423. If finalization fails, `.ready` is absent, Zero
-routes stay in maintenance and the CLI prints the two recoveries:
-`zero publish --retry-finalize` and `zero publish --rollback`, which points
-`current` back at the previous release (kept for that purpose). Rollback
-does not reverse migrations: Zero's migrations are forward-only, as today's
-plugin upgrades are, and the CLI says so before rolling back a release whose
-finalization ran migrations. The runtime plugin publishes its own upgrades
-through the same endpoint and the same three steps. The very first install
-of the platform plugins on a site is not through this endpoint (nothing is
-there to receive it): it is `wp plugin install` of the built zips, the
-host's deploy pipeline, or Spacefast.
+**Persistence across requests.** A control-schema operation row records the
+signed payload hash, stage, expected/new tuple, owner-token hash, monotonic
+lease generation, expiry, step receipts and errors. A unique operation key
+returns stored receipts only for the identical authenticated payload.
+Creation, renewal, takeover and each transition use a short transaction
+with compare-and-swap on state, owner and generation. A second active
+operation for the app is refused. Every HTTP step validates the persisted
+ownership; no MySQL `GET_LOCK` is expected to survive HTTP connections.
 
-**Hosting constraints, honestly.** Report 06 established that production
-code is not writable on WordPress VIP (read-only application container) or
-Pantheon Test/Live (code directories not writable), while WP Cloud defaults
-to `php_fs_permissions=rw` with `ro` and `loggedin` modes. So:
+Extraction writes to a server-selected staging directory unique to the
+operation and generation. A stale extractor cannot change another
+operation's files. Only an ownership-checked transition promotes a fully
+verified immutable digest directory; active state changes only in DB.
+Expired ownership permits takeover of known incomplete work, not replay of
+an uncertain external effect or concurrent migration. Finalization also
+holds a request-scoped exclusive app fence while it mutates state. A lease
+expiry alone cannot evict a live fence holder. Once admissions are closed,
+owner takeover must acquire that exclusive fence before changing the
+mutating operation's generation. All target mutations recheck the generation
+under the fence, including theme-link replacement. Thus an expired lease
+cannot create a second finalizer while the first still executes.
 
-| Host | `zero publish` (code) | `zero publish --content-only` | Code path |
-|---|---|---|---|
-| WP Cloud `rw`, generic VPS, Playground, `zero dev` | works: stage, activate, finalize | works | the endpoint |
-| WP Cloud `ro` / `loggedin` | probe reports not writable; refused with the reason | works | switch the site to `rw` for the publish, or the host's own deploy |
-| WordPress VIP | refused with the reason | works | the VIP code pipeline (Git) |
-| Pantheon Test / Live | refused with the reason | works | Pantheon's code workflow (Git/SFTP on Dev) |
+The protocol has a probe followed by three idempotent mutation steps.
+A step may return a durable continuation instead of keeping an HTTP request
+open; the CLI resumes the same operation key:
 
-`--content-only` ships Page records, their bodies, metadata-derived
-`post_title`, and the synced collection content, and verifies that the
-installed release digest matches the build the bodies came from; a mismatch
-is refused because a body may reference a region the installed code does not
-have. Generated PHP is never stored in the database or `eval`ed as a
-workaround. The CLI prints which half it did.
+1. **Probe** reports runtime ABI, DB state, installed digests, allowed file
+   modification and host mode. On a writable candidate it performs a bounded
+   staging write-and-unlink to check permissions. Read-only mode uses host
+   declarations and installed-file verification without trying to write a
+   release readiness marker.
+2. **Stage** authenticates, verifies the signature and expected active tuple,
+   stores the operation, extracts and verifies all bytes. Reject traversal,
+   symlinks, absolute paths, unlisted or oversized entries. Nothing changes
+   the active tuple or runs uploaded PHP. The endpoint cannot stage its own
+   stable bootstrap or platform-plugin upgrade.
+3. **Activate** closes admissions durably, drains existing consumers under
+   the barrier below, then CAS-selects the new app/theme tuple as unready.
+   Staged code is not booted before the drain. Subsequent ordinary consumers
+   remain closed. A separate finalize request boots the selected release
+   under private migration authorization; old code is never replaced in its
+   current PHP request.
+4. **Finalize** verifies the installed tuple, completes theme activation
+   across a fresh bootstrap when required (§4.6), then applies journaled
+   migrations, reconciles Page records and DM resources,
+   verifies bodies, rewrites, template references and readiness, then commits
+   ready/open with a new admission epoch and the receipt. Migration and
+   reconcile steps have durable checkpoints; DDL may not be transactional,
+   so a crash resumes only a proven idempotent/incomplete step. An uncertain
+   step stops for reconciliation rather than running again blindly.
+
+**All consumers share the barrier.** The stable bootstrap acquires a
+request-scoped shared app fence before loading generated code and retains
+it through the invocation. It checks open/ready and generation while holding
+that fence. Zero REST, core REST collection reads and writes, SCF,
+wp-admin editors, frontend queries, abilities, cron, Action Scheduler, DM
+tools, sync and CLI/WP-CLI all enter here. Static provider code stays
+registered for control/status, but no app callback or collection storage
+access runs while unready. A blocked web/admin operation gets a 503 with
+`Retry-After`; workers release/defer rather than mark the work successful.
+Only the stable recovery screen and the private finalizer bypass admissions.
+
+For MySQL, a dedicated connection holds a shared row lock on the app fence
+inside an explicit transaction for the consumer's lifetime, separate from
+its ordinary application transactions. Control-row admission updates use a
+different row/connection, so they do not wait behind the shared fence.
+Activate first closes admissions in the control row, then waits for an
+exclusive lock on the fence. It rechecks ownership after the
+lock is acquired. Requests that read an old admission state recheck it
+under their fence before loading code. The exclusive holder can migrate
+only when all previous shared holders have exited. A timeout leaves the
+operation closed and recoverable; a TTL/heartbeat is never evidence that
+old PHP stopped. For single-host SQLite development, shared/exclusive
+`flock` on a host-owned stable lock file supplies that lifetime fence;
+control-row CAS uses `BEGIN IMMEDIATE`. Multi-host SQLite is unsupported.
+Read-only app trees do not prevent the host-owned lock location or DB state.
+
+An already-running long job keeps its old fence until it exits or reaches a
+safe checkpoint. A checkpoint releases all app objects/transactions and
+re-enters through the new generation before continuing; otherwise publish
+waits or fails without migration. Persisted AS/DM payloads include a handler
+contract version: after cutover compatible work resumes under new code;
+incompatible work is held/cancelled explicitly, never delivered to a changed
+handler. Registrations alone cannot solve in-flight work. Raw SQL or trusted
+plugins bypassing these entry points are outside the supported boundary;
+a host unable to establish the barrier must drain its processes itself and
+provide a rollout acknowledgment before activation.
+
+**Recovery.** Same-key retries return durable state. Stale expected-current
+is a 409, competing ownership a 423. A dead finalizer leaves admissions
+closed. Retry resumes its recorded steps under a new generation. Rollback
+is allowed only when the recorded schema and outstanding-work contracts
+remain compatible with the previous app/theme pair; otherwise refuse and
+require forward repair. Never "warn and run old code" after a destructive
+migration. Restore theme options and validate the whole pair before ready.
+
+**Immutable hosts.** VIP, Pantheon Test/Live and WP Cloud read-only mode
+use host-owned code deployment and `--content-only`. The host first invokes
+the close-and-drain phase of activate and receives its durable closed-state
+receipt. Only then may it replace a stable theme path or platform code.
+Additive immutable app artifacts can be staged earlier. The host installs
+the exact signed app/theme artifact on every serving/worker node, reports
+the installed digests and resumes activate/finalize with its rollout
+acknowledgment. Activate selects the new tuple only after that acknowledgment.
+During the rollout admissions stay closed; a node that lacks the selected
+digest serves no app work. Readiness is committed in DB
+only after the host confirms all required nodes and drain. No production
+filesystem write is needed for readiness. The host also installs the stable
+theme path and platform upgrades.
+
+`--content-only` never changes code or schema. It checks the ready installed
+digest and schema, uses the normal fences, then applies authenticated Page
+reconciliation or content sync with base/digest checks. It cannot overwrite
+editor-owned content merely because the build contains an older copy.
+Region references must exist in the installed release. Writable WP Cloud,
+generic VPS and local development use stage/activate/finalize directly;
+the probe decides from actual capabilities. The CLI receipt states which
+code and content steps completed. Generated PHP never goes into DB or
+uploads and is never `eval`ed.
 
 ### 4.10 Agents on Data Machine
 
@@ -937,8 +1030,9 @@ what DM executes (below). The word `principal` is used rather than `user` so
 it cannot be read as #55's `user()` column.
 
 **Generated registration.** The app plugin gets `Requires Plugins: data-machine`
-only when `agents` is non-empty, and `agents/manifest.php`: a declarative
-array (app, agent key, slug `zero-<app>-<key>-<site>`, `site_scope`,
+when `agents` is non-empty **or any action declares `approval`**, and
+`agents/manifest.php`: a declarative
+array (app, agent key, deterministic collision-checked site-qualified slug, `site_scope`,
 principal, access, `agent_config` with `default_provider`, `default_model`,
 `mode_models` and `tool_policy`, `ability_tools` aliases → ability ids,
 pipelines as DM `workflow` objects, flows with `scheduling_config`,
@@ -958,44 +1052,104 @@ every scheduled occurrence. On update the adapter writes the step's
 Zero-owned and reconciled, other step and flow fields are left as DM holds
 them.
 
-**What the adapter calls, and when** (all verified in DM 0.200.4):
+**Adapter lifecycle.** These existing DM calls are the integration points,
+not evidence that the proposed bridge already exists:
 
-| Phase | Call |
+| Phase | Contract |
 |---|---|
-| Early bootstrap, agent entry paths only | `datamachine_request_full_runtime('zero:<app>')` before `plugins_loaded:20` |
-| Provision (from publish finalization or doctor `--fix`, under an operator identity, after a DB-backed reconciliation lock) | `wp_get_ability('datamachine/create-agent')->execute([...])` with `config`, explicit `owner_id` and `site_scope`; `datamachine/create-pipeline` with `workflow.steps[]` (`step_type`, `system_prompt`, `user_message`) and `flow_config` with `interval: "manual"` (creates the first flow; the adapter records the returned `pipeline_id`, `flow_id`, `flow_step_ids` before the next call); `datamachine/create-flow` for additional flows; `datamachine/update-flow` to set `scheduling_config` last, after the mapping is committed |
-| Update | `datamachine/get-agent` then `update-agent` (`agent_config`, preserving fields Zero does not own), `update-pipeline-step`, `configure-flow-steps`, `update-flow` with recorded ids |
-| Start | Zero authorizes `access`, then `datamachine/run-flow` with the mapped `flow_id`, `respect_paused: true`, inside `PermissionHelper::run_as_system()` for that one dispatch. `run-flow` is annotated non-idempotent; Zero keeps a short dispatch receipt keyed by its operation key and reconciles before any retry |
-| Tool scope | `datamachine_engine_snapshot` filter sets `job.ability_tools`, `job.mode_models` and a sealed Zero scope for owned flows; `datamachine_resolved_tools` (priority 100) intersects to the allowlist. Tool descriptions and schemas come from the registered Zero abilities through DM's `AbilityToolSource`; no second schema |
-| Approvals, stage | `PendingActionHelper::stage()` from Zero's canonical invocation path when an action with `approval` is called on any path; `apply_input` is the normalized input plus target fingerprint, `authorization.target` the row identity, `ttl` from `expiresIn` |
-| Approvals, resolve | DM's `ResolvePendingActionAbility` checks `PendingActionScope::can_access_payload()` (creator-bound by default) and the Agents API permission gate before any kind handler runs, so an editor who is not the proposal's creator cannot resolve through DM's own route. Zero's review endpoint therefore authenticates the human (cookie + nonce), checks Zero's `approval.by` policy, then dispatches `ResolvePendingActionAbility::execute` under `run_as_system()` with `resolver: "user:<reviewer id>"` and a Zero-signed `context.zero_reviewer` carrying the reviewer id and the pending action id. The handler registered through `datamachine_pending_action_handlers` implements `can_resolve` as: a valid Zero reviewer context for this action id, whose user satisfies `approval.by`, and no DM agent principal in context; anything else is denied, including DM's native resolver route and tool. `resolve_pending_action` and every DM management ability are excluded from the agent's tools. This dispatch shape is part of `ZeroApprovalBridgeV1` and is proven in PR 13 |
-| Approvals, apply | `apply` restores the stored owner and DM context, rechecks access, current policy, expiry and the target fingerprint, calls `PendingActionAuthorizationReceipt::consume` immediately before the canonical mutation, and runs the action under a one-use internal approval capability that is not a public flag |
-| Memory | DM's default `AgentMemory` store; `modelWrites: false` means no memory-write tool is projected |
-| Admin | `datamachine_admin_pages` for discovery; Zero Admin shows an Agents entry with readiness, owned resources, DM deep links for operators who have DM's capabilities, and the review cards |
+| Bootstrap | For agents **or approvals**, request full runtime before `plugins_loaded:20` on reconcile, dispatch, schedules, review and all action entry paths. Manifest-based early detection includes direct REST, abilities, MCP and admin. An approval-only app still installs DM, its SQL pending-action store, the adapter and bridge. |
+| Provision | Under an operator and a DB-backed reconcile lock, call `datamachine/create-agent` with explicit `agent_slug`, `owner_id`, `site_scope` and config. Persist the returned numeric `agent_id`. Pass that exact ID to `datamachine/create-pipeline`, its seeded flow and each additional `datamachine/create-flow`. A missing ID must not fall back to the provisioning operator's current agent. Create flows with manual scheduling. |
+| Verify and schedule | Read back every agent, pipeline and flow. Verify site scope, agent owner, pipeline `agent_id`, flow `agent_id`, pipeline/step IDs and the Zero resource key before recording the mapping and enabling schedules with `update-flow`. Ownership drift fails readiness; never adopt another agent's rows. |
+| Update | Read mapped resources first, then `update-agent`, `update-pipeline-step`, `configure-flow-steps`, `update-flow`. Preserve fields outside Zero's declared ownership. A crash after a non-idempotent create is reconciled through the deterministic owned key before retry; an ambiguous match stops. |
+| Start | Authorize Zero `access` and dispatch `datamachine/run-flow` with the mapped ID and `respect_paused: true` under `PermissionHelper::run_as_system()` for that call only. DM's dispatch is non-idempotent. A DM-owned durable dispatch receipt must store intent and the resulting DM job ID; this requires a qualified adapter/DM integration capability rather than a presumed `run-flow` option. An uncertain result is held for DM reconciliation, never retried on timeout alone. No Zero run table is introduced. |
+| Tools | `datamachine_engine_snapshot` supplies `job.ability_tools`, `job.mode_models` and a sealed scope only for verified owned flows. `datamachine_resolved_tools` intersects to the allowlist. Schemas come from registered abilities via DM's `AbilityToolSource`. Exclude management, resolution and memory-write tools when not explicitly permitted. |
+| Memory and admin | Use DM `AgentMemory`. `datamachine_admin_pages` supplies operator discovery; Zero Admin supplies readiness, resource links and human review cards under Zero authorization. DM admin capabilities are not granted by an agent's `access`. |
 
-**Execution identity.** DM's AI step sets the WP current user to the DM
-agent's owner. That is why `principal` maps to an owner. The initiator, the
-owner and the approving human are recorded separately in DM job and
-pending-action metadata; approval never elevates the principal.
+DM's AI step sets the WP current user to the DM agent's owner. The fixed
+non-admin service principal owns its shared memory. The initiating human,
+service owner and approving reviewer remain separate in DM metadata; approval
+never turns the service user into the reviewer. Per-caller principals are
+out of scope for v1.
 
-**The approval continuation gap, stated.** Stock DM 0.200.4 stages, claims
-and applies pending actions durably, and resumes runtime-tool continuations
-for chat sessions. It does not establish that a paused **pipeline** AI step
-resumes with the original tool-call id and remaining cursor after a human
-decision, and its default resolution scope does not admit a reviewer other
-than the creator. Zero requires a versioned capability,
-`ZeroApprovalBridgeV1`: the reviewer dispatch above; checkpointing the
-assistant turn, tool-call ids and cursor in the DM job before releasing the
-worker; on decision, persisting the terminal tool result under the original
-id and scheduling DM's fenced resume. It is delivered as a tested DM
-integration patch or upstream change. Until `zero doctor` sees it,
-approval-dependent flows are reported unready and refuse to start; read-only
-agents run. The model is never asked to reissue an approved mutation.
+**Approval is canonical, including without agents.** Every entry to an
+approval-bearing action stages through `PendingActionHelper::stage()` instead of executing.
+The normalized input, original principal, target identity/version fingerprint,
+policy digest, code/handler version and expiry are stored in DM. No Zero
+approval table is added. If DM, SQL claims, full runtime or the qualified
+bridge is unavailable, invocation returns an explicit unready error and
+performs no mutation. `idempotent: true` alone does not make an approval safe.
 
-**Version pinning.** The platform pins DM core 0.200.4 (`b07be213`, exact
+DM's native pending-action scope is creator-bound by default; its public
+Agents API ability also has a permission gate. The facade
+`ResolvePendingActionAbility::execute()` calls the resolver function, so
+Zero must authorize its own internal dispatch rather than assume that calling
+the facade re-runs a public ability permission callback. Zero's review
+endpoint authenticates a human with cookie and nonce, checks `approval.by`,
+and creates a request-local signed reviewer context bound to the action ID,
+decision, policy version and expiry. It calls the facade under narrowly
+scoped `run_as_system()` with explicit `resolver: "user:<id>"` and
+`operator_wide: true` in internal context. This admits the operator scope;
+it is not itself approval authorization. The Zero handler's `can_resolve`
+requires that signed context, rechecks the actual human and rejects an acting
+DM agent. DM's native route/tool cannot supply it. Never accept an inbound
+caller-supplied resolver, operator flag or reviewer signature as authority.
+
+**Required `ZeroApprovalBridgeV1`, not stock DM behavior.** The bridge is a
+versioned DM integration patch or upstream change. It extends DM's canonical
+resolver/store, not a parallel Zero approval engine, and must supply:
+
+1. **Atomic local application.** On one transactional DB connection, lock
+   the pending action and the target row/version, recheck principal access,
+   reviewer policy, expiry, handler version and target fingerprint, consume
+   the exact authorization receipt, execute the local mutation and persist
+   its terminal DM result in the same commit. All writes to that target use
+   the same row lock/version CAS, including core REST/admin and SCF/meta-only
+   edits, not just `db.update`. A target with an uncovered write entry is
+   unready for approvals. WordPress post/meta writes and DM tables
+   must share that transaction; nontransactional tables fail readiness.
+   WP hooks that emit external effects are deferred until commit. Approval
+   actions with unclassifiable hook effects are refused until adapted.
+2. **Crash recovery.** A local crash before commit rolls back consumption,
+   effect and result together; retry may reclaim only that proven rollback.
+   A crash after commit returns the stored result without reapplying.
+   An abandoned unconsumed claim can be reset only after proving no active
+   executor owns it. Never reset a consumed `applying` record on lease expiry.
+3. **External effects.** Before sending, store the stable DM action-derived
+   idempotency key, request digest and target/provider preconditions in DM's
+   record. The provider must support a qualified idempotency/result lookup
+   contract. After timeout/crash, reconcile by that key and persist the
+   observed result. If the outcome cannot be proved, keep the action held
+   with `resolution_metadata.outcome = "outcome_unknown"`, block replay and
+   require operator reconciliation or a new proposal after observation.
+   Do not label it failed and let the model repeat the mutation. Actions
+   without a safe external contract cannot opt into approved execution.
+4. **Continuation.** Checkpoint the DM pipeline AI turn, tool-call IDs and
+   cursor durably before releasing its worker. Commit the decision/tool
+   result before dispatching notifications or DM's fenced resume. Resume
+   under the original tool-call ID after restart; do not ask the model to
+   reissue a mutation. Rejection and expiration also yield terminal results.
+
+Stock DM's `claim_for_resolution` uses SQL CAS, and
+`PendingActionAuthorizationReceipt::consume` gives at-most-once consumption.
+Its own store explicitly says a crash after consumption requires operator
+reconciliation; `complete_claim` accepts accepted/rejected/failed, not a new
+`outcome_unknown` status. The bridge must retain the consumed action and
+write the metadata above through a supported store extension, then resolve
+only after outcome proof. Its transaction must encompass DM completion and
+defer DM's current resolution callbacks until commit. Wrapping only Zero's
+handler would leave the stock effect/result gap open.
+
+Until this capability is installed and qualified, **every approval-bearing
+action and approval-dependent flow is unready**, even in an app with no
+agents. Agents that do not require approvals can run through the qualified
+adapter. No continuation, atomicity or external exactly-once claim is made
+for the unpatched baseline.
+
+**Version pinning.** The platform pins DM core 0.200.4 (`b07be213f70904f379d2c18204d3b36a003ba41f`, exact
 artifact SHA-256, built with `composer install` from its committed lock) as a
 locked WordPress plugin like SCF and the MCP adapter. Business and Socials
-are not installed. DM bundles Agents API `952db6cb` and Action Scheduler
+are not installed. DM bundles Agents API
+`952db6cb2b3ef49ab2e539993788d3e04bb6e783` and Action Scheduler
 3.9.3; Zero pins AS 4.2.0. **Decision:** one qualified AS version and runner
 policy for the combined platform, starting from 4.2.0, accepted only after
 co-install tests under both plugin load orders; DM's global queue tuning
@@ -1010,10 +1164,10 @@ source strings:
 | Check | Evidence |
 |---|---|
 | Platform | DM active at the qualified artifact; WP 7.1 / PHP 8.2; vendor autoload and built admin assets present |
-| Substrate | loaded Agents API class source matches the lock; a second copy is a failure |
-| ABI | `datamachine/create-agent`, `create-pipeline`, `update-flow`, `run-flow` registered; `PendingActionHelper::stage` and `PendingActionAuthorizationReceipt::consume` exist; `ZeroApprovalBridgeV1` present or approval flows marked unready |
+| Agents API | loaded Agents API class source matches the lock; a second copy is a failure |
+| ABI | `datamachine/create-agent`, `create-pipeline`, `update-flow`, `run-flow` registered; `PendingActionHelper::stage` and `PendingActionAuthorizationReceipt::consume` exist; `ZeroApprovalBridgeV1` qualified or all approval-bearing actions and flows marked unready |
 | Persistence | DM tables current; SQL pending-action claims available; memory store writable, persistent and shared across workers |
-| Principal and tools | service user exists and is not an administrator; agent owner and `site_scope` match; resolved tool set equals the allowlist plus vetted plumbing; no management or self-resolution tool |
+| Principal and tools | service user exists and is not an administrator; agent owner and `site_scope` match; pipeline and every flow have the mapped numeric `agent_id`; resolved tool set equals the allowlist plus vetted plumbing; no management or self-resolution tool |
 | Prompts | the step's `system_prompt` digest equals the bundled instructions digest; each flow's `user_message` equals its declared prompt |
 | Provider | provider and model configured; finite turn budget; no secret printed |
 | Delivery | loaded AS class version and runner policy qualified; one routine per owned schedule; a disposable canary job on both domains |
@@ -1021,64 +1175,41 @@ source strings:
 
 ## 5. Relation to the config API redesign (#55)
 
-PR #55 (`docs/design-config-api.md`, Sol-clean after 24 rounds, not yet
-ruled on by the owner) redesigns the surface this document builds on. The
-two cannot diverge, so this section resolves every point where they touch,
-records the status of each #55 proposal, and fixes which API the examples
-use. #55 predates the WordPress-only cut; everything it says about the
-standalone target (its §4.12 list, `target`, `ctx.target`, the standalone
-job worker and identity) is void, and the cut has already removed those.
-It also predates rulings 1–7, so it says nothing about pages or agents.
+[PR #55](https://github.com/spacefast/zero/pull/55) and its
+`docs/design-config-api.md` are a proposal for owner review. They are not an
+accepted API merely because examples here use them. #55 already describes
+WordPress-only defaults; do not dismiss its whole §4.12 as obsolete. That
+section mixes single-target cleanup with substantive auth, ownership and
+access changes, whose adoption still needs review against current main.
 
-### 5.1 Conflicts, resolved
+The following classification means "selected in this proposal" when it says
+adopted; it never means owner-approved or already implemented:
 
-| Touch point | #55 | This document | Resolution |
-|---|---|---|---|
-| The exposure flag | keeps `agents?: false` on `collection()`, `global()`, `action()`, `job()`; its open question 6 asks whether to keep it at all | renames it `abilities` | **`abilities`**, defaults unchanged. Supersedes #55 q6: the flag stays (removing it would expose every ability under MCP) and is renamed because `agents` now means AI agents (§4.10). |
-| Viewability | no option; "a content collection is a WordPress post type" registered private, `/wp/v2/zero_<key>` only | `collectionPage(c)` in `pages/` flips the CPT to `public: true` with a rewrite slug | **`collectionPage` is the one switch**, and it lives in `pages/`, not in `collection()` options; `schema.php` carries the resulting `viewable` flag so the runtime registers the CPT correctly. No `public` collection option in v1 (§10 q4). |
-| Which collections can have a page | `content` is inferred from the columns; `slug()` is `post_name` | `collectionPage` needs a content collection with a `slug()` column | Adopted as #55 defines them: a table (`content: false`) or a collection without `slug()` refuses `collectionPage`; `by` is not an option. |
-| `body` | `body` replaces `content` as the rich-text designation | `RichText value={item.body}`, `PostContent` | Adopted; the primitives read the collection's `body` column. |
-| Access rules | `read`/`write`/`create`/`update`/`delete`, `ctx.is(role)`, `"self"` on `user()` columns, roles normalized from capabilities | `collectionPage` requires a read rule that is `"anyone"` or a filter; page loaders get `ctx.viewer.is()` | Adopted. A `"self"` read rule is a filter over `user()` and is accepted by `collectionPage` (it compiles to SQL); a bare role is refused (§6). |
-| Field access | `.access({ read, write })` on columns | title and body of a viewable collection may carry no field rule stricter than the read rule | Adopted #55's shape; this document adds the one constraint, as a build error. |
-| Hooks beside the columns | `collection(cols, { hooks })`; `defineConfig.hooks` goes | page loaders are separate from hooks | No conflict; the journal example writes hooks beside columns. |
-| SEO and metadata | its site example keeps `seo: group({ noindex, metaTitle })` as plain data | `metadata` / `generateMetadata` in page modules read those columns | **Metadata lives in pages; SEO values an editor controls are ordinary columns.** No SEO builder, no collection option. |
-| `defineConfig` keys | `{ name?, collections, globals?, actions?, jobs?, files?, media?, locales?, localeFallback?, webhooks?, plugins?, admin? }` | adds `pages?: { sync?: boolean }` and `agents?: Record<string, Agent>` | **Both added.** `pages` holds switches and never names a route; `agents` is the AI-agents key. `admin?` is used unchanged. |
-| `action()` | `{ input?, access?, idempotent?, signature?, agents?, handler }` | adds `approval?` | **Added**; `agents?` becomes `abilities?`. |
-| `user()` and `"self"` | `user()` is a column; `"self"` means ownership | agents have a `principal` | The agent field is named `principal: { login }`, not `user`, so one word keeps one meaning. |
-| `sync` | per collection `sync: "pattern"`; `uid` inferred | adds `pages.sync` and the `pages` sync group | Adopted; pages are a sync group beside collections, with their own UID meta on Page records. |
-| `Row<T>` / `Insert<T>` | replace `InferSelectModel` | `CollectionPageProps<typeof page>` derives `item` from the collection | Adopted; `item` is `Row<typeof posts>` plus `href`. |
-| Table names, lowercase content keys, 15-character limit | the key is the table and post type name | the rewrite slug is the route directory, independent of the key | No conflict; the post type stays `zero_<key>`, the URL is the directory. |
-| "WordPress is the vocabulary" | status, roles, SCF types, media, title, slug | "don't follow the WordPress stuff if not needed" | The line: WordPress vocabulary for data, access, media and admin (#55); not for routing, rendering and styling, where `pages/`, layouts, CSS modules and metadata exports are Zero's own (§4). |
-
-### 5.2 Status of each #55 proposal
-
-| #55 proposal | Status |
+| #55 area | Disposition here |
 |---|---|
-| Columns: `select([...])`, structured builders without the `fields` key, `json<T>()`, `.default(fn)`, `.onUpdate()`, `.nullable()`, implied NOT NULL, implied `.max(191)`, `media` MIME patterns | adopted |
-| System columns `id`, `createdAt`, `updatedAt`; `timestamps: false`; `.primaryKey()` | adopted |
-| `ref()`, `user()`, inferred relations, `many()`, `defineRelations` removed | adopted |
-| `collection(cols, opts)` without a name; `content` inferred; `body`; hooks inside; `uid` inferred; `api` removed; `collections` key | adopted |
-| Access: `write`, `ctx.is()`, `"self"` on `user()`, `"owner"` → `"self"`, auth defaults | adopted |
-| Auth collection: system `email` and `role`, pending-password side channel, `suspendedAt`/`guest` removed | adopted (no interaction with this design) |
-| `global(fields)`, `bucket()`, `file("key")`, `locales` array, optional `input`, `Row`/`Insert` | adopted |
-| `zero build --explain` | adopted; pages add their route table and ownership per route to its output |
-| `agents?: false` kept under that name (q6) | **superseded**: renamed `abilities` |
-| `admin?: true` | adopted unchanged |
-| §4.12 standalone removals | void (already done by the WordPress-only cut) |
-| Open questions 1–5, 7–12 (infer `content`; `authorId`/`author` pair; timestamps everywhere; table-name casing; `"self"` on `create`; `revisions` on tables; branded ids; hooks placement; `api`; `pending`/`private`; `contributor`) | **still open**, the owner's. This design depends on none of them except that `content` is inferable (q1) and `api` is gone (q10), which it assumes; see §10 q3. |
+| `collection(columns, opts)`, inferred content, `body`, hooks beside columns, `collections` key | Adopted in this proposal's conditional examples. Content inference and hook placement remain among #55's owner questions. |
+| `ref`, `user`, inferred relations, `Row`/`Insert`, system fields, builder simplifications, media MIME patterns | Adopted in the proposed shared vocabulary. No pages-specific alternative is introduced. System timestamps, casing, branded IDs and other unsettled defaults remain owner-open. |
+| Access `write`, operation overrides, `ctx.is`, field access, user ownership | Adopted as the proposed shape. `write` covers create/update/delete; field `write` covers create/update. Pages add the public-query constraints in §6, not a second access language. #55's self-create and role/status choices remain open. |
+| `agents?: false` exposure spelling and q6 | Superseded by the binding `abilities` rename, with existing exposure defaults preserved. Top-level `agents` is AI configuration. |
+| Private content CPT by default | Retained. Selected addition: `collectionPage(c)` declares the single item route and viewability, requiring a content collection, native slug and public-query-safe access. Tables remain unroutable. |
+| Plain SEO columns | Retained. Page metadata reads ordinary columns; no SEO builder in config. |
+| Sync and inferred UID | Retained as the proposed per-collection model. Pages add an optional sync group; TSX/templates have no inverse sync. |
+| `global`, buckets/files, locales, optional action input, `admin`, `build --explain` | Compatible proposal material, not approved by this document. Pages add route IDs and ownership to explain output. |
+| Auth/password side channel, automatic email/role, user ownership and §4.12 deletions | Outside this design's decision. Still subject to #55 review; the WordPress-only cut alone does not accept or void them. |
+| `api` removal and other #55 questions | Owner-open. No page or agent contract depends on removing `api`; an operation disabled by the accepted config stays disabled in ability projection too. |
+| New config switches | Proposed `pages?: { sync?: boolean }`, `agents?: Record<string, Agent>`, action `approval?`. **Any pages/config/Blocks coupling waits for §10 q1.** |
 
-### 5.3 Examples
+The journal's `authors` collection has `userId: user()` and posts reference
+`authors`, not a directly synchronized reference to `wp_users`. Its page
+item type is `Row<typeof posts>` with a route-derived `href`.
+`principal: { login }` names an existing service user; it does not overload
+the `user()` column.
 
-**Decision.** Every example in this document is written in #55's API:
-`collection({ cols }, opts)`, `ref()`, `user()`, `select()`, hooks beside
-the columns, `collections:` in `defineConfig`, `Row<T>`. The reason is the
-one the owner gave for #55 itself: one consistent, smaller API, and no
-second surface to migrate the moment pages land. The dependency is
-explicit: PR 1 (`abilities`) and PR 12 (agents) touch the same extractor
-sites as #55's PR 4 and 6, so #55's stack merges first or the two are
-rebased onto each other (§9). If the owner rejects #55, the examples here
-are rewritten in today's API in PR 0's follow-up and nothing else in this
-design changes; the decisions are independent of the spelling.
+Examples are a proposed final syntax, not executable examples on main. If
+#55 is declined or revised, rewrite them against the accepted API **before**
+implementing dependent work. Coordinate shared extractor/type changes with
+#55's stack instead of introducing temporary aliases. The `abilities`
+rename itself is binding and can be adapted to whichever API is accepted.
 
 ## 6. Conflicts between the reports and the rulings, reconciled
 
@@ -1093,51 +1224,65 @@ Reason: WordPress's own filters, styles and editor see blocks; a pure PHP
 renderer would hide every page from them, which contradicts "using normal
 WordPress stuff as possible".
 
-**Report 02 (pages need no WP records) vs ruling 1 (hidden Page records).**
-Decision: ruling 1; §4.7 is the design. Identity is `_zero_route` meta plus
-the route id, provisioned by a reconciler, with collisions as errors,
-`adopt` and `reset` as the operator's tools, trash as retirement, explicit
-top rewrite rules where the Page hierarchy cannot express the URL, and a
-read-only screen with a `map_meta_cap` lock. Reason: canonical URLs, menus,
-`wp_get_canonical_url`, sitemaps and every SEO plugin resolve against a
-queried post; a virtual route would need Jetpack-preview-style query surgery
-for each of them.
+**Report 02's virtual routes versus hidden Pages.** The ruling wins.
+§4.7 gives static routes real public identity without exposing code Pages
+in the editing workspace. Outbound permalinks and canonical redirects are
+part of that identity, not consequences assumed from an inbound rewrite.
+Collection items retain their own posts.
 
-**"Blocks never touches `zero.config.ts`" vs pages beside it.** Decision:
-pages are a Zero core feature discovered by file convention. `zero.config.ts`
-never registers a page; pages import collections from it. Blocks never reads
-`zero.config.ts`; `zero build` hands it an IR and receives serialized markup.
-Zero core's Rust compiler and PHP runtime never import Blocks' code; the one
-coupling is a build-tool invocation that exists only when `pages/` does.
-This narrows the Blocks ruling's "never depends on it" to "backend-only
-builds never depend on it". **That narrowing is the owner's to make**, not
-this document's: it is §10 q1, and PRs 4 and 5 do not start until it is
-ruled. Reason for recommending it: a second serializer in Rust would be wrong
-the day core changes a class name (blocks-notes §1), and a page system
-without the serializer cannot produce valid block markup.
+**Optional Blocks versus build/config integration.** The current ruling
+says Zero core never depends on Blocks and Blocks does not touch config.
+This proposal recommends an external serializer invoked only for page
+builds, shared universal exports, a pages sync config switch, and a
+page-derived viewability manifest. Even build-only dependency or indirect
+config integration may narrow that ruling. **No exception is approved.**
+The owner must approve the precise integration boundary before dependent
+PRs start. Merely keeping backend-only builds independent does not grant
+that exception. Do not implement a second guessed core serializer to evade
+the decision.
 
-**`public: false` collections and the access gap.** Decision:
-`collectionPage(c)` implies viewability and is the only thing that does. It
-registers the CPT `public: true` (so `is_post_type_viewable`, core sitemaps
-and `show_in_nav_menus` follow) with `rewrite: { slug: <directory> }`,
-`has_archive: false`, `exclude_from_search: true` unless
-`collectionPage(c, { search: true })`. Report 04's gap, that theme and core
-queries bypass Zero's per-record rules because the front-end guard returns
-outside wp-admin, is closed in the same PR at two levels. Rows: Zero's read
-rule is applied to every `WP_Query` over a viewable Zero type through
-`pre_get_posts` / `posts_where`, which the existing compiler can do for
-`"anyone"` and for filter rules (they already compile to SQL); a read rule
-that is a bare role or a non-filter function cannot be applied to a theme
-query, so `collectionPage` on such a collection is a build error with the
-fix named. Fields: the collection's title and body may carry no field rule
-stricter than the read rule (a build error otherwise), because
-`core/post-title` and `core/post-content` in a theme or an inherited loop
-read `post_title` and `post_content` directly; other columns live in meta
-and SCF, which core blocks do not render without a binding, and Zero's own
-primitives on a Zero route go through the viewer-bound item (§4.3).
-Collections without a `collectionPage` stay `public: false`, and a
-`QueryLoop` naming a Zero collection is refused in v1 (the silent fallback
-to core `post` is exactly what Blocks withdrew its helper over).
+**Private collections and public queries.** `collectionPage(c)` alone
+selects viewability in this proposal. Register `public: true`,
+`publicly_queryable: true`, a rewrite slug from the route directory,
+`has_archive: false` and default `exclude_from_search: true`. Optional
+`collectionPage(c, { search: true })` opts into search. Collections without
+an item route retain their existing private registration.
+
+Viewability requires a read policy the compiler can lower completely to
+viewer-bound SQL: public read, a SQL filter or supported `self` ownership.
+A function may branch on `ctx.is()` only if every branch lowers to a
+boolean/filter with the same viewer semantics. A bare role or arbitrary
+non-filter function is refused. Title and body fields may have no stricter
+read policy than the row, because native blocks and plugins read those
+post fields directly. Other fields still use the ordinary Zero/SCF access
+guards; direct trusted PHP meta access is outside the boundary.
+
+The existing front-end query bypass closes in the same change as
+viewability. `pre_get_posts` inspects **every** potentially affected query,
+including `get_posts()` (whose default is `suppress_filters: true`),
+ID-only queries, explicit arrays, `any` and implicit post types. It forces
+`suppress_filters = false` for affected queries so the mandatory SQL guard
+actually runs. `posts_where` adds a per-type disjunction, not one managed
+type's rule applied to an entire mixed query:
+
+```text
+existing WHERE AND (
+  post_type NOT IN (managed public types)
+  OR (post_type = type_A AND visible_status_A AND read_rule_A(viewer))
+  OR (post_type = type_B AND visible_status_B AND read_rule_B(viewer))
+)
+```
+
+Keep the original query's status, search and taxonomy constraints too.
+Unrelated post types retain their behavior. No generic `is_admin()` bypass:
+admin queries use their authenticated viewer and the schema-readiness gate.
+Result/short-circuit adapters must reauthorize cached `posts_pre_query`
+objects; a cache keyed without viewer/policy generation cannot supply
+managed rows. Count and sitemap queries must apply the same predicate,
+not filter rows after pagination. Unknown query optimizations fail closed
+for managed types until adapted. Raw SQL and trusted plugins removing Zero's
+filters are not a supported security boundary. Explicit `QueryLoop` over
+Zero collections remains refused; use viewer-bound `load()` and `.map`.
 
 **Report 05's "one queue" vs Data Machine's job engine.** Decision: report
 07 §B6. Both already deliver through Action Scheduler; the requirement is one
@@ -1181,104 +1326,119 @@ things on one screen.
 
 ## 8. Testing
 
-One behaviour, one owner, lowest seam that can break it. Compiler
-diagnostics and IR decisions are proven in `tests/compiler.rs` fixtures
-(`tests/fixtures/pages/*`). Serialization validity stays in Blocks' unit
-tests. Rendering, bindings, regions, routes, rewrites, Page reconciliation,
-head output, asset order and the `map_meta_cap` lock are proven on the
-WordPress-on-SQLite in-process site (`tests/php/wp.php`), one fixture
-project, one suite per seam. Node/PHP differential rendering runs the region
-corpus under both. The Site Editor validity proof and the theme install proof
-stay in Blocks' Docker job, path-filtered. Agents: DM provisioning, prompt
-mapping, tool scope, approval staging and human resolution, and the AS
-co-install, in a credential-free WordPress-on-SQLite suite with the real
-pinned DM artifact; provider calls behind an explicit credential gate.
-Publish: the three-step endpoint against the in-process site with a real
-zip, including traversal, symlink, expected-current, lock and idempotency
-refusals, a failed finalization left in maintenance, and rollback. No
-source-grep anywhere.
+Extend the nearest existing owner at the lowest seam that can fail. Never
+read implementation source and assert strings. Use real pinned WordPress,
+DM, SEO plugins and serializer artifacts. The following are acceptance
+obligations for implementation PRs, not tests run for this document:
+
+| Owner | New behavior to prove |
+|---|---|
+| Existing compiler fixtures | Route ID injectivity (`/` vs `/index`, dots vs slashes, groups and explicit IDs); source-located refusals, static Group class preservation, IR provenance, transitive universal checks and backend-only output independence. |
+| Blocks serializer and React owners | Pinned `createBlock`/`serialize` round trip, no dropped attributes, matching React classes. Site Editor validity stays in its existing browser proof; PHP parsing alone cannot prove validity. |
+| Existing WP route/query owner | Root excluded from parent chain; orphan and duplicate-leaf routes; inbound route, `get_permalink`, canonical redirect, menu and sitemap agreement. `get_posts` with suppression, a mixed/any/ID-only query and denied status/row prove the guard. Hidden Pages absent from editor list/count/search, direct editor and REST writes denied, separately authorized route diagnostics. |
+| Existing render/head owner | Anonymous viewer vs trusted DB, field masking through bindings, live row changes, JS/PHP region differential corpus. Exactly one title in canvas and theme under classic themes with/without title support, and each pinned SEO provider; preserve unspecified provider title and canonical values. |
+| Existing theme/browser owner | Unique assigned templates for both `/company/team` and `/support/team`; valid templates/parts; stable stylesheet customizations survive update; dangling region references stop publish; first activation and rollback keep options and app/theme payload consistent. |
+| Existing sync owner | Seed-once, file/DB push/pull, conflict and not-representable outcomes, UID/route identity, locked code, and sync on/off transitions with an established base. |
+| Publish integration owner | Real archive and HTTP requests on different connections/processes; ownership expiry/takeover, same-key receipts, stale generation and actual permission probes. Pause an old core REST/SCF read and an old worker, attempt activation, and prove no migration starts until both release their fences. Exercise crash before/after tuple/theme change, finalizer retry, incompatible rollback refusal and queued handler-version mismatch. |
+| Host deploy contract owner | Read-only code filesystem, DB-only readiness, installed-digest acknowledgments across nodes, no work on a stale node and content-only refusal for an unmatched release. |
+| DM adapter/approval owner | Explicit returned `agent_id` on pipeline and all flows, read-back ownership before schedules, crash-safe reconcile, exact tool projection and prompts. Approval-only app requires DM/full bootstrap. Concurrent target update invalidates approval; crash before/after local commit applies once; consumed ambiguous external effect is held without replay; pipeline continuation survives restart under original tool ID. Model/self-resolution denied; another authorized human may review. |
+| Platform queue owner | Real AS and DM co-install under both plugin load orders; qualify loaded class source, runner policy and one successful canary in each existing job domain. |
+
+Use the existing WordPress-on-SQLite development owner for cheap functional
+proof. MySQL fencing, transaction isolation, DDL recovery and multiple PHP
+workers require the real MySQL integration owner too; SQLite cannot certify
+those semantics. Provider calls remain credential-gated. Add no sibling suite
+that repeats a lower seam's proof. No source grep, fake provider assertions,
+`.only`, `.skip` or fixed-sleep synchronization.
 
 ## 9. Rollout
 
-Stacked PRs in this order. Each is green on `ci.yml`, `blocks.yml` and
-`site.yml` on its own; every new behaviour is reachable only when `pages/`
-or `agents` exists, so the existing suites are untouched until a PR
-deliberately extends them. #55's own stack (its §7.1) is a prerequisite for
-PRs 1, 2, 12 and 13 and for the examples; if #55 is rejected, those PRs are
-written against today's API and PR 0 gets a follow-up rewriting the
-examples (§5.3). PRs 4 and 5 wait on §10 q1.
+This is a dependency order, not authorization to implement. First obtain
+§10's owner rulings and align accepted #55 changes. Inventory existing test
+owners before touching them. Each PR extends the applicable checks and
+updates documentation without preserving obsolete names through negative
+API tests.
 
-| PR | Contents | Proof |
-|---|---|---|
-| 0 | this document | review |
-| 1 | rename `agents` → `abilities` on collections, globals, actions and jobs: extractor, `schema.php`, `config-api.md`, types, generated client docs, tests | existing abilities/MCP suites pass under the new name; a fixture using `agents:` on a collection is an error naming `abilities` |
-| 2 | collection viewability: the `viewable` flag in `schema.php`, CPT registration `public: true` with rewrite, read rule applied to front-end `WP_Query`, title/body field-rule check, reserved-slug check, refusal of role/function rules | `tests/php/wp.php` suite: a published row has a permalink and renders; a draft row and a filtered-out row 404 through a theme query and through `core/query`; a role rule and a stricter body field rule are build errors; the row appears in the core sitemap |
-| 3 | compiler: JSX admission for `pages/`, `components/`, `islands/`; discovery, layouts, groups, params, route ids, collision diagnostics; the IR with provenance; `zero check` over pages; `zero/pages` and `@spacefast/zero-blocks/universal` types; `defineConfig.pages` | `tests/compiler.rs` fixtures for every diagnostic in §4.1–4.3; a backend-only project builds byte-identically to before |
-| 4 | Blocks: `serialize-ir` entry (stdin IR → markup + diagnostics) and the `universal` React entry with the class contract | Blocks unit tests: each primitive's React output equals the pinned `save()` classes; IR round trip |
-| 5 | static pages end to end: serializer invocation from `zero build`, the `releases/` layout, `pages/*`, canvas with its own `<title>`, route matcher, explicit rewrites, front page options, Page reconciler with `adopt`/`reset`/trash, `map_meta_cap` lock, `wp_insert_post_data` guard, read-only screen | WordPress suite: `/about`, `/`, `/company/team` and `/posts/featured` render through the canvas with one `wp_head` and one title under a theme without `title-tag`; a claimed URL with no record is Zero's 404; Pages list links to the read-only screen; REST `PUT` is 403; rename retires; collision is reported |
-| 6 | bindings, regions, loaders, `collectionPage`, `RichText`, `PostContent` and friends over the viewer-bound item, the `zero/page-field` and `zero/region-field` sources, generated blocks with editor placeholders; Node/PHP differential corpus | WordPress suite: a row change shows without rebuild; a denied row never leaks through a binding; `{0 && …}` renders `0` on both sides; the editor reports no invalid block |
-| 7 | head/SEO: metadata merge, resolution before output, core emitter, the three plugin adapters, `post_title` sync | WordPress suite with no plugin and with each plugin's pinned artifact: exactly one title, canonical, robots, OG set; sitemap entries per provider |
-| 8 | CSS and assets: modules, class maps and types, tokens, hashed files, manifest, enqueue order; Interactivity islands | WordPress suite: stylesheet links precede `wp_head` scripts; a module is registered with its dependency; `wp_interactivity_process_directives` output matches the client store's initial state |
-| 9 | theme output: `pages/theme.config.ts`, layouts → `templates/`, `parts/`, `theme.json` presets from tokens; lands the reusable parts of `p3/blocks-theme`; `<TemplatePart>` | Blocks Docker job: install from zip, Site Editor validity for every template and part; a customized template survives a publish and is listed by doctor; plugin canvas and theme render the same body |
-| 10 | sync for content pages: `.blocks.html` front matter format, `pages` sync group, seed-once reconciler rule, validator-gated merge, `pages.sync` on/off transitions, `409 managed_record` | `tests/sync.rs` and `tests/php/sync_test.php`: pull, push, conflict, not-representable, seed then lock, lock then unlock with base |
-| 11 | `zero publish`: capabilities probe, stage/activate/finalize, lock, maintenance until `.ready`, rollback, `--content-only`, receipt; CLI output | publish suite against the in-process site: happy path, every refusal in §4.9, a killed finalization leaves maintenance and `--retry-finalize` completes, read-only probe → content-only |
-| 12 | agents without approvals: `agent()`, `ability()` references, manifest, prompt mapping, `Dm02004` adapter (provision, update, start, tool scope, memory, schedules), DM platform pin, AS qualification, `zero doctor` section | DM suite: provisioning idempotent across two runs; `system_prompt` and `user_message` equal the declared files; tool set equals the allowlist; a Zero job and a DM flow deliver under both load orders; doctor table |
-| 13 | approvals: action `approval` in the canonical invocation path, pending-action handler, reviewer dispatch, human review endpoint and cards, `ZeroApprovalBridgeV1` gate and the bridge itself | DM suite: direct REST and agent call both stage; agent cannot resolve; an editor who is not the creator accepts through Zero's endpoint and DM's native route refuses them; accept applies once across a worker restart; changed target fingerprint invalidates; unready without the bridge |
-| 14 | examples (`examples/journal` with pages, `examples/pantry` with an agent), README section, `docs/pages.md`, `docs/agents.md` | examples build without diagnostics and byte-equal twice |
+| Unit | Contract and prerequisite |
+|---|---|
+| A. Design | This proposal, owner decisions and pinned artifact/ABI matrix. No implementation is in this change. |
+| B. Shared config | Binding `abilities` rename in accepted config syntax, types, extractor, manifests and docs. Coordinate with #55 rather than assume its whole stack approved. |
+| C. Release foundation | Stable bootstrap, durable ownership/receipts, all-consumer fence, DB readiness, schema/work-version admission and host handshake. This precedes exposing page/agent deploys, not a final maintenance patch. |
+| D. Page compiler | Discovery, exact IDs, JSX/IR and diagnostics. Serializer/universal integration starts only after the explicit Blocks exception. Backend-only stays independent. |
+| E. Routes and rendering | Public-query policy guard lands with viewability; Page reconciler, canonical map, hidden editing boundary, canvas, static serialization, bindings, loaders and PHP regions. Depends on C and D. |
+| F. Head and assets | One title emitter, qualified SEO adapters, metadata, CSS/modules/tokens and optional Interactivity. Depends on E and the scope decision. |
+| G. Theme mode | Approved theme switch syntax, unique templates, paired staging, activation/rollback, stable customization identity and browser proof. Depends on C–F and the accepted theme-switch spelling. |
+| H. Sync | Content Page sync, seed ownership and lock transitions in existing sync engine; depends on E and approved pages switch. |
+| I. Agent adapter | Pinned DM core/Agents API, AS qualification, manifest, explicit ownership, prompt/tool mapping, schedules and doctor. Depends on B and C; not on page output. |
+| J. Approvals | DM bridge and its transaction/recovery contract, then canonical `approval`, human cards and continuation. DM dependency applies without agents too. Cannot ship enabled on stock DM; depends on C and I's adapter, not on declaring an agent. |
+| K. Authoring examples | Accepted-syntax journal/pantry examples, public guides and deterministic repeated builds after relevant units qualify. |
 
-PRs 1 and 2 are independent of the rest and can merge first. PRs 3 and 4 can
-proceed in parallel. 5–8 are sequential. 9 and 10 depend on 5. 11 depends
-on 5. 12 depends on 1 only; 13 on 12.
+Units may proceed independently once their prerequisites qualify.
 
-## 10. Open questions
+## 10. Open owner decisions
 
-Each with the recommended answer this document assumes.
+These are not approved by their recommendations. §2's rulings remain binding;
+the implementation choices elsewhere are a coherent proposed default, not
+additional owner rulings.
 
-1. **Narrowing the Blocks isolation ruling.** `zero build` invokes Blocks'
-   serializer when `pages/` exists (§6). This changes a ruling and needs the
-   owner's word; PRs 4 and 5 wait on it. Recommended: accept; the
-   alternative is a second serializer in Rust that cannot promise editor
-   validity.
-2. **Adopt #55.** This document builds on #55's config API and writes its
-   examples in it (§5.3). Recommended: approve #55 as a doc and land its
-   stack before PRs 1, 2, 12 and 13; if rejected, the examples here are
-   rewritten and the decisions stand.
-3. **#55's own open questions.** Twelve remain the owner's (#55 §8). This
-   design assumes only two of its proposed answers: `content` is inferred
-   (q1) and `api` is dropped (q10). Recommended: rule on #55's list as a
-   set; nothing here forces the other ten.
-4. **Publicly viewable collections without a page.** Someone may want a
-   viewable CPT for a hand-written theme template without a `collectionPage`.
-   Recommended: no separate `public` option in v1; `collectionPage` is the
-   one switch. Add `public: true` to `collection()` later if a real project
-   needs it, with the same read-rule and field-rule constraints.
-5. **Compiled body in `post_content` for code pages.** Gives SEO analysis and
-   the read-only screen something to show, at the cost of a digest check on
-   publish. Alternative: leave `post_content` empty. Recommended: compiled
-   body.
-6. **`pages/theme.config.ts` as the theme switch** versus a `theme` key in
-   `defineConfig`. Recommended: the file; it keeps `zero.config.ts` to data
-   and switches and reuses Blocks' `defineTheme`.
-7. **`defineConfig.pages` as the home of the pages sync switch** versus a
-   file under `pages/`. Recommended: the config key; it is a switch, not a
-   route, and sync switches for collections already live in the config.
-8. **Explicit top rewrite rules for static routes** the Page hierarchy cannot
-   express (front page, missing ancestors, static under a collection
-   directory). They are generated from the reconciled map at runtime and
-   flushed on route-hash change. Alternative: refuse those shapes.
-   Recommended: the rules.
-9. **The approval continuation bridge** is a Data Machine integration patch
-   until upstream accepts it. Recommended: ship read-only agents first (PR
-   12), hold approvals (PR 13) behind the capability gate, and open the
-   upstream conversation at PR 12.
-10. **Action Scheduler version.** Qualify 4.2.0 as the active runner and ask
-    DM to tolerate it, or step Zero down to 3.9.3 for the agents platform.
-    Recommended: 4.2.0, measured in PR 12.
-11. **Islands in v1 at all.** Recommended: yes, Interactivity-only, because a
-    menu toggle on a marketing page is the first thing a full-site author
-    asks for; it is one bundler entry and one `wp_enqueue_script_module`.
-12. **Per-caller agent principals.** Refused in v1 (§7). Recommended: design
-    them after PR 12 with DM's self-service limits measured, not assumed.
-13. **The agents' `access` and DM admin capabilities.** Zero's `access:
-    "editor"` does not grant DM's admin pages. Recommended: keep them
-    separate; Zero Admin's review cards are the editor-facing surface.
+1. **Blocks/config boundary.** Approve or reject the precise exception for
+   page-only serializer invocation, universal exports, page-derived
+   viewability and `pages.sync` in config. Recommended: approve that bounded
+   integration with backend-only independence. Until ruled, all dependent
+   work waits. Calling it build-only does not make it approved.
+2. **#55.** Approve, amend or reject its config redesign and outstanding
+   questions 1–5 and 7–12. The binding exposure rename supersedes q6 only.
+   Recommended: settle the shared syntax before dependent implementation.
+   This document adopts no auth/ownership deletion on the owner's behalf.
+3. **Authoring choices and islands.** Confirm the proposed stored compiled
+   body for code Pages, the `pages/theme.config.ts` spelling and the config
+   sync-switch location under q1. Optional layouts/themes and shared
+   components are already required; their inclusion is not reopened here.
+   Interactivity-only islands are an additional v1 scope recommendation.
+   These storage/spelling choices are selected defaults, not owner rulings.
+4. **Viewability outside pages.** Recommended: no separate public-CPT switch
+   in v1; `collectionPage` is the single declaration. A future standalone
+   switch would need exactly the same public-query policy guard.
+5. **DM bridge delivery.** Approve a versioned integration patch versus an
+   upstream-only dependency for `ZeroApprovalBridgeV1`. Recommended: qualify
+   a pinned patch and offer it upstream; ship agents without approval
+   dependencies first. Without the bridge, approval-bearing actions stay
+   disabled on every entry path, including approval-only apps.
+6. **Action Scheduler qualification.** Recommended candidate: Zero's 4.2.0
+   with a cooperative DM runner policy. Accept only after real co-install
+   proof in both load orders; no version is declared qualified here. If it
+   fails, select another tested pair rather than install two runners.
+
+Fixed service-user principals, UTC-only schedules, separate Zero/DM admin
+permissions, explicit rewrites and hidden code Pages are selected v1
+contracts above. The hidden Page boundary, hybrid renderer, optional sync,
+build/publish separation, immutable-host split and DM runtime ownership
+are binding and are not reopened as questions.
+
+## 11. Pinned source evidence
+
+These revisions were inspected for this proposal. Implementation must record
+built artifact hashes, patched DM/bridge hashes and qualification results;
+source inspection does not certify an artifact. Public source links below
+name the APIs whose behavior constrains the design.
+
+| Pin | Source and consequence |
+|---|---|
+| WordPress `7c9c8b624927f0d966fc28546712ddc01090a92b` | [`get_posts`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/post.php#L2666) defaults to suppressed filters; [`WP_Query`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/class-wp-query.php#L2783) gates `posts_where`. `pre_get_posts` runs earlier even when SQL filters are suppressed. |
+| Same WP pin | [`get_page_uri`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/post.php#L6697) concatenates ancestor slugs; [`get_page_link`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L397) exposes `page_link`; [`wp_get_canonical_url`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L4101) starts from the permalink. Rewrites alone do not supply canonical identity. |
+| Same WP pin | [`get_page_template`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/template.php#L471) considers assigned template first; [`block-template.php`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/block-template.php#L131) installs an unconditional title emitter; [`_wp_render_title_tag`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/general-template.php#L1557) requires theme title support. |
+| Same WP pin | [`get_edit_post_link`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L1481) checks capability before its link filter. Denied code Pages need a separately authorized route screen. |
+| Data Machine `b07be213f70904f379d2c18204d3b36a003ba41f`, 0.200.4 baseline | [`composer.lock`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/composer.lock) resolves Agents API's exact development revision; [`data-machine.php`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/data-machine.php#L148) provides early full-runtime request. Core only, no Business or Socials requirement. |
+| Same DM pin | [`CreatePipelineAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Abilities/Pipeline/CreatePipelineAbility.php#L140) falls back to execution context if `agent_id` is absent, and propagates explicit ownership to its first flow. Zero must pass and verify the returned agent's ID. |
+| Same DM pin | [`PendingActionStore`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionStore.php#L418) documents at-most-once consumption and forbids automatic crash retry. [`PendingActionScope`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionScope.php#L122) binds callers; [`ResolvePendingActionAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/ResolvePendingActionAbility.php#L134) delegates to Agents API. These are integration seams, not the proposed atomic bridge. |
+| Agents API `952db6cb2b3ef49ab2e539993788d3e04bb6e783` | [`register-pending-action-abilities.php`](https://github.com/Automattic/agents-api/blob/952db6cb2b3ef49ab2e539993788d3e04bb6e783/src/Approvals/register-pending-action-abilities.php) registers canonical approval abilities, host store/resolver filters and the public permission callback. Pin this development revision, not a plugin version label or a second copy. |
+| Rank Math `50fc59587112316ad754ca3c9a26e1282795d49d` | [`Head`](https://github.com/rankmath/seo-by-rank-math/blob/50fc59587112316ad754ca3c9a26e1282795d49d/includes/frontend/class-head.php#L67) moves core's conditional title emitter to `rank_math/head` and optionally rewrites legacy title output. |
+| The SEO Framework `9c3977a95191b96b6a2932a9eb981d8480009b59` | [`init-front.php`](https://github.com/sybrew/the-seo-framework/blob/9c3977a95191b96b6a2932a9eb981d8480009b59/bootstrap/init-front.php#L64) sets up title filters; [`Title`](https://github.com/sybrew/the-seo-framework/blob/9c3977a95191b96b6a2932a9eb981d8480009b59/inc/classes/front/title.class.php#L62) filters document-title calculation. Filtering is not element emission. |
+| Yoast `fd2d6de0b895a60f10e9e8fb9e59892d25bd7f63` | [`Title_Presenter`](https://github.com/Yoast/wordpress-seo/blob/fd2d6de0b895a60f10e9e8fb9e59892d25bd7f63/src/presenters/title-presenter.php) emits the title; the frontend presenter list permits removing that family alone. |
+
+Blocks research used `@wordpress/blocks` 15.24.0,
+`@wordpress/block-library` 10.2.0 and SCF 6.9.7. Preserve exact dependency
+locks and rerun their editor proof against the chosen WP artifact rather
+than treating the report's platform label as a new runtime pin. DM's bundled
+AS provenance is 3.9.3 (`c58cdbab17651303d406cd3b22cf9d75c71c986c`);
+Zero's 4.2.0 is a qualification candidate, not proof of compatibility.

@@ -1401,14 +1401,20 @@ final class Db
         return $this->current(fn () => $this->media->list($opts));
     }
 
-    /** Delete a media row: null `media` columns and drop the id from `mediaList` columns first (hooks + revisions apply). */
-    public function mediaDelete(int $id, ?Viewer $viewer = null): ?array
+    /**
+     * Delete a media row: null `media` columns and drop the id from `mediaList` columns first
+     * (hooks + revisions apply). A platform's native transport may supply its own removal callback
+     * to retain native response semantics and plugin hooks; a failure must throw to roll back.
+     *
+     * @param ?callable(): void $remove
+     */
+    public function mediaDelete(int $id, ?Viewer $viewer = null, ?callable $remove = null): ?array
     {
         if ($viewer !== null) {
             Access::require(Access::MEDIA['delete'], $viewer, 'delete', null, 'delete media');
         }
 
-        return $this->nested(function () use ($id) {
+        return $this->nested(function () use ($id, $remove) {
             $row = $this->media->get($id);
             if ($row === null) {
                 return null;
@@ -1427,7 +1433,7 @@ final class Db
                     }
                 }
             }
-            $this->media->delete($id);
+            $remove === null ? $this->media->delete($id) : $remove();
 
             return $row;
         });

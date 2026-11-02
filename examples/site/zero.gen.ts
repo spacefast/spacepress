@@ -32,7 +32,7 @@ type Entities = {
     'publishedAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
     'uid': ColumnBuilder<'text', string, false, false, false, false>;
     'locale': ColumnBuilder<'text', "en" | "de", true, true, false, false>;
-    'translations': ColumnBuilder<'json', Partial<Record<GeneratedLocale, number>>, false, true, false, false>;
+    'translations': ColumnBuilder<'json', Partial<Record<GeneratedLocale, number>>, true, true, false, false>;
   }, false, 'collection'>;
   'comments': Collection<'comments', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;

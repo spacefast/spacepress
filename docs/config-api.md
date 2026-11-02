@@ -173,6 +173,11 @@ model are unchanged: an authoring-only change must produce no migration.
 For a persisted name that differs from the derived snake_case name, stop and
 resolve that specific storage conflict before building or deploying; do not
 rewrite migration history or silently rename data.
+Snapshots contain physical names without old logical aliases. A build that both
+removes an existing resource and adds a new one is therefore refused as an
+ambiguous replacement, even when both names are snake_case. Keep persisted names
+registered during the authoring cut. Stage intentional resource removal separately
+after reviewing its data migration.
 
 ### Access
 

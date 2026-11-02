@@ -444,27 +444,32 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{example}: no new SQL for an authoring-only change"
         );
     }
-    // A persisted camel-case physical name cannot be silently converted by the new registry.
+    // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
     std::fs::create_dir_all(&conflict).unwrap();
     std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     let built = zero().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let ledger = conflict.join("zero/migrations/snapshot.json");
-    let mut legacy: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
-    let tables = legacy["tables"].as_object_mut().unwrap();
-    let stored = tables.remove("stock_items").unwrap();
-    tables.insert("stockItems".into(), stored);
-    let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
-    std::fs::write(&ledger, &legacy_bytes).unwrap();
-    let refused = zero().arg("build").arg(&conflict).output().unwrap();
-    assert_eq!(refused.status.code(), Some(1));
-    assert!(
-        String::from_utf8_lossy(&refused.stderr)
-            .contains("stored resource `stockItems` conflicts with canonical physical name `stock_items`")
-    );
-    assert_eq!(std::fs::read(ledger).unwrap(), legacy_bytes);
-    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+    let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+    for stored_name in ["stockItems", "inventory"] {
+        let mut legacy = canonical.clone();
+        let tables = legacy["tables"].as_object_mut().unwrap();
+        let stored = tables.remove("stock_items").unwrap();
+        tables.insert(stored_name.into(), stored);
+        let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+        std::fs::write(&ledger, &legacy_bytes).unwrap();
+        let refused = zero().arg("build").arg(&conflict).output().unwrap();
+        assert_eq!(refused.status.code(), Some(1));
+        let error = String::from_utf8_lossy(&refused.stderr);
+        assert!(error.contains(&format!("stored resource `{stored_name}`")), "{error}");
+        assert!(
+            error.contains("an authoring change cannot rename persisted storage"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
+        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+    }
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -719,18 +724,21 @@ fn localized_generated_client_types() {
     copy(&root().join("tests/fixtures/locales-client"), &tmp);
     let out = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    std::fs::write(
+        tmp.join("tsconfig.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "compilerOptions": {
+                "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+                "paths": { "zero": [root().join("types/zero/index.d.ts")] }
+            },
+            "files": ["client.ts", "zero.gen.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
-        .args([
-            "--strict",
-            "--noEmit",
-            "--target",
-            "ES2022",
-            "--module",
-            "ESNext",
-            "--moduleResolution",
-            "bundler",
-        ])
-        .arg(tmp.join("client.ts"))
+        .arg("--project")
+        .arg(tmp.join("tsconfig.json"))
         .output()
         .expect("tsc (or TSC) must be installed to check generated clients");
     assert!(

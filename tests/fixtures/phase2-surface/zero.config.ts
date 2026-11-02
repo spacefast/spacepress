@@ -1,5 +1,5 @@
 import { collection, id, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection } from "zero";
-import type { FieldAccessCtx as FieldContext, JobCtx, table, collection, userProjection } from "zero";
+import type { FieldAccessCtx as FieldContext, JobCtx } from "zero";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
 async function no() { return false; }

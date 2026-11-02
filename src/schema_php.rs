@@ -389,7 +389,8 @@ pub fn gen_ts(schema: &Schema) -> String {
         let _ = writeln!(out, "  {}: Collection<{}, {{", php_str(&c.key), php_str(&c.table));
         for col in c.columns.values().filter(|col| !col.hidden) {
             let kind = if col.auto_increment { "id" } else { col.ty.name() };
-            let value = if c.localized && col.name == "translations" && col.system {
+            let translations = c.localized && col.name == "translations" && col.system;
+            let value = if translations {
                 format!(
                     "Partial<Record<GeneratedLocale, {}>>",
                     crate::client::registry_value(c.primary_key().expect("primary key"))
@@ -403,7 +404,7 @@ pub fn gen_ts(schema: &Schema) -> String {
                 php_str(&col.name),
                 php_str(kind),
                 value,
-                col.not_null,
+                col.not_null || translations,
                 col.default.is_some()
                     || col.auto_increment
                     || col.derived

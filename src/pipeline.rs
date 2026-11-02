@@ -180,6 +180,17 @@ pub fn build(
                 )).help("preserve the migration ledger and resolve this storage migration explicitly before building")
                     .phase(diag::Code::Schema));
             }
+            // Old snapshots record physical names only. A removed and a new resource
+            // could be an authored alias becoming its storage name, even when both
+            // names are already snake_case. Never guess a destructive replacement.
+            if !schema.collections.contains_key(stored)
+                && let Some(added) = schema.collections.keys().find(|name| !tables.contains_key(*name))
+            {
+                return Err(Diag::new(config_span, format!(
+                    "stored resource `{stored}` disappears while new resource `{added}` is added; an authoring change cannot rename persisted storage"
+                )).help("keep existing physical names registered; resolve intentional storage removals separately after reviewing the data migration")
+                    .phase(diag::Code::Schema));
+            }
         }
     }
     let mut migrations = Vec::new();

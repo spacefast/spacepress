@@ -38,7 +38,7 @@ config that can't build for WP doesn't build at all.
 | Targets | `zero build --target standalone\|wp`. One `zero.config.ts`, one runtime pipeline, three stores: `SqliteStore`, `WpTableStore`, `WpPostStore`. |
 | WP content collections | One **custom post type per collection** (`zero_<table>`), not native `post` + taxonomy (§4.1 says why). Fields are SCF fields with meta key `zero_<column>`. |
 | WP reads | Post-backed collections are read from `wp_posts` + `wp_postmeta` directly: no duplicate data, no index table. One `Sql` compiler serves all stores through a `Source` mapping (column → SQL expression + join); on post-backed collections each filtered/ordered meta column is one `LEFT JOIN wp_postmeta`, typed via `CAST(NULLIF(meta_value,''))`. `table()` definitions are real `{prefix}zero_<table>` tables and remain the fast path. |
-| Drafts | `drafts` defaults to using `collection()`. Adds `status` (`draft\|published\|scheduled`) and `publishedAt`. API-created rows default to `published`. Sub-editor readers only see `published` unless the read rule is a function. |
+| Drafts | `drafts` is always `true` for `collection()` and defaults to `false` for `table()`. Adds `status` (`draft\|published\|scheduled`) and `publishedAt`. API-created rows default to `published`. Sub-editor readers only see `published` unless the read rule is a function. |
 | Access | Payload-style `access: { read, create, update, delete }` = `boolean \| "anyone" \| "authenticated" \| Role \| (ctx) => boolean \| Filter`. Defaults: `read: "anyone"`, writes and actions `"editor"`. Hooks and `db` are trusted. |
 | Identity | WP: whatever WP REST authenticates (cookie+nonce, application passwords). Standalone: bearer tokens in `__zero_tokens`, minted by the CLI, with a role. Four roles: `subscriber < author < editor < admin`. |
 | Revisions | In on both targets. WP-native for post-backed; `__zero_revisions` table for everything else. `GET /{c}/{id}/revisions`, restore runs the update pipeline. |
@@ -159,9 +159,9 @@ export interface CollectionOptions {
   label?: string;
   /** Native on collections, opt-in on tables. */
   drafts?: boolean;
-  /** Keep a revision per update (§6.4). Default using `collection()`. */
+  /** Keep a revision per update (§6.4). Always enabled for `collection()`; defaults to false for `table()`. */
   revisions?: boolean;
-  /** Column that is the WP post title. Must be a notNull text(). Default: a column named `title` if it is text(). Required when using `collection()`. */
+  /** Column that is the WP post title. Must be a notNull text(). Default: a column named `title` if it is text(). Required for `collection()`. */
   title?: string;
   /** Column that is the WP post_content (block editor). Must be richText(). Default: a column named `content` if it is richText(). Optional. */
   content?: string;
@@ -174,7 +174,7 @@ Rejections (both targets): using `collection()` and no title designation ("add a
 `title: text().notNull()` column or `title:` option, or use `table()`");
 `title` not a notNull text; `content` not richText; a collection named `media`,
 `globals`, `actions`, `me`, `_schema` (reserved); a table name longer than 15
-characters when using `collection()` ("WordPress post types are limited to 20
+characters for `collection()` ("WordPress post types are limited to 20
 characters and Zero prefixes `zero_`"); more than one `slug()` column; a
 `slug({ source })` naming a column that isn't text; `drafts: false` with
 `collection()`; a user column named `status` or `publishedAt` on a drafts
@@ -867,7 +867,7 @@ call `Store::globalRead/globalWrite`.
 
 ### 4.1 Collections → post types
 
-One registered post type per using `collection()` collection: `zero_<table>`
+One registered post type for each `collection()` definition: `zero_<table>`
 (≤20 chars, enforced at build). Not the original `post` + `zero_collection`
 taxonomy design, for three concrete reasons: (1) per-collection admin menus,
 labels and capabilities come free with a CPT and are what wp-admin users expect

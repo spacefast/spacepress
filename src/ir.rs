@@ -160,7 +160,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     TypeAlias {
         name: String,
-        params: Vec<String>,
+        params: Vec<TypeParam>,
         ty: TyAnn,
     },
     Import {
@@ -309,7 +309,15 @@ pub enum AssignOp {
     Log(LogOp),
 }
 
-/// TypeScript type annotations, kept syntactic; resolved in `types.rs`.
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: String,
+    pub constraint: Option<TyAnn>,
+    pub default: Option<TyAnn>,
+    pub span: Span,
+}
+
+/// TypeScript type annotations, kept syntactic until PHP compilation.
 #[derive(Debug, Clone)]
 pub enum TyAnn {
     Num,
@@ -330,11 +338,26 @@ pub enum TyAnn {
     /// `Record<string, T>` and `{ [k: string]: T }`.
     Map(P<TyAnn>),
     Union(Vec<TyAnn>),
+    Intersection(Vec<TyAnn>, Span),
     Fn(Vec<(TyAnn, bool)>, P<TyAnn>),
     /// Named reference with type arguments, e.g. `Item`, `Promise<T>`, `InferSelect<typeof items>`.
     Ref(String, Vec<TyAnn>, Span),
     /// `typeof a.b.c`
     Query(Vec<String>, Span),
-    /// `T["key"]`
-    Indexed(P<TyAnn>, String),
+    KeyOf(P<TyAnn>, Span),
+    Indexed(P<TyAnn>, P<TyAnn>, Span),
+    Mapped {
+        key: String,
+        keys: P<TyAnn>,
+        value: P<TyAnn>,
+        optional: Option<bool>,
+        span: Span,
+    },
+    Conditional {
+        check: P<TyAnn>,
+        extends: P<TyAnn>,
+        yes: P<TyAnn>,
+        no: P<TyAnn>,
+        span: Span,
+    },
 }

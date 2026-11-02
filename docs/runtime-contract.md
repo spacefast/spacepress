@@ -582,3 +582,73 @@ Misc:
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
 - `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.
+
+## TypeScript type normalization
+
+Zero uses OXC 0.152.0 to parse TypeScript and keeps its annotations and source
+locations in the typed IR. The native and browser/WASM compilers run the same
+normalizer before PHP emission. These are type operations, not a JavaScript
+engine or a replacement for TypeScript's complete checker. Check authoring
+code with strict TypeScript as well as `zero check`.
+
+| Surface | Support | Boundary |
+|---|---|---|
+| Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused; runtime class types are outside this type-only support. |
+| Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Impossible object intersections and function/array intersections are refused. |
+| Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
+| `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |
+| Indexed access types | Partial | String-key unions on finite objects, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`) with `[number]`, tuple numeric literals/unions and tuple `[number]`. A key missing from any union member fails. Optional reads include `undefined` during normalization and become nullable at the PHP boundary. |
+| Dynamic property reads | Supported for finite string keys | `object[key]` works when every possible key belongs to the fixed object. Arbitrary string keys need `Record<string, T>`. This does not add dynamic writes to fixed objects. |
+| `Record<K, V>` | Partial | Finite string unions produce required fixed properties; `string` produces the existing open map. Numeric/symbol keys are refused. |
+| `Partial`, `Required`, `Readonly` | Partial | Finite objects and unions of finite objects. `Required` removes optional presence and its `undefined`, retaining explicit `null`. Readonly is type-only; PHP handles retain their existing identity/mutation semantics. Open-map and array utility transforms are refused. |
+| `Pick`, `Omit` | Partial | One finite object and finite string key unions; `Pick` validates every key. They do not distribute across object unions. |
+| `NonNullable` | Partial | Concrete types; removes both `null` and `undefined` before PHP normalization. `unknown` and `void` are refused. |
+| `Extract`, `Exclude`, conditional types | Partial | Concrete scalar, array/tuple and finite object comparisons, including structural object matching. Naked bound parameters distribute over unions (including boolean); tuple-wrapped checks do not. `null` and `undefined` remain distinct until the PHP boundary. `infer`, unresolved `unknown`, `void`, function/runtime predicates and boxed primitive/array property matching are refused. |
+| Mapped types | Partial | Finite string key domains; optional modifiers and homomorphic identity mappings preserve presence. `-?` requires a homomorphic identity mapping. Homomorphic mappings need one finite object; key parameters constrained by a direct `keyof T` preserve presence too. Aliased key constraints are refused. Key remapping, template literal expansion, symbols and open maps are refused. |
+| `ReturnType`, `Parameters` | Partial | Concrete function type annotations with required parameters. Generic, optional/rest parameter and overloaded function type transforms are refused. General `typeof` queries remain limited to the existing schema inference operations. |
+| `Awaited` | Partial | Nested `Promise` wrappers ending in concrete scalar/array values. Thenable-object, union and `unknown` normalization are refused. |
+| Modules | Existing subset | Direct named type imports from relative TS modules, with arguments resolved in the caller's module and bodies/defaults in the declaration's module. No new npm, namespace-import, type re-export/barrel or module-augmentation support. |
+
+Normalization is bounded: 96 nested annotation levels, 16,384 resolution steps
+per root annotation, and 512 keys per finite key operation. Recursive types
+produce a located diagnostic. Unsupported types are not replaced with
+`unknown` or an unrestricted string key.
+
+The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
+imports its generic interfaces from a separate module. Its `typeReport` action
+with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
+emits this PHP/JSON result:
+
+```json
+{"snapshot":{"id":7,"note":null},"flags":{"ready":true,"visible":true},"state":"draft","tag":{"kind":"draft"},"together":"mixed","value":"Hello","missing":null,"pair":7,"element":"value","key":"common","payload":"present","awaited":"done","returned":null,"args":[1,"one"],"undefinedType":"undefined","nullType":"null","booleans":["yes","no"],"collapsed":"broad","weak":"no","requiredUndefined":{"label":"present"}}
+```
+
+The generated output type retains `state: "draft"`, `key: "common"`,
+`snapshot: { id: number; note: string | null }`, and `missing: string | null`.
+The [client fixture](../tests/fixtures/type-semantics/client.ts) checks both
+accepted uses and rejected non-null/literal assumptions with strict TypeScript.
+JSON input annotations retain their existing compile-time role; this change
+does not add shape validation at the HTTP boundary or change the client's
+existing `unknown` JSON input type.
+
+The `languageTypes` action in the existing
+[Node↔PHP oracle](../tests/differential/cases.ts) owns runtime results. It runs
+through the emitted plugin on real WordPress using its SQLite Database
+Integration plugin. The site's existing compiler tests own native/WASM output
+and diagnostic parity plus strict generated-client checking. The
+[compatibility inventory](language-support.md) records executable refusals.
+
+The matching maintained `oxc_semantic`, `oxc_ast_visit` and `oxc_transformer`
+0.152.0 crates were evaluated against Rust 1.96; all are MIT. Semantic analysis
+provides scopes/references, not TypeScript type assignability or normalization;
+the visitor supplies AST traversal; the TypeScript transform strips annotations
+for JavaScript output. This change adds no scope walker or parser and keeps the
+annotations needed for PHP and client emission, so it does not add those
+crates. Existing OXC parsing/lowering is reused. No upstream implementation was
+copied, no new license notice is needed, and the OXC family remains pinned
+together at 0.152.0.
+
+This work adds no JS built-in API: npm packages, arbitrary browser/Node APIs,
+symbols, generators and dynamic runtime type introspection remain outside the
+supported runtime. Existing documented PHP null/undefined and Unicode string
+semantics are unchanged. Class behavior has its own implementation contract.

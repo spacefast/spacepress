@@ -68,6 +68,93 @@
       "evidence": "tests/compiler_contracts.rs",
       "guidance": "Field .ui() metadata survives nested schema emission and schema description and maps to native SCF. It does not affect data paths, validation or access.",
       "test": "nested_presentation_reaches_scf_and_public_schema_without_storage_migrations"
+    },
+    {
+      "id": "finite-type-algebra",
+      "status": "supported",
+      "evidence": "tests/compiler.rs",
+      "test": "compiled_php_matches_node_on_every_differential_case",
+      "guidance": "Finite object interface inheritance and intersections, generic aliases/interfaces with constraints and defaults, finite keyof/indexed access and dynamic key reads, mapped types and selected utility/conditional types retain literal and optional boundaries. See runtime-contract.md (TypeScript type normalization) for the supported domains and refusals; the strict type-semantics fixture also checks generated-client boundaries and native/WASM parity."
+    },
+    {
+      "id": "finite-key-validation",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-keyof",
+      "message": "isn't assignable to",
+      "guidance": "A finite keyof is a literal union, not string."
+    },
+    {
+      "id": "generic-constraint-validation",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-constraint",
+      "message": "doesn't satisfy constraint",
+      "guidance": "Generic arguments must satisfy their declared structural constraints."
+    },
+    {
+      "id": "generic-required-argument",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-arity",
+      "message": "needs type argument",
+      "guidance": "Provide every required argument; missing arguments never widen to unknown."
+    },
+    {
+      "id": "indexed-union-missing-key",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-index",
+      "message": "has no field",
+      "guidance": "An indexed key must exist in every member of an object union."
+    },
+    {
+      "id": "open-keyof",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-open-keyof",
+      "message": "keyof supports finite object types",
+      "guidance": "Use an explicit string key type for open maps. Array/prototype and symbol key spaces are not modeled."
+    },
+    {
+      "id": "recursive-type-expansion",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-recursion",
+      "message": "96-level limit",
+      "guidance": "Recursive types are refused by bounded expansion; type operations also have a step and finite-key budget."
+    },
+    {
+      "id": "runtime-generic-functions",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-runtime-generic",
+      "message": "generic runtime functions aren't supported",
+      "guidance": "Use generic aliases with concrete PHP-reachable function signatures. There is no generic runtime specialization."
+    },
+    {
+      "id": "finite-record-presence",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-record-keys",
+      "message": "isn't assignable to",
+      "guidance": "Record with finite string keys requires every declared key; it is not an open string map."
+    },
+    {
+      "id": "boxed-structural-conditional",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-structural-predicate",
+      "message": "conditional structural matching",
+      "guidance": "Conditional matching of primitive/array prototype properties is refused; use concrete scalar, array or finite object comparisons."
+    },
+    {
+      "id": "type-declaration-merging",
+      "status": "refused",
+      "code": "Z4001",
+      "fixture": "tests/fixtures/reject-type-merging",
+      "message": "type declaration merging",
+      "guidance": "Combine interface declarations explicitly or use interface extends. Repeated declarations never silently replace earlier fields."
     }
   ]
 }

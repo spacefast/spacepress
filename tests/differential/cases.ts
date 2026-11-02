@@ -73,6 +73,26 @@ function makeCounterReader(value: { count: number }) {
   return forward();
 }
 
+// Finite type algebra must preserve literal boundaries and optional reads in emitted PHP.
+interface LanguageIdentity { id: number }
+interface LanguageContent<S extends string = "draft"> { state: S; note?: string | null | undefined }
+interface LanguageEntry<S extends string = "draft"> extends LanguageIdentity, LanguageContent<S> { title: string }
+type LanguageProjection<T, K extends keyof T = keyof T> = { [P in K]: T[P] };
+type LanguageFlags<K extends string> = { [P in K]: boolean };
+type LanguageCopy<T> = { [K in keyof T]: T[K] };
+type LanguageRequired<T> = { [K in keyof T]-?: T[K] };
+type LanguageTag<T> = T extends string ? { kind: T } : { count: T };
+type LanguageLiteral<T> = T extends "draft" ? "literal" : "broad";
+type LanguageAbsent<T> = T extends undefined ? "undefined" : T extends null ? "null" : "present";
+type Readonly<T> = { box: T }; // A local type shadows the global utility.
+type LanguageBoth = LanguageIdentity & { extra: "x" };
+type LanguageConstrained<T extends { id: number }> = { item: T };
+type LanguageBool<T> = T extends true ? "yes" : "no";
+type LanguageTogether<T> = [T] extends [string] ? "text" : "mixed";
+function languageRead(item: LanguageEntry, key: keyof LanguageProjection<LanguageEntry, "state" | "title">): string {
+  return item[key];
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
 
@@ -257,6 +277,37 @@ export default defineConfig({
   schema: { n, docs, fieldDocs: fieldDocs() },
   actions: {
     ...laneRefs,
+    languageTypes: run(() => {
+      const item: LanguageCopy<LanguageEntry> = { id: 7, state: "draft", title: "Hello" };
+      const optional: Partial<Omit<LanguageEntry, "id">> = {};
+      const projectedOptional: LanguageProjection<LanguageEntry, "note"> = {};
+      const required: Required<Pick<LanguageEntry, "id" | "note">> = { id: item.id, note: null };
+      const mapped: LanguageRequired<LanguageProjection<LanguageEntry, "id" | "note">> = { id: item.id, note: "set" };
+      const flags: Record<"ready" | "visible", boolean> = { ready: true, visible: false };
+      const changed: LanguageFlags<"ready" | "visible"> = flags;
+      const key: keyof ({ common: number; left: string } | { common: string; right: boolean }) = "common";
+      const state: Exclude<Extract<"draft" | "published" | 7, string>, "published"> = item.state;
+      const value: LanguageEntry["id" | "state"] = item.id;
+      const element: Array<string>[number] = "element";
+      const pair: ["draft", number][0 | 1] = 8;
+      const tags: LanguageTag<"draft" | 7> = { count: 7 };
+      const together: LanguageTogether<"draft" | 7> = "mixed";
+      const args: Parameters<(n: number, s: string) => boolean> = [1, "one"];
+      const returned: ReturnType<(n: number) => "ok" | null> = null;
+      const awaited: Awaited<Promise<Promise<"done">>> = "done";
+      const bools: LanguageBool<boolean | "other">[] = ["yes", "no"];
+      const undefinedType: LanguageAbsent<undefined> = "undefined";
+      const nullType: LanguageAbsent<null> = "null";
+      const weak: { x: number } extends { y?: string } ? "yes" : "no" = "no";
+      const requiredUndefined: Required<{ label?: string | undefined }> = { label: "present" };
+      const both: LanguageBoth = { id: 9, extra: "x" };
+      const boxed: LanguageConstrained<{ id: number; title: string }> = { item: { id: 9, title: "extra" } };
+      const collapsed: LanguageLiteral<string | "draft"> = "broad";
+      const onlyFalse: Exclude<boolean, true> = false;
+      const shadowed: Readonly<number> = { box: 7 };
+      return { required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, both, boxed, shadowed, collapsed,
+        missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
+    }),
     refsReceiver: run(() => {
       const old = { x: 0 }; const o = { child: old };
       const rhs = () => { o.child = { x: 9 }; return 2; };

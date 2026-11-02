@@ -1,7 +1,7 @@
 // The browser compiler agrees with the command line: same envelope for the same sources.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -128,6 +128,40 @@ test("a project without zero.config.ts is the command line's diagnostic", () => 
     const { envelope, output } = browserCheck({ name: `tmp/${name}`, files: {} });
     assert.equal(envelope, native);
     assert.equal(output, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// This seam owns browser/native normalization and generated-client typing; the
+// differential oracle owns PHP execution of the language constructs.
+test("finite type algebra preserves native outputs and strict client boundaries in WASM", () => {
+  const fixture = path.join(repo, "tests/fixtures/type-semantics");
+  const name = `zero-type-semantics-${process.pid}`;
+  const dir = path.join("/tmp", name);
+  mkdirSync(dir, { recursive: true });
+  try {
+    const files = sources(fixture);
+    for (const [rel, text] of Object.entries(files)) {
+      writeFileSync(path.join(dir, rel), text);
+    }
+    const { envelope, check, output } = browserCheck({ name, files });
+    assert.equal(envelope, nativeCheck(dir));
+    assert.equal(check.ok, true);
+    assert.ok(output);
+    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const plugins = path.join(dir, ".zero/wp-content/plugins");
+    const app = readdirSync(plugins).find((name) => name.startsWith("zero-app-"));
+    assert.ok(app);
+    assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "zero/app/functions.php"), "utf8"));
+    for (const [name, text] of Object.entries(output.client)) {
+      assert.equal(text, readFileSync(path.join(dir, "zero/client", name), "utf8"));
+    }
+    const typed = spawnSync("tsc", ["-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(typed.status, 0, typed.stdout + typed.stderr);
+    const client = spawnSync("tsc", ["--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
+    assert.equal(client.status, 0, client.stdout + client.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

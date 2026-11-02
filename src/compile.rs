@@ -6,6 +6,7 @@
 //! unknown operands, string indexing, sort order) the output calls a `Js::`
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
+mod annotations;
 mod effects;
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -246,7 +247,10 @@ pub struct Compiler<'a, 'p> {
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
-    type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
+    type_aliases: HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
+    duplicate_type_aliases: HashSet<(usize, String)>,
+    annotation_depth: usize,
+    annotation_steps: usize,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
     helper_values: HashMap<usize, String>,
@@ -275,14 +279,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         program: &crate::loader::Program,
     ) -> Self {
         let mut type_aliases = HashMap::new();
+        let mut duplicate_type_aliases = HashSet::new();
         for m in &program.modules {
-            collect_aliases(&m.body, m.id, &mut type_aliases);
+            collect_aliases(&m.body, m.id, &mut type_aliases, &mut duplicate_type_aliases);
         }
         Compiler {
             schema,
             ev,
             collections: &ext.collections,
             type_aliases,
+            duplicate_type_aliases,
+            annotation_depth: 0,
+            annotation_steps: 0,
             async_callback: false,
             helpers: HashMap::new(),
             helper_values: HashMap::new(),
@@ -485,7 +493,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => None,
             },
         };
-        let generics: HashMap<String, Ty> = f.type_params.iter().map(|t| (t.clone(), Ty::Unknown)).collect();
+        if !f.type_params.is_empty() {
+            return err_help(
+                f.span,
+                "generic runtime functions aren't supported",
+                "use generic type aliases with concrete function signatures",
+            );
+        }
+        let generics = HashMap::new();
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
             let declared = match &p.ann {
@@ -743,150 +758,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     // ---- types --------------------------------------------------------------
-
-    fn resolve_ann(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, Ty>) -> Result<Ty> {
-        Ok(match a {
-            TyAnn::Num => Ty::Num,
-            TyAnn::NumLit(n) => Ty::NumLit(*n),
-            TyAnn::Str => Ty::Str,
-            TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
-            TyAnn::Bool => Ty::Bool,
-            TyAnn::BoolLit(value) => Ty::BoolLit(*value),
-            TyAnn::Null | TyAnn::Undefined | TyAnn::Void => Ty::Null,
-            TyAnn::Unknown => Ty::Unknown,
-            TyAnn::Never => Ty::Never,
-            TyAnn::Any => {
-                return err_help(
-                    Span::NONE,
-                    "`any` isn't allowed in Zero code",
-                    "use a precise type, or `unknown` and narrow it",
-                );
-            }
-            TyAnn::Array(t) => Ty::Array(Box::new(self.resolve_ann(t, module, generics)?)),
-            TyAnn::Tuple(ts) => Ty::Tuple(
-                ts.iter()
-                    .map(|t| self.resolve_ann(t, module, generics))
-                    .collect::<Result<_>>()?,
-            ),
-            TyAnn::Obj(fields) => {
-                let mut out = IndexMap::new();
-                for (k, t, opt) in fields {
-                    let t = self.resolve_ann(t, module, generics)?;
-                    out.insert(k.clone(), (if *opt { t.nullable() } else { t }, *opt));
-                }
-                Ty::Obj(out)
-            }
-            TyAnn::Map(t) => Ty::Map(Box::new(self.resolve_ann(t, module, generics)?)),
-            TyAnn::Union(ts) => Ty::union(
-                ts.iter()
-                    .map(|t| self.resolve_ann(t, module, generics))
-                    .collect::<Result<Vec<_>>>()?,
-            ),
-            TyAnn::Fn(params, ret) => Ty::Fn(
-                params
-                    .iter()
-                    .map(|(t, _)| self.resolve_ann(t, module, generics))
-                    .collect::<Result<_>>()?,
-                Box::new(self.resolve_ann(ret, module, generics)?),
-            ),
-            TyAnn::Ref(name, args, span) => {
-                if let Some(t) = generics.get(name) {
-                    return Ok(t.clone());
-                }
-                if args.is_empty() {
-                    for stmt in &self.ev_program().modules[module].body {
-                        if let Stmt::Import { source, specs, .. } = stmt
-                            && source == crate::loader::ZERO_MODULE
-                        {
-                            for spec in specs {
-                                if spec.local == *name
-                                    && let ImportName::Named(imported) = &spec.imported
-                                {
-                                    match imported.as_str() {
-                                        "FieldAccessCtx" => return Ok(types::field_access_ctx()),
-                                        "JobCtx" => return Ok(types::job_ctx()),
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                match (name.as_str(), args.as_slice()) {
-                    ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),
-                    ("Date", []) => Ty::Date,
-                    ("RegExp", []) => Ty::Regex,
-                    ("Error", []) => Ty::Error,
-                    ("Partial", [t]) => types::partial(self.resolve_ann(t, module, generics)?),
-                    ("Readonly", [t]) | ("NonNullable", [t]) => {
-                        let t = self.resolve_ann(t, module, generics)?;
-                        if name == "NonNullable" { t.non_null() } else { t }
-                    }
-                    ("InferSelectModel" | "InferInsertModel", [TyAnn::Query(path, qspan)]) => {
-                        let table = self.collection_from_query(path, *qspan, module)?;
-                        if name == "InferSelectModel" {
-                            types::row(self.schema, &table)
-                        } else {
-                            types::insert(self.schema, &table)
-                        }
-                    }
-                    _ => {
-                        let key = (module, name.clone());
-                        if let Some((params, body)) = self.type_aliases.get(&key).cloned() {
-                            let mut g = generics.clone();
-                            for (i, p) in params.iter().enumerate() {
-                                let t = match args.get(i) {
-                                    Some(a) => self.resolve_ann(a, module, generics)?,
-                                    None => Ty::Unknown,
-                                };
-                                g.insert(p.clone(), t);
-                            }
-                            return self.resolve_ann(&body, module, &g);
-                        }
-                        // An imported type alias: follow the import.
-                        if let Some((src_module, src_name)) = self.imported_type(module, name) {
-                            return self.resolve_ann(&TyAnn::Ref(src_name, args.clone(), *span), src_module, generics);
-                        }
-                        return err(*span, format!("unknown type `{name}`"));
-                    }
-                }
-            }
-            TyAnn::Query(_, span) => {
-                return err_help(
-                    *span,
-                    "`typeof` types aren't supported here",
-                    "use InferSelectModel<typeof items> for rows",
-                );
-            }
-            TyAnn::Indexed(t, key) => {
-                let t = self.resolve_ann(t, module, generics)?;
-                match t.field(key) {
-                    Some((t, _)) => t,
-                    None => return err(Span::NONE, format!("{} has no field `{key}`", t.describe())),
-                }
-            }
-        })
-    }
-
-    fn imported_type(&self, module: usize, name: &str) -> Option<(usize, String)> {
-        let program_modules = self.ev_program();
-        let m = &program_modules.modules[module];
-        for s in &m.body {
-            if let Stmt::Import { source, specs, .. } = s {
-                for spec in specs {
-                    if spec.local == name {
-                        let target = *program_modules.resolved.get(&(module, source.clone()))?;
-                        let src = match &spec.imported {
-                            ImportName::Named(n) => n.clone(),
-                            _ => return None,
-                        };
-                        return Some((target, src));
-                    }
-                }
-            }
-        }
-        None
-    }
 
     fn ev_program(&self) -> &crate::loader::Program {
         self.ev.program()
@@ -1785,7 +1656,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     constraint = constraint
                         .non_null()
                         .field(part)
-                        .map(|(ty, _)| ty)
+                        .map(|(ty, optional)| if optional { ty.nullable() } else { ty })
                         .unwrap_or_else(|| t.clone());
                     view.push(effects::Step::Field(part.to_string()));
                 }
@@ -2889,7 +2760,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .unwrap_or(o.ty.clone())
                     .non_null()
                     .field(prop)
-                    .map(|(t, _)| t)
+                    .map(|(t, optional)| if optional { t.nullable() } else { t })
                     .unwrap_or(ft.clone());
                 let read_ty = self
                     .path_of(target)
@@ -3142,16 +3013,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
                 wrap((**t).clone().nullable()),
             ),
-            (Ty::Obj(fields), i) if i.is_str() => {
+            (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
                 if let ExprKind::Str(k) = &index.kind {
                     return self.member(obj, k, optional, index.span, span);
                 }
-                let _ = fields;
-                return err_help(
-                    index.span,
-                    "dynamic keys on an object with fixed fields aren't supported",
-                    "use a `Record<string, T>` or a `switch`",
-                );
+                let keys = match key_ty {
+                    Ty::Union(parts) => parts.clone(),
+                    t => vec![t.clone()],
+                };
+                let mut values = Vec::new();
+                for key in keys {
+                    let name = match key {
+                        Ty::StrLit(k) | Ty::FreshStrLit(k) => k,
+                        _ => {
+                            return err_help(
+                                index.span,
+                                "dynamic keys on an object need a finite key union",
+                                "use `keyof` on a finite object, a `Record<string, T>` or a `switch`",
+                            );
+                        }
+                    };
+                    let Some((t, opt)) = fields.get(&name) else {
+                        return err(index.span, format!("this object has no property `{name}`"));
+                    };
+                    values.push(if *opt { t.clone().nullable() } else { t.clone() });
+                }
+                Out::atom(
+                    format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
+                    wrap(Ty::union(values)),
+                )
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
                 format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
@@ -3286,9 +3176,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Resolved::Local(local) => Some(local.constraint),
                 _ => None,
             },
-            ExprKind::Member { obj, prop, .. } => {
-                self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
-            }
+            ExprKind::Member { obj, prop, .. } => self
+                .argument_constraint(obj)?
+                .non_null()
+                .field(prop)
+                .map(|(ty, optional)| if optional { ty.nullable() } else { ty }),
             ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
                 Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
@@ -3816,10 +3708,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member_of_out(&self, o: &Out, prop: &str, span: Span) -> Result<Out> {
-        let Some((t, _)) = o.ty.non_null().field(prop) else {
+        let Some((t, optional)) = o.ty.non_null().field(prop) else {
             return Err(self.no_field(&o.ty, prop, span));
         };
-        Ok(Out::atom(format!("{}->p[{}]", o.wrapped(), php_str(prop)), t))
+        let t = if optional || matches!(o.ty.non_null(), Ty::Map(_)) {
+            t.nullable()
+        } else {
+            t
+        };
+        Ok(Out::atom(format!("\\Zero\\Js::prop({}, {})", o.php, php_str(prop)), t))
     }
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
@@ -4901,8 +4798,8 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
         Ty::NumLit(n) | Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
         Ty::NumLit(_) | Ty::FreshNumLit(_) => t.clone(),
-        Ty::Null if truthy => Ty::Never,
-        Ty::Null => Ty::Null,
+        Ty::Null | Ty::Undefined | Ty::Void if truthy => Ty::Never,
+        Ty::Null | Ty::Undefined | Ty::Void => t.clone(),
         Ty::Str if !truthy => Ty::StrLit(String::new()),
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
         Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Never => t.clone(),
@@ -5040,6 +4937,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Bool
         | Ty::BoolLit(_)
         | Ty::Null
+        | Ty::Undefined
+        | Ty::Void
         | Ty::Unknown
         | Ty::Never
         | Ty::Date
@@ -5077,7 +4976,10 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         }
         (Ty::Obj(have), Ty::Obj(need)) => {
             need.iter().all(|(k, (t, optional))| match have.get(k) {
-                Some((ht, _)) => assignable(ht, t),
+                Some((ht, have_optional)) => {
+                    (!have_optional || *optional)
+                        && assignable(ht, &if *optional { t.clone().nullable() } else { t.clone() })
+                }
                 None => *optional,
             }) && have.keys().all(|k| need.contains_key(k))
         }
@@ -5254,13 +5156,21 @@ fn stmt_completions(
     }
 }
 
-fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, String), (Vec<String>, TyAnn)>) {
+fn collect_aliases(
+    body: &[Stmt],
+    module: usize,
+    out: &mut HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
+    duplicates: &mut HashSet<(usize, String)>,
+) {
     for s in body {
         match s {
             Stmt::TypeAlias { name, params, ty } => {
-                out.insert((module, name.clone()), (params.clone(), ty.clone()));
+                let key = (module, name.clone());
+                if out.insert(key.clone(), (params.clone(), ty.clone())).is_some() {
+                    duplicates.insert(key);
+                }
             }
-            Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out),
+            Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out, duplicates),
             _ => {}
         }
     }

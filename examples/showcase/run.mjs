@@ -40,6 +40,23 @@ const project =
   known?.project ??
   `zero-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
 const port = process.env.ZERO_SHOWCASE_PORT ?? known?.port ?? "8860";
+const publicAddress = new URL(
+  process.env.ZERO_SHOWCASE_URL ??
+    known?.publicUrl ??
+    `http://127.0.0.1:${port}`,
+);
+if (
+  !["http:", "https:"].includes(publicAddress.protocol) ||
+  publicAddress.username ||
+  publicAddress.password ||
+  publicAddress.pathname !== "/" ||
+  publicAddress.search ||
+  publicAddress.hash
+)
+  throw new Error(
+    "ZERO_SHOWCASE_URL must be an HTTP(S) origin without a path or credentials.",
+  );
+const publicUrl = publicAddress.origin;
 if (
   !/^[a-z0-9][a-z0-9_-]*$/.test(project) ||
   !/^\d+$/.test(port) ||
@@ -626,13 +643,17 @@ async function main() {
     join(state, "harness/fixtures/platform.json"),
   );
   await verifyPort(verifyOwnership());
-  writeFileSync(ownerFile, JSON.stringify({ project, port }), { mode: 0o600 });
+  writeFileSync(ownerFile, JSON.stringify({ project, port, publicUrl }), {
+    mode: 0o600,
+  });
   chmodSync(ownerFile, 0o600);
   const output = run("bash", [harness, "up", "--wp-content", content], {
     stdio: ["ignore", "pipe", "inherit"],
     encoding: "utf8",
   });
-  const saved = { ...JSON.parse(output.trim()), project, port };
+  const saved = { ...JSON.parse(output.trim()), project, port, url: publicUrl };
+  wp("option", "update", "home", publicUrl);
+  wp("option", "update", "siteurl", publicUrl);
   writeFileSync(receiptFile, JSON.stringify(saved, null, 2), { mode: 0o600 });
   chmodSync(receiptFile, 0o600);
   wp("option", "update", "blogname", "Zero showcase");

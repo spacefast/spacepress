@@ -27,6 +27,22 @@ It also rejects an occupied host port before starting a new stack.
 The demo binds only to `127.0.0.1:8860`. When using a remote machine, forward
 that port in your editor or with SSH.
 
+To open it from another computer on your Tailscale network, expose the existing
+loopback server with Tailscale Serve:
+
+```sh
+tailscale serve --bg --https=8443 http://127.0.0.1:8860
+ZERO_SHOWCASE_URL=https://your-machine.your-tailnet.ts.net:8443 node examples/showcase/run.mjs
+```
+
+Use the HTTPS address printed by Tailscale as `ZERO_SHOWCASE_URL`. The launcher
+saves that origin for future starts and configures WordPress images, login and
+editor links to use it. The hostname must be reachable from the demo machine
+and the computer viewing it. Serve shares only within your tailnet. To remove
+this proxy later, run `tailscale serve --https=8443 off`; the demo's `down`
+command does not change Tailscale settings. After `down`, supply the URL again
+when starting a new demo.
+
 ```sh
 node examples/showcase/run.mjs check   # repeat the real HTTP smoke check
 node examples/showcase/run.mjs        # rebuild/restart; retain edits while the DB is running

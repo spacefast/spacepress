@@ -250,6 +250,9 @@ final class WpMedia implements Media
         $upload = ['name' => $name, 'tmp_name' => $tmpPath, 'error' => 0, 'size' => (int) filesize($tmpPath)];
         $moved = wp_handle_sideload($upload, ['test_form' => false]);
         if (isset($moved['error'])) {
+            if (!empty($moved['zero_storage_error'])) {
+                throw \Zero\Media\S3::unavailable();
+            }
             throw HttpError::invalidInput((string) $moved['error'], '/file');
         }
         $path = (string) $moved['file'];
@@ -347,7 +350,10 @@ final class WpMedia implements Media
     public function delete(int $id): void
     {
         $this->db->touchPost($id);
-        $file = get_attached_file($id);
+        $file = get_attached_file($id, true);
+        if (Uploads::active()) {
+            Uploads::deleted($id);
+        }
         $meta = wp_get_attachment_metadata($id);
         // Rows only now; files go once the transaction commits (a rollback keeps them in place).
         $this->db->run('DELETE FROM `' . $this->db->wpdb()->postmeta . '` WHERE post_id = ?', [$id]);
@@ -368,19 +374,25 @@ final class WpMedia implements Media
     {
         $post = get_post($id);
         $meta = wp_get_attachment_metadata($id) ?: [];
-        $file = (string) get_attached_file($id);
+        $file = (string) get_attached_file($id, true);
         $alt = get_post_meta($id, '_wp_attachment_image_alt', true);
         $focal = self::focalOf($id);
         $mime = (string) $post?->post_mime_type;
+        $rel = (string) get_post_meta($id, '_wp_attached_file', true);
+        $object = Uploads::active() ? (Uploads::manifest($id)[$rel] ?? null) : null;
+        $animated = $mime === 'image/gif' && !(Uploads::active() ? ($object['resizable'] ?? false) : Images::resizable($file, $mime));
         $sizes = [];
-        if (isset($meta['width'], $meta['height']) && in_array($mime, Images::RESIZABLE, true) && ($mime !== 'image/gif' || Images::resizable($file, $mime))) {
+        if (isset($meta['width'], $meta['height']) && in_array($mime, Images::RESIZABLE, true) && !$animated) {
             $cdn = ImageCdn::active();
             foreach (self::sizes() as $name => $size) {
                 if ($cdn) {
                     $sizes[$name] = ImageCdn::size((string) wp_get_attachment_url($id), (int) $meta['width'], (int) $meta['height'], $size, $focal);
                     continue;
                 }
-                $src = isset($meta['sizes']['zero_' . $name]) ? wp_get_attachment_image_src($id, 'zero_' . $name) : false;
+                $variant = $meta['sizes']['zero_' . $name] ?? null;
+                $src = $variant === null ? false : (Uploads::active()
+                    ? [Uploads::url($id, dirname($rel) . '/' . $variant['file']), $variant['width'], $variant['height']]
+                    : wp_get_attachment_image_src($id, 'zero_' . $name));
                 $sizes[$name] = $src === false
                     ? ['url' => (string) wp_get_attachment_url($id), 'width' => (int) $meta['width'], 'height' => (int) $meta['height']]
                     : ['url' => (string) $src[0], 'width' => (int) $src[1], 'height' => (int) $src[2]];
@@ -391,7 +403,7 @@ final class WpMedia implements Media
             'id' => $id,
             'url' => (string) wp_get_attachment_url($id),
             'mime' => (string) $post?->post_mime_type,
-            'size' => (int) ($meta['filesize'] ?? (is_file($file) ? filesize($file) : 0)),
+            'size' => (int) ($meta['filesize'] ?? ($object['size'] ?? null) ?? (is_file($file) ? filesize($file) : 0)),
             'width' => isset($meta['width']) ? (int) $meta['width'] : null,
             'height' => isset($meta['height']) ? (int) $meta['height'] : null,
             'alt' => is_string($alt) && $alt !== '' ? $alt : null,

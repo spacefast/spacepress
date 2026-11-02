@@ -290,6 +290,9 @@ pub fn render(schema: &Schema) -> String {
         schema.locales.as_ref().map(php_json).unwrap_or_else(|| "null".into())
     );
     let _ = writeln!(out, "    'media' => {},", php_json(&schema.media));
+    if let Some(uploads) = &schema.uploads {
+        let _ = writeln!(out, "    'uploads' => {},", php_json(uploads));
+    }
     let auth_collection = schema.collections.values().find(|c| c.auth).map(|c| c.table.clone());
     let _ = writeln!(
         out,

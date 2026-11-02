@@ -105,6 +105,7 @@ export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 export default defineConfig({
   name: "phase2", collections, tables, users,
+  uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1", endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, prefix: "phase2", credentials: { accessKeyId: env("UPLOAD_KEY"), secretAccessKey: env("UPLOAD_SECRET") } },
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
   files: { decks: files("decks", { accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } }) },
   globals: { settings: global("settings", { title: text().default("Hello") }, { agents: false }) },

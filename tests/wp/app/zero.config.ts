@@ -15,6 +15,7 @@ import * as locales from "./lanes/locales.ts";
 import * as rest from "./lanes/rest.ts";
 import * as runtime from "./lanes/runtime.ts";
 import { merge, mergeHooks } from "./compose.ts";
+import uploads from "./uploads.ts";
 const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtime];
 
 // A `table()` with a real SQL UNIQUE index (the blog has none).
@@ -64,6 +65,7 @@ const laneConfig = merge("config option", lanes.map((l) => l.config));
 
 export default defineConfig({
   ...laneConfig,
+  uploads,
   name: "blog",
   admin: true, // the suite proves the opt-in path; examples/blog keeps proving the default
   collections: appCollections, tables: appTables, users: appUsers,

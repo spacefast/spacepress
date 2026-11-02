@@ -56,6 +56,7 @@ const CONFIG_KEYS: &[&str] = &[
     "webhooks",
     "files",
     "media",
+    "uploads",
     "locales",
     "plugins",
     "admin",
@@ -1995,8 +1996,10 @@ fn plain_json(v: &Value, span: Span, what: &str) -> Result<Json> {
             Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
             Value::Array(a) => a.borrow().iter().try_for_each(|v| validate(v, span, what)),
             Value::Object(o) => o.borrow().values().try_for_each(|v| validate(v, span, what)),
-            Value::Env(_) => Err(Diag::new(span, "env() is only allowed in webhooks/signature")
-                .help("move the environment value to a webhook URL/secret or action signature")),
+            Value::Env(_) => Err(
+                Diag::new(span, "env() is only allowed in webhooks/signature or uploads")
+                    .help("move the environment value to a webhook URL/secret or action signature"),
+            ),
             _ => {
                 Err(Diag::new(span, format!("{what} must be static data")).help("remove functions and runtime values"))
             }
@@ -2065,6 +2068,64 @@ fn signature_config(v: &Value, span: Span) -> Result<Json> {
 }
 
 fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, out: &mut Extracted) -> Result<()> {
+    if let Some(v) = cfg.get("uploads").filter(|v| !matches!(v, Value::Undef)) {
+        let o = object(v, span, "uploads")?;
+        let backend = string(o.get("backend"), span, "uploads.backend")?;
+        let mut config = serde_json::Map::new();
+        config.insert("backend".into(), backend.clone().into());
+        match backend.as_str() {
+            "local" => keys(&o, &["backend"], span, "local uploads")?,
+            "s3" => {
+                keys(
+                    &o,
+                    &[
+                        "backend",
+                        "bucket",
+                        "region",
+                        "endpoint",
+                        "pathStyle",
+                        "prefix",
+                        "credentials",
+                    ],
+                    span,
+                    "S3 uploads",
+                )?;
+                for key in ["bucket", "region", "endpoint", "prefix"] {
+                    if let Some(v) = o.get(key) {
+                        let value = match v {
+                            Value::Env(name) => serde_json::json!({"env": name.as_ref()}),
+                            _ => string(Some(v), span, &format!("uploads.{key}"))?.into(),
+                        };
+                        config.insert(key.into(), value);
+                    } else if key == "bucket" {
+                        return Err(Diag::new(span, "S3 uploads need a bucket")
+                            .help("configure the physical provider bucket once"));
+                    }
+                }
+                config.insert("pathStyle".into(), bool_option(&o, "pathStyle", false, span)?.into());
+                let creds = o.get("credentials").ok_or_else(|| Diag::new(span, "S3 uploads need runtime credentials").help("use credentials: { accessKeyId: env(\"S3_ACCESS_KEY_ID\"), secretAccessKey: env(\"S3_SECRET_ACCESS_KEY\") }"))?;
+                let creds = object(creds, span, "uploads.credentials")?;
+                keys(
+                    &creds,
+                    &["accessKeyId", "secretAccessKey", "sessionToken"],
+                    span,
+                    "uploads.credentials",
+                )?;
+                let mut credentials = serde_json::Map::new();
+                for key in ["accessKeyId", "secretAccessKey", "sessionToken"] {
+                    if key != "sessionToken" || creds.contains_key(key) {
+                        credentials.insert(key.into(), env_value(creds.get(key), span)?);
+                    }
+                }
+                config.insert("credentials".into(), credentials.into());
+            }
+            _ => {
+                return Err(Diag::new(span, "uploads.backend must be local or s3")
+                    .help("choose the durable upload backend explicitly"));
+            }
+        }
+        out.schema.uploads = Some(config.into());
+    }
     if let Some(v) = cfg.get("locales").filter(|v| !matches!(v, Value::Undef)) {
         let o = object(v, span, "locales")?;
         keys(&o, &["default", "all", "fallback"], span, "locales")?;

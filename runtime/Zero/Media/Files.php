@@ -215,22 +215,12 @@ final class Files
             throw new HttpError(403, 'forbidden', 'This download link is invalid or has expired; request a fresh one');
         }
         $row = self::find($name, $id);
-        $path = self::storage()->absolute($row['path']);
-        if (!is_file($path)) {
-            throw HttpError::notFound("No file $id in $name");
-        }
+        $stream = self::storage()->stream($row['path']);
         $ascii = preg_replace('/[^\x20-\x7E]|["\\\\]/', '_', $row['filename']);
 
-        return Response::raw(static function () use ($path): void {
-            $in = fopen($path, 'rb');
-            if ($in === false) {
-                return;
-            }
-            fpassthru($in);
-            fclose($in);
-        }, 200, [
+        return Response::raw($stream, 200, [
             'Content-Type' => $row['mime'],
-            'Content-Length' => (string) filesize($path),
+            'Content-Length' => (string) $row['size'],
             'Content-Disposition' => 'attachment; filename="' . $ascii . '"; filename*=UTF-8\'\'' . rawurlencode($row['filename']),
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => 'sandbox',

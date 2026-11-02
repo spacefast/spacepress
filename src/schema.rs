@@ -439,6 +439,7 @@ pub struct Schema {
     pub files: IndexMap<String, FileBucket>,
     pub webhooks: Vec<Json>,
     pub media: Json,
+    pub uploads: Option<Json>,
     pub locales: Option<Json>,
     /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
     pub admin: bool,
@@ -455,6 +456,7 @@ impl Default for Schema {
             files: IndexMap::new(),
             webhooks: Vec::new(),
             media: serde_json::json!({"sizes": {}}),
+            uploads: None,
             locales: None,
             admin: false,
         }

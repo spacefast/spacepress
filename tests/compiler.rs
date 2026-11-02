@@ -162,6 +162,15 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         ("tables: {}, tables: {}", "duplicate `tables` registry"),
         (
+            "uploads: { backend: 's3', bucket: 'uploads', credentials: { accessKeyId: 'literal', secretAccessKey: 'literal' } }",
+            "must be env(",
+        ),
+        (
+            "uploads: { backend: 's3', bucket: 'uploads' }",
+            "need runtime credentials",
+        ),
+        ("uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
+        (
             "collections: { notes: collection({ postId: id(), title: text().notNull() }) }",
             "primary key is the WordPress post ID",
         ),
@@ -1391,7 +1400,12 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
-    let out = zero().arg("build").arg(&tmp).output().unwrap();
+    let out = zero()
+        .arg("build")
+        .arg(&tmp)
+        .env("UPLOAD_SECRET", "compile-time-secret-must-not-resolve")
+        .output()
+        .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])

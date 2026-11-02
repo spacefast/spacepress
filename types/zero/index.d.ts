@@ -1092,6 +1092,7 @@ export interface ConfigInput<
   jobs?: TJobs;
   webhooks?: Webhook[];
   files?: Record<string, AnyFileBucket>;
+  uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
@@ -1164,6 +1165,16 @@ export declare function files(name: string, options: {
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };
 }): FileBucket;
+/** One durable backend for private files and all standard WordPress media uploads. */
+export type UploadsConfig = { backend: "local" } | {
+  backend: "s3";
+  bucket: string | EnvValue;
+  region?: string | EnvValue;
+  endpoint?: string | EnvValue;
+  pathStyle?: boolean;
+  prefix?: string | EnvValue;
+  credentials: { accessKeyId: EnvValue; secretAccessKey: EnvValue; sessionToken?: EnvValue };
+};
 export interface LocalesConfig { default: string; all: readonly string[]; fallback?: boolean }
 export type Locale = Register extends { locales: infer L extends string } ? L : string;
 export type LocalizedColumns = { locale: Locale; translations: Partial<Record<Locale, number>> };

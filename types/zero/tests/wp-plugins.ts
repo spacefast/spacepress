@@ -14,20 +14,20 @@ const plugins = {
   },
 } satisfies Readonly<Record<string, WordPressPlugin>>;
 
-defineConfig({ schema: {}, plugins });
+defineConfig({ collections: {}, plugins });
 // The optional admin screens are a boolean opt-in.
-defineConfig({ schema: {}, admin: true });
+defineConfig({ collections: {}, admin: true });
 // @ts-expect-error admin is a boolean, not a settings object
-defineConfig({ schema: {}, admin: { menu: true } });
+defineConfig({ collections: {}, admin: { menu: true } });
 
 // @ts-expect-error URL archives require an authored checksum.
 const unpinned: WordPressPlugin = { version: "1.0", pluginData: { resource: "url", url: "https://example.org/plugin.zip" } };
 // @ts-expect-error Blueprint runtime steps aren't artifact declarations.
-defineConfig({ schema: {}, plugins: [{ step: "runPHP", code: "<?php" }] });
+defineConfig({ collections: {}, plugins: [{ step: "runPHP", code: "<?php" }] });
 // @ts-expect-error Activation is a deployment concern.
 const activation: WordPressPlugin = { version: "5.4", activate: true };
 // @ts-expect-error Only the supported resource subset is accepted.
 const git: WordPressPlugin = { version: "1.0", pluginData: { resource: "git:directory", url: "https://example.org/repo" } };
 
 // @ts-expect-error Plugins are top-level package entries.
-defineConfig({ schema: {}, wordpress: { plugins: [] } });
+defineConfig({ collections: {}, wordpress: { plugins: [] } });

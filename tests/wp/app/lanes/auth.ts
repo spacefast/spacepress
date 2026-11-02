@@ -2,9 +2,9 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, db, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks } from "zero";
+import { blocks, boolean, collection, date, db, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks, userProjection, table } from "zero";
 
-export const members = collection("members", {
+export const members = userProjection({
   id: id(),
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),
@@ -37,24 +37,27 @@ export const members = collection("members", {
   sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text().showIf({ text: "visible" }) } } }).showIf({ plan: "pro" }),
   notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
   addressBy: integer(),
-}, { auth: true, access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } });
+}, { access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } });
 
-export const guestbook = collection("guestbook", {
+export const guestbook = table({
   id: id(),
   message: text().notNull(),
   memberId: integer().references(() => members.id),
-}, { editor: false, access: { read: "anyone", create: "authenticated" } });
+}, { access: { read: "anyone", create: "authenticated" } });
 
-export const reviews = collection("reviews", {
+export const reviews = table({
   id: id(),
   body: text().notNull(),
-}, { editor: false, access: { read: "anyone", create: "subscriber" } });
+}, { access: { read: "anyone", create: "subscriber" } });
 
-export const memberUpdates = collection("member_updates", {
+export const memberUpdates = table({
   id: id(), memberId: integer().notNull(), name: text().notNull(), city: text(),
-}, { editor: false });
+});
 
-export const schema = { members, guestbook, reviews, memberUpdates };
+export const collections = {  };
+export const tables = { guestbook, reviews, memberUpdates };
+export const users = { members };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: any) => ({
   guestbook: { member: r.one.members({ from: r.guestbook.memberId, to: r.members.id }) },

@@ -1,18 +1,19 @@
 import {
-  collection, id, text, integer, boolean, date, timestamp, json,
+  text, integer, boolean, date, timestamp, json,
   defineRelations, defineConfig, action, job, jobs, db, HttpError,
   type InferSelectModel,
+  table,
 } from "zero";
 import { UNITS, LOW_STOCK, timestamps, slugify } from "./lib/fields";
 
 // Composition is plain TypeScript: shared field sets, factories, spreads.
-const named = <T extends object>(extra: T) => ({ id: id(), name: text().notNull(), ...extra });
+const named = <T extends object>(extra: T) => ({ name: text().notNull(), ...extra });
 
-export const locations = collection("locations", named({
+export const locations = table(named({
   kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
-}), { editor: false });
+}));
 
-export const items = collection("items", named({
+export const items = table(named({
   slug: text().unique().notNull().max(191),
   quantity: integer().notNull().default(1),
   unit: text({ enum: UNITS }).notNull().default("pcs"),
@@ -22,20 +23,20 @@ export const items = collection("items", named({
   locationId: integer().references(() => locations.id, { onDelete: "set null" }),
   tags: json().$type<string[]>().notNull().$default(() => []),
   ...timestamps,
-}), { editor: false });
+}));
 
-export const shoppingList = collection("shopping_list", {
-  id: id(),
+export const shoppingList = table({
   itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
   name: text().notNull(),
   done: boolean().notNull().default(false),
   notifiedAt: timestamp(),                // set by the notifyLowStock job
   ...timestamps,
-}, { editor: false });
+});
 
-export const schema = { locations, items, shoppingList };
+export const tables = { locations, items, shoppingList };
+export const entities = { ...tables };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations(entities, (r) => ({
   items: {
     location: r.one.locations({ from: r.items.locationId, to: r.locations.id }),
   },
@@ -58,7 +59,7 @@ async function restock(item: Item) {
 }
 
 export default defineConfig({
-  schema,
+  tables,
   relations,
   jobs: {
     // A real pantry would push a notification here; this one stamps the list entry.

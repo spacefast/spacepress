@@ -171,6 +171,17 @@ pub fn build(
     );
     let snapshot = migrate::snapshot(&schema);
     let previous = previous()?;
+    if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
+        for stored in tables.keys() {
+            let canonical = crate::schema::physical_name(stored);
+            if &canonical != stored && schema.collections.contains_key(&canonical) {
+                return Err(Diag::new(config_span, format!(
+                    "stored resource `{stored}` conflicts with canonical physical name `{canonical}`; an authoring change cannot rename persisted storage"
+                )).help("preserve the migration ledger and resolve this storage migration explicitly before building")
+                    .phase(diag::Code::Schema));
+            }
+        }
+    }
     let mut migrations = Vec::new();
     let warnings = migrate::destructive(&previous.snapshot, &snapshot);
     let statements = migrate::plan(&previous.snapshot, &snapshot);
@@ -180,11 +191,7 @@ pub fn build(
         migrations.push((format!("{n:04}_{name}.sql"), migrate::render(&statements)));
     }
     let client_files = client::files(&schema, &action_results, runtime);
-    let gen_ts = schema_php::gen_ts(
-        ext.register_name.unwrap_or("schema"),
-        !schema.globals.is_empty() || !schema.jobs.is_empty(),
-        schema.locales.as_ref(),
-    );
+    let gen_ts = schema_php::gen_ts(&schema);
     Ok(Built {
         plugins: ext.plugins,
         client_files,
@@ -203,8 +210,10 @@ impl Built {
     pub fn summary(&self) -> String {
         let s = &self.schema;
         format!(
-            "{} collections, {} globals, {} hooks, {} actions",
-            s.collections.len(),
+            "{} collections, {} tables, {} user projections, {} globals, {} hooks, {} actions",
+            s.collections.values().filter(|c| c.editor).count(),
+            s.collections.values().filter(|c| !c.editor && !c.auth).count(),
+            s.collections.values().filter(|c| c.auth).count(),
             s.globals.len(),
             s.collections.values().map(|c| c.hooks.len()).sum::<usize>(),
             s.actions.len()

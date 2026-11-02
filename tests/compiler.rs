@@ -67,19 +67,19 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-bad-reference",
         "`aName` is integer() but references a.name, which is text()",
-        "zero.config.ts:3:56",
+        "zero.config.ts:3:46",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "zero.config.ts:2:55",
+        "zero.config.ts:2:45",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "zero.config.ts:2:76",
+        "zero.config.ts:2:66",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
@@ -97,12 +97,12 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "zero.config.ts:2:52",
+        "zero.config.ts:2:42",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "zero.config.ts:2:80",
+        "zero.config.ts:2:71",
     );
     // §1.5
     rejects(
@@ -116,6 +116,52 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
         "zero.config.ts:4:",
     );
+    // Each case owns a separate registry invariant, exercised through the compiler.
+    let tmp = tempfile::tempdir().unwrap();
+    for (body, message) in [
+        (
+            "collections: { notes: table({ title: text().notNull() }) }",
+            "table() belongs in `tables`",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}) }",
+            "share the physical name `notes`",
+        ),
+        (
+            "collections: { stockItems: collection({ title: text().notNull() }) }, tables: { stock_items: table({}) }",
+            "share the physical name `stock_items`",
+        ),
+        (
+            "tables: { first: shared, second: shared }",
+            "a definition can only be registered once",
+        ),
+        ("tables: []", "`tables` must be an object"),
+        (
+            "tables: { notes: table({}), notes: table({}) }",
+            "duplicate registration `tables.notes`",
+        ),
+        ("tables: {}, tables: {}", "duplicate `tables` registry"),
+        (
+            "collections: { notes: collection({ postId: id(), title: text().notNull() }) }",
+            "primary key is the WordPress post ID",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }, { revisions: false }) }",
+            "collections always have native revisions",
+        ),
+    ] {
+        std::fs::write(tmp.path().join("zero.config.ts"), format!(
+            "import {{ collection, table, id, text, defineConfig }} from 'zero'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+        )).unwrap();
+        let checked = zero().arg("check").arg(tmp.path()).output().unwrap();
+        assert_eq!(checked.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&checked.stderr).contains(message),
+            "{}",
+            String::from_utf8_lossy(&checked.stderr)
+        );
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1);
+    }
 }
 
 #[test]
@@ -364,6 +410,61 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
     assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    for example in ["pantry", "blog", "site"] {
+        let stored: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root().join(format!("examples/{example}/zero/migrations/snapshot.json"))).unwrap(),
+        )
+        .unwrap();
+        let persisted = tmp.join(format!("preserved-{example}"));
+        copy(&root().join(format!("examples/{example}")), &persisted);
+        let result = zero().arg("build").arg(&persisted).output().unwrap();
+        assert!(
+            result.status.success(),
+            "{example}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let actual: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(persisted.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        assert_eq!(
+            actual, stored,
+            "{example}: the authoring change must preserve stored resources"
+        );
+        let migrations = std::fs::read_dir(persisted.join("zero/migrations"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
+            .count();
+        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/migrations")))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
+            .count();
+        assert_eq!(
+            migrations, original,
+            "{example}: no new SQL for an authoring-only change"
+        );
+    }
+    // A persisted camel-case physical name cannot be silently converted by the new registry.
+    let conflict = tmp.join("name-conflict");
+    std::fs::create_dir_all(&conflict).unwrap();
+    std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+    let built = zero().arg("build").arg(&conflict).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let ledger = conflict.join("zero/migrations/snapshot.json");
+    let mut legacy: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+    let tables = legacy["tables"].as_object_mut().unwrap();
+    let stored = tables.remove("stock_items").unwrap();
+    tables.insert("stockItems".into(), stored);
+    let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+    std::fs::write(&ledger, &legacy_bytes).unwrap();
+    let refused = zero().arg("build").arg(&conflict).output().unwrap();
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("stored resource `stockItems` conflicts with canonical physical name `stock_items`")
+    );
+    assert_eq!(std::fs::read(ledger).unwrap(), legacy_bytes);
+    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -685,7 +786,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     // §3.5.1: post-backed columns that only postmeta can filter get a one-line hint.
     assert!(
         String::from_utf8_lossy(&out.stderr).contains(
-            "hint: \"posts.authorId\" is filtered through postmeta on WordPress; set editor: false on \"posts\" if this list grows large"
+            "hint: \"posts.authorId\" is filtered through postmeta on WordPress; use table() for SQL data if this list grows large"
         ),
         "{}",
         String::from_utf8_lossy(&out.stderr)
@@ -840,7 +941,7 @@ fn rejects_phase2_static_contracts() {
             "reject-field-access-catch-fallthrough",
             "field rules must return a boolean on every path",
         ),
-        ("reject-field-access-self", "self is only allowed on auth collection"),
+        ("reject-field-access-self", "self is only allowed on user projection"),
         (
             "reject-field-access-global",
             "field access applies to collection columns",
@@ -859,8 +960,11 @@ fn rejects_phase2_static_contracts() {
         ("reject-showif-structured", "compare a scalar sibling"),
         ("reject-showif-nested-sibling", "showIf names non-sibling"),
         ("reject-showif-title", "title is always readable"),
-        ("reject-sync-auth", "auth collections cannot sync"),
-        ("reject-auth-primary-key", "auth: true needs the primary key id: id()"),
+        ("reject-sync-auth", "user projections cannot sync"),
+        (
+            "reject-auth-primary-key",
+            "userProjection() needs the primary key id: id()",
+        ),
         ("reject-sync-directory", "two collections sync into the same directory"),
         ("reject-sync-outside", "sync directory must stay inside the project"),
         ("reject-sync-content", "Markdown sync needs a content designation"),
@@ -894,28 +998,27 @@ fn rejects_phase2_static_contracts() {
             "reject-env-captured",
             "env() values can't be stored inside captured data",
         ),
-        ("reject-auth-duplicate", "at most one auth: true collection"),
+        ("reject-auth-duplicate", "at most one userProjection()"),
         (
             "reject-auth-email",
-            "auth: true needs email: email().notNull().unique()",
+            "userProjection() needs email: email().notNull().unique()",
         ),
-        ("reject-auth-editor", "auth: true requires editor: false"),
-        ("reject-auth-drafts", "auth: true requires drafts: false"),
-        ("reject-auth-revisions", "auth: true requires revisions: false"),
+        ("reject-auth-drafts", "userProjection() requires drafts: false"),
+        ("reject-auth-revisions", "userProjection() requires revisions: false"),
         (
             "reject-auth-slug",
-            "auth collections cannot have slug() or localized fields",
+            "user projections cannot have slug() or localized fields",
         ),
-        ("reject-auth-self", "self is only allowed on auth collection"),
-        ("reject-auth-create-self", "self is only allowed on auth collection"),
+        ("reject-auth-self", "self is only allowed on user projection"),
+        ("reject-auth-create-self", "self is only allowed on user projection"),
         (
             "reject-auth-reserved-password",
-            "password is reserved on auth collections",
+            "password is reserved on user projections",
         ),
-        ("reject-auth-reserved-role", "role is reserved on auth collections"),
+        ("reject-auth-reserved-role", "role is reserved on user projections"),
         (
             "reject-auth-reserved-passwordHash",
-            "passwordHash is reserved on auth collections",
+            "passwordHash is reserved on user projections",
         ),
         ("reject-agents-kebab", "ability kebab collision: notes-list"),
         ("reject-agents-media", "media has no option `agents`"),
@@ -940,7 +1043,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-localized-unique", "unique is not allowed on a localized column"),
         (
             "reject-localized-auth",
-            "auth collections cannot have slug() or localized fields",
+            "user projections cannot have slug() or localized fields",
         ),
         (
             "reject-localized-reserved-locale",
@@ -1156,7 +1259,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1176,7 +1279,7 @@ fn rejects_phase2_static_contracts() {
         "'aa'.replaceAll('a', () => { value++; return 'b'; })",
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1203,7 +1306,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1464,7 +1567,7 @@ fn auth_fixture_matches_the_compiler() {
         actual, golden,
         "tests/fixtures/auth/schema.json drifted from the compiler"
     );
-    // The generated client types the auth collection as §6.2 says (tests/fixtures/auth/client.ts).
+    // The generated client types the user projection as §6.2 says (tests/fixtures/auth/client.ts).
     std::fs::copy(fixture.join("client.ts"), tmp.join("client.ts")).unwrap();
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args([

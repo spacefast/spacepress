@@ -1,3 +1,3 @@
-import { collection, defineConfig, id, text } from "zero";
-const notes = collection("notes", { id: id(), kind: text(), x: text().showIf({ kind: { in: [] } }) }, { editor: false });
-export default defineConfig({ schema: { notes } });
+import { collection, defineConfig, id, text, table } from "zero";
+const notes = table({ id: id(), kind: text(), x: text().showIf({ kind: { in: [] } }) });
+export default defineConfig({ tables: { notes } });

@@ -1,7 +1,7 @@
-import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db } from "zero";
-const audit = collection("audit", { id: id(), note: text().notNull() }, { editor: false, agents: false });
-const authors = collection("authors", { id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
-const posts = collection("posts", {
+import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db , table, userProjection} from "zero";
+const audit = table({ id: id(), note: text().notNull() }, { agents: false });
+const authors = collection({ id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
+const posts = collection({
   id: id(), title: text().notNull().localized(), content: richText().localized(), slug: slug({ source: "title" }),
   authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),
   seo: group({ fields: { kind: text({ enum: ["a", "b"] }), enabled: boolean(), label: text().access({ read: ctx => ctx.data.label !== "private" }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) } }).showIf({ status: "published" }),
@@ -9,10 +9,13 @@ const posts = collection("posts", {
   sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } } }),
   tags: select({ options: ["news", "guide"], multiple: true }).localized(), meta: json().localized(),
 }, { sync: "content/./posts/*.md", agents: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
-const members = collection("members", { id: id(), email: email().notNull().unique().max(191), name: text() }, { auth: true, uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
-export const schema = { audit, authors, posts, members };
+const members = userProjection({ id: id(), email: email().notNull().unique().max(191), name: text() }, { uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
+export const collections = { authors, posts };
+export const tables = { audit };
+export const users = { members };
+export const entities = { ...collections, ...tables, ...users };
 export default defineConfig({
-  name: "phase2", schema,
+  name: "phase2", collections, tables, users,
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
   files: { decks: files("decks", { accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } }) },
   globals: { settings: global("settings", { title: text().default("Hello") }, { agents: false }) },
@@ -21,21 +24,21 @@ export default defineConfig({
   actions: { inbound: action({ input: {}, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: () => true }) },
 });
 
-import { jobs, once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "zero";
+import { jobs, once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns} from "zero";
 import { expectType, type Equal } from "./inference";
 
-const localizedBlocks = collection("localized_blocks", {
+const localizedBlocks = table({
   id: id(), sections: blocks({ layouts: { hero: { heading: text().localized() }, quote: { body: text() } } }),
-}, { editor: false, uid: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
+}, { uid: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
 type LocalizedBlockRow = typeof localizedBlocks.$inferSelect;
 expectType<Equal<LocalizedBlockRow["locale"], Locale>>();
 expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translations"]>>();
 
 // A required synced column (price): translations may omit it, fresh rows may not.
-const priced = collection("priced", { id: id(), title: text().notNull().localized(), price: integer().notNull(), handle: slug().notNull() }, { editor: false });
+const priced = table({ id: id(), title: text().notNull().localized(), price: integer().notNull(), handle: slug().notNull() });
 
 // A text primary key not named `id`: translation ids are that key's type, and a translation gives its own key.
-const skus = collection("skus", { code: text().primaryKey(), title: text().notNull().localized(), price: integer().notNull() }, { editor: false });
+const skus = table({ code: text().primaryKey(), title: text().notNull().localized(), price: integer().notNull() });
 expectType<Equal<(typeof skus.$inferSelect)["translations"], Partial<Record<Locale, string>>>>();
 
 // Primary-key builders still fit annotations and generic helpers written without the flag.
@@ -45,11 +48,11 @@ acceptBuilder(text().primaryKey());
 void annotated;
 // An annotation that drops the flag still keys translations by the `id` column's type.
 const textKey: import("zero").ColumnBuilder<"text", string, true, false> = text().primaryKey();
-const annotatedCodes = collection("annotated_codes", { id: textKey, label: text().localized() }, { editor: false });
+const annotatedCodes = table({ id: textKey, label: text().localized() });
 expectType<Equal<(typeof annotatedCodes.$inferSelect)["translations"], Partial<Record<Locale, string>>>>();
 
-const roles = collection("roles", { id: id(), role: text(), password: text() }, { editor: false });
-const roleNames = collection("role_names", { id: id(), role: text() }, { editor: false });
+const roles = table({ id: id(), role: text(), password: text() });
+const roleNames = table({ id: id(), role: text() });
 const roleInsert: typeof roles.$inferInsert = { role: "item", password: null };
 // @ts-expect-error ordinary role columns do not enable a virtual password input
 const unsupportedPassword: typeof roleNames.$inferInsert = { role: "item", password: "secret" };

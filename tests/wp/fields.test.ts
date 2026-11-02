@@ -4,7 +4,8 @@
 // group merges reach postmeta. The policy matrix lives in tests/php/db_test.php.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { harness, ok, problem, qs, run, zero } from "./env.ts";
+import { createClient } from "./app/zero/client/index.ts";
+import { api, auth, harness, ok, problem, qs, run, zero } from "./env.ts";
 
 let team: { id: number };
 let mine: { id: number };
@@ -33,10 +34,11 @@ test("reads remove the columns a viewer may not read, per row and in with rows",
   const editor = await ok("GET", `/field_staff/${theirs.id}`, { as: "editor" });
   assert.deepEqual([editor.email, editor.salary], ["other@example.test", 20]);
 
-  const withTeam = await ok("GET", `/field_staff/${mine.id}?with=team`, { as: "editor" });
-  assert.deepEqual([withTeam.team.name, "budget" in withTeam.team], [`Core ${run}`, false], "a with-loaded parent is stripped");
-  const withMembers = await ok("GET", `/field_teams/${team.id}?with=members`);
-  assert.deepEqual(withMembers.members.map((m: any) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
+  const editorClient = createClient({ url: api, headers: auth("editor") });
+  const withTeam = await editorClient.fieldStaff.get(mine.id, { with: { team: true } });
+  assert.deepEqual([withTeam.team?.name, "budget" in (withTeam.team ?? {})], [`Core ${run}`, false], "a with-loaded parent is stripped");
+  const withMembers = await createClient({ url: api }).fieldTeams.get(team.id, { with: { members: true } });
+  assert.deepEqual(withMembers.members.map((m) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
   assert.equal((await ok("GET", `/field_staff/${mine.id}?with=team`, { as: "admin" })).team.budget, 1000);
   assert.equal(zero("find", "field_staff", JSON.stringify({ where: { id: mine.id } }))[0].notes.private, "secret", "trusted reads see everything");
 });

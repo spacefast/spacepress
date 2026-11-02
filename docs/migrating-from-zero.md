@@ -124,7 +124,7 @@ command refuses to guess.
 
 If the original Space had sign-in, its app users are already WordPress users:
 the identity plugin's accounts, marked as members of the Space. To make them
-members of the new app, add an `auth: true` collection to the config (see
+members of the new app, register a `userProjection()` in `users` (see
 `docs/config-api.md`), build and activate it, then run:
 
 ```sh
@@ -157,7 +157,7 @@ back:
 | Pointer | Meaning |
 | --- | --- |
 | `""` | the site holds several original Spaces (pass `--space`), or a table isn't InnoDB |
-| `/postTypes/3/id` | that collection has no counterpart in the new config, is `editor: false`, localized, `uid`/`sync` or has a `slug()` column, or has a new column whose default the migration can't write (post content, references, media, files, structured fields) |
+| `/postTypes/3/id` | that collection has no counterpart in the new config, is a `table()`, localized, `uid`/`sync` or has a `slug()` column, or has a new column whose default the migration can't write (post content, references, media, files, structured fields) |
 | `/postTypes/3/fields/2/name` | the field's column is missing, or is the new app's `content` or `slug` column |
 | `/postTypes/3/fields/2/definition` | the field's type or options don't match the new column |
 | `/postTypes/3/fields/2/definition/type` | rich text and blocks fields need a content port |

@@ -403,22 +403,15 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Project-relative Markdown/JSON files; implies uid: true. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   uid?: boolean;
-  /** User rows; implies editor/drafts/revisions false. At most one collection. */
-  auth?: boolean;
   /** Expose through WordPress abilities/MCP. Default true. */
   agents?: boolean;
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
-  /**
-   * `true` = posts + SCF fields (wp-admin editing, revisions, scheduling); `false` = a custom table.
-   * It also drives the `drafts`/`revisions` defaults. Default `true`.
-   */
-  editor?: boolean;
-  /** Adds `status` + `publishedAt`. Default `editor !== false`; `false` needs `editor: false`. */
+  /** Native on collections; opt-in publication state on tables. */
   drafts?: boolean;
-  /** Keep a revision per update. Default `editor !== false`. */
+  /** Keep a revision per update. Default true for collections, false for tables. */
   revisions?: boolean;
-  /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required when `editor !== false`. */
+  /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
   title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
   /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */
   content?: ColumnsOfKind<ColumnsOf<T>, "richText">;
@@ -435,10 +428,10 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false> {
-  readonly [collectionBrand]: { name: TName; columns: TCols; auth: TAuth };
-  /** Table name and REST path segment. */
-  readonly $name: TName;
+export type StorageKind = "collection" | "table" | "userProjection";
+
+export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
+  readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
@@ -462,16 +455,11 @@ export type Collection<
   TName extends string = string,
   TCols extends ColumnsConfig = ColumnsConfig,
   TAuth extends boolean = false,
-> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols, TAuth>;
+  TStorage extends StorageKind = "collection",
+> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols, TAuth, TStorage>;
 
 export type AnyCollection = CollectionMeta<string, ColumnsConfig, boolean>;
 
-/**
- * Defines a table. `name` is the SQL table and REST path segment; the key
- * under `schema` is what `db.query.<key>`, `hooks` and `relations` use.
- *
- * `editor: false` without drafts: the columns are exactly `columns`.
- */
 type HasLocalized<TCols> = true extends (TCols extends unknown ? {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: infer L } } ? L : false;
 }[keyof TCols] : never) ? true : false;
@@ -517,31 +505,42 @@ type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = T
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
 type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
+/** `id: id()` is supplied unless a primary key (or an explicit id) is authored. */
+type WithId<TCols extends ColumnsConfig> = [PrimaryKeyOf<TCols>] extends [never]
+  ? "id" extends keyof TCols ? TCols : TCols & { id: ColumnBuilder<"id", number, true, true, false, true> }
+  : TCols;
+type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
+
+/** WordPress posts, native editor, drafts and revisions. Registry key supplies identity. */
 export declare function collection<
-  const TName extends string, TCols extends ColumnsConfig,
-  TUid extends boolean = false, TSync extends string | undefined = undefined,
->(name: TName, columns: TCols,
-  options: NoInfer<CollectionOptions<Collection<TName, TCols & AuthColumns & IdentityColumns<TUid, TSync>, true>>> & { auth: true; editor?: false; drafts?: false; revisions?: false } & IdentityOptions<TUid, TSync>,
-): Collection<TName, TCols & AuthColumns & IdentityColumns<TUid, TSync>, true>;
-export declare function collection<
-  const TName extends string, TCols extends ColumnsConfig,
-  TUid extends boolean = false, TSync extends string | undefined = undefined,
->(name: TName, columns: TCols,
-  options: NoInfer<CollectionOptions<Collection<TName, TCols & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>>> & { editor: false; drafts?: false; auth?: false } & IdentityOptions<TUid, TSync>,
-): Collection<TName, TCols & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>;
-export declare function collection<
-  const TName extends string, TCols extends ColumnsConfig,
-  TUid extends boolean = false, TSync extends string | undefined = undefined,
->(name: TName, columns: TCols,
-  options?: NoInfer<CollectionOptions<Collection<TName, TCols & DraftColumns & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>>> & { drafts?: true; auth?: false } & IdentityOptions<TUid, TSync>,
-): Collection<TName, TCols & DraftColumns & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>>;
+  TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
+>(fields: TCols,
+  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns>>> & { drafts?: true; revisions?: true } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns>;
+
+/** Relational application data in its own SQL table, regardless of field names. */
+export declare function table<
+  TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
+>(fields: TCols,
+  options: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns, false, "table">>> & { drafts: true } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns, false, "table">;
+export declare function table<
+  TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
+>(fields: TCols,
+  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync>, false, "table">>> & { drafts?: false } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync>, false, "table">;
+
+/** One projection over existing wp_users/wp_usermeta, never a post or a second user table. */
+export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,
+  options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
+): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;
 
 export type InferSelectModel<T extends AnyCollection> = T["$inferSelect"];
 export type InferInsertModel<T extends AnyCollection> = T["$inferInsert"];
 
-/** `schema` in `defineConfig`: collection key -> collection. */
+/** A flat relation graph assembled from the explicit registries. */
 export type Schema = Record<string, AnyCollection>;
 
 // ---------------------------------------------------------------------------
@@ -831,19 +830,13 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * }
  * ```
  *
- * Without relations, register the schema instead: `schema: typeof schema`.
- * Projects with globals or jobs also register the config (types `db.globals` and `jobs`):
- * `import type config from "./zero.config"` and `config: typeof config`.
- * Localized projects add `locales: "en" | "de"` (the configured union).
+ * `zero build` emits the structural relation graph even without authored relations,
+ * so the config can keep every declaration private. Config registration supplies
+ * globals and jobs; localized projects also register their locale union.
  */
 export interface Register {}
 
-type RegisteredSchema = Register extends { relations: Relations<infer S, any> }
-  ? S
-  : Register extends { schema: infer S extends Schema }
-    ? S
-    : never;
-
+type RegisteredSchema = Register extends { relations: Relations<infer S, any> } ? S : never;
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
 
 type UnregisteredQuery = {
@@ -903,7 +896,7 @@ export interface DeleteQuery<T extends AnyCollection> extends WriteQuery<T> {
 }
 
 export interface Database {
-  /** Relational queries, keyed by `schema` key. Trusted: every status visible, no access rules. */
+  /** Relational queries, keyed by registered logical key. Trusted: every status visible, no access rules. */
   readonly query: QueryApi;
   /** Globals, keyed by the `globals` key in `defineConfig`. */
   readonly globals: GlobalsApi;
@@ -1078,14 +1071,19 @@ export interface ConfigInput<
   TGlobals extends Record<string, AnyGlobal> = {},
   TJobs extends Record<string, AnyJob> = {},
   TLocales extends LocalesConfig = LocalesConfig,
+  TCollections extends Schema = Schema,
+  TTables extends Schema = Schema,
+  TUsers extends Schema = Schema,
 > {
   /** Project name: plugin slug (`zero-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
-  schema: TSchema;
+  collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
+  tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
+  users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
   relations?: TRelations;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
   globals?: TGlobals;
-  /** `NoInfer`: the schema comes from `schema` only, so unknown hook keys are errors. */
+  /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
   jobs?: TJobs;
@@ -1110,12 +1108,12 @@ export interface ZeroConfig<
 }
 
 export declare function defineConfig<
-  TSchema extends Schema,
-  TRelations extends Relations<TSchema, any> = Relations<TSchema, {}>,
+  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {},
+  TRelations extends Relations<TCollections & TTables & TUsers, any> = Relations<TCollections & TTables & TUsers, {}>,
   TGlobals extends Record<string, AnyGlobal> = {},
   TJobs extends Record<string, AnyJob> = {},
   const TLocales extends LocalesConfig = LocalesConfig,
->(config: ConfigInput<TSchema, TRelations, TGlobals, TJobs, TLocales>): ZeroConfig<TSchema, TRelations, TGlobals, TJobs, TLocales>;
+>(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): ZeroConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
 
 // ---------------------------------------------------------------------------
 // 11. Errors

@@ -3,14 +3,17 @@
 import { collection, file, files, group, id, text } from "zero";
 
 /** A post-backed collection holding a private file, for `file({ bucket })` on WordPress. */
-export const talks = collection("talks", {
+export const talks = collection({
   id: id(),
   title: text().notNull(),
   deck: file({ bucket: "decks" }),
   extras: group({ fields: { handout: file({ bucket: "decks" }) } }),
 }, { access: { read: "anyone", create: "author", update: "author", delete: "editor" } });
 
-export const schema = { talks };
+export const collections = { talks };
+export const tables = {  };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {};

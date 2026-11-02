@@ -1,11 +1,11 @@
 import {
-  collection, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
+  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, file, files, defineRelations, defineConfig, action, job, jobs, env,
   db, HttpError,
+  table, userProjection,
 } from "zero";
 
-export const authors = collection("authors", {
-  id: id(),
+export const authors = collection({
   name: text().notNull().max(80),
   // Public profiles, private inboxes: only editors see an author's address (§4.7).
   email: email().notNull().unique().max(191).access({ read: "editor" }),
@@ -14,8 +14,7 @@ export const authors = collection("authors", {
   userId: integer(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export const posts = collection("posts", {
-  id: id(),
+export const posts = collection({
   // Translated per locale (§7.3). The other fields are shared by a post's translations, except
   // each row's own slug, status and dates.
   title: text().notNull().min(1).max(120).localized(),
@@ -54,8 +53,7 @@ export const posts = collection("posts", {
   },
 });
 
-export const comments = collection("comments", {
-  id: id(),
+export const comments = table({
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   name: text().notNull().max(60),
   body: text({ multiline: true }).notNull().min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
@@ -63,22 +61,22 @@ export const comments = collection("comments", {
   notifiedAt: timestamp(),                 // set by the notifyEditors job
   createdAt: timestamp().notNull().defaultNow(),
 }, {
-  editor: false,
-  // Readers (anonymous, guests, members) see approved comments only; staff see the queue.
   access: { read: (ctx) => ["author", "editor", "admin"].includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
 // Readers who sign in (§6.2): the hosted screens on WordPress, a password on standalone.
-export const members = collection("members", {
-  id: id(),
+export const members = userProjection({
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),
   plan: select({ options: ["free", "pro"] }).notNull().default("free"),
-}, { auth: true, access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
+}, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
-export const schema = { authors, posts, comments, members };
+export const collections = { authors, posts };
+export const tables = { comments };
+export const users = { members };
+export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations(entities, (r) => ({
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
@@ -93,7 +91,7 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "blog",
-  schema,
+  collections, tables, users,
   relations,
   globals: { settings },
   locales: { default: "en", all: ["en", "de"] },

@@ -10870,6 +10870,75 @@
                 }
               }
             },
+            "teamId": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ],
+              "properties": {
+                "eq": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "ne": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "isNull": {
+                  "type": "boolean"
+                },
+                "isNotNull": {
+                  "type": "boolean"
+                },
+                "NOT": {
+                  "type": "object"
+                },
+                "OR": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "AND": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "gt": {
+                  "type": "integer"
+                },
+                "gte": {
+                  "type": "integer"
+                },
+                "lt": {
+                  "type": "integer"
+                },
+                "lte": {
+                  "type": "integer"
+                },
+                "in": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "notIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "team": {
+              "type": "object"
+            },
             "AND": {
               "type": "array",
               "items": {
@@ -11084,6 +11153,75 @@
                         }
                       }
                     }
+                  },
+                  "teamId": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "eq": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "ne": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "isNull": {
+                        "type": "boolean"
+                      },
+                      "isNotNull": {
+                        "type": "boolean"
+                      },
+                      "NOT": {
+                        "type": "object"
+                      },
+                      "OR": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        }
+                      },
+                      "AND": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        }
+                      },
+                      "gt": {
+                        "type": "integer"
+                      },
+                      "gte": {
+                        "type": "integer"
+                      },
+                      "lt": {
+                        "type": "integer"
+                      },
+                      "lte": {
+                        "type": "integer"
+                      },
+                      "in": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "notIn": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -11318,6 +11456,75 @@
                       }
                     }
                   },
+                  "teamId": {
+                    "type": [
+                      "integer",
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "eq": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "ne": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "isNull": {
+                        "type": "boolean"
+                      },
+                      "isNotNull": {
+                        "type": "boolean"
+                      },
+                      "NOT": {
+                        "type": "object"
+                      },
+                      "OR": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        }
+                      },
+                      "AND": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        }
+                      },
+                      "gt": {
+                        "type": "integer"
+                      },
+                      "gte": {
+                        "type": "integer"
+                      },
+                      "lt": {
+                        "type": "integer"
+                      },
+                      "lte": {
+                        "type": "integer"
+                      },
+                      "in": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "notIn": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "type": "object"
+                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -11549,6 +11756,75 @@
                     }
                   }
                 },
+                "teamId": {
+                  "type": [
+                    "integer",
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "eq": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "ne": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "isNull": {
+                      "type": "boolean"
+                    },
+                    "isNotNull": {
+                      "type": "boolean"
+                    },
+                    "NOT": {
+                      "type": "object"
+                    },
+                    "OR": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "AND": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "gt": {
+                      "type": "integer"
+                    },
+                    "gte": {
+                      "type": "integer"
+                    },
+                    "lt": {
+                      "type": "integer"
+                    },
+                    "lte": {
+                      "type": "integer"
+                    },
+                    "in": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "notIn": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                },
+                "team": {
+                  "type": "object"
+                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -11594,6 +11870,13 @@
                 "asc",
                 "desc"
               ]
+            },
+            "teamId": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
             }
           }
         },
@@ -11604,6 +11887,20 @@
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "with": {
+          "type": [
+            "object",
+            "string"
+          ],
+          "properties": {
+            "team": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
         }
       }
     },
@@ -11623,6 +11920,12 @@
                 "maxLength": 191
               },
               "postId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "teamId": {
                 "type": [
                   "integer",
                   "null"
@@ -11663,6 +11966,20 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "with": {
+          "type": [
+            "object",
+            "string"
+          ],
+          "properties": {
+            "team": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            }
+          }
         }
       },
       "required": [
@@ -11680,6 +11997,12 @@
           "maxLength": 191
         },
         "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "teamId": {
           "type": [
             "integer",
             "null"
@@ -11721,6 +12044,12 @@
             "integer",
             "null"
           ]
+        },
+        "teamId": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -11738,6 +12067,12 @@
           "maxLength": 191
         },
         "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "teamId": {
           "type": [
             "integer",
             "null"
@@ -11782,6 +12117,12 @@
                 "integer",
                 "null"
               ]
+            },
+            "teamId": {
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         }
@@ -11802,6 +12143,12 @@
           "maxLength": 191
         },
         "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "teamId": {
           "type": [
             "integer",
             "null"
@@ -11850,6 +12197,12 @@
           "maxLength": 191
         },
         "postId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "teamId": {
           "type": [
             "integer",
             "null"

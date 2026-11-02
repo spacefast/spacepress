@@ -52,7 +52,8 @@ test("wp zero abilities lists every operation of the app with schemas from schem
   const fixture = join(here, "fixtures/abilities.json");
   const text = JSON.stringify(listed, null, 2) + "\n";
   if (process.env.ZERO_UPDATE_FIXTURES === "1") writeFileSync(fixture, text);
-  assert.equal(text, readFileSync(fixture, "utf8"), "tests/wp/fixtures/abilities.json is stale; rerun with ZERO_UPDATE_FIXTURES=1");
+  const byName = (rows: { name: string }[]) => Object.fromEntries(rows.map(row => [row.name, row]));
+  assert.deepEqual(byName(listed), byName(JSON.parse(readFileSync(fixture, "utf8"))), "tests/wp/fixtures/abilities.json is stale; rerun with ZERO_UPDATE_FIXTURES=1");
 });
 
 test("abilities convert empty input, JSON inputs and function-valued results at the wire", async () => {

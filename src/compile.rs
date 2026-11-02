@@ -799,9 +799,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn table_of(&self, c: &Rc<CollectionVal>, span: Span) -> Result<String> {
         if self.collections.iter().any(|x| Rc::ptr_eq(x, c)) {
-            Ok(c.table.clone())
+            Ok(c.table().to_string())
         } else {
-            err(span, format!("collection \"{}\" isn't in `schema`", c.table))
+            err(span, format!("collection \"{}\" is not registered", c.table()))
         }
     }
 
@@ -2949,7 +2949,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => {
                         let mut d = Diag::new(
                             prop_span,
-                            format!("`db.query.{prop}` doesn't match a collection in `schema`"),
+                            format!(
+                                "`db.query.{prop}` doesn't match a registered collection, table, or user projection"
+                            ),
                         );
                         let keys: Vec<&str> = self.schema.collections.values().map(|c| c.key.as_str()).collect();
                         if let Some(s) = suggest(prop, keys) {

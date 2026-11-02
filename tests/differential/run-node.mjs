@@ -28,24 +28,24 @@ function* columns(fields, prefix = [], dataPath = []) {
     for (const [layout, children] of Object.entries(meta.layouts ?? {})) yield* columns(children, [...key, layout], [...path, 0]);
   }
 }
-for (const c of Object.values(config.schema ?? {})) {
+for (const [name, c] of Object.entries({ ...config.collections, ...config.tables, ...config.users })) {
   for (const [op, rule] of Object.entries(c.options?.access ?? {})) {
     if (typeof rule !== "function") continue;
     for (const [i, ctx] of (mod.ACCESS_CTXS ?? []).entries()) {
-      await run(`access:${c.name}:${op}:${i}`, () => rule({ ...ctx, op }));
+      await run(`access:${name}:${op}:${i}`, () => rule({ ...ctx, op }));
     }
   }
   for (const { col, b, path } of columns(c.cols)) {
     for (const [op, rule] of Object.entries(b.$meta?.access ?? {})) {
       if (typeof rule !== "function") continue;
       for (const [i, ctx] of (mod.FIELD_CTXS ?? []).entries()) {
-        await run(`field:${c.name}:${col}:${op}:${i}`, () => rule({ ...ctx, op }));
+        await run(`field:${name}:${col}:${op}:${i}`, () => rule({ ...ctx, op }));
       }
     }
     const v = b.$meta?.validate;
     if (!v) continue;
-    for (const [i, value] of (mod.VALIDATE_VALUES?.[`${c.name}.${col}`] ?? []).entries()) {
-      await run(`validate:${c.name}:${col}:${i}`, () => {
+    for (const [i, value] of (mod.VALIDATE_VALUES?.[`${name}.${col}`] ?? []).entries()) {
+      await run(`validate:${name}:${col}:${i}`, () => {
         const ctx = structuredClone(mod.VALIDATE_CTX);
         let container = ctx.data;
         for (const key of path.slice(0, -1)) container = container[key];

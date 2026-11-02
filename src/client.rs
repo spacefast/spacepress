@@ -95,7 +95,7 @@ fn value_ts(c: &Column, mode: impl Into<Mode>) -> String {
         ColType::Email | ColType::Url | ColType::Slug | ColType::RichText | ColType::Timestamp | ColType::Date => {
             "string".into()
         }
-        ColType::Json => "unknown".into(),
+        ColType::Json => ty_ts(&crate::types::json_ty(c), &[]),
         ColType::MediaList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
@@ -615,4 +615,9 @@ pub fn files(
         }
     }
     out
+}
+
+/// The value type used by the backend registry, independently of config exports.
+pub(crate) fn registry_value(c: &Column) -> String {
+    value_ts(c, false)
 }

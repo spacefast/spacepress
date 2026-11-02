@@ -1,4 +1,4 @@
-// Lane M2: an original Zero (0.8) Space's app users moved into the new app's `auth: true`
+// Lane M2: an original Zero (0.8) Space's app users moved into the new app's user projection
 // collection (design §6.2), against real WordPress. users-run.sh seeded them through the ORIGINAL
 // identity plugin with the new app inactive (or replayed the rows it wrote), then activated the
 // members app and zero-identity.

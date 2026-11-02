@@ -1,8 +1,9 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
   action, blocks, boolean, collection, db, defineConfig, global, HttpError, id, integer, media, repeater, richText, select, text, url,
+  table,
 } from "zero";
-import { authors, comments, items, locations, posts, schema, relations, settings, shoppingList, UNITS } from "./schema";
+import { authors, comments, items, locations, posts, entities, relations, settings, shoppingList, UNITS } from "./schema";
 
 async function filters() {
   // Unknown column in a where filter
@@ -82,7 +83,7 @@ integer().defaultNow();
 // Hook mistakes: one defineConfig per mistake, since tsc reports only the
 // first assignability failure inside a single argument.
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   relations,
   hooks: {
     items: {
@@ -95,13 +96,13 @@ defineConfig({
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   // @ts-expect-error hooks are keyed by schema key, not table name
   hooks: { shopping_list: {} },
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   hooks: {
     items: {
       beforeUpdate(patch) {
@@ -117,7 +118,7 @@ defineConfig({
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   actions: {
     consume: action({
       input: { itemId: integer().notNull() },
@@ -145,23 +146,21 @@ media().default(1);
 text().validate((v) => (v > 3 ? true : "short"));
 
 // Access (§1.6)
-collection("pages", { id: id(), title: text().notNull() }, {
+collection({ id: id(), title: text().notNull() }, {
   // @ts-expect-error "moderator" is not a role
   access: { read: "moderator" },
 });
-collection("notes", { id: id(), body: text().notNull() }, {
-  editor: false,
-  // @ts-expect-error create rules return a boolean, not a filter
+table({ id: id(), body: text().notNull() }, {
+  // @ts-expect-error create access rules return booleans
   access: { create: (ctx) => ({ body: ctx.user?.name ?? "" }) },
 });
-collection("notes", { id: id(), body: text().notNull() }, {
-  editor: false,
-  // @ts-expect-error a returned filter is checked against the columns: body is text
+table({ id: id(), body: text().notNull() }, {
+  // @ts-expect-error filter values must match the field
   access: { update: () => ({ body: 1 }) },
 });
 // @ts-expect-error drafts can't be turned off for editor collections
-collection("notes", { id: id(), body: text().notNull() }, { drafts: false });
-collection("notes", { id: id(), body: text() }, {
+collection({ id: id(), body: text().notNull() }, { drafts: false });
+collection({ id: id(), body: text() }, {
   // @ts-expect-error the title column must be a NOT NULL text column
   title: "body",
 });
@@ -175,7 +174,7 @@ async function v1Queries() {
   await db.query.posts.findMany({ where: { tags: { has: "blog" } } });
   // @ts-expect-error JSON-valued columns can't be ordered
   await db.query.posts.findMany({ orderBy: { seo: "asc" } });
-  // @ts-expect-error editor: false collections have no drafts columns
+  // @ts-expect-error tables have no drafts columns
   await db.query.comments.findMany({ where: { status: "published" } });
   // @ts-expect-error repeater items need their NOT NULL sub-field `image`
   await db.update(posts).set({ gallery: [{ caption: "no image" }] });
@@ -191,7 +190,7 @@ async function v1Queries() {
 
 // Hook ctx (§1.7)
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   hooks: {
     posts: {
       afterCreate(row, ctx) {
@@ -209,7 +208,7 @@ defineConfig({
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   actions: {
     publish: action({
       input: { id: integer().notNull() },
@@ -221,13 +220,13 @@ defineConfig({
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   // @ts-expect-error there is no build target option
   target: "wp",
 });
 
 defineConfig({
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   // @ts-expect-error globals are made with global()
   globals: { settings: { siteTitle: "x" } },
 });

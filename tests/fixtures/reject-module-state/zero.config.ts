@@ -1,4 +1,4 @@
-import { collection, id, defineConfig } from "zero";
+import { collection, id, defineConfig, table } from "zero";
 let count = 0;
-const a = collection("a", { id: id() }, { editor: false });
-export default defineConfig({ schema: { a }, hooks: { a: { afterCreate(row) { count = count + 1; } } } });
+const a = table({ id: id() });
+export default defineConfig({ tables: { a }, hooks: { a: { afterCreate(row) { count = count + 1; } } } });

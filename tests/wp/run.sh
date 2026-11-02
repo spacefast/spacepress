@@ -40,5 +40,5 @@ node --test --test-concurrency=1 "$here"/*.test.ts
 "$here/admin/subdir-run.sh"
 # Lane M: an original Zero 0.8 site migrated in place, on a fresh stack running the migrated app.
 "$here/legacy/run.sh"
-# Lane M2: its app users into an `auth: true` collection.
+# Lane M2: its app users into an user projection.
 "$here/legacy/users-run.sh"

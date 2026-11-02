@@ -1,12 +1,15 @@
 // Image sizes, focal point and private files on real WordPress (phase 2 §7.2). The app fragment
 // (app/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { createClient, ZeroError } from "./app/zero/client/index.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
 import { api, auth, harness, http, ok, problem, sql, wp } from "./env.ts";
 
 /** A 400x200 PNG: left half red, right half blue, so a crop's colour shows where its origin landed. */
-function splitPng(): Uint8Array {
+function splitPng(): Buffer<ArrayBuffer> {
   const [w, h] = [400, 200];
   const raw = Buffer.alloc((w * 3 + 1) * h);
   for (let y = 0; y < h; y++) {
@@ -29,7 +32,7 @@ function splitPng(): Uint8Array {
 
 async function upload(bytes: Uint8Array, name: string, type: string, as: "author" | "subscriber" = "author") {
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type }), name);
+  form.append("file", new Blob([new Uint8Array(bytes)], { type }), name);
   return http("POST", `${api}/media`, { as, form });
 }
 
@@ -57,6 +60,7 @@ async function uploadSplit() {
   return r.json.data;
 }
 
+if (process.env.ZERO_WP_S3 !== "1") {
 test("an upload returns the configured sizes; the files exist with the right dimensions", async () => {
   const img = await uploadSplit();
   assert.equal(img.focal, null);
@@ -263,7 +267,7 @@ const pdf = (text: string) => new TextEncoder().encode(`%PDF-1.4\n1 0 obj<<>>end
 
 async function uploadDeck(bytes: Uint8Array, as: "author" | "editor" = "author", name = "Q3 plan.pdf") {
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type: "application/pdf" }), name);
+  form.append("file", new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), name);
   return http("POST", `${api}/files/decks`, { as, form });
 }
 
@@ -468,3 +472,139 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
   assert.equal(probe(), "protected");
   assert.equal((await uploadDeck(pdf("ok"))).status, 201);
 });
+
+} else {
+  // This lane buys the real provider/replica boundary; local tests above own the ordinary rules.
+  test("S3 keeps files, originals and editor derivatives durable across fresh replicas", async () => {
+    const compose = (...args: string[]) => execFileSync(fileURLToPath(new URL("./harness.sh", import.meta.url)), ["compose", ...args], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }).trim();
+    const replicaPhp = (code: string) => compose("exec", "-T", "replica", "php", "-r", "require '/var/www/html/wp-load.php'; " + code);
+    const editor = createClient({ url: api, headers: auth("editor") });
+    const other = createClient({ url: api, headers: auth("subscriber") });
+    const bytes = Buffer.from("%PDF-1.4\nstateless replica proof\n%%EOF\n");
+    const file = await editor.files.decks.upload(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), { filename: "replicas.pdf" });
+    const image = await editor.media.upload(new Blob([splitPng()], { type: "image/png" }), { filename: "replicas.png" });
+    const post = await editor.talks.create({ title: "Remote files", deck: file.id, image: image.id });
+    const record = await editor.uploadRecords.create({ deck: file.id, image: image.id });
+    for (const result of [await editor.talks.get(post.id, { with: { deck: true, image: true } }), await editor.uploadRecords.get(record.id, { with: { deck: true, image: true } })]) {
+      assert.ok(result.deck !== null && typeof result.deck === "object");
+      assert.equal(result.deck.id, file.id);
+      assert.equal(result.image?.id, image.id);
+    }
+    await assert.rejects(other.files.decks.get(file.id), (error: unknown) => error instanceof ZeroError && error.status === 403);
+    const masked = await other.uploadRecords.get(record.id, { with: { deck: true } });
+    assert.equal(masked.deck, file.id, "unauthorized relation loads reveal no download grant");
+    assert.equal((await fetch(file.url.split("?")[0])).status, 403);
+    assert.deepEqual(Buffer.from(await (await fetch(file.url)).arrayBuffer()), bytes);
+    assert.deepEqual([image.sizes.card.width, image.sizes.card.height], [120, 120]);
+    const original = Buffer.from(await (await fetch(image.url)).arrayBuffer());
+    const derivative = Buffer.from(await (await fetch(image.sizes.card.url)).arrayBuffer());
+    assert.deepEqual(original, Buffer.from(splitPng()));
+    assert.notDeepEqual(derivative, original);
+    // Core REST uploads follow the same WP hooks, including the Zero sizes used by the editor.
+    const coreUpload = await fetch(`${harness.url}/wp-json/wp/v2/media`, { method: "POST", headers: { ...auth("editor"), "Content-Type": "image/png", "Content-Disposition": 'attachment; filename="editor.png"' }, body: splitPng() });
+    assert.equal(coreUpload.status, 201, await coreUpload.clone().text());
+    const attachment: { id: number; source_url: string; media_details: { sizes: Record<string, { source_url: string }> } } = await coreUpload.json();
+    const coreDerivative = attachment.media_details.sizes.zero_card.source_url;
+    assert.equal((await fetch(coreDerivative)).status, 200);
+    // Persist a real block URL: it must remain useful without an expiring provider grant.
+    await editor.posts.create({ title: "Bucket block", body: `<!-- wp:image {"id":${attachment.id}} --><figure class="wp-block-image"><img src="${attachment.source_url}"/></figure><!-- /wp:image -->` });
+    const manifest: Record<string, { key: string }> = JSON.parse(wp("eval", `echo wp_json_encode(\\Zero\\Wp\\Uploads::manifest(${image.id}));`));
+    assert.ok(Object.values(manifest).length >= 3);
+    assert.ok(Object.values(manifest).every((entry) => /\/media\/[a-f0-9]{48}$/.test(entry.key)));
+    const inspect = await ok("GET", "/_schema");
+    const publicJson = JSON.stringify(inspect);
+    assert.equal(publicJson.includes("ZERO_TEST_UPLOAD_SECRET"), false);
+    assert.equal(publicJson.includes("1111111111111111111111111111111111111111111111111111111111111111"), false);
+    const fileKey = sql(`SELECT path FROM wp_zero__files WHERE id=${file.id}`)[0].path.slice(3);
+    // New container, independent WP volume, same database and bucket. No A upload bytes survive.
+    compose("exec", "-T", "wordpress", "sh", "-c", "rm -rf /var/www/html/wp-content/uploads/* /tmp/zero-uploads-*");
+    compose("--profile", "replica", "up", "-d", "replica");
+    const replicaUrl = `http://127.0.0.1:${process.env.ZERO_WP_REPLICA_PORT ?? "8791"}`;
+    // Poll an actual HTTP signal while the fresh image installs core/config.
+    const deadline = Date.now() + 60_000;
+    while (true) {
+      try { if ((await fetch(`${replicaUrl}/wp-json/zero/v1/_schema`)).status === 200) break; } catch {}
+      assert.ok(Date.now() < deadline, "fresh replica reached the Zero route");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    assert.equal(replicaPhp("echo count(glob(WP_CONTENT_DIR . '/uploads/*') ?: []);"), "0", "B starts without upload data");
+    wp("option", "update", "home", replicaUrl);
+    wp("option", "update", "siteurl", replicaUrl);
+    compose("stop", "wordpress");
+    const replica = createClient({ url: `${replicaUrl}/wp-json/zero/v1`, headers: auth("editor") });
+    const fresh = await replica.files.decks.get(file.id);
+    assert.deepEqual(Buffer.from(await (await fetch(fresh.url)).arrayBuffer()), bytes);
+    const freshImage = await replica.media.get(image.id);
+    assert.deepEqual(Buffer.from(await (await fetch(freshImage.url)).arrayBuffer()), original);
+    assert.deepEqual(Buffer.from(await (await fetch(freshImage.sizes.card.url)).arrayBuffer()), derivative);
+    assert.equal((await fetch(coreDerivative.replace(harness.url, replicaUrl))).status, 200);
+    const focal = await replica.media.update(image.id, { focal: { x: 0, y: 0.5 } });
+    assert.notDeepEqual(Buffer.from(await (await fetch(focal.sizes.card.url)).arrayBuffer()), derivative, "B hydrates original and generates a new crop");
+    assert.equal((await fetch(freshImage.sizes.card.url)).status, 404, "superseded crop loses its manifest grant");
+    const responsive = replicaPhp(`echo wp_get_attachment_image_srcset(${attachment.id}, 'zero_wide');`);
+    assert.ok(responsive.includes('/wp-json/zero/v1/media/'), responsive);
+    for (const candidate of responsive.split(', ')) {
+      assert.equal((await fetch(candidate.split(' ')[0])).status, 200, "core srcset uses durable variants");
+    }
+    // The core image editor scales and restores on B using remote originals and backup sizes.
+    const edited: { msg?: string; error?: string } = JSON.parse(replicaPhp(String.raw`
+      require_once ABSPATH . 'wp-admin/includes/image.php';
+      require_once ABSPATH . 'wp-admin/includes/image-edit.php';
+      $_REQUEST = ['do' => 'scale', 'fwidth' => 200, 'fheight' => 100, 'target' => 'all', 'context' => 'edit-attachment'];
+      echo wp_json_encode(wp_save_image(${attachment.id}));
+    `));
+    assert.equal(edited.error, undefined, JSON.stringify(edited));
+    const restored: { msg?: string; error?: string } = JSON.parse(replicaPhp(String.raw`
+      require_once ABSPATH . 'wp-admin/includes/image.php';
+      require_once ABSPATH . 'wp-admin/includes/image-edit.php';
+      echo wp_json_encode(wp_restore_image(${attachment.id}));
+    `));
+    assert.equal(restored.error, undefined, JSON.stringify(restored));
+    assert.deepEqual(Buffer.from(await (await fetch((await replica.media.get(attachment.id)).url)).arrayBuffer()), original);
+    const credentialFailure: { status: number; code: string; detail: string } = JSON.parse(replicaPhp(String.raw`
+      putenv('ZERO_TEST_UPLOAD_SECRET=invalid-test-credential');
+      $tmp = tempnam(sys_get_temp_dir(), 'credential'); file_put_contents($tmp, 'private');
+      try { (new \Zero\Media\S3(\Zero\Wp\Runtime::plugin()->schema->uploads()))->put(\Zero\Wp\Uploads::prefix() . 'denied', $tmp, 'text/plain'); }
+      catch (\Zero\HttpError $e) { echo wp_json_encode(['status' => $e->status, 'code' => $e->errorCode, 'detail' => $e->getMessage()]); }
+      finally { unlink($tmp); }
+    `));
+    assert.deepEqual(credentialFailure, { status: 503, code: 'uploads_unavailable', detail: 'The configured upload storage is unavailable' });
+    // Compensation removes a rolled-back private object while keeping committed bytes.
+    const rollback: { before: number; after: number; rows: number } = JSON.parse(replicaPhp(String.raw`
+      \Zero\Wp\Runtime::plugin()->app();
+      $db = \Zero\Db::instance();
+      $store = \Zero\Wp\Uploads::store();
+      [$before] = $store->page(\Zero\Wp\Uploads::prefix(), null);
+      $tmp = tempnam(sys_get_temp_dir(), 'rollback'); file_put_contents($tmp, "%PDF-1.4\n%%EOF\n");
+      try { $db->transaction(function () use ($tmp) { \Zero\Media\Files::upload('decks', $tmp, 'rollback.pdf', null); throw new RuntimeException('rollback'); }); }
+      catch (RuntimeException $e) { if ($e->getMessage() !== 'rollback') throw $e; }
+      [$after] = $store->page(\Zero\Wp\Uploads::prefix(), null);
+      global $wpdb;
+      echo wp_json_encode(['before' => count($before), 'after' => count($after), 'rows' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}zero__files WHERE filename = 'rollback.pdf'")]);
+    `));
+    assert.equal(rollback.after, rollback.before);
+    assert.equal(rollback.rows, 0);
+    // Upload failure must not succeed onto replica-local disk or leak provider request details.
+    compose("stop", "garage");
+    await assert.rejects(replica.files.decks.upload(new Blob([bytes]), { filename: "failure.pdf" }), (error: unknown) => error instanceof ZeroError && error.status === 503 && !error.message.includes("1111111111111111"));
+    await assert.rejects(replica.media.upload(new Blob([splitPng()], { type: "image/png" }), { filename: "failure.png" }), (error: unknown) => error instanceof ZeroError && error.status === 503);
+    // Metadata deletion immediately revokes access even when the provider cannot delete yet.
+    await replica.files.decks.delete(file.id);
+    assert.equal((await fetch(fresh.url)).status, 404);
+    await replica.media.delete(image.id);
+    assert.equal((await fetch(focal.url)).status, 404);
+    compose("up", "-d", "--wait", "garage");
+    // Durable maintenance retries failed deletes; a committed editor attachment remains referenced.
+    const recovered: { remaining: string[] } = JSON.parse(replicaPhp(String.raw`
+      \Zero\Wp\Uploads::reconcile(time() + 1);
+      [$objects] = \Zero\Wp\Uploads::store()->page(\Zero\Wp\Uploads::prefix(), null);
+      echo wp_json_encode(['remaining' => array_column($objects, 'key')]);
+    `));
+    assert.equal(recovered.remaining.includes(fileKey), false, "outage-deferred private deletion is retried");
+    assert.ok(Object.values(manifest).every((entry) => !recovered.remaining.includes(entry.key)), "deleted media objects are collected");
+    assert.equal((await fetch((await replica.media.get(attachment.id)).url)).status, 200, "reconciliation retains referenced objects");
+    assert.equal(replicaPhp("echo count(glob(sys_get_temp_dir() . '/zero-uploads-*') ?: []);"), "0", "successful requests clean processing scratch data");
+    const logs = compose("logs", "--no-color", "replica");
+    assert.equal(logs.includes("1111111111111111111111111111111111111111111111111111111111111111"), false, "credentials never enter server logs");
+  });
+}

@@ -1,0 +1,44 @@
+# Intentionally tracked credentials are disposable, isolated to this test project, never reused.
+services:
+  garage:
+    image: dxflrs/garage:v2.1.0@sha256:4c9b34c113e61358466e83fd6e7d66e6d18657ede14b776eb78a93ee8da7cf6a
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage:/var/lib/garage
+    command: ["/garage", "server"]
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 1s
+      retries: 60
+  wordpress:
+    environment: &uploads
+      ZERO_TEST_UPLOAD_KEY: GK111111111111111111111111
+      ZERO_TEST_UPLOAD_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
+      ZERO_TEST_UPLOAD_ENDPOINT: http://garage:3900
+  cli:
+    environment: *uploads
+  replica:
+    image: wordpress:7.1-php8.5-apache
+    environment:
+      <<: *uploads
+      APACHE_RUN_USER: "#${ZERO_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${ZERO_WP_GID:-1000}"
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('DISABLE_WP_CRON', true);
+        define('ZERO_IDENTITY_DEV_HTTP', true);
+    profiles: [replica]
+    ports:
+      - "${ZERO_WP_REPLICA_PORT:-8791}:80"
+    volumes:
+      - replica:/var/www/html
+      - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
+      - ./apache/zz-zero-tests.conf:/etc/apache2/conf-enabled/zz-zero-tests.conf:ro
+      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+volumes:
+  garage:
+  replica:

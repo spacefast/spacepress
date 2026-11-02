@@ -320,7 +320,7 @@ focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
 centre by default); `inside` scales to fit. Media rows carry
 `sizes.<name>.url`.
 
-<a id="files"></a>Private files live in buckets:
+<a id="files"></a>Private files live in logical file resources:
 
 ```ts
 files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
@@ -331,6 +331,34 @@ public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
 valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
 `accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
 `payload_too_large`.
+
+Configure durable uploads once for the app:
+
+```ts
+uploads: {
+  backend: "s3",
+  bucket: env("UPLOAD_BUCKET"),
+  region: "us-east-1",
+  // endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, // compatible providers
+  prefix: "my-app",
+  credentials: {
+    accessKeyId: env("UPLOAD_ACCESS_KEY_ID"),
+    secretAccessKey: env("UPLOAD_SECRET_ACCESS_KEY"),
+  },
+},
+```
+
+This backend stores private files, media originals and generated sizes, including
+standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
+keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
+Collections and tables can both reference files and media. Credentials resolve
+only at runtime; the compiler requires `env()` references. An optional
+`sessionToken: env("UPLOAD_SESSION_TOKEN")` supports temporary credentials.
+
+`uploads: { backend: "local" }` selects the existing local development behavior
+(also the default when omitted). S3 never falls back to durable local storage.
+See [upload storage](uploads.md) for provider permissions, failure recovery,
+existing-data cutover and the WordPress plugin boundary.
 
 ## Locales
 

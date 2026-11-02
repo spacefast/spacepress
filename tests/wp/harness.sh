@@ -31,7 +31,11 @@ STATE=.harness-state
 export ZERO_WP_CONTENT="${ZERO_WP_CONTENT:-$PWD/empty-wp-content}"
 
 # -p wins over an inherited COMPOSE_PROJECT_NAME, which would otherwise merge stacks.
-compose() { docker compose -p "$ZERO_WP_PROJECT" "$@"; }
+compose() {
+  local -a files=(-f compose.yml)
+  [[ ${ZERO_WP_S3:-0} != 1 ]] || files+=(-f compose.s3.yml)
+  docker compose -p "$ZERO_WP_PROJECT" "${files[@]}" "$@"
+}
 wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pzero-test-db wordpress --batch -e "$1"; }
 
@@ -77,6 +81,15 @@ PINS
 
   local url="http://127.0.0.1:${ZERO_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
+  if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+    local node
+    node=$(compose exec -T garage /garage node id | cut -d@ -f1)
+    compose exec -T garage /garage layout assign -z test -c 1G "$node" >/dev/null
+    compose exec -T garage /garage layout apply --version 1 >/dev/null
+    compose exec -T garage /garage bucket create zero-uploads >/dev/null
+    compose exec -T garage /garage key import --yes -n zero-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
+    compose exec -T garage /garage bucket allow --read --write --owner zero-uploads --key zero-test >/dev/null
+  fi
   if [[ -n $subdir ]]; then
     [[ $subdir =~ ^[a-z0-9-]+$ ]] || { echo '--path must be one lowercase path segment' >&2; exit 2; }
     # A real subdirectory install: the document root is a directory above WordPress holding only
@@ -158,8 +171,13 @@ case "$cmd" in
   up) up "$@" ;;
   wp) wp "$@" ;;
   sql) sql "$1" ;;
+  compose) compose "$@" ;;
   down)
-    compose down -v --remove-orphans >/dev/null 2>&1
+    if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+      compose --profile replica down -v --remove-orphans >/dev/null 2>&1
+    else
+      compose down -v --remove-orphans >/dev/null 2>&1
+    fi
     rm -f "$STATE"
     ;;
   *) sed -n '2,15p' "$0" >&2; exit 2 ;;

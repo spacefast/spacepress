@@ -105,7 +105,7 @@ export default function UnsavedChangesModal() {
 	const isPendingSaveRef = useRef( false );
 	const shouldClearOnNavigationRef = useRef( false );
 	const recordsToClearRef = useRef< DirtyEntityRecord[] >( entityRecords );
-	const hasUnsavedChanges = entityRecords.length > 0;
+	const hasUnsavedChanges = entityRecords.length > 0 || !isEntityValid;
 	const isSaveInFlight = isPendingSave || isSaving;
 	const blocker = useBlocker( {
 		shouldBlockFn: ( { current, next } ) =>

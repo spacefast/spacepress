@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useEntityValidity } from '@zero-admin/admin-toolkit';
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginDocumentSettingPanel, store as editorStore } from '@wordpress/editor';
 import { useParams } from '@wordpress/route';
@@ -31,7 +32,7 @@ function ContentFieldsPanel() {
 	// then would cache empty blocks before the editor's block types are registered.
 	if (String(postId) !== params.slug || postType !== native(params.collection)?.postType)
 		return null;
-	return <DocumentFields collection={params.collection} id={params.slug} />;
+	return <DocumentFields key={`${params.collection}/${params.slug}`} collection={params.collection} id={params.slug} />;
 }
 function DocumentFields({
 	collection,
@@ -41,6 +42,23 @@ function DocumentFields({
 	id: string;
 }) {
 	const [objects] = useState(() => new EditingObjects());
+	const [jsonDrafts] = useState(() => new Map<string, string>());
+	const [valid, setValid] = useState(true);
+	const { setIsEntityValid } = useEntityValidity();
+	const { lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving } = useDispatch(editorStore);
+	useEffect(() => {
+		const lock = `zero-fields:${collection}/${id}`;
+		setIsEntityValid(valid);
+		if (!valid) {
+			void lockPostSaving(lock);
+			void lockPostAutosaving(lock);
+		}
+		return () => {
+			void unlockPostSaving(lock);
+			void unlockPostAutosaving(lock);
+			setIsEntityValid(true);
+		};
+	}, [valid, collection, id, setIsEntityValid, lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving]);
 	const state = useLoad(() => collectionSpec(collection), [collection]);
 	const transport = native(collection);
 	const record = useSelect(
@@ -89,6 +107,8 @@ function DocumentFields({
 					fields={state.value.columns}
 					values={fromNative(state.value, record, objects)}
 					objects={objects}
+					jsonDrafts={jsonDrafts}
+					onValidityChange={setValid}
 					omit={[
 						state.value.primaryKey,
 						state.value.title ?? '',

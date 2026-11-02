@@ -246,6 +246,39 @@ if (!subdir) {
 		});
 		expect(link.status()).toBe(200);
 		expect((await link.json()).data.rootCode).toBe(code);
+		// Invalid JSON is an unsaved draft even when core-data has no edits.
+		const event = await request.post(`${site}/wp-json/zero/v1/dossier`, {
+			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true } },
+		});
+		expect(event.status(), await event.text()).toBe(201);
+		const eventId = (await event.json()).data.id;
+		await page.goto(`${site}/zero-admin/collections/dossier/${eventId}`);
+		const jsonFields = page.getByRole('button', { name: 'Fields', exact: true });
+		await expect(jsonFields).toBeVisible();
+		if ((await jsonFields.getAttribute('aria-expanded')) !== 'true') await jsonFields.click();
+		const payload = page.locator('.zero-schema-json').filter({ hasText: 'Payload' }).locator('textarea');
+		await expect(payload).toHaveValue(JSON.stringify({ committed: true }, null, 2));
+		await payload.fill('unfinished');
+		await expect(page.getByRole('alert').filter({ hasText: 'Enter valid JSON' })).toBeVisible();
+		const eventSave = page.getByRole('button', { name: /^(Save|Save draft|Update)$/ }).last();
+		await expect(eventSave).toBeDisabled();
+		await jsonFields.click();
+		await expect(eventSave).toBeDisabled();
+		await jsonFields.click();
+		await expect(payload).toHaveValue('unfinished');
+		await page.getByRole('link', { name: 'Go back', exact: true }).click();
+		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
+		await page.getByRole('button', { name: 'Continue editing', exact: true }).click();
+		await expect(payload).toHaveValue('unfinished');
+		await payload.fill('{"committed":false,"corrected":true}');
+		await expect(eventSave).toBeEnabled();
+		const jsonSaved = page.waitForResponse((r) =>
+			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_dossier/${eventId}`) &&
+			['POST', 'PUT'].includes(r.request().method()));
+		await eventSave.click();
+		expect((await jsonSaved).status()).toBe(200);
+		const eventRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
+		expect((await eventRead.json()).data.payload).toEqual({ committed: false, corrected: true });
 		expect(errors).toEqual([]);
 	});
 	test('a subscriber sees explicit denial for an editor-only collection', async ({

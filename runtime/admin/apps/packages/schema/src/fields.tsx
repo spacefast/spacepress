@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import {
 	Button,
@@ -33,7 +33,15 @@ import {
 function scalar(v: unknown): string {
 	return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
 }
-type FieldState = { objects: EditingObjects; operation: 'create' | 'update' };
+type FieldState = {
+	objects: EditingObjects;
+	operation: 'create' | 'update';
+	validation: {
+		drafts: Map<string, string>;
+		change: (path: string, source?: string) => void;
+		remove: (path: string) => void;
+	};
+};
 const EditingState = createContext<FieldState | null>(null);
 function Reference({
 	column,
@@ -210,19 +218,29 @@ function JsonField({
 	value,
 	onChange,
 	disabled,
+	path,
 }: {
 	column: Column;
 	value: unknown;
 	onChange: (v: unknown) => void;
 	disabled: boolean;
+	path: string;
 }) {
-	const [source, setSource] = useState(JSON.stringify(value ?? null, null, 2));
+	const validation = useContext(EditingState)?.validation;
+	const [source, setSource] = useState(
+		() => validation?.drafts.get(path) ?? JSON.stringify(value ?? null, null, 2)
+	);
+	const remove = validation?.remove;
+	useEffect(() => () => remove?.(path), [remove, path]);
+	const invalid = validation?.drafts.has(path) ?? false;
 	return (
 		<label className="zero-schema-json">
 			{column.label}
 			<textarea
 				value={source}
 				disabled={disabled}
+				aria-invalid={invalid}
+				ref={(element) => element?.setCustomValidity(invalid ? 'Enter valid JSON before saving.' : '')}
 				rows={8}
 				onChange={(e) => {
 					const v = e.target.value;
@@ -230,12 +248,15 @@ function JsonField({
 					try {
 						const parsed: unknown = JSON.parse(v);
 						onChange(parsed);
+						validation?.change(path);
 						e.target.setCustomValidity('');
 					} catch {
+						validation?.change(path, v);
 						e.target.setCustomValidity('Enter valid JSON before saving.');
 					}
 				}}
 			/>
+			{invalid && <span role="alert">Enter valid JSON before saving.</span>}
 			<span>{column.help || 'JSON value'}</span>
 		</label>
 	);
@@ -248,6 +269,7 @@ function Field({
 	editing,
 	objects,
 	operation,
+	path,
 }: {
 	column: Column;
 	value: unknown;
@@ -256,6 +278,7 @@ function Field({
 	editing: boolean;
 	objects: EditingObjects;
 	operation: FieldState['operation'];
+	path: string;
 }) {
 	const writable = (column: Column) =>
 		allowed(operation === 'create' ? column.create : column.write, bootstrap().role);
@@ -281,6 +304,7 @@ function Field({
 				<legend>{c.label}</legend>
 				<p>{c.help}</p>
 				<Fields
+					path={`${path}/`}
 					fields={c.fields}
 					values={row}
 					onChange={(key, v) => {
@@ -348,6 +372,7 @@ function Field({
 										/>
 									)}
 									<Fields
+										path={`${path}/${objects.key(row)}/`}
 										fields={fields}
 										values={row}
 										onChange={(key, v) => update({ ...row, [key]: v })}
@@ -434,6 +459,7 @@ function Field({
 	if (c.type === 'json')
 		return (
 			<JsonField
+				path={path}
 				column={c}
 				value={value}
 				onChange={onChange}
@@ -500,6 +526,9 @@ export function Fields({
 	disabled = false,
 	omit = [],
 	objects,
+	jsonDrafts,
+	onValidityChange,
+	path = '',
 }: {
 	fields: Columns;
 	values: Row;
@@ -508,13 +537,37 @@ export function Fields({
 	disabled?: boolean;
 	omit?: string[];
 	objects?: EditingObjects;
+	jsonDrafts?: Map<string, string>;
+	onValidityChange?: (valid: boolean) => void;
+	path?: string;
 }) {
 	const { role } = bootstrap();
 	const inherited = useContext(EditingState);
 	const [local] = useState(() => new EditingObjects());
+	const [localDrafts] = useState(() => new Map<string, string>());
+	const mounted = useRef(false);
+	useLayoutEffect(() => {
+		mounted.current = true;
+		return () => { mounted.current = false; };
+	}, []);
+	const drafts = jsonDrafts ?? localDrafts;
+	const change = useCallback((field: string, source?: string) => {
+		if (source === undefined) drafts.delete(field);
+		else drafts.set(field, source);
+		onValidityChange?.(drafts.size === 0);
+	}, [drafts, onValidityChange]);
+	const remove = useCallback((field: string) => {
+		// Removing a row retires its draft. Collapsing the whole panel keeps
+		// drafts in its document-owned map until reopened or discarded.
+		if (mounted.current) change(field);
+	}, [change]);
+	useEffect(() => {
+		if (!inherited) onValidityChange?.(drafts.size === 0);
+	}, [inherited, drafts, onValidityChange]);
 	const state: FieldState = inherited ?? {
 		objects: objects ?? local,
 		operation: editing ? 'update' : 'create',
+		validation: { drafts, change, remove },
 	};
 	return (
 		<EditingState.Provider value={state}>
@@ -531,6 +584,7 @@ export function Fields({
 					.map(([key, c]) => (
 						<Field
 							key={key}
+							path={`${path}${key}`}
 							column={c}
 							value={values[key]}
 							onChange={(v) => onChange(key, v)}

@@ -15,13 +15,19 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 	const collection = { name: 'posts', label: 'Posts', columns: fields, primaryKey: 'id', access: {} };
 	function Form() {
 		const [objects] = useState(() => new EditingObjects());
+		const [drafts] = useState(() => new Map<string, string>());
+		const [valid, setValid] = useState(true);
+		const [shown, setShown] = useState(true);
 		const [record, setRecord] = useState<Row>(() => toNative(collection, {
 			entries: [{ open: 'Returned', metadata: { owner: 'first' } }, { metadata: { owner: 'second' } }, {}],
 		}));
 		const values = fromNative(collection, record, objects);
 		return <>
-			<Fields fields={fields} values={values} objects={objects}
-				onChange={(key, value) => setRecord(toNative(collection, { [key]: value }, objects))} />
+			{shown && <Fields fields={fields} values={values} objects={objects}
+				jsonDrafts={drafts} onValidityChange={setValid}
+				onChange={(key, value) => setRecord(toNative(collection, { [key]: value }, objects))} />}
+			<button disabled={!valid}>Save</button>
+			<button onClick={() => setShown(!shown)}>Toggle fields</button>
 			<output>{JSON.stringify(values)}</output>
 		</>;
 	}
@@ -45,6 +51,13 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 		entries: [{ metadata: { owner: 'second' } }, {}, { open: 'Edited', sealed: 'Complete' }],
 	});
 	expect(json).toHaveValue('unfinished');
+	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+	await user.click(screen.getByRole('button', { name: 'Toggle fields' }));
+	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+	await user.click(screen.getByRole('button', { name: 'Toggle fields' }));
+	expect(screen.getAllByRole('textbox', { name: /Metadata/ })[1]).toHaveValue('unfinished');
+	await user.click(screen.getByRole('button', { name: 'Remove 3' }));
+	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
 });
 
 test('changing a returned block layout creates editable nested groups without exposing masked siblings', async () => {

@@ -1,8 +1,8 @@
 //! `zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp "<wp-cli command>"]`
 //!
 //! Runs the runtime's `wp zero migrate-legacy` against a WordPress site with the new app active.
-//! The original release is sent on stdin, so the target can be a local harness (the default: the
-//! `zero dev --wp` harness's `wp`, honouring ZERO_WP_PROJECT), a container, or `wp --ssh=<host>`.
+//! The original release is sent on stdin, so the target can be the local Studio site (the default),
+//! a container, or `wp --ssh=<host>`.
 //! The PHP command owns the migration; this wrapper only transports it and keeps its exit status.
 use std::io::Write;
 use std::path::PathBuf;
@@ -45,7 +45,7 @@ fn args(rest: &[String]) -> Result<Args, String> {
     })
 }
 
-/// The WP-CLI invocation: `--wp` split on whitespace, or the bundled harness.
+/// The WP-CLI invocation: `--wp` split on whitespace, or this project's local Studio site.
 fn wp_command(wp: Option<&str>) -> Result<Command, String> {
     if let Some(cmd) = wp {
         let mut parts = cmd.split_whitespace();
@@ -54,11 +54,7 @@ fn wp_command(wp: Option<&str>) -> Result<Command, String> {
         command.args(parts);
         return Ok(command);
     }
-    let harness =
-        super::dev::harness().map_err(|e| format!("no WordPress target: pass --wp \"wp --path=/srv/site\" ({e})"))?;
-    let mut command = Command::new("bash");
-    command.arg(harness).arg("wp");
-    Ok(command)
+    super::dev::wp_command(&std::env::current_dir().map_err(|e| e.to_string())?)
 }
 
 pub(crate) fn cli(rest: &[String]) -> ExitCode {

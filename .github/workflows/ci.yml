@@ -54,6 +54,8 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: target/debug/zero check examples/showcase
+      - name: Docker-free local development acceptance
+        run: node --test scripts/dev/acceptance.test.mjs
 
   php:
     runs-on: ubuntu-24.04
@@ -155,6 +157,7 @@ jobs:
       - run: tsc -p examples/blog/client-tests
       - run: node --test runtime/client/index.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
+      - run: node --test scripts/dev/studio.test.mjs
 
   wp:
     runs-on: ubuntu-24.04

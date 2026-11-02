@@ -87,8 +87,10 @@ zero migrate site content-model.php --dry-run --wp "wp --path=/srv/site"
 
 `--wp` is any WP-CLI command that reaches the site: `wp --ssh=host:/path`,
 `docker compose exec -T cli wp`, and so on. The release is sent on stdin, so the
-file stays on your machine. Without `--wp`, the command targets the local test
-harness.
+file stays on your machine. Without `--wp`, the command targets the current
+project's WordPress Studio site created by `zero dev`. This selects a target;
+it does not import an existing site or its database into Studio. Use `--wp`
+to migrate the original site in place.
 
 The report lists each collection's record ids, how many revisions come along,
 what's skipped (trashed posts stay in the trash, untouched), and review notes

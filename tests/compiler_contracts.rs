@@ -464,6 +464,12 @@ import type { Actions } from './zero/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
+declare const derived: Actions['classesMutation']['output']['c'];
+const inherited: string = derived.label;
+const overridden: number = derived.count;
+const extra: number = derived.extra;
+declare const baseCall: Actions['classesBaseArgument']['output'];
+const virtualResult: number = baseCall;
 // @ts-expect-error Methods are not restored by JSON.
 instance.inc(1);
 declare const effects: Actions['classesEffects']['output'];

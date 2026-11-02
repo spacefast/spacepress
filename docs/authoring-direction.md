@@ -242,6 +242,50 @@ adapted code, including its tests. Existing adoption evidence already records
 the limited ts2php URI helper reuse; it does not establish that another
 project's complete emitter is compatible.
 
+## Native providers and automated setup
+
+Selected direction: expose typed Zero capabilities backed by maintained PHP
+libraries and WordPress plugins where they fit. Keep expanding compilation for
+authored TypeScript; importing an npm package does not by itself make that
+package compatible with PHP. Avoid porting a library when a maintained native
+implementation already provides the required behavior.
+
+Reuse WordPress authentication, capabilities, Gutenberg and media processing.
+The existing platform already pins Secure Custom Fields, Action Scheduler and
+MCP Adapter, with Polylang when locales are configured. Additional plugins use
+the existing exact-version declarations and checksum lock. Existing PHP
+`Extensions` registrations provide integration hooks; this direction does not
+add a general-purpose PHP-call escape to compiled TypeScript.
+
+For each supported integration, define its typed inputs/results, effects,
+authority and target requirements. Access analysis must still distinguish a
+pure helper from database writes or network effects. A WordPress-only provider
+must produce a located diagnostic on an unsupported target. An installed plugin
+is not evidence that its operations obey Zero's row access or field masking;
+the adapter must retain those boundaries.
+
+Dependency acquisition, installation, activation, configuration and readiness
+are separate states. Today a WordPress build bundles pinned plugins but does
+not activate them. Supported integrations should automate repeatable setup in
+dependency order, preserving unrelated site settings and reporting actionable
+failures. Runtime credentials come from environment configuration; do not put
+them in the plugin lock or public schema. Readiness must exercise the declared
+capability rather than merely detect the plugin's files.
+
+For S3, compare maintained offload plugins with a maintained PHP SDK against the
+complete files contract above before selecting a provider. Originals,
+derivatives, private reads, native-editor uploads and replica replacement must
+all work; a public-media-only offload plugin is insufficient for private files.
+No new S3 or SEO provider is selected or qualified by this document. A PHP
+library may still be bundled and scoped for reproducible deployment; reuse
+means avoiding a hand-written replacement, not requiring a live package manager
+on the deployed site. Retain dependency licenses, exact pins and provenance.
+
+Extend existing plugin acquisition and runtime integration owners. Prove setup
+can run twice without changing unrelated state, and prove real operations on a
+disposable WordPress installation. Use the existing WordPress/S3 acceptance
+owners for the actual storage behavior rather than adding a parallel harness.
+
 ## What better UX must demonstrate
 
 The competitor research is recorded in [research adoption](research-adoption.md)

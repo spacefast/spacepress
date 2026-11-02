@@ -10,7 +10,7 @@ type Entities = {
     'userId': ColumnBuilder<'integer', number, false, false, false, false>;
     'status': ColumnBuilder<'text', "draft" | "published" | "scheduled", true, true, false, false>;
     'publishedAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
-    'uid': ColumnBuilder<'text', string, false, false, false, false>;
+    'uid': ColumnBuilder<'text', string, true, true, false, false>;
   }, false, 'collection'>;
   'posts': Collection<'posts', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;
@@ -30,7 +30,7 @@ type Entities = {
     'updatedAt': ColumnBuilder<'timestamp', string, true, true, false, false>;
     'status': ColumnBuilder<'text', "draft" | "published" | "scheduled", true, true, false, false>;
     'publishedAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
-    'uid': ColumnBuilder<'text', string, false, false, false, false>;
+    'uid': ColumnBuilder<'text', string, true, true, false, false>;
     'locale': ColumnBuilder<'text', "en" | "de", true, true, false, false>;
     'translations': ColumnBuilder<'json', Partial<Record<GeneratedLocale, number>>, true, true, false, false>;
   }, false, 'collection'>;

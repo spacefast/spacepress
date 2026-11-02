@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Local showcase orchestration. Builds and boots the existing WordPress harness; never deploys.
 import assert from "node:assert/strict";
+import { buildApp } from "./build-app.mjs";
+import { startControl, stopControl } from "./rebuild-service.mjs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
@@ -881,7 +883,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nClassic:  ${saved.url}/wp-admin/\nLogin:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nClassic:  ${saved.url}/wp-admin/\nLogin:    editor / zero-test-editor\nConfig:   admin / zero-test-admin\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
@@ -892,10 +894,10 @@ async function main() {
     return check(saved);
   }
   if (command === "down") {
-    if (!known)
-      throw new Error(`No showcase is owned by this state directory: ${state}`);
+    if (!known) throw new Error(`No showcase is owned by this state directory: ${state}`);
     prerequisites("down");
     verifyOwnership();
+    await stopControl(state);
     // Compose can remove a partially started stack even if the private harness is missing.
     const compose = join(dirname(harness), "compose.yml");
     run("docker", [
@@ -908,109 +910,46 @@ async function main() {
       "-v",
       "--remove-orphans",
     ]);
-    for (const file of [
-      receiptFile,
-      ownerFile,
-      join(dirname(harness), ".harness-state"),
-    ])
+    for (const file of [receiptFile, ownerFile, join(dirname(harness), ".harness-state")])
       rmSync(file, { force: true });
-    console.log(
-      "Showcase stopped. Its disposable database and uploads were removed.",
-    );
+    console.log("Showcase stopped. Its disposable database and uploads were removed.");
     return;
   }
-  if (command !== "up")
-    throw new Error("Usage: node examples/showcase/run.mjs [up|check|down]");
+  if (command !== "up") throw new Error("Usage: node examples/showcase/run.mjs [up|check|down]");
   prerequisites("up");
   await verifyPort(verifyOwnership());
   mkdirSync(state, { recursive: true, mode: 0o700 });
+  await stopControl(state);
   run("cargo", ["build", "--locked", "--quiet"]);
-  const zero = resolve(
-    repo,
-    process.env.CARGO_TARGET_DIR ?? "target",
-    "debug/zero",
-  );
+  const zero = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/zero");
   mkdirSync(app, { recursive: true });
   const sourceFiles = readdirSync(example).filter(
     (name) => name.endsWith(".ts") && name !== "zero.gen.ts",
   );
-  for (const name of sourceFiles)
-    copyFileSync(join(example, name), join(app, name));
+  const overridesFile = join(state, "source-overrides.json");
+  const sourceOverrides = existsSync(overridesFile)
+    ? JSON.parse(readFileSync(overridesFile, "utf8"))
+    : null;
+  const files =
+    sourceOverrides ??
+    Object.fromEntries(
+      sourceFiles.map((name) => [name, readFileSync(join(example, name), "utf8")]),
+    );
   cpSync(join(example, "public"), join(app, "public"), { recursive: true });
   run("node", [join(repo, "site/scripts/build-wasm.mjs")]);
   run("npm", ["ci", "--no-audit", "--no-fund"], {
     cwd: join(example, "code-tools"),
   });
   run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
-  copyFileSync(
-    join(repo, "site/public/zero.wasm"),
-    join(app, "public/zero.wasm"),
-  );
-  run(zero, ["build", app, "--quiet"]);
-  mkdirSync(join(app, "public/client"), { recursive: true });
-  for (const name of ["index", "schema"]) {
-    const source = readFileSync(join(app, `zero/client/${name}.ts`), "utf8");
-    writeFileSync(
-      join(app, `public/client/${name}.js`),
-      nodeModule
-        .stripTypeScriptTypes(source)
-        .replace(/(from\s+["']\.\/[\w-]+)\.ts(["'])/g, "$1.js$2"),
-    );
-  }
-  copyFileSync(
-    join(app, "zero/client/LICENSE"),
-    join(app, "public/client/LICENSE"),
-  );
-  copyFileSync(join(app, "zero.config.ts"), join(app, "public/source.ts.txt"));
-  copyFileSync(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));
-  copyFileSync(
-    join(
-      app,
-      ".zero/wp-content/plugins/zero-app-showcase/zero/app/functions.php",
-    ),
-    join(app, "public/compiled.php.txt"),
-  );
-  const generated = join(
+  copyFileSync(join(repo, "site/public/zero.wasm"), join(app, "public/zero.wasm"));
+  await buildApp({
     app,
-    ".zero/wp-content/plugins/zero-app-showcase/zero/app",
-  );
-  const migrationDir = join(app, "zero/migrations");
-  const migrationFiles = readdirSync(migrationDir).filter((name) =>
-    name.endsWith(".sql"),
-  );
-  const compilerOutput = {
-    "schema.php": readFileSync(join(generated, "schema.php"), "utf8"),
-    "functions.php": readFileSync(join(generated, "functions.php"), "utf8"),
-    "client/types.ts": readFileSync(join(app, "zero/client/types.ts"), "utf8"),
-    "client/schema.ts": readFileSync(
-      join(app, "zero/client/schema.ts"),
-      "utf8",
-    ),
-    ...Object.fromEntries(
-      migrationFiles.map((name) => [
-        `migrations/${name}`,
-        readFileSync(join(migrationDir, name), "utf8"),
-      ]),
-    ),
-  };
-  writeFileSync(
-    join(app, "public/sources.json"),
-    JSON.stringify({
-      name: "showcase",
-      files: Object.fromEntries(
-        sourceFiles.map((name) => [
-          name,
-          readFileSync(join(app, name), "utf8"),
-        ]),
-      ),
-      output: compilerOutput,
-      previous: JSON.parse(
-        readFileSync(join(migrationDir, "snapshot.json"), "utf8"),
-      ),
-      migrationFiles,
-    }),
-  );
-  run(zero, ["build", app, "--quiet"]);
+    zero,
+    files,
+    log: (text) => {
+      if (text) console.log(text.trim());
+    },
+  });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
   run("rsync", ["-a", "--delete", `${app}/.zero/wp-content/`, `${content}/`]);
@@ -1020,6 +959,8 @@ async function main() {
     join(example, "classic-admin.php"),
     join(classic, "zero-showcase-classic-admin.php"),
   );
+  copyFileSync(join(example, "build-control.php"), join(classic, "build-control.php"));
+  mkdirSync(join(state, "control"), { recursive: true, mode: 0o700 });
   // Private copy gives this demo its own harness state; parallel suites keep their state.
   for (const file of [
     "harness.sh",
@@ -1043,23 +984,22 @@ async function main() {
   // Resolve the existing harness configuration, then label every resource it creates.
   // JSON is valid YAML and avoids maintaining another Compose implementation.
   const configuration = JSON.parse(
-    run(
-      "docker",
-      ["compose", "-p", project, "-f", compose, "config", "--format", "json"],
-      {
-        stdio: "pipe",
-        encoding: "utf8",
-      },
-    ),
+    run("docker", ["compose", "-p", project, "-f", compose, "config", "--format", "json"], {
+      stdio: "pipe",
+      encoding: "utf8",
+    }),
   );
-  for (const resources of [
-    configuration.services,
-    configuration.volumes,
-    configuration.networks,
-  ]) {
+  for (const resources of [configuration.services, configuration.volumes, configuration.networks]) {
     for (const resource of Object.values(resources ?? {}))
       resource.labels = { ...resource.labels, [ownerLabel]: ownerId };
   }
+  for (const name of ["wordpress", "cli"])
+    configuration.services[name].volumes.push({
+      type: "bind",
+      source: join(state, "control"),
+      target: "/var/run/zero-showcase",
+      read_only: true,
+    });
   writeFileSync(compose, JSON.stringify(configuration, null, 2));
   mkdirSync(join(state, "harness/fixtures"), { recursive: true });
   copyFileSync(
@@ -1082,8 +1022,28 @@ async function main() {
   chmodSync(receiptFile, 0o600);
   wp("plugin", "activate", "zero-showcase-classic-admin");
   wp("option", "update", "blogname", "Zero showcase");
-  await seed(saved);
-  await check(saved);
+  const controlEnv = Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) =>
+        name.startsWith("ZERO_WP_") ||
+        [
+          "PATH",
+          "HOME",
+          "DOCKER_HOST",
+          "DOCKER_CONTEXT",
+          "DOCKER_CONFIG",
+          "XDG_RUNTIME_DIR",
+        ].includes(name),
+    ),
+  );
+  try {
+    await seed(saved);
+    await check(saved);
+  } finally {
+    // Keep the editor available to repair a changed action/hook even when the
+    // original demo's smoke expectations no longer match a browser-edited app.
+    await startControl({ state, zero, harness, env: controlEnv });
+  }
   show(saved);
 }
 

@@ -25,3 +25,12 @@
 .source-lab .lab-diagnostic{margin-block:.7rem;font-size:.85rem}
 .source-lab .lab-diagnostic p{margin:.4rem 0}
 @media(max-width:900px){.source-lab .lab-columns{grid-template-columns:minmax(0,1fr)}.source-lab .lab-editor{min-height:320px}}
+
+.source-lab .lab-build-panel{padding:1rem 1.2rem;border:1px solid var(--line,#d5ddd5);border-radius:8px;background:#f8faf7;margin-block:1.2rem}
+.source-lab .lab-build-panel h3{margin:0 0 .5rem;font-size:1rem}
+.source-lab .lab-build-panel .lab-status{margin-bottom:0}
+.source-lab .lab-sign-in{font-size:.85rem;font-weight:600;color:#244c32}
+.source-lab .lab-build-log{margin-top:1rem;font-size:.85rem}
+.source-lab .lab-build-log summary{cursor:pointer;font-weight:600}
+.source-lab .lab-build-log pre{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;border:1px solid #d5ddd5;border-radius:6px;background:#fff;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+.source-lab .lab-editor:disabled{background:#f0f3ef;color:#526054}

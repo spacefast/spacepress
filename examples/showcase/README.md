@@ -20,10 +20,39 @@ The output selector also exposes the schema, typed client and SQL migrations.
 
 Drafts stay in this browser, with diagnostics and the last successful output
 retained on errors. Copy or download a file, or download all sources as JSON.
-Previewing does not apply migrations, execute PHP or change the running
-WordPress app. To change the running app, edit the matching files under
-`examples/showcase/` and rerun the launcher. The lab uses the running build's
-schema snapshot when previewing migration changes.
+**Compile preview** does not apply migrations, execute PHP or change WordPress.
+It uses the running build's schema snapshot to preview incremental migrations.
+
+Sign in as **admin** and select **Apply to demo** to compile those same edited
+files on the host and rebuild the running WordPress app. Added tables and new
+nullable fields (or required fields with defaults) are supported. Removing or
+changing an existing field or its storage is refused; use preview to inspect
+those changes. Actions and hooks can be rebuilt too. Apply briefly puts the demo
+in maintenance mode, then reloads the generated plugin and runs its migrations.
+Select **Reload updated demo** after success to load the accepted sources and client.
+Existing records are retained; browser-applied sources and migration history
+survive subsequent launcher runs. The explicit `check` command still verifies
+the original demo contract: deliberately changing its actions or hooks can make
+that check fail. Rebuild controls remain available so you can correct the app. They live in the selected private state
+directory, not the repository: download sources to keep or commit your changes.
+
+An invalid compile or refused migration leaves the running app unchanged.
+If a request loses its response, **Check build status** recovers that exact job;
+**Retry same submission** uses its saved ID and files. It never starts a second
+build automatically. Stale pages must reload before applying, and only one build
+runs at a time. Editors can preview code, but only administrators can Apply.
+
+The rebuild service listens on a private Unix socket mounted into WordPress;
+there is no extra network port. It starts with the launcher and stops with
+`down`. Build requests, logs and prior artifacts are retained under
+`.zero/showcase/builds/`. If publication or a migration is interrupted, further
+rebuilds stop for inspection rather than replaying uncertain database changes.
+The previous plugin is restored where possible, but database changes are never
+reversed automatically. Inspect that job's `job.json`, candidate migrations and
+WordPress migration ledger before making an explicit recovery decision. Do not
+remove its recovery flag just to retry. The normal runtime migration recovery
+commands remain documented in the WordPress harness. The launcher also refuses
+to overwrite this evidence or stop a stack with an unresolved publication.
 
 Edit records in `/zero-admin/` or the classic WordPress admin’s **Pantry** menu,
 then refresh. The classic menu provides items, locations and the shopping list
@@ -161,6 +190,12 @@ Garage lane:
 
 ```sh
 ZERO_WP_PROJECT=zero-showcase-s3 ZERO_WP_PORT=8862 ZERO_WP_REPLICA_PORT=8863 tests/wp/run.sh --s3
+```
+
+The additive Apply policy and interrupted-job recovery have fast checks:
+
+```sh
+node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
 ```
 
 For compiler examples and formatted TypeScript/PHP comparisons, the existing

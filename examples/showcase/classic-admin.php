@@ -9,6 +9,8 @@
 
 defined('ABSPATH') || exit;
 
+require_once __DIR__ . '/build-control.php';
+
 function zero_showcase_classic_pantry_screen($section) {
     if (!current_user_can('edit_others_posts')) {
         wp_die(esc_html__('You cannot edit this pantry.', 'zero-showcase'));

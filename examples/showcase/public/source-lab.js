@@ -43,12 +43,12 @@ const download = (name, contents) => {
 async function start() {
   root.classList.add('source-lab');
   const title = element('h2', 'Read it. Change it. Compile it.');
-  const intro = element('p', 'The complete showcase source, with real diffs.com syntax highlighting. Edit the TypeScript and compile it to PHP in your browser.');
-  const boundary = element('p', 'Compile preview keeps your changes in this browser. It does not update WordPress, run actions, apply migrations or change the live demo.', 'lab-boundary');
+  const intro = element('p', 'The complete showcase source, with real diffs.com syntax highlighting. Edit the TypeScript, preview the PHP, then apply it to the running demo.');
+  const boundary = element('p', 'Compile preview runs in your browser. Apply to demo rebuilds WordPress, its editors and API using these source files. Apply supports new tables and nullable or defaulted fields; changes to existing fields or storage are refused.', 'lab-boundary');
   const loading = element('p', 'Loading the source lab…');
   loading.role = 'status';
   root.replaceChildren(title, intro, boundary, loading);
-  const response = await fetch(new URL('./sources.json', import.meta.url));
+  const response = await fetch(new URL('./sources.json', import.meta.url), {cache: 'no-store'});
   if (!response.ok) throw new Error(`Source files could not be loaded (${response.status}).`);
   const manifest = await response.json();
   if (!manifest || typeof manifest.name !== 'string' || !stringFiles(manifest.files) || typeof manifest.files['zero.config.ts'] !== 'string' || !stringFiles(manifest.output)) {
@@ -67,6 +67,19 @@ async function start() {
   const renderers = [];
   let hasStorage = true;
   const storageKey = `zero-showcase-source-draft:${manifest.name}`;
+  const buildStorageKey = `${storageKey}:build`;
+  let submission;
+  let buildJob;
+  let buildUncertain = false;
+  let canApply = false;
+  let controlBusy = false;
+  let needsReload = false;
+  let nonce;
+  let pollTimer;
+  let pageActive = true;
+  let pageLifetime = new AbortController();
+  const activeStatuses = new Set(['queued', 'building', 'applying']);
+  const terminalStatuses = new Set(['succeeded', 'failed', 'interrupted']);
   let restored = false;
   let earlierDraft;
   try {
@@ -80,6 +93,18 @@ async function start() {
     }
     const older = JSON.parse(localStorage.getItem(`${storageKey}:earlier`) || 'null');
     if (!earlierDraft && older && stringFiles(older.files)) earlierDraft = older.files;
+  } catch { hasStorage = false; }
+  try {
+    const savedBuild = JSON.parse(localStorage.getItem(buildStorageKey) || 'null');
+    if (savedBuild && typeof savedBuild.id === 'string' && typeof savedBuild.baseRevision === 'string' && stringFiles(savedBuild.files)) {
+      submission = savedBuild;
+      buildUncertain = true;
+      // A reload during dispatch must reconnect to the exact submitted draft.
+      if (sameFiles(Object.keys(savedBuild.files).sort(), Object.keys(baseline).sort())) {
+        draft = {...savedBuild.files};
+        restored = !sameFiles(draft, baseline);
+      } else earlierDraft = savedBuild.files;
+    }
   } catch { hasStorage = false; }
 
   const sourceSelect = element('select');
@@ -138,6 +163,31 @@ async function start() {
     status.textContent = 'Restored the original source and generated output.';
     updatePreview();
   });
+  const apply = button('Apply to demo', submitBuild);
+  apply.disabled = true;
+  const buildStatus = element('p', 'Checking whether demo rebuilds are available…', 'lab-status');
+  buildStatus.role = 'status';
+  buildStatus.setAttribute('aria-live', 'polite');
+  const checkBuild = button('Check build status', () => refreshControl());
+  const retryBuild = button('Retry submission', retrySubmission);
+  retryBuild.hidden = true;
+  const reloadDemo = button('Reload updated demo', () => window.location.reload());
+  reloadDemo.hidden = true;
+  const signIn = element('a', 'Sign in as admin', 'lab-sign-in');
+  const login = new URL('/wp-login.php', window.location.origin);
+  login.searchParams.set('reauth', '1');
+  login.searchParams.set('redirect_to', window.location.href);
+  signIn.href = login.href;
+  signIn.hidden = true;
+  const buildLog = element('details', undefined, 'lab-build-log');
+  buildLog.hidden = true;
+  const buildLogText = element('pre');
+  buildLog.append(element('summary', 'Build log'), buildLogText);
+  const buildActions = element('div', undefined, 'lab-toolbar');
+  buildActions.append(apply, checkBuild, retryBuild, reloadDemo, signIn);
+  const buildPanel = element('section', undefined, 'lab-build-panel');
+  buildPanel.setAttribute('aria-label', 'Apply source to the running demo');
+  buildPanel.append(element('h3', 'Rebuild the running demo'), element('p', 'Administrator access required. Your submitted draft is kept while the build runs; a failed build leaves it available to correct or download.', 'lab-help'), buildActions, buildStatus, buildLog);
   const actions = element('div', undefined, 'lab-toolbar');
   actions.append(compile, reset, button('Download all sources', () => download('showcase-sources.json', `${JSON.stringify({name: manifest.name, files: draft}, null, 2)}\n`)));
   if (earlierDraft) {
@@ -165,7 +215,7 @@ async function start() {
   const notices = element('a', 'Dependency notices');
   notices.href = new URL('./code-notices.txt', import.meta.url).href;
   credit.append('Syntax and diffs: ', diffsLink, '. Bundled locally; no CDN. ', notices, '. TypeScript and PHP are paired translations; Changes compares each file with the same language.');
-  root.replaceChildren(title, intro, boundary, actions, status, diagnostics, columns, credit);
+  root.replaceChildren(title, intro, boundary, actions, status, diagnostics, buildPanel, columns, credit);
 
   const highlighter = preloadHighlighter({
     themes: Object.values(theme),
@@ -289,6 +339,205 @@ async function start() {
     }
     for (const note of extra) diagnostics.append(element('p', String(note), 'lab-help'));
   }
+  function buildLocked() {
+    return buildUncertain || activeStatuses.has(buildJob?.status);
+  }
+  function updateControls() {
+    const locked = buildLocked();
+    editor.disabled = locked;
+    sourceSelect.disabled = locked;
+    reset.disabled = running || locked;
+    compile.disabled = running || locked;
+    apply.disabled = running || locked || controlBusy || !canApply || needsReload || buildJob?.status === 'succeeded';
+    checkBuild.disabled = controlBusy;
+    retryBuild.hidden = !submission || !buildUncertain || !!buildJob;
+    retryBuild.disabled = controlBusy || !canApply;
+    reloadDemo.hidden = buildJob?.status !== 'succeeded' && !needsReload;
+    for (const control of diagnostics.querySelectorAll('button')) control.disabled = locked;
+  }
+  function rememberSubmission(value) {
+    try {
+      if (value) localStorage.setItem(buildStorageKey, JSON.stringify(value));
+      else localStorage.removeItem(buildStorageKey);
+      return true;
+    } catch {
+      hasStorage = false;
+      editorHelp.textContent = 'Browser storage is unavailable. Copy or download your edits before leaving.';
+      return false;
+    }
+  }
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    if (pageActive && buildLocked()) pollTimer = setTimeout(refreshControl, document.hidden ? 10000 : 2500);
+  }
+  async function controlRequest(path, options = {}) {
+    const signal = AbortSignal.any([pageLifetime.signal, AbortSignal.timeout(12000)]);
+    if (!nonce) {
+      const token = await fetch('/wp-admin/admin-ajax.php?action=rest-nonce', {cache: 'no-store', credentials: 'same-origin', signal});
+      const value = (await token.text()).trim();
+      if (!token.ok || !value || value === '0' || value === '-1') {
+        const error = new Error(token.ok ? 'Sign in with an administrator account to apply changes.' : `WordPress returned HTTP ${token.status} while checking this session.`);
+        error.status = token.ok ? 403 : token.status;
+        throw error;
+      }
+      nonce = value;
+    }
+    const result = await fetch(`/wp-json/zero-showcase/v1/${path}`, {
+      ...options,
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal,
+      headers: {'Content-Type': 'application/json', 'X-WP-Nonce': nonce},
+    });
+    let payload;
+    try { payload = await result.json(); } catch { /* Preserve the HTTP failure below. */ }
+    if (!result.ok) {
+      const error = new Error(payload?.message || `The demo build service returned HTTP ${result.status}.`);
+      error.status = result.status;
+      throw error;
+    }
+    return payload;
+  }
+  function readJob(value) {
+    if (!value || typeof value.id !== 'string' || !activeStatuses.has(value.status) && !terminalStatuses.has(value.status)) {
+      throw new Error('The build service returned an invalid build status. Check its status again before submitting changes.');
+    }
+    return value;
+  }
+  function showJob(value) {
+    buildJob = readJob(value);
+    buildUncertain = false;
+    buildStatus.textContent = buildJob.message || `Build ${buildJob.status}.`;
+    if (buildJob.status === 'succeeded') buildStatus.textContent += ' Reload to load the updated source, editors and API.';
+    if (buildJob.status === 'failed' || buildJob.status === 'interrupted') buildStatus.textContent += ' Your draft is preserved for correction or download.';
+    buildStatus.classList.toggle('lab-error', buildJob.status === 'failed' || buildJob.status === 'interrupted');
+    buildLogText.textContent = typeof buildJob.log === 'string' ? buildJob.log : '';
+    buildLog.hidden = !buildLogText.textContent;
+    if (terminalStatuses.has(buildJob.status)) {
+      rememberSubmission(null);
+      submission = undefined;
+    }
+    updateControls();
+    schedulePoll();
+  }
+  function showControlError(error) {
+    if (!pageActive) return;
+    if (error.status === 401 || error.status === 403) {
+      nonce = undefined;
+      canApply = false;
+      signIn.hidden = false;
+      buildStatus.textContent = buildLocked()
+        ? 'Your submitted build is saved. Sign in with an administrator account and check its status.'
+        : 'Sign in with an administrator account to apply changes. Browser compilation remains available.';
+    } else if (error.status === 503 && !buildLocked()) {
+      canApply = false;
+      buildStatus.textContent = `Demo rebuilds are unavailable: ${error.message} Browser compilation remains available.`;
+    } else {
+      buildStatus.textContent = buildLocked()
+        ? `Build status is uncertain: ${error.message} Your submitted draft is preserved. Check its status; no new build will be submitted automatically.`
+        : `Could not check demo rebuilds: ${error.message} Browser compilation remains available.`;
+    }
+    updateControls();
+  }
+  async function refreshControl() {
+    if (controlBusy || !pageActive) return;
+    controlBusy = true;
+    updateControls();
+    try {
+      const control = await controlRequest('control');
+      canApply = control?.available === true && typeof manifest.revision === 'string';
+      needsReload = typeof manifest.revision === 'string' && typeof control?.revision === 'string' && control.revision !== manifest.revision;
+      signIn.hidden = true;
+      if (submission || activeStatuses.has(buildJob?.status)) {
+        const id = submission?.id || buildJob.id;
+        try { showJob(await controlRequest(`builds/${encodeURIComponent(id)}`)); }
+        catch (error) {
+          if (error.status !== 404) throw error;
+          buildJob = undefined;
+          buildUncertain = true;
+          buildStatus.textContent = 'The submitted build is not registered yet. Check its status or retry the same submission. Your draft remains locked to prevent duplicate builds.';
+        }
+      } else if (control?.activeBuild) showJob(control.activeBuild);
+      else if (!buildJob) {
+        buildStatus.textContent = control.recoveryRequired
+          ? 'The previous Apply needs manual inspection before another rebuild. Browser compilation remains available; your draft is preserved.'
+          : !canApply
+          ? 'Demo rebuilds are unavailable for this source manifest. Browser compilation remains available.'
+          : control.revision !== manifest.revision
+            ? 'The running demo changed since this page loaded. Reload before applying; your browser draft remains saved.'
+            : 'Ready to rebuild the running WordPress demo with your draft.';
+        if (control.revision !== manifest.revision) {
+          canApply = false;
+          needsReload = true;
+        }
+      }
+    } catch (error) { showControlError(error); }
+    finally {
+      controlBusy = false;
+      updateControls();
+      schedulePoll();
+    }
+  }
+  async function dispatchSubmission() {
+    if (!submission || controlBusy) return;
+    controlBusy = true;
+    buildJob = undefined;
+    buildUncertain = true;
+    buildStatus.classList.remove('lab-error');
+    buildStatus.textContent = 'Submitting this draft for a demo rebuild…';
+    updateControls();
+    try {
+      showJob(await controlRequest('builds', {method: 'POST', body: JSON.stringify(submission)}));
+    } catch (error) {
+      if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429 && error.status !== 401 && error.status !== 403) {
+        buildUncertain = false;
+        rememberSubmission(null);
+        submission = undefined;
+        buildStatus.textContent = `Build refused: ${error.message} Your draft is preserved.`;
+        buildStatus.classList.add('lab-error');
+        if (error.status === 409) {
+          canApply = false;
+          needsReload = true;
+          buildStatus.textContent += ' Reload the current source before applying again; download your draft to carry changes over.';
+        }
+      } else showControlError(error);
+    } finally {
+      controlBusy = false;
+      updateControls();
+      schedulePoll();
+    }
+  }
+  async function submitBuild() {
+    if (apply.disabled) return;
+    const next = {id: crypto.randomUUID(), baseRevision: manifest.revision, files: {...draft}};
+    saveDraft();
+    if (!rememberSubmission(next)) {
+      buildStatus.textContent = 'Applying requires browser storage so an interrupted submission can be recovered safely. Enable storage, or download your draft and rebuild with the launcher.';
+      return;
+    }
+    submission = next;
+    await dispatchSubmission();
+  }
+  async function retrySubmission() {
+    if (retryBuild.disabled || !submission) return;
+    await dispatchSubmission();
+  }
+  window.addEventListener('pagehide', () => {
+    pageActive = false;
+    clearTimeout(pollTimer);
+    pageLifetime.abort();
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      pageActive = true;
+      pageLifetime = new AbortController();
+      refreshControl();
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && buildLocked()) refreshControl();
+  });
+
   function compileRequest(request) {
     return new Promise((resolve, reject) => {
       if (!worker) worker = new Worker(new URL('./source-compiler-worker.js', import.meta.url), {type: 'module'});
@@ -326,10 +575,9 @@ async function start() {
     });
   }
   async function compileDraft() {
-    if (running) return;
+    if (running || buildLocked()) return;
     running = true;
-    compile.disabled = true;
-    reset.disabled = true;
+    updateControls();
     compile.textContent = 'Compiling…';
     status.textContent = 'Compiling this draft in a local browser worker…';
     const files = {...draft};
@@ -365,8 +613,7 @@ async function start() {
       updatePreview();
     } finally {
       running = false;
-      compile.disabled = false;
-      reset.disabled = false;
+      updateControls();
       compile.textContent = 'Compile preview';
     }
   }
@@ -389,6 +636,8 @@ async function start() {
   });
   editorFile();
   updatePreview();
+  updateControls();
+  refreshControl();
 }
 
 if (root) start().catch((error) => {

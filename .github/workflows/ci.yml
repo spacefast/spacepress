@@ -154,6 +154,7 @@ jobs:
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
       - run: node --test runtime/client/index.test.ts
+      - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
 
   wp:
     runs-on: ubuntu-24.04

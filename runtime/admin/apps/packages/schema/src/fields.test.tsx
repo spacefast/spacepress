@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Fields } from './fields';
+import { Fields, useFieldDrafts } from './fields';
 import { EditingObjects, columns, type Row } from './model';
 import { fromNative, toNative } from './api';
 
@@ -15,19 +15,19 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 	const collection = { name: 'posts', label: 'Posts', columns: fields, primaryKey: 'id', access: {} };
 	function Form() {
 		const [objects] = useState(() => new EditingObjects());
-		const [drafts] = useState(() => new Map<string, string>());
-		const [valid, setValid] = useState(true);
 		const [shown, setShown] = useState(true);
 		const [record, setRecord] = useState<Row>(() => toNative(collection, {
 			entries: [{ open: 'Returned', metadata: { owner: 'first' } }, { metadata: { owner: 'second' } }, {}],
 		}));
 		const values = fromNative(collection, record, objects);
+		const drafts = useFieldDrafts({ fields, values, objects });
 		return <>
 			{shown && <Fields fields={fields} values={values} objects={objects}
-				jsonDrafts={drafts} onValidityChange={setValid}
+				jsonDrafts={drafts}
 				onChange={(key, value) => setRecord(toNative(collection, { [key]: value }, objects))} />}
-			<button disabled={!valid}>Save</button>
+			<button disabled={!drafts.valid}>Save</button>
 			<button onClick={() => setShown(!shown)}>Toggle fields</button>
+			<button onClick={() => setRecord(toNative(collection, { entries: [] }, objects))}>External remove rows</button>
 			<output>{JSON.stringify(values)}</output>
 		</>;
 	}
@@ -58,6 +58,14 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 	expect(screen.getAllByRole('textbox', { name: /Metadata/ })[1]).toHaveValue('unfinished');
 	await user.click(screen.getByRole('button', { name: 'Remove 3' }));
 	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+	await user.clear(screen.getByRole('textbox', { name: /Metadata/ }));
+	await user.type(screen.getByRole('textbox', { name: /Metadata/ }), 'orphaned draft');
+	await user.click(screen.getByRole('button', { name: 'Toggle fields' }));
+	await user.click(screen.getByRole('button', { name: 'External remove rows' }));
+	expect(screen.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+	await user.click(screen.getByRole('button', { name: 'Toggle fields' }));
+	expect(screen.queryByRole('textbox', { name: /Metadata/ })).not.toBeInTheDocument();
+
 });
 
 test('changing a returned block layout creates editable nested groups without exposing masked siblings', async () => {
@@ -79,8 +87,12 @@ test('changing a returned block layout creates editable nested groups without ex
 	render(<Form />);
 	expect(screen.queryByRole('textbox', { name: 'Hidden' })).not.toBeInTheDocument();
 	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveValue(JSON.stringify({ old: true }, null, 2));
+	await user.clear(screen.getByRole('textbox', { name: /Payload/ }));
+	await user.type(screen.getByRole('textbox', { name: /Payload/ }), 'layout unfinished');
+	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveAttribute('aria-invalid', 'true');
 	await user.selectOptions(screen.getByRole('combobox', { name: 'Layout' }), 'new');
 	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveValue('null');
+	expect(screen.getByRole('textbox', { name: /Payload/ })).toHaveAttribute('aria-invalid', 'false');
 	const group = screen.getByRole('group', { name: 'Details' });
 	await user.type(within(group).getByRole('textbox', { name: 'First' }), 'One');
 	await user.type(within(group).getByRole('textbox', { name: 'Second' }), 'Two');

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import {
 	Button,
@@ -36,12 +36,67 @@ function scalar(v: unknown): string {
 type FieldState = {
 	objects: EditingObjects;
 	operation: 'create' | 'update';
-	validation: {
-		drafts: Map<string, string>;
-		change: (path: string, source?: string) => void;
-		remove: (path: string) => void;
-	};
+	validation: FieldDrafts;
 };
+type FieldDrafts = {
+	drafts: ReadonlyMap<string, string>;
+	change: (path: string, source?: string) => void;
+	valid: boolean;
+};
+type FieldTree = {
+	fields: Columns;
+	values: Row;
+	objects: EditingObjects;
+	editing?: boolean;
+	omit?: string[];
+	path?: string;
+};
+function shownFields(fields: Columns, values: Row, editing: boolean, operation: FieldState['operation'], omit: string[] = []) {
+	return Object.entries(fields).filter(([key, c]) =>
+		!omit.includes(key) && !c.generated &&
+		(editing ? key in values : allowed(operation === 'create' ? c.create : c.read, bootstrap().role)) &&
+		visible(c.showIf, values)
+	);
+}
+function rowPath(path: string, row: Row, column: Column, objects: EditingObjects): string {
+	return `${path}/${objects.key(row)}/${column.type === 'blocks' ? encodeURIComponent(text(row.layout) ?? Object.keys(column.layouts)[0]) + '/' : ''}`;
+}
+function jsonPaths(tree: FieldTree, paths = new Set<string>(), operation: FieldState['operation'] = tree.editing === false ? 'create' : 'update'): Set<string> {
+	const { fields, values, objects, editing = true, omit, path = '' } = tree;
+	for (const [key, c] of shownFields(fields, values, editing, operation, omit)) {
+		const field = `${path}${key}`, value = values[key];
+		if (c.type === 'json') paths.add(field);
+		else if (c.type === 'group') {
+			const row = value != null && typeof value === 'object' && !Array.isArray(value) ? object(value) : {};
+			jsonPaths({ fields: c.fields, values: row, objects, editing: editing && value != null && !objects.isNew(row), path: `${field}/` }, paths, operation);
+		} else if ((c.type === 'repeater' || c.type === 'blocks') && Array.isArray(value)) {
+			for (const item of value) {
+				const row = object(item), layout = text(row.layout) ?? Object.keys(c.layouts)[0];
+				jsonPaths({ fields: c.type === 'blocks' ? c.layouts[layout] ?? {} : c.fields, values: row, objects,
+					editing: editing && !objects.isNew(row), path: rowPath(field, row, c, objects) }, paths, operation);
+			}
+		}
+	}
+	return paths;
+}
+/** The document owns drafts, including while its field panel is collapsed. */
+export function useFieldDrafts(tree?: FieldTree): FieldDrafts {
+	const [drafts, setDrafts] = useState(() => new Map<string, string>());
+	const paths = tree ? jsonPaths(tree) : undefined;
+	const current = paths ? new Map([...drafts].filter(([path]) => paths.has(path))) : drafts;
+	useLayoutEffect(() => {
+		if (current.size !== drafts.size) setDrafts(current);
+	}, [current, drafts]);
+	const change = useCallback((path: string, source?: string) => {
+		setDrafts((previous) => {
+			const next = new Map(previous);
+			if (source === undefined) next.delete(path);
+			else next.set(path, source);
+			return next;
+		});
+	}, []);
+	return { drafts: current, change, valid: current.size === 0 };
+}
 const EditingState = createContext<FieldState | null>(null);
 function Reference({
 	column,
@@ -230,8 +285,6 @@ function JsonField({
 	const [source, setSource] = useState(
 		() => validation?.drafts.get(path) ?? JSON.stringify(value ?? null, null, 2)
 	);
-	const remove = validation?.remove;
-	useEffect(() => () => remove?.(path), [remove, path]);
 	const invalid = validation?.drafts.has(path) ?? false;
 	return (
 		<label className="zero-schema-json">
@@ -372,7 +425,7 @@ function Field({
 										/>
 									)}
 									<Fields
-										path={`${path}/${objects.key(row)}/`}
+										path={rowPath(path, row, c, objects)}
 										fields={fields}
 										values={row}
 										onChange={(key, v) => update({ ...row, [key]: v })}
@@ -527,7 +580,6 @@ export function Fields({
 	omit = [],
 	objects,
 	jsonDrafts,
-	onValidityChange,
 	path = '',
 }: {
 	fields: Columns;
@@ -537,50 +589,23 @@ export function Fields({
 	disabled?: boolean;
 	omit?: string[];
 	objects?: EditingObjects;
-	jsonDrafts?: Map<string, string>;
-	onValidityChange?: (valid: boolean) => void;
+	jsonDrafts?: FieldDrafts;
 	path?: string;
 }) {
-	const { role } = bootstrap();
 	const inherited = useContext(EditingState);
 	const [local] = useState(() => new EditingObjects());
-	const [localDrafts] = useState(() => new Map<string, string>());
-	const mounted = useRef(false);
-	useLayoutEffect(() => {
-		mounted.current = true;
-		return () => { mounted.current = false; };
-	}, []);
-	const drafts = jsonDrafts ?? localDrafts;
-	const change = useCallback((field: string, source?: string) => {
-		if (source === undefined) drafts.delete(field);
-		else drafts.set(field, source);
-		onValidityChange?.(drafts.size === 0);
-	}, [drafts, onValidityChange]);
-	const remove = useCallback((field: string) => {
-		// Removing a row retires its draft. Collapsing the whole panel keeps
-		// drafts in its document-owned map until reopened or discarded.
-		if (mounted.current) change(field);
-	}, [change]);
-	useEffect(() => {
-		if (!inherited) onValidityChange?.(drafts.size === 0);
-	}, [inherited, drafts, onValidityChange]);
+	const editingObjects = objects ?? local;
+	const localDrafts = useFieldDrafts(inherited || jsonDrafts ? undefined : { fields, values, objects: editingObjects, editing, omit, path });
+	const validation = jsonDrafts ?? localDrafts;
 	const state: FieldState = inherited ?? {
-		objects: objects ?? local,
+		objects: editingObjects,
 		operation: editing ? 'update' : 'create',
-		validation: { drafts, change, remove },
+		validation,
 	};
 	return (
 		<EditingState.Provider value={state}>
 			<div className="zero-schema-fields">
-				{Object.entries(fields)
-					.filter(
-						([key, c]) =>
-							!omit.includes(key) &&
-							!c.generated &&
-							(editing ? key in values :
-								allowed(state.operation === 'create' ? c.create : c.read, role)) &&
-							visible(c.showIf, values)
-					)
+				{shownFields(fields, values, editing, state.operation, omit)
 					.map(([key, c]) => (
 						<Field
 							key={key}
@@ -588,7 +613,7 @@ export function Fields({
 							column={c}
 							value={values[key]}
 							onChange={(v) => onChange(key, v)}
-							disabled={disabled || !allowed(state.operation === 'create' ? c.create : c.write, role)}
+							disabled={disabled || !allowed(state.operation === 'create' ? c.create : c.write, bootstrap().role)}
 							editing={editing}
 							objects={state.objects}
 							operation={state.operation}

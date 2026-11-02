@@ -46,6 +46,8 @@ export const dossier = collection("dossier", {
   slug: slug({ source: "title" }).access({ read: "admin" }),
   body: richText().access({ read: "admin", update: "admin" }),
   payload: json(), // native JSON drafts participate in save/leave validation
+  entries: repeater({ fields: { metadata: json() } }),
+  sections: blocks({ layouts: { first: { configuration: json() }, second: { configuration: json() } } }),
 }, { title: "title", content: "body", access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 // An update rule that needs the data: without it nothing; with it, only rows the viewer owns.

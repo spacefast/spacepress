@@ -248,7 +248,7 @@ if (!subdir) {
 		expect((await link.json()).data.rootCode).toBe(code);
 		// Invalid JSON is an unsaved draft even when core-data has no edits.
 		const event = await request.post(`${site}/wp-json/zero/v1/dossier`, {
-			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true } },
+			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true }, entries: [], sections: [{ layout: 'first', configuration: { initial: true } }] },
 		});
 		expect(event.status(), await event.text()).toBe(201);
 		const eventId = (await event.json()).data.id;
@@ -272,13 +272,34 @@ if (!subdir) {
 		await expect(payload).toHaveValue('unfinished');
 		await payload.fill('{"committed":false,"corrected":true}');
 		await expect(eventSave).toBeEnabled();
+		const sections = page.getByRole('group', { name: 'Sections', exact: true });
+		const configuration = sections.locator('textarea');
+		await configuration.fill('unfinished layout');
+		await expect(eventSave).toBeDisabled();
+		await sections.getByRole('combobox', { name: 'Layout' }).selectOption('second');
+		await expect(configuration).toHaveValue('null');
+		await expect(configuration).toHaveAttribute('aria-invalid', 'false');
+		await expect(eventSave).toBeEnabled();
 		const jsonSaved = page.waitForResponse((r) =>
 			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_dossier/${eventId}`) &&
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await jsonSaved).status()).toBe(200);
 		const eventRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
-		expect((await eventRead.json()).data.payload).toEqual({ committed: false, corrected: true });
+		const savedEvent = (await eventRead.json()).data;
+		expect(savedEvent.payload).toEqual({ committed: false, corrected: true });
+		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
+		await page.getByRole('button', { name: 'Add Entries', exact: true }).click();
+		await page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea').fill('unfinished row');
+		await expect(eventSave).toBeDisabled();
+		await jsonFields.click();
+		await page.getByRole('button', { name: 'Undo', exact: true }).click();
+		await expect.poll(() => page.evaluate<{ saving: boolean; autosaving: boolean }>(
+			`({ saving: wp.data.select('core/editor').isPostSavingLocked(), autosaving: wp.data.select('core/editor').isPostAutosavingLocked() })`
+		)).toEqual({ saving: false, autosaving: false });
+		await jsonFields.click();
+		await expect(page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea')).toHaveCount(0);
+		await page.screenshot({ path: test.info().outputPath('retired-json-drafts.png'), animations: 'disabled' });
 		expect(errors).toEqual([]);
 	});
 	test('a subscriber sees explicit denial for an editor-only collection', async ({

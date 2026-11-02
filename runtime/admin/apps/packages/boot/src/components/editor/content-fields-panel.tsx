@@ -8,6 +8,7 @@ import { store as coreStore } from '@wordpress/core-data';
 import {
 	EditingObjects,
 	Fields,
+	useFieldDrafts,
 	Loading,
 	collectionSpec,
 	fromNative,
@@ -42,23 +43,8 @@ function DocumentFields({
 	id: string;
 }) {
 	const [objects] = useState(() => new EditingObjects());
-	const [jsonDrafts] = useState(() => new Map<string, string>());
-	const [valid, setValid] = useState(true);
 	const { setIsEntityValid } = useEntityValidity();
 	const { lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving } = useDispatch(editorStore);
-	useEffect(() => {
-		const lock = `zero-fields:${collection}/${id}`;
-		setIsEntityValid(valid);
-		if (!valid) {
-			void lockPostSaving(lock);
-			void lockPostAutosaving(lock);
-		}
-		return () => {
-			void unlockPostSaving(lock);
-			void unlockPostAutosaving(lock);
-			setIsEntityValid(true);
-		};
-	}, [valid, collection, id, setIsEntityValid, lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving]);
 	const state = useLoad(() => collectionSpec(collection), [collection]);
 	const transport = native(collection);
 	const record = useSelect(
@@ -97,6 +83,23 @@ function DocumentFields({
 		[collection, id]
 	);
 	const { editEntityRecord } = useDispatch(coreStore);
+	const values = state.kind === 'ready' && record ? fromNative(state.value, record, objects) : undefined;
+	const omit = state.kind === 'ready' ? [state.value.primaryKey, state.value.title ?? '', state.value.content ?? '', state.value.slug ?? '', 'status', 'publishedAt'] : [];
+	const jsonDrafts = useFieldDrafts(state.kind === 'ready' && values ? { fields: state.value.columns, values, objects, omit } : undefined);
+	const valid = jsonDrafts.valid;
+	useEffect(() => {
+		const lock = `zero-fields:${collection}/${id}`;
+		setIsEntityValid(valid);
+		if (!valid) {
+			void lockPostSaving(lock);
+			void lockPostAutosaving(lock);
+		}
+		return () => {
+			void unlockPostSaving(lock);
+			void unlockPostAutosaving(lock);
+			setIsEntityValid(true);
+		};
+	}, [valid, collection, id, setIsEntityValid, lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving]);
 	if (!transport || !record) return null;
 	return (
 		<PluginDocumentSettingPanel name="zero-admin-content-fields" title="Fields">
@@ -105,18 +108,10 @@ function DocumentFields({
 			) : (
 				<Fields
 					fields={state.value.columns}
-					values={fromNative(state.value, record, objects)}
+					values={values ?? {}}
 					objects={objects}
 					jsonDrafts={jsonDrafts}
-					onValidityChange={setValid}
-					omit={[
-						state.value.primaryKey,
-						state.value.title ?? '',
-						state.value.content ?? '',
-						state.value.slug ?? '',
-						'status',
-						'publishedAt',
-					]}
+					omit={omit}
 					onChange={(key, value) => {
 						const edits = toNative(state.value, { [key]: value }, objects);
 						void editEntityRecord('postType', transport.postType, id, {

@@ -1,8 +1,9 @@
 ---
-// The front page. For now it proves the premise of the site: the Zero compiler runs here, in the
-// browser, on the same sources `zero build` reads. The tour and the config builder come next.
+// The front page: what Zero is, where the tour and the docs are, and the premise of the site made
+// visible: the Zero compiler runs here, in the browser, on the same sources `zero build` reads.
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import Page from "../layouts/Page.astro";
 
 const repo = path.resolve(process.cwd(), "..");
 const pantry = {
@@ -12,35 +13,31 @@ const pantry = {
     "lib/fields.ts": readFileSync(path.join(repo, "examples/pantry/lib/fields.ts"), "utf8"),
   },
 };
-const wasm = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/zero.wasm`;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const wasm = `${base}/zero.wasm`;
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Zero</title>
-    <meta name="description" content="Zero is a TypeScript framework for building backends, fast. One zero.config.ts becomes migrations, a REST API, auth and a typed client, on WordPress." />
-  </head>
-  <body>
-    <main>
-      <h1>Zero</h1>
-      <p>Zero is a TypeScript framework for building backends, fast.</p>
+<Page title="Zero" description="Zero is a TypeScript framework for building backends, fast. One zero.config.ts becomes migrations, a REST API, auth and a typed client, on WordPress.">
+  <main class="prose">
+    <h1>Zero</h1>
+    <p class="lede">Zero is a TypeScript framework for building backends, fast.</p>
+    <p>
+      You write one <code>zero.config.ts</code>. <code>zero build</code> turns it into database
+      migrations, REST endpoints, user authentication, a dashboard and a fully typed client
+      library, running on WordPress.
+    </p>
+    <p>
+      <a href={`${base}/tour`}>Take the tour</a>: each piece of the examples' configs next to what the
+      compiler made of it. The <a href={`${base}/docs`}>docs</a> are the repository's, rendered here.
+    </p>
+    <section aria-labelledby="try">
+      <h2 id="try">The compiler, in this page</h2>
       <p>
-        You write one <code>zero.config.ts</code>. <code>zero build</code> turns it into database
-        migrations, REST endpoints, user authentication, a dashboard and a fully typed client
-        library, running on WordPress.
+        The same compiler that runs on your machine checks <code>examples/pantry</code> here, in
+        your browser.
       </p>
-      <section aria-labelledby="try">
-        <h2 id="try">The compiler, in this page</h2>
-        <p>
-          The same compiler that runs on your machine checks <code>examples/pantry</code> here, in
-          your browser.
-        </p>
-        <pre id="status" data-state="loading" data-request={JSON.stringify(pantry)} data-wasm={wasm}>loading the compiler…</pre>
-      </section>
-    </main>
-    <script src="../lib/try.ts"></script>
-  </body>
-</html>
+      <pre id="status" data-state="loading" data-request={JSON.stringify(pantry)} data-wasm={wasm}>loading the compiler…</pre>
+    </section>
+  </main>
+  <script src="../lib/try.ts"></script>
+</Page>

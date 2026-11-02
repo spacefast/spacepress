@@ -12,6 +12,8 @@ on:
       - 'rust-toolchain'
       - 'examples/**'
       - 'tests/fixtures/**'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/site.yml'
   push:
     branches: [main]
@@ -23,6 +25,8 @@ on:
       - 'rust-toolchain'
       - 'examples/**'
       - 'tests/fixtures/**'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/site.yml'
 
 permissions:

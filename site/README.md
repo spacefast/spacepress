@@ -9,6 +9,13 @@ holds the two to that over the examples and every refused fixture.
 Static pages by [Astro](https://astro.build), no framework in the browser. Builds deploy to GitHub
 Pages from `.github/workflows/site.yml` on pushes to `main`.
 
+`/tour` walks through `examples/pantry` and `examples/blog`: `src/tour/stops.ts` names lines of each
+config and lines of what the compiler emits for them, by anchors; `src/lib/examples.ts` compiles the
+examples with the browser build at site build time, and a stop whose anchors no longer match fails
+the build (`tests/unit/tour.test.ts` checks every stop). `/docs` renders `../docs/*.md` and the
+README as committed, with repository links rewritten to pages here or to GitHub
+(`src/lib/links.ts`). Design records (`docs/design-*.md`) and research notes are not pages.
+
 ```sh
 cd site
 pnpm install

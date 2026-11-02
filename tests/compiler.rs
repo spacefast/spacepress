@@ -135,6 +135,26 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "tables: { first: shared, second: shared }",
             "a definition can only be registered once",
         ),
+        (
+            "tables: { notes: table({}, { storageName: 'bad-name' }) }",
+            "`storageName` must be an identifier",
+        ),
+        (
+            "tables: { notes: table({}, { storageName: 'media' }) }",
+            "\"media\" is reserved",
+        ),
+        (
+            "tables: { media: table({}, { storageName: 'assets' }) }",
+            "\"media\" is reserved",
+        ),
+        (
+            "tables: { notes: table({}, { storageName: 'existing' }), other: table({}, { storageName: 'existing' }) }",
+            "share the physical name `existing`",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
+            "duplicate logical registration `notes`",
+        ),
         ("tables: []", "`tables` must be an object"),
         (
             "tables: { notes: table({}), notes: table({}) }",
@@ -444,6 +464,21 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{example}: no new SQL for an authoring-only change"
         );
     }
+    // Main-built storage, including FK targets and revision storage, survives the authoring cut.
+    let upgraded = tmp.join("storage-upgrade");
+    let fixture = root().join("tests/fixtures/storage-upgrade");
+    copy(&fixture, &upgraded);
+    let built = zero().arg("build").arg(&upgraded).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    for file in ["snapshot.json", "0001_init.sql"] {
+        assert_eq!(
+            std::fs::read(upgraded.join("zero/migrations").join(file)).unwrap(),
+            std::fs::read(fixture.join("zero/migrations").join(file)).unwrap(),
+            "the historical ledger must remain unchanged"
+        );
+    }
+    assert_eq!(std::fs::read_dir(upgraded.join("zero/migrations")).unwrap().count(), 2);
+
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
     std::fs::create_dir_all(&conflict).unwrap();
@@ -469,6 +504,17 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
         assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        std::fs::write(conflict.join("zero.config.ts"), format!("import {{ table, defineConfig }} from 'zero'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
+        let preserved = zero().arg("build").arg(&conflict).output().unwrap();
+        assert!(
+            preserved.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preserved.stderr)
+        );
+        let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+        assert_eq!(actual, legacy);
+        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
 
     // Writes default to editor access: the site's editor signs in with an application password.

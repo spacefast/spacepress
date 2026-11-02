@@ -47,7 +47,7 @@ export const authors = collection({
   bio: text({ multiline: true }).max(500),
   avatar: media({ accept: "image" }),
   userId: integer(),
-}, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
+}, { storageName: "authors", label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const posts = collection({
   id: id(),

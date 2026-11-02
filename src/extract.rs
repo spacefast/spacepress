@@ -61,6 +61,7 @@ const CONFIG_KEYS: &[&str] = &[
     "admin",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
+    "storageName",
     "label",
     "drafts",
     "revisions",
@@ -217,8 +218,32 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 return Err(Diag::new(span, format!("`{key}` isn't a valid registry key"))
                     .help("use letters, digits, and underscores, starting with a letter"));
             }
-            let table = physical_name(key);
-            if RESERVED_COLLECTIONS.contains(&table.as_str()) {
+            let canonical = physical_name(key);
+            if RESERVED_COLLECTIONS.contains(&canonical.as_str()) {
+                return Err(Diag::new(
+                    c.span,
+                    format!("\"{canonical}\" is reserved: Zero serves a built-in route with that name"),
+                ));
+            }
+            let table = match c.options.as_ref().and_then(|options| {
+                let Value::Object(options) = options else {
+                    unreachable!()
+                };
+                options.borrow().get("storageName").cloned()
+            }) {
+                None | Some(Value::Undef) => canonical,
+                Some(Value::Str(name)) if valid_ident(&name) => name.to_string(),
+                Some(_) => {
+                    return Err(
+                        Diag::new(span, "`storageName` must be an identifier starting with a letter")
+                            .help("use the existing physical name without the WordPress or zero_ prefix"),
+                    );
+                }
+            };
+            if RESERVED_COLLECTIONS
+                .iter()
+                .any(|reserved| reserved.eq_ignore_ascii_case(&table))
+            {
                 return Err(Diag::new(
                     c.span,
                     format!("\"{table}\" is reserved: Zero serves a built-in route with that name"),
@@ -229,6 +254,9 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     span,
                     format!("`{key}` and `{}` share the physical name `{table}`", other.key),
                 ));
+            }
+            if out.schema.collections.values().any(|other| other.key == *key) {
+                return Err(Diag::new(span, format!("duplicate logical registration `{key}`")));
             }
             if c.table.set(table.clone()).is_err() {
                 return Err(Diag::new(span, "a definition can only be registered once"));

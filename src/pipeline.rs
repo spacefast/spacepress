@@ -174,10 +174,13 @@ pub fn build(
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
             let canonical = crate::schema::physical_name(stored);
-            if &canonical != stored && schema.collections.contains_key(&canonical) {
+            if &canonical != stored
+                && !schema.collections.contains_key(stored)
+                && schema.collections.contains_key(&canonical)
+            {
                 return Err(Diag::new(config_span, format!(
                     "stored resource `{stored}` conflicts with canonical physical name `{canonical}`; an authoring change cannot rename persisted storage"
-                )).help("preserve the migration ledger and resolve this storage migration explicitly before building")
+                )).help(format!("keep the migration ledger and bind the existing resource with `storageName: \"{stored}\"`"))
                     .phase(diag::Code::Schema));
             }
             // Old snapshots record physical names only. A removed and a new resource

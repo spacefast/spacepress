@@ -400,6 +400,9 @@ type ColumnsOfKind<TCols, TKind extends ColumnKind, TNotNull extends boolean = b
 
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
+  /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
+   * Keep this binding when upgrading existing storage; changing it does not rename data. */
+  storageName?: string;
   /** Project-relative Markdown/JSON files; implies uid: true. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   uid?: boolean;

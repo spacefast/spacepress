@@ -141,7 +141,7 @@ key; collections and user projections use the native integer `id`.
 
 The registry key is the logical name, used verbatim by `db.query`, hooks,
 relations and the flat generated client (`zero.shoppingList`). Physical names
-and REST paths are deterministic snake_case: `shoppingList` → `shopping_list`,
+and REST paths default to deterministic snake_case: `shoppingList` → `shopping_list`,
 `HTTPLogs` → `http_logs`. A table uses `wp_zero_shopping_list`; a collection
 registers `zero_shopping_list`. Duplicate logical or physical names across all
 registries are rejected before artifacts are emitted. A definition may be
@@ -149,6 +149,7 @@ registered once.
 
 | option | default | meaning |
 |---|---|---|
+| `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `zero_` prefixes; retain existing storage on upgrade |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
@@ -170,13 +171,44 @@ Replace named builders with unnamed `collection()` or `table()` and register
 under `collections` or `tables`. Keep the logical keys, existing physical storage
 and committed migration snapshots. The snapshot format and runtime storage
 model are unchanged: an authoring-only change must produce no migration.
-For a persisted name that differs from the derived snake_case name, stop and
-resolve that specific storage conflict before building or deploying; do not
-rewrite migration history or silently rename data.
-Snapshots contain physical names without old logical aliases. A build that both
-removes an existing resource and adds a new one is therefore refused as an
-ambiguous replacement, even when both names are snake_case. Keep persisted names
-registered during the authoring cut. Stage intentional resource removal separately
+For a persisted name that differs from the derived snake_case name, set
+`storageName` to the exact name in `zero/migrations/snapshot.json`. For example,
+old `collection("stockItems", fields, { editor: false, revisions: true })`
+becomes:
+
+```ts
+const stockItems = table(fields, { storageName: "stockItems", revisions: true });
+export default defineConfig({ name: "my-app", tables: { stockItems } });
+```
+
+Keep the app `name`, logical keys, fields, relations, access and storage options
+(including drafts, revisions, uid and sync) as before. Bind each resource whose
+physical name differs, including reference targets. `storageName` accepts letters,
+digits and underscores, starting with a letter; reserved names, duplicate logical
+keys, duplicate physical names and collection post-type limits still apply.
+The binding is permanent config, not a one-time rename instruction: retain it
+on subsequent builds. It controls SQL tables, post types, routes and persisted
+revision ownership; relations and client properties still use logical keys.
+
+1. Keep the entire committed `zero/migrations/` directory, including the v2
+   `snapshot.json` and every numbered SQL file. Do not remove registrations as
+   an intermediate step: that authors a destructive migration.
+2. Change the builders/registries and add the physical bindings, then run
+   `zero build .`. This authoring-only transition must leave the snapshot and
+   historical SQL unchanged and produce no new numbered SQL. Review with
+   `git diff -- zero/migrations` before deployment.
+3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
+   file-copy update to the existing site. The runtime keeps the app's migration
+   ledger, rows, reference targets and revision identities; it has no data
+   migration to apply. Verify existing reads, relations and revision history
+   through the new client/runtime before making schema changes.
+
+This also supports old logical aliases: use the original physical name as the
+binding even if the registry key is different. Changing a binding does not move
+or rename data. Snapshots contain physical names without old logical aliases.
+A build that removes existing storage while adding new storage is refused as
+an ambiguous replacement, even when both names are snake_case. Retain the
+binding during the authoring cut; stage intentional resource removal separately
 after reviewing its data migration.
 
 ### Access

@@ -1,8 +1,8 @@
 # Zero pages, components, layouts, sync, publish and agents
 
 Status: implementation proposal under the owner's binding rulings (§2).
-Nothing here is implemented. The selected design below resolves the research
-and review findings; it does not approve PR #55 or a change to the Blocks
+Nothing here is implemented. The selected design below incorporates the research
+and review findings and awaits independent re-review; it does not approve PR #55 or a change to the Blocks
 isolation ruling. Those owner decisions and the remaining scope choices are
 listed in §10. Dependent implementation waits for them.
 
@@ -28,7 +28,7 @@ use #55's proposed config syntax conditionally (§5). Build errors carry
 | Routing | Reconciled route-to-post map owns inbound rewrites, outbound permalinks and canonical redirects. Root Page is never another route's parent. |
 | Head | Metadata resolves before output. Title calculation and the single title emitter have separate owners. Qualified SEO adapters preserve unspecified plugin values (§4.4). |
 | Layouts | Plugin canvas by default. Optional block theme with unique route template slugs, stable theme identity and preserved Site Editor customizations. |
-| Publish | Local build is separate from authenticated, signed publish. Durable DB operation ownership spans stage, activate and finalize. A reader barrier drains every app-schema consumer before migration. Readiness lives in DB, not a release file. |
+| Publish | Local build is separate from authenticated, signed publish. Durable DB operation ownership spans stage, activate and finalize. Host-acknowledged process drain precedes code/schema cutover; a spare DB connection cannot prove drain. Readiness lives in DB, not a release file. |
 | Immutable hosts | Content-only endpoint plus host-owned code deploy, installed-digest acknowledgments and explicit finalize handshake. No executable PHP in the DB. |
 | Agents | DM core owns runs, conversations, memory and approvals. Zero compiles manifests and adapts pinned DM abilities. No second agent loop or run ledger. |
 | Approvals | DM required even without declared agents. Proposed `ZeroApprovalBridgeV1` supplies human review, atomic local application, unknown-outcome recovery and durable pipeline continuation. Missing bridge fails closed. |
@@ -285,12 +285,42 @@ viewer is never passed; an anonymous visitor is
 loader's return value is the page's props and is memoized in
 `Zero\Pages\Request` for bindings and regions to read.
 
+**HTTP cache boundary.** V1 bypasses shared full-page caches for every managed
+page, including anonymous pages. It sends `Cache-Control: private, no-store`
+and `nocache_headers()` before output. Those headers alone are insufficient:
+the host must bypass CDN/reverse-proxy caches and `advanced-cache.php` before
+a hit can return HTML ahead of the MU loader. The bypass covers the complete
+managed route namespace, aliases, canonical redirects and error responses,
+regardless of authentication cookie or header. A custom viewer credential
+must never depend on a cache plugin recognizing WordPress login cookies.
+Enabling routes, changing route ownership or changing cache configuration
+requires acknowledged purge of previously stored managed HTML at every
+serving cache before readiness. An unqualified cache configuration keeps
+page delivery unready; it does not fall back to a late PHP guard. Unrelated
+theme routes retain their own cache policy. A managed theme's whole response
+namespace is covered because layouts and metadata may use viewer data.
+
+Shared public HTML caching is deferred until an adapter supplies dependency
+tracking and acknowledged invalidation for content, access policy, route,
+release and theme changes. Hashed static assets may be cached separately;
+retain assets used by still-valid browser documents through the deployment's
+retention window. Never apply the HTML bypass by deleting those assets.
+
 `collectionPage(posts)` is the loader for an item route. The URL segment is
 the collection's `slug()` column, which #55 makes `post_name`; `by` is not an
 option because nothing else has a permalink. The compiler resolves the row
 from the main query's post (the CPT is viewable, so WordPress found it),
 re-reads it through `ctx.content` so the read rule and field access apply,
-and passes `item` and `href`. A collection without a `slug()` column cannot
+and passes `item` and `href`. V1 additionally excludes native password-bearing
+managed items before any row reaches page loaders, bindings, excerpts or
+metadata, even if WordPress found the published post. They receive the same
+uncached not-found result. The query guard in §6 enforces this exclusion,
+including cached result adapters; it does not silently clear an existing
+`post_password`. Supported core REST, SCF, editor, sync and Zero write paths
+refuse adding a password to a page-enabled managed item. Imported existing
+passwords remain stored and make the affected item non-servable. Full native
+password-cookie support is deferred until its request-specific authorization
+can be preserved across every render/query seam. A collection without a `slug()` column cannot
 have a `collectionPage`. One `collectionPage` per collection; a second is an
 error.
 
@@ -431,11 +461,13 @@ which `core/post-content`, `core/post-title` and friends do not know. So on
 such a route `PostTitle`, `PostContent`, `PostDate` and `PostFeaturedImage`
 compile to bindings and regions over the viewer-bound `item` (title → a
 binding on `item.title`; `PostContent` and `RichText value={item.body}` → a
-region that renders the already-authorized, save-sanitized body through
+region that renders the row-authorized, password-excluded, save-sanitized body through
 the qualified content pipeline under the current post context), never to `core/post-*`
 blocks. `core/post-*` blocks are emitted only when the queried post is a
 core type (a Zero Page record, or a core `post` inside an inherited
-`QueryLoop`). `PostContent` targeting its own code-owned Page is refused
+`QueryLoop`); their native `post_password_required()` behavior remains intact.
+Applying `the_content` filters to raw stored text is not that password check.
+`PostContent` targeting its own code-owned Page is refused
 to prevent recursively rendering the stored compiled body. `Navigation`
 and `QueryLoop inherit` compile to their core
 blocks unchanged. `QueryLoop` with an explicit Zero collection is refused in
@@ -791,13 +823,13 @@ A host-installed must-use loader establishes admission before ordinary
 plugins can load app code. Normal plugin load order is not the barrier.
 Stable publish/status/recovery routes skip ordinary generated-code boot and
 never first take a consumer fence that they would need to upgrade. Only the
-authorized finalizer loads the selected release behind its exclusive fence.
+host-admitted finalizer loads the selected release after acknowledged drain.
 A control request may install/switch a pending theme while the prior theme
 is still loaded, but it runs no app migration or domain callback until a
 fresh bootstrap attests the selected theme digest. A tuple mismatch never
 opens ordinary serving.
-If the early loader is absent, app readiness fails. The loader acquires
-fences for generated plugins in a stable app-key order before booting them.
+If the early loader is absent, app readiness fails. The loader checks
+admission for generated plugins in a stable app-key order before booting them.
 It may conservatively return site maintenance when any required app is
 closed; URL matching is not permission to boot an unready plugin. All
 requests using a managed theme are covered too.
@@ -832,13 +864,17 @@ operation and generation. A stale extractor cannot change another
 operation's files. Only an ownership-checked transition promotes a fully
 verified immutable digest directory; active state changes only in DB.
 Expired ownership permits takeover of known incomplete work, not replay of
-an uncertain external effect or concurrent migration. Finalization also
-holds a request-scoped exclusive app fence while it mutates state. A lease
-expiry alone cannot evict a live fence holder. Once admissions are closed,
-owner takeover must acquire that exclusive fence before changing the
-mutating operation's generation. All target mutations recheck the generation
-under the fence, including theme-link replacement. Thus an expired lease
-cannot create a second finalizer while the first still executes.
+an uncertain external effect or concurrent migration. Finalization runs as
+one host-supervised mutation process under the operation's generation and
+closed-state drain receipt. A lease expiry, lost DB connection or vanished
+lock is never proof that this process stopped. Before takeover, the host
+must terminate the old mutation process and its children, close their DB
+sessions, and acknowledge that exit. Only then may CAS advance ownership
+and admit the replacement process. All target mutations validate the current
+generation, including theme-link replacement; this supplements actual
+process exclusion rather than replacing it. The finalizer disables automatic
+DB reconnect/query replay and stops on connection loss. A supervisor that
+cannot prove exit leaves the operation closed for operator recovery.
 
 The protocol has a probe followed by three idempotent mutation steps.
 A step may return a durable continuation instead of keeping an HTTP request
@@ -869,10 +905,10 @@ open; the CLI resumes the same operation key:
    so a crash resumes only a proven idempotent/incomplete step. An uncertain
    step stops for reconciliation rather than running again blindly.
 
-**All consumers share the barrier.** The stable bootstrap acquires a
-request-scoped shared app fence before loading generated code and retains
-it through the invocation. It checks open/ready and generation while holding
-that fence. Zero REST, core REST collection reads and writes, SCF,
+**All consumers share the barrier.** The stable bootstrap checks uncached
+open/ready and generation before loading generated code. The host admits
+the invocation into the currently open process generation. Zero REST,
+core REST collection reads and writes, SCF,
 wp-admin editors, frontend queries, abilities, cron, Action Scheduler, DM
 tools, sync and CLI/WP-CLI all enter here. Static provider code stays
 registered for control/status, but no app callback or collection storage
@@ -880,36 +916,56 @@ access runs while unready. A blocked web/admin operation gets a 503 with
 `Retry-After`; workers release/defer rather than mark the work successful.
 Only the stable recovery screen and the private finalizer bypass admissions.
 
-For MySQL, a dedicated connection holds a shared row lock on the app fence
-inside an explicit transaction for the consumer's lifetime, separate from
-its ordinary application transactions. Control-row admission updates use a
-different row/connection, so they do not wait behind the shared fence.
-Activate first closes admissions in the control row, then waits for an
-exclusive lock on the fence. It rechecks ownership after the
-lock is acquired. Requests that read an old admission state recheck it
-under their fence before loading code. The exclusive holder can migrate
-only when all previous shared holders have exited. A timeout leaves the
-operation closed and recoverable; a TTL/heartbeat is never evidence that
-old PHP stopped. For single-host SQLite development, shared/exclusive
-`flock` on a host-owned stable lock file supplies that lifetime fence;
-control-row CAS uses `BEGIN IMMEDIATE`. Multi-host SQLite is unsupported.
-Read-only app trees do not prevent the host-owned lock location or DB state.
+**Host-acknowledged drain is required for code/schema cutover.** A shared
+InnoDB lock on a spare connection is not a consumer-lifetime fence: losing
+that connection releases the lock while PHP and its ordinary DB connection
+can continue. Neither a pre-query liveness check nor a heartbeat closes
+that race; WordPress reconnect/query replay makes it worse. V1 therefore
+does not offer a DB-lock-only migration path on MySQL or SQLite.
 
-An already-running long job keeps its old fence until it exits or reaches a
-safe checkpoint. A checkpoint releases all app objects/transactions and
-re-enters through the new generation before continuing; otherwise publish
-waits or fails without migration. Persisted AS/DM payloads include a handler
+After durable admission closure, the host blocks new web, CLI and background
+app execution across every serving and worker node, including requests that
+read the previous open state. The web boundary runs before any CDN, proxy or
+`advanced-cache.php` response; a warm HTML hit cannot serve a closed release.
+It stops automatic respawn of the old process
+generation, lets invocations finish within a bounded drain budget, then
+terminates the remaining processes and descendants and closes their app DB
+sessions. The host acknowledgment binds site/app, operation generation,
+admission epoch, complete node/worker set and exited process generation.
+An alive, suspended, disconnected or unreachable old consumer prevents the
+acknowledgment. A topology change invalidates it until every new node is
+closed and included. The supervisor continues exclusion throughout migration;
+it cannot reopen ingress or old workers merely because its control connection
+drops. No DDL or new app bootstrap starts before the acknowledgment is
+verified. Timeout or lost host authority keeps admissions closed. A DB lock
+may coordinate short control transactions; it never substitutes for this
+process/connection termination proof.
+
+The local development supervisor supplies the same protocol for local PHP,
+WP-CLI and workers. Single-host SQLite uses `BEGIN IMMEDIATE` for control
+CAS, not as proof that unrelated PHP has exited. Multi-host SQLite is
+unsupported. Hosts without a qualified supervisor may stage immutable bytes
+and perform supported content-only operations, but code/schema activation
+refuses with a located host-capability diagnostic.
+
+An already-running long job must finish or checkpoint and exit before the
+host acknowledges drain. A checkpoint persists work, releases app objects
+and transactions, and exits its process generation; resumption enters a new
+invocation through the selected generation. A checkpoint inside still-running
+old PHP does not qualify. Persisted AS/DM payloads include a handler
 contract version: after cutover compatible work resumes under new code;
 incompatible work is held/cancelled explicitly, never delivered to a changed
-handler. Registrations alone cannot solve in-flight work. Raw SQL or trusted
-plugins bypassing these entry points are outside the supported boundary;
-a host unable to establish the barrier must drain its processes itself and
-provide a rollout acknowledgment before activation.
+handler. Registrations alone cannot solve in-flight work. Trusted raw SQL
+or plugins that bypass the supported entry boundary are not isolated by a
+PHP guard. The host must include their schema-consuming processes in the
+drain or refuse code/schema activation; it may conservatively drain the
+whole site's PHP and workers.
 
 **Recovery.** Same-key retries return durable state. Stale expected-current
 is a 409, competing ownership a 423. A dead finalizer leaves admissions
-closed. Retry resumes its recorded steps under a new generation. Rollback
-is allowed only when the recorded schema and outstanding-work contracts
+closed. Retry resumes its recorded steps under a new generation only after
+the host proves the former mutation process and DB sessions have exited.
+Rollback is allowed only when the recorded schema and outstanding-work contracts
 remain compatible with the previous app/theme pair; otherwise refuse and
 require forward repair. Never "warn and run old code" after a destructive
 migration. Restore theme options and validate the whole pair before ready.
@@ -929,13 +985,14 @@ filesystem write is needed for readiness. The host also installs the stable
 theme path and platform upgrades.
 
 `--content-only` never changes code or schema. It checks the ready installed
-digest and schema, uses the normal fences, then applies authenticated Page
-reconciliation or content sync with base/digest checks. It cannot overwrite
+digest and schema, uses ordinary admitted transactions, then applies
+authenticated Page reconciliation or content sync with base/digest checks. It cannot overwrite
 editor-owned content merely because the build contains an older copy.
 Region references must exist in the installed release. Writable WP Cloud,
-generic VPS and local development use stage/activate/finalize directly;
-the probe decides from actual capabilities. The CLI receipt states which
-code and content steps completed. Generated PHP never goes into DB or
+generic VPS and local development use stage/activate/finalize with the same
+qualified supervisor drain, not an HTTP-only lock fallback. The probe decides
+from actual capabilities. The CLI receipt states which code and content steps
+completed. Generated PHP never goes into DB or
 uploads and is never `eval`ed.
 
 ### 4.10 Agents on Data Machine
@@ -1057,19 +1114,63 @@ not evidence that the proposed bridge already exists:
 
 | Phase | Contract |
 |---|---|
-| Bootstrap | For agents **or approvals**, request full runtime before `plugins_loaded:20` on reconcile, dispatch, schedules, review and all action entry paths. Manifest-based early detection includes direct REST, abilities, MCP and admin. An approval-only app still installs DM, its SQL pending-action store, the adapter and bridge. |
+| Bootstrap | For agents **or approvals**, request full runtime before `plugins_loaded:20` on reconcile, dispatch, schedules, review and all action entry paths. Detection includes the current manifest and persisted owned-resource mappings, including retired resources after the last declaration is removed. Cover direct REST, abilities, MCP and admin. An approval-only app still installs DM, its SQL pending-action store, the adapter and bridge. |
 | Provision | Under an operator and a DB-backed reconcile lock, call `datamachine/create-agent` with explicit `agent_slug`, `owner_id`, `site_scope` and config. Persist the returned numeric `agent_id`. Pass that exact ID to `datamachine/create-pipeline`, its seeded flow and each additional `datamachine/create-flow`. A missing ID must not fall back to the provisioning operator's current agent. Create flows with manual scheduling. |
 | Verify and schedule | Read back every agent, pipeline and flow. Verify site scope, agent owner, pipeline `agent_id`, flow `agent_id`, pipeline/step IDs and the Zero resource key before recording the mapping and enabling schedules with `update-flow`. Ownership drift fails readiness; never adopt another agent's rows. |
 | Update | Read mapped resources first, then `update-agent`, `update-pipeline-step`, `configure-flow-steps`, `update-flow`. Preserve fields outside Zero's declared ownership. A crash after a non-idempotent create is reconciled through the deterministic owned key before retry; an ambiguous match stops. |
+| Retire | Diff desired keys against all persisted owned mappings under the publish barrier. Verify ownership, disable/pause removed flows, remove their recurring and one-time schedules through the pinned DM scheduler, and verify readback before readiness. Retain tombstones, history and memory; do not delete unrelated DM resources or infer ownership from a display name. Unresolved owned orphans fail readiness. |
 | Start | Authorize Zero `access` and dispatch `datamachine/run-flow` with the mapped ID and `respect_paused: true` under `PermissionHelper::run_as_system()` for that call only. DM's dispatch is non-idempotent. A DM-owned durable dispatch receipt must store intent and the resulting DM job ID; this requires a qualified adapter/DM integration capability rather than a presumed `run-flow` option. An uncertain result is held for DM reconciliation, never retried on timeout alone. No Zero run table is introduced. |
-| Tools | `datamachine_engine_snapshot` supplies `job.ability_tools`, `job.mode_models` and a sealed scope only for verified owned flows. `datamachine_resolved_tools` intersects to the allowlist. Schemas come from registered abilities via DM's `AbilityToolSource`. Exclude management, resolution and memory-write tools when not explicitly permitted. |
-| Memory and admin | Use DM `AgentMemory`. `datamachine_admin_pages` supplies operator discovery; Zero Admin supplies readiness, resource links and human review cards under Zero authorization. DM admin capabilities are not granted by an agent's `access`. |
+| Tools | `datamachine_engine_snapshot` supplies `job.ability_tools`, `job.mode_models` and a sealed scope only for verified, currently declared owned flows. Retired or stale-generation owned flows fail closed before dispatch, not by falling back to native DM tools. `datamachine_resolved_tools` intersects to the allowlist. Schemas come from registered abilities via DM's `AbilityToolSource`. Exclude management, resolution and memory-write tools when not explicitly permitted. |
+| Memory and admin | Use DM `AgentMemory` with the qualified private store described below. `datamachine_admin_pages` supplies operator discovery; Zero Admin supplies readiness, resource links and human review cards under Zero authorization. DM admin capabilities are not granted by an agent's `access`. |
 
 DM's AI step sets the WP current user to the DM agent's owner. The fixed
 non-admin service principal owns its shared memory. The initiating human,
 service owner and approving reviewer remain separate in DM metadata; approval
 never turns the service user into the reviewer. Per-caller principals are
 out of scope for v1.
+
+**Removal is a durable transition.** Persist the site/app/resource key, DM
+agent/pipeline/flow IDs, ownership proof, manifest generation and retirement
+state in the adapter's resource mapping. This is resource identity, not a
+second run ledger. It survives removing a flow, an entire agent or the final
+top-level `agents` declaration. Before reopening readiness, reconcile every
+previously owned mapping against the selected manifest. Disable removed
+flows and unschedule both recurring and one-time delivery; cancellation is
+not proved by deleting only a Zero declaration. Retries resume the same
+retirement checkpoint and verify DM state before recording completion.
+
+Queued occurrences and direct native DM starts must pass a qualified
+owned-flow generation/membership check before model or tool execution.
+Historical ownership with a retired key is a denial, never native fallback.
+Already-running work drains under §4.9 and cannot re-enter the removed
+flow. Human-waiting runs lose approval applicability and are cancelled or
+held through DM's durable state without resuming the original tool. Unknown
+external outcomes remain held for reconciliation, never replayed; the
+tombstone blocks new starts regardless. Keep runs, transcripts and memory
+for authorized operator history. Do not delete them to make doctor green.
+If the pinned integration cannot enforce these transitions at all dispatch
+and resume paths, removal cannot become ready. Unrelated native DM work
+keeps its behavior; only positively verified Zero-owned IDs are affected.
+
+**Memory privacy is readiness.** DM's default disk path under public WP
+uploads is not qualified merely because it is writable and persistent.
+Select a host-configured DM `AgentMemory` store outside every document root
+and public upload/CDN namespace, with storage permissions restricted to the
+service and an authorized DM access path. It must remain persistent and
+shared across all agent workers. This preserves DM's memory engine; Zero
+does not add another store protocol. A web-server rule or `.htaccess` file
+alone is not proof that another origin, server or CDN honors it.
+
+Qualification writes a unique nonsecret canary through the actual selected
+DM store and verifies anonymous denial at the serving origin and every
+applicable upload/CDN mapping, including known default disk locations.
+Verify the same store configuration on each worker and clean up the canary.
+The readiness attestation binds the storage configuration and delivery
+topology; changing either invalidates it. Doctor inspects that configuration
+and qualification, and reports a private-storage failure without printing
+memory contents. An unknown path mapping, public response or absent private
+store makes agents unready. Never serve memory through a static URL and
+rely on PHP authorization that the file server bypasses.
 
 **Approval is canonical, including without agents.** Every entry to an
 approval-bearing action stages through `PendingActionHelper::stage()` instead of executing.
@@ -1166,12 +1267,12 @@ source strings:
 | Platform | DM active at the qualified artifact; WP 7.1 / PHP 8.2; vendor autoload and built admin assets present |
 | Agents API | loaded Agents API class source matches the lock; a second copy is a failure |
 | ABI | `datamachine/create-agent`, `create-pipeline`, `update-flow`, `run-flow` registered; `PendingActionHelper::stage` and `PendingActionAuthorizationReceipt::consume` exist; `ZeroApprovalBridgeV1` qualified or all approval-bearing actions and flows marked unready |
-| Persistence | DM tables current; SQL pending-action claims available; memory store writable, persistent and shared across workers |
+| Persistence | DM tables current; SQL pending-action claims available; actual DM memory store writable, persistent, shared and private; origin/upload/CDN canary denial qualified for the current storage and host topology |
 | Principal and tools | service user exists and is not an administrator; agent owner and `site_scope` match; pipeline and every flow have the mapped numeric `agent_id`; resolved tool set equals the allowlist plus vetted plumbing; no management or self-resolution tool |
 | Prompts | the step's `system_prompt` digest equals the bundled instructions digest; each flow's `user_message` equals its declared prompt |
 | Provider | provider and model configured; finite turn budget; no secret printed |
 | Delivery | loaded AS class version and runner policy qualified; one routine per owned schedule; a disposable canary job on both domains |
-| Reconciliation | manifest digest matches owned DM resources; drift and orphaned owned schedules listed; nothing of anyone else's is touched |
+| Reconciliation | manifest digest matches owned DM resources; removed owned flows disabled and unscheduled with durable tombstones; stale dispatch/resume denied; unresolved owned orphans fail readiness; nothing of anyone else's is touched |
 
 ## 5. Relation to the config API redesign (#55)
 
@@ -1268,8 +1369,8 @@ type's rule applied to an entire mixed query:
 ```text
 existing WHERE AND (
   post_type NOT IN (managed public types)
-  OR (post_type = type_A AND visible_status_A AND read_rule_A(viewer))
-  OR (post_type = type_B AND visible_status_B AND read_rule_B(viewer))
+  OR (post_type = type_A AND visible_status_A AND post_password = '' AND read_rule_A(viewer))
+  OR (post_type = type_B AND visible_status_B AND post_password = '' AND read_rule_B(viewer))
 )
 ```
 
@@ -1277,12 +1378,14 @@ Keep the original query's status, search and taxonomy constraints too.
 Unrelated post types retain their behavior. No generic `is_admin()` bypass:
 admin queries use their authenticated viewer and the schema-readiness gate.
 Result/short-circuit adapters must reauthorize cached `posts_pre_query`
-objects; a cache keyed without viewer/policy generation cannot supply
-managed rows. Count and sitemap queries must apply the same predicate,
+objects, including the native password exclusion; a cache keyed without
+viewer/policy generation cannot supply managed rows. Count and sitemap queries must apply the same predicate,
 not filter rows after pagination. Unknown query optimizations fail closed
 for managed types until adapted. Raw SQL and trusted plugins removing Zero's
 filters are not a supported security boundary. Explicit `QueryLoop` over
 Zero collections remains refused; use viewer-bound `load()` and `.map`.
+This result-cache contract does not authorize shared HTML caching; §4.1's
+early host/drop-in bypass applies even if query authorization is correct.
 
 **Report 05's "one queue" vs Data Machine's job engine.** Decision: report
 07 §B6. Both already deliver through Action Scheduler; the requirement is one
@@ -1335,13 +1438,13 @@ obligations for implementation PRs, not tests run for this document:
 |---|---|
 | Existing compiler fixtures | Route ID injectivity (`/` vs `/index`, dots vs slashes, groups and explicit IDs); source-located refusals, static Group class preservation, IR provenance, transitive universal checks and backend-only output independence. |
 | Blocks serializer and React owners | Pinned `createBlock`/`serialize` round trip, no dropped attributes, matching React classes. Site Editor validity stays in its existing browser proof; PHP parsing alone cannot prove validity. |
-| Existing WP route/query owner | Root excluded from parent chain; orphan and duplicate-leaf routes; inbound route, `get_permalink`, canonical redirect, menu and sitemap agreement. `get_posts` with suppression, a mixed/any/ID-only query and denied status/row prove the guard. Hidden Pages absent from editor list/count/search, direct editor and REST writes denied, separately authorized route diagnostics. |
-| Existing render/head owner | Anonymous viewer vs trusted DB, field masking through bindings, live row changes, JS/PHP region differential corpus. Exactly one title in canvas and theme under classic themes with/without title support, and each pinned SEO provider; preserve unspecified provider title and canonical values. |
+| Existing WP route/query owner | Root excluded from parent chain; orphan and duplicate-leaf routes; inbound route, `get_permalink`, canonical redirect, menu and sitemap agreement. `get_posts` with suppression, a mixed/any/ID-only query and denied status/row prove the guard. Existing password-bearing managed items expose no protected fields through loaders, listings, cached results or metadata, and supported writes refuse adding passwords without clearing stored ones. Hidden Pages absent from editor list/count/search, direct editor and REST writes denied, separately authorized route diagnostics. |
+| Existing render/head owner | Anonymous viewer vs trusted DB, field masking through bindings, live row changes, JS/PHP region differential corpus. Warm shared HTML cache bypass holds for an authenticated viewer using a non-WP credential and the next anonymous request; access/route changes purge old stored HTML before readiness. Native core content retains its password gate. Exactly one title in canvas and theme under classic themes with/without title support, and each pinned SEO provider; preserve unspecified provider title and canonical values. |
 | Existing theme/browser owner | Unique assigned templates for both `/company/team` and `/support/team`; valid templates/parts; stable stylesheet customizations survive update; dangling region references stop publish; first activation and rollback keep options and app/theme payload consistent. |
 | Existing sync owner | Seed-once, file/DB push/pull, conflict and not-representable outcomes, UID/route identity, locked code, and sync on/off transitions with an established base. |
-| Publish integration owner | Real archive and HTTP requests on different connections/processes; ownership expiry/takeover, same-key receipts, stale generation and actual permission probes. Pause an old core REST/SCF read and an old worker, attempt activation, and prove no migration starts until both release their fences. Exercise crash before/after tuple/theme change, finalizer retry, incompatible rollback refusal and queued handler-version mismatch. |
-| Host deploy contract owner | Read-only code filesystem, DB-only readiness, installed-digest acknowledgments across nodes, no work on a stale node and content-only refusal for an unmatched release. |
-| DM adapter/approval owner | Explicit returned `agent_id` on pipeline and all flows, read-back ownership before schedules, crash-safe reconcile, exact tool projection and prompts. Approval-only app requires DM/full bootstrap. Concurrent target update invalidates approval; crash before/after local commit applies once; consumed ambiguous external effect is held without replay; pipeline continuation survives restart under original tool ID. Model/self-resolution denied; another authorized human may review. |
+| Publish integration owner | Real archive and HTTP requests on different connections/processes; ownership expiry/takeover, same-key receipts, stale generation and actual permission probes. Pause an old core REST/SCF read and worker, kill only their spare fence connections, and prove no DDL begins while either old process/app DB session survives. Lose the finalizer DB connection and prove takeover waits for supervised process/session exit. Exercise crash before/after tuple/theme change, finalizer retry, incompatible rollback refusal and queued handler-version mismatch. |
+| Host deploy contract owner | Read-only code filesystem, DB-only readiness, closed ingress/respawn, acknowledged process and DB-session termination across the complete serving/worker topology, installed-digest acknowledgments, no work on a stale/new node and content-only refusal for an unmatched release. A cache hit cannot bypass closed admissions or managed-page no-store; unqualified cache/drain configurations refuse readiness. |
+| DM adapter/approval owner | Explicit returned `agent_id` on pipeline and all flows, read-back ownership before schedules, crash-safe reconcile, exact tool projection and prompts. Remove a scheduled flow and the final agent declaration: no recurrence, stale queued start or human-waiting resume can execute; history/memory and unrelated native flows survive. Actual DM memory-store canary is denied anonymously at origin and upload/CDN mappings. Approval-only app requires DM/full bootstrap. Concurrent target update invalidates approval; crash before/after local commit applies once; consumed ambiguous external effect is held without replay; pipeline continuation survives restart under original tool ID. Model/self-resolution denied; another authorized human may review. |
 | Platform queue owner | Real AS and DM co-install under both plugin load orders; qualify loaded class source, runner policy and one successful canary in each existing job domain. |
 
 Use the existing WordPress-on-SQLite development owner for cheap functional
@@ -1363,13 +1466,13 @@ API tests.
 |---|---|
 | A. Design | This proposal, owner decisions and pinned artifact/ABI matrix. No implementation is in this change. |
 | B. Shared config | Binding `abilities` rename in accepted config syntax, types, extractor, manifests and docs. Coordinate with #55 rather than assume its whole stack approved. |
-| C. Release foundation | Stable bootstrap, durable ownership/receipts, all-consumer fence, DB readiness, schema/work-version admission and host handshake. This precedes exposing page/agent deploys, not a final maintenance patch. |
+| C. Release foundation | Stable bootstrap, durable ownership/receipts, host-supervised process drain, DB readiness, schema/work-version admission, early HTML-cache bypass and host handshake. This precedes exposing page/agent deploys, not a final maintenance patch. |
 | D. Page compiler | Discovery, exact IDs, JSX/IR and diagnostics. Serializer/universal integration starts only after the explicit Blocks exception. Backend-only stays independent. |
 | E. Routes and rendering | Public-query policy guard lands with viewability; Page reconciler, canonical map, hidden editing boundary, canvas, static serialization, bindings, loaders and PHP regions. Depends on C and D. |
 | F. Head and assets | One title emitter, qualified SEO adapters, metadata, CSS/modules/tokens and optional Interactivity. Depends on E and the scope decision. |
 | G. Theme mode | Approved theme switch syntax, unique templates, paired staging, activation/rollback, stable customization identity and browser proof. Depends on C–F and the accepted theme-switch spelling. |
 | H. Sync | Content Page sync, seed ownership and lock transitions in existing sync engine; depends on E and approved pages switch. |
-| I. Agent adapter | Pinned DM core/Agents API, AS qualification, manifest, explicit ownership, prompt/tool mapping, schedules and doctor. Depends on B and C; not on page output. |
+| I. Agent adapter | Pinned DM core/Agents API, AS qualification, private memory, manifest, explicit ownership, prompt/tool mapping, schedule retirement and doctor. Depends on B and C; not on page output. |
 | J. Approvals | DM bridge and its transaction/recovery contract, then canonical `approval`, human cards and continuation. DM dependency applies without agents too. Cannot ship enabled on stock DM; depends on C and I's adapter, not on declaring an agent. |
 | K. Authoring examples | Accepted-syntax journal/pantry examples, public guides and deterministic repeated builds after relevant units qualify. |
 
@@ -1428,8 +1531,13 @@ name the APIs whose behavior constrains the design.
 | Same WP pin | [`get_page_uri`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/post.php#L6697) concatenates ancestor slugs; [`get_page_link`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L397) exposes `page_link`; [`wp_get_canonical_url`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L4101) starts from the permalink. Rewrites alone do not supply canonical identity. |
 | Same WP pin | [`get_page_template`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/template.php#L471) considers assigned template first; [`block-template.php`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/block-template.php#L131) installs an unconditional title emitter; [`_wp_render_title_tag`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/general-template.php#L1557) requires theme title support. |
 | Same WP pin | [`get_edit_post_link`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/link-template.php#L1481) checks capability before its link filter. Denied code Pages need a separately authorized route screen. |
+| Same WP pin | [`wpdb`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/class-wpdb.php#L2156) can reconnect and replay queries. Losing a spare lock connection does not terminate a schema consumer; code/schema cutover requires host-acknowledged process/session drain. |
+| Same WP pin | [`wp-settings.php`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-settings.php#L98) loads `advanced-cache.php` before MU plugins. [`get_the_content`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/post-template.php#L325) and native post-data bindings enforce `post_password_required()`; raw content filters do not replace it. |
+| Batcache `ed0e6b2d9bcbab3924c49a6c3247646fb87a0957` | [`advanced-cache.php`](https://github.com/Automattic/batcache/blob/ed0e6b2d9bcbab3924c49a6c3247646fb87a0957/advanced-cache.php#L620) can send cached HTML and exit before the page loader. Managed-page readiness requires a qualified early bypass, not only response headers. |
 | Data Machine `b07be213f70904f379d2c18204d3b36a003ba41f`, 0.200.4 baseline | [`composer.lock`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/composer.lock) resolves Agents API's exact development revision; [`data-machine.php`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/data-machine.php#L148) provides early full-runtime request. Core only, no Business or Socials requirement. |
 | Same DM pin | [`CreatePipelineAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Abilities/Pipeline/CreatePipelineAbility.php#L140) falls back to execution context if `agent_id` is absent, and propagates explicit ownership to its first flow. Zero must pass and verify the returned agent's ID. |
+| Same DM pin | [`DirectoryManager`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Core/FilesRepository/DirectoryManager.php#L234) places default agent identity storage under WP uploads; that path is not private by virtue of WP authorization. Qualify the actual DM memory store and origin/upload/CDN denial. |
+| Same DM pin | [`FlowRoutines`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/Scheduling/FlowRoutines.php#L348) can unschedule and disable stored recurrence. Removing a Zero manifest key does not invoke retirement or prevent stale queued/native starts on its own. |
 | Same DM pin | [`PendingActionStore`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionStore.php#L418) documents at-most-once consumption and forbids automatic crash retry. [`PendingActionScope`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionScope.php#L122) binds callers; [`ResolvePendingActionAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/ResolvePendingActionAbility.php#L134) delegates to Agents API. These are integration seams, not the proposed atomic bridge. |
 | Agents API `952db6cb2b3ef49ab2e539993788d3e04bb6e783` | [`register-pending-action-abilities.php`](https://github.com/Automattic/agents-api/blob/952db6cb2b3ef49ab2e539993788d3e04bb6e783/src/Approvals/register-pending-action-abilities.php) registers canonical approval abilities, host store/resolver filters and the public permission callback. Pin this development revision, not a plugin version label or a second copy. |
 | Rank Math `50fc59587112316ad754ca3c9a26e1282795d49d` | [`Head`](https://github.com/rankmath/seo-by-rank-math/blob/50fc59587112316ad754ca3c9a26e1282795d49d/includes/frontend/class-head.php#L67) moves core's conditional title emitter to `rank_math/head` and optionally rewrites legacy title output. |

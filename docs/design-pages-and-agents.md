@@ -1,10 +1,14 @@
 # Zero pages, components, layouts, sync, publish and agents
 
 Status: implementation proposal under the owner's binding rulings (§2).
-Nothing here is implemented. The selected design below incorporates the research
-and review findings and awaits independent re-review; it does not approve PR #55 or a change to the Blocks
-isolation ruling. Those owner decisions and the remaining scope choices are
-listed in §10. Dependent implementation waits for them.
+Nothing here is implemented. Revision `af6ee887` passed independent review as
+a design proposal; that does not qualify the runtime or approve all of PR #55.
+The owner's 2026-11-02 direction now requires explicit collections and tables
+with relations between both. [Authoring direction](authoring-direction.md)
+records that target config, optional file layout and TypeScript expansion.
+It supersedes the content-inference choice in this document's conditional #55
+examples. Other owner decisions, including the Blocks isolation exception,
+remain listed in §10. Dependent implementation waits for them.
 
 New names under `zero/pages`, `zero/agents`,
 `@spacefast/zero-blocks/universal`, `Zero\Pages` and `Zero\Agents` describe
@@ -1276,6 +1280,15 @@ source strings:
 
 ## 5. Relation to the config API redesign (#55)
 
+**2026-11-02 update.** The owner requires separate `collection()` and `table()`
+declarations and relations within and across both registries. Storage must not
+be inferred from fields. The initial implementation preserves the current
+typed foreign-key/`defineRelations` graph and access semantics; it does not
+adopt every #55 simplification at once. The target is in
+[authoring direction](authoring-direction.md). The larger syntax examples
+below retain #55-only proposed names until their individual changes land;
+they are not executable current-main examples.
+
 [PR #55](https://github.com/spacefast/zero/pull/55) and its
 `docs/design-config-api.md` are a proposal for owner review. They are not an
 accepted API merely because examples here use them. #55 already describes
@@ -1288,8 +1301,8 @@ adopted; it never means owner-approved or already implemented:
 
 | #55 area | Disposition here |
 |---|---|
-| `collection(columns, opts)`, inferred content, `body`, hooks beside columns, `collections` key | Adopted in this proposal's conditional examples. Content inference and hook placement remain among #55's owner questions. |
-| `ref`, `user`, inferred relations, `Row`/`Insert`, system fields, builder simplifications, media MIME patterns | Adopted in the proposed shared vocabulary. No pages-specific alternative is introduced. System timestamps, casing, branded IDs and other unsettled defaults remain owner-open. |
+| `collection(columns, opts)`, inferred content, `body`, hooks beside columns, `collections` key | Inferred content is superseded: explicit `collection()`/`table()` and separate registries are required. Hook placement and other changes are separate from the first storage cutover. |
+| `ref`, `user`, inferred relations, `Row`/`Insert`, system fields, builder simplifications, media MIME patterns | Conditional future vocabulary. The first storage cutover keeps the existing typed foreign-key/`defineRelations` machinery across both kinds, rather than adding a second graph. Other system fields and defaults remain separate decisions. |
 | Access `write`, operation overrides, `ctx.is`, field access, user ownership | Adopted as the proposed shape. `write` covers create/update/delete; field `write` covers create/update. Pages add the public-query constraints in §6, not a second access language. #55's self-create and role/status choices remain open. |
 | `agents?: false` exposure spelling and q6 | Superseded by the binding `abilities` rename, with existing exposure defaults preserved. Top-level `agents` is AI configuration. |
 | Private content CPT by default | Retained. Selected addition: `collectionPage(c)` declares the single item route and viewability, requiring a content collection, native slug and public-query-safe access. Tables remain unroutable. |
@@ -1490,9 +1503,11 @@ additional owner rulings.
    integration with backend-only independence. Until ruled, all dependent
    work waits. Calling it build-only does not make it approved.
 2. **#55.** Approve, amend or reject its config redesign and outstanding
-   questions 1–5 and 7–12. The binding exposure rename supersedes q6 only.
-   Recommended: settle the shared syntax before dependent implementation.
-   This document adopts no auth/ownership deletion on the owner's behalf.
+   questions 2–5 and 7–12. The owner has superseded q1 with explicit collections
+   and tables and requires same-kind and cross-kind relations; the binding
+   exposure rename supersedes q6. Recommended: settle the remaining shared
+   syntax before dependent implementation. This document adopts no
+   auth/ownership deletion on the owner's behalf.
 3. **Authoring choices and islands.** Confirm the proposed stored compiled
    body for code Pages, the `pages/theme.config.ts` spelling and the config
    sync-switch location under q1. Optional layouts/themes and shared

@@ -1,3 +1,5 @@
+#![cfg(feature = "cli")]
+
 use std::{fs, path::Path};
 
 fn write(root: &Path, path: &str, content: &str) {

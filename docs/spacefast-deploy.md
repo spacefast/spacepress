@@ -12,7 +12,7 @@ the Atomic box; authors need neither PHP nor a Spacefast-specific Zero runtime.
 | Initialization | After platform plugins load, explicitly mount and initialize the candidate before readiness, without globally activating its plugins. Managed visitor requests never run migrations or rewrite schema hashes. Initialization and forward migration need a Space-scoped lock spanning baseline selection through readiness. |
 | Database | Every version in an environment uses its latest configured schema. Migrations only go forward. Old code may break against the new schema. No historical database snapshots or downgrade framework. |
 | Platform | Check actual WordPress/PHP and active plugin versions before readiness. SCF 6.9.7+, Action Scheduler 4.2.0+, MCP Adapter 0.7.1+, and Polylang 3.9+ for localized apps. Missing requirements block publication. |
-| Browser client | Reuse `/__spacefast/client.js` and `/__spacefast/client.d.ts`. Compose the shared Spacefast exports with an `app` export from this selected version's generated Zero client. Keep existing shared exports; do not substitute a global latest app. JavaScript contains contracts, never visitor credentials. Local builds emit browser JavaScript and types from the same client source. HTML, React and Gutenberg consume the same contracts. Editor product work is separate. |
+| Browser client | Keep engine-owned `/__spacefast/client.js` and canonical `/__spacefast/client.d.ts` unchanged. The stable generated app companion `/__spacefast/zero/client.js` and its `client.d.ts` use the selected version. `loadSpacefastClient()` imports the canonical shared module on demand. Shared Access/connectors/collaboration remain engine-owned; never substitute a global latest app. JavaScript contains contracts, never visitor credentials. Local builds emit browser JavaScript and types from the same client source. HTML, React and Gutenberg consume the same contracts. Editor product work is separate. |
 | Accounts | Spacefast Access, wp-admin login and session loading are optional bootstrap overlays. Zero core does not require Spacefast accounts. Reuse host admission/principal resolution and the existing WordPress role/session integration only after Space scope is established. |
 | Background work | Unscoped cron/WP-CLI mounts no app. A job must carry an explicit Space, environment and version and enter the same database/cache/identity scope as its HTTP request. |
 | Release | One `spacefast` npm release includes the 0.8 transition and direct `@spacefast/zero-bin-<platform>` optional dependencies. `packages/cli/zero-compiler.json` pins compiler source separately from the npm CLI version. No additional wrapper package. |
@@ -57,7 +57,10 @@ checkpoint/snapshot, not copy a live database file. Future CLI access/export mus
 require the environment's database capability and an audited short-lived stream;
 there is no implementation or live mutation in this change.
 
-WordPress SQLite Integration supplies a `db.php` drop-in, so it must run before
+The inspected SQLite Database Integration 3.1.2 archive supplies `db.copy`,
+which becomes the `db.php` drop-in. It selects `DB_ENGINE=sqlite`, requires
+`pdo` and `pdo_sqlite`, and supports an explicit private `DB_PATH`. Local PHP
+has PDO SQLite; that says nothing about Atomic. The drop-in must run before
 WordPress database bootstrap. On Atomic, ownership of that drop-in, host database
 bootstrap, available PDO extensions and filesystem policy must be qualified.
 Installing a normal plugin after WordPress loads cannot select SQLite. Native
@@ -66,3 +69,10 @@ SQLite integration on Atomic remains unproven; do not advertise support.
 Endpoint/page compilation remains a separate migration gap for 0.8 apps. Existing
 PHP Functions accept uploaded PHP outside v2. Whether that exception remains is
 an open user-policy decision; this work does not delete it.
+
+The current isolated-site prototype has additional release prerequisites: native
+builds must fetch the private compiler repository with approved build access;
+`sf publish` must use the release owner's binary resolver after its branch lands;
+and the released compiler pin must include the bundle entry API. Optional
+wp-admin/identity overlays and scoped job dispatch are not implemented by the
+prototype. These are not claims of deployable customer hosting.

@@ -541,7 +541,7 @@ final class Schema
         return match ($col['type']) {
             'integer', 'media', 'file' => (int) $v,
             'real' => (float) $v,
-            'boolean' => (bool) (int) $v,
+            'boolean' => $v === 'true' || (bool) (int) $v,
             // A json() value keeps object/list handles; structured columns are
             // normalized against their fields, so plain arrays are exact there.
             'json' => ($col['system'] ?? false) ? Seam::toPhp(is_string($v) ? self::json($v) : $v) : (is_string($v) ? self::json($v) : $v),

@@ -1,4 +1,5 @@
 //! One-time config import. This module never runs source CMS code or imports data.
+pub(crate) mod app;
 mod input;
 mod translate;
 

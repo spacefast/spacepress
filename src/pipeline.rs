@@ -175,6 +175,11 @@ pub fn build(
     let previous = previous()?;
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
+            if let Some(next) = snapshot["tables"].get(stored)
+                && tables[stored]["existingTable"] != next["existingTable"]
+            {
+                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot; move data explicitly before changing storage")).phase(diag::Code::Schema));
+            }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored
                 && !schema.collections.contains_key(stored)

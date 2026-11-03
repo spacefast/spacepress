@@ -223,9 +223,16 @@ final class Migrator
     {
         $wpdb = $this->db->wpdb();
         // Users join Zero's transactions too (auth collections and guests, §6.2): check them always.
+        $names = [$wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta];
+        foreach ($this->schema->collections() as $spec) {
+            if (isset($spec['existingTable'])) {
+                $names[] = $spec['existingTable'];
+            }
+        }
+        $placeholders = implode(', ', array_fill(0, count($names), '?'));
         $rows = $this->db->run(
-            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?, ?, ?) OR TABLE_NAME LIKE ?)',
-            [$wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
+            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (' . $placeholders . ') OR TABLE_NAME LIKE ?)',
+            [...$names, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
         );
         $bad = [];
         foreach ($rows as $r) {

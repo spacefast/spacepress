@@ -10,6 +10,93 @@ It takes two commands. `zero migrate config` turns the capsule into a
 refuse anything they can't carry and name the exact spot, so nothing is
 silently dropped.
 
+## Application source migration
+
+For a capsule with application tables and handlers, use the app migrator:
+
+```sh
+zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example --dry-run --json
+zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_example
+zero check ./migrated-app
+```
+
+The input directory must contain `server/index.ts`. Local TypeScript helper
+imports are copied without running them. The destination must be new, including
+for a dry run. Both forms print JSON, and both compile the generated app before
+reporting success. `--json` is accepted for callers that set it explicitly.
+Exit codes are 0 for a generated candidate or successful dry run, 1 for refusal,
+and 2 for invalid arguments. A refusal writes no destination.
+
+The report contains `entries` with `mapped` or `review` outcomes, an `errors`
+list with RFC 6901 pointers, `adoption_sql`, and `connector_roles`. Pointers name
+capsule declarations; `/pages/...`, `/layouts/...`, and `/islands/...` name project
+files. All independently unsupported handlers and features are reported together.
+Compiler failures point to the generated source and refuse the whole candidate.
+A `written` candidate can still contain review entries. It is not a live deployment.
+
+The command writes compiler-readable TypeScript, `zero/migrations/0001_adopt.sql`,
+and `zero/migrations/snapshot.json`. It does not connect to a database. The SQL
+checks that the existing table and columns exist and creates v2's revisions
+system table. It does not copy rows, rename columns, or convert column types.
+`zero build` accepts this snapshot without generating a second initial migration.
+If a physical table or column is absent, activation fails at that check.
+
+`--space` is required when `schema` tables are present. It uses the original
+runner's exact binding formula: sanitize the Space ID and logical table name,
+form `sf_<space>_<table>`, truncate the base to 53 ASCII characters, then append
+`_` and the first 10 hex digits of SHA-256 of `<space>\0<table>`. The physical ID
+is **BIGINT UNSIGNED AUTO_INCREMENT**, while action results keep decimal string
+IDs. Number fields remain DOUBLE. Other fields, including timestamps and
+booleans, keep their existing TEXT storage. `id("table")` and `userId()` values
+remain text and gain no foreign key or automatic identity rewrite.
+
+The supported handler subset includes typed named parameters, local pure helpers,
+`get`, `insert`, `update`, `delete`, and static `withIndex` chains ending in
+`collect`, `count`, `first`, or `take`. Declared index field order, followed by
+`createdAt` and `id`, controls ordering. Optional SQL NULL fields are omitted
+from row results, defaults remain defaults, and updates distinguish an absent
+patch property from an explicit `undefined` or `null`. Empty patches still touch
+`updatedAt`. Queries and legacy actions cannot gain database writes. Mutations
+run in v2's transaction. Parameters become named action inputs; URLs, envelopes
+and error transport use v2's action API. Existing browser clients require the
+v2 generated client and the hosting integration's reserved API URL.
+
+Content declarations use the existing config importer. Content rows still need
+`zero migrate site` and its content-model release, as described below. Do not
+activate a candidate that leaves unsupported source behavior behind.
+
+`auth.requireSignIn` becomes an existing zero-identity signed-in gate on actions.
+The portable `ctx.user` supplies signed-in/guest flags and display names. Legacy
+principal IDs, auth methods and upgrade callbacks are refused. Existing sessions,
+account mappings and ownership transfer require a separate identity migration.
+The command does not invent `wp:<id>` owners or install an identity framework.
+
+Connector declarations produce a separate `connector-roles.json` host overlay,
+also included in the report. `owner` becomes `personal`; `team` and `visitor`
+keep their roles. The file carries no credentials or grants and is not part of
+the portable v2 config. Connector calls in handlers are refused. Spacefast's
+hosting integration owns applying this overlay and account sessions.
+
+Endpoints, pages, layouts, islands, unknown context services, dynamic database
+builders, pagination, optional-field range comparisons, npm imports and executable
+schema factories require an explicit port. Row IDs above JavaScript's safe integer
+range also require a port; generated ID lookups refuse them. Compiled finalize
+payloads, including the monorepo's `zero-all-features` fixture, are not capsule
+source and are refused. No sources are inferred from those bundles.
+
+For local WordPress installation, `zero build ./migrated-app` emits PHP plugins.
+For hosted publication, submit compiler-readable app source and the separate
+vendor source bundle through the hosting integration. The server compiler emits
+PHP at finalize. Migration never requires uploading generated PHP. Published
+versions share the current database schema, so forward migrations can break older
+code; the command adds no schema versioning or down migrations. Preview approval,
+activation, hosted client URLs and realtime remain the hosting integration's work.
+
+The executable proof is `cargo test --test app_migrate` plus
+`tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero
+and TypeScript; the latter adopts retained rows on WordPress/MariaDB, compares
+rows and DDL across activation, and exercises the migrated actions.
+
 ## Before you start
 
 - Back up the database. The site migration runs in one transaction and rolls
@@ -20,8 +107,7 @@ silently dropped.
   It names every collection and field the site stored. It is PHP the original
   compiler generated, and the command runs it on the site as `wp eval-file`
   would, dry run included. Use only that file, never one from somewhere else.
-- Keep the original app's code. Queries, mutations, actions, endpoints, pages
-  and sign-in are not migrated here; see [what stays manual](#what-stays-manual).
+- Keep the original app's code. The content-only commands below do not migrate application handlers or pages; see [what stays manual](#what-stays-manual).
 
 ## 1. Convert the config
 
@@ -174,12 +260,13 @@ Fix the data in WordPress (or the new config), then run again.
 
 ## What stays manual
 
-The config and content migration don't move:
+The content-only config and site commands below do not move:
 
 - `blocks` (rich text) fields and multiple references. The importer refuses them.
 - Native `posts`, `pages` and `media` collections.
-- `schema` tables, queries, mutations, actions, endpoints, pages, islands,
-  connectors and sync bindings: port them to `zero.config.ts` actions and hooks.
+- Application tables and handlers. Use the [app migrator](#application-source-migration)
+  for its supported subset; endpoints, pages, islands, service calls and sync
+  bindings still need an explicit port.
 - Sign-in providers and sessions of the original platform (app users themselves move with step 6).
 - The original Space's routes, redirects and private file storage.
 

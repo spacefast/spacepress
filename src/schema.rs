@@ -338,6 +338,8 @@ pub struct Collection {
     pub key: String,
     /// Derived physical name and REST path segment (`shopping_list`).
     pub table: String,
+    /// Exact SQL table binding, without the WordPress prefix. Must already exist.
+    pub existing_table: Option<String>,
     pub label: String,
     pub editor: bool,
     pub drafts: bool,

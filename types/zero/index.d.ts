@@ -406,6 +406,9 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
    * Keep this binding when upgrading existing storage; changing it does not rename data. */
   storageName?: string;
+  /** Bind table() to an already existing SQL table, without adding any prefix.
+   * The first migration checks its columns; it never creates or copies this table. */
+  existingTable?: string;
   /** Project-relative Markdown/JSON files; implies uid: true. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   uid?: boolean;

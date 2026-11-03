@@ -150,6 +150,7 @@ registered once.
 | option | default | meaning |
 |---|---|---|
 | `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `zero_` prefixes; retain existing storage on upgrade |
+| `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes. The first migration checks columns without creating or copying the table. |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
@@ -164,6 +165,16 @@ registered once.
 Collections need a title and physical names of at most 15 characters (WordPress
 prefixes `zero_`). Built-in route names are reserved. User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
+
+An `existingTable` binding accepts an ASCII SQL identifier of at most 64 characters.
+It is distinct from `storageName`, which still identifies the logical resource's
+migration history. The binding is committed in the snapshot and cannot change
+on later builds. Later column, index and foreign-key migrations use the exact
+bound name. The existing columns must already have compatible storage; the first
+check establishes column existence, not type or constraint equivalence. Database
+engine checks include these tables. Uninstall retains their rows like normal tables.
+Use [app migration](migrating-from-zero.md#application-source-migration) for Zero 0.8
+TEXT/DOUBLE storage and string response IDs.
 
 ### Upgrading authoring
 

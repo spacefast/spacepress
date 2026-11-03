@@ -16,17 +16,30 @@ use std::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const SOURCE_PREFIX: &str = ".zero-source";
-pub const OUTPUT_PREFIX: &str = ".zero-compiled";
+pub const APP_FILE: &str = "app.zero.json";
+pub const VENDOR_FILE: &str = "vendor.zero.json";
+pub const MANIFEST_FILE: &str = "manifest.json";
+
+/// Original compiler inputs, not JavaScript bundler output. Paths retain module identity.
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceBundle {
+    pub files: BTreeMap<String, String>,
+    pub canonical: BTreeMap<String, String>,
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Sources {
+pub struct Manifest {
     pub format: String,
     pub name: String,
-    pub files: BTreeSet<String>,
-    /// Relocatable canonical identities, including installed package symlinks.
-    pub canonical: BTreeMap<String, String>,
+    pub app_sha256: String,
+    pub vendor_sha256: String,
+}
+
+fn hash(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn failure(message: impl Into<String>) -> Diag {
@@ -87,7 +100,7 @@ impl Fs for Recording {
 
 /// Capture exactly the files read by loading AND compiling, including package.json resolution.
 /// Public assets are copied separately. The destination must be new.
-pub fn sources(project: &Path, destination: &Path) -> Result<Sources, Diag> {
+pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
     let project = project.canonicalize().map_err(io)?;
     let fs = Rc::new(Recording {
         root: project.clone(),
@@ -106,27 +119,43 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Sources, Diag> {
             "hosted apps cannot install WordPress plugins; the host provides the platform",
         ));
     }
-    let captured = Sources {
-        format: "zero.sources.v1".into(),
+    let mut app = SourceBundle::default();
+    let mut vendor = SourceBundle::default();
+    for path in fs.files.borrow().iter() {
+        safe_input(path)?;
+        let bundle = if is_vendor(path) { &mut vendor } else { &mut app };
+        bundle
+            .files
+            .insert(path.clone(), std::fs::read_to_string(project.join(path)).map_err(io)?);
+    }
+    for (path, canonical) in fs.canonical.borrow().iter() {
+        safe_input(path)?;
+        safe_input(canonical)?;
+        let bundle = if is_vendor(path) { &mut vendor } else { &mut app };
+        bundle.canonical.insert(path.clone(), canonical.clone());
+    }
+    let app = serde_json::to_vec(&app).map_err(|e| failure(e.to_string()))?;
+    let vendor = serde_json::to_vec(&vendor).map_err(|e| failure(e.to_string()))?;
+    let manifest = Manifest {
+        format: "zero.source-bundle.v1".into(),
         name: built.schema.name.clone(),
-        files: fs.files.borrow().clone(),
-        canonical: fs.canonical.borrow().clone(),
+        app_sha256: hash(&app),
+        vendor_sha256: hash(&vendor),
     };
     std::fs::create_dir(destination).map_err(io)?;
-    let source = destination.join(SOURCE_PREFIX);
-    for path in &captured.files {
-        safe_input(path)?;
-        let target = source.join("project").join(path);
-        std::fs::create_dir_all(target.parent().unwrap()).map_err(io)?;
-        std::fs::copy(project.join(path), target).map_err(io)?;
-    }
-    copy_public(&project.join("public"), &destination.join("public"))?;
+    std::fs::write(destination.join(APP_FILE), app).map_err(io)?;
+    std::fs::write(destination.join(VENDOR_FILE), vendor).map_err(io)?;
     std::fs::write(
-        source.join("bundle.json"),
-        serde_json::to_vec_pretty(&captured).map_err(|e| failure(e.to_string()))?,
+        destination.join(MANIFEST_FILE),
+        serde_json::to_vec(&manifest).map_err(|e| failure(e.to_string()))?,
     )
     .map_err(io)?;
-    Ok(captured)
+    copy_public(&project.join("public"), &destination.join("public"))?;
+    Ok(manifest)
+}
+
+fn is_vendor(path: &str) -> bool {
+    path.split('/').any(|part| part == "node_modules")
 }
 
 fn safe_input(path: &str) -> Result<(), Diag> {
@@ -164,7 +193,7 @@ fn copy_public(from: &Path, to: &Path) -> Result<(), Diag> {
 
 struct CapturedFs {
     root: PathBuf,
-    sources: Sources,
+    sources: SourceBundle,
 }
 impl CapturedFs {
     fn key(&self, path: &Path) -> Option<String> {
@@ -174,24 +203,28 @@ impl CapturedFs {
 impl Fs for CapturedFs {
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         let real = self.canonicalize(path)?;
-        std::fs::read_to_string(real)
+        self.sources
+            .files
+            .get(&self.key(&real).unwrap())
+            .cloned()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "module not captured"))
     }
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         let key = self
             .key(path)
             .ok_or_else(|| std::io::Error::other("input escapes source bundle"))?;
         let canonical = self.sources.canonical.get(&key).unwrap_or(&key);
-        if !self.sources.files.contains(canonical) && !self.is_dir(&self.root.join(canonical)) {
+        if !self.sources.files.contains_key(canonical) && !self.is_dir(&self.root.join(canonical)) {
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, key));
         }
         Ok(self.root.join(canonical))
     }
     fn is_file(&self, path: &Path) -> bool {
-        self.key(path).is_some_and(|p| self.sources.files.contains(&p))
+        self.key(path).is_some_and(|p| self.sources.files.contains_key(&p))
     }
     fn is_dir(&self, path: &Path) -> bool {
         self.key(path)
-            .is_some_and(|p| self.sources.files.iter().any(|f| f.starts_with(&(p.clone() + "/"))))
+            .is_some_and(|p| self.sources.files.keys().any(|f| f.starts_with(&(p.clone() + "/"))))
     }
     fn exists(&self, path: &Path) -> bool {
         self.is_file(path) || self.is_dir(path)
@@ -200,28 +233,54 @@ impl Fs for CapturedFs {
 
 /// Compile a captured source tree with a host-owned previous compiled tree as the migration baseline.
 /// Output is exclusively generated code, never user-provided PHP or SQL. It must not exist yet.
-pub fn compile(source: &Path, output: &Path, previous: Option<&Path>) -> Result<serde_json::Value, Diag> {
-    let bytes = std::fs::read(source.join(SOURCE_PREFIX).join("bundle.json")).map_err(io)?;
-    let sources: Sources = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    if sources.format != "zero.sources.v1"
-        || sources.name.is_empty()
-        || !sources
+pub fn compile(
+    source: &Path,
+    output: &Path,
+    assets: &Path,
+    previous: Option<&Path>,
+) -> Result<serde_json::Value, Diag> {
+    let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
+    let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
+    if manifest.format != "zero.source-bundle.v1"
+        || manifest.name.is_empty()
+        || !manifest
             .name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     {
         return Err(failure("invalid source bundle format or app name"));
     }
-    for path in sources
-        .files
-        .iter()
-        .chain(sources.canonical.keys())
-        .chain(sources.canonical.values())
-    {
-        safe_input(path)?;
+    let mut sources = SourceBundle::default();
+    for (file, expected, vendor) in [
+        (APP_FILE, &manifest.app_sha256, false),
+        (VENDOR_FILE, &manifest.vendor_sha256, true),
+    ] {
+        let bytes = std::fs::read(source.join(file)).map_err(io)?;
+        if hash(&bytes) != *expected {
+            return Err(failure(format!("source bundle hash mismatch: {file}")));
+        }
+        let bundle: SourceBundle = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
+        for path in bundle
+            .files
+            .keys()
+            .chain(bundle.canonical.keys())
+            .chain(bundle.canonical.values())
+        {
+            safe_input(path)?;
+        }
+        if bundle
+            .files
+            .keys()
+            .chain(bundle.canonical.keys())
+            .any(|p| is_vendor(p) != vendor)
+        {
+            return Err(failure("app and vendor module ownership mismatch"));
+        }
+        sources.files.extend(bundle.files);
+        sources.canonical.extend(bundle.canonical);
     }
-    let name = sources.name.clone();
-    let root = source.join(SOURCE_PREFIX).join("project");
+    let name = manifest.name;
+    let root = source.join("modules");
     let fs = Rc::new(CapturedFs {
         root: root.clone(),
         sources,
@@ -268,13 +327,18 @@ pub fn compile(source: &Path, output: &Path, previous: Option<&Path>) -> Result<
         serde_json::to_vec(&built.snapshot).map_err(|e| failure(e.to_string()))?,
     )
     .map_err(io)?;
-    build::emit_generated(source, &migrations, &output.join("plugins"), &built).map_err(io)?;
+    build::emit_generated(assets, &migrations, &output.join("plugins"), &built).map_err(io)?;
+    let client = output.join("client");
+    for (name, bytes) in &built.client_files {
+        std::fs::create_dir_all(&client).map_err(io)?;
+        std::fs::write(client.join(name), bytes).map_err(io)?;
+    }
     let requirements: BTreeMap<_, _> = crate::platform::plugins(built.schema.locales.is_some())
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
     let manifest = serde_json::json!({"format":"zero.hosted.v1", "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements});
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),

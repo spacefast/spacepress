@@ -632,6 +632,20 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
+    if let Some(bytes) = runtime("client/index.ts") {
+        let runtime = String::from_utf8_lossy(bytes);
+        let body = runtime
+            .lines()
+            .filter(|line| {
+                !line.starts_with("import ") && !line.starts_with("export type *") && *line != "export { SCHEMA };"
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let source = format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body);
+        let (javascript, declarations) = browser_artifacts(&source);
+        out.push(("client.js".into(), javascript.into_bytes()));
+        out.push(("client.d.ts".into(), declarations.into_bytes()));
+    }
     // The copied runtime half of the client is MIT; its notice travels with it.
     for f in ["index.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
@@ -645,4 +659,50 @@ pub fn files(
 /// The value type used by the backend registry, independently of config exports.
 pub(crate) fn registry_value(c: &Column) -> String {
     value_ts_with(c, false, &crate::types::json_authored_ty)
+}
+
+/// Emit a dependency-free browser module and matching declarations from the canonical client.
+/// This strips client TypeScript only; compiler input bundles retain their original sources.
+fn browser_artifacts(source: &str) -> (String, String) {
+    use oxc_allocator::Allocator;
+    use oxc_codegen::Codegen;
+    use oxc_isolated_declarations::{IsolatedDeclarations, IsolatedDeclarationsOptions};
+    use oxc_parser::Parser;
+    use oxc_semantic::SemanticBuilder;
+    use oxc_span::SourceType;
+    use oxc_transformer::{TransformOptions, Transformer};
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "invalid generated client: {:?}",
+        parsed.diagnostics
+    );
+    let mut program = parsed.program;
+    let declarations =
+        IsolatedDeclarations::new(&allocator, IsolatedDeclarationsOptions { strip_internal: true }).build(&program);
+    assert!(
+        declarations.diagnostics.is_empty(),
+        "invalid generated declarations: {:?}",
+        declarations.diagnostics
+    );
+    let declarations = Codegen::new().build(&declarations.program).code;
+    let semantic = SemanticBuilder::new().with_excess_capacity(2.0).build(&program);
+    assert!(
+        semantic.diagnostics.is_empty(),
+        "invalid client semantics: {:?}",
+        semantic.diagnostics
+    );
+    let transformed = Transformer::new(
+        &allocator,
+        std::path::Path::new("client.ts"),
+        &TransformOptions::default(),
+    )
+    .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
+    assert!(
+        transformed.diagnostics.is_empty(),
+        "invalid browser client: {:?}",
+        transformed.diagnostics
+    );
+    (Codegen::new().build(&program).code, declarations)
 }

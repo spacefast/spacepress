@@ -42,4 +42,4 @@ mod runtime_files {
 }
 
 #[cfg(feature = "cli")]
-pub mod hosted;
+pub mod bundle;

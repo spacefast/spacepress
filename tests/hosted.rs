@@ -29,23 +29,36 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(&project, "public/logo.svg", "<svg/>");
     write(&project, "unrelated.ts", "this is not an input");
     let first = work.path().join("first");
-    let sources = zero::hosted::sources(&project, &first).unwrap();
-    assert!(sources.files.contains("node_modules/shared/index.js"));
-    assert!(!sources.files.contains("unrelated.ts"));
+    let sources = zero::bundle::sources(&project, &first).unwrap();
+    let vendor = fs::read(first.join("vendor.zero.json")).unwrap();
+    let captured: zero::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
+    assert!(captured.files.contains_key("node_modules/shared/index.js"));
+    let app: zero::bundle::SourceBundle =
+        serde_json::from_slice(&fs::read(first.join("app.zero.json")).unwrap()).unwrap();
+    assert!(!app.files.contains_key("unrelated.ts"));
     write(&project, "src/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
-    zero::hosted::sources(&project, &second).unwrap();
+    let later = zero::bundle::sources(&project, &second).unwrap();
+    assert_eq!(sources.vendor_sha256, later.vendor_sha256);
+    assert_ne!(sources.app_sha256, later.app_sha256);
+    assert_eq!(vendor, fs::read(second.join("vendor.zero.json")).unwrap());
     fs::remove_dir_all(&project).unwrap();
     let compiled_first = work.path().join("compiled-first");
     let compiled_second = work.path().join("compiled-second");
-    let manifest = zero::hosted::compile(&first, &compiled_first, None).unwrap();
-    assert_eq!(manifest["compiler"], zero::hosted::VERSION);
+    let manifest = zero::bundle::compile(&first, &compiled_first, &first, None).unwrap();
+    assert_eq!(manifest["compiler"], zero::bundle::VERSION);
     let path = "plugins/zero-app-app/zero/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
-    zero::hosted::compile(&second, &compiled_second, Some(&compiled_first)).unwrap();
+    zero::bundle::compile(&second, &compiled_second, &second, Some(&compiled_first)).unwrap();
     assert_ne!(before, fs::read(compiled_second.join(path)).unwrap());
     assert_eq!(before, fs::read(compiled_first.join(path)).unwrap());
-    assert!(zero::hosted::compile(&second, &compiled_first, None).is_err());
+    assert!(zero::bundle::compile(&second, &compiled_first, &second, None).is_err());
+    let client_before = fs::read(compiled_first.join("client/client.js")).unwrap();
+    assert!(client_before.len() > 1000);
+    assert!(fs::metadata(compiled_first.join("client/client.d.ts")).unwrap().len() > 1000);
+    fs::write(second.join("vendor.zero.json"), b"{}").unwrap();
+    let error = zero::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
+    assert!(error.message.contains("hash mismatch"));
     assert_eq!(
         fs::read(compiled_first.join("plugins/zero-app-app/public/logo.svg")).unwrap(),
         b"<svg/>"
@@ -62,7 +75,7 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         "import { defineConfig } from 'zero'; export default defineConfig({});",
     );
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
-    assert!(zero::hosted::sources(&project, &work.path().join("upload")).is_err());
+    assert!(zero::bundle::sources(&project, &work.path().join("upload")).is_err());
     fs::remove_dir_all(project.join("public")).unwrap();
     #[cfg(unix)]
     {
@@ -73,6 +86,6 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
             "zero.config.ts",
             "import { defineConfig } from 'zero'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
         );
-        assert!(zero::hosted::sources(&project, &work.path().join("escape")).is_err());
+        assert!(zero::bundle::sources(&project, &work.path().join("escape")).is_err());
     }
 }

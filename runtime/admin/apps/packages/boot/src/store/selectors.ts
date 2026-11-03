@@ -11,10 +11,22 @@ export function getMenuItems( state: State ): State[ 'menuItems' ] {
 	return state.menuItems;
 }
 
+export function getDashboardWidgetTypes(
+	state: State
+): State[ 'dashboardWidgetTypes' ] {
+	return state.dashboardWidgetTypes;
+}
+
 export function getDashboardContext(
 	state: State
 ): State[ 'dashboardContext' ] {
 	return state.dashboardContext;
+}
+
+export function getDashboardDefaultLayout(
+	state: State
+): State[ 'dashboardDefaultLayout' ] {
+	return state.dashboardDefaultLayout;
 }
 
 export function getNudges( state: State ): State[ 'nudges' ] {
@@ -62,6 +74,12 @@ export function getSettingsRoute( state: State ): string | undefined {
 	);
 
 	return settingsItem?.to;
+}
+
+export function getDashboardNotices(
+	state: State
+): State[ 'dashboardNotices' ] {
+	return state.dashboardNotices;
 }
 
 export function getModals( state: State ): State[ 'modals' ] {

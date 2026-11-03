@@ -268,8 +268,13 @@ function MediaForms({ id, core, zero }: { id: string; core: Row; zero: Row }) {
 					alt={alt}
 				/>
 			)}
-			<form
-				onSubmit={(e) => {
+			{canCaption && text(core.media_type) === 'image' && (
+                <RouterLink to={`/types/attachment/edit/${encodeURIComponent(id)}`}>
+                    Edit image
+                </RouterLink>
+            )}
+            <form
+                onSubmit={(e) => {
 					e.preventDefault();
 					void mutate(saveMedia, 'Media saved.').catch(() => undefined);
 				}}

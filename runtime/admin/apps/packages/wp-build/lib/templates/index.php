@@ -233,6 +233,108 @@ function wp_plugin_build_register_routes() {
 }
 
 /**
+ * Discover and return dashboard widget configuration
+ */
+function wp_plugin_build_discover_dashboard_widgets() {
+	static $dashboard_widgets_cache = null;
+
+	if ( null !== $dashboard_widgets_cache ) {
+		return $dashboard_widgets_cache;
+	}
+
+	$dashboard_widgets_cache = array();
+	$wp_plugin_build_path    = plugin_dir_path( __FILE__ );
+	$dashboard_widgets_dir   = $wp_plugin_build_path . 'dashboard-widgets';
+
+	if ( ! is_dir( $dashboard_widgets_dir ) ) {
+		return $dashboard_widgets_cache;
+	}
+
+	$widget_dirs = glob( $dashboard_widgets_dir . '/*', GLOB_ONLYDIR );
+
+	// Generate plugin prefix.
+	$plugin_dir    = basename( dirname( $wp_plugin_build_path ) );
+	$plugin_prefix = sanitize_key( $plugin_dir );
+
+	foreach ( $widget_dirs as $widget_dir ) {
+		$widget_name       = basename( $widget_dir );
+		$render_js         = $widget_dir . '/render.js';
+		$render_asset_file = $widget_dir . '/render.asset.php';
+		$widget_js         = $widget_dir . '/widget.js';
+		$widget_asset_file = $widget_dir . '/widget.asset.php';
+
+		// Only include widgets that have both render and widget modules.
+		if ( file_exists( $render_js ) && file_exists( $render_asset_file ) &&
+			file_exists( $widget_js ) && file_exists( $widget_asset_file ) ) {
+
+			$dashboard_widgets_cache[] = array(
+				'name'          => $widget_name,
+				'render_module' => $plugin_prefix . '-widget-' . $widget_name . '-render',
+				'widget_module' => $plugin_prefix . '-widget-' . $widget_name . '-widget',
+			);
+		}
+	}
+
+	return $dashboard_widgets_cache;
+}
+
+/**
+ * Register dashboard widget script modules
+ */
+function wp_plugin_build_register_dashboard_widgets() {
+	$dashboard_widgets    = wp_plugin_build_discover_dashboard_widgets();
+	$wp_plugin_build_path = plugin_dir_path( __FILE__ );
+	$wp_plugin_build_url  = plugin_dir_url( __FILE__ );
+
+	// Generate plugin prefix.
+	$plugin_dir    = basename( dirname( $wp_plugin_build_path ) );
+	$plugin_prefix = sanitize_key( $plugin_dir );
+
+	// Register script modules and dashboard widgets.
+	foreach ( $dashboard_widgets as $widget ) {
+		$widget_name = $widget['name'];
+		$widget_dir  = $wp_plugin_build_path . 'dashboard-widgets/' . $widget_name;
+
+		// Register render module.
+		$render_js         = $widget_dir . '/render.js';
+		$render_asset_file = $widget_dir . '/render.asset.php';
+		if ( file_exists( $render_js ) && file_exists( $render_asset_file ) ) {
+			$asset = require $render_asset_file;
+
+			wp_register_script_module(
+				$plugin_prefix . '-widget-' . $widget_name . '-render',
+				$wp_plugin_build_url . 'dashboard-widgets/' . $widget_name . '/render.js',
+				$asset['moduleDependencies'] ?? array(),
+				$asset['version'] ?? '1.0.0'
+			);
+		}
+
+		// Register widget metadata module.
+		$widget_js         = $widget_dir . '/widget.js';
+		$widget_asset_file = $widget_dir . '/widget.asset.php';
+		if ( file_exists( $widget_js ) && file_exists( $widget_asset_file ) ) {
+			$asset = require $widget_asset_file;
+
+			wp_register_script_module(
+				$plugin_prefix . '-widget-' . $widget_name . '-widget',
+				$wp_plugin_build_url . 'dashboard-widgets/' . $widget_name . '/widget.js',
+				$asset['moduleDependencies'] ?? array(),
+				$asset['version'] ?? '1.0.0'
+			);
+		}
+
+		// Register with next admin.
+		if ( function_exists( 'zero_admin_register_dashboard_widget' ) ) {
+			zero_admin_register_dashboard_widget(
+				$widget['name'],
+				$widget['render_module'],
+				$widget['widget_module']
+			);
+		}
+	}
+}
+
+/**
  * Discover and return field collections configuration
  */
 function wp_plugin_build_discover_field_collections() {
@@ -379,3 +481,5 @@ add_action( 'zero_admin_init', 'wp_plugin_build_register_field_collections', 20 
 add_action( 'zero_admin_init', 'wp_plugin_build_register_field_collection_modules', 20 );
 add_action( 'zero_admin_init', 'wp_plugin_build_register_wp_modules', 20 );
 add_action( 'init', 'wp_plugin_build_register_frontend_wp_modules', 20 );
+
+add_action( 'zero_admin_init', 'wp_plugin_build_register_dashboard_widgets', 20 );

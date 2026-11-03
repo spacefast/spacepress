@@ -1,0 +1,182 @@
+@use "@wordpress/base-styles/variables";
+@use "@wordpress/base-styles/colors";
+
+.plugin-detail-modal {
+	.plugin-details-preview-container {
+		flex: 1;
+	}
+
+	// Ensure the plugin banner matches the content width and does not overflow
+	.plugin-details-preview-container img {
+		display: block;
+		width: 100%;
+		height: auto;
+		border: 1px solid colors.$gray-300;
+		border-radius: variables.$radius-medium;
+	}
+
+	.plugin-details-info {
+		flex: 1;
+	}
+
+	.plugin-details-version-label,
+	.plugin-details-updated-label {
+		margin-inline-end: 0.5ch;
+	}
+
+	.plugin-details-loading,
+	.plugin-details-error {
+		padding: variables.$grid-unit-30;
+		text-align: center;
+	}
+
+	// Keep rich content from wp.org within modal bounds
+	.plugin-details-description {
+		img,
+		iframe,
+		video {
+			max-width: 100%;
+			height: auto;
+		}
+	}
+}
+
+.plugin-details-info {
+	padding-top: 16px;
+}
+
+/* rtl:ignore */
+.plugin-details-section .review {
+	overflow: hidden; /* clearfix */
+	width: 100%;
+	margin-bottom: 20px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.plugin-details-section .review-title-section {
+	overflow: hidden; /* clearfix */
+}
+
+/* rtl:ignore */
+.plugin-details-section .review-title-section h4 {
+	display: inline-block;
+	float: left;
+	margin: 0 6px 0 0;
+}
+
+.plugin-details-section .reviewer-info p {
+	clear: both;
+	margin: 0;
+	padding-top: 2px;
+}
+
+/* rtl:ignore */
+.plugin-details-section .reviewer-info .avatar {
+	float: left;
+	margin: 4px 6px 0 0;
+}
+
+/* rtl:ignore */
+.plugin-details-section .reviewer-info .star-rating {
+	float: left;
+}
+
+/* rtl:ignore */
+.plugin-details-section .review-meta {
+	float: left;
+	margin-left: 0.75em;
+}
+
+/* rtl:ignore */
+.plugin-details-section .review-body {
+	float: left;
+	width: 100%;
+}
+
+.plugin-detail-modal {
+	.plugin-details-info {
+		.plugin-details-label {
+			font-weight: 600;
+			margin-inline-end: 0.5ch;
+		}
+	}
+
+	.plugin-details-stars {
+		position: relative;
+		display: inline-block;
+		line-height: 1;
+		font-size: 16px;
+
+		.stars-base {
+			color: #dcdcde;
+		}
+
+		.stars-filled {
+			position: absolute;
+			top: 0;
+			left: 0;
+			overflow: hidden;
+			white-space: nowrap;
+			color: #f0c33c;
+		}
+	}
+
+	.plugin-details-side-title {
+		font-weight: 600;
+		text-transform: uppercase;
+		margin-top: 8px;
+	}
+
+	.plugin-details-contributors-title {
+		text-transform: uppercase;
+		font-weight: 600;
+	}
+
+	.plugin-details-contributors-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-right: 12px;
+		margin-bottom: 8px;
+	}
+
+	.plugin-details-contributors-avatar {
+		border-radius: 50%;
+	}
+
+	.plugin-details-modal-content-container {
+		flex: 2;
+		min-width: 0;
+	}
+
+	.plugin-details-breakdown-row {
+		.plugin-details-breakdown-label {
+			min-width: 60px;
+			font-size: 12px;
+			text-decoration: none;
+		}
+
+		.plugin-details-breakdown-bar {
+			display: inline-block;
+			width: 92px;
+			height: 10px;
+			background: #eee;
+			position: relative;
+			border-radius: 2px;
+			overflow: hidden;
+
+			> span {
+				display: block;
+				height: 100%;
+				background: #66c;
+			}
+		}
+	}
+
+	@media ( max-width: 600px ) {
+		.plugin-details-modal-content {
+			flex-direction: column !important;
+			align-items: stretch;
+		}
+	}
+}

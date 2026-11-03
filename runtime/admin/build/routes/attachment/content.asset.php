@@ -1,1 +1,0 @@
-<?php return array('name' => 'attachment', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => '6129e9713e18984b2576');

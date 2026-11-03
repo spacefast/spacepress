@@ -109,6 +109,12 @@ async function init(
 		);
 	}
 
+	if ( dashboardContext?.dashboard_widget_types ) {
+		void dispatch(zeroAdminStore).setDashboardWidgetTypes(dashboardContext.dashboard_widget_types);
+	}
+	if ( dashboardContext?.dashboard_default_layout ) {
+		void dispatch(zeroAdminStore).setDashboardDefaultLayout(dashboardContext.dashboard_default_layout);
+	}
 	if ( dashboardContext ) {
 		void dispatch( zeroAdminStore ).setDashboardContext( dashboardContext );
 	}

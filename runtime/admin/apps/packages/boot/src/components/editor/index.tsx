@@ -1,3 +1,4 @@
+import { entityEditorPath } from '@zero-admin/schema';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLinkProps } from '@wordpress/route';
@@ -24,15 +25,16 @@ function SiteEditor( {
 	postId,
 	templateId,
 	isPreview = false,
-	editLink = `/collections/${ postType }/${ encodeURIComponent( postId ) }`,
+	editLink: requestedEditLink,
 }: {
 	settings: Record< string, unknown >;
 	postType: string;
 	postId: string;
 	templateId?: string;
 	isPreview?: boolean;
-	editLink?: string;
+	editLink?: string | null;
 } ) {
+	const editLink = requestedEditLink ?? entityEditorPath(postType, postId);
 	useIconLabelsPreference();
 	useRedirectOnSave( postType, postId );
 	const navigate = useNavigate();
@@ -45,7 +47,7 @@ function SiteEditor( {
 			// button element.
 			element.inert = true;
 			function onClick() {
-				void navigate( { to: editLink } );
+				if (requestedEditLink !== null) void navigate( { to: editLink } );
 			}
 			element.parentElement?.addEventListener( 'click', onClick );
 			return () => {
@@ -53,7 +55,7 @@ function SiteEditor( {
 				element.inert = false;
 			};
 		},
-		[ navigate, editLink ]
+		[ navigate, editLink, requestedEditLink ]
 	);
 	const contentRef = useMergeRefs( [
 		isPreview ? inertRef : null,
@@ -106,14 +108,14 @@ function SiteEditor( {
 				<BackButton>
 					<SiteIconBackButton
 						to={
-							editLink.slice( 0, editLink.lastIndexOf( '/' ) ) || '/'
+							editLink.startsWith('/types/') ? `/types/${encodeURIComponent(postType)}` : editLink.slice(0, editLink.lastIndexOf('/')) || '/'
 						}
 					/>
 				</BackButton>
 				<PreferencesModal />
 			</Editor>
 			<FullscreenMode isActive={ ! isPreview } />
-			{ isPreview && (
+			{ isPreview && requestedEditLink !== null && (
 				<a
 					{ ...linkProps }
 					className={ clsx(

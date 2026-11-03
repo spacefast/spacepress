@@ -1,0 +1,13 @@
+{
+	"name": "core-theme-fields",
+	"version": "1.0.0",
+	"dependencies": {
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@wordpress/components": "catalog:",
+		"@wordpress/core-data": "catalog:",
+		"@zero-admin/dataviews": "workspace:*",
+		"@wordpress/element": "catalog:",
+		"@wordpress/html-entities": "catalog:",
+		"@wordpress/i18n": "catalog:"
+	}
+}

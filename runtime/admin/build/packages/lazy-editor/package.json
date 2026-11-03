@@ -11,15 +11,16 @@
 		"build"
 	],
 	"dependencies": {
+		"@zero-admin/core-data-next": "workspace:*",
+		"@zero-admin/global-styles-engine": "workspace:*",
+		"@zero-admin/load-assets": "workspace:*",
+		"@zero-admin/theme": "workspace:*",
+		"@zero-admin/admin-toolkit": "workspace:*",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/element": "catalog:",
-		"@wordpress/global-styles-engine": "catalog:",
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/core-data-next": "workspace:*",
-		"@zero-admin/load-assets": "workspace:*",
-		"@zero-admin/theme": "workspace:*",
-		"react": "catalog:"
+		"react": "catalog:",
+		"@wordpress/global-styles-engine": "catalog:"
 	},
 	"license": "GPL-2.0-or-later"
 }

@@ -1,6 +1,7 @@
 // @ts-check
 import path from "node:path";
 import { defineConfig } from "astro/config";
+import { rehypeHighlight } from "./src/lib/highlight.ts";
 import { remarkRepoLinks } from "./src/lib/links.ts";
 
 // Static output; SITE_URL and SITE_BASE come from the deploy (GitHub Pages sets both), so the
@@ -13,7 +14,8 @@ export default defineConfig({
   output: "static",
   trailingSlash: "ignore",
   markdown: {
-    shikiConfig: { theme: "github-light" },
+    syntaxHighlight: false,
     remarkPlugins: [[remarkRepoLinks, { base: base.replace(/\/$/, ""), repo: path.resolve("..") }]],
+    rehypePlugins: [rehypeHighlight],
   },
 });

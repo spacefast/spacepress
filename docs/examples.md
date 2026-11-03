@@ -1,16 +1,30 @@
 # The examples
 
-Each example's committed `zero/client/` and `zero/migrations/` are what
-`zero build` produces, so a fresh build changes nothing. The showcase instead
+The pantry, blog and site examples commit `zero/client/` and `zero/migrations/`
+as produced by `zero build`, so a fresh build changes nothing. The showcase
 builds its disposable app under `.zero/showcase/`, leaving its sources unchanged.
 
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
+| `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |
+| `examples/recipes/` | Reusable SEO fields imported into a WordPress article collection |
+
+## The kitchen sink
+
+Open the website's `/playground` page to edit this config and browse its generated PHP, SQL and
+TypeScript. The “Inside WordPress” buttons show the shared runtime that registers post types and
+REST routes, writes posts and users, handles media, and connects custom fields and translations.
+Runtime sources and plugin bootstrap templates are labeled separately from generated files.
+
+The example combines pages, events, member profiles, event registrations and an activity log.
+It includes options-backed site settings, English/German content, image sizes, private PDF
+handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
+`KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
 
 Run a normal example without Docker using `zero dev examples/pantry` or the
 blog commands below. Node 22+ and npm are required; WordPress Studio supplies

@@ -40,3 +40,6 @@ mod sync;
 mod runtime_files {
     include!(concat!(env!("OUT_DIR"), "/runtime_files.rs"));
 }
+
+#[cfg(feature = "cli")]
+pub mod hosted;

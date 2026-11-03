@@ -281,12 +281,22 @@ final class Plugin
 
     public function maybeMigrate(): void
     {
-        if ($this->current()) {
+        if (Runtime::managed() || $this->current()) {
             return;
         }
         // Concurrent first requests queue on one lock; whoever gets it after the holder sees the
         // new hash. A failure or timeout leaves the hash stale, so the next request retries.
         $this->unavailable = Migrator::upgrade($this->connection(), $this->schemaOption(), fn () => $this->current(true), fn () => $this->migrateNow());
+    }
+
+    /** Explicit host initialization; failures propagate without wp-admin or activation hooks. */
+    public function initialize(): array
+    {
+        $bad = $this->storageProblems();
+        if ($bad !== []) {
+            throw new \RuntimeException('Zero requires InnoDB and utf8mb4: ' . implode(', ', $bad));
+        }
+        return $this->migrateLocked();
     }
 
     /** `wp zero migrate` and activation: the same locked path as the first request. */

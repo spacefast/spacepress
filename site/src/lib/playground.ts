@@ -1,4 +1,5 @@
 import { Compiler } from "./compiler.ts";
+import { highlightHtml, languageOf } from "./highlight.ts";
 import { playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
@@ -30,7 +31,9 @@ const data = document.querySelector<HTMLScriptElement>("#playground-examples");
 const runtimeData = document.querySelector<HTMLScriptElement>("#playground-runtime");
 const fileDescription = document.querySelector<HTMLElement>("#file-description");
 const exampleDescription = document.querySelector<HTMLElement>("#example-description");
-if (!root || !example || !sourceFile || !source || !generatedFile || !generated || !status || !diagnostics || !reset || !download || !data || !runtimeData || !fileDescription || !exampleDescription) {
+const sourceView = document.querySelector<HTMLElement>("#source-view");
+const generatedView = document.querySelector<HTMLElement>("#generated-view");
+if (!root || !example || !sourceFile || !source || !generatedFile || !generated || !status || !diagnostics || !reset || !download || !data || !runtimeData || !fileDescription || !exampleDescription || !sourceView || !generatedView) {
   throw new Error("Missing playground elements");
 }
 
@@ -42,8 +45,31 @@ let outputs: Record<string, string> = {};
 let compiler: Compiler | undefined;
 let pending: number | undefined;
 
+/** Paints the highlighted copy of a textarea's text behind it; until it is ready, the textarea shows its own text. */
+const paint = (area: HTMLTextAreaElement, view: HTMLElement, file: string) => {
+  const editor = view.closest<HTMLElement>(".code-editor");
+  if (!editor) return;
+  const text = area.value;
+  delete editor.dataset.highlighted;
+  void highlightHtml(text, languageOf(file)).then((html) => {
+    if (area.value !== text) return;
+    view.innerHTML = html;
+    editor.dataset.highlighted = "";
+  }, () => undefined);
+};
+const showSource = () => {
+  source.value = files[sourceFile.value] ?? "";
+  paint(source, sourceView, sourceFile.value);
+};
+for (const [area, view] of [[source, sourceView], [generated, generatedView]] as const) {
+  area.addEventListener("scroll", () => {
+    view.style.transform = `translate(${-area.scrollLeft}px, ${-area.scrollTop}px)`;
+  });
+}
+
 const showGenerated = () => {
   generated.value = outputs[generatedFile.value] ?? runtime[generatedFile.value] ?? "";
+  paint(generated, generatedView, generatedFile.value);
   fileDescription.textContent = wordpressFiles.find(({ path }) => path === generatedFile.value)?.description
     ?? "Generated from your config. Changes as you edit.";
   download.disabled = !(generatedFile.value in outputs || generatedFile.value in runtime);
@@ -129,11 +155,11 @@ const loadExample = () => {
     return a.localeCompare(b);
   });
   sourceFile.replaceChildren(...paths.map((name) => new Option(name, name)));
-  source.value = files[sourceFile.value] ?? "";
+  showSource();
   compile();
 };
 
-sourceFile.addEventListener("change", () => { source.value = files[sourceFile.value] ?? ""; });
+sourceFile.addEventListener("change", showSource);
 generatedFile.addEventListener("change", showGenerated);
 document.querySelectorAll<HTMLButtonElement>("[data-runtime-file]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -155,6 +181,7 @@ reset.addEventListener("click", () => {
 });
 source.addEventListener("input", () => {
   files[sourceFile.value] = source.value;
+  paint(source, sourceView, sourceFile.value);
   status.dataset.state = "compiling";
   status.textContent = "Compiling…";
   if (pending !== undefined) cancelAnimationFrame(pending);

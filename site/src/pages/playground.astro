@@ -40,7 +40,10 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
           <select id="source-file"></select>
         </div>
         <label class="sr-only" for="source">Source code</label>
-        <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" disabled></textarea>
+        <div class="code-editor">
+          <pre class="diffs" aria-hidden="true"><code id="source-view"></code></pre>
+          <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" disabled></textarea>
+        </div>
       </section>
       <section class="editor-pane" aria-labelledby="output-heading">
         <div class="pane-heading">
@@ -51,7 +54,10 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         </div>
         <p id="file-description" class="file-description">Generated from your config. Changes as you edit.</p>
         <label class="sr-only" for="generated">Generated code</label>
-        <textarea id="generated" readonly spellcheck="false" wrap="off" placeholder="Generated files appear here after a successful compile."></textarea>
+        <div class="code-editor generated">
+          <pre class="diffs" aria-hidden="true"><code id="generated-view"></code></pre>
+          <textarea id="generated" readonly spellcheck="false" wrap="off" placeholder="Generated files appear here after a successful compile."></textarea>
+        </div>
       </section>
     </div>
     <p class="note">The file menu includes full generated PHP, SQL and TypeScript, plus the shared WordPress runtime and plugin templates. Runtime files are shared by apps; generated files change with your config.</p>
@@ -85,8 +91,15 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   .pane-heading { min-height: 3.5rem; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); background: var(--tint); flex-wrap: wrap; font-size: 0.8rem; }
   .pane-heading h2 { font-size: 0.9rem; margin: 0; }
   .pane-heading select { flex: 1; font-family: var(--mono); }
-  textarea { display: block; width: 100%; height: 65dvh; min-height: 28rem; resize: vertical; border: 0; border-radius: 0; padding: 1rem; background: var(--paper); color: var(--ink); font: 0.8rem/1.65 var(--mono); tab-size: 2; }
-  #generated { background: #fafaf9; }
+  /* The textarea edits; the highlighted copy behind it shows its text, moved with the textarea's scroll. */
+  .code-editor { position: relative; background: var(--paper); }
+  .code-editor.generated { background: #fafaf9; }
+  .code-editor pre { position: absolute; inset: 0; margin: 0; border: 0; border-radius: 0; padding: 1rem; overflow: hidden; background: none; font: 0.8rem/1.65 var(--mono); tab-size: 2; pointer-events: none; }
+  .code-editor code { display: block; width: max-content; font: inherit; color: var(--ink); }
+  textarea { position: relative; display: block; width: 100%; height: 65dvh; min-height: 28rem; resize: vertical; border: 0; border-radius: 0; padding: 1rem; background: none; color: var(--ink); caret-color: var(--ink); font: 0.8rem/1.65 var(--mono); tab-size: 2; }
+  textarea::placeholder { color: var(--muted); }
+  .code-editor[data-highlighted] textarea { color: transparent; }
+  .code-editor[data-highlighted] textarea::selection { color: transparent; background: #009fff33; }
   .note { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   @media (max-width: 64rem) { .intro { flex-direction: column; gap: 0.5rem; } }

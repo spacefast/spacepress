@@ -18,6 +18,14 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("kitchen-sink");
   await expect(generated).toHaveValue(/function action__publishPage/);
+  const tokenColors = (view: string) => page.locator(`.code-editor[data-highlighted] ${view} .line > span`)
+    .evaluateAll((spans) => new Set(spans.map((span) => getComputedStyle(span).color)).size);
+  await expect.poll(() => tokenColors("#generated-view")).toBeGreaterThan(3);
+  await expect.poll(() => tokenColors("#source-view")).toBeGreaterThan(3);
+  await source.press("End");
+  await source.pressSequentially(" // typed");
+  await expect(page.locator(".code-editor[data-highlighted] #source-view")).toHaveText(await source.inputValue());
+  await expect(status).toHaveAttribute("data-state", "ok");
   await generatedFile.selectOption("zero/app/schema.php");
   await expect(generated).toHaveValue(/'postType' => 'zero_pages'/);
   await expect(generated).toHaveValue(/'admin' => true/);

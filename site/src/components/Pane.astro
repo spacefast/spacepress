@@ -1,6 +1,6 @@
 ---
 // One file excerpt with its name, highlighted.
-import { Code } from "astro:components";
+import { highlight } from "../lib/highlight.ts";
 import type { ResolvedPane } from "../lib/tour.ts";
 
 interface Props {
@@ -11,7 +11,7 @@ const { pane } = Astro.props;
 
 <figure class="pane">
   <figcaption><code>{pane.label}</code></figcaption>
-  <Code code={pane.code} lang={pane.lang} theme="github-light" />
+  <Fragment set:html={await highlight(pane.code, pane.lang)} />
 </figure>
 
 <style>

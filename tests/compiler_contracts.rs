@@ -421,9 +421,26 @@ export function errorEffects() {
   catch (error) { return [plain.message, constructed.message, error.message, count]; }
 }
 export function replaceCount(value) { value.count = 'x'; }
+export function replaceCopiedSlot(value) {
+  const copied = [].slice.call([value]);
+  copied[0] = { count: 'copy' };
+  copied.push({ count: 'extra' });
+}
 export function methodOrder() {
   const object = { method: () => 1 };
-  return { order: object.method(object.method = () => 2), computed: ['one', 'two']['join'](':') };
+  function narrowed(value) {
+    if (typeof value === 'string') return value.replace(/^\//, '').replaceAll(/\/$/g, '');
+    return '';
+  }
+  function borrowed(first, middle, last) {
+    const slice = [].slice;
+    const selected = slice.call(arguments, 1, -1);
+    const empty = slice.call(arguments, 0, null);
+    const copied = slice.apply(arguments, [0, undefined]);
+    copied.push('copy');
+    return { selected, empty, copied, array: slice.call([first, middle, last], 1, -1), original: Array.from(arguments), identity: slice === [].slice };
+  }
+  return { order: object.method(object.method = () => 2), computed: ['one', 'two']['join'](':'), narrowed: narrowed('/value/'), borrowed: borrowed('first', 'middle', 'last') };
 }
 export function objects(value) {
   const holder = {};
@@ -435,6 +452,7 @@ export function objects(value) {
     std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
     let mutation = r#"
 function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
+function copiedSlots(): number { const object = { count: 1 }; replaceCopiedSlot(object); return object.count + 1; }
 function discardRest(...values: string[][]) { values.pop(); }
 function optionalObject(value?: { count: number }) { return value ? value.count : 'absent'; }
 function optionalArray(value?: string[]) { return value ? value.length : -1; }
@@ -464,16 +482,16 @@ function nonempty() {
   return values[0];
 }
 "#;
-    let expression = r#"({ nullish: nullishValues(), mutation: mutation(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
+    let expression = r#"({ nullish: nullishValues(), mutation: mutation(), copiedSlots: copiedSlots(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
     let node = Command::new("node")
         .current_dir(tmp.path())
-        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, methodOrder, missingKinds, errorEffects}} from './helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
+        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
         .output().unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
 import {{ action, defineConfig }} from 'zero';
-import {{ combine, read, absent, objects, replaceCount, methodOrder, missingKinds, errorEffects }} from './helpers.mjs';
+import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
 export default defineConfig({{ name: 'js-values', actions: {{
@@ -526,6 +544,76 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
             .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("string | null")),
         "{report}"
     );
+
+    // Borrowed mutators cannot bypass a typed caller's array element domain.
+    std::fs::write(
+        tmp.path().join("helpers.mjs"),
+        "export function change(values) { const push = [].push; push.call(values, 'x'); }",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig } from 'zero';
+import { change } from './helpers.mjs';
+export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
+  const values: number[] = [1];
+  change(values);
+  return values.reduce((sum, value) => sum + value, 0);
+} }) } });
+"#,
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    assert!(
+        report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("push")),
+        "{report}"
+    );
+
+    for (parameters, copied, field, argument) in [
+        ("values", "values.slice()", "[0].count", "values"),
+        ("values", "[].slice.call(values)", "[0].count", "values"),
+        ("values", "[].slice[method](values, [])", "[0].count", "values"),
+        ("", "[].slice.call(arguments)", "[0].count", "values[0]"),
+        ("values", "[].slice.call(values)", "[0][0].count", "[values]"),
+        ("", "[].slice.call(arguments)", "[0].count", "...values"),
+        ("first, value", "[].slice.call([value])", "[0].count", "...values"),
+    ] {
+        std::fs::write(
+            tmp.path().join("helpers.mjs"),
+            format!("function mutate({parameters}) {{ const method = 'apply'; const copied = {copied}; copied{field} = 'x'; }} export function change(values) {{ mutate({argument}); }}"),
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            r#"
+import { action, defineConfig } from 'zero';
+import { change } from './helpers.mjs';
+export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
+  const object = { count: 1 };
+  const values = [object, object];
+  change(values);
+  return object.count + 1;
+} }) } });
+"#,
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{copied}: {report}");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("JavaScript value")),
+            "{copied}: {report}"
+        );
+    }
 }
 
 #[test]

@@ -1,7 +1,10 @@
 // Refresh registry provenance; compilation/verification itself needs no network.
 import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { probes } from "./cases.mjs";
+const modules = path.resolve(process.env.NPM_COMPAT_NODE_MODULES ?? fileURLToPath(new URL("./node_modules", import.meta.url)));
 const entries = [];
 for (const probe of probes) {
   const encoded = encodeURIComponent(probe.name);
@@ -15,7 +18,7 @@ for (const probe of probes) {
     ? await downloadsResponse.json()
     : { error: downloadsResponse.status };
   const source = await readFile(
-    new URL(`./node_modules/${probe.name}/${probe.entry}`, import.meta.url),
+    path.join(modules, probe.name, probe.entry),
   );
   entries.push({
     name: probe.name,

@@ -3580,7 +3580,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Num,
             ));
         }
-        if o.ty == Ty::Dynamic {
+        if o.ty == Ty::Dynamic
+            || (self.javascript_module(self.fx.as_ref().expect("fn").module)
+                && prop == "slice"
+                && matches!(
+                    o.ty.non_null(),
+                    Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+                ))
+        {
             return Ok(self.javascript_get(o, Out::atom(php_str(prop), Ty::Str), optional));
         }
         if let Some(path) = self.path_of(obj)
@@ -4574,7 +4581,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {}
         }
         let mut recv = self.finish_value(recv, recv_span)?;
-        if recv.ty == Ty::Dynamic {
+        let javascript_string_replace = self.javascript_module(self.fx.as_ref().expect("fn").module)
+            && recv.ty.non_null().is_str()
+            && matches!(m, "replace" | "replaceAll");
+        if recv.ty == Ty::Dynamic || javascript_string_replace {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
@@ -4590,7 +4600,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     call
                 },
-                Ty::Dynamic,
+                if javascript_string_replace {
+                    if optional && recv.ty.is_nullable() {
+                        Ty::Str.nullable()
+                    } else {
+                        Ty::Str
+                    }
+                } else {
+                    Ty::Dynamic
+                },
             ));
         }
         if recv.ty.is_nullable() && !optional {

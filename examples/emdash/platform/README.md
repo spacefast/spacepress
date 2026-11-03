@@ -19,12 +19,11 @@ ZERO_BIN="$PWD/target/debug/zero" node --test examples/emdash/platform/acceptanc
 ```
 
 Run `cargo build` first so the binary embeds the current compiler and PHP runtime.
-The browser journey uses the repository's existing Playwright install
-in `runtime/admin/apps`. If needed, prepare it using the normal admin setup:
+The browser journey uses the shared example dependencies:
 
 ```sh
-pnpm --dir runtime/admin/apps install --frozen-lockfile
-pnpm --dir runtime/admin/apps exec playwright install chromium
+npm --prefix examples/emdash ci
+npm --prefix examples/emdash exec -- playwright install chromium
 ```
 
 The runner creates a unique `/tmp/zero-emdash-platform-*` project, asks the OS for

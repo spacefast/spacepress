@@ -1,0 +1,5 @@
+Content model and Halden sample content adapted from EmDash, Copyright 2026 Cloudflare Inc.
+MIT license: LICENSE-MIT.
+Upstream: https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates/marketing
+Cloudflare variant: https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates/marketing-cloudflare
+Photos referenced by the original seed are hosted on Unsplash; setup imports them into the local WordPress media library.

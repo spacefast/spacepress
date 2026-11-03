@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createRequire } from 'node:module';
+import { chromium, expect } from '@playwright/test';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -242,7 +242,6 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     assert.equal(await wp('user', 'get', 'platform_editor', '--field=roles'), 'editor');
   });
   await step('browser renders public stories, relationships, image and locale; native settings/plugins and Zero admin stay available', async () => {
-    const { chromium, expect } = createRequire(join(repo, 'runtime/admin/apps/package.json'))('@playwright/test');
     const browser = await chromium.launch({ headless: true });
     try {
       const publicContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });

@@ -8,8 +8,8 @@ the boundaries of this adaptation are in [UPSTREAM.md](UPSTREAM.md).
 From the repository root, with Node.js 22+ and the Zero binary built:
 
 ```sh
-npm --prefix examples/emdash/agents ci
-npm --prefix examples/emdash/agents exec -- playwright install chromium
+npm --prefix examples/emdash ci
+npm --prefix examples/emdash exec -- playwright install chromium
 node --test examples/emdash/agents/acceptance.test.mjs
 ```
 

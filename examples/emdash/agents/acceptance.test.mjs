@@ -7,7 +7,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));

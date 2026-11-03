@@ -3,6 +3,7 @@ import { store as zeroAdminStore } from './store';
 import type {
 	FlatMenuItem,
 	Nudge,
+	DashboardNoticeConfig,
 	DashboardContext,
 	RegisteredModal,
 } from './store/types';
@@ -20,6 +21,21 @@ export function unregisterSiteHubHelpMenuItem( id: string ): void {
 
 export function setNudges( nudges: Nudge[] ): void {
 	void dispatch( zeroAdminStore ).setNudges( nudges );
+}
+
+export function registerDashboardNotice( notice: DashboardNoticeConfig ): void {
+	void dispatch( zeroAdminStore ).registerDashboardNotice( notice );
+}
+
+export function unregisterDashboardNotice( id: string ): void {
+	void dispatch( zeroAdminStore ).unregisterDashboardNotice( id );
+}
+
+export function updateDashboardNotice(
+	id: string,
+	changes: Partial< DashboardNoticeConfig >
+): void {
+	void dispatch( zeroAdminStore ).updateDashboardNotice( id, changes );
 }
 
 export function registerModal( modal: RegisteredModal ): void {

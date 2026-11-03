@@ -143,7 +143,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           git diff --exit-code -- runtime/admin/build
-          untracked=$(git ls-files --others --exclude-standard -- runtime/admin/build)
+          untracked=$(git ls-files --others -- runtime/admin/build)
           if [ -n "$untracked" ]; then
             printf 'Untracked admin bundle files:\n%s\n' "$untracked"
             exit 1

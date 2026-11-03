@@ -4,7 +4,7 @@
 // receipt's url is http://host/blog.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { harness, wp } from "../env.ts";
+import { auth, harness, wp } from "../env.ts";
 
 const site = harness.url;
 const origin = new URL(site).origin;
@@ -41,6 +41,14 @@ test("the admin is installed below the site root and derives every URL from it",
   assert.equal(context.logout_url && String(context.logout_url).startsWith(`${site}/wp-login.php?action=logout`), true);
   assert.ok(Array.isArray(menuItems));
 
+  // Lazy editor assets use WordPress's registered base URL, including the install path.
+  const assetsResponse = await fetch(`${site}/wp-json/wp/v2/editor/assets`, { headers: auth('admin') });
+  assert.equal(assetsResponse.status, 200);
+  const assets = await assetsResponse.json();
+  const script = new URL(assets.scripts['wp-block-library'].src);
+  assert.ok(script.pathname.startsWith(`${subdir}/wp-`), `editor asset keeps the site prefix: ${script}`);
+  assert.equal((await fetch(script)).status, 200, 'the exported editor script is served');
+
   // A legacy menu route frames `<admin_url><slug>`: the base the page handed in reaches the real
   // wp-admin of this install, where the origin-root guess (`/wp-admin/`) would not.
   const adminUrl = String(context.admin_url);
@@ -48,4 +56,41 @@ test("the admin is installed below the site root and derives every URL from it",
   assert.equal(framed.status, 200, `the framed wp-admin page is served (got ${framed.status} -> ${framed.headers.get("location")})`);
   const guessed = await fetch(`${origin}/wp-admin/options-media.php`, { headers: { cookie: await loginCookie(site, "admin", `${site}/wp-admin/options-media.php`) }, redirect: "manual" });
   assert.notEqual(guessed.status, 200, "the origin-root guess is not this site's wp-admin");
+});
+
+test("native user filters expose private fields only to account administrators", async () => {
+  const suffix = Date.now().toString(36);
+  const email = `hidden-${suffix}@example.test`;
+  const firstName = `Private${suffix}`;
+  const id = Number(wp("user", "create", `filter-${suffix}`, email, "--role=author", `--first_name=${firstName}`, "--display_name=Public author", "--porcelain"));
+  const post = wp("post", "create", `--post_author=${id}`, "--post_title=Public author filter fixture", "--post_status=publish", "--porcelain");
+  const users = async (query: Record<string, string>, headers: Record<string, string> = {}) => {
+    const response = await fetch(`${site}/wp-json/wp/v2/users?${new URLSearchParams({ include: String(id), ...query })}`, { headers });
+    assert.equal(response.status, 200);
+    const data: unknown = await response.json();
+    assert.ok(Array.isArray(data));
+    return data.map(user => {
+      assert.ok(user && typeof user === "object" && "id" in user && typeof user.id === "number");
+      return user.id;
+    });
+  };
+  try {
+    assert.deepEqual(await users({}), [id]);
+    const privateQueries: Record<string, string>[] = [
+        { email_search: "not-this-author@example.test" },
+        { email_search_not: email },
+        { name_search: "Not this author" },
+        { name_search_not: firstName },
+        { registered_after: "2999-01-01" },
+        { registered_before: "1900-01-01" },
+    ];
+    for (const headers of [{}, auth("subscriber")]) {
+      for (const query of privateQueries) assert.deepEqual(await users(query, headers), [id], JSON.stringify(query));
+    }
+    assert.deepEqual(await users({ email_search: email }, auth("admin")), [id]);
+    assert.deepEqual(await users({ email_search: "not-this-author@example.test" }, auth("admin")), []);
+  } finally {
+    wp("post", "delete", post, "--force");
+    wp("user", "delete", String(id), "--yes");
+  }
 });

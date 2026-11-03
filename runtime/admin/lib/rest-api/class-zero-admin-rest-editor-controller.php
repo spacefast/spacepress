@@ -316,7 +316,7 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 			if ( isset( $wp_styles->registered[ $handle ] ) ) {
 				$style                  = $wp_styles->registered[ $handle ];
 				$styles_data[ $handle ] = array(
-					'src'     => $style->src,
+					'src'     => $this->asset_url( $style->src, $wp_styles->base_url ),
 					'deps'    => $style->deps,
 					'version' => $style->ver,
 					'media'   => $style->args,
@@ -349,7 +349,7 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 			if ( isset( $wp_scripts->registered[ $handle ] ) ) {
 				$script                  = $wp_scripts->registered[ $handle ];
 				$scripts_data[ $handle ] = array(
-					'src'       => $script->src,
+					'src'       => $this->asset_url( $script->src, $wp_scripts->base_url ),
 					'deps'      => $script->deps,
 					'version'   => $script->ver,
 					'in_footer' => isset( $script->extra['group'] ) && 1 === $script->extra['group'],
@@ -389,6 +389,17 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 			'inline_styles'  => $inline_styles,
 		);
 	}
+
+	/** Resolve registered relative paths against WordPress's installation URL. */
+    private function asset_url( $src, $base_url ) {
+        if ( ! $src ) {
+            return '';
+        }
+        if ( preg_match( '|^(https?:)?//|', $src ) ) {
+            return $src;
+        }
+        return rtrim( $base_url, '/' ) . '/' . ltrim( $src, '/' );
+    }
 
 	/**
 	 * Get all dependencies recursively (works for both scripts and styles).

@@ -31,7 +31,7 @@ export default function MediaEditor({
 		);
 	}
 
-	const resolvedEditLink = editLink ?? `/media/${postId}`;
+	const resolvedEditLink = editLink ?? `/types/attachment/edit/${postId}`;
 
 	return (
 		<MediaProvider post={record as MediaItem}>

@@ -6,10 +6,10 @@
 		"path": "/legacy/$slug"
 	},
 	"dependencies": {
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@wordpress/route": "catalog:",
 		"@types/react": "catalog:",
 		"@wordpress/compose": "catalog:",
-		"@wordpress/route": "catalog:",
-		"@zero-admin/admin-toolkit": "workspace:*",
 		"@zero-admin/boot": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"

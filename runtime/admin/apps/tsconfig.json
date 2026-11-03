@@ -1,10 +1,13 @@
 {
 	"extends": "./tsconfig.base.json",
-	"composite": true,
 	"compilerOptions": {
-		"outDir": ".tsout",
 		"rootDir": ".",
-		"baseUrl": "."
+		"baseUrl": ".",
+		"noEmit": true,
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"emitDeclarationOnly": false
 	},
 	"include": [
 		"**/*.ts",
@@ -23,10 +26,5 @@
 		"**/stories/**",
 		"**/*.mdx",
 		"wp-journey/**"
-	],
-	"references": [
-		{
-			"path": "./packages/theme"
-		}
 	]
 }

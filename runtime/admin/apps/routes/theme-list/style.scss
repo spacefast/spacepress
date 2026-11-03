@@ -1,0 +1,59 @@
+@use "@wordpress/base-styles/variables";
+@use "@wordpress/base-styles/colors";
+
+.theme-screenshot-media {
+	// Can be removed once https://github.com/WordPress/gutenberg/pull/70671 lands
+	width: 100%;
+}
+
+.themes-page .dataviews-view-grid .dataviews-view-grid__media {
+	// wp.org theme submission guidelines are that screenshots should be 4:3 aspect ratio.
+	// using it here rather than grid's default 1:1 makes everything look better.
+	aspect-ratio: 4/3;
+}
+
+.theme-detail-modal {
+	.theme-details-preview-container {
+		flex: 1;
+		max-width: 50%;
+	}
+
+	.theme-details-preview {
+		border: 1px solid colors.$gray-300;
+		border-radius: variables.$radius-medium;
+		overflow: hidden;
+
+		img {
+			display: block;
+			width: 100%;
+			height: auto;
+		}
+	}
+
+	.theme-details-info {
+		flex: 1;
+	}
+
+	.theme-details-version-label {
+		margin-inline-end: 0.5ch;
+	}
+
+	.theme-details-tags-label {
+		margin-inline-end: 0.5ch;
+	}
+
+	.theme-toggle-auto-updates-button {
+		width: fit-content;
+
+		&:focus {
+			box-shadow: none;
+			outline: none;
+		}
+	}
+
+	.theme-details-loading,
+	.theme-details-error {
+		padding: variables.$grid-unit-30;
+		text-align: center;
+	}
+}

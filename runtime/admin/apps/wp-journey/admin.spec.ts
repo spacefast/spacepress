@@ -195,6 +195,18 @@ if (!subdir) {
 			authorId,
 			sections: [{ layout: 'hero', heading: 'Native structured fields' }],
 		});
+		// Publish the native editor draft, then read the same SCF values anonymously.
+		const published = page.waitForResponse(r =>
+			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_posts/${id}`) &&
+			['POST', 'PUT'].includes(r.request().method()));
+		await page.getByRole('button', { name: 'Publish', exact: true }).click();
+		expect((await published).status()).toBe(200);
+		const publicRecord = await request.get(`${site}/wp-json/zero/v1/posts/${id}`);
+		expect(publicRecord.status()).toBe(200);
+		expect((await publicRecord.json()).data).toMatchObject({
+			status: 'published', excerpt: 'Edited in native Fields',
+			sections: [{ layout: 'hero', heading: 'Native structured fields' }],
+		});
 		// The table uses the Zero endpoint and a readable cross-kind relation picker.
 		await page.goto(`${site}/zero-admin/collections/comments`);
 		await page
@@ -556,7 +568,7 @@ if (!subdir) {
 			name: `${name}.png`,
 			mimeType: 'image/png',
 			buffer: Buffer.from(
-				'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+				'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/FOjAAAAANklEQVR4nGNgYEghDQkopJCEGBQcUkhCDAYJKSQhBoeGFJIQQ8CCFJIQQ8KBFJIQQ8GDFJIQAGoahgFmYDF8AAAAAElFTkSuQmCC',
 				'base64'
 			),
 		}, {
@@ -645,6 +657,24 @@ if (!subdir) {
 		await page.getByRole('link', { name, exact: true }).click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await page.screenshot({ path: test.info().outputPath('media-details.png') });
+        // The complete native image editor remains available beside Zero details.
+        await page.getByRole('link', { name: 'Edit image', exact: true }).click();
+        await expect(page).toHaveURL(`${site}/zero-admin/types/attachment/edit/${mediaId}`);
+        await page.reload();
+        await page.getByRole('tab', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Rotate 90° right', exact: true }).click();
+        await page.screenshot({ path: test.info().outputPath('native-image-editor.png') });
+        const rotated = page.waitForResponse(response =>
+            new URL(response.url()).pathname.endsWith(`/wp/v2/media/${mediaId}/edit`) && response.request().method() === 'POST');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        const rotatedResponse = await rotated;
+        expect(rotatedResponse.status(), await rotatedResponse.text()).toBe(201);
+        const editedImage = await rotatedResponse.json();
+        expect(editedImage.id).not.toBe(mediaId);
+        expect(editedImage.media_details).toMatchObject({ width: 8, height: 16 });
+        await expect(page).toHaveURL(`${site}/zero-admin/types/attachment/edit/${editedImage.id}`);
+        expect((await request.get(editedImage.source_url)).status()).toBe(200);
+        await page.goto(`${site}/zero-admin/media/${mediaId}`);
 		// Confirmed deletion retires even dirty drafts without a second leave prompt.
 		await alt.fill('Deleted media draft');
 		await page
@@ -657,3 +687,86 @@ if (!subdir) {
 		await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
 	});
 }
+
+test('restored native WordPress routes persist settings and published content and keep classic admin reachable', async ({ page, request }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const headers = { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` };
+    const title = `Native editor ${Date.now()}`;
+    const created = await request.post(`${site}/wp-json/wp/v2/posts`, {
+        headers, data: { title, content: '<p>Native WordPress public body</p>', status: 'publish' },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const post = await created.json();
+    const nativeType = await request.get(`${site}/wp-json/wp/v2/types/post?context=edit`, { headers });
+    expect(nativeType.status()).toBe(200);
+    expect(await nativeType.json()).toMatchObject({
+        default_view: { type: 'table', titleField: 'title' },
+        default_layouts: { grid: { mediaField: 'featured_mixed' } },
+        quick_edit_form: { layout: { type: 'panel' } },
+    });
+    await login(page, 'admin');
+    await page.goto(`${site}/zero-admin/types/post/list/all`);
+    await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('native-post-list.png') });
+    await page.goto(`${site}/zero-admin/dashboard`);
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
+    await page.keyboard.press('Escape');
+    await page.goto(`${site}/zero-admin/settings/general`);
+    const description = `Saved through native settings ${Date.now()}`;
+    await page.getByRole('textbox', { name: 'Site description', exact: true }).fill(description);
+    const savedSettings = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/wp/v2/settings') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    expect((await savedSettings).status()).toBe(200);
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Site description', exact: true })).toHaveValue(description);
+    const settings = await request.get(`${site}/wp-json/wp/v2/settings`, { headers });
+    expect((await settings.json()).description).toBe(description);
+    await page.screenshot({ path: test.info().outputPath('native-settings.png') });
+
+    await page.goto(`${site}/zero-admin/users`);
+    await expect(page.getByRole('table').getByText('admin@example.test', { exact: true })).toBeVisible();
+    await page.goto(`${site}/zero-admin/users/add`);
+    await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeVisible();
+    await page.goto(`${site}/zero-admin/plugins/list/all`);
+    await expect(page.getByRole('row').filter({ hasText: 'Zero Admin' })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('native-plugins.png') });
+    await page.goto(`${site}/zero-admin/design/themes`);
+    await expect(page.getByText('Twenty Twenty-Five', { exact: true }).first()).toBeVisible();
+    await page.goto(`${site}/zero-admin/design/styles`);
+    await expect(page.getByRole('button', { name: 'Typography', exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('native-design.png') });
+    await page.goto(`${site}/zero-admin/design/navigation`);
+    await expect(page.getByRole('region', { name: 'Editor content', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Template Part', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+    await page.goto(`${site}/zero-admin/types/post/edit/${post.id}`);
+    const canvas = page.frameLocator('iframe[name="editor-canvas"]');
+    await canvas.getByRole('textbox', { name: 'Add title', exact: true }).fill(`${title} saved`);
+    const savedPost = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/wp/v2/posts/${post.id}`) && ['POST', 'PUT'].includes(response.request().method()));
+    await page.getByRole('button', { name: /^(Save|Update)$/ }).last().click();
+    expect((await savedPost).status()).toBe(200);
+    await page.reload();
+    await expect(canvas.getByRole('textbox', { name: 'Add title', exact: true })).toHaveText(`${title} saved`);
+    const publicPage = await request.get(post.link);
+    expect(publicPage.status()).toBe(200);
+    expect(await publicPage.text()).toContain(`${title} saved`);
+    await page.screenshot({ path: test.info().outputPath('native-wordpress-editor.png') });
+
+    await page.goto(`${site}/zero-admin/`);
+    await page.getByRole('link', { name: 'Classic admin', exact: true }).click();
+    await expect(page.locator('#adminmenu')).toBeVisible();
+    await page.goto(`${site}/wp-admin/options-general.php`);
+    await expect(page.locator('#blogdescription')).toHaveValue(description);
+    await page.screenshot({ path: test.info().outputPath('native-classic-admin.png') });
+
+    const subscriber = { Authorization: `Basic ${Buffer.from(`subscriber:${harness.users.subscriber.appPassword}`).toString('base64')}` };
+    const denied = await request.post(`${site}/wp-json/wp/v2/settings`, { headers: subscriber, data: { description: 'Unauthorized' } });
+    expect(denied.status()).toBe(403);
+    const afterDenial = await request.get(`${site}/wp-json/wp/v2/settings`, { headers });
+    expect((await afterDenial.json()).description).toBe(description);
+    expect(errors).toEqual([]);
+});

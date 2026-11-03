@@ -1,22 +1,69 @@
-import { createContext, useContext } from '@wordpress/element';
+import {
+	useState,
+	createContext,
+	useContext,
+	useMemo,
+} from '@wordpress/element';
 import { createHigherOrderComponent } from '@wordpress/compose';
+import { type AspectRatio } from '../components/media-renderer/image/editing-tools/aspect-ratio';
 
 /*
- * The media editor once carried crop/rotate state here. With the image
- * editor gone the provider is an identity wrapper kept for the components
- * that still read its (now empty) context; it goes when they are rewired.
- */
-export type MediaEditorStateContextValue = Record< string, never >;
+	This provider is used to manage the state of the media editor,
+	until there's cause for a fully-fledged store/state management solution.
+*/
 
-const MediaEditorStateContext = createContext< MediaEditorStateContextValue >( {} );
+export interface MediaEditorStateContextValue {
+	isImageEditorOpen: boolean;
+	setIsImageEditorOpen: ( isImageEditorOpen: boolean ) => void;
+	isEditInProgress: boolean;
+	setIsEditInProgress: ( isSaveInProgress: boolean ) => void;
+	selectedAspectRatio: AspectRatio | null;
+	setSelectedAspectRatio: ( selectedAspectRatio: AspectRatio | null ) => void;
+}
+
+const MediaEditorStateContext = createContext< MediaEditorStateContextValue >( {
+	isImageEditorOpen: false,
+	setIsImageEditorOpen: () => {},
+	setIsEditInProgress: () => {},
+	isEditInProgress: false,
+	selectedAspectRatio: null,
+	setSelectedAspectRatio: () => {},
+} );
 
 const withMediaEditorStateProvider = createHigherOrderComponent(
 	( WrappedComponent ) => {
-		const Component = ( { ...props } ) => (
-			<MediaEditorStateContext.Provider value={ {} }>
-				<WrappedComponent { ...props } />
-			</MediaEditorStateContext.Provider>
-		);
+		const Component = ( { ...props } ) => {
+			const [ isImageEditorOpen, setIsImageEditorOpen ] =
+				useState( false );
+			const [ isEditInProgress, setIsEditInProgress ] =
+				useState< boolean >( false );
+			const [ selectedAspectRatio, setSelectedAspectRatio ] =
+				useState< AspectRatio | null >( null );
+			const contextValue = useMemo( () => {
+				return {
+					isImageEditorOpen,
+					setIsImageEditorOpen,
+					isEditInProgress,
+					setIsEditInProgress,
+					selectedAspectRatio,
+					setSelectedAspectRatio,
+				};
+			}, [
+				isImageEditorOpen,
+				setIsImageEditorOpen,
+				isEditInProgress,
+				setIsEditInProgress,
+				selectedAspectRatio,
+				setSelectedAspectRatio,
+			] );
+
+			return (
+				<MediaEditorStateContext.Provider value={ contextValue }>
+					<WrappedComponent { ...props } />
+				</MediaEditorStateContext.Provider>
+			);
+		};
+
 		Component.displayName = `withMediaEditorStateProvider(${
 			WrappedComponent.displayName || WrappedComponent.name || 'Component'
 		})`;
@@ -27,4 +74,10 @@ const withMediaEditorStateProvider = createHigherOrderComponent(
 
 export default withMediaEditorStateProvider;
 
-export const useMediaEditorState = () => useContext( MediaEditorStateContext );
+export const useMediaEditorState = () => {
+	const context = useContext( MediaEditorStateContext );
+	if ( ! context ) {
+		throw new Error( 'Missing MediaEditorStateContext' );
+	}
+	return context;
+};

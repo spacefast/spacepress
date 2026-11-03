@@ -334,6 +334,59 @@ export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: act
 }
 
 #[test]
+fn type_guards_validate_their_domains_and_boolean_returns() {
+    for (helper, message) in [
+        (
+            "function guard(value: string): absent is string { return true; }",
+            "must name one plain function parameter",
+        ),
+        (
+            "function guard(value: number): value is string { return true; }",
+            "must be assignable to parameter",
+        ),
+        (
+            "function guard(value: undefined): value is null { return true; }",
+            "must be assignable to parameter",
+        ),
+        (
+            "async function guard(value: string): value is string { return true; }",
+            "must be synchronous",
+        ),
+        (
+            "function guard(value: string): value is string { return 1; }",
+            "boolean",
+        ),
+        (
+            "function guard(value: unknown) { if (typeof value === 'number') return true; return value.trim() !== ''; }",
+            "unknown",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("zero.config.ts"),
+            format!(
+                r#"
+import {{ action, defineConfig }} from "zero";
+{helper}
+export default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => guard }}) }} }});
+"#
+            ),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{helper}: {report}");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| { diagnostic["message"].as_str().unwrap().contains(message) }),
+            "{helper}: {report}"
+        );
+    }
+}
+
+#[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
     let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1)]"#;
     let node = Command::new("node")

@@ -560,7 +560,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             param_tys.push(parameter_input_type(p, t));
         }
-        if let Some(r) = &f.ret {
+        let predicate = self.function_predicate(&f, &param_tys)?;
+        if predicate.is_some() {
+            fx.ret = Some(Ty::Bool);
+        } else if let Some(r) = &f.ret {
             let t = self.resolve_runtime_ann(r, f.module)?;
             fx.ret = Some(match t {
                 Ty::Promise(inner) if f.is_async => *inner,
@@ -585,7 +588,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         // Recursive calls need the signature before the body is compiled.
         if let Some(ret) = &fx.ret {
-            let ret = if f.is_async {
+            let ret = if let Some(predicate) = &predicate {
+                predicate.clone()
+            } else if f.is_async {
                 Ty::Promise(Box::new(ret.clone()))
             } else {
                 ret.clone()
@@ -597,7 +602,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body) = result?;
-        let ret_ty = fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone()));
+        let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
         self.helper_types.insert(
             closure_key(closure),
             Ty::Fn(
@@ -611,6 +616,48 @@ impl<'a, 'p> Compiler<'a, 'p> {
         );
         let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
         Ok(())
+    }
+
+    fn function_predicate(&mut self, f: &Func, params: &[Ty]) -> Result<Option<Ty>> {
+        let Some(TyAnn::Predicate(name, target, span)) = &f.ret else {
+            return Ok(None);
+        };
+        if f.is_async {
+            return err(*span, "type predicates must be synchronous");
+        }
+        let Some(index) = f
+            .params
+            .iter()
+            .position(|p| matches!(&p.pat, Pat::Id(n, _) if n == name))
+        else {
+            return err(*span, "a type predicate must name one plain function parameter");
+        };
+        if f.params[index].rest {
+            return err(*span, "a type predicate cannot refine a rest parameter");
+        }
+        let target = self.resolve_annotation_root(target, f.module)?;
+        let parameter = &f.params[index];
+        let declared = if let Some(annotation) = &parameter.ann {
+            let declared = self.resolve_annotation_root(annotation, f.module)?;
+            if parameter.optional || parameter.default.is_some() {
+                Ty::union([declared, Ty::Undefined])
+            } else {
+                declared
+            }
+        } else {
+            params[index].clone()
+        };
+        if !annotations::structural_extends(&target, &declared) {
+            return err(
+                *span,
+                format!(
+                    "predicate target {} must be assignable to parameter {}",
+                    target.describe(),
+                    declared.describe()
+                ),
+            );
+        }
+        Ok(Some(Ty::Predicate(index, Box::new(annotations::runtime_type(target)))))
     }
 
     fn compile_function_body(
@@ -1472,7 +1519,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let element = |ty: &Ty, i: usize| match ty.non_null() {
                     Ty::Array(t) => Some((*t).nullable()),
-                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Null).nullable()),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Null)),
                     _ => None,
                 };
                 if element(&ty, 0).is_none() {
@@ -1527,6 +1574,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn collect_narrowing(&mut self, test: &Expr, negate: bool, out: &mut Vec<(String, Ty, Ty)>) {
         match &test.kind {
+            ExprKind::Call {
+                callee,
+                args,
+                optional: false,
+                ..
+            } => {
+                if let Ok(function) = self.expr(callee)
+                    && let Ty::Fn(_, result) = function.ty
+                    && let Ty::Predicate(index, target) = *result
+                    && let Some(ArrEl::Item(argument)) = args.get(index)
+                    && let Some((path, original)) = self.path_ty(argument)
+                {
+                    let refined = *target;
+                    out.push(if negate {
+                        (path, original.clone(), refined)
+                    } else {
+                        (path, refined, original)
+                    });
+                }
+            }
             ExprKind::Ident(_) | ExprKind::Member { .. } | ExprKind::Chain(_) => {
                 if let Some((n, t)) = self.path_ty(test) {
                     let (yes, no) = (t.non_null(), t.clone());
@@ -1547,6 +1614,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r) => {
+                let typed = match (&l.kind, &r.kind) {
+                    (ExprKind::Unary(UnOp::TypeOf, value), ExprKind::Str(kind))
+                    | (ExprKind::Str(kind), ExprKind::Unary(UnOp::TypeOf, value)) => Some((value, kind)),
+                    _ => None,
+                };
+                if let Some((value, kind)) = typed
+                    && let Some(target) = match kind.as_str() {
+                        "number" => Some(Ty::Num),
+                        "string" => Some(Ty::Str),
+                        "boolean" => Some(Ty::Bool),
+                        _ => None,
+                    }
+                    && let Some((path, original)) = self.path_ty(value)
+                {
+                    let hit = scalar_typeof_part(&original, &target, true);
+                    let miss = scalar_typeof_part(&original, &target, false);
+                    out.push(if (*op == BinOp::Eq) != negate {
+                        (path, hit, miss)
+                    } else {
+                        (path, miss, hit)
+                    });
+                    return;
+                }
                 // `item.layout === "hero"` picks that member of a blocks item union.
                 let (member, lit) = match (&l.kind, &r.kind) {
                     (ExprKind::Member { obj, prop, .. }, ExprKind::Str(s)) if prop == "layout" => (Some(obj), s),
@@ -1587,14 +1677,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     out.push((n, yes, no));
                 }
             }
-            ExprKind::Logical(LogOp::And, l, r) if !negate => {
+            ExprKind::Logical(op @ (LogOp::And | LogOp::Or), l, r) if (*op == LogOp::And) != negate => {
                 let start = out.len();
-                self.collect_narrowing(l, false, out);
+                self.collect_narrowing(l, negate, out);
                 // The right side is checked with the left side's narrowing applied.
                 let left: Vec<_> = out[start..].to_vec();
                 self.fx().scopes.push(HashMap::new());
                 self.apply_narrowing(&left, true);
-                self.collect_narrowing(r, false, out);
+                self.collect_narrowing(r, negate, out);
                 self.fx().scopes.pop();
                 let right = out.split_off(start + left.len());
                 out.truncate(start);
@@ -1603,11 +1693,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .filter(|(name, _, _)| self.refinement_survives(r, name)),
                 );
                 out.extend(right);
-                // Only the "true" side is sound for both operands: the false side keeps the declared type.
+                // Both operands hold only on the conjunction's true side or
+                // the disjunction's false side. Keep the other side conservative.
                 for entry in &mut out[start..] {
                     if let Some(declared) = self.declared_path_ty(&entry.0) {
                         entry.2 = declared;
                     }
+                }
+            }
+            ExprKind::Logical(LogOp::And | LogOp::Or, _, _) => {
+                let start = out.len();
+                self.collect_narrowing(test, !negate, out);
+                for (_, yes, no) in &mut out[start..] {
+                    std::mem::swap(yes, no);
                 }
             }
             _ => {}
@@ -2314,6 +2412,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "call `jobs.<name>.enqueue(input)` directly",
             ),
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
+            Value::Builtin(Builtin::Static("Number", method)) if method.as_ref() == "isFinite" => {
+                Ok(number_is_finite_function())
+            }
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
@@ -2495,6 +2596,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Compiles a callback argument with its parameters typed from context.
     fn callback(&mut self, e: &Expr, params: &[Ty]) -> Result<Out> {
+        if let ExprKind::Ident(name) = &e.kind
+            && matches!(self.resolve(name, e.span), Ok(Resolved::Global("Boolean")))
+        {
+            return Ok(Out::atom(
+                "fn($value) => \\Zero\\Js::truthy($value)",
+                Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
+            ));
+        }
         if let ExprKind::Func(f) = &e.kind {
             return self.closure_with_types(f, Some(params));
         }
@@ -2555,7 +2664,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         self.async_callback = false;
-        if let Some(r) = &f.ret {
+        let predicate = self.function_predicate(f, &param_tys)?;
+        if predicate.is_some() {
+            inner.ret = Some(Ty::Bool);
+        } else if let Some(r) = &f.ret {
             inner.ret = Some(match self.resolve_runtime_ann(r, module)? {
                 Ty::Promise(t) if f.is_async => *t,
                 t => t,
@@ -2568,7 +2680,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));
         let (params_php, body) = result?;
-        let ret = inner.ret.clone().unwrap_or_else(|| Ty::union(inner.returns.clone()));
+        let ret = predicate.unwrap_or_else(|| inner.ret.clone().unwrap_or_else(|| Ty::union(inner.returns.clone())));
         let caps = inner.captures.take().unwrap_or_default();
         let uses: Vec<String> = caps
             .iter()
@@ -2939,6 +3051,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Math", "E") => Ok(Out::atom("M_E", Ty::Num)),
                 ("Number", "MAX_SAFE_INTEGER") => Ok(Out::atom("9007199254740991", Ty::Num)),
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Out::atom("-9007199254740991", Ty::Num)),
+                ("Number", "isFinite") => Ok(number_is_finite_function()),
                 _ => err(span, format!("`{g}.{prop}` isn't supported")),
             };
         }
@@ -3537,13 +3650,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Some(name) => format!("{name}({argv})"),
             None => format!("({})({argv})", f.php),
         };
-        Ok(Out::new(php, *ret))
+        Ok(Out::new(
+            php,
+            match *ret {
+                Ty::Predicate(..) => Ty::Bool,
+                ret => ret,
+            },
+        ))
     }
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let argv = self.plain_args(args)?;
         if matches!(g, "encodeURI" | "encodeURIComponent") && argv.len() != 1 {
             return err(span, format!("`{g}` needs exactly one string argument"));
+        }
+        if g == "isFinite" && argv.len() > 1 {
+            return err(span, "isFinite() accepts at most one argument in Zero code");
         }
         let a0 = argv.first();
         Ok(match (g, a0) {
@@ -3574,6 +3696,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out::atom(format!("\\Zero\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
             ("isNaN", Some(v)) => Out::atom(format!("is_nan((float) \\Zero\\Js::toNumber({}))", v.php), Ty::Bool),
+            ("isFinite", Some(v)) => Out::atom(
+                format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
+                Ty::Bool,
+            ),
+            ("isFinite", None) => Out::atom("false", Ty::Bool),
             (
                 "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
                 | "Promise",
@@ -3991,6 +4118,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             c.callback(f, &ps)
         };
         let ret_of = |f: &Out| match &f.ty {
+            Ty::Fn(_, r) if matches!(**r, Ty::Predicate(..)) => Ty::Bool,
             Ty::Fn(_, r) => (**r).clone(),
             _ => Ty::Unknown,
         };
@@ -4003,14 +4131,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "filter" => {
                 let f = cb(self, &[])?;
+                let narrowed = match &f.ty {
+                    Ty::Fn(_, result) if matches!(**result, Ty::Predicate(0, _)) => {
+                        let Ty::Predicate(_, target) = result.as_ref() else {
+                            unreachable!()
+                        };
+                        (**target).clone()
+                    }
+                    _ => el,
+                };
                 Out::atom(
                     format!("\\Zero\\Js::filter({}, {})", a.php, f.php),
-                    Ty::Array(Box::new(el)),
+                    Ty::Array(Box::new(narrowed)),
                 )
             }
             "find" | "findLast" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\Zero\\Js::{m}({}, {})", a.php, f.php), el.nullable())
+                let narrowed = match &f.ty {
+                    Ty::Fn(_, result) if matches!(**result, Ty::Predicate(0, _)) => {
+                        let Ty::Predicate(_, target) = result.as_ref() else {
+                            unreachable!()
+                        };
+                        (**target).clone()
+                    }
+                    _ => el,
+                };
+                Out::atom(format!("\\Zero\\Js::{m}({}, {})", a.php, f.php), narrowed.nullable())
             }
             "findIndex" | "findLastIndex" => {
                 let f = cb(self, &[])?;
@@ -4914,10 +5060,35 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
     }
 }
 
+fn number_is_finite_function() -> Out {
+    Out::atom(
+        "\\Zero\\Js::numberIsFiniteFunction()",
+        Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
+    )
+}
+
+fn scalar_typeof_part(t: &Ty, target: &Ty, matches: bool) -> Ty {
+    match t {
+        Ty::Union(items) => Ty::union(items.iter().map(|t| scalar_typeof_part(t, target, matches))),
+        Ty::Unknown if matches => target.clone(),
+        Ty::Unknown => Ty::Unknown,
+        _ => {
+            let hit = match target {
+                Ty::Num => t.is_num(),
+                Ty::Str => t.is_str(),
+                Ty::Bool => t.is_bool(),
+                _ => unreachable!("scalar typeof target"),
+            };
+            if hit == matches { t.clone() } else { Ty::Never }
+        }
+    }
+}
+
 fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
     match t {
         Ty::Union(ts) => Ty::union(ts.iter().map(|t| truthiness_part(t, truthy))),
         Ty::Bool => Ty::BoolLit(truthy),
+        Ty::Predicate(..) => Ty::BoolLit(truthy),
         Ty::BoolLit(value) | Ty::FreshBoolLit(value) if *value == truthy => t.clone(),
         Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
         Ty::NumLit(n) | Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
@@ -5040,6 +5211,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
     match t {
         Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(widen_fresh_literals(fields))),
         Ty::Class(_) => t.clone(),
+        Ty::Predicate(..) => t.clone(),
         Ty::FreshNumLit(_) => Ty::Num,
         Ty::FreshStrLit(_) => Ty::Str,
         Ty::FreshBoolLit(_) => Ty::Bool,
@@ -5102,6 +5274,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::NumLit(x), Ty::FreshNumLit(y)) | (Ty::FreshNumLit(x), Ty::NumLit(y)) => x == y,
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
         (Ty::BoolLit(_) | Ty::FreshBoolLit(_), Ty::Bool) => true,
+        (Ty::Predicate(..), Ty::Bool) => true,
         (Ty::BoolLit(x), Ty::FreshBoolLit(y)) | (Ty::FreshBoolLit(x), Ty::BoolLit(y)) => x == y,
         (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),

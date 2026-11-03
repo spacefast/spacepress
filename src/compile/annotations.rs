@@ -80,6 +80,9 @@ impl Compiler<'_, '_> {
             TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
             TyAnn::Bool => Ty::Bool,
             TyAnn::BoolLit(value) => Ty::BoolLit(*value),
+            TyAnn::Predicate(_, _, span) => {
+                return err(*span, "type predicates belong on runtime function return annotations");
+            }
             TyAnn::Null => Ty::Null,
             TyAnn::Undefined => Ty::Undefined,
             TyAnn::Void => Ty::Void,
@@ -669,7 +672,7 @@ fn map_objects(
 
 /// Unlike runtime assignment (which protects exact mutable shapes), type-level extends
 /// is structural and permits extra fields. It never supplies an access/completion proof.
-fn structural_extends(a: &Ty, b: &Ty) -> bool {
+pub(super) fn structural_extends(a: &Ty, b: &Ty) -> bool {
     if a == b || *a == Ty::Never || *b == Ty::Unknown {
         return true;
     }
@@ -899,6 +902,8 @@ fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
+        (Ty::Null | Ty::Undefined, Ty::Obj(_) | Ty::Array(_) | Ty::Tuple(_))
+        | (Ty::Obj(_) | Ty::Array(_) | Ty::Tuple(_), Ty::Null | Ty::Undefined) => Ok(Ty::Never),
         (Ty::Obj(mut fields), Ty::Obj(other)) => {
             for (k, (t, optional)) in other {
                 type_step(steps, span)?;

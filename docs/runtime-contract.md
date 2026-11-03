@@ -654,7 +654,7 @@ code with strict TypeScript as well as `zero check`.
 | Mapped types | Partial | Finite string key domains; optional modifiers and homomorphic identity mappings preserve presence. `-?` requires a homomorphic identity mapping. Homomorphic mappings need one finite object; key parameters constrained by a direct `keyof T` preserve presence too. Fresh key sets use literal unions (optionally including `never`), or direct parameters constrained by `string` or literal unions. Aliased or reduced key expressions and constraints, such as `Keys<T>`, `Identity<K>`, `keyof T \| never` and `K \| never`, are refused: their reductions can hide optional presence. Rewrite them as direct `keyof T` or a direct key parameter constrained by `keyof T`. Key remapping, template literal expansion, symbols and open maps are refused. |
 | `ReturnType`, `Parameters` | Partial | Concrete function type annotations with required parameters. Generic, optional/rest parameter and overloaded function type transforms are refused. General `typeof` queries remain limited to the existing schema inference operations. |
 | `Awaited` | Partial | Nested `Promise` wrappers ending in concrete scalar/array values. Thenable-object, union and `unknown` normalization are refused. |
-| Modules | Existing subset | Direct named type imports from relative TS modules, with arguments resolved in the caller's module and bodies/defaults in the declaration's module. No new npm, namespace-import, type re-export/barrel or module-augmentation support. |
+| Modules | Existing subset | Direct named type imports from relative TS modules, with arguments resolved in the caller's module and bodies/defaults in the declaration's module. Package source resolution is documented separately in config-api.md; this type-algebra contract does not add namespace-import, type re-export/barrel or module-augmentation support. |
 
 Normalization is bounded: 96 nested annotation levels, 16,384 resolution steps
 per root annotation (including independent roots reached during class
@@ -727,7 +727,7 @@ crates. Existing OXC parsing/lowering is reused. No upstream implementation was
 copied, no new license notice is needed, and the OXC family remains pinned
 together at 0.152.0.
 
-This work adds no JS built-in API: npm packages, arbitrary browser/Node APIs,
+This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the
-supported runtime. Existing documented PHP null/undefined and Unicode string
+supported runtime. Package source resolution has its own [import contract](config-api.md). Existing documented PHP null/undefined and Unicode string
 semantics are unchanged. Class behavior has its own implementation contract.

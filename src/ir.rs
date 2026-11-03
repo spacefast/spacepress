@@ -389,6 +389,7 @@ pub enum TyAnn {
     Union(Vec<TyAnn>),
     Intersection(Vec<TyAnn>, Span),
     Fn(Vec<(TyAnn, bool)>, P<TyAnn>),
+    Predicate(String, P<TyAnn>, Span),
     /// Named reference with type arguments, e.g. `Item`, `Promise<T>`, `InferSelect<typeof items>`.
     Ref(String, Vec<TyAnn>, Span),
     /// `typeof a.b.c`

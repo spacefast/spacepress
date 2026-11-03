@@ -440,9 +440,16 @@ final class Js
         return is_int($v) || (is_float($v) && is_finite($v) && floor($v) === $v);
     }
 
-    public static function isFinite(mixed $v): bool
+    public static function isFinite(mixed $v = null): bool
     {
         return is_int($v) || (is_float($v) && is_finite($v));
+    }
+
+    public static function numberIsFiniteFunction(): \Closure
+    {
+        static $function;
+
+        return $function ??= static fn (mixed $value = null): bool => self::isFinite($value);
     }
 
     public static function toFixed(int|float $n, int $digits = 0): string

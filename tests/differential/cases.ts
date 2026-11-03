@@ -24,6 +24,9 @@ export const VALIDATE_VALUES = {
 export const VALIDATE_CTX = { data: { title: "x", score: 1, info: { meta: { x: 0 } }, entries: [{ meta: { x: 0 } }], sections: [{ layout: "hero", meta: { x: 0 } }] }, user: { id: 1, name: "A", role: "admin" } };
 
 const RANK = ["subscriber", "author", "editor", "admin"];
+const NUMBER_IS_FINITE = Number.isFinite;
+const FINITE_VALUES = [NaN, Infinity, -Infinity, 0, "3", "", null, false, [], [3], [false]];
+const PURE_FINITE = FINITE_VALUES.map(value => [Number.isFinite(value), isFinite(value)]);
 
 export const docs = collection({
   id: id(),
@@ -49,6 +52,26 @@ export const docs = collection({
 });
 
 type Item = { name: string; qty: number; tags: string[] };
+type Candidate = { kind: string; label?: string };
+type Named = Candidate & { kind: "named"; label: string };
+function isNamed(item: Candidate): item is Named {
+  return item.kind === "named" && typeof item.label === "string";
+}
+function guardedLabel(item: Candidate | undefined): string {
+  if (!item || !isNamed(item)) return "";
+  return item.label;
+}
+function scalarLabel(value: unknown): string {
+  if (typeof value === "number") return String(value + 1);
+  if ("string" === typeof value && value.trim() !== "") return value.toUpperCase();
+  if (typeof value !== "boolean") return "other";
+  return value ? "true" : "false";
+}
+function scalarRemainder(value: number | string | null): string {
+  if (typeof value === "number") return String(value - 1);
+  if (typeof value !== "string") return "absent";
+  return value.toLowerCase();
+}
 const ITEMS: Item[] = [
   { name: "Oat Milk", qty: 2, tags: ["dairy-free"] },
   { name: "eggs", qty: 0, tags: [] },
@@ -299,6 +322,19 @@ export default defineConfig({
   actions: {
     ...laneRefs,
     languageTypes: run(() => {
+      const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
+      const guard = isNamed;
+      const guardedLabels: string[] = candidates.filter(guard).map(item => item.label);
+      const predicateMap: boolean[] = candidates.map(isNamed);
+      const guardedFind: string = candidates.findLast(isNamed)?.label ?? "";
+      const guardedBranch: string = guardedLabel(candidates[1]);
+      const booleanFilter = ["", "0", "value"].filter(Boolean);
+      const networks: ReadonlyArray<["left" | "right", string]> = [["left", "Left"], ["right", "Right"]];
+      const dictionary = { left: "L", right: "R" };
+      const tupleLabels = networks.flatMap(([key, label]) => [`${label}:${dictionary[key]}`]);
+      const arrayPresence: { tags?: string[] } & { tags: string[] } = { tags: ["present"] };
+      const scalarTypes = [7, "Hello", true, false, null].map(scalarLabel);
+      const scalarFalseBranches = [7, "Hello", null].map(scalarRemainder);
       const item: LanguageCopy<LanguageEntry> = { id: 7, state: "draft", title: "Hello" };
       const optional: Partial<Omit<LanguageEntry, "id">> = {};
       const projectedOptional: LanguageProjection<LanguageEntry, "note"> = {};
@@ -332,7 +368,8 @@ export default defineConfig({
       const collapsed: LanguageLiteral<string | "draft"> = "broad";
       const onlyFalse: Exclude<boolean, true> = false;
       const shadowed: Readonly<number> = { box: 7 };
-      return { classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
+      return { scalarTypes, scalarFalseBranches, guardedLabels, predicateMap, guardedFind, guardedBranch, booleanFilter, tupleLabels, arrayPresence,
+        classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
         classInstance: boxedView.value instanceof LanguageView, classType: typeof LanguageDraftView,
         required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, optionalConflict, directLabels: { note: directLabels.note ?? null }, optionalSnapshot: { note: optionalSnapshot.note ?? null }, intersection: { note: intersection.note ?? null }, both, boxed, shadowed, collapsed,
         missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
@@ -413,7 +450,17 @@ export default defineConfig({
       return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
     }),
     hookCtx: action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null] }),
-    numbers: run(() => [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)]),
+    numbers: run(() => {
+      const finite = Number.isFinite;
+      return {
+        arithmetic: [0.1 + 0.2, 7 / 2, -7 % 3, 2 ** 10, 1 / 3, Math.max(1, 5, 3), Math.floor(-1.5), Math.round(2.5), Math.round(-2.5)],
+        finite: FINITE_VALUES.map(value => [finite(value), isFinite(value)]),
+        finiteIdentity: finite === Number.isFinite,
+        finiteCaptured: NUMBER_IS_FINITE(3),
+        finiteNoArgs: [finite(), Number.isFinite(), isFinite()],
+        pureFinite: PURE_FINITE,
+      };
+    }),
     // JS numbers are doubles: integer arithmetic past ±2^53 rounds, where PHP ints would stay exact.
     bigIntegers: run(() => {
       let i = 2 ** 53 - 1;
@@ -725,4 +772,3 @@ function fieldDocs() {
     }),
   });
 }
-

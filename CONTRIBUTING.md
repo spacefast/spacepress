@@ -23,10 +23,10 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 ## How it works
 
 1. **Parse.** [oxc](https://oxc.rs) parses `zero.config.ts` and the local `.ts`
-   files it imports.
+   and supported installed source packages it imports.
 2. **Lower.** The syntax tree becomes Zero's own IR. Anything outside the
-   supported subset (classes, `this`, `==` other than `== null`, `var`, npm
-   imports, ...) fails the build with `file:line:col` and a suggested fix.
+   supported subset (abstract/generic classes, `==` other than `== null`,
+   `var`, CommonJS, Node host APIs, ...) fails the build with `file:line:col` and a suggested fix.
 3. **Evaluate.** The config runs in a small, pure Rust evaluator: no I/O, no
    clock, a step budget. So composition works: helpers, factories, spreads, and
    shared field sets. The result is the schema as plain data.

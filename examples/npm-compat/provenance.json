@@ -1,0 +1,479 @@
+{
+  "fetchedAt": "2026-11-03T04:48:22.646Z",
+  "packages": [
+    {
+      "name": "clsx",
+      "version": "2.1.1",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/lukeed/clsx.git",
+        "type": "git"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./clsx.d.mts",
+            "default": "./dist/clsx.mjs"
+          },
+          "default": {
+            "types": "./clsx.d.ts",
+            "default": "./dist/clsx.js"
+          }
+        },
+        "./lite": {
+          "import": {
+            "types": "./clsx.d.mts",
+            "default": "./dist/lite.mjs"
+          },
+          "default": {
+            "types": "./clsx.d.ts",
+            "default": "./dist/lite.js"
+          }
+        }
+      },
+      "module": "dist/clsx.mjs",
+      "main": "dist/clsx.js",
+      "unpackedBytes": 8555,
+      "tarball": "https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz",
+      "integrity": "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==",
+      "shasum": "eed397c9fd8bd882bfb18deab7102049a2f32999",
+      "selectedSource": "dist/clsx.mjs",
+      "selectedSourceBytes": 388,
+      "selectedSourceSha256": "d949e5cdbfebc76a6642b1901095e900fc3f2262d8dc0373aa44850a9bc75522",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/clsx",
+        "downloads": 158572061,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "clsx"
+      }
+    },
+    {
+      "name": "escape-html",
+      "version": "1.0.3",
+      "license": "MIT",
+      "repository": {
+        "url": "https://github.com/component/escape-html",
+        "type": "git"
+      },
+      "exports": null,
+      "module": null,
+      "main": null,
+      "unpackedBytes": null,
+      "tarball": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "integrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
+      "shasum": "0258eae4d3d0c0974de1c169188ef0051d1d1988",
+      "selectedSource": "index.js",
+      "selectedSourceBytes": 1362,
+      "selectedSourceSha256": "42a7f91883d0c5ce9292dda4e017e1f8664d34b09276d89fb6f3859c29d1ca9b",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/escape-html",
+        "downloads": 173320487,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "escape-html"
+      }
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/vercel/ms.git",
+        "type": "git"
+      },
+      "exports": null,
+      "module": null,
+      "main": "./index",
+      "unpackedBytes": 6721,
+      "tarball": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "shasum": "574c8138ce1d2b5861f0b44579dbadd60c6615b2",
+      "selectedSource": "index.js",
+      "selectedSourceBytes": 3024,
+      "selectedSourceSha256": "e5f0b6a946a9b2b356a28557728410717df54ea2f599edb619f9839df6b7b0e9",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/ms",
+        "downloads": 721210166,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "ms"
+      }
+    },
+    {
+      "name": "just-clone",
+      "version": "6.2.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/angus-c/just.git",
+        "type": "git"
+      },
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "import": "./index.mjs",
+          "require": "./index.cjs"
+        },
+        "./package.json": "./package.json"
+      },
+      "module": null,
+      "main": "index.cjs",
+      "unpackedBytes": 6863,
+      "tarball": "https://registry.npmjs.org/just-clone/-/just-clone-6.2.0.tgz",
+      "integrity": "sha512-1IynUYEc/HAwxhi3WDpIpxJbZpMCvvrrmZVqvj9EhpvbH8lls7HhdhiByjL7DkAaWlLIzpC0Xc/VPvy/UxLNjA==",
+      "shasum": "a4614d9bf7e4bbdcae7f9ba904aea5ea9cae8ae5",
+      "selectedSource": "index.mjs",
+      "selectedSourceBytes": 1471,
+      "selectedSourceSha256": "bbf27e2265d0267f41bae0689253b8a1b899961049baa690a8eb75e152e9b15a",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/just-clone",
+        "downloads": 451586,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "just-clone"
+      }
+    },
+    {
+      "name": "just-capitalize",
+      "version": "3.2.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/angus-c/just.git",
+        "type": "git"
+      },
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "import": "./index.mjs",
+          "require": "./index.cjs"
+        },
+        "./package.json": "./package.json"
+      },
+      "module": null,
+      "main": "index.cjs",
+      "unpackedBytes": 4200,
+      "tarball": "https://registry.npmjs.org/just-capitalize/-/just-capitalize-3.2.0.tgz",
+      "integrity": "sha512-FK8U9A5AHCIGxlEXg3RFJkb9Nz/fS9luJlrfRf0bFBZU6xnIQ6tbwl+HitMJLwCFszZqVaXQcyeoy8/PYABS6A==",
+      "shasum": "02b89e7459ac4987a4caf7d80d76dbe7b48dde14",
+      "selectedSource": "index.mjs",
+      "selectedSourceBytes": 480,
+      "selectedSourceSha256": "b0effb767caca7cc54a77a8b1d524798a537980a915c4b528052acb6b5f3dab4",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/just-capitalize",
+        "downloads": 20769,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "just-capitalize"
+      }
+    },
+    {
+      "name": "is-number",
+      "version": "7.0.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/jonschlinkert/is-number.git",
+        "type": "git"
+      },
+      "exports": null,
+      "module": null,
+      "main": "index.js",
+      "unpackedBytes": 9615,
+      "tarball": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+      "integrity": "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==",
+      "shasum": "7535345b896734d5f80c4d06c50955527a14f12b",
+      "selectedSource": "index.js",
+      "selectedSourceBytes": 411,
+      "selectedSourceSha256": "04255e482e181687823a95b207802ddd32e746c65dce4c95a5176fc192735960",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/is-number",
+        "downloads": 225349904,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "is-number"
+      }
+    },
+    {
+      "name": "ts-dedent",
+      "version": "2.3.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/tamino-martinius/node-ts-dedent.git",
+        "type": "git"
+      },
+      "exports": {
+        "import": {
+          "types": "./esm/index.d.ts",
+          "default": "./esm/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "module": "./esm/index.js",
+      "main": "./dist/index.js",
+      "unpackedBytes": 27376,
+      "tarball": "https://registry.npmjs.org/ts-dedent/-/ts-dedent-2.3.0.tgz",
+      "integrity": "sha512-JfJeIHke7y2egdGGgRAvpCwYFUsHlM2gPcrVOxFkznt/4uzQ7HFmvE63iFHVLBJNDuyDOQgijDK/tXH/f6Msjg==",
+      "shasum": "8fac36c7902b541c154ac13a27ac467997af11f8",
+      "selectedSource": "src/index.ts",
+      "selectedSourceBytes": 1662,
+      "selectedSourceSha256": "12cc2ce406e98f46da3276bf2ff7de1afadef7273c10a3b3d6bf2cc8b2be5c35",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/ts-dedent",
+        "downloads": 50354629,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "ts-dedent"
+      }
+    },
+    {
+      "name": "@thi.ng/math",
+      "version": "5.15.17",
+      "license": "Apache-2.0",
+      "repository": {
+        "url": "git+https://codeberg.org/thi.ng/umbrella.git",
+        "type": "git",
+        "directory": "packages/math"
+      },
+      "exports": {
+        ".": {
+          "default": "./index.js"
+        },
+        "./abs": {
+          "default": "./abs.js"
+        },
+        "./api": {
+          "default": "./api.js"
+        },
+        "./fit": {
+          "default": "./fit.js"
+        },
+        "./int": {
+          "default": "./int.js"
+        },
+        "./mix": {
+          "default": "./mix.js"
+        },
+        "./libc": {
+          "default": "./libc.js"
+        },
+        "./prec": {
+          "default": "./prec.js"
+        },
+        "./step": {
+          "default": "./step.js"
+        },
+        "./angle": {
+          "default": "./angle.js"
+        },
+        "./prime": {
+          "default": "./prime.js"
+        },
+        "./ratio": {
+          "default": "./ratio.js"
+        },
+        "./solve": {
+          "default": "./solve.js"
+        },
+        "./easing": {
+          "default": "./easing.js"
+        },
+        "./eqdelta": {
+          "default": "./eqdelta.js"
+        },
+        "./extrema": {
+          "default": "./extrema.js"
+        },
+        "./crossing": {
+          "default": "./crossing.js"
+        },
+        "./fraction": {
+          "default": "./fraction.js"
+        },
+        "./interval": {
+          "default": "./interval.js"
+        },
+        "./safe-div": {
+          "default": "./safe-div.js"
+        },
+        "./min-error": {
+          "default": "./min-error.js"
+        },
+        "./polynomial": {
+          "default": "./polynomial.js"
+        },
+        "./permutations": {
+          "default": "./permutations.js"
+        }
+      },
+      "module": "./index.js",
+      "main": null,
+      "unpackedBytes": 97975,
+      "tarball": "https://registry.npmjs.org/@thi.ng/math/-/math-5.15.17.tgz",
+      "integrity": "sha512-TmgzOOZ4whILWPfwHxY42Z8OSAnibXVMVY5YFGk0gEVNFhTRSGF/L04hZCEeD4++r45g/N4IZkmWqcu+WciQjQ==",
+      "shasum": "1bafd9426f9fe6db6e8c522946502ec9399e1eb1",
+      "selectedSource": "safe-div.js",
+      "selectedSourceBytes": 69,
+      "selectedSourceSha256": "7b004be519381e21ec88f6d01fe245bf18382c3e89699d9956d389ac9098a6f9",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/%40thi.ng%2Fmath",
+        "downloads": 36553,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "@thi.ng/math"
+      }
+    },
+    {
+      "name": "@thi.ng/strings",
+      "version": "3.12.8",
+      "license": "Apache-2.0",
+      "repository": {
+        "url": "git+https://codeberg.org/thi.ng/umbrella.git",
+        "type": "git",
+        "directory": "packages/strings"
+      },
+      "exports": {
+        ".": {
+          "default": "./index.js"
+        },
+        "./api": {
+          "default": "./api.js"
+        },
+        "./int": {
+          "default": "./int.js"
+        },
+        "./ansi": {
+          "default": "./ansi.js"
+        },
+        "./case": {
+          "default": "./case.js"
+        },
+        "./join": {
+          "default": "./join.js"
+        },
+        "./tabs": {
+          "default": "./tabs.js"
+        },
+        "./trim": {
+          "default": "./trim.js"
+        },
+        "./utf8": {
+          "default": "./utf8.js"
+        },
+        "./uuid": {
+          "default": "./uuid.js"
+        },
+        "./wrap": {
+          "default": "./wrap.js"
+        },
+        "./float": {
+          "default": "./float.js"
+        },
+        "./parse": {
+          "default": "./parse.js"
+        },
+        "./radix": {
+          "default": "./radix.js"
+        },
+        "./range": {
+          "default": "./range.js"
+        },
+        "./ruler": {
+          "default": "./ruler.js"
+        },
+        "./split": {
+          "default": "./split.js"
+        },
+        "./units": {
+          "default": "./units.js"
+        },
+        "./center": {
+          "default": "./center.js"
+        },
+        "./cursor": {
+          "default": "./cursor.js"
+        },
+        "./escape": {
+          "default": "./escape.js"
+        },
+        "./format": {
+          "default": "./format.js"
+        },
+        "./groups": {
+          "default": "./groups.js"
+        },
+        "./repeat": {
+          "default": "./repeat.js"
+        },
+        "./splice": {
+          "default": "./splice.js"
+        },
+        "./vector": {
+          "default": "./vector.js"
+        },
+        "./balance": {
+          "default": "./balance.js"
+        },
+        "./percent": {
+          "default": "./percent.js"
+        },
+        "./slugify": {
+          "default": "./slugify.js"
+        },
+        "./currency": {
+          "default": "./currency.js"
+        },
+        "./entities": {
+          "default": "./entities.js"
+        },
+        "./initials": {
+          "default": "./initials.js"
+        },
+        "./pad-left": {
+          "default": "./pad-left.js"
+        },
+        "./truncate": {
+          "default": "./truncate.js"
+        },
+        "./hollerith": {
+          "default": "./hollerith.js"
+        },
+        "./pad-right": {
+          "default": "./pad-right.js"
+        },
+        "./stringify": {
+          "default": "./stringify.js"
+        },
+        "./word-wrap": {
+          "default": "./word-wrap.js"
+        },
+        "./interpolate": {
+          "default": "./interpolate.js"
+        },
+        "./named-number": {
+          "default": "./named-number.js"
+        },
+        "./truncate-left": {
+          "default": "./truncate-left.js"
+        }
+      },
+      "module": "./index.js",
+      "main": null,
+      "unpackedBytes": 88109,
+      "tarball": "https://registry.npmjs.org/@thi.ng/strings/-/strings-3.12.8.tgz",
+      "integrity": "sha512-eemt5vL+luPeTKokUhLuNcQmf7QsxU1MN03IUO6YAFrKLRYxv00SKLWhI1lOWqOZJAGSeZFqgzY11UfUrjDfMg==",
+      "shasum": "d73b5cd4c683c007f31f1529037a223c123f750b",
+      "selectedSource": "case.js",
+      "selectedSourceBytes": 651,
+      "selectedSourceSha256": "f20b06cebb583d47c8b05e6f3c9062fba6adb2e477f5c78d8454fb9eeaa43f3f",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/%40thi.ng%2Fstrings",
+        "downloads": 17207,
+        "start": "2026-10-26",
+        "end": "2026-11-01",
+        "package": "@thi.ng/strings"
+      }
+    }
+  ]
+}

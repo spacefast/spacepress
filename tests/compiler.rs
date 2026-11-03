@@ -45,8 +45,8 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "zero.config.ts:2:1",
     );
     rejects(
-        "reject-npm-import",
-        "can't import \"dayjs\": npm packages aren't supported yet",
+        "reject-uninstalled-package",
+        "can't import \"dayjs\": package is not installed in node_modules",
         "zero.config.ts:1:1",
     );
     rejects(

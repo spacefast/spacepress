@@ -1,6 +1,15 @@
 import type { Actions } from "./zero/client/types";
 
 declare const report: Actions["typeReport"]["output"];
+const scalarTypes: string[] = report.scalarTypes;
+const scalarFalseBranches: string[] = report.scalarFalseBranches;
+void [scalarTypes, scalarFalseBranches];
+const guardedLabels: string[] = report.guardedLabels;
+const guardedFind: string = report.guardedFind;
+const guardedBranch: string = report.guardedBranch;
+const predicateMap: boolean[] = report.predicateMap;
+const booleanFilter: string[] = report.booleanFilter;
+void [guardedLabels, guardedFind, guardedBranch, predicateMap, booleanFilter];
 const classMissing: null = report.classView.missing;
 const classState: "draft" = report.classView.label;
 const classId: number = report.classView.entry.id;

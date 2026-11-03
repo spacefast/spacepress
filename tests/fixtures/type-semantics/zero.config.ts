@@ -17,7 +17,40 @@ type Choice = Extract<"draft" | "published" | 7, string>;
 type State = Exclude<Choice, "published">;
 type Values<T> = T[keyof T];
 type Box<T> = { value: T };
+const NUMBER_IS_FINITE = Number.isFinite;
+type Candidate = { kind: string; label?: string };
+type Named = Candidate & { kind: "named"; label: string };
+function isNamed(item: Candidate): item is Named {
+  return item.kind === "named" && typeof item.label === "string";
+}
+function guardedLabel(item: Candidate | undefined): string {
+  if (!item || !isNamed(item)) return "";
+  return item.label;
+}
+function scalarLabel(value: unknown): string {
+  if (typeof value === "number") return String(value + 1);
+  if ("string" === typeof value && value.trim() !== "") return value.toUpperCase();
+  if (typeof value !== "boolean") return "other";
+  return value ? "true" : "false";
+}
+function scalarRemainder(value: number | string | null): string {
+  if (typeof value === "number") return String(value - 1);
+  if (typeof value !== "string") return "absent";
+  return value.toLowerCase();
+}
 type Report = {
+  finiteChecks: boolean[][];
+  finiteIdentity: boolean;
+  finiteCaptured: boolean;
+  scalarTypes: string[];
+  scalarFalseBranches: string[];
+  guardedLabels: string[];
+  guardedFind: string;
+  guardedBranch: string;
+  predicateMap: boolean[];
+  booleanFilter: string[];
+  tupleLabels: string[];
+  arrayPresence: { tags?: string[] } & { tags: string[] };
   classView: DraftEntryView;
   labels: Labels<{ note?: number }>;
   intersected: Required<Intersected>;
@@ -55,6 +88,13 @@ export default defineConfig({
     typeReport: action({
       input: { entry: json().$type<Projection<Draft>>().notNull() },
       handler: (input): Report => {
+        const finite = Number.isFinite;
+        const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
+        const guard = isNamed;
+        const networks: ReadonlyArray<["left" | "right", string]> = [["left", "Left"], ["right", "Right"]];
+        const dictionary = { left: "L", right: "R" };
+        const tupleLabels = networks.flatMap(([key, label]) => [`${label}:${dictionary[key]}`]);
+        const guarded = candidates.filter(guard).map(item => item.label);
         const item: Copy<Draft> = input.entry;
         const boxed: Box<DraftEntryView> = { value: new DraftEntryView(item, "draft") };
         boxed.value.clear();
@@ -63,6 +103,18 @@ export default defineConfig({
         const patch: Partial<Omit<Draft, "id">> = {};
         const projectedOptional: Projection<Draft, "note"> = {};
         return {
+          finiteChecks: [NaN, Infinity, "3", null].map(value => [finite(value), isFinite(Number(value))]),
+          finiteIdentity: finite === Number.isFinite,
+          finiteCaptured: NUMBER_IS_FINITE(3),
+          scalarTypes: [7, "Hello", true, false, null].map(scalarLabel),
+          scalarFalseBranches: [7, "Hello", null].map(scalarRemainder),
+          guardedLabels: guarded,
+          guardedFind: candidates.find(isNamed)?.label ?? "",
+          guardedBranch: guardedLabel(candidates[1]),
+          predicateMap: candidates.map(isNamed),
+          booleanFilter: ["", "0", "value"].filter(Boolean),
+          tupleLabels,
+          arrayPresence: { tags: ["present"] },
           classView: boxed.value,
           labels,
           intersected,

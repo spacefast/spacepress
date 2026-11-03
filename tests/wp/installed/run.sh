@@ -70,7 +70,7 @@ try {
 } finally {
   const errors = [];
   if (!stopped) await run(['dev', 'stop', project]).catch((error) => errors.push(error));
-  await exec('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', `${project}/.zero/dev/wordpress`, '--no-files'], { timeout: 60000 })
+  await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', `${project}/.zero/dev/wordpress`, '--no-files'], { timeout: 60000 })
     .catch((error) => errors.push(error));
   if (errors.length) {
     for (const error of errors) console.error('Cleanup:', error.message);

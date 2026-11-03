@@ -18,7 +18,7 @@ if (receipt.state === 'deleted') {
   const command = async (args) => (await execute(receipt.binary, args, { cwd: receipt.project, timeout: 120000 })).stdout.trim();
   await command(['dev', 'stop', receipt.project]);
   assert.equal(JSON.parse(await command(['dev', 'status', receipt.project])).isOnline, false);
-  const deleted = await execute('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', receipt.site, '--no-files'], { cwd: receipt.project, timeout: 120000 });
+  const deleted = await execute('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', receipt.site, '--no-files'], { cwd: receipt.project, timeout: 120000 });
   await writeFile(join(receipt.evidence, 'cleanup.txt'), `Stopped exact project: ${receipt.project}\nOnline: false\nDeleted exact Studio registration: ${receipt.site}\n${deleted.stdout}${deleted.stderr}`);
   receipt.state = 'deleted';
   await writeFile(file, JSON.stringify(receipt, null, 2) + '\n');

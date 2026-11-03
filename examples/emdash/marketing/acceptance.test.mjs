@@ -153,7 +153,7 @@ test(
       assert.equal(status.isOnline, false);
       const deleted = await exec(
         "npx",
-        ["--yes", "wp-studio@2.1.1", "delete", "--path", site, "--no-files"],
+        ["--yes", "--package", "wp-studio@2.1.1", "--", "studio", "delete", "--path", site, "--no-files"],
         { timeout: 120000 },
       );
       await writeFile(

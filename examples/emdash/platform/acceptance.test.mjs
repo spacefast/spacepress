@@ -58,7 +58,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       try {
         await command(['dev', 'stop', project]);
         cleanup.stopped = JSON.parse(await command(['dev', 'status', project])).isOnline === false;
-        await exec('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', cleanup.site, '--no-files'], { cwd: repo, timeout: 120000 });
+        await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', cleanup.site, '--no-files'], { cwd: repo, timeout: 120000 });
         cleanup.registrationDeleted = true;
       } catch (error) { cleanup.error = error.message; }
     }

@@ -1,70 +1,80 @@
 #!/usr/bin/env bash
-# `zero dev` from an installed binary: a release build made from a throwaway copy of the source,
-# which is deleted before the binary runs, so nothing can reach this checkout. The binary runs in a
-# temp project with a fresh HOME and no ZERO_WP_HARNESS; it must write its embedded harness to the
-# cache dir, boot WordPress with the app, and serve the app's REST API.
-#
-# Not part of run.sh (a release build per run would tax every local loop); CI runs it as its own job.
-# ZERO_WP_PROJECT (default zero-installed) and ZERO_WP_PORT (default 8810) pick the stack.
+# Prove a release binary can provision and stop WordPress after its build source is removed.
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
-repo="$(cd "$here/../../.." && pwd)"
-export ZERO_WP_PROJECT="${ZERO_WP_PROJECT:-zero-installed}" ZERO_WP_PORT="${ZERO_WP_PORT:-8810}"
+repo="$(cd "$(dirname "$0")/../../.." && pwd)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/zero-installed-native.XXXXXXXX")"
+cleanup() {
+  if [[ $? == 0 ]]; then
+    rm -rf "$work"
+  else
+    echo "Installed-binary failure retained for inspection: $work" >&2
+  fi
+}
+trap cleanup EXIT
+src="$work/src" bin="$work/bin" home="$work/my home" project="$work/project"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-
-work="$(mktemp -d)"
-# A HOME with a space: the stop command the binary prints must still work when pasted.
-home="$work/my home" project="$work/project" bin="$work/bin"
-stop=""
-down() {
-  # Teardown runs exactly what the binary told the user to run; if it never got that far, the stack
-  # (if any) is removed by its compose project.
-  if [[ -n $stop ]]; then
-    (cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || true
-  fi
-  docker compose -p "$ZERO_WP_PROJECT" down -v --remove-orphans >/dev/null 2>&1 || true
-  rm -rf "$work"
-}
-trap down EXIT
-
-# The source, built where it will be gone by the time the binary runs.
-src="$work/src"
-mkdir -p "$src/tests" "$bin"
-rsync -a --exclude node_modules --exclude target "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,src,runtime} "$src/"
-rsync -a --exclude cache --exclude '.*' "$repo/tests/wp" "$src/tests/"
-CARGO_TARGET_DIR="$target" cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
+mkdir -p "$src/scripts" "$bin" "$home" "$project"
+rsync -a --exclude node_modules --exclude target \
+  "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,src,runtime} "$src/"
+rsync -a "$repo/scripts/dev" "$src/scripts/"
+CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" CARGO_TARGET_DIR="$target" \
+  cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
 cp "$target/release/zero" "$bin/zero"
 rm -rf "$src"
-
-mkdir -p "$home" "$project"
-cp -R "$repo/examples/pantry/." "$project/"
-rm -rf "$project/.zero"
-cd "$project"
-out="$(env -u ZERO_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
+cat > "$project/zero.config.ts" <<'CONFIG'
+import { defineConfig, table, text } from 'zero';
+export default defineConfig({ tables: { notes: table({ title: text().notNull() }) } });
+CONFIG
+cd "$work"
+env -u ZERO_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
   ZERO_WP_PLUGIN_CACHE="${ZERO_WP_PLUGIN_CACHE:-$repo/.zero/cache/plugins}" \
-  "$bin/zero" dev --port "$ZERO_WP_PORT" 2>&1)" || { echo "$out" >&2; echo 'FAIL: zero dev exited non-zero' >&2; exit 1; }
-echo "$out"
-grep -q "WordPress is up on http://127.0.0.1:$ZERO_WP_PORT" <<< "$out" || { echo 'FAIL: no "WordPress is up" line' >&2; exit 1; }
-stop="$(sed -n 's/^WordPress is up on .* Stop it with: //p' <<< "$out")"
-
-# This app (named after its directory) answers, and its collections are public to read: an empty list.
-api="http://127.0.0.1:$ZERO_WP_PORT/wp-json/zero/v1"
-for path in _schema locations; do
-  status=$(curl -s -o "$work/$path.json" -w '%{http_code}' "$api/$path")
-  [[ $status == 200 ]] || { cat "$work/$path.json" >&2; echo "FAIL: GET /$path answered $status" >&2; exit 1; }
-done
-python3 - "$work" <<'CHECK'
-import json, sys
-schema = json.load(open(sys.argv[1] + "/_schema.json"))["data"]
-assert schema["name"] == "project", schema
-assert json.load(open(sys.argv[1] + "/locations.json"))["data"] == []
+  node --input-type=module - "$bin/zero" "$project" <<'CHECK'
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { createServer } from 'node:net';
+import { promisify } from 'node:util';
+const [zero, project] = process.argv.slice(2);
+const exec = promisify(execFile);
+const run = async (args) => {
+  const result = await exec(zero, args, { timeout: 600000, maxBuffer: 4 * 1024 * 1024 });
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  return result.stdout;
+};
+const server = createServer();
+await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
+const port = server.address().port;
+await new Promise((done) => server.close(done));
+let stopped = false;
+let primaryError;
+try {
+  await run(['dev', project, '--port', String(port), '--no-watch']);
+  const status = JSON.parse(await run(['dev', 'status', project]));
+  assert.equal(status.isOnline, true);
+  const response = await fetch(`${status.siteUrl}/wp-json/zero/v1/_schema`, { signal: AbortSignal.timeout(15000) });
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.name, 'project');
+  assert.equal(data.runtime.wp.database.kind, 'sqlite');
+  assert.deepEqual(data.runtime.pendingMigrations, []);
+  const version = await run(['dev', 'wp', project, '--', 'core', 'version']);
+  assert.match(version.trim(), /^7\./);
+  await run(['dev', 'stop', project]);
+  stopped = true;
+  assert.equal(JSON.parse(await run(['dev', 'status', project])).isOnline, false);
+  console.log('ok - installed binary provisions, serves, runs WP-CLI and stops native WordPress without its build checkout');
+} catch (error) {
+  primaryError = error;
+  throw error;
+} finally {
+  const errors = [];
+  if (!stopped) await run(['dev', 'stop', project]).catch((error) => errors.push(error));
+  await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', `${project}/.zero/dev/wordpress`, '--no-files'], { timeout: 60000 })
+    .catch((error) => errors.push(error));
+  if (errors.length) {
+    for (const error of errors) console.error('Cleanup:', error.message);
+    if (!primaryError) throw new AggregateError(errors, 'Installed test cleanup failed');
+  }
+}
 CHECK
-echo 'ok - an installed zero binary boots `zero dev` from its embedded harness'
-# The printed stop command takes the stack down.
-(cd / && env -u ZERO_WP_PROJECT bash -c "$stop") || { echo "FAIL: the printed stop command failed: $stop" >&2; exit 1; }
-stop=""
-left="$(docker compose -p "$ZERO_WP_PROJECT" ps -aq)"
-[[ -z $left ]] || { echo 'FAIL: the stack is still up after the printed stop command' >&2; exit 1; }
-echo 'ok - the printed stop command stops it'
-

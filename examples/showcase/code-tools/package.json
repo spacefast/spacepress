@@ -1,0 +1,12 @@
+{
+  "name": "zero-showcase-code-tools",
+  "private": true,
+  "type": "module",
+  "description": "Offline source lab and real diffs.com viewer for the local Zero showcase.",
+  "scripts": {"build": "node build.mjs"},
+  "dependencies": {
+    "@pierre/diffs": "1.6.2",
+    "esbuild": "0.28.2",
+    "shiki": "4.3.0"
+  }
+}

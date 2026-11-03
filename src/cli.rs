@@ -3,7 +3,7 @@
 //! ```text
 //! zero build [dir] [--out <dir>] [--quiet]   write the plugins to .zero/wp-content
 //! zero check [dir] [--json]                  compile; write nothing (JSON diagnostics optional)
-//! zero dev [dir] [--port <n>]                build, then boot the plugins in docker WordPress (embedded harness)
+//! zero dev [dir] [--port <n>] [--no-watch]   local WordPress through Studio, without Docker
 //! zero doctor [dir] [--out <dir>] [--site <url> --token <t>] [--json]
 //! zero sync [status|resolve <uid>] [dir] --site <url> <credential>   files ⇄ records (src/commands/sync.rs)
 //! ```
@@ -21,9 +21,12 @@ pub struct Args {
     pub(crate) site: Option<String>,
     pub(crate) token: Option<String>,
     pub(crate) json: bool,
+    pub(crate) no_watch: bool,
+    pub(crate) allow_destructive: bool,
+    pub(crate) preserve_data: Option<PathBuf>,
 }
 
-pub const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--out dir] [--port n] [--quiet]\n       zero check [project-dir] [--json]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>";
+pub const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--out dir] [--port n] [--quiet]\n       zero dev [project-dir] [--port n] [--no-watch] [--allow-destructive]\n       zero dev <stop|status> [project-dir]\n       zero dev wp [project-dir] -- <WP-CLI arguments>\n       zero build [project-dir] [--preserve-data snapshot.json]\n       zero check [project-dir] [--json]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -38,6 +41,9 @@ fn parse_args() -> Result<Args, String> {
         site: None,
         token: None,
         json: false,
+        no_watch: false,
+        allow_destructive: false,
+        preserve_data: None,
     };
     if args.command == "sync" {
         args.rest = it.collect();
@@ -45,6 +51,16 @@ fn parse_args() -> Result<Args, String> {
     }
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--" if args.command == "dev" && args.rest.first().is_some_and(|a| a == "wp") => {
+                args.rest.extend(it);
+                break;
+            }
+            "stop" | "status" | "wp" if args.command == "dev" && args.rest.is_empty() => args.rest.push(a),
+            "--no-watch" if args.command == "dev" => args.no_watch = true,
+            "--allow-destructive" if args.command == "dev" => args.allow_destructive = true,
+            "--preserve-data" if args.command == "build" => {
+                args.preserve_data = Some(PathBuf::from(it.next().ok_or("--preserve-data needs a snapshot path")?));
+            }
             "--site" => args.site = Some(it.next().ok_or("--site needs a URL")?),
             "--token" => args.token = Some(it.next().ok_or("--token needs a bearer token")?),
             "--json" => args.json = true,
@@ -54,7 +70,10 @@ fn parse_args() -> Result<Args, String> {
                     .next()
                     .ok_or("--port needs a number")?
                     .parse()
-                    .map_err(|_| "--port needs a number")?
+                    .map_err(|_| "--port needs a number")?;
+                if args.port == 0 {
+                    return Err("--port must be between 1 and 65535".into());
+                }
             }
             "--quiet" | "-q" => args.quiet = true,
             other if other.starts_with("--") => return Err(format!("unknown flag {other}\n{USAGE}")),

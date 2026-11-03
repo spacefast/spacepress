@@ -117,36 +117,66 @@ Composer.
 ## Quick start
 
 There's no binary release or npm package yet. Build the compiler from source
-with Rust 1.96 (the checkout pins it). Booting the throwaway WordPress needs
-Docker with Compose, plus `bash` 4+, `python3`, `curl`, `sha256sum` and a PHP
-8.2 CLI on the host. Then this builds the pantry example and boots it with every
-plugin activated:
+with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
+npm; it needs neither Docker nor a host PHP installation. Zero automatically
+runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
+2.1.1 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.2.
+The first start downloads the local environment and required plugins.
 
 ```sh
 git clone https://github.com/spacefast/zero && cd zero
 cargo build --release
-./target/release/zero dev examples/pantry         # http://127.0.0.1:8787, admin / zero-test-admin
+./target/release/zero dev examples/pantry         # admin / zero-test-admin
 ```
 
-It prints one JSON line with an application password for each test user.
-Writes need one of those; reads of public collections don't:
+Open the URL it prints. The full WordPress admin is available, including
+Plugins and Settings. The foreground command watches TypeScript, config and
+public files, rebuilding the app when they change. Ctrl+C stops WordPress;
+the database, uploads and other installed plugins remain in
+`examples/pantry/.zero/dev/wordpress` for the next start. The login above is
+for disposable local development only, never production.
+
+To leave the site running without watching, use `--no-watch`:
 
 ```sh
-export AUTH="admin:<the admin appPassword from that line>"
-BASE=http://127.0.0.1:8787/wp-json/zero/v1
+./target/release/zero dev examples/pantry --no-watch
+./target/release/zero dev status examples/pantry
+./target/release/zero dev wp examples/pantry -- user application-password create admin zero-local --porcelain
+```
+
+Use the returned application password for API writes. Public reads need no
+password. The examples below assume the printed URL is `http://localhost:8787`;
+use the actual URL if Studio selected another port. `--port <n>` chooses a
+new site's port; an existing site keeps its original port.
+
+Watched saves preserve existing fields and stored values. Removing fields or
+changing their types or constraints requires a deliberate migration: stop dev,
+run `./target/release/zero build examples/pantry` to inspect the generated SQL,
+then start once with `./target/release/zero dev examples/pantry --allow-destructive`. That flag authorizes the initial apply only;
+subsequent watched saves are protected again. Edited or prebuilt migration
+history also requires this explicit apply.
+
+```sh
+export AUTH="admin:<the application password>"
+BASE=http://localhost:8787/wp-json/zero/v1
 
 curl -u "$AUTH" -X POST $BASE/locations -d '{"name":"Fridge","kind":"fridge"}'
 curl -u "$AUTH" -X POST $BASE/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
 curl $BASE/shopping_list                          # the afterCreate hook added Eggs
 curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
-./target/release/zero doctor examples/pantry --site http://127.0.0.1:8787
+./target/release/zero doctor examples/pantry --site http://localhost:8787
+./target/release/zero dev stop examples/pantry
 ```
 
 `zero check` compiles without writing anything; `zero build` writes the
 plugins to `.zero/wp-content/` without booting anything. Commit
 `zero/migrations/`, `zero/client/`, `zero.gen.ts` and
-`zero/wp-plugins.lock.json`; `.zero/` is build output. Stop the site with the
-`harness.sh down` command that `zero dev` prints.
+`zero/wp-plugins.lock.json`; `.zero/` is local build and development state.
+
+Want a seeded app to click through? [The showcase](examples/showcase/README.md)
+includes structured fields, collection/table relations, image delivery, a
+compiled class/action and a repeatable HTTP smoke check. Its separate
+`node examples/showcase/run.mjs` launcher still uses Docker; `zero dev` does not.
 
 ## Use it from a frontend
 
@@ -156,17 +186,18 @@ the `journal` config from the top of this page: stop the pantry site, save the
 config as `journal/zero.config.ts`, then
 
 ```sh
-./target/release/zero dev journal                 # builds journal/zero/client/, boots WordPress on :8787
+./target/release/zero dev journal --no-watch      # builds the client and starts WordPress
+./target/release/zero dev wp journal -- user application-password create admin zero-client --porcelain
 ```
 
 Node 22.18+ runs this as-is from the `journal` directory, with the admin
-application password from the receipt:
+application password from that command:
 
 ```ts
 import { createClient } from "./zero/client/index.ts";
 
 const zero = createClient({
-  url: "http://127.0.0.1:8787/wp-json/zero/v1",
+  url: "http://localhost:8787/wp-json/zero/v1",
   headers: { Authorization: "Basic " + btoa("admin:<application password>") },
 });
 
@@ -190,6 +221,7 @@ guests and server-to-server auth.
 | | Minimum |
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
+| Local `zero dev` | Node 22+ and npm; Studio supplies WordPress, PHP and SQLite |
 | To run | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
 

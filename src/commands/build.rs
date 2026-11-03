@@ -477,7 +477,7 @@ fn check_json(project: &Path) -> ExitCode {
 
 pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
-    if !matches!(args.command.as_str(), "build" | "check" | "dev") {
+    if !matches!(args.command.as_str(), "build" | "check") {
         eprintln!("unknown command {}\n{USAGE}", args.command);
         return ExitCode::from(2);
     }
@@ -500,6 +500,27 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         }
         println!("ok: {} ({:.0?})", built.summary(), started.elapsed());
         return ExitCode::SUCCESS;
+    }
+
+    // Dev supplies its last successfully applied snapshot. Check the exact candidate before
+    // emitting either a migration or a snapshot, so a rejected save cannot poison the next build.
+    if let Some(path) = &args.preserve_data {
+        let previous =
+            match std::fs::read(path).and_then(|bytes| serde_json::from_slice(&bytes).map_err(std::io::Error::other)) {
+                Ok(previous) => previous,
+                Err(error) => {
+                    eprintln!("error: can't read preservation snapshot {}: {error}", path.display());
+                    return ExitCode::from(1);
+                }
+            };
+        let problems = crate::migrate::preservation_problems(&previous, &built.snapshot);
+        if !problems.is_empty() {
+            eprintln!(
+                "error: {}. Local data was preserved. Review migrations, then restart once with --allow-destructive to apply deliberately.",
+                problems.join("; ")
+            );
+            return ExitCode::from(1);
+        }
     }
 
     if let Err(e) = emit_project(&project, &built) {
@@ -545,9 +566,6 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         built.summary(),
         started.elapsed()
     );
-    if args.command == "dev" {
-        return super::dev::wp(&out, args.port);
-    }
     ExitCode::SUCCESS
 }
 

@@ -216,6 +216,12 @@ wp_enqueue_script_module( 'zero-admin-boot' );
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Zero</title>
 	<style>
+		@media (prefers-reduced-motion: no-preference) {
+			@view-transition {
+				navigation: auto;
+			}
+		}
+
 		html {
 			background: #f1f1f1;
 			color: #444;

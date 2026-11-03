@@ -151,8 +151,9 @@ unrelated plugins and serialize the project lock/output while publishing.
 
 Every WordPress build now uses this assembler, including configurations without
 `plugins`. The default output is `.zero/wp-content`; `--out` selects another
-wp-content root. `zero dev --wp` mounts its `plugins/` directory. Required
-platform pins come from `src/platform.rs`, checked against the PHP policy and
+wp-content root. `zero dev` synchronizes its managed plugins into the
+project’s persistent WordPress Studio site, retaining unrelated installed plugins.
+Required platform pins come from `src/platform.rs`, checked against the PHP policy and
 the shared platform fixture. `ZERO_WP_PLUGIN_CACHE` can select a shared download
 cache; every cache hit is checked against its SHA-256 before extraction.
 

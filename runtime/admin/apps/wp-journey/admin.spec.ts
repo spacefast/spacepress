@@ -15,6 +15,8 @@ const subdir = new URL(site).pathname !== '/';
 async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await page.goto(`${site}/zero-admin/`);
 	await expect(page.locator('#user_login')).toBeVisible();
+	// WordPress focuses this field after its login page has loaded.
+	await expect(page.locator('#user_login')).toBeFocused();
 	await page.locator('#user_login').fill(role);
 	await page.locator('#user_pass').fill(`zero-test-${role}`);
 	await page.locator('#wp-submit').click();
@@ -41,7 +43,9 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	expect(
 		cookies.filter((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))
 	).toEqual([]);
-	await page.getByRole('link', { name: 'Posts', exact: true }).last().click();
+	const sidebar = page.locator('.zero-admin-sidebar__content');
+	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
+	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/zero-admin/collections/posts`);
 	await expect(
 		page.getByRole('heading', { name: 'Posts', exact: true })
@@ -54,6 +58,27 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(
 		page.getByRole('button', { name: 'Add Media File', exact: true })
 	).toBeVisible();
+	const classic = sidebar.getByRole('link', { name: 'Classic admin', exact: true });
+	await expect(classic).toHaveAttribute('href', `${site}/wp-admin/`);
+	await classic.click();
+	await expect(page).toHaveURL(`${site}/wp-admin/`);
+	const wordpressMenu = page.locator('#adminmenu');
+	await expect(wordpressMenu).toBeVisible();
+	await expect(page.locator('#wpadminbar')).toBeVisible();
+	await expect(wordpressMenu.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
+	await wordpressMenu.getByRole('link', { name: 'Zero', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/zero-admin/`);
+	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/zero-admin/collections/posts`);
+	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
+	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
+	await page.getByRole('combobox').fill('Classic admin');
+	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/wp-admin/`);
+	await expect(page.locator('#adminmenu')).toBeVisible();
 	expect(errors).toEqual([]);
 });
 // The subdirectory lane proves mounting/login/navigation with the same owner. Writes are
@@ -359,11 +384,14 @@ if (!subdir) {
 		const extra = page.locator('.zero-schema-json').filter({ hasText: 'Extra' }).locator('textarea');
 		await extra.fill('plain invalid-only draft');
 		await expect(extra).toHaveAttribute('aria-invalid', 'true');
-		expect(await page.evaluate(() => {
-			const event = new Event('beforeunload', { cancelable: true });
-			window.dispatchEvent(event);
-			return event.defaultPrevented;
-		})).toBe(true);
+		const leaving = page.waitForEvent('dialog');
+		const classicClick = page.getByRole('link', { name: 'Classic admin', exact: true }).click();
+		const warning = await leaving;
+		expect(warning.type()).toBe('beforeunload');
+		await warning.dismiss();
+		await classicClick;
+		await expect(page).toHaveURL(`${site}/zero-admin/collections/events/${plainId}`);
+		await expect(extra).toHaveValue('plain invalid-only draft');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
 		await page.getByRole('button', { name: 'Continue editing', exact: true }).click();

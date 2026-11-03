@@ -423,6 +423,57 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
     out
 }
 
+/// Conservative development updates: existing values and constraints must keep their meanings.
+/// This is stricter than production's warning list; deliberate migrations use the normal build.
+pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
+    if prev["version"] != 2 || !prev["tables"].is_object() {
+        return vec!["invalid preservation snapshot".into()];
+    }
+    let mut problems = destructive(prev, next);
+    for (name, table) in prev["tables"].as_object().expect("validated snapshot") {
+        let candidate = &next["tables"][name];
+        if candidate.is_null() {
+            continue;
+        }
+        for key in ["editor", "auth", "localized"] {
+            if table[key] != candidate[key] {
+                problems.push(format!("changes storage for {name}"));
+            }
+        }
+        if let Some(columns) = table["columns"].as_object() {
+            for (field, column) in columns {
+                let replacement = &candidate["columns"][field];
+                if replacement.is_null() {
+                    continue;
+                }
+                if [
+                    "type",
+                    "notNull",
+                    "primaryKey",
+                    "autoIncrement",
+                    "unique",
+                    "max",
+                    "enum",
+                    "references",
+                ]
+                .iter()
+                .any(|key| column[*key] != replacement[*key])
+                {
+                    problems.push(format!("changes field {name}.{field}"));
+                }
+            }
+        }
+        if let Some(columns) = candidate["columns"].as_object() {
+            for (field, column) in columns {
+                if table["columns"].get(field).is_none() && column["notNull"] == true && column["default"].is_null() {
+                    problems.push(format!("adds required field {name}.{field} without a default"));
+                }
+            }
+        }
+    }
+    problems
+}
+
 pub fn render(statements: &[String]) -> String {
     let mut s = statements.join(&format!("\n{BREAKPOINT}\n"));
     s.push('\n');
@@ -478,12 +529,21 @@ mod tests {
             plan(&v1, &v2),
             vec!["ALTER TABLE `{prefix}zero_items` ADD COLUMN `note` LONGTEXT;".to_string()]
         );
+        assert!(preservation_problems(&v1, &v2).is_empty());
         let mut v3 = v2.clone();
         v3["tables"]["items"]["columns"]["note"]["notNull"] = json!(true);
         assert_eq!(
             plan(&v2, &v3),
             vec!["ALTER TABLE `{prefix}zero_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()]
         );
+        assert_eq!(preservation_problems(&v2, &v3), vec!["changes field items.note"]);
+        assert_eq!(
+            preservation_problems(&v1, &v3),
+            vec!["adds required field items.note without a default"]
+        );
+        let mut defaulted = v3.clone();
+        defaulted["tables"]["items"]["columns"]["note"]["default"] = json!("Ready");
+        assert!(preservation_problems(&v1, &defaulted).is_empty());
         assert!(plan(&v3, &v3).is_empty());
         // A dropped column and a dropped table.
         let mut v4 = v3.clone();
@@ -495,6 +555,13 @@ mod tests {
                 "ALTER TABLE `{prefix}zero_items` DROP FOREIGN KEY `zero_items_locationId_fk`;".to_string(),
                 "ALTER TABLE `{prefix}zero_items` DROP COLUMN `note`;".to_string(),
                 "DROP TABLE `{prefix}zero_locations`;".to_string(),
+            ]
+        );
+        assert_eq!(
+            preservation_problems(&v3, &v4),
+            vec![
+                "drops column \"items\".\"note\"",
+                "drops table \"locations\" and all its rows"
             ]
         );
     }

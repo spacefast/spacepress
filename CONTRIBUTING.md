@@ -7,12 +7,18 @@ the suites, and where things live. The [README](README.md) is the front page.
 
 Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
 `gd`, `fileinfo`, `curl` and `zip` (the PHP suites boot WordPress in-process on
-the SQLite Database Integration plugin, and `zero build` lints with `php -l`),
-Node 22.18+,
-TypeScript 5.9 (`npm install --global typescript@5.9.3`), and for anything
-that boots WordPress: Docker with Compose, plus `bash` 4+, `python3`, `curl`,
-`sha256sum` and `rsync` on the host. `cargo build --release` produces
+the SQLite Database Integration plugin; `zero build` also lints with `php -l`
+when a host PHP executable is available),
+Node 22.18+, npm, and TypeScript 5.9
+(`npm install --global typescript@5.9.3`). `cargo build --release` produces
 `target/release/zero`.
+
+`zero dev` uses pinned WordPress Studio CLI 2.1.1 through npm and needs no
+Docker or host PHP. It supplies WordPress 7.1.4, PHP 8.4 and SQLite Database
+Integration 3.1.2. The host PHP requirements above are for the PHP suites.
+The reference WordPress/MariaDB suites and the separate
+showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
+`curl`, `sha256sum` and `rsync` on the host.
 
 ## How it works
 
@@ -51,7 +57,10 @@ files under `runtime/` are picked up without code changes.
 ```
 zero build [dir] [--out <dir>] [--quiet]               write the plugins to .zero/wp-content
 zero check [dir] [--json]                               compile; write nothing
-zero dev [dir] [--port <n>]                             build, then boot the plugins in a Docker WordPress
+zero dev [dir] [--port <n>] [--no-watch] [--allow-destructive]  start WordPress Studio and watch sources
+zero dev stop [dir]                                    stop the local site, preserving data
+zero dev status [dir]                                  report the local site
+zero dev wp [dir] -- <args>                             run WP-CLI on the local site
 zero doctor [dir] [--out <dir>] [--site <url> --token <t>]   check a build, and a running site
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
 zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>
@@ -61,10 +70,22 @@ zero migrate site <content-model.php> [--dry-run]
 `zero build` writes new migrations to `zero/migrations/`, the typed client to
 `zero/client/`, `zero.gen.ts` and `zero/wp-plugins.lock.json` (all committed),
 and the artifact to `.zero/wp-content`: plugin folders, ZIPs, pinned
-dependencies and one `zero-manifest.json`. `zero dev` boots that
-artifact with the harness from `tests/wp`, which an installed binary carries
-embedded; set `ZERO_WP_PROJECT` and `--port` to run several stacks side by
-side, and stop one with the `harness.sh down` command it prints.
+dependencies and one `zero-manifest.json`. `zero dev` installs that artifact
+into a persistent Studio site at `<project>/.zero/dev/wordpress`, activates
+its manifest plugins, and watches TypeScript, config and public files. It
+preserves the database, uploads and unrelated plugins on rebuilds. Full
+WordPress administration is available with the disposable local login
+`admin` / `zero-test-admin`.
+
+Ctrl+C stops the foreground site without deleting its data. `--no-watch`
+starts it and returns; `zero dev stop [dir]` stops it later. `--port` selects
+a new site's port; an existing site retains its original port, printed at
+startup. Different project directories have independent sites. Create API
+credentials explicitly with WP-CLI:
+
+```sh
+zero dev wp [dir] -- user application-password create admin zero-local --porcelain
+```
 
 ## The blog tour
 
@@ -76,6 +97,7 @@ webhooks and translations, with a browser page. How to build and run it is in
 
 ```sh
 cargo test                       # rejections, goldens, the examples on WordPress-on-SQLite, Node↔PHP differential, generated client (needs tsc)
+node --test scripts/dev/studio.test.mjs scripts/dev/acceptance.test.mjs # local Studio workflow; build target/debug/zero first
 tests/php/run.sh                 # runtime: JS parity (checked against node) + the suites on an in-process WordPress
 tsc -p types/zero/tests          # the "zero" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)
@@ -90,6 +112,16 @@ acceptance suite on two PHP versions, the admin screens' unit tests and a
 rebuild that must match the committed bundle, and a check that the prefixed
 PHP dependencies regenerate byte-for-byte (see
 [`docs/dependencies.md`](docs/dependencies.md)).
+
+Dev uses `zero build --preserve-data <snapshot.json>` to check the candidate
+against its last applied schema before writing migrations. It also checks the
+accepted migration history. To apply field removals, changed types or constraints,
+or migration files built outside dev, stop the watcher, run `zero build` and
+inspect the SQL, then start once with `zero dev --allow-destructive`. Later
+watched saves are protected again. This is a development safeguard, not a
+production backup or rollback mechanism. If the first Studio creation is
+interrupted with a nonempty site directory, Zero refuses to adopt or delete it;
+inspect the reported directory and its Studio registration before retrying.
 
 Compiler diagnostic codes and compatibility claims are linked to executable
 fixtures in `tests/compatibility/registry.json`. Run

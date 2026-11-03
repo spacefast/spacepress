@@ -226,6 +226,7 @@ eq('real HTTP forwards the idempotency header and replays the form receipt', jso
 file_put_contents($evidence . '/example.html', $page);
 $ownedSite = $wp->dir;
 $wp->destroy();
+clearstatcache(true, $ownedSite);
 proc_terminate($sink);
 proc_close($sink);
 $sink = null;

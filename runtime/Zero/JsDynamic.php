@@ -34,15 +34,40 @@ trait JsDynamic
         if (!in_array($name, [...$methods, 'toString', 'valueOf'], true)) { return JsUndefined::Value; }
         $key = $owner . ':' . $name;
         if (!isset(self::$dynamicMethods[$key])) {
-            $invoke = $owner === 'Math' && in_array($name, $methods, true)
-                ? static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args)
-                : static fn ($thisArg, JsArray $args) => self::dynamicCallMethod($thisArg, $name, $args, true);
+            $invoke = match (true) {
+                $owner === 'Array' && $name === 'slice' => self::dynamicBorrowedSlice(...),
+                $owner === 'Math' && in_array($name, $methods, true) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
+                default => static fn ($thisArg, JsArray $args) => self::dynamicCallMethod($thisArg, $name, $args, true),
+            };
             $function = static fn (...$args) => $invoke(JsUndefined::Value, new JsArray($args));
             self::$dynamicMethods[$key] = $function;
             self::$dynamicMethodReceivers ??= new \WeakMap();
             self::$dynamicMethodReceivers[$function] = $invoke;
         }
         return self::$dynamicMethods[$key];
+    }
+
+    /** Array.prototype.slice borrowed by dense arrays or ordinary arguments. */
+    private static function dynamicBorrowedSlice(mixed $receiver, JsArray $args): JsArray
+    {
+        self::requirePresent($receiver);
+        if (!$receiver instanceof JsArray && !$receiver instanceof JsArguments) {
+            throw new JsError('Borrowed Array.slice supports arrays and arguments only', 'TypeError');
+        }
+        $length = $receiver instanceof JsArray ? count($receiver->a)
+            : (int) min(9007199254740991, max(0, self::toInteger(self::toNumber($receiver->length))));
+        $start = array_key_exists(0, $args->a) ? $args->a[0] : JsUndefined::Value;
+        $end = array_key_exists(1, $args->a) ? $args->a[1] : JsUndefined::Value;
+        $from = self::relIndex(self::toNumber($start), $length);
+        $to = $end === JsUndefined::Value ? $length : self::relIndex(self::toNumber($end), $length);
+        $result = new JsArray();
+        for ($i = $from; $i < $to; $i++) {
+            if (!array_key_exists($i, $receiver->a)) {
+                throw new JsError('Sparse borrowed Array.slice is not supported', 'TypeError');
+            }
+            $result->a[] = self::dynamicGet($receiver, (string) $i);
+        }
+        return $result;
     }
 
     public static function undefined(): JsUndefined { return JsUndefined::Value; }

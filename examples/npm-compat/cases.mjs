@@ -1,6 +1,22 @@
 // Calls stay in source form so both Node and Zero execute the same expressions.
 export const probes = [
   {
+    name: "url-join",
+    version: "5.0.0",
+    entry: "lib/url-join.js",
+    binding: "urlJoin",
+    format: "esm",
+    body: `let invalid = ""; try { urlJoin("https://example.com", 42); } catch (error) { invalid = error.name + ":" + error.message; } const parts = ["https:", "example.com/", "/notes", "?q=tea", "?page=2"]; const joined = urlJoin(parts); return { joined, parts, variadic: urlJoin("https://example.com/", "/notes/", "#top"), file: urlJoin("file:", "/tmp", "notes.txt"), empty: urlJoin(), trailing: urlJoin("/notes/", "next///"), invalid };`,
+  },
+  {
+    name: "just-template",
+    version: "2.2.0",
+    entry: "index.mjs",
+    binding: "template",
+    format: "esm",
+    body: `return {nested: template("Hello {{user.name}} ({{count}})", {user: {name: "Ada"}, count: 2}), repeated: template("{{name}}/{{name}}", {name: "tea"}), falsy: template("{{zero}}/{{no}}/{{empty}}/{{missing}}", {zero: 0, no: false, empty: ""}), unicode: template("{{name}}!", {name: "école 你好"}), plain: template("Hello", {})};`,
+  },
+  {
     name: "clsx",
     version: "2.1.1",
     entry: "dist/clsx.mjs",
@@ -92,4 +108,10 @@ export const combined = {
   name: "combined",
   libraries: ["@thi.ng/math", "@thi.ng/strings"],
   body: `return {label: upper("price"), ratio: safeDiv(7, 2), zero: safeDiv(7, 0), unicode: upper("école Straße"), empty: upper("")};`,
+};
+
+export const applicationCombined = {
+  name: "application-combined",
+  libraries: ["url-join", "just-template", "escape-html"],
+  body: `const cards = [{slug: "tea", title: "Tea & <scones>"}, {slug: "café", title: "Café"}]; return cards.map(card => ({href: urlJoin("https://example.com/", "/notes/", encodeURIComponent(card.slug)), html: template('<a href="{{href}}">{{title}}</a>', {href: urlJoin("/notes", encodeURIComponent(card.slug)), title: escapeHtml(card.title)})}));`,
 };

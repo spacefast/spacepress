@@ -1,6 +1,65 @@
 {
-  "fetchedAt": "2026-11-03T04:48:22.646Z",
+  "fetchedAt": "2026-11-03T18:05:46.426Z",
   "packages": [
+    {
+      "name": "url-join",
+      "version": "5.0.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git://github.com/jfromaniello/url-join.git",
+        "type": "git"
+      },
+      "exports": "./lib/url-join.js",
+      "module": null,
+      "main": "./lib/url-join.js",
+      "unpackedBytes": 4742,
+      "tarball": "https://registry.npmjs.org/url-join/-/url-join-5.0.0.tgz",
+      "integrity": "sha512-n2huDr9h9yzd6exQVnH/jU5mr+Pfx08LRXXZhkLLetAMESRj+anQsTAh940iMrIetKAmry9coFuZQ2jY8/p3WA==",
+      "shasum": "c2f1e5cbd95fa91082a93b58a1f42fecb4bdbcf1",
+      "selectedSource": "lib/url-join.js",
+      "selectedSourceBytes": 2065,
+      "selectedSourceSha256": "622cbeb6e5781890a5e58429f01bedfd74be01b7879591739582e8fd0a48a380",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/url-join",
+        "downloads": 28508789,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
+        "package": "url-join"
+      }
+    },
+    {
+      "name": "just-template",
+      "version": "2.2.0",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/angus-c/just.git",
+        "type": "git"
+      },
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "import": "./index.mjs",
+          "require": "./index.cjs"
+        },
+        "./package.json": "./package.json"
+      },
+      "module": null,
+      "main": "index.cjs",
+      "unpackedBytes": 5516,
+      "tarball": "https://registry.npmjs.org/just-template/-/just-template-2.2.0.tgz",
+      "integrity": "sha512-tYzMAz72bJXRBFKhWnEZrVdBbBqV4/vwNGv6O96LqZv+BjtmUGUBtBkFr+vqGlgHOVIcRalUNdJlumvXSAbuaQ==",
+      "shasum": "b4100a3979d33c0e37307ab747397e5b3dc608c0",
+      "selectedSource": "index.mjs",
+      "selectedSourceBytes": 736,
+      "selectedSourceSha256": "0807dceb8581ab1102568200eb280020722a113c17fa06318b4129c8d106c391",
+      "downloads": {
+        "url": "https://api.npmjs.org/downloads/point/last-week/just-template",
+        "downloads": 2562,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
+        "package": "just-template"
+      }
+    },
     {
       "name": "clsx",
       "version": "2.1.1",
@@ -42,9 +101,9 @@
       "selectedSourceSha256": "d949e5cdbfebc76a6642b1901095e900fc3f2262d8dc0373aa44850a9bc75522",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/clsx",
-        "downloads": 158572061,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 159129892,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "clsx"
       }
     },
@@ -68,9 +127,9 @@
       "selectedSourceSha256": "42a7f91883d0c5ce9292dda4e017e1f8664d34b09276d89fb6f3859c29d1ca9b",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/escape-html",
-        "downloads": 173320487,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 173472957,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "escape-html"
       }
     },
@@ -94,9 +153,9 @@
       "selectedSourceSha256": "e5f0b6a946a9b2b356a28557728410717df54ea2f599edb619f9839df6b7b0e9",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/ms",
-        "downloads": 721210166,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 721163990,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "ms"
       }
     },
@@ -127,9 +186,9 @@
       "selectedSourceSha256": "bbf27e2265d0267f41bae0689253b8a1b899961049baa690a8eb75e152e9b15a",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/just-clone",
-        "downloads": 451586,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 436762,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "just-clone"
       }
     },
@@ -160,9 +219,9 @@
       "selectedSourceSha256": "b0effb767caca7cc54a77a8b1d524798a537980a915c4b528052acb6b5f3dab4",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/just-capitalize",
-        "downloads": 20769,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 20495,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "just-capitalize"
       }
     },
@@ -186,9 +245,9 @@
       "selectedSourceSha256": "04255e482e181687823a95b207802ddd32e746c65dce4c95a5176fc192735960",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/is-number",
-        "downloads": 225349904,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 225153674,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "is-number"
       }
     },
@@ -221,9 +280,9 @@
       "selectedSourceSha256": "12cc2ce406e98f46da3276bf2ff7de1afadef7273c10a3b3d6bf2cc8b2be5c35",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/ts-dedent",
-        "downloads": 50354629,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 50427787,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "ts-dedent"
       }
     },
@@ -318,9 +377,9 @@
       "selectedSourceSha256": "7b004be519381e21ec88f6d01fe245bf18382c3e89699d9956d389ac9098a6f9",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/%40thi.ng%2Fmath",
-        "downloads": 36553,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 33155,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "@thi.ng/math"
       }
     },
@@ -469,9 +528,9 @@
       "selectedSourceSha256": "f20b06cebb583d47c8b05e6f3c9062fba6adb2e477f5c78d8454fb9eeaa43f3f",
       "downloads": {
         "url": "https://api.npmjs.org/downloads/point/last-week/%40thi.ng%2Fstrings",
-        "downloads": 17207,
-        "start": "2026-10-26",
-        "end": "2026-11-01",
+        "downloads": 17426,
+        "start": "2026-10-27",
+        "end": "2026-11-02",
         "package": "@thi.ng/strings"
       }
     }

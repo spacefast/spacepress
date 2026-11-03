@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
+import { get } from 'node:http';
 
 const exec = promisify(execFile);
 const zero = resolve(process.env.ZERO_BIN ?? 'target/debug/zero');
@@ -41,9 +42,10 @@ function foreground(args, env) {
   child.on('exit', () => events.emit('output'));
   const wait = (text, from = 0) => new Promise((done, fail) => {
     const timeout = setTimeout(() => finish(new Error(`Timed out waiting for ${text}:\n${output}`)), 180000);
-    const finish = (error) => { clearTimeout(timeout); events.off('output', check); error ? fail(error) : done(output.length); };
+    const finish = (error, cursor) => { clearTimeout(timeout); events.off('output', check); error ? fail(error) : done(cursor); };
     const check = () => {
-      if (output.slice(from).includes(text)) finish();
+      const match = output.indexOf(text, from);
+      if (match !== -1) finish(undefined, match + text.length);
       else if (child.exitCode !== null) finish(new Error(`Dev exited early:\n${output}`));
     };
     events.on('output', check); check();
@@ -69,11 +71,28 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   let session;
   const site = join(project, '.zero/dev/wordpress');
   t.after(async () => {
+    const failures = [];
+    const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
+    const sites = async () => JSON.parse(await studio('list', '--format=json'));
     try { await command(['dev', 'stop', project], env); }
-    catch (error) { console.error('Cleanup stop:', error.message); }
-    if (session && session.child.exitCode === null) await once(session.child, 'exit');
-    await exec('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', site, '--no-files'], { timeout: 60000 }).catch(() => {});
-    await rm(root, { recursive: true, force: true });
+    catch (error) { failures.push(error); }
+    if (session && session.child.exitCode === null) {
+      try { await once(session.child, 'exit', { signal: AbortSignal.timeout(10000) }); }
+      catch (error) { failures.push(error); }
+    }
+    try {
+      if ((await sites()).some((entry) => resolve(entry.path) === site)) {
+        await studio('delete', site, '--no-files', '--format=json');
+      }
+      assert.equal((await sites()).some((entry) => resolve(entry.path) === site), false, 'Disposable site remains registered in Studio');
+      if (session) assert.ok(session.child.exitCode !== null || session.child.signalCode !== null, 'Dev process remains running');
+      await rm(root, { recursive: true, force: true });
+    } catch (error) { failures.push(error); }
+    if (failures.length) {
+      const error = new AggregateError(failures, `Native acceptance cleanup failed; inspect ${root}`);
+      console.error(error);
+      if (!t.error) throw error;
+    }
   });
   await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
   const status = JSON.parse(await command(['dev', 'status', project], env));
@@ -83,10 +102,31 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const password = await wp('user', 'application-password', 'create', 'admin', 'zero-acceptance', '--porcelain');
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
   async function request(path, { method = 'GET', body, headers = {} } = {}) {
-    const response = await fetch(`${base}${path}`, {
-      method, headers: { authorization, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000),
-    });
+    let response;
+    try {
+      response = await fetch(`${base}${path}`, {
+        method, headers: { authorization, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000),
+      });
+    } catch (error) {
+      console.error('Native request failed:', method, path, error.cause ?? error);
+      // Diagnose a fresh read-only connection without replaying the failed operation.
+      const health = await new Promise((done) => {
+        const probe = get(`${base}/wp-json/zero/v1/_schema`, { agent: false, signal: AbortSignal.timeout(3000) }, (response) => {
+          response.resume();
+          response.on('end', () => done({ status: response.statusCode }));
+          response.on('error', (failure) => done({ error: failure.message, code: failure.code }));
+        });
+        probe.on('error', (failure) => done({ error: failure.message, code: failure.code }));
+      });
+      console.error('Fresh HTTP health:', health);
+      if (session) {
+        console.error('Dev process:', { pid: session.child.pid, exitCode: session.child.exitCode, signalCode: session.child.signalCode });
+        console.error('Dev session output:\n' + session.output());
+      }
+      console.error('Studio status:', await command(['dev', 'status', project], env).catch((failure) => failure.message));
+      throw error;
+    }
     const result = await response.json();
     assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`);
     return result.data ?? result;

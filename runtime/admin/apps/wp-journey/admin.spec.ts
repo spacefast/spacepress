@@ -15,6 +15,8 @@ const subdir = new URL(site).pathname !== '/';
 async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await page.goto(`${site}/zero-admin/`);
 	await expect(page.locator('#user_login')).toBeVisible();
+	// WordPress focuses this field after its login page has loaded.
+	await expect(page.locator('#user_login')).toBeFocused();
 	await page.locator('#user_login').fill(role);
 	await page.locator('#user_pass').fill(`zero-test-${role}`);
 	await page.locator('#wp-submit').click();

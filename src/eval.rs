@@ -149,6 +149,10 @@ const ZERO_TYPES: &[&str] = &[
     "LocalizedColumns",
     "ColumnsConfig",
     "ConfigInput",
+    "ServicesConfig",
+    "ServiceForm",
+    "ServiceFormField",
+    "ServiceProduct",
     "InferActionInput",
 ];
 

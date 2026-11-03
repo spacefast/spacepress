@@ -301,6 +301,7 @@ final class WpSite
         if (is_dir($this->dir)) {
             exec('rm -rf ' . escapeshellarg($this->dir));
         }
+        clearstatcache(true, $this->dir);
     }
 
     // ================================================================ driving the app

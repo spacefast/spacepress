@@ -2,13 +2,49 @@
 
 Zero's native services module adds validated contact forms, queued mail, publication search and Stripe-hosted checkout. WordPress remains the authority for users, publication and content permissions. The existing Zero transaction, receipt, outbox and Action Scheduler implementations own atomic writes, request replay and delivery retries.
 
-This is a PHP/WordPress integration. It introduces no TypeScript runtime imports or `zero.config.ts` service syntax. TypeScript pages can call the HTTP endpoints with `fetch`.
+Author services in `zero.config.ts` or a trusted WordPress plugin. Both configure the same native runtime. TypeScript pages call the HTTP endpoints with `fetch`; no JavaScript service runtime is needed.
 
 ## Enable and configure
 
-The runtime registers the services module, its built-in jobs and its system tables automatically. Configure the services your application needs through a trusted WordPress plugin.
+The runtime registers the services module, its built-in jobs and its system tables automatically. The [TypeScript example](../examples/app-services-ts/zero.config.ts) configures the services at build time:
 
-A trusted WordPress plugin supplies private configuration through `zero_services_config`. The complete working example is [zero-app-services.php](../examples/app-services/wordpress/zero-app-services.php). It defines:
+```ts
+import { collection, defineConfig, env, text } from "zero";
+
+const posts = collection({ title: text().notNull(), excerpt: text() }, {
+  title: "title", drafts: true, access: { read: "anyone" },
+});
+
+export default defineConfig({
+  collections: { posts },
+  services: {
+    forms: {
+      contact: {
+        fields: {
+          email: { type: "email", notNull: true, rules: { max: 191 } },
+          message: { type: "text", notNull: true, rules: { min: 3, max: 2000 } },
+        },
+        recipient: env("APP_SERVICES_RECIPIENT"),
+        sender: env("APP_SERVICES_SENDER"),
+        limit: 5,
+      },
+    },
+    search: { posts: ["title", "excerpt"] },
+    products: { workshop: { name: "WordPress workshop", amount: 1900, currency: "usd" } },
+    checkoutReturnUrl: "https://example.test/checkout",
+  },
+});
+```
+
+`recipient` and `sender` require `env("NAME")`. The compiler emits variable names into a private `zero_services_config` filter in the app's `functions.php`; it never reads their build-machine values. WordPress resolves them when the mail job runs. Services are excluded from `schema.php`, migration snapshots, generated client descriptors and the public schema. The provider and rate-limit variables below retain their native runtime names; they are deployment settings, not additional `services` options.
+
+The compiler rejects unknown options, duplicate declarations and invalid definitions at their source property. Form fields support `text`, `email`, `integer` and `boolean`, optional `notNull`, and integer `rules.min`/`rules.max` for text length or integer bounds. Boolean fields have no bounds. Omit unused sections; a supplied registry or form field map must be nonempty. Form and product ids are lowercase slugs of at most 80 characters. Products require a nonempty name of at most 160 UTF-8 bytes, an integer amount from 50 to 99,999,999 and three lowercase currency letters. Configure `products` and an absolute HTTP(S) `checkoutReturnUrl` together.
+
+Search keys name authored collections; the compiler binds them to the stored collection name. Each must enable `drafts: true` and list at least one existing text column without duplicates. HTTP queries use the stored name: the example above uses `posts`; the runnable example's `articles` key uses `storageName: "service_posts"`, so its request uses `collection=service_posts`. Runtime row and field access rules still apply.
+
+Classic PHP plugins remain supported. The generated filter runs at priority 10 and merges `forms`, `search` and `products` by entry name. An authored entry replaces the whole same-name entry supplied by an earlier filter; unrelated entries and native options survive. A trusted filter at priority 20 can deliberately extend or override the result. Native plugins can use the runtime's broader schema validation features; the TypeScript bridge accepts only the documented subset.
+
+For PHP authoring, a trusted WordPress plugin supplies private configuration through `zero_services_config`. The complete working example is [zero-app-services.php](../examples/app-services/wordpress/zero-app-services.php). It defines:
 
 - Form `contact`, with the existing schema column definitions for email and message validation.
 - Searchable `posts` fields `title` and `excerpt`.
@@ -77,7 +113,7 @@ The supported subset is one product, quantity one, one-off payment. Currency amo
 
 ## Run and verify
 
-See [the runnable example](../examples/app-services/README.md) for local SMTP setup, disposable WordPress and browser acceptance commands. The PHP feature owner is `tests/php/services_test.php`.
+See [the TypeScript example](../examples/app-services-ts/README.md) for the compiler-to-WordPress journey, and [the PHP example](../examples/app-services/README.md) for browser acceptance commands. `tests/services_config.rs` owns authoring validation and one compiled-plugin journey through real WordPress/SQLite and loopback SMTP. The existing PHP feature owner remains `tests/php/services_test.php`; it owns delivery retries, publication permissions and payment protocol behavior.
 
 Local evidence proves WordPress 7.1.4, SQLite Database Integration 3.1.2, Action Scheduler 4.2.0 and WordPress's bundled PHPMailer 7.1.1. The example and runtime services are first-party code. No additional upstream SDK, plugin source or license notices were copied or removed. The existing WordPress and plugin licenses remain in their original owners.
 

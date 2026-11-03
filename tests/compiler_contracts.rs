@@ -360,6 +360,23 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
             "function guard(value: unknown) { if (typeof value === 'number') return true; return value.trim() !== ''; }",
             "unknown",
         ),
+        ("function guard(value: unknown) { return value + 1; }", "ambiguous"),
+        (
+            "function guard(value: unknown, text: string | null) { return value + text; }",
+            "ambiguous",
+        ),
+        (
+            "function guard(value: unknown, texts: (string | null)[]) { return value + texts[0]; }",
+            "ambiguous",
+        ),
+        (
+            "function guard(value: unknown, numbers: number[]) { return value + numbers[0]; }",
+            "ambiguous",
+        ),
+        (
+            "function guard(value: unknown, texts: string[]) { return (value + texts[0]).length; }",
+            "has no property",
+        ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -387,8 +404,133 @@ export default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler
 }
 
 #[test]
+fn unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown() {
+    let tmp = tempfile::tempdir().unwrap();
+    let helper = r#"
+export function combine(left, right) { return left + right; }
+export function read(value) { return value.trim(); }
+const missing = undefined;
+const nested = { missing: undefined };
+export function absent() {}
+export function missingKinds() { let empty; return [typeof missing, typeof nested.missing, typeof empty, empty === undefined, empty === null]; }
+export function errorEffects() {
+  let count = 0;
+  const plain = Error(undefined, count++);
+  const constructed = new TypeError(undefined, count++);
+  try { throw new RangeError(undefined, count++); }
+  catch (error) { return [plain.message, constructed.message, error.message, count]; }
+}
+export function replaceCount(value) { value.count = 'x'; }
+export function methodOrder() {
+  const object = { method: () => 1 };
+  return { order: object.method(object.method = () => 2), computed: ['one', 'two']['join'](':') };
+}
+export function objects(value) {
+  const holder = {};
+  holder.value = value;
+  holder.value.count += 1;
+  return holder.value;
+}
+"#;
+    std::fs::write(tmp.path().join("helpers.mjs"), helper).unwrap();
+    let mutation = r#"
+function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
+function discardRest(...values: string[][]) { values.pop(); }
+function optionalObject(value?: { count: number }) { return value ? value.count : 'absent'; }
+function optionalArray(value?: string[]) { return value ? value.length : -1; }
+function optionalString(value?: string) { return value ? value.trim() : 'absent'; }
+function defaultArray(value: string[] = ['default']) { return value.length; }
+function addressPatch(patch: { address?: { city: string } | null }) {
+  let touched = false;
+  let city = 'absent';
+  if (patch.address !== undefined) { touched = true; city = patch.address?.city ?? 'null'; }
+  return [touched, city];
+}
+function strictNull(value?: { count: number }) { return value !== null ? value?.count ?? 'undefined' : 'null'; }
+function strictUndefined(value?: { count: number }) { return value !== undefined ? value?.count ?? 'null' : 'undefined'; }
+function strictNullArray(value?: string[]) { return value !== null ? value?.length ?? -1 : -2; }
+function nullishValues() {
+  const object: { count: number } | null = undefined;
+  const array: string[] | null = undefined;
+  const text: string | null = undefined;
+  return [optionalObject(undefined), optionalArray(undefined), optionalString(undefined), defaultArray(undefined), Boolean(object), Boolean(array), Boolean(text), addressPatch({}), addressPatch({ address: null }), addressPatch({ address: { city: 'Oslo' } }), strictNull(undefined), strictNull(null), strictUndefined(undefined), strictUndefined(null), strictNullArray(undefined)];
+}
+function nonempty() {
+  let values = Array.from(['first']);
+  values.reduce((all, value) => all.concat(value), ['start'].slice());
+  const pattern = new RegExp('first', 'g');
+  values = values.map(value => value.replace(pattern, 'second'));
+  discardRest(values);
+  return values[0];
+}
+"#;
+    let expression = r#"({ nullish: nullishValues(), mutation: mutation(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, methodOrder, missingKinds, errorEffects}} from './helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
+        .output().unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
+import {{ action, defineConfig }} from 'zero';
+import {{ combine, read, absent, objects, replaceCount, methodOrder, missingKinds, errorEffects }} from './helpers.mjs';
+{mutation}
+function nullable(value: string | null) {{ return value.trim(); }}
+export default defineConfig({{ name: 'js-values', actions: {{
+  probe: action({{ input: {{}}, handler: () => {expression} }}),
+  dynamicError: action({{ input: {{}}, handler: () => {{ try {{ read(2); return false; }} catch {{ return true; }} }} }}),
+  nullableError: action({{ input: {{}}, handler: () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }} }})
+}} }});
+"#)).unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$result = [];
+foreach (['probe', 'dynamicError', 'nullableError'] as $key) {
+  $fn = '\\ZeroApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \Zero\JsObject(), new \Zero\JsObject());
+}
+echo \Zero\Js::jsonStringify($result);
+"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-js-values/zero/app"),
+        ],
+    );
+    assert_eq!(actual, json!([expected, true, true]));
+
+    // The nonempty proof belongs to the container and must disappear through aliases.
+    std::fs::write(
+        tmp.path().join("zero.config.ts"),
+        r#"
+import { action, defineConfig } from 'zero';
+export default defineConfig({ actions: { probe: action({ input: {}, handler: (): string => {
+  const values = Array.from(['first']);
+  const alias = values;
+  alias.pop();
+  return values[0];
+} }) } });
+"#,
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    assert!(
+        report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("string | null")),
+        "{report}"
+    );
+}
+
+#[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
-    let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1)]"#;
+    let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1), typeof [][0]]"#;
     let node = Command::new("node")
         .args(["-e", &format!("process.stdout.write(JSON.stringify({expression}));")])
         .output()
@@ -396,7 +538,7 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     assert!(node.status.success());
     assert_eq!(
         serde_json::from_slice::<Value>(&node.stdout).unwrap(),
-        json!(["undefined", "object", "a", 2, "a", ["x"], false, 2])
+        json!(["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
     );
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
@@ -422,8 +564,8 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
     assert_eq!(
         result,
         json!([
-            ["undefined", "object", "a", 2, "a", ["x"], false, 2],
-            ["object", "object", "a", 2, "a", ["x"], false, 2]
+            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"],
+            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "object"]
         ])
     );
     std::fs::write(tmp.path().join("zero.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();

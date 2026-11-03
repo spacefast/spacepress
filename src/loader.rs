@@ -2,7 +2,7 @@
 //! Resolves local sources and installed source packages; never installs or executes package code.
 
 use crate::diag::{self, Diag, Result, Span};
-use crate::ir::{Module, Stmt};
+use crate::ir::{ArrEl, DeclKind, Expr, ExprKind, FnBody, Func, Module, Pat, Prop, PropKey, Stmt};
 use crate::lower::Lowerer;
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
@@ -101,7 +101,7 @@ fn load_module(
     let file = diag::register_file(path, &source);
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
-    let body = parse(&source, path, file, id, diagnostics)?;
+    let body = parse(fs, &source, path, file, id, diagnostics)?;
     let imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     program.modules.push(Rc::new(Module {
         id,
@@ -151,7 +151,14 @@ fn import_source(s: &Stmt) -> Option<(String, Span)> {
     }
 }
 
-fn parse(source: &str, path: &Path, file: u32, module: usize, diagnostics: &mut Vec<Diag>) -> Result<Vec<Stmt>> {
+fn parse(
+    fs: &dyn Fs,
+    source: &str,
+    path: &Path,
+    file: u32,
+    module: usize,
+    diagnostics: &mut Vec<Diag>,
+) -> Result<Vec<Stmt>> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
     if source_type.is_jsx() {
@@ -178,15 +185,451 @@ fn parse(source: &str, path: &Path, file: u32, module: usize, diagnostics: &mut 
     if syntax_failed {
         return Ok(Vec::new());
     }
-    let (body, errors) = Lowerer {
+    let (mut body, errors) = Lowerer {
         file,
         module,
         class_context: std::cell::Cell::new(false),
         super_call: std::cell::Cell::new(false),
     }
     .program_diagnostics(&ret.program);
+    if errors.is_empty() {
+        normalize_commonjs(fs, path, &mut body)?;
+    }
     diagnostics.extend(errors);
     Ok(body)
+}
+
+fn commonjs_error(span: Span, reason: &str) -> Diag {
+    Diag::new(span, format!("unsupported CommonJS source: {reason}"))
+        .code(diag::Code::NpmImport)
+        .help("use one top-level `module.exports = function (...) { ... }` or export a local function; require(), named exports, and Node wrapper globals are unavailable")
+}
+
+fn commonjs_export(statement: &Stmt) -> Option<&Expr> {
+    let Stmt::Expr(Expr {
+        kind: ExprKind::Assign {
+            op: None,
+            target,
+            value,
+        },
+        ..
+    }) = statement
+    else {
+        return None;
+    };
+    matches!(&target.kind, ExprKind::Member { obj, prop, optional: false, .. }
+        if prop == "exports" && matches!(&obj.kind, ExprKind::Ident(name) if name == "module"))
+    .then_some(value)
+}
+
+fn esm_package_source(fs: &dyn Fs, path: &Path, span: Span) -> Result<bool> {
+    for directory in path.parent().into_iter().flat_map(Path::ancestors) {
+        let manifest_path = directory.join("package.json");
+        if !fs.is_file(&manifest_path) {
+            continue;
+        }
+        let source = fs
+            .read_to_string(&manifest_path)
+            .map_err(|error| commonjs_error(span, &format!("can't read {}: {error}", manifest_path.display())))?;
+        let manifest: serde_json::Value = serde_json::from_str(&source)
+            .map_err(|error| commonjs_error(span, &format!("invalid {}: {error}", manifest_path.display())))?;
+        let module_target = manifest
+            .get("module")
+            .and_then(|value| value.as_str())
+            .and_then(|target| fs.canonicalize(&directory.join(target)).ok());
+        return Ok(manifest.get("type").and_then(|value| value.as_str()) == Some("module")
+            || module_target.as_deref() == Some(path));
+    }
+    Ok(false)
+}
+
+/// A static function export needs no Node module wrapper. Normalize only that assignment, retaining
+/// its evaluation position and the original function's source spans and lexical environment.
+fn normalize_commonjs(fs: &dyn Fs, path: &Path, body: &mut [Stmt]) -> Result<()> {
+    let has_esm = body.iter().any(|statement| {
+        matches!(
+            statement,
+            Stmt::Import { .. }
+                | Stmt::ExportNames { .. }
+                | Stmt::ExportAll { .. }
+                | Stmt::Exported(_)
+                | Stmt::ExportDefault(_)
+        )
+    });
+    let exports: Vec<_> = body
+        .iter()
+        .enumerate()
+        .filter_map(|(index, statement)| commonjs_export(statement).map(|value| (index, value.span)))
+        .collect();
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    let esm_package = extension == Some("js")
+        && (!exports.is_empty() || !has_esm)
+        && esm_package_source(fs, path, exports.first().map_or(Span::NONE, |(_, span)| *span))?;
+    if let Some(&(index, span)) = exports.first() {
+        if exports.len() != 1 {
+            return Err(commonjs_error(
+                exports[1].1,
+                "module.exports must be assigned exactly once",
+            ));
+        }
+        if !matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("js" | "cjs")
+        ) {
+            return Err(commonjs_error(
+                span,
+                "module.exports is only supported in .js or .cjs sources",
+            ));
+        }
+        if esm_package {
+            return Err(commonjs_error(
+                span,
+                "module.exports is unavailable in an ESM package source",
+            ));
+        }
+        if has_esm {
+            return Err(commonjs_error(span, "CommonJS and ESM declarations cannot be mixed"));
+        }
+        let value = commonjs_export(&body[index]).expect("export was found above");
+        let local_function = match &value.kind {
+            ExprKind::Func(_) => true,
+            ExprKind::Ident(name) => body.iter().enumerate().any(|(declaration_index, statement)| {
+                matches!(statement, Stmt::Func(function) if function.name.as_ref() == Some(name))
+                    || (declaration_index < index
+                        && matches!(statement, Stmt::Decl {
+                        pat: Pat::Id(local, _), init: Some(Expr { kind: ExprKind::Func(_), .. }), ..
+                    } if local == name))
+            }),
+            _ => false,
+        };
+        if !local_function {
+            return Err(commonjs_error(
+                span,
+                "module.exports must directly name a local function or contain a function expression",
+            ));
+        }
+        let statement = std::mem::replace(&mut body[index], Stmt::Block(Vec::new()));
+        let Stmt::Expr(Expr {
+            kind: ExprKind::Assign { value, .. },
+            ..
+        }) = statement
+        else {
+            unreachable!("export was found above");
+        };
+        body[index] = Stmt::ExportDefault(*value);
+    }
+    if !exports.is_empty() || (!has_esm && !esm_package && matches!(extension, Some("js" | "cjs"))) {
+        CommonJsScope { arguments_bound: false }.block(body)?;
+    }
+    Ok(())
+}
+
+fn validate_commonjs_name(name: &str, span: Span) -> Result<()> {
+    if matches!(name, "module" | "exports" | "require" | "__filename" | "__dirname") {
+        return Err(commonjs_error(
+            span,
+            &format!("Node wrapper name `{name}` is unavailable outside the static export assignment"),
+        ));
+    }
+    Ok(())
+}
+
+fn binds_arguments(pattern: &Pat) -> bool {
+    let mut names = Vec::new();
+    pattern.names(&mut names);
+    names.iter().any(|name| name == "arguments")
+}
+
+fn declares_lexical_arguments(statement: &Stmt) -> bool {
+    match statement {
+        Stmt::Decl { kind, pat, .. } => *kind != DeclKind::Var && binds_arguments(pat),
+        Stmt::Func(function) => function.name.as_deref() == Some("arguments"),
+        _ => false,
+    }
+}
+
+/// Sloppy CommonJS `arguments` can alias parameters. Until strictness is represented in IR, only
+/// explicit lexical/parameter bindings named `arguments` are accepted in static CommonJS sources.
+#[derive(Clone, Copy)]
+struct CommonJsScope {
+    arguments_bound: bool,
+}
+
+impl CommonJsScope {
+    fn block(self, body: &[Stmt]) -> Result<()> {
+        let scope = Self {
+            arguments_bound: self.arguments_bound || body.iter().any(declares_lexical_arguments),
+        };
+        for statement in body {
+            scope.statement(statement)?;
+        }
+        Ok(())
+    }
+
+    fn pattern(self, pattern: &Pat) -> Result<()> {
+        match pattern {
+            Pat::Id(name, span) => validate_commonjs_name(name, *span),
+            Pat::Obj { props, rest, .. } => {
+                for (_, pattern) in props {
+                    self.pattern(pattern)?;
+                }
+                if let Some((name, span)) = rest {
+                    validate_commonjs_name(name, *span)?;
+                }
+                Ok(())
+            }
+            Pat::Arr { elems, rest, .. } => {
+                for pattern in elems.iter().flatten() {
+                    self.pattern(pattern)?;
+                }
+                if let Some((name, span)) = rest {
+                    validate_commonjs_name(name, *span)?;
+                }
+                Ok(())
+            }
+            Pat::Default(pattern, value) => {
+                self.pattern(pattern)?;
+                self.expression(value)
+            }
+        }
+    }
+
+    fn function(self, function: &Func) -> Result<()> {
+        if let Some(name) = &function.name {
+            validate_commonjs_name(name, function.span)?;
+        }
+        let scope = Self {
+            arguments_bound: (function.is_arrow && self.arguments_bound)
+                || function.params.iter().any(|parameter| binds_arguments(&parameter.pat)),
+        };
+        for parameter in &function.params {
+            scope.pattern(&parameter.pat)?;
+            if let Some(value) = &parameter.default {
+                scope.expression(value)?;
+            }
+        }
+        match &function.body {
+            FnBody::Expr(expression) => scope.expression(expression),
+            FnBody::Block(body) => scope.block(body),
+        }
+    }
+
+    fn statement(self, statement: &Stmt) -> Result<()> {
+        match statement {
+            Stmt::Decl { pat, init, .. } => {
+                self.pattern(pat)?;
+                if let Some(value) = init {
+                    self.expression(value)?;
+                }
+            }
+            Stmt::Func(function) => self.function(function)?,
+            Stmt::Expr(expression) | Stmt::Throw(expression) | Stmt::ExportDefault(expression) => {
+                self.expression(expression)?
+            }
+            Stmt::Return(expression, _) => {
+                if let Some(expression) = expression {
+                    self.expression(expression)?;
+                }
+            }
+            Stmt::If(test, yes, no) => {
+                self.expression(test)?;
+                self.block(yes)?;
+                if let Some(no) = no {
+                    self.block(no)?;
+                }
+            }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+                ..
+            } => {
+                let scope = Self {
+                    arguments_bound: self.arguments_bound || init.as_deref().is_some_and(declares_lexical_arguments),
+                };
+                if let Some(init) = init {
+                    scope.statement(init)?;
+                }
+                for expression in test.iter().chain(update) {
+                    scope.expression(expression)?;
+                }
+                scope.block(body)?;
+            }
+            Stmt::ForOf {
+                kind, pat, iter, body, ..
+            } => {
+                let scope = Self {
+                    arguments_bound: self.arguments_bound || (*kind != DeclKind::Var && binds_arguments(pat)),
+                };
+                scope.pattern(pat)?;
+                scope.expression(iter)?;
+                scope.block(body)?;
+            }
+            Stmt::ForIn {
+                kind,
+                target,
+                iter,
+                body,
+                ..
+            } => {
+                let scope = Self {
+                    arguments_bound: self.arguments_bound
+                        || (matches!(kind, Some(DeclKind::Let | DeclKind::Const))
+                            && matches!(&target.kind, ExprKind::Ident(name) if name == "arguments")),
+                };
+                scope.expression(target)?;
+                scope.expression(iter)?;
+                scope.block(body)?;
+            }
+            Stmt::While(test, body) => {
+                self.expression(test)?;
+                self.block(body)?;
+            }
+            Stmt::Try {
+                block,
+                param,
+                handler,
+                finalizer,
+            } => {
+                self.block(block)?;
+                if let Some((name, span)) = param {
+                    validate_commonjs_name(name, *span)?;
+                }
+                if let Some(handler) = handler {
+                    Self {
+                        arguments_bound: self.arguments_bound
+                            || param.as_ref().is_some_and(|(name, _)| name == "arguments"),
+                    }
+                    .block(handler)?;
+                }
+                if let Some(finalizer) = finalizer {
+                    self.block(finalizer)?;
+                }
+            }
+            Stmt::Switch { disc, cases, .. } => {
+                self.expression(disc)?;
+                let scope = Self {
+                    arguments_bound: self.arguments_bound
+                        || cases
+                            .iter()
+                            .any(|(_, body)| body.iter().any(declares_lexical_arguments)),
+                };
+                for (test, body) in cases {
+                    if let Some(test) = test {
+                        scope.expression(test)?;
+                    }
+                    scope.block(body)?;
+                }
+            }
+            Stmt::Block(body) => self.block(body)?,
+            Stmt::Exported(statement) => self.statement(statement)?,
+            Stmt::Import { .. }
+            | Stmt::ExportNames { .. }
+            | Stmt::ExportAll { .. }
+            | Stmt::TypeAlias { .. }
+            | Stmt::Break(_)
+            | Stmt::Continue(_) => {}
+        }
+        Ok(())
+    }
+
+    fn expression(self, expression: &Expr) -> Result<()> {
+        match &expression.kind {
+            ExprKind::Ident(name) => {
+                validate_commonjs_name(name, expression.span)?;
+                if name == "arguments" && !self.arguments_bound {
+                    return Err(commonjs_error(
+                        expression.span,
+                        "implicit arguments can alias parameters in CommonJS; only explicit bindings named arguments are supported",
+                    ));
+                }
+            }
+            ExprKind::Func(function) => self.function(function)?,
+            ExprKind::Class(class) => {
+                validate_commonjs_name(&class.name, class.span)?;
+                if let Some(base) = &class.base {
+                    validate_commonjs_name(base, class.span)?;
+                }
+                for field in &class.fields {
+                    if let Some(value) = &field.init {
+                        self.expression(value)?;
+                    }
+                }
+                for (_, _, method) in &class.methods {
+                    self.function(method)?;
+                }
+                if let Some(constructor) = &class.constructor {
+                    self.function(constructor)?;
+                }
+            }
+            ExprKind::Array(items) => {
+                for ArrEl::Item(value) | ArrEl::Spread(value) in items {
+                    self.expression(value)?;
+                }
+            }
+            ExprKind::Object(properties) => {
+                for property in properties {
+                    match property {
+                        Prop::KV(key, value) => {
+                            if let PropKey::Computed(key) = key {
+                                self.expression(key)?;
+                            }
+                            self.expression(value)?;
+                        }
+                        Prop::Spread(value) => self.expression(value)?,
+                    }
+                }
+            }
+            ExprKind::Template(_, expressions) | ExprKind::Sequence(expressions) => {
+                for expression in expressions {
+                    self.expression(expression)?;
+                }
+            }
+            ExprKind::Unary(_, value)
+            | ExprKind::IsNullish(value, _)
+            | ExprKind::Update { target: value, .. }
+            | ExprKind::Member { obj: value, .. }
+            | ExprKind::Chain(value)
+            | ExprKind::Await(value)
+            | ExprKind::As(value, _)
+            | ExprKind::NonNull(value) => self.expression(value)?,
+            ExprKind::Instanceof(left, right)
+            | ExprKind::Binary(_, left, right)
+            | ExprKind::Logical(_, left, right)
+            | ExprKind::Assign {
+                target: left,
+                value: right,
+                ..
+            }
+            | ExprKind::Index {
+                obj: left,
+                index: right,
+                ..
+            } => {
+                self.expression(left)?;
+                self.expression(right)?;
+            }
+            ExprKind::Cond(test, yes, no) => {
+                for expression in [test, yes, no] {
+                    self.expression(expression)?;
+                }
+            }
+            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => {
+                self.expression(callee)?;
+                for ArrEl::Item(value) | ArrEl::Spread(value) in args {
+                    self.expression(value)?;
+                }
+            }
+            ExprKind::Num(_)
+            | ExprKind::Str(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Null
+            | ExprKind::Undefined
+            | ExprKind::Regex { .. } => {}
+        }
+        Ok(())
+    }
 }
 
 fn resolve(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
@@ -211,17 +654,19 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
         base.with_extension("mts"),
         base.with_extension("mjs"),
         base.with_extension("js"),
+        base.with_extension("cjs"),
         base.join("index.ts"),
         base.join("index.mts"),
         base.join("index.mjs"),
         base.join("index.js"),
+        base.join("index.cjs"),
     ]);
     for c in candidates {
         if fs.is_file(&c)
             && !c.to_string_lossy().ends_with(".d.ts")
             && matches!(
                 c.extension().and_then(|e| e.to_str()),
-                Some("ts" | "mts" | "js" | "mjs")
+                Some("ts" | "mts" | "js" | "mjs" | "cjs")
             )
         {
             return fs.canonicalize(&c).map_err(|e| Diag::new(span, e.to_string()));
@@ -230,7 +675,7 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
     if fs.is_file(base) {
         return Err(Diag::new(
             span,
-            format!("can't import \"{spec}\": expected TypeScript or ESM JavaScript source"),
+            format!("can't import \"{spec}\": expected TypeScript or JavaScript source"),
         ));
     }
     Err(Diag::new(span, format!("can't find \"{spec}\"")))
@@ -239,7 +684,7 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
 fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
     Diag::new(span, format!("can't import \"{spec}\": {reason}"))
         .code(diag::Code::NpmImport)
-        .help("install a source package locally; its TypeScript or ESM source must fit Zero's PHP compiler subset")
+        .help("install a source package locally; its TypeScript, ESM, or static CommonJS source must fit Zero's PHP compiler subset")
 }
 
 fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
@@ -275,7 +720,9 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
         .map_err(|e| package_error(spec, span, &format!("can't read package.json: {e}")))?;
     let manifest: serde_json::Value =
         serde_json::from_str(&source).map_err(|e| package_error(spec, span, &format!("invalid package.json: {e}")))?;
-    let module_package = manifest.get("type").and_then(|v| v.as_str()) == Some("module");
+    let legacy_main = manifest.get("exports").is_none()
+        && subpath == "."
+        && manifest.get("module").and_then(|value| value.as_str()).is_none();
     let target = if let Some(exports) = manifest.get("exports") {
         let entry = if exports
             .as_object()
@@ -302,19 +749,12 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
         subpath
     } else if let Some(module) = manifest.get("module").and_then(|v| v.as_str()) {
         module.to_string()
-    } else if module_package
-        || manifest
-            .get("main")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| s.ends_with(".mjs") || s.ends_with(".ts") || s.ends_with(".mts"))
-    {
+    } else {
         manifest
             .get("main")
             .and_then(|v| v.as_str())
             .unwrap_or("./index.js")
             .to_string()
-    } else {
-        return Err(package_error(spec, span, "CommonJS packages need an ESM source export"));
     };
     if target.starts_with('/')
         || target.contains(['\\', '%', '#', '?', '*'])
@@ -327,18 +767,30 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
         ));
     }
     let path = package.join(&target);
+    // Node's legacy `main` field can omit .js or name a directory. Explicit exports and source
+    // `module` targets stay exact; no probing may bypass an export map's selected target.
+    let path = if legacy_main && !fs.is_file(&path) {
+        let mut with_js = path.clone().into_os_string();
+        with_js.push(".js");
+        [PathBuf::from(with_js), path.join("index.js")]
+            .into_iter()
+            .find(|candidate| fs.is_file(candidate))
+            .unwrap_or(path)
+    } else {
+        path
+    };
     if !fs.is_file(&path)
         || target.ends_with(".d.ts")
         || target.ends_with(".d.mts")
         || !matches!(
             path.extension().and_then(|extension| extension.to_str()),
-            Some("ts" | "mts" | "js" | "mjs")
+            Some("ts" | "mts" | "js" | "mjs" | "cjs")
         )
     {
         return Err(package_error(
             spec,
             span,
-            "expected TypeScript or ESM JavaScript source at the exact package target",
+            "expected TypeScript or JavaScript source at the exact package target",
         ));
     }
     let resolved = fs
@@ -349,16 +801,6 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
         .map_err(|e| package_error(spec, span, &e.to_string()))?;
     if !resolved.starts_with(package) {
         return Err(package_error(spec, span, "package source target escapes its package"));
-    }
-    if resolved.extension().is_some_and(|extension| extension == "js")
-        && !module_package
-        && manifest.get("module").and_then(|v| v.as_str()) != Some(target.as_str())
-    {
-        return Err(package_error(
-            spec,
-            span,
-            ".js package exports require type: module; use .mjs for ESM",
-        ));
     }
     Ok(resolved)
 }
@@ -406,11 +848,15 @@ mod tests {
             ("/p/node_modules/@demo/helpers/src/extra.mjs", "export const other = 4;"),
             (
                 "/p/node_modules/@demo/helpers/node_modules/shared/package.json",
-                r#"{"type":"module","main":"./index.js"}"#,
+                r#"{"type":"module","main":"./lib"}"#,
             ),
             (
-                "/p/node_modules/@demo/helpers/node_modules/shared/index.js",
-                "export const value = 5;",
+                "/p/node_modules/@demo/helpers/node_modules/shared/lib/index.js",
+                "import './helper.js'; const module = 5; export const value = module;",
+            ),
+            (
+                "/p/node_modules/@demo/helpers/node_modules/shared/lib/helper.js",
+                "function count() { return arguments.length; }",
             ),
             ("/p/node_modules/shared/package.json", r#"{"module":"./index.mjs"}"#),
             ("/p/node_modules/shared/index.mjs", "export const value = 9;"),
@@ -421,13 +867,27 @@ mod tests {
             .iter()
             .map(|module| module.path.to_string_lossy().into_owned())
             .collect();
-        assert_eq!(paths.len(), 5, "{paths:?}");
+        assert_eq!(paths.len(), 6, "{paths:?}");
         assert!(paths.contains(&"/p/node_modules/@demo/helpers/src/value.ts".to_string()));
-        assert!(paths.contains(&"/p/node_modules/@demo/helpers/node_modules/shared/index.js".to_string()));
+        assert!(paths.contains(&"/p/node_modules/@demo/helpers/node_modules/shared/lib/index.js".to_string()));
         assert_eq!(
             resolve(&*program.fs, Path::new("/p/zero.config.ts"), "shared", Span::NONE).unwrap(),
             PathBuf::from("/p/node_modules/shared/index.mjs")
         );
+        for (main, file) in [
+            ("./build/index.es5", "/p/node_modules/pkg/build/index.es5.js"),
+            ("./dist/lib.umd", "/p/node_modules/pkg/dist/lib.umd/index.js"),
+        ] {
+            let fs = memory(&[
+                ("/p/zero.config.ts", ""),
+                ("/p/node_modules/pkg/package.json", &format!(r#"{{"main":"{main}"}}"#)),
+                (file, "export const value = 1;"),
+            ]);
+            assert_eq!(
+                resolve(&fs, Path::new("/p/zero.config.ts"), "pkg", Span::NONE).unwrap(),
+                PathBuf::from(file)
+            );
+        }
     }
 
     #[test]
@@ -444,14 +904,17 @@ mod tests {
                 "no exact import/default",
             ),
             (r#"{"exports":"./../outside.ts"}"#, "pkg", "must stay inside"),
+            (r#"{"exports":"./source"}"#, "pkg", "exact package target"),
             (
                 r#"{"exports":{"./*":"./source.ts"}}"#,
                 "pkg/private",
                 "no exact import/default",
             ),
-            (r#"{"main":"./source.js"}"#, "pkg", "CommonJS"),
-            (r#"{"exports":"./source.js"}"#, "pkg", "require type: module"),
-            (r#"{"exports":"./source.d.ts"}"#, "pkg", "expected TypeScript or ESM"),
+            (
+                r#"{"exports":"./source.d.ts"}"#,
+                "pkg",
+                "expected TypeScript or JavaScript",
+            ),
             (
                 r#"{"exports":"./source.ts"}"#,
                 "node:fs",
@@ -467,6 +930,164 @@ mod tests {
             ]);
             let error = resolve(&fs, Path::new("/p/zero.config.ts"), spec, Span::NONE).unwrap_err();
             assert!(error.message.contains(reason), "{manifest}: {error:?}");
+        }
+    }
+
+    #[test]
+    fn static_commonjs_function_exports_evaluate_with_their_lexical_environment() {
+        let fs = memory(&[
+            (
+                "/p/zero.config.ts",
+                "import add from 'anonymous'; import multiply from './local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
+            ),
+            ("/p/node_modules/anonymous/package.json", "{}"),
+            (
+                "/p/node_modules/anonymous/index.js",
+                "'use strict'; const offset = 3; module.exports = function(value) { return value + offset; };",
+            ),
+            (
+                "/p/local.cjs",
+                "module.exports = multiply; function multiply(value) { const arguments = [value]; const read = () => arguments[0]; return read() * factor; } const factor = 2;",
+            ),
+            ("/p/node_modules/local/package.json", r#"{"main":"./source"}"#),
+            (
+                "/p/node_modules/local/source.js",
+                "const subtract = function(arguments) { return arguments - 1; }; module.exports = subtract;",
+            ),
+        ]);
+        let program = load_from(Rc::new(fs), Path::new("/p/zero.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let result = crate::eval::Evaluator::new(&program).run().unwrap();
+        let crate::value::Value::Array(values) = result else {
+            panic!("{result:?}");
+        };
+        let actual: Vec<_> = values
+            .borrow()
+            .iter()
+            .map(|value| {
+                let crate::value::Value::Num(value) = value else {
+                    panic!("{value:?}");
+                };
+                *value
+            })
+            .collect();
+        assert_eq!(actual, [7.0, 10.0, 5.0]);
+    }
+
+    #[test]
+    fn commonjs_refuses_dynamic_exports_wrapper_access_and_esm_mixing() {
+        for (source, target, manifest, reason) in [
+            (
+                "exports.value = function() {};",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "`exports`",
+            ),
+            (
+                "module['exports'] = function() {};",
+                "source.cjs",
+                r#"{"main":"./source.cjs"}"#,
+                "`module`",
+            ),
+            (
+                "module.exports = function() { if (false) { return require('fs'); } };",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "`require`",
+            ),
+            (
+                "module.exports = function() {}; module.exports = function() {};",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "exactly once",
+            ),
+            (
+                "module.exports = function() {}; function mutate() { module.exports = function() {}; }",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "`module`",
+            ),
+            (
+                "const module = {}; module.exports = function() {};",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "`module`",
+            ),
+            (
+                "module.exports = function() {}; export const value = 1;",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "cannot be mixed",
+            ),
+            (
+                "module.exports = function() {};",
+                "source.js",
+                r#"{"type":"module","main":"./source.js"}"#,
+                "ESM package",
+            ),
+            (
+                "module.exports = function() {};",
+                "source.js",
+                r#"{"module":"./source.js"}"#,
+                "ESM package",
+            ),
+            (
+                "module.exports = function() {};",
+                "source.mjs",
+                r#"{"exports":"./source.mjs"}"#,
+                ".js or .cjs",
+            ),
+            (
+                "module.exports = 1;",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "local function",
+            ),
+            (
+                "module.exports = factory(); function factory() { return function() {}; }",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "local function",
+            ),
+            (
+                "module.exports = missing;",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "local function",
+            ),
+            (
+                "module.exports = function() { return __dirname; };",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "`__dirname`",
+            ),
+            (
+                "module.exports = function(value) { value = 2; return arguments[0]; };",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "implicit arguments",
+            ),
+            (
+                "module.exports = function(arguments) { return function() { return arguments[0]; }; };",
+                "source.js",
+                r#"{"main":"./source.js"}"#,
+                "implicit arguments",
+            ),
+        ] {
+            let target_path = format!("/p/node_modules/pkg/{target}");
+            let fs = memory(&[
+                ("/p/zero.config.ts", "import fn from 'pkg'; export default fn;"),
+                ("/p/node_modules/pkg/package.json", manifest),
+                (&target_path, source),
+            ]);
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/zero.config.ts"))
+                .err()
+                .unwrap_or_else(|| panic!("accepted {source}"));
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == diag::Code::NpmImport && diagnostic.message.contains(reason)),
+                "{source}: {diagnostics:?}"
+            );
         }
     }
 

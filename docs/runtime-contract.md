@@ -538,13 +538,53 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
-`int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` and `undefined` are both PHP `null`;
+`int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` = PHP `null`; explicit `undefined` = `JsUndefined::Value`;
 arrays are `Zero\JsArray`, plain objects are `Zero\JsObject`, both handles
 with identity; class instances are `JsObject` handles with a non-enumerable
 `JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `Zero\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
+
+Some typed missing reads and annotation-only `undefined`/`void` still normalize
+to PHP null. Explicit undefined expressions and imported JavaScript's dynamic
+operations preserve undefined identity: it is falsy, has typeof `undefined`,
+stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
+JSON arrays. This distinction does not change schema nullability.
+Optional object and array parameters accept explicit undefined as well as null;
+truthiness checks and typed default initializers treat both as absent. Typed
+object property reads distinguish missing properties from explicit null. Strict
+null/undefined comparisons refine only the value being compared; `!= null`
+excludes both.
+
+Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
+does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
+calls, constructors, iteration and primitive operations against the supported
+value model; unknown methods and unsupported signatures throw `JsError`
+TypeError. Calls resolve an own method before evaluating arguments. Extracted
+supported builtin methods retain the receiver passed through `call`/`apply`.
+Ordinary functions receive `JsArguments` (numeric properties, independent
+non-enumerable length); arrows inherit the surrounding arguments. Parameters
+are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
+loose equality and own-key `for…in` share the evaluator's lowering.
+
+Dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
+These support the small constructor/method subset exercised by imported
+helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
+groups and undefined captures. Dynamic string match/split/replace preserve
+these semantics. Literal regexes allocate distinct objects; typed `re` remains
+the state-free cached helper. `Array.from` interleaves reads with its mapper,
+and arrays use live length. The standard Math namespace has stable identity.
+
+This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,
+accessors, custom iterators, sparse arrays and lone surrogates remain outside
+the supported subset. JSON replacers/revivers, Error cause options, Date component constructors,
+Date string coercion and nondecimal number formatting fail explicitly instead
+of ignoring arguments. See the [npm probes](../examples/npm-compat/README.md)
+for exact library exports and inputs qualified against Node.
+Object string formatting currently uses the default object tag without invoking
+an authored `toString` method. Pass primitive strings to formatting helpers;
+custom string coercion is not qualified by the package probes.
 
 Configuration evaluation uses the same UTF-16 units for numeric string indexes,
 `slice` and `split("")`; a result containing a lone surrogate is rejected with a
@@ -617,7 +657,7 @@ Objects (`JsObject`):
 - `keys(JsObject $o): JsArray`, `values(...)`: JsArray, `entries(...)`: JsArray of JsArray pairs; `fromEntries(JsArray $entries): JsObject`.
 - `obj(array ...$parts): JsObject` writes per key in source order; `omit(JsObject $o, array $keys): JsObject` implements object rest.
 - `hasOwn(JsObject|JsArray $o, mixed $key): bool`; `key(mixed $key): string` coerces computed keys as JS does.
-- `clone(mixed $v): mixed` preserves aliases and cycles; closures throw `DataCloneError`. Internal `detach` preserves closures and RegExp by reference while copying containers for runtime ownership.
+- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Internal `detach` also copies arguments objects, while preserving closures and RegExp by reference for runtime ownership.
 
 JSON:
 - `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Cycles throw `TypeError`; `jsonTree` provides the same value tree for foreign encoders. Indent number (clamped 10) or string, exactly as JS formats it.

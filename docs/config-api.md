@@ -453,8 +453,8 @@ What the design specifies and this build doesn't do yet:
 
 ## The subset (enforced at build time)
 
-Supported: `const`/`let`, functions, arrows, closures, destructuring,
-spread, template literals, `if`/`for`/`for...of`/`while`/`switch`/`try`,
+Supported: `const`/`let`/`var`, functions, arrows, closures, destructuring,
+spread, template literals, `if`/`for`/`for...of`/`for...in`/`while`/`switch`/`try`,
 `?.`, `??`, objects, arrays, type annotations, type aliases, interfaces,
 generics (erased), `structuredClone`.
 
@@ -469,10 +469,13 @@ Use [`zero check --json`](compiler-diagnostics.md) for machine-readable blockers
 The [tested compatibility inventory](language-support.md) links specific
 restrictions and intentional differences to executable evidence.
 
-Indexed array/tuple reads and destructured elements include `null` when an
-entry is missing (Zero represents `undefined` as PHP null). Check the fetched
+Statically typed array/tuple reads and destructured elements include `null` when an
+entry is missing. Check the fetched
 value or supply a default with `??` or a destructuring initializer. A non-null
 assertion (`values[0]!`) is available when your code guarantees the entry exists.
+Adding `unknown` to a direct read from a declared string array uses checked
+JavaScript addition and returns `string | number`: a missing element can yield
+`NaN`. This does not permit `unknown + number` or nullable string elements.
 
 Objects and arrays have reference identity: assignment, argument passing,
 spreads and closures share their descendants as in JavaScript. Use
@@ -490,18 +493,21 @@ growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
 read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
 non-numeric index types are compile errors.
 
-Zero represents `undefined` as `null`: `typeof undefined` gives `"object"`,
-`JSON.stringify({ x: undefined })` gives `{"x":null}`, `String(undefined)`
-gives `"null"`, and destructuring defaults also fire on explicit `null`.
-Optional parameters include null in body reads; defaults supply missing values.
+Explicit `undefined` has its own runtime value: `typeof undefined` gives
+`"undefined"`, `String(undefined)` gives `"undefined"`, and JSON omits undefined
+object properties. Some statically typed missing reads still use PHP null:
+indexed reads, optional properties and schema nullable values retain their
+existing contracts. Optional typed parameters include null in body reads.
+Imported JavaScript distinguishes missing values from explicit null throughout
+its checked operations.
 
 Rejected with a located error and a fix: `this` outside class methods or their
-arrows, `var`, `enum`, `==` (except `== null`), `in`, `delete`, generators,
-`for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
+arrows, `enum`, `in`, `delete`, generators,
+labels, getters/setters, BigInt, dynamic `import()`, `any`,
 `eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
-(use a literal position or omit it; PHP erases runtime undefined into null), `await` on
+(use a literal position or omit it; typed missing values use the nullable boundary), `await` on
 anything that isn't a Zero API call or your own `async` function, an `async`
 call without `await`.
 
@@ -511,18 +517,25 @@ and `db`, and stops runaway loops with a step budget.
 Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally installed
 source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
-an explicit `module` entry, or an ESM `main` entry. `.js` package entries require
-`"type": "module"` or an explicit `module` entry; `.mjs`, `.ts` and `.mts` identify
-source directly. Export patterns, `require`-only/CommonJS packages, Node built-ins,
+an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify
+source directly. A narrow CommonJS subset supports one top-level
+`module.exports = function` or assignment of a local function. `require`, named
+CommonJS exports, mixed ESM/CommonJS and implicit sloppy-mode `arguments` are
+refused. Export patterns, Node built-ins,
 package aliases and declaration-only targets are refused. Package entry targets
 must name existing files inside the package; the compiler does not install them.
 Relative `.js` imports can resolve to their TypeScript source counterparts.
 
-Every reachable module is checked against the same language subset. Finding a
-package does not make its untyped JavaScript, `var`, host APIs or other unsupported
-constructs compile. Declaration files are not automatically applied as parameter
-types. Type-only bare imports remain erased. See the [real package probes](../examples/npm-compat/README.md)
-for pinned versions, source adaptations, Node/PHP comparisons and known failures.
+Raw `.js`, `.mjs` and `.cjs` inputs use checked dynamic operations for supported
+values; `.ts` and `.mts` retain static type checking regardless of where they
+are installed. Declaration files are not automatically applied as parameter
+types. Function-scoped `var`, ordinary function `arguments`, comma expressions,
+loose equality and own-key `for…in` are supported. Arrays are dense and plain
+objects have no user-defined prototype chain. Host APIs, custom iterators,
+arbitrary prototypes and asynchronous effects are not supplied by package
+resolution. Type-only bare imports remain erased. See the
+[real package probes](../examples/npm-compat/README.md) for pinned versions,
+source adaptations and Node/PHP comparisons.
 
 
 ### Classes in callbacks

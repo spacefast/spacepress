@@ -88,6 +88,10 @@ function read(item: Draft, key: keyof Projection<Draft, "title" | "state">): str
 export default defineConfig({
   tables: {},
   actions: {
+    nonemptyValues: action({
+      input: {},
+      handler: () => Array.from(["first"]).map(value => value.toUpperCase()),
+    }),
     typeReport: action({
       input: { entry: json().$type<Projection<Draft>>().notNull() },
       handler: (input): Report => {

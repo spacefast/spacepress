@@ -30,7 +30,8 @@ export const probes = [
     entry: "index.mjs",
     binding: "clone",
     format: "esm",
-    body: `const original = {title: "before", nested: {value: 1}, list: [1, 2]}; const copied = clone(original); copied.nested.value = 9; copied.list.push(3); return {original, copied, primitive: clone(5), empty: clone({})};`,
+    fixture: `export function fixture() { return {set: new Set([{value: 2}]), map: new Map([["a", {value: 3}]]), date: new Date(0), pattern: /ab/gi}; }`,
+    body: `const original = {title: "before", nested: {value: 1}, list: [1, 2]}; const copied = clone(original); copied.nested.value = 9; copied.list.push(3); const source = fixture(); const special = clone(source); special.map.get("a").value = 4; return {original, copied, primitive: clone(5), empty: clone({}), special: {set: Array.from(special.set), map: Array.from(special.map), sourceMap: Array.from(source.map), epoch: special.date.getTime(), pattern: special.pattern.source, flags: special.pattern.flags, matches: special.pattern.test("AB")}};`,
   },
   {
     name: "just-capitalize",
@@ -38,7 +39,7 @@ export const probes = [
     entry: "index.mjs",
     binding: "capitalize",
     format: "esm",
-    body: `return { mixed: capitalize("hELLO WORLD"), empty: capitalize(""), unicode: capitalize("éCOLE"), punctuation: capitalize("!WOW") };`,
+    body: `let invalid = ""; try { capitalize(null); } catch (error) { invalid = error.name + ":" + error.message; } return { mixed: capitalize("hELLO WORLD"), empty: capitalize(""), unicode: capitalize("éCOLE"), punctuation: capitalize("!WOW"), invalid };`,
   },
   {
     typedAdapter: "unknown-number",

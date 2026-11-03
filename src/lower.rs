@@ -278,9 +278,7 @@ impl Lowerer {
         let kind = match v.kind {
             a::VariableDeclarationKind::Const => DeclKind::Const,
             a::VariableDeclarationKind::Let => DeclKind::Let,
-            a::VariableDeclarationKind::Var => {
-                return self.unsupported(v.span, "`var`", "use `let` or `const`");
-            }
+            a::VariableDeclarationKind::Var => DeclKind::Var,
             _ => return self.unsupported(v.span, "`using` declarations", ""),
         };
         for d in &v.declarations {
@@ -388,14 +386,18 @@ impl Lowerer {
                     Some(a::ForStatementInit::VariableDeclaration(v)) => {
                         let mut decls = Vec::new();
                         self.var_decl(v, &mut decls)?;
-                        if decls.len() != 1 {
+                        if decls.len() > 1 && v.kind != a::VariableDeclarationKind::Var {
                             return self.unsupported(
                                 v.span,
                                 "several declarations in a `for` header",
                                 "declare one loop variable",
                             );
                         }
-                        Some(Box::new(decls.pop().expect("one decl")))
+                        Some(Box::new(if decls.len() == 1 {
+                            decls.pop().expect("one decl")
+                        } else {
+                            Stmt::Block(decls)
+                        }))
                     }
                     Some(e) => Some(Box::new(Stmt::Expr(self.expr(e.to_expression())?))),
                 };
@@ -425,6 +427,7 @@ impl Lowerer {
                 let kind = match v.kind {
                     a::VariableDeclarationKind::Const => DeclKind::Const,
                     a::VariableDeclarationKind::Let => DeclKind::Let,
+                    a::VariableDeclarationKind::Var => DeclKind::Var,
                     _ => return self.unsupported(v.span, "this loop declaration", "use `const`"),
                 };
                 Stmt::ForOf {
@@ -436,7 +439,41 @@ impl Lowerer {
                 }
             }
             a::Statement::ForInStatement(f) => {
-                return self.unsupported(f.span, "`for ... in`", "use `for (const key of Object.keys(obj))`");
+                let (kind, target) = match &f.left {
+                    a::ForStatementLeft::VariableDeclaration(v) => {
+                        let kind = match v.kind {
+                            a::VariableDeclarationKind::Const => DeclKind::Const,
+                            a::VariableDeclarationKind::Let => DeclKind::Let,
+                            a::VariableDeclarationKind::Var => DeclKind::Var,
+                            _ => return self.unsupported(v.span, "this loop declaration", "use `const`"),
+                        };
+                        let a::BindingPattern::BindingIdentifier(id) = &v.declarations[0].id else {
+                            return self.unsupported(
+                                v.span,
+                                "destructuring in `for ... in`",
+                                "declare a key identifier",
+                            );
+                        };
+                        (Some(kind), self.mk(id.span, ExprKind::Ident(id.name.to_string())))
+                    }
+                    target => {
+                        let Some(target) = target.as_simple_assignment_target() else {
+                            return self.unsupported(
+                                f.span,
+                                "destructuring in `for ... in`",
+                                "assign a key identifier",
+                            );
+                        };
+                        (None, self.simple_target(target)?)
+                    }
+                };
+                Stmt::ForIn {
+                    kind,
+                    target,
+                    iter: self.expr(&f.right)?,
+                    body: self.body_of(&f.body)?,
+                    span: self.sp(f.span),
+                }
             }
             a::Statement::WhileStatement(w) => Stmt::While(self.expr(&w.test)?, self.body_of(&w.body)?),
             a::Statement::DoWhileStatement(d) => {
@@ -790,6 +827,7 @@ impl Lowerer {
         self.class_context.set(context);
         Ok(Rc::new(Func {
             name: f.id.as_ref().map(|i| i.name.to_string()),
+            is_arrow: false,
             params: params?,
             body: FnBody::Block(self.block(&body.statements)?),
             is_async: f.r#async,
@@ -811,6 +849,7 @@ impl Lowerer {
         };
         Ok(Rc::new(Func {
             name: None,
+            is_arrow: true,
             params: self.params(&f.params, false)?,
             body,
             is_async: f.r#async,
@@ -1026,7 +1065,12 @@ impl Lowerer {
                     UO::UnaryPlus => UnOp::Plus,
                     UO::LogicalNot => UnOp::Not,
                     UO::Typeof => UnOp::TypeOf,
-                    UO::Void => return self.unsupported(u.span, "`void`", "use `undefined`"),
+                    UO::Void => {
+                        return Ok(self.mk(
+                            u.span,
+                            ExprKind::Sequence(vec![self.expr(&u.argument)?, self.mk(u.span, ExprKind::Undefined)]),
+                        ));
+                    }
                     UO::Delete => {
                         return self.unsupported(
                             u.span,
@@ -1059,17 +1103,16 @@ impl Lowerer {
                                 || e.get_inner_expression().is_specific_id("undefined")
                         };
                         let target = if nullish(&b.right) {
-                            &b.left
+                            Some(&b.left)
                         } else if nullish(&b.left) {
-                            &b.right
+                            Some(&b.right)
                         } else {
-                            return self.unsupported(
-                                b.span,
-                                "loose equality (`==`/`!=`)",
-                                "use `===`/`!==`; `== null` is allowed for nullish checks",
-                            );
+                            None
                         };
-                        return Ok(self.mk(span, ExprKind::IsNullish(Box::new(self.expr(target)?), negated)));
+                        if let Some(target) = target {
+                            return Ok(self.mk(span, ExprKind::IsNullish(Box::new(self.expr(target)?), negated)));
+                        }
+                        if negated { BinOp::LooseNe } else { BinOp::LooseEq }
                     }
                     BO::In => return self.unsupported(b.span, "`in`", "use `Object.hasOwn(obj, key)`"),
                     BO::Instanceof => {
@@ -1170,7 +1213,10 @@ impl Lowerer {
             E::TSTypeAssertion(x) => self.cast(span, &x.expression, &x.type_annotation)?,
             E::TSNonNullExpression(x) => self.mk(span, ExprKind::NonNull(Box::new(self.expr(&x.expression)?))),
             E::TSInstantiationExpression(x) => self.expr(&x.expression)?,
-            E::SequenceExpression(s) => return self.unsupported(s.span, "the comma operator", "split into statements"),
+            E::SequenceExpression(s) => self.mk(
+                s.span,
+                ExprKind::Sequence(s.expressions.iter().map(|e| self.expr(e)).collect::<Result<_>>()?),
+            ),
             E::ThisExpression(t) if self.class_context.get() => self.mk(t.span, ExprKind::Ident("this".into())),
             E::ThisExpression(t) => {
                 return self.unsupported(
@@ -1541,9 +1587,11 @@ use oxc_span::GetSpan;
 fn contains_constructor_return(body: &[Stmt]) -> bool {
     body.iter().any(|s| match s {
         Stmt::Return(Some(_), _) => true,
-        Stmt::Block(b) | Stmt::While(_, b) | Stmt::For { body: b, .. } | Stmt::ForOf { body: b, .. } => {
-            contains_constructor_return(b)
-        }
+        Stmt::Block(b)
+        | Stmt::While(_, b)
+        | Stmt::For { body: b, .. }
+        | Stmt::ForOf { body: b, .. }
+        | Stmt::ForIn { body: b, .. } => contains_constructor_return(b),
         Stmt::If(_, a, b) => {
             contains_constructor_return(a) || b.as_ref().is_some_and(|b| contains_constructor_return(b))
         }

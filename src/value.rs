@@ -22,6 +22,9 @@ pub enum Value {
     Num(f64),
     Str(Rc<str>),
     Array(Arr),
+    /// Strict arguments have enumerable index properties and a nonenumerable,
+    /// independently writable `length`; they are not arrays.
+    Arguments(Obj),
     Object(Obj),
     Closure(Rc<Closure>),
     Builtin(Builtin),
@@ -299,6 +302,7 @@ impl Value {
             Value::Num(n) => js_number_to_string(*n),
             Value::Str(s) => format!("{s:?}"),
             Value::Array(_) => "an array".into(),
+            Value::Arguments(_) => "an arguments object".into(),
             Value::Object(_) => "an object".into(),
             Value::Closure(_) | Value::Bound(..) => "a function".into(),
             Value::Builtin(b) => format!("{b:?}"),
@@ -338,6 +342,7 @@ impl Value {
                 parts?.join(",")
             }
             Value::Object(_) => "[object Object]".into(),
+            Value::Arguments(_) => "[object Arguments]".into(),
             Value::Regex(p, f) => format!("/{p}/{f}"),
             _ => return None,
         })
@@ -351,8 +356,10 @@ impl Value {
             (Value::Num(a), Value::Num(b)) => a == b,
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Array(a), Value::Array(b)) => Rc::ptr_eq(a, b),
+            (Value::Arguments(a), Value::Arguments(b)) => Rc::ptr_eq(a, b),
             (Value::Object(a), Value::Object(b)) => Rc::ptr_eq(a, b),
             (Value::Closure(a), Value::Closure(b)) => Rc::ptr_eq(a, b),
+            (Value::Regex(a, af), Value::Regex(b, bf)) => Rc::ptr_eq(a, b) && Rc::ptr_eq(af, bf),
             (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a == b,
             _ => false,

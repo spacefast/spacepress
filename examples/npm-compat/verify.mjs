@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, mkdtemp, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { probes, combined, popularCombined } from "./cases.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const work = path.join(root, ".work");
+const { values: options } = parseArgs({ options: {
+  "report-only": { type: "boolean", default: false },
+  isolated: { type: "boolean", default: false },
+  only: { type: "string", multiple: true },
+} });
+const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "zero-npm-compat-")) : path.join(root, ".work");
 const zero = path.resolve(process.env.ZERO_BIN ?? path.resolve(root, "../../target/debug/zero"));
 const run = (command, args) => {
   const result = spawnSync(command, args, {
@@ -55,8 +62,9 @@ const config = `import {action, defineConfig} from "zero";
 import {run} from "./run";
 export default defineConfig({name: "npm-compat", actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
 `;
-await rm(work, { recursive: true, force: true });
+if (!options.isolated) await rm(work, { recursive: true, force: true });
 await mkdir(work, { recursive: true });
+if (options.isolated) await symlink(path.join(root, "node_modules"), path.join(work, "node_modules"), "dir");
 const report = { compiler: zero, binarySha256: hash(await readFile(zero)), packages: [], probes: [] };
 for (const probe of probes) {
   const packageRoot = path.join(root, "node_modules", probe.name);
@@ -76,17 +84,21 @@ for (const probe of probes) {
         : "module.exports → export default only; algorithm unchanged",
   });
 }
-for (const probe of [...probes, combined, popularCombined]) {
+const selected = [...probes, combined, popularCombined].filter(probe => !options.only || options.only.includes(probe.name));
+if (options.only?.some(name => !selected.some(probe => probe.name === name))) throw new Error("Unknown probe name");
+for (const probe of selected) {
   const libraries = probe.libraries
     ? probes.filter((entry) => probe.libraries.includes(entry.name))
     : [probe];
-  const result = { name: probe.name, oracle: null, routes: [] };
+  const result = { name: probe.name, fixtureSha256: probe.fixture ? hash(probe.fixture) : null, oracle: null, routes: [] };
   const oracleDirectory = path.join(work, probe.name);
   await mkdir(oracleDirectory, { recursive: true });
   const bareImports = libraries
     .map((entry) => importLine(entry, entry.specifier ?? entry.name))
     .join("\n");
-  const functionSource = `export function run() { ${probe.body} }\n`;
+  const fixtureImport = probe.fixture ? `import {fixture} from "./fixture.mjs";\n` : "";
+  if (probe.fixture) await writeFile(path.join(oracleDirectory, "fixture.mjs"), probe.fixture);
+  const functionSource = fixtureImport + `export function run() { ${probe.body} }\n`;
   await writeFile(path.join(oracleDirectory, "oracle.mjs"), bareImports + "\n" + functionSource);
   const oracle = await import(pathToFileURL(path.join(oracleDirectory, "oracle.mjs")).href);
   result.oracle = JSON.parse(JSON.stringify(await oracle.run()));
@@ -97,6 +109,7 @@ for (const probe of [...probes, combined, popularCombined]) {
   ]) {
     const directory = path.join(oracleDirectory, mode);
     await mkdir(directory, { recursive: true });
+    if (probe.fixture) await writeFile(path.join(directory, "fixture.mjs"), probe.fixture);
     await writeFile(path.join(directory, "zero.config.ts"), config);
     const imports = [];
     for (const entry of libraries) {
@@ -104,7 +117,8 @@ for (const probe of [...probes, combined, popularCombined]) {
         path.join(root, "node_modules", entry.name, entry.entry),
         "utf8",
       );
-      const filename = `${entry.name.replaceAll("/", "-").replaceAll("@", "")}.ts`;
+      const extension = mode.startsWith("typed-") ? ".ts" : path.extname(entry.entry);
+      const filename = `${entry.name.replaceAll("/", "-").replaceAll("@", "")}${extension}`;
       const adapted = adaptModule(entry, source);
       await writeFile(
         path.join(directory, filename),
@@ -191,9 +205,9 @@ for (const probe of [...probes, combined, popularCombined]) {
 }
 await writeFile(path.join(work, "report.json"), JSON.stringify(report, null, 2) + "\n");
 const passed = report.probes.every((probe) =>
-  probe.routes.some((route) => route.status === "pass"),
+  probe.routes.every((route) => route.status === "pass"),
 );
 console.log(
   `${passed ? "PASS" : "ISSUES"}: raw diagnostics, Node outcomes, PHP output, and source hashes: ${path.join(work, "report.json")}`,
 );
-if (!passed && !process.argv.includes("--report-only")) process.exitCode = 1;
+if (!passed && !options["report-only"]) process.exitCode = 1;

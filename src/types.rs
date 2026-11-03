@@ -27,17 +27,26 @@ pub enum Ty {
     Bool,
     BoolLit(bool),
     FreshBoolLit(bool),
-    /// `null` and `undefined` (both PHP null).
+    /// Null, including normalized missing database and typed optional values.
     Null,
-    /// Type-only undefined, retained during annotation normalization and collapsed
-    /// to Null before annotations reach the PHP compiler.
+    /// Explicit runtime undefined uses a sentinel. Annotation normalization still
+    /// maps nullable storage and wire domains onto Null.
     Undefined,
     /// Type-only void; it is not equivalent to undefined in conditional types.
     Void,
     /// Values whose shape isn't known (untyped `json()` columns, `JSON.parse`).
     Unknown,
+    /// Unannotated JavaScript values. Operations use checked JavaScript runtime
+    /// dispatch; authored TypeScript `unknown` remains statically restricted.
+    Dynamic,
+    /// TypeScript's implicit arguments object. Indexed values remain unknown,
+    /// so this runtime escape cannot mutate statically typed parameter objects.
+    Arguments,
     Never,
     Array(Box<Ty>),
+    /// An array proven to retain at least one element. Mutations which can
+    /// shrink it erase the bound from the read view.
+    NonEmptyArray(Box<Ty>),
     Tuple(Vec<Ty>),
     /// An inferred array literal whose elements widen at binding boundaries.
     ArrayLiteral(Vec<Ty>),
@@ -47,6 +56,8 @@ pub enum Ty {
     Map(Box<Ty>),
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
+    /// Callable parameter metadata; inner type is the rest binding's array.
+    Rest(Box<Ty>),
     /// Boolean return carrying a declared parameter refinement in a function signature.
     Predicate(usize, Box<Ty>),
     Promise(Box<Ty>),
@@ -142,6 +153,9 @@ impl Ty {
                 }
             }
         }
+        if out.contains(&Ty::Dynamic) {
+            return Ty::Dynamic;
+        }
         if out.iter().any(|t| t.bool_literal().is_some())
             && (out.contains(&Ty::Bool)
                 || out.iter().any(|t| t.bool_literal() == Some(true))
@@ -226,8 +240,11 @@ impl Ty {
             Ty::Undefined => "undefined".into(),
             Ty::Void => "void".into(),
             Ty::Unknown => "unknown".into(),
+            Ty::Dynamic => "a JavaScript value".into(),
+            Ty::Arguments => "IArguments".into(),
             Ty::Never => "never".into(),
             Ty::Array(t) => format!("{}[]", t.describe()),
+            Ty::NonEmptyArray(t) => format!("[{}, ...{}[]]", t.describe(), t.describe()),
             Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
                 format!("[{}]", ts.iter().map(Ty::describe).collect::<Vec<_>>().join(", "))
             }
@@ -243,6 +260,7 @@ impl Ty {
             Ty::Map(t) => format!("Record<string, {}>", t.describe()),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
+            Ty::Rest(t) => format!("...{}", t.describe()),
             Ty::Predicate(_, target) => format!("a type predicate for {}", target.describe()),
             Ty::Promise(t) => format!("Promise<{}>", t.describe()),
             Ty::Date => "Date".into(),

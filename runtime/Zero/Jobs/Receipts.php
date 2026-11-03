@@ -106,7 +106,10 @@ final class Receipts
                     throw new HttpError(409, 'outcome_unknown', 'A request with this idempotency key started but has no recorded outcome');
                 }
                 $replayed = true;
-                $result = unserialize((string) $existing['result'], ['allowed_classes' => [\stdClass::class, \Zero\RegExp::class, \Zero\JsObject::class, \Zero\JsArray::class, \Zero\JsError::class]]);
+                $result = unserialize((string) $existing['result'], ['allowed_classes' => [
+                    \stdClass::class, \Zero\RegExp::class, \Zero\JsObject::class, \Zero\JsArray::class, \Zero\JsError::class,
+                    \Zero\JsSet::class, \Zero\JsMap::class, \Zero\JsDate::class,
+                ]]);
 
                 return is_array($result) ? $result : [];
             }

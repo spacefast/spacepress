@@ -7,11 +7,12 @@ namespace Zero;
 /**
  * JavaScript semantics in PHP. See docs/runtime-contract.md ("class Js").
  *
- * Value model: number = int|float, string = UTF-8 string indexed by code point,
- * null = null|undefined, array = list, object = assoc array, Date = epoch ms.
+ * Strings use UTF-8 storage and UTF-16 indexes. Arrays and objects retain handle
+ * identity; explicit undefined has a sentinel (typed missing reads may be null).
  */
 final class Js
 {
+    use JsDynamic;
     /** JS WhiteSpace + LineTerminator, as a PCRE class body. */
     public const WS = '\x{9}-\x{D}\x{20}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
 
@@ -28,12 +29,16 @@ final class Js
     public static function str(mixed $v): string
     {
         return match (true) {
+            $v === JsUndefined::Value => 'undefined',
             is_string($v) => $v,
             $v === null => 'null',
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
             $v instanceof JsArray => self::join($v),
             $v instanceof JsObject => '[object Object]',
+            $v instanceof JsArguments, $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
+            $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
             $v instanceof \Closure => 'function () { [native code] }',
             $v instanceof \Stringable => (string) $v,
@@ -114,6 +119,8 @@ final class Js
 
     public static function toNumber(mixed $v): int|float
     {
+        if ($v instanceof JsDate) { return $v->milliseconds; }
+        if ($v instanceof JsObject) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
             return self::n($v);
         }
@@ -400,7 +407,7 @@ final class Js
     public static function truthy(mixed $v): bool
     {
         return match (true) {
-            $v === null, $v === false, $v === '', $v === 0 => false,
+            $v === JsUndefined::Value, $v === null, $v === false, $v === '', $v === 0 => false,
             is_float($v) => !($v == 0.0 || is_nan($v)),
             default => true,
         };
@@ -409,6 +416,7 @@ final class Js
     public static function typeOf(mixed $v): string
     {
         return match (true) {
+            $v === JsUndefined::Value => 'undefined',
             is_string($v) => 'string',
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
@@ -831,12 +839,13 @@ final class Js
         return preg_replace('/[' . self::WS . ']+$/uD', '', $s) ?? rtrim($s);
     }
 
-    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
     {
         if ($pattern instanceof RegExp) {
+            if ($pattern->global) { $pattern->lastIndex = 0; }
             $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->matchAt($s, 0)]);
 
-            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups());
+            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups(), $dynamic);
         }
         $pos = strpos($s, $pattern);
         if ($pos === false) {
@@ -846,14 +855,14 @@ final class Js
         return self::applyReplacements($s, [[$pos, $pos + strlen($pattern), [], []]], $replacement, false);
     }
 
-    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
     {
         if ($pattern instanceof RegExp) {
             if (!$pattern->global) {
                 throw new JsError('replaceAll must be called with a global RegExp', 'TypeError');
             }
 
-            return self::replace($s, $pattern, $replacement);
+            return self::replace($s, $pattern, $replacement, $dynamic);
         }
         $matches = [];
         $plen = strlen($pattern);
@@ -873,7 +882,7 @@ final class Js
     /**
      * @param iterable<array{int, int, list<?string>, array<string, ?string>}> $matches byte ranges + captures
      */
-    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named): string
+    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named, bool $dynamic = false): string
     {
         $out = '';
         $last = 0;
@@ -887,7 +896,10 @@ final class Js
             if (is_string($replacement)) {
                 $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null, $between);
             } else {
-                $rep = self::str($replacement($matched, ...[...$groups, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s]));
+                $captures = $dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups) : $groups;
+                $args = [...$captures, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s];
+                if ($dynamic && $named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names)); }
+                $rep = self::str($replacement($matched, ...$args));
             }
             if ($between && $rep !== '') {
                 self::loneSurrogate();
@@ -1016,9 +1028,9 @@ final class Js
         return self::str($key);
     }
 
-    public static function prop(JsObject|JsClass|null $o, mixed $key): mixed
+    public static function prop(JsObject|JsClass|JsUndefined|null $o, mixed $key): mixed
     {
-        if ($o === null) {
+        if (self::isNullish($o)) {
             throw new JsError('Cannot read properties of null or undefined', 'TypeError');
         }
         if ($o instanceof JsClass) { return $o->get(self::key($key)); }
@@ -1172,7 +1184,7 @@ final class Js
             $parts = [];
             for ($i = 0, $len = count($a->a); $i < $len; $i++) {
                 $value = $a->a[$i];
-                $parts[] = $value === null ? '' : ($value instanceof JsArray ? self::arrayString($value, ',', $stack) : self::str($value));
+                $parts[] = self::isNullish($value) ? '' : ($value instanceof JsArray ? self::arrayString($value, ',', $stack) : self::str($value));
             }
             return implode($sep, $parts);
         } finally { $stack->offsetUnset($a); }
@@ -1452,6 +1464,27 @@ final class Js
             return $value;
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
+        if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsArguments) {
+            if ($seen->offsetExists($value)) { return $seen[$value]; }
+            $copy = match (true) {
+                $value instanceof JsSet => new JsSet(),
+                $value instanceof JsMap => new JsMap(),
+                $value instanceof JsDate => new JsDate($value->milliseconds),
+                default => new JsArguments([]),
+            };
+            $seen[$value] = $copy;
+            if ($value instanceof JsSet) {
+                foreach ($value->values as $item) { $copy->add(self::copyGraph($item, $seen, $structured)); }
+            } elseif ($value instanceof JsMap) {
+                foreach ($value->entries as [$key, $item]) { $copy->set(self::copyGraph($key, $seen, $structured), self::copyGraph($item, $seen, $structured)); }
+            } elseif ($value instanceof JsArguments) {
+                foreach ($value->a as $key => $item) { $copy->a[$key] = self::copyGraph($item, $seen, $structured); }
+                foreach ($value->p as $key => $item) { $copy->p[$key] = self::copyGraph($item, $seen, $structured); }
+                $copy->length = self::copyGraph($value->length, $seen, $structured);
+            }
+            return $copy;
+        }
         if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             if ($value instanceof JsError) {
@@ -1470,6 +1503,7 @@ final class Js
                 foreach (self::ownKeys($value->p) as $key) { $copy->p[$key] = self::copyGraph($value->p[$key], $seen, $structured); }
             } else {
                 foreach ($value->a as $item) { $copy->a[] = self::copyGraph($item, $seen, $structured); }
+                foreach (self::ownKeys($value->p) as $key) { $copy->p[$key] = self::copyGraph($value->p[$key], $seen, $structured); }
             }
             return $copy;
         }
@@ -1487,6 +1521,9 @@ final class Js
 
     private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
+        if ($value === JsUndefined::Value) { return null; }
+        if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
+        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
         if ($value instanceof \Closure) { return null; }
         if ($value instanceof RegExp) { return new \stdClass(); }
@@ -1501,6 +1538,7 @@ final class Js
             $list = $value instanceof JsArray || is_array($value) && array_is_list($value);
             $items = match (true) {
                 $value instanceof JsArray => $value->a,
+                $value instanceof JsArguments => array_replace($value->a, $value->p),
                 $value instanceof JsObject => $value->p,
                 is_object($value) => get_object_vars($value),
                 default => $value,
@@ -1513,7 +1551,7 @@ final class Js
             $out = [];
             $nulKey = false;
             foreach (self::ownKeys($items) as $key) {
-                if ($items[$key] instanceof \Closure) { continue; }
+                if ($items[$key] instanceof \Closure || $items[$key] === JsUndefined::Value) { continue; }
                 $nulKey = $nulKey || str_starts_with((string) $key, "\0");
                 $out[$key] = self::jsonValueTree($items[$key], $stack);
             }
@@ -1572,7 +1610,7 @@ final class Js
 
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
-        if ($v instanceof \Closure) {
+        if ($v instanceof \Closure || $v === JsUndefined::Value) {
             return null;
         }
         $v = self::jsonTree($v);

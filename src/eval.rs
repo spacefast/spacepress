@@ -63,7 +63,7 @@ fn require_static_data(value: &Value, span: Span) -> R<()> {
                 }
                 Ok(())
             }
-            Value::Object(o) if seen.insert(Rc::as_ptr(o) as usize) => {
+            Value::Object(o) | Value::Arguments(o) if seen.insert(Rc::as_ptr(o) as usize) => {
                 for value in o.borrow().values() {
                     visit(value, span, seen)?;
                 }
@@ -156,6 +156,9 @@ pub const GLOBALS: &[&str] = &[
     "Math",
     "Object",
     "Array",
+    "Set",
+    "Map",
+    "RegExp",
     "JSON",
     "String",
     "structuredClone",
@@ -200,7 +203,7 @@ pub struct Evaluator<'p> {
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
     match v {
-        Value::Object(o) => Some(Rc::as_ptr(o) as *const () as usize),
+        Value::Object(o) | Value::Arguments(o) => Some(Rc::as_ptr(o) as *const () as usize),
         Value::Array(a) => Some(Rc::as_ptr(a) as *const () as usize),
         _ => None,
     }
@@ -277,7 +280,11 @@ impl<'p> Evaluator<'p> {
 
     fn set_key(&mut self, obj: &Value, key: &str, value: Value, span: Span) -> R<()> {
         match obj {
-            Value::Object(map) => {
+            Value::Arguments(_) if key == "callee" => Err(Ctl::Throw(
+                error_object("TypeError", &[Value::str("restricted arguments property")]),
+                span,
+            )),
+            Value::Object(map) | Value::Arguments(map) => {
                 if map.borrow_mut().insert(key.to_string(), value).is_some() {
                     self.record_duplicates(obj, vec![(key.to_string(), span)]);
                 }
@@ -323,6 +330,7 @@ impl<'p> Evaluator<'p> {
             }
         }
         hoist(&module.body, &scope);
+        hoist_vars(&module.body, &scope);
         for stmt in &module.body {
             match stmt {
                 Stmt::Import {
@@ -440,9 +448,19 @@ impl<'p> Evaluator<'p> {
     }
 
     fn bind_pattern(&mut self, pat: &Pat, value: Value, scope: &Rc<Scope>, mutable: bool) -> R<()> {
+        self.initialize_pattern(pat, value, scope, Some(mutable))
+    }
+
+    /// A `var` initializer writes its existing function binding, including when
+    /// that binding is a parameter. Lexical declarations create a fresh binding.
+    fn initialize_pattern(&mut self, pat: &Pat, value: Value, scope: &Rc<Scope>, declaration: Option<bool>) -> R<()> {
         match pat {
             Pat::Id(name, _) => {
-                declare(scope, name, value, mutable);
+                if let Some(mutable) = declaration {
+                    declare(scope, name, value, mutable);
+                } else {
+                    self.assign_ident(name, value, scope, pat.span())?;
+                }
                 Ok(())
             }
             Pat::Default(inner, default) => {
@@ -451,7 +469,7 @@ impl<'p> Evaluator<'p> {
                 } else {
                     value
                 };
-                self.bind_pattern(inner, v, scope, mutable)
+                self.initialize_pattern(inner, v, scope, declaration)
             }
             Pat::Obj { props, rest, span } => {
                 let Value::Object(obj) = &value else {
@@ -459,30 +477,31 @@ impl<'p> Evaluator<'p> {
                 };
                 for (key, p) in props {
                     let v = obj.borrow().get(key).cloned().unwrap_or(Value::Undef);
-                    self.bind_pattern(p, v, scope, mutable)?;
+                    self.initialize_pattern(p, v, scope, declaration)?;
                 }
                 if let Some((name, _)) = rest {
                     let mut map = obj.borrow().clone();
                     for (key, _) in props {
                         map.shift_remove(key);
                     }
-                    declare(scope, name, Value::object(map), mutable);
+                    self.initialize_pattern(&Pat::Id(name.clone(), *span), Value::object(map), scope, declaration)?;
                 }
                 Ok(())
             }
             Pat::Arr { elems, rest, span } => {
-                let Value::Array(arr) = &value else {
-                    return err(*span, format!("can't destructure {} as an array", value.describe()));
+                let items = match &value {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    Value::Arguments(object) => arguments_items(object, *span)?,
+                    other => return err(*span, format!("can't destructure {} as an array", other.describe())),
                 };
-                let items = arr.borrow().clone();
                 for (i, p) in elems.iter().enumerate() {
                     if let Some(p) = p {
-                        self.bind_pattern(p, items.get(i).cloned().unwrap_or(Value::Undef), scope, mutable)?;
+                        self.initialize_pattern(p, items.get(i).cloned().unwrap_or(Value::Undef), scope, declaration)?;
                     }
                 }
                 if let Some((name, _)) = rest {
                     let tail = items.get(elems.len()..).map(<[Value]>::to_vec).unwrap_or_default();
-                    declare(scope, name, Value::array(tail), mutable);
+                    self.initialize_pattern(&Pat::Id(name.clone(), *span), Value::array(tail), scope, declaration)?;
                 }
                 Ok(())
             }
@@ -492,8 +511,12 @@ impl<'p> Evaluator<'p> {
     fn exec_block(&mut self, body: &[Stmt], parent: &Rc<Scope>) -> R<Flow> {
         let scope = Scope::new(Some(parent.clone()), parent.module);
         hoist(body, &scope);
+        self.exec_body(body, &scope)
+    }
+
+    fn exec_body(&mut self, body: &[Stmt], scope: &Rc<Scope>) -> R<Flow> {
         for stmt in body {
-            match self.exec(stmt, &scope)? {
+            match self.exec(stmt, scope)? {
                 Flow::Normal => {}
                 other => return Ok(other),
             }
@@ -511,11 +534,19 @@ impl<'p> Evaluator<'p> {
                 ann,
             } => {
                 self.tick(*span)?;
+                if *kind == DeclKind::Var && init.is_none() {
+                    return Ok(Flow::Normal);
+                }
                 let v = match init {
                     Some(e) => self.eval(e, scope)?,
                     None => Value::Undef,
                 };
-                self.bind_pattern(pat, v, scope, *kind == DeclKind::Let)?;
+                self.initialize_pattern(
+                    pat,
+                    v,
+                    scope,
+                    (*kind != DeclKind::Var).then_some(*kind == DeclKind::Let),
+                )?;
                 if let (Pat::Id(name, _), Some(a)) = (pat, ann)
                     && let Some(b) = scope.vars.borrow_mut().get_mut(name)
                 {
@@ -578,13 +609,46 @@ impl<'p> Evaluator<'p> {
             } => {
                 let items = match self.eval(iter, scope)? {
                     Value::Array(a) => a.borrow().clone(),
+                    Value::Arguments(object) => arguments_items(&object, iter.span)?,
                     Value::Str(s) => s.chars().map(|c| Value::str(&c.to_string())).collect(),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 for item in items {
                     self.tick(*span)?;
                     let iter_scope = Scope::new(Some(scope.clone()), scope.module);
-                    self.bind_pattern(pat, item, &iter_scope, *kind == DeclKind::Let)?;
+                    self.initialize_pattern(
+                        pat,
+                        item,
+                        &iter_scope,
+                        (*kind != DeclKind::Var).then_some(*kind == DeclKind::Let),
+                    )?;
+                    match self.exec_block(body, &iter_scope)? {
+                        Flow::Break => break,
+                        Flow::Return(v) => return Ok(Flow::Return(v)),
+                        _ => {}
+                    }
+                }
+            }
+            Stmt::ForIn {
+                kind,
+                target,
+                iter,
+                body,
+                span,
+            } => {
+                let source = self.eval(iter, scope)?;
+                let keys = enumerable_keys(&source, iter.span)?;
+                for key in keys {
+                    self.tick(*span)?;
+                    let iter_scope = Scope::new(Some(scope.clone()), scope.module);
+                    if let Some(kind) = kind.filter(|kind| *kind != DeclKind::Var) {
+                        let ExprKind::Ident(name) = &target.kind else {
+                            unreachable!("declared for-in identifier")
+                        };
+                        declare(&iter_scope, name, Value::str(&key), kind == DeclKind::Let);
+                    } else {
+                        self.assign(target, Value::str(&key), &iter_scope)?;
+                    }
                     match self.exec_block(body, &iter_scope)? {
                         Flow::Break => break,
                         Flow::Return(v) => return Ok(Flow::Return(v)),
@@ -768,6 +832,7 @@ impl<'p> Evaluator<'p> {
                         ArrEl::Item(x) => out.push(self.eval(x, scope)?),
                         ArrEl::Spread(x) => match self.eval(x, scope)? {
                             Value::Array(a) => out.extend(a.borrow().iter().cloned()),
+                            Value::Arguments(object) => out.extend(arguments_items(&object, x.span)?),
                             other => return err(x.span, format!("can't spread {} into an array", other.describe())),
                         },
                     }
@@ -808,6 +873,17 @@ impl<'p> Evaluator<'p> {
                                     }
                                     map.insert(k.clone(), v.clone());
                                     spans.push((k.clone(), self.key_span(&src, k).unwrap_or(x.span)));
+                                }
+                            }
+                            Value::Arguments(object) => {
+                                let source = Value::Arguments(object.clone());
+                                for key in enumerable_keys(&source, x.span)? {
+                                    let value = object.borrow().get(&key).cloned().unwrap_or(Value::Undef);
+                                    if map.shift_remove(&key).is_some() {
+                                        duplicates.push((key.clone(), x.span));
+                                    }
+                                    spans.push((key.clone(), x.span));
+                                    map.insert(key, value);
                                 }
                             }
                             Value::Undef | Value::Null => {}
@@ -860,6 +936,13 @@ impl<'p> Evaluator<'p> {
                 } else {
                     self.eval(b, scope)?
                 }
+            }
+            ExprKind::Sequence(exprs) => {
+                let mut value = Value::Undef;
+                for expr in exprs {
+                    value = self.eval(expr, scope)?;
+                }
+                value
             }
             ExprKind::Assign { op, target, value } => {
                 let new = match op {
@@ -1021,6 +1104,7 @@ impl<'p> Evaluator<'p> {
                 ArrEl::Item(x) => out.push(self.eval(x, scope)?),
                 ArrEl::Spread(x) => match self.eval(x, scope)? {
                     Value::Array(arr) => out.extend(arr.borrow().iter().cloned()),
+                    Value::Arguments(object) => out.extend(arguments_items(&object, x.span)?),
                     other => return err(x.span, format!("can't spread {} into arguments", other.describe())),
                 },
             }
@@ -1054,6 +1138,7 @@ impl<'p> Evaluator<'p> {
                         Ok(())
                     }
                     (_, Value::Str(k)) => self.set_key(&o, k, value, target.span),
+                    (_, Value::Num(n)) => self.set_key(&o, &js_number_to_string(*n), value, target.span),
                     _ => err(target.span, format!("can't assign into {}", o.describe())),
                 }
             }
@@ -1089,7 +1174,11 @@ impl<'p> Evaluator<'p> {
         let bound = || Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)));
         match v {
             Value::Undef | Value::Null => err(span, format!("can't read `{prop}` of {}", v.describe())),
-            Value::Object(o) => Ok(o.borrow().get(prop).cloned().unwrap_or(Value::Undef)),
+            Value::Arguments(_) if prop == "callee" => Err(Ctl::Throw(
+                error_object("TypeError", &[Value::str("restricted arguments property")]),
+                span,
+            )),
+            Value::Object(o) | Value::Arguments(o) => Ok(o.borrow().get(prop).cloned().unwrap_or(Value::Undef)),
             Value::Array(a) => match prop {
                 "length" => Ok(Value::Num(a.borrow().len() as f64)),
                 _ => match prop.parse::<usize>() {
@@ -1154,6 +1243,23 @@ impl<'p> Evaluator<'p> {
 
     fn invoke(&mut self, f: &Rc<Closure>, args: Vec<Value>) -> R<Value> {
         let scope = Scope::new(Some(f.env.clone()), f.func.module);
+        if !f.func.is_arrow {
+            let receiver = usize::from(matches!(
+                f.func.params.first().map(|param| &param.pat),
+                Some(Pat::Id(name, _)) if name == "this"
+            ));
+            let supplied = args.get(receiver..).unwrap_or_default();
+            let mut arguments: IndexMap<String, Value> = supplied
+                .iter()
+                .enumerate()
+                .map(|(index, value)| (index.to_string(), value.clone()))
+                .collect();
+            arguments.insert("length".into(), Value::Num(supplied.len() as f64));
+            let Value::Object(arguments) = Value::object(arguments) else {
+                unreachable!()
+            };
+            declare(&scope, "arguments", Value::Arguments(arguments), true);
+        }
         let mut args = args.into_iter();
         for p in &f.func.params {
             if p.rest {
@@ -1171,10 +1277,14 @@ impl<'p> Evaluator<'p> {
         }
         match &f.func.body {
             FnBody::Expr(e) => self.eval(e, &scope),
-            FnBody::Block(body) => match self.exec_block(body, &scope)? {
-                Flow::Return(v) => Ok(v),
-                _ => Ok(Value::Undef),
-            },
+            FnBody::Block(body) => {
+                hoist(body, &scope);
+                hoist_vars(body, &scope);
+                match self.exec_body(body, &scope)? {
+                    Flow::Return(v) => Ok(v),
+                    _ => Ok(Value::Undef),
+                }
+            }
         }
     }
 
@@ -1597,19 +1707,25 @@ impl<'p> Evaluator<'p> {
                     "`Math.random()` isn't available while the config is evaluated (builds must be repeatable)",
                 );
             }
-            ("Object", "keys" | "values" | "entries") => match arg(0) {
-                Value::Object(o) => Value::array(
-                    o.borrow()
-                        .iter()
-                        .map(|(k, v)| match m {
-                            "keys" => Value::str(k),
-                            "values" => v.clone(),
-                            _ => Value::array(vec![Value::str(k), v.clone()]),
-                        })
-                        .collect(),
-                ),
-                other => return err(span, format!("Object.{m} needs an object, not {}", other.describe())),
-            },
+            ("Object", "keys" | "values" | "entries") => {
+                let object = arg(0);
+                if matches!(object, Value::Undef | Value::Null) {
+                    return err(span, format!("Object.{m} needs an object, not {}", object.describe()));
+                }
+                let mut values = Vec::new();
+                for key in enumerable_keys(&object, span)? {
+                    let read = |this: &Self| match &object {
+                        Value::Str(_) => this.get_index(&object, &Value::Num(key.parse().expect("string index")), span),
+                        _ => this.get_prop(&object, &key, span),
+                    };
+                    values.push(match m {
+                        "keys" => Value::str(&key),
+                        "values" => read(self)?,
+                        _ => Value::array(vec![Value::str(&key), read(self)?]),
+                    });
+                }
+                Value::array(values)
+            }
             ("Object", "fromEntries") => match arg(0) {
                 Value::Array(a) => {
                     let mut map = IndexMap::new();
@@ -1643,7 +1759,8 @@ impl<'p> Evaluator<'p> {
             },
             ("Object", "freeze") => arg(0),
             ("Object", "hasOwn") => match (arg(0), arg(1)) {
-                (Value::Object(o), Value::Str(k)) => Value::Bool(o.borrow().contains_key(&*k)),
+                (Value::Arguments(_), Value::Str(k)) if k.as_ref() == "callee" => Value::Bool(true),
+                (Value::Object(o) | Value::Arguments(o), Value::Str(k)) => Value::Bool(o.borrow().contains_key(&*k)),
                 _ => Value::Bool(false),
             },
             ("Array", "isArray") => Value::Bool(matches!(arg(0), Value::Array(_))),
@@ -1651,6 +1768,7 @@ impl<'p> Evaluator<'p> {
                 let f = arg(1);
                 let items: Vec<Value> = match arg(0) {
                     Value::Array(a) => a.borrow().clone(),
+                    Value::Arguments(object) => arguments_items(&object, span)?,
                     Value::Object(o) => {
                         if let Some(length) = o.borrow().get("length") {
                             require_static_data(length, span)?;
@@ -1732,7 +1850,7 @@ impl<'p> Evaluator<'p> {
             "map" | "filter" | "find" | "findIndex" | "some" | "every" | "flatMap" | "forEach" => {
                 let mut out = Vec::new();
                 for (i, x) in items.iter().enumerate() {
-                    let r = self.call(&f, vec![x.clone(), Value::Num(i as f64)], span)?;
+                    let r = self.call(&f, vec![x.clone(), Value::Num(i as f64), Value::Array(a.clone())], span)?;
                     if matches!(m, "filter" | "find" | "findIndex" | "some" | "every") {
                         require_static_data(&r, span)?;
                     }
@@ -1769,7 +1887,7 @@ impl<'p> Evaluator<'p> {
                     }
                 };
                 for (i, x) in iter {
-                    acc = self.call(&f, vec![acc, x, Value::Num(i as f64)], span)?;
+                    acc = self.call(&f, vec![acc, x, Value::Num(i as f64), Value::Array(a.clone())], span)?;
                 }
                 acc
             }
@@ -1918,6 +2036,135 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
             },
         );
     }
+}
+
+/// `var` belongs to the nearest function or module, even when its declaration
+/// sits in a branch that never executes. Do not traverse nested functions.
+fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
+    fn binding(pat: &Pat, ann: &Option<TyAnn>, scope: &Rc<Scope>) {
+        let mut names = Vec::new();
+        pat.names(&mut names);
+        for name in names {
+            let mut vars = scope.vars.borrow_mut();
+            let b = vars.entry(name).or_insert_with(|| Binding {
+                value: Value::Undef,
+                mutable: true,
+                module_level: scope.is_module_scope(),
+                ann: None,
+            });
+            b.mutable = true;
+            if let Some(ann) = ann {
+                b.ann = Some((ann.clone(), scope.module));
+            }
+        }
+    }
+
+    for stmt in body {
+        match stmt {
+            Stmt::Decl {
+                kind: DeclKind::Var,
+                pat,
+                ann,
+                ..
+            } => binding(pat, ann, scope),
+            Stmt::Block(body) | Stmt::While(_, body) => hoist_vars(body, scope),
+            Stmt::If(_, yes, no) => {
+                hoist_vars(yes, scope);
+                if let Some(no) = no {
+                    hoist_vars(no, scope);
+                }
+            }
+            Stmt::For { init, body, .. } => {
+                if let Some(init) = init {
+                    hoist_vars(std::slice::from_ref(init), scope);
+                }
+                hoist_vars(body, scope);
+            }
+            Stmt::ForOf { kind, pat, body, .. } => {
+                if *kind == DeclKind::Var {
+                    binding(pat, &None, scope);
+                }
+                hoist_vars(body, scope);
+            }
+            Stmt::ForIn { kind, target, body, .. } => {
+                if *kind == Some(DeclKind::Var) {
+                    let ExprKind::Ident(name) = &target.kind else {
+                        unreachable!("declared for-in identifier")
+                    };
+                    binding(&Pat::Id(name.clone(), target.span), &None, scope);
+                }
+                hoist_vars(body, scope);
+            }
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+                ..
+            } => {
+                hoist_vars(block, scope);
+                if let Some(handler) = handler {
+                    hoist_vars(handler, scope);
+                }
+                if let Some(finalizer) = finalizer {
+                    hoist_vars(finalizer, scope);
+                }
+            }
+            Stmt::Switch { cases, .. } => {
+                for (_, body) in cases {
+                    hoist_vars(body, scope);
+                }
+            }
+            Stmt::Exported(inner) => hoist_vars(std::slice::from_ref(inner), scope),
+            _ => {}
+        }
+    }
+}
+
+fn arguments_items(object: &Obj, span: Span) -> R<Vec<Value>> {
+    let object = object.borrow();
+    let length = object.get("length").cloned().unwrap_or(Value::Undef);
+    require_static_data(&length, span)?;
+    let length = to_number(&length).max(0.0).floor();
+    if length > STEP_BUDGET as f64 {
+        return err(span, "the arguments object is too large to evaluate at build time");
+    }
+    Ok((0..length as usize)
+        .map(|index| object.get(&index.to_string()).cloned().unwrap_or(Value::Undef))
+        .collect())
+}
+
+fn enumerable_keys(value: &Value, span: Span) -> R<Vec<String>> {
+    Ok(match value {
+        Value::Object(object) | Value::Arguments(object) => {
+            let mut indexes = Vec::new();
+            let mut names = Vec::new();
+            for key in object.borrow().keys() {
+                if matches!(value, Value::Arguments(_)) && key == "length" {
+                    continue;
+                }
+                if let Ok(index) = key.parse::<u32>()
+                    && index < u32::MAX
+                    && index.to_string() == *key
+                {
+                    indexes.push(index);
+                } else {
+                    names.push(key.clone());
+                }
+            }
+            indexes.sort_unstable();
+            indexes
+                .into_iter()
+                .map(|index| index.to_string())
+                .chain(names)
+                .collect()
+        }
+        Value::Array(array) => (0..array.borrow().len()).map(|index| index.to_string()).collect(),
+        Value::Str(value) => (0..value.encode_utf16().count())
+            .map(|index| index.to_string())
+            .collect(),
+        Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Regex(..) => vec![],
+        other => return err(span, format!("can't enumerate {}", other.describe())),
+    })
 }
 
 fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
@@ -2452,12 +2699,38 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
     })
 }
 
+fn loose_eq(a: &Value, b: &Value, span: Span) -> R<bool> {
+    fn primitive(value: &Value) -> bool {
+        matches!(
+            value,
+            Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_)
+        )
+    }
+
+    Ok(match (a, b) {
+        (Value::Undef | Value::Null, Value::Undef | Value::Null) => true,
+        (Value::Undef | Value::Null, _) | (_, Value::Undef | Value::Null) => false,
+        (Value::Num(left), Value::Str(_)) => *left == to_number(b),
+        (Value::Str(_), Value::Num(right)) => to_number(a) == *right,
+        (Value::Bool(value), _) => loose_eq(&Value::Num(if *value { 1.0 } else { 0.0 }), b, span)?,
+        (_, Value::Bool(value)) => loose_eq(a, &Value::Num(if *value { 1.0 } else { 0.0 }), span)?,
+        (left, right) if !primitive(left) && primitive(right) => {
+            let Some(value) = left.to_js_string() else {
+                return err(span, format!("can't coerce {} in a loose comparison", left.describe()));
+            };
+            loose_eq(&Value::str(&value), right, span)?
+        }
+        (left, right) if primitive(left) && !primitive(right) => loose_eq(right, left, span)?,
+        _ => a.strict_eq(b),
+    })
+}
+
 fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
     require_static_data(a, span)?;
     require_static_data(b, span)?;
     let prim = |v: &Value| -> R<Value> {
         match v {
-            Value::Array(_) | Value::Object(_) | Value::Regex(..) => {
+            Value::Array(_) | Value::Object(_) | Value::Arguments(_) | Value::Regex(..) => {
                 Ok(Value::str(&v.to_js_string().unwrap_or_default()))
             }
             Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(v.clone()),
@@ -2484,6 +2757,8 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Exp => Value::Num(to_number(a).powf(to_number(b))),
         BinOp::Eq => Value::Bool(a.strict_eq(b)),
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
+        BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),
+        BinOp::LooseNe => Value::Bool(!loose_eq(a, b, span)?),
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             let (a, b) = (prim(a)?, prim(b)?);
             let ord = match (&a, &b) {
@@ -2524,12 +2799,41 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
             }
             J::Object(map)
         }
+        Value::Arguments(object) => {
+            let mut map = serde_json::Map::new();
+            for key in enumerable_keys(v, Span::NONE).ok()? {
+                if let Some(value) = object.borrow().get(&key)
+                    && !matches!(value, Value::Undef)
+                    && let Some(value) = to_json(value)
+                {
+                    map.insert(key, value);
+                }
+            }
+            J::Object(map)
+        }
         _ => return None,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn object_enumeration_reads_string_elements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("zero.config.ts");
+        std::fs::write(&entry, "export default [Object.values('aé'), Object.entries('aé')];").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([["a", "é"], [["0", "a"], ["1", "é"]]])
+        );
+        std::fs::write(&entry, "export default Object.values('🙂');").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let error = super::Evaluator::new(&program).run().unwrap_err();
+        assert!(error.message.contains("lone UTF-16 surrogate"), "{error:?}");
+    }
+
     #[test]
     fn missing_default_export_points_to_the_current_file_after_repeated_loads() {
         let tmp = tempfile::tempdir().unwrap();

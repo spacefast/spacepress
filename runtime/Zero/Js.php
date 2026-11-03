@@ -37,6 +37,7 @@ final class Js
             $v instanceof JsArray => self::join($v),
             $v instanceof JsObject => '[object Object]',
             $v instanceof JsArguments, $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
             $v instanceof \Closure => 'function () { [native code] }',
@@ -1027,9 +1028,9 @@ final class Js
         return self::str($key);
     }
 
-    public static function prop(JsObject|JsClass|null $o, mixed $key): mixed
+    public static function prop(JsObject|JsClass|JsUndefined|null $o, mixed $key): mixed
     {
-        if ($o === null) {
+        if (self::isNullish($o)) {
             throw new JsError('Cannot read properties of null or undefined', 'TypeError');
         }
         if ($o instanceof JsClass) { return $o->get(self::key($key)); }
@@ -1463,6 +1464,27 @@ final class Js
             return $value;
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
+        if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsArguments) {
+            if ($seen->offsetExists($value)) { return $seen[$value]; }
+            $copy = match (true) {
+                $value instanceof JsSet => new JsSet(),
+                $value instanceof JsMap => new JsMap(),
+                $value instanceof JsDate => new JsDate($value->milliseconds),
+                default => new JsArguments([]),
+            };
+            $seen[$value] = $copy;
+            if ($value instanceof JsSet) {
+                foreach ($value->values as $item) { $copy->add(self::copyGraph($item, $seen, $structured)); }
+            } elseif ($value instanceof JsMap) {
+                foreach ($value->entries as [$key, $item]) { $copy->set(self::copyGraph($key, $seen, $structured), self::copyGraph($item, $seen, $structured)); }
+            } elseif ($value instanceof JsArguments) {
+                foreach ($value->a as $key => $item) { $copy->a[$key] = self::copyGraph($item, $seen, $structured); }
+                foreach ($value->p as $key => $item) { $copy->p[$key] = self::copyGraph($item, $seen, $structured); }
+                $copy->length = self::copyGraph($value->length, $seen, $structured);
+            }
+            return $copy;
+        }
         if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             if ($value instanceof JsError) {

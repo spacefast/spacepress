@@ -234,6 +234,7 @@ $deviations = [
     ['dynamic JSON replacer fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'stringify', new JsArray([new JsObject(['public' => 1, 'private' => 2]), new JsArray(['public'])])), ['$err' => 'TypeError']],
     ['dynamic JSON reviver fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'parse', new JsArray(['{}', static fn ($k, $v) => $v])), ['$err' => 'TypeError']],
     ['dynamic Date component overload fails explicitly', fn () => Js::dynamicConstruct('Date', new JsArray([2020, 0])), ['$err' => 'TypeError']],
+    ['dynamic Date string coercion fails explicitly through array join', fn () => Js::dynamicCallMethod(new JsArray([new \Zero\JsDate(0)]), 'join', new JsArray()), ['$err' => 'TypeError']],
     ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
@@ -301,9 +302,23 @@ $cases[] = ['(() => { const p = {x:1}; const a = [[p]]; const flat = a.flat(); f
 $cases[] = ['(() => { const a = [3,1,2]; return [a.toSorted((x,y) => x-y), a.concat([4],5), a]; })()', static function () {
     $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, static fn ($x, $y) => $x - $y), Js::concat($a, new JsArray([4]), 5), $a];
 }];
-$cases[] = ['(() => { const p = {x:1}; const source = [p,p]; source.extra = p; const copy = structuredClone(source); copy[0].x = 2; return [copy[0] === copy[1], copy.extra === copy[0], p.x, copy]; })()', static function () {
-    $p = new JsObject(['x' => 1]); $source = new JsArray([$p, $p]); $source->p['extra'] = $p; $copy = Js::clone($source); $copy->a[0]->p['x'] = 2; return [$copy->a[0] === $copy->a[1], $copy->p['extra'] === $copy->a[0], $p->p['x'], $copy];
+$cases[] = ['(() => { const p = {x:1}; const array = [p,p]; array.extra = p; const set = new Set([p]); set.add(set); const map = new Map([[p,set]]); map.set(map,p); const date = new Date(0); const source = {array,set,map,date,again:date}; const copy = structuredClone(source); copy.array[0].x = 2; copy.set.add("new"); copy.map.set("new",3); return [copy.array[0] === copy.array[1], copy.array.extra === copy.array[0], p.x, copy.array, set.size, copy.set.size, map.size, copy.map.size, copy.set.has(copy.set), copy.map.get(copy.array[0]) === copy.set, copy.map.get(copy.map) === copy.array[0], copy.date !== date, copy.date === copy.again, copy.date.getTime()]; })()', static function () {
+    $p = new JsObject(['x' => 1]); $array = new JsArray([$p, $p]); $array->p['extra'] = $p;
+    $set = new \Zero\JsSet(); $set->add($p)->add($set);
+    $map = new \Zero\JsMap(); $map->set($p, $set)->set($map, $p);
+    $date = new \Zero\JsDate(0);
+    $copy = Js::clone(new JsObject(['array' => $array, 'set' => $set, 'map' => $map, 'date' => $date, 'again' => $date]));
+    $items = $copy->p; $items['array']->a[0]->p['x'] = 2; $items['set']->add('new'); $items['map']->set('new', 3);
+    return [$items['array']->a[0] === $items['array']->a[1], $items['array']->p['extra'] === $items['array']->a[0], $p->p['x'], $items['array'], count($set->values), count($items['set']->values), count($map->entries), count($items['map']->entries), $items['set']->has($items['set']), $items['map']->get($items['array']->a[0]) === $items['set'], $items['map']->get($items['map']) === $items['array']->a[0], $items['date'] !== $date, $items['date'] === $items['again'], $items['date']->milliseconds];
 }];
+$cases[] = ['(function () { return structuredClone(arguments); })(1)', fn () => Js::clone(Js::arguments([1]))];
+$deviations[] = ['detached collection and arguments graphs retain identity only within the copy', static function () {
+    $set = new \Zero\JsSet(); $map = new \Zero\JsMap(); $args = Js::arguments([$set]);
+    $set->add($map); $map->set($args, $set); $args->length = new JsObject(['nested' => $set]);
+    $copy = Js::detach($args); $copiedSet = $copy->a[0]; $copiedMap = $copiedSet->values[0];
+    $copiedSet->add(2);
+    return [$copy !== $args, count($set->values), count($copiedSet->values), $copiedMap->get($copy) === $copiedSet, $copy->length !== $args->length, $copy->length->p['nested'] === $copiedSet];
+}, [true, 1, 2, true, true, true]];
 
 // ---------------------------------------------------------------- run node once
 

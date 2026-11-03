@@ -436,6 +436,25 @@ export function objects(value) {
     let mutation = r#"
 function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
 function discardRest(...values: string[][]) { values.pop(); }
+function optionalObject(value?: { count: number }) { return value ? value.count : 'absent'; }
+function optionalArray(value?: string[]) { return value ? value.length : -1; }
+function optionalString(value?: string) { return value ? value.trim() : 'absent'; }
+function defaultArray(value: string[] = ['default']) { return value.length; }
+function addressPatch(patch: { address?: { city: string } | null }) {
+  let touched = false;
+  let city = 'absent';
+  if (patch.address !== undefined) { touched = true; city = patch.address?.city ?? 'null'; }
+  return [touched, city];
+}
+function strictNull(value?: { count: number }) { return value !== null ? value?.count ?? 'undefined' : 'null'; }
+function strictUndefined(value?: { count: number }) { return value !== undefined ? value?.count ?? 'null' : 'undefined'; }
+function strictNullArray(value?: string[]) { return value !== null ? value?.length ?? -1 : -2; }
+function nullishValues() {
+  const object: { count: number } | null = undefined;
+  const array: string[] | null = undefined;
+  const text: string | null = undefined;
+  return [optionalObject(undefined), optionalArray(undefined), optionalString(undefined), defaultArray(undefined), Boolean(object), Boolean(array), Boolean(text), addressPatch({}), addressPatch({ address: null }), addressPatch({ address: { city: 'Oslo' } }), strictNull(undefined), strictNull(null), strictUndefined(undefined), strictUndefined(null), strictNullArray(undefined)];
+}
 function nonempty() {
   let values = Array.from(['first']);
   values.reduce((all, value) => all.concat(value), ['start'].slice());
@@ -445,7 +464,7 @@ function nonempty() {
   return values[0];
 }
 "#;
-    let expression = r#"({ mutation: mutation(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
+    let expression = r#"({ nullish: nullishValues(), mutation: mutation(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, methodOrder, missingKinds, errorEffects}} from './helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])

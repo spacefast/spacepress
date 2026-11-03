@@ -551,6 +551,11 @@ to PHP null. Explicit undefined expressions and imported JavaScript's dynamic
 operations preserve undefined identity: it is falsy, has typeof `undefined`,
 stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
 JSON arrays. This distinction does not change schema nullability.
+Optional object and array parameters accept explicit undefined as well as null;
+truthiness checks and typed default initializers treat both as absent. Typed
+object property reads distinguish missing properties from explicit null. Strict
+null/undefined comparisons refine only the value being compared; `!= null`
+excludes both.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
@@ -652,7 +657,7 @@ Objects (`JsObject`):
 - `keys(JsObject $o): JsArray`, `values(...)`: JsArray, `entries(...)`: JsArray of JsArray pairs; `fromEntries(JsArray $entries): JsObject`.
 - `obj(array ...$parts): JsObject` writes per key in source order; `omit(JsObject $o, array $keys): JsObject` implements object rest.
 - `hasOwn(JsObject|JsArray $o, mixed $key): bool`; `key(mixed $key): string` coerces computed keys as JS does.
-- `clone(mixed $v): mixed` preserves aliases and cycles; closures throw `DataCloneError`. Internal `detach` preserves closures and RegExp by reference while copying containers for runtime ownership.
+- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Internal `detach` also copies arguments objects, while preserving closures and RegExp by reference for runtime ownership.
 
 JSON:
 - `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Cycles throw `TypeError`; `jsonTree` provides the same value tree for foreign encoders. Indent number (clamped 10) or string, exactly as JS formats it.

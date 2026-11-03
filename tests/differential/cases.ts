@@ -106,6 +106,13 @@ function varSemantics(seed: number) {
   var last: string = "";
   const sharedKeys: (() => string)[] = [];
   for (last in { first: true, second: true }) sharedKeys.push(() => last);
+  let mixedKey: string | number = 7;
+  const keyLengths: number[] = [];
+  for (mixedKey in { alpha: true }) keyLengths.push(mixedKey.length);
+  let untouchedKey: string | number = 7;
+  for (untouchedKey in {}) {}
+  var absentKey: string;
+  for (var absentKey in {}) {}
   const sharedItems: (() => number)[] = [];
   for (var item of [7, 8]) sharedItems.push(() => item);
   var order: string = "";
@@ -124,6 +131,10 @@ function varSemantics(seed: number) {
     keys,
     last,
     sharedKeys: sharedKeys.map(read => read()),
+    mixedKey,
+    keyLengths,
+    untouchedKey,
+    absentKey: typeof absentKey,
     index,
     item,
     sharedItems: sharedItems.map(read => read()),

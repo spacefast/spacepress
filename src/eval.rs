@@ -1714,10 +1714,14 @@ impl<'p> Evaluator<'p> {
                 }
                 let mut values = Vec::new();
                 for key in enumerable_keys(&object, span)? {
+                    let read = |this: &Self| match &object {
+                        Value::Str(_) => this.get_index(&object, &Value::Num(key.parse().expect("string index")), span),
+                        _ => this.get_prop(&object, &key, span),
+                    };
                     values.push(match m {
                         "keys" => Value::str(&key),
-                        "values" => self.get_prop(&object, &key, span)?,
-                        _ => Value::array(vec![Value::str(&key), self.get_prop(&object, &key, span)?]),
+                        "values" => read(self)?,
+                        _ => Value::array(vec![Value::str(&key), read(self)?]),
                     });
                 }
                 Value::array(values)
@@ -2813,6 +2817,23 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn object_enumeration_reads_string_elements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("zero.config.ts");
+        std::fs::write(&entry, "export default [Object.values('aé'), Object.entries('aé')];").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let result = super::Evaluator::new(&program).run().unwrap();
+        assert_eq!(
+            super::to_json(&result).unwrap(),
+            serde_json::json!([["a", "é"], [["0", "a"], ["1", "é"]]])
+        );
+        std::fs::write(&entry, "export default Object.values('🙂');").unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let error = super::Evaluator::new(&program).run().unwrap_err();
+        assert!(error.message.contains("lone UTF-16 surrogate"), "{error:?}");
+    }
+
     #[test]
     fn missing_default_export_points_to_the_current_file_after_repeated_loads() {
         let tmp = tempfile::tempdir().unwrap();

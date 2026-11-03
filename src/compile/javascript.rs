@@ -11,11 +11,20 @@ impl Compiler<'_, '_> {
         ))
     }
 
-    pub(super) fn set_var_iteration_type(&mut self, name: &str, ty: &Ty) {
+    pub(super) fn set_var_iteration_type(&mut self, name: &str, ty: &Ty, span: Span) -> Result<()> {
         for scope in self.fx().scopes.iter_mut().rev() {
             if let Some(local) = scope.get_mut(name) {
                 if local.constraint == Ty::Unknown {
                     local.constraint = ty.clone();
+                } else if !assignable(ty, &local.constraint) {
+                    return err(
+                        span,
+                        format!(
+                            "loop values are {}, but the variable expects {}",
+                            ty.describe(),
+                            local.constraint.describe()
+                        ),
+                    );
                 }
                 if local.constraint != Ty::Dynamic {
                     local.ty = ty.clone();
@@ -23,6 +32,7 @@ impl Compiler<'_, '_> {
                 break;
             }
         }
+        Ok(())
     }
     pub(super) fn javascript_module(&self, module: usize) -> bool {
         self.ev_program().modules[module]

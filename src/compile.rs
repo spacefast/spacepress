@@ -1306,6 +1306,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
                 );
                 let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                let mut previous = None;
                 if *kind == DeclKind::Var {
                     let Pat::Id(name, _) = pat else {
                         return err(*span, "destructured var loops aren't supported yet");
@@ -1313,8 +1314,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let Resolved::Local(local) = self.resolve(name, *span)? else {
                         return err(*span, "var loop binding wasn't hoisted");
                     };
+                    previous = Some((name.clone(), local.ty.clone()));
                     let _ = writeln!(out, "{}{} = {value};", pad(indent + 1), local.php);
-                    self.set_var_iteration_type(name, &el);
+                    self.set_var_iteration_type(name, &el, *span)?;
                 } else {
                     self.bind_pattern(pat, &value, &el, mutable, &mut out, indent + 1)?;
                 }
@@ -1322,6 +1324,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
+                if let Some((name, before)) = previous
+                    && let Resolved::Local(local) = self.resolve(&name, *span)?
+                {
+                    self.set_local_ty(&name, Ty::union([before, local.ty]));
+                }
             }
             Stmt::ForIn {
                 kind,
@@ -1334,6 +1341,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let source = self.tmp_var();
                 let index = self.tmp_var();
                 self.fx().scopes.push(HashMap::new());
+                let mut previous = None;
                 let php = if let Some(kind) = kind {
                     let ExprKind::Ident(name) = &target.kind else {
                         return err(*span, "for-in declarations need a plain name");
@@ -1342,7 +1350,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let Resolved::Local(local) = self.resolve(name, target.span)? else {
                             return err(*span, "var loop binding wasn't hoisted");
                         };
-                        self.set_var_iteration_type(name, &Ty::Str);
+                        previous = Some((name.clone(), local.ty.clone()));
+                        self.set_var_iteration_type(name, &Ty::Str, *span)?;
                         local.php
                     } else {
                         self.declare_local(name, Ty::Str, *kind == DeclKind::Let, target.span)
@@ -1351,6 +1360,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let place = self.place(target)?;
                     if place.target.is_some() {
                         return err(*span, "for-in assignment targets must be a local name");
+                    }
+                    if !assignable(&Ty::Str, &place.constraint) {
+                        return err(
+                            *span,
+                            format!("a for-in key is a string, not {}", place.constraint.describe()),
+                        );
+                    }
+                    if let ExprKind::Ident(name) = &target.kind {
+                        previous = Some((name.clone(), place.read.ty.clone()));
                     }
                     place.read.php
                 };
@@ -1364,9 +1382,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let _ = writeln!(out, "{}{php} = {index};", pad(indent + 1));
                 self.invalidate_loop(*span);
+                if let Some((name, _)) = &previous
+                    && let Resolved::Local(local) = self.resolve(name, *span)?
+                {
+                    self.set_local_ty(
+                        name,
+                        if local.constraint == Ty::Dynamic {
+                            Ty::Dynamic
+                        } else {
+                            Ty::Str
+                        },
+                    );
+                }
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
                 self.fx().scopes.pop();
+                if let Some((name, before)) = previous
+                    && let Resolved::Local(local) = self.resolve(&name, *span)?
+                {
+                    self.set_local_ty(&name, Ty::union([before, local.ty]));
+                }
             }
             Stmt::While(test, body) => {
                 self.invalidate_loop(test.span);
@@ -1705,12 +1740,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         return Err(d);
                     };
                     let access = if optional || matches!(t, Ty::Map(_)) {
-                        format!("({src}->p[{}] ?? null)", php_str(key))
+                        format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key))
                     } else {
                         format!("{src}->p[{}]", php_str(key))
                     };
                     let read = if optional || matches!(t, Ty::Map(_)) {
-                        ft.nullable()
+                        Ty::union([ft, Ty::Undefined])
                     } else {
                         ft
                     };
@@ -1900,11 +1935,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if matches!(other.kind, ExprKind::Null | ExprKind::Undefined)
                     && let Some((n, t)) = self.path_ty(subject)
                 {
+                    let target = if matches!(other.kind, ExprKind::Undefined) {
+                        Ty::Undefined
+                    } else {
+                        Ty::Null
+                    };
+                    let remaining = match &t {
+                        Ty::Union(items) => Ty::union(items.iter().filter(|item| **item != target).cloned()),
+                        t if *t == target => Ty::Never,
+                        _ => t.clone(),
+                    };
                     let is_null_branch = (*op == BinOp::Eq) != negate;
                     let (yes, no) = if is_null_branch {
-                        (Ty::Null, t.non_null())
+                        (target, remaining)
                     } else {
-                        (t.non_null(), Ty::Null)
+                        (remaining, target)
                     };
                     out.push((n, yes, no));
                 }
@@ -2025,7 +2070,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     constraint = constraint
                         .non_null()
                         .field(part)
-                        .map(|(ty, optional)| if optional { ty.nullable() } else { ty })
+                        .map(|(ty, optional)| if optional { Ty::union([ty, Ty::Undefined]) } else { ty })
                         .unwrap_or_else(|| t.clone());
                     view.push(effects::Step::Field(part.to_string()));
                 }
@@ -2067,7 +2112,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn truthy(&self, v: &Out) -> String {
         match &v.ty {
             t if t.is_bool() => v.php.clone(),
-            // Objects, arrays, and functions are always truthy; only null is falsy.
+            // Objects, arrays, and functions are truthy; both nullish values are falsy.
             t if t.non_null().all(|x| {
                 matches!(
                     x,
@@ -2082,9 +2127,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }) =>
             {
-                format!("{} !== null", v.wrapped())
+                format!("!\\Zero\\Js::isNullish({})", v.php)
             }
-            t if t.non_null().is_str() => format!("({} ?? '') !== ''", v.wrapped()),
+            t if t.is_str() => format!("{} !== ''", v.wrapped()),
             _ => format!("\\Zero\\Js::truthy({})", v.php),
         }
     }
@@ -3553,7 +3598,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let suffix_null = |t: Ty| {
             if optional && o.ty.is_nullable() {
-                t.nullable()
+                Ty::union([t, Ty::Undefined])
             } else {
                 t
             }
@@ -3591,8 +3636,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let php = guarded(self, &|x| format!("\\Zero\\Js::prop({x}, {})", php_str(prop)));
-                let ft = if map || opt_field { ft.nullable() } else { ft };
+                let method = if map || opt_field { "dynamicGet" } else { "prop" };
+                let php = guarded(self, &|x| format!("\\Zero\\Js::{method}({x}, {})", php_str(prop)));
+                let ft = if map || opt_field {
+                    Ty::union([ft, Ty::Undefined])
+                } else {
+                    ft
+                };
                 let place = o.place.as_ref().map(|p| format!("{p}->p[{}]", php_str(prop)));
                 Out {
                     php,
@@ -3650,7 +3700,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let wrap = |t: Ty| {
             if optional && o.ty.is_nullable() {
-                t.nullable()
+                Ty::union([t, Ty::Undefined])
             } else {
                 t
             }
@@ -3679,8 +3729,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(index.span, "tuples are indexed by number"),
             },
             (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
-                format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
-                wrap((**t).clone().nullable()),
+                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
                 if let ExprKind::Str(k) = &index.kind {
@@ -3705,10 +3755,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let Some((t, opt)) = fields.get(&name) else {
                         return err(index.span, format!("this object has no property `{name}`"));
                     };
-                    values.push(if *opt { t.clone().nullable() } else { t.clone() });
+                    values.push(if *opt {
+                        Ty::union([t.clone(), Ty::Undefined])
+                    } else {
+                        t.clone()
+                    });
                 }
                 Out::atom(
-                    format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
+                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
                     wrap(Ty::union(values)),
                 )
             }
@@ -5694,14 +5748,16 @@ fn php_hint(t: &Ty) -> &'static str {
         Ty::Class(_) => "\\Zero\\JsClass ",
         Ty::Obj(_) | Ty::Map(_) => "\\Zero\\JsObject ",
         Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\Zero\\JsArray ",
-        t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => "?\\Zero\\JsObject ",
+        t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => {
+            "\\Zero\\JsObject|\\Zero\\JsUndefined|null "
+        }
         t if t.is_nullable()
             && matches!(
                 t.non_null(),
                 Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
             ) =>
         {
-            "?\\Zero\\JsArray "
+            "\\Zero\\JsArray|\\Zero\\JsUndefined|null "
         }
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
@@ -5938,7 +5994,7 @@ fn parameter_default_suffix(parameter: &Param) -> &'static str {
 
 fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
     if parameter.optional || parameter.default.is_some() {
-        ty.nullable()
+        Ty::union([ty.nullable(), Ty::Undefined])
     } else {
         ty
     }

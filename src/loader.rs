@@ -769,8 +769,10 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<P
     let path = package.join(&target);
     // Node's legacy `main` field can omit .js or name a directory. Explicit exports and source
     // `module` targets stay exact; no probing may bypass an export map's selected target.
-    let path = if legacy_main && !fs.is_file(&path) && path.extension().is_none() {
-        [path.with_extension("js"), path.join("index.js")]
+    let path = if legacy_main && !fs.is_file(&path) {
+        let mut with_js = path.clone().into_os_string();
+        with_js.push(".js");
+        [PathBuf::from(with_js), path.join("index.js")]
             .into_iter()
             .find(|candidate| fs.is_file(candidate))
             .unwrap_or(path)
@@ -872,6 +874,20 @@ mod tests {
             resolve(&*program.fs, Path::new("/p/zero.config.ts"), "shared", Span::NONE).unwrap(),
             PathBuf::from("/p/node_modules/shared/index.mjs")
         );
+        for (main, file) in [
+            ("./build/index.es5", "/p/node_modules/pkg/build/index.es5.js"),
+            ("./dist/lib.umd", "/p/node_modules/pkg/dist/lib.umd/index.js"),
+        ] {
+            let fs = memory(&[
+                ("/p/zero.config.ts", ""),
+                ("/p/node_modules/pkg/package.json", &format!(r#"{{"main":"{main}"}}"#)),
+                (file, "export const value = 1;"),
+            ]);
+            assert_eq!(
+                resolve(&fs, Path::new("/p/zero.config.ts"), "pkg", Span::NONE).unwrap(),
+                PathBuf::from(file)
+            );
+        }
     }
 
     #[test]

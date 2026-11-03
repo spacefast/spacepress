@@ -1399,8 +1399,10 @@ impl Graph {
                         .expect("scope")
                         .insert(name.clone(), Place::new(target.span));
                     self.bindings.insert(target.span, owner);
-                } else {
-                    self.expr(target, names, env, owner);
+                } else if let Some(target) = self.expr(target, names, env, owner) {
+                    self.write_events.entry(*span).or_default().insert(target.clone());
+                    self.function_writes.entry(owner).or_default().insert(target);
+                    self.history.entry(owner).or_default().insert(*span);
                 }
                 self.block(body, names, env, owner);
                 self.loop_history(owner, first_call, &before, *span);

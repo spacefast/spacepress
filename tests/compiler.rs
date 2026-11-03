@@ -1167,6 +1167,26 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
+            "let key: number = 0; for (key in { a: true }) {} return true;",
+            "a for-in key is a string",
+        ),
+        (
+            "var key: number; for (var key in { a: true }) {} return true;",
+            "loop values are string",
+        ),
+        (
+            "var value: number; for (var value of ['a']) {} return true;",
+            "loop values are string",
+        ),
+        (
+            "let key: string | number = 1; if (typeof key === 'number') { for (key in { a: true }) {} return key + 1 > 0; } return false;",
+            "is ambiguous",
+        ),
+        (
+            "let key: unknown = 1; if (typeof key === 'number') { const read = () => key; for (key in { a: true }) {} return read() + 1 > 0; } return false;",
+            "is ambiguous",
+        ),
+        (
             "const root: { x: number | string } = { x: 1 }; const alias = root; if (typeof root.x === 'number') { alias.x = 'hi'; return root.x + 1 > 0; } return true;",
             "is ambiguous",
         ),

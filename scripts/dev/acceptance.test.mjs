@@ -129,8 +129,26 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   await writeFile(join(project, 'zero.config.ts'), 'export default { broken: ;');
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'first');
+  const failurePlugin = join(site, 'wp-content/mu-plugins/acceptance-migrate-failure.php');
+  await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
+  await writeFile(failurePlugin, `<?php
+if (defined('WP_CLI') && WP_CLI) {
+  WP_CLI::error('Acceptance configuration interruption');
+}`);
   await writeFile(join(project, 'zero.config.ts'), config('second', 'shelf: text(),'));
-  cursor = await session.wait('Updated. Refresh', cursor);
+  cursor = await session.wait('Acceptance configuration interruption', cursor);
+  cursor = await session.wait('Fix the error and save to retry.', cursor);
+  const interrupted = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
+  assert.notDeepEqual(interrupted.pending.migrations, interrupted.migrations);
+  const interruptedExit = once(session.child, 'exit');
+  await command(['dev', 'stop', project], env);
+  assert.deepEqual(await interruptedExit, [0, null]);
+  await rm(failurePlugin);
+  session = foreground(['dev', project], env);
+  cursor = await session.wait('Watching config');
+  const recovered = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
+  assert.equal(recovered.pending, undefined);
+  assert.deepEqual(recovered.migrations, interrupted.pending.migrations);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'second');
   await api(`/items/${item.id}`, { method: 'PATCH', body: { shelf: 'A2' } });
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');

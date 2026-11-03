@@ -37,7 +37,7 @@ fn runner() -> Result<PathBuf, String> {
 }
 
 fn command(project: &Path, mode: &str) -> Result<Command, String> {
-    let mut command = Command::new("npx");
+    let mut command = Command::new(if cfg!(windows) { "npx.cmd" } else { "npx" });
     command.args(["--yes", "--package", STUDIO, "--", "node"]);
     command.arg(runner()?).arg(mode).arg(project);
     Ok(command)

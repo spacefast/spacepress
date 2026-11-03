@@ -46,6 +46,8 @@ const server = createServer();
 await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
 const port = server.address().port;
 await new Promise((done) => server.close(done));
+let stopped = false;
+let primaryError;
 try {
   await run(['dev', project, '--port', String(port), '--no-watch']);
   const status = JSON.parse(await run(['dev', 'status', project]));
@@ -59,10 +61,20 @@ try {
   const version = await run(['dev', 'wp', project, '--', 'core', 'version']);
   assert.match(version.trim(), /^7\./);
   await run(['dev', 'stop', project]);
+  stopped = true;
   assert.equal(JSON.parse(await run(['dev', 'status', project])).isOnline, false);
   console.log('ok - installed binary provisions, serves, runs WP-CLI and stops native WordPress without its build checkout');
+} catch (error) {
+  primaryError = error;
+  throw error;
 } finally {
-  await run(['dev', 'stop', project]);
-  await exec('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', `${project}/.zero/dev/wordpress`, '--no-files'], { timeout: 60000 });
+  const errors = [];
+  if (!stopped) await run(['dev', 'stop', project]).catch((error) => errors.push(error));
+  await exec('npx', ['--yes', 'wp-studio@2.1.1', 'delete', '--path', `${project}/.zero/dev/wordpress`, '--no-files'], { timeout: 60000 })
+    .catch((error) => errors.push(error));
+  if (errors.length) {
+    for (const error of errors) console.error('Cleanup:', error.message);
+    if (!primaryError) throw new AggregateError(errors, 'Installed test cleanup failed');
+  }
 }
 CHECK

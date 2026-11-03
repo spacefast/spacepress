@@ -151,8 +151,8 @@ new site's port; an existing site keeps its original port.
 
 Watched saves preserve existing fields and stored values. Removing fields or
 changing their types or constraints requires a deliberate migration: stop dev,
-run `zero build` to inspect the generated SQL, then start once with
-`zero dev --allow-destructive`. That flag authorizes the initial apply only;
+run `./target/release/zero build examples/pantry` to inspect the generated SQL,
+then start once with `./target/release/zero dev examples/pantry --allow-destructive`. That flag authorizes the initial apply only;
 subsequent watched saves are protected again. Edited or prebuilt migration
 history also requires this explicit apply.
 

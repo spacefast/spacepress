@@ -72,6 +72,86 @@ function scalarRemainder(value: number | string | null): string {
   if (typeof value !== "string") return "absent";
   return value.toLowerCase();
 }
+
+function varParameter(value: number): number {
+  var value;
+  return value;
+}
+
+function uncheckedText(value: unknown, texts: string[]): string {
+  const first = Array.from(["x"]);
+  const definite: string = value + first[0];
+  return "p" + (value + texts[3]) + (value + texts[0]) + (texts[0] + value) + definite;
+}
+
+function varSemantics(seed: number) {
+  const before = typeof later;
+  const beforeValue = later;
+  var later: number = seed;
+  var later;
+  if (seed < 0) {
+    var absent: number = 9;
+  }
+  {
+    var fromBlock: number = 4;
+  }
+  const shared: (() => number)[] = [];
+  for (var index = 0, end = 3; index < end; index++) shared.push(() => index);
+  const separate: (() => string)[] = [];
+  const keys: string[] = [];
+  for (const key in { "10": "ten", "2": "two", alpha: "a", "01": "one" }) {
+    keys.push(key);
+    separate.push(() => key);
+  }
+  var last: string = "";
+  const sharedKeys: (() => string)[] = [];
+  for (last in { first: true, second: true }) sharedKeys.push(() => last);
+  const sharedItems: (() => number)[] = [];
+  for (var item of [7, 8]) sharedItems.push(() => item);
+  var order: string = "";
+  const result = (order += "a", order += "b", order.length);
+  const discarded = void (order += "c");
+  return {
+    before,
+    beforeValue: beforeValue === undefined,
+    after: later,
+    absent: typeof absent,
+    fromBlock,
+    parameter: varParameter(seed),
+    uncheckedText: uncheckedText(seed, ["x"]),
+    shared: shared.map(read => read()),
+    separate: separate.map(read => read()),
+    keys,
+    last,
+    sharedKeys: sharedKeys.map(read => read()),
+    index,
+    item,
+    sharedItems: sharedItems.map(read => read()),
+    order,
+    result,
+    discarded: typeof discarded,
+    loose: [0 == "", 0 == false, [1] == 1, [] == false, [null] == "", {} == "[object Object]", undefined == null, NaN == NaN],
+  };
+}
+
+const BUILD_TIME_VAR_SEMANTICS = varSemantics(5);
+
+function defaultArgument(value: string = "fallback") {
+  return { value, argument: typeof arguments[0], length: arguments.length };
+}
+
+function argumentSemantics(first: string, ...tail: string[]) {
+  const read = () => arguments[0];
+  const initial = { array: Array.isArray(arguments), string: String(arguments), json: JSON.stringify(arguments) };
+  arguments[0] = "changed";
+  arguments[3] = "extra";
+  arguments.length = 1;
+  const keys = Object.keys(arguments);
+  function inner() { return arguments.length; }
+  return { initial, first, tail, read: read(), keys, length: arguments.length, values: Array.from(arguments), inner: inner(), default: defaultArgument(undefined), callbackRest: ["first"].map((...args) => args.length), emptyCallbackRest: ["first"].map((value, index, array, ...args) => args.length) };
+}
+
+const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemantics("original", "tail");
 const ITEMS: Item[] = [
   { name: "Oat Milk", qty: 2, tags: ["dairy-free"] },
   { name: "eggs", qty: 0, tags: [] },
@@ -120,9 +200,20 @@ type LanguageBox<T> = { value: T };
 class LanguageView {
   missing: undefined = undefined;
   entry: LanguageCopy<LanguageEntry> = { id: 0, state: "draft", title: "" };
-  constructor(entry: LanguageCopy<LanguageEntry>) { this.entry = entry; }
+  constructorArguments: number = 0;
+  constructorFirst: string = "";
+  constructor(entry: LanguageCopy<LanguageEntry>) {
+    this.entry = entry;
+    const count = () => arguments.length;
+    this.constructorArguments = count();
+    this.constructorFirst = typeof arguments[0];
+  }
   snapshot(): Required<Pick<LanguageEntry, "id" | "note">> {
     return { id: this.entry.id, note: this.entry.note ?? null };
+  }
+  argumentSnapshot(value: string = "default") {
+    const count = () => arguments.length;
+    return { count: count(), first: typeof arguments[0], value };
   }
   clear(): void {
     const empty: undefined = undefined;
@@ -131,9 +222,12 @@ class LanguageView {
 }
 class LanguageDraftView extends LanguageView {
   label: Exclude<"draft" | "published", "published"> = "draft";
+  derivedArguments: number = 0;
   constructor(entry: LanguageCopy<LanguageEntry>, label: Exclude<"draft" | "published", "published">) {
     super(entry);
     this.label = label;
+    const count = () => arguments.length;
+    this.derivedArguments = count();
   }
 }
 
@@ -321,6 +415,8 @@ export default defineConfig({
   collections: { docs }, tables: { n, field_docs: fieldDocs() },
   actions: {
     ...laneRefs,
+    varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
+    argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
     languageTypes: run(() => {
       const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
       const guard = isNamed;
@@ -371,6 +467,8 @@ export default defineConfig({
       return { scalarTypes, scalarFalseBranches, guardedLabels, predicateMap, guardedFind, guardedBranch, booleanFilter, tupleLabels, arrayPresence,
         classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
         classInstance: boxedView.value instanceof LanguageView, classType: typeof LanguageDraftView,
+        classArguments: { base: boxedView.value.constructorArguments, first: boxedView.value.constructorFirst,
+          derived: boxedView.value.derivedArguments, omitted: boxedView.value.argumentSnapshot(), supplied: boxedView.value.argumentSnapshot("passed") },
         required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, optionalConflict, directLabels: { note: directLabels.note ?? null }, optionalSnapshot: { note: optionalSnapshot.note ?? null }, intersection: { note: intersection.note ?? null }, both, boxed, shadowed, collapsed,
         missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
     }),
@@ -492,6 +590,8 @@ export default defineConfig({
       "x".repeat(3),
       "Hello World".replace(/o/g, "0"),
       "a-b-c".replaceAll("-", "+"),
+      "left|right".replaceAll("|", "\n"),
+      "\r\n  $literal ${value} \"quote\" \\path\n",
       "aba".replaceAll("a", replacementOffset),
       "ab".replace(/b/, (match: string, offset: number, source: string) => `${match}:${offset}:${source}`),
       "ab".replace(/(a)?b/, (_match, capture: string | null, offset: number) => `${capture ?? "missing"}:${offset}`),

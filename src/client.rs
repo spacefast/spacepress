@@ -245,7 +245,7 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
         return name.clone();
     }
     match t {
-        Ty::Instance(_, fields) => ty_ts(fields, rows),
+        Ty::Instance(_, fields) | Ty::Rest(fields) => ty_ts(fields, rows),
         Ty::Num | Ty::FreshNumLit(_) | Ty::Date => "number".into(),
         Ty::NumLit(value) => value.to_string(),
         Ty::Str => "string".into(),
@@ -256,6 +256,10 @@ fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
         Ty::Undefined => "undefined".into(),
         Ty::Void => "void".into(),
         Ty::Never => "never".into(),
+        Ty::NonEmptyArray(el) => {
+            let inner = ty_ts(el, rows);
+            format!("[{inner}, ...({inner})[]]")
+        }
         Ty::Array(el) => {
             let inner = ty_ts(el, rows);
             if inner.contains(' ') {

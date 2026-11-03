@@ -53,6 +53,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - name: Compare real npm library imports with Node
+        run: |
+          npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
+          ZERO_BIN="$GITHUB_WORKSPACE/target/debug/zero" node examples/npm-compat/verify.mjs --isolated
       - run: target/debug/zero check examples/showcase
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs

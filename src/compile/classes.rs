@@ -80,7 +80,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .params
             .iter()
             .skip(1)
-            .map(|p| self.class_parameter(p, f.module))
+            .map(|p| {
+                self.class_parameter(p, f.module)
+                    .map(|ty| if p.rest { Ty::Rest(Box::new(ty)) } else { ty })
+            })
             .collect::<Result<Vec<_>>>()?;
         let ret = match &f.ret {
             Some(a) => self.resolve_runtime_ann(a, f.module)?,
@@ -342,7 +345,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         validate_captured_data(&static_data, c.span, &mut HashSet::new())?;
-        let data = self.captured_data(&static_data)?;
+        let data = self.captured_data(&static_data, false)?;
         let parent_php = parent
             .map(|id| format!("\\ZeroApp\\{}()", self.classes[&id].name))
             .unwrap_or("null".into());
@@ -364,20 +367,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn checked_class_args(&mut self, signature: &Ty, args: &[ArrEl], span: Span) -> Result<Vec<String>> {
         let Ty::Fn(params, _) = signature else { unreachable!() };
         let argv = self.plain_args(args)?;
-        if argv.len() > params.len() || params.iter().skip(argv.len()).any(|t| !t.is_nullable()) {
+        if argv.len() > params.len() && !matches!(params.last(), Some(Ty::Rest(_)))
+            || params
+                .iter()
+                .skip(argv.len())
+                .any(|t| !t.is_nullable() && !matches!(t, Ty::Rest(_)))
+        {
             return err(span, "wrong number of class arguments");
         }
-        for ((arg, want), syntax) in argv.iter().zip(params).zip(args) {
+        for (i, (arg, syntax)) in argv.iter().zip(args).enumerate() {
+            let Some(want) = callable_argument(params, i) else {
+                return err(span, "wrong number of class arguments");
+            };
             let ArrEl::Item(expression) = syntax else {
                 unreachable!("plain_args rejects spreads")
             };
             // Match ordinary calls: mutation effects can broaden a read view
             // without changing the binding's authored argument contract.
-            if !assignable(&arg.ty, want)
+            if !assignable(&arg.ty, &want)
                 && (arg.ty.is_nullable() && !want.is_nullable()
                     || !self
                         .argument_constraint(expression)
-                        .is_some_and(|ty| assignable(&ty, want)))
+                        .is_some_and(|ty| assignable(&ty, &want)))
             {
                 return err(
                     span,
@@ -552,6 +563,7 @@ pub(super) fn wire_type(ty: &Ty) -> Ty {
                 .collect(),
         ),
         Ty::Array(t) => Ty::Array(Box::new(wire_type(t))),
+        Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(wire_type(t))),
         Ty::ArrayLiteral(ts) => Ty::ArrayLiteral(ts.iter().map(wire_type).collect()),
         Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(wire_type).collect()),
         Ty::Map(t) => Ty::Map(Box::new(wire_type(t))),

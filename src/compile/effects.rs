@@ -8,6 +8,10 @@ use super::*;
 pub(super) enum Step {
     Field(String),
     Index,
+    /// Array mutators may remove every element, invalidating a lower bound.
+    Resize,
+    /// A raw JavaScript write can replace the value's entire static domain.
+    DynamicValue,
     /// Recursive calls can reach descendants beyond the program's explicit paths.
     Descendants,
     Result,
@@ -76,8 +80,23 @@ impl Effects {
         self.captured.contains(&binding)
     }
 
-    pub fn analyze(roots: &[Root], schema: &Schema) -> Self {
-        let mut graph = Graph::default();
+    pub fn analyze(roots: &[Root], schema: &Schema, program: &crate::loader::Program) -> Self {
+        let javascript_modules = program
+            .modules
+            .iter()
+            .filter(|module| {
+                module
+                    .path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| matches!(extension, "js" | "mjs" | "cjs"))
+            })
+            .map(|module| module.id)
+            .collect();
+        let mut graph = Graph {
+            javascript_modules,
+            ..Graph::default()
+        };
         for root in roots {
             graph.function(&root.closure.func, &[], &root.closure.env);
             graph.reachable.insert(root.closure.func.span);
@@ -220,10 +239,13 @@ fn invalidate_paths(paths: &HashSet<Place>, binding: Span, view: &[Step], ty: &T
 // Dropping a narrowing must not undo a tuple/number view widened by a prior mutation.
 fn restore_constraint(ty: &Ty, constraint: &Ty) -> Ty {
     match (ty, constraint) {
+        (Ty::Dynamic, _) => Ty::Dynamic,
         (Ty::Instance(id, fields), Ty::Instance(_, original)) => {
             Ty::Instance(id.clone(), Box::new(restore_constraint(fields, original)))
         }
         (Ty::Num, t) if t.is_num() => Ty::Num,
+        (Ty::Array(t), Ty::NonEmptyArray(c)) => Ty::Array(Box::new(restore_constraint(t, c))),
+        (Ty::NonEmptyArray(t), Ty::NonEmptyArray(c)) => Ty::NonEmptyArray(Box::new(restore_constraint(t, c))),
         (Ty::Array(t), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => Ty::Array(Box::new(Ty::union(
             std::iter::once((**t).clone()).chain(ts.iter().cloned()),
         ))),
@@ -256,6 +278,15 @@ fn restore(ty: &Ty, constraint: &Ty, path: &[Step]) -> Ty {
         return restore_constraint(ty, constraint);
     };
     match (ty, step) {
+        (_, Step::DynamicValue) => Ty::Dynamic,
+        (Ty::NonEmptyArray(t), Step::Resize | Step::Descendants) => Ty::Array(t.clone()),
+        (Ty::NonEmptyArray(t), Step::Index) => {
+            let original = match constraint {
+                Ty::NonEmptyArray(c) | Ty::Array(c) => c.as_ref(),
+                _ => t.as_ref(),
+            };
+            Ty::NonEmptyArray(Box::new(restore(t, original, rest)))
+        }
         (Ty::Union(ts), _) => Ty::union(ts.iter().map(|t| restore(t, constraint, path))),
         (_, Step::Descendants) => {
             // A member write can replace descendants, never the receiver binding.
@@ -329,6 +360,9 @@ fn widen(ty: &Ty, path: &[Step]) -> Ty {
         };
     };
     match (ty, step) {
+        (_, Step::DynamicValue) => Ty::Dynamic,
+        (Ty::NonEmptyArray(t), Step::Resize | Step::Descendants) => Ty::Array(Box::new(widen(t, rest))),
+        (Ty::NonEmptyArray(t), Step::Index) => Ty::NonEmptyArray(Box::new(widen(t, rest))),
         (Ty::Union(ts), _) => Ty::union(ts.iter().map(|t| widen(t, path))),
         (_, Step::Descendants) => match ty {
             Ty::Obj(fields) => Ty::Obj(
@@ -392,6 +426,9 @@ impl Call {
 
 #[derive(Default)]
 struct Graph {
+    javascript_modules: HashSet<usize>,
+    javascript_functions: HashSet<Span>,
+    scalar_functions: HashSet<Span>,
     classes: HashSet<usize>,
     methods: HashSet<Span>,
     captured: HashSet<Span>,
@@ -405,6 +442,7 @@ struct Graph {
     expression_events: HashMap<Span, HashSet<Span>>,
     loop_events: HashMap<Span, HashSet<Span>>,
     functions: HashMap<Span, Vec<Place>>,
+    rest_parameters: HashMap<Span, usize>,
     values: HashSet<(Place, Span)>,
     copies: HashSet<(Place, Place, Span)>,
     captured_data: HashMap<(u8, usize), Place>,
@@ -429,18 +467,27 @@ type Names = Vec<HashMap<String, Place>>;
 impl Graph {
     fn function(&mut self, f: &Rc<Func>, outer: &[HashMap<String, Place>], env: &Rc<Scope>) -> Place {
         let owner = f.span;
+        if self.javascript_modules.contains(&f.module) {
+            self.javascript_functions.insert(owner);
+        }
+        if f.ret.as_ref().is_some_and(scalar_return_annotation) {
+            self.scalar_functions.insert(owner);
+        }
         let value = Place::new(f.span);
         self.values.insert((value.clone(), f.span));
         if self.functions.contains_key(&f.span) {
             return value;
         }
         self.functions.insert(f.span, Vec::new());
+        if let Some(index) = f.params.iter().position(|parameter| parameter.rest) {
+            self.rest_parameters.insert(f.span, index);
+        }
         let mut names = outer.to_vec();
         names.push(HashMap::new());
         if let Some(name) = &f.name {
             names.last_mut().unwrap().insert(name.clone(), value.clone());
         }
-        let params = f
+        let params: Vec<Place> = f
             .params
             .iter()
             .map(|p| {
@@ -453,7 +500,26 @@ impl Graph {
                 param
             })
             .collect();
+        if !f.is_arrow && !names.last().expect("function scope").contains_key("arguments") {
+            let binding = javascript::arguments_binding(f);
+            let arguments = Place::new(binding);
+            names
+                .last_mut()
+                .expect("function scope")
+                .insert("arguments".into(), arguments.clone());
+            self.bindings.insert(binding, owner);
+        }
         self.functions.insert(f.span, params);
+        if let FnBody::Block(body) = &f.body {
+            let mut vars = Vec::new();
+            javascript::collect_var_declarations(body, &mut vars);
+            for (name, span) in vars {
+                if !names.last().expect("function scope").contains_key(&name) {
+                    names.last_mut().expect("function scope").insert(name, Place::new(span));
+                    self.bindings.insert(span, owner);
+                }
+            }
+        }
         for p in &f.params {
             self.defaults(&p.pat, &mut names, env, f.span);
             if let Some(e) = &p.default {
@@ -464,7 +530,9 @@ impl Graph {
         match &f.body {
             FnBody::Expr(e) => {
                 let result = self.expr(e, &mut names, env, f.span);
-                self.copy(result, Some(value.at(Step::Result)), owner);
+                if !self.scalar_functions.contains(&owner) {
+                    self.copy(result, Some(value.at(Step::Result)), owner);
+                }
             }
             FnBody::Block(body) => self.block(body, &mut names, env, f.span),
         }
@@ -724,6 +792,13 @@ impl Graph {
             self.event_owners.insert(e.span, owner);
         }
         match &e.kind {
+            ExprKind::Sequence(items) => {
+                let mut last = None;
+                for item in items {
+                    last = self.expr(item, names, env, owner);
+                }
+                return last;
+            }
             ExprKind::Ident(name) => {
                 let place = self.ident(name, names, env)?;
                 if self
@@ -791,6 +866,13 @@ impl Graph {
                 if let Some(p) = &target {
                     self.write_events.entry(e.span).or_default().insert(p.clone());
                     self.function_writes.entry(owner).or_default().insert(p.clone());
+                    if self.javascript_functions.contains(&owner) && !p.path.is_empty() {
+                        let dynamic = p.at(Step::DynamicValue);
+                        self.write_events.entry(e.span).or_default().insert(dynamic.clone());
+                        self.function_writes.entry(owner).or_default().insert(dynamic.clone());
+                        self.events.entry(e.span).or_default().insert(dynamic.clone());
+                        self.function_numeric.entry(owner).or_default().insert(dynamic);
+                    }
                     if matches!(op, Some(AssignOp::Bin(_))) {
                         self.numeric.insert(p.clone());
                         self.events.entry(e.span).or_default().insert(p.clone());
@@ -878,11 +960,35 @@ impl Graph {
                     | "substring" | "substr" | "charAt" | "charCodeAt" | "codePointAt" | "split" | "repeat" | "padStart" | "padEnd"
                     | "abs" | "ceil" | "floor" | "round" | "trunc" | "min" | "max" | "pow" | "sqrt" | "sign"
                     | "isFinite" | "isInteger" | "isNaN" | "parseInt" | "parseFloat" | "parse" | "stringify"));
+                let known_callback = match &callee.kind {
+                    ExprKind::Member { prop, .. } => {
+                        let index = match prop.as_str() {
+                            "map" | "flatMap" | "forEach" | "filter" | "some" | "every" | "find" | "findLast"
+                            | "findIndex" | "findLastIndex" | "reduce" | "sort" | "toSorted" => Some(0),
+                            "replace" | "replaceAll" | "from" => Some(1),
+                            _ => None,
+                        };
+                        index
+                            .and_then(|index| argv.get(index))
+                            .and_then(Option::as_ref)
+                            .is_some_and(|callback| self.values.iter().any(|(value, _)| callable_at(value, callback)))
+                    }
+                    _ => false,
+                };
+                let builtin = builtin
+                    || known_callback
+                    || matches!(&callee.kind, ExprKind::Ident(name) if name == "RegExp" && self.ident(name, names, env).is_none())
+                    || matches!(&callee.kind, ExprKind::Member { prop, .. } if prop == "match")
+                    || matches!(&callee.kind, ExprKind::Member { obj, prop, .. } if prop == "from" && argv.len() == 1 && matches!(&obj.kind, ExprKind::Ident(n) if n == "Array"))
+                    || matches!(&callee.kind, ExprKind::Member { prop, .. } if matches!(prop.as_str(), "replace" | "replaceAll") && matches!(args.get(1), Some(ArrEl::Item(Expr { kind: ExprKind::Str(_), .. }))));
                 if !builtin {
                     self.call_events.insert(e.span, owner);
                     self.escaped.extend(argv.iter().flatten().cloned());
                 }
-                self.external.insert(value.binding);
+                let fresh_result = matches!(&callee.kind, ExprKind::Member { prop, .. } if matches!(prop.as_str(), "map" | "filter" | "reduce" | "concat" | "slice" | "flat" | "flatMap" | "toReversed" | "toSorted" | "split" | "match" | "keys" | "values" | "entries" | "from" | "fromEntries" | "replace" | "replaceAll" | "trim" | "trimStart" | "trimEnd" | "toUpperCase" | "toLowerCase"));
+                if !fresh_result {
+                    self.external.insert(value.binding);
+                }
                 if let ExprKind::Member { prop, .. } = &callee.kind {
                     // The receiver has already been visited above. Resolve its place without replaying effects.
                     let recv = callee_value.as_ref().and_then(|p| {
@@ -895,8 +1001,18 @@ impl Graph {
                         && let Some(p) = &recv
                     {
                         let target = p.at(Step::Index);
+                        if self.javascript_functions.contains(&owner) {
+                            let dynamic = target.at(Step::DynamicValue);
+                            self.write_events.entry(e.span).or_default().insert(dynamic.clone());
+                            self.function_writes.entry(owner).or_default().insert(dynamic.clone());
+                            self.events.entry(e.span).or_default().insert(dynamic.clone());
+                            self.function_numeric.entry(owner).or_default().insert(dynamic);
+                        }
                         self.write_events.entry(e.span).or_default().insert(target.clone());
                         self.function_writes.entry(owner).or_default().insert(target);
+                        let resized = p.at(Step::Resize);
+                        self.write_events.entry(e.span).or_default().insert(resized.clone());
+                        self.function_writes.entry(owner).or_default().insert(resized);
                     }
                     if let Some(mutation) = mutation
                         && let Some(recv) = &recv
@@ -1025,7 +1141,9 @@ impl Graph {
                     {
                         let source = argv.first().cloned().flatten();
                         match (global.as_str(), prop.as_str()) {
-                            ("Array", "from") if argv.len() == 1 => self.copy(source, Some(value.clone()), owner),
+                            ("Array", "from") if argv.len() == 1 => {
+                                self.copy(source.map(|p| p.at(Step::Index)), Some(value.at(Step::Index)), owner)
+                            }
                             ("Object", "values") => {
                                 self.copy(source.map(|p| p.at(Step::Index)), Some(value.at(Step::Index)), owner)
                             }
@@ -1115,22 +1233,22 @@ impl Graph {
             ExprKind::Binary(_, a, b) | ExprKind::Instanceof(a, b) => {
                 self.expr(a, names, env, owner);
                 self.expr(b, names, env, owner);
+                return None;
             }
             ExprKind::Unary(_, e) | ExprKind::IsNullish(e, _) => {
                 self.expr(e, names, env, owner);
+                return None;
             }
             ExprKind::Template(_, exprs) => {
                 for e in exprs {
                     self.expr(e, names, env, owner);
                 }
+                return None;
             }
-            ExprKind::Num(_)
-            | ExprKind::Class(_)
-            | ExprKind::Str(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Null
-            | ExprKind::Undefined
-            | ExprKind::Regex { .. } => {}
+            ExprKind::Num(_) | ExprKind::Str(_) | ExprKind::Bool(_) | ExprKind::Null | ExprKind::Undefined => {
+                return None;
+            }
+            ExprKind::Class(_) | ExprKind::Regex { .. } => {}
         }
         Some(value)
     }
@@ -1139,7 +1257,7 @@ impl Graph {
         names.push(HashMap::new());
         for s in body {
             match s {
-                Stmt::Decl { pat, .. } => self.bind(pat, names, owner),
+                Stmt::Decl { kind, pat, .. } if *kind != DeclKind::Var => self.bind(pat, names, owner),
                 Stmt::Func(f) => {
                     names
                         .last_mut()
@@ -1157,9 +1275,25 @@ impl Graph {
 
     fn stmt(&mut self, s: &Stmt, names: &mut Names, env: &Rc<Scope>, owner: Span) {
         match s {
-            Stmt::Decl { pat, init, .. } => {
+            Stmt::Decl {
+                kind, pat, init, span, ..
+            } => {
                 let src = init.as_ref().and_then(|e| self.expr(e, names, env, owner));
-                self.bind_value(pat, src, owner);
+                if *kind == DeclKind::Var
+                    && let Pat::Id(name, _) = pat
+                {
+                    let target = self.ident(name, names, env);
+                    if init.is_some()
+                        && let Some(target) = &target
+                    {
+                        self.write_events.entry(*span).or_default().insert(target.clone());
+                        self.function_writes.entry(owner).or_default().insert(target.clone());
+                        self.history.entry(owner).or_default().insert(*span);
+                    }
+                    self.copy(src, target, owner);
+                } else {
+                    self.bind_value(pat, src, owner);
+                }
                 self.defaults(pat, names, env, owner);
             }
             Stmt::Func(f) => {
@@ -1174,7 +1308,9 @@ impl Graph {
             }
             Stmt::Return(Some(e), _) => {
                 let src = self.expr(e, names, env, owner);
-                self.copy(src, Some(Place::new(owner).at(Step::Result)), owner);
+                if !self.scalar_functions.contains(&owner) {
+                    self.copy(src, Some(Place::new(owner).at(Step::Result)), owner);
+                }
             }
             Stmt::If(e, a, b) => {
                 self.expr(e, names, env, owner);
@@ -1200,7 +1336,9 @@ impl Graph {
             } => {
                 names.push(HashMap::new());
                 if let Some(init) = init {
-                    if let Stmt::Decl { pat, .. } = init.as_ref() {
+                    if let Stmt::Decl { kind, pat, .. } = init.as_ref()
+                        && *kind != DeclKind::Var
+                    {
                         self.bind(pat, names, owner);
                     }
                     self.stmt(init, names, env, owner);
@@ -1215,15 +1353,55 @@ impl Graph {
                 names.pop();
             }
             Stmt::ForOf {
-                pat, iter, body, span, ..
+                kind,
+                pat,
+                iter,
+                body,
+                span,
+                ..
             } => {
                 let src = self.expr(iter, names, env, owner).map(|p| p.at(Step::Index));
                 let first_call = self.calls.len();
                 let before = self.history.get(&owner).cloned().unwrap_or_default();
                 names.push(HashMap::new());
-                self.bind(pat, names, owner);
-                self.bind_value(pat, src, owner);
+                if *kind != DeclKind::Var {
+                    self.bind(pat, names, owner);
+                }
+                if *kind == DeclKind::Var
+                    && let Pat::Id(name, _) = pat
+                {
+                    let target = self.ident(name, names, env);
+                    self.copy(src, target, owner);
+                } else {
+                    self.bind_value(pat, src, owner);
+                }
                 self.defaults(pat, names, env, owner);
+                self.block(body, names, env, owner);
+                self.loop_history(owner, first_call, &before, *span);
+                names.pop();
+            }
+            Stmt::ForIn {
+                kind,
+                target,
+                iter,
+                body,
+                span,
+            } => {
+                self.expr(iter, names, env, owner);
+                let first_call = self.calls.len();
+                let before = self.history.get(&owner).cloned().unwrap_or_default();
+                names.push(HashMap::new());
+                if matches!(kind, Some(DeclKind::Let | DeclKind::Const))
+                    && let ExprKind::Ident(name) = &target.kind
+                {
+                    names
+                        .last_mut()
+                        .expect("scope")
+                        .insert(name.clone(), Place::new(target.span));
+                    self.bindings.insert(target.span, owner);
+                } else {
+                    self.expr(target, names, env, owner);
+                }
                 self.block(body, names, env, owner);
                 self.loop_history(owner, first_call, &before, *span);
                 names.pop();
@@ -1273,6 +1451,52 @@ impl Graph {
             p.path.push(Step::Descendants);
         }
         p
+    }
+
+    fn call_bindings(&self, call: &Call, function: Span) -> Vec<(Option<Place>, Place)> {
+        let parameters = &self.functions[&function];
+        let rest = self.rest_parameters.get(&function).copied();
+        call.arguments(self.methods.contains(&function))
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, argument)| {
+                let parameter = if let Some(rest) = rest.filter(|rest| index >= *rest) {
+                    parameters[rest].at(Step::Index)
+                } else {
+                    parameters.get(index)?.clone()
+                };
+                Some((argument, parameter))
+            })
+            .collect()
+    }
+
+    fn caller_effects(&self, function: Span, bindings: &[(Option<Place>, Place)], effect: Place) -> Vec<Place> {
+        if self.functions[&function]
+            .iter()
+            .any(|param| param.binding == effect.binding)
+        {
+            bindings
+                .iter()
+                .filter_map(|(argument, parameter)| {
+                    if parameter.binding != effect.binding {
+                        return None;
+                    }
+                    let suffix = projected_suffix(&effect.path, &parameter.path)?;
+                    // Assigning a parameter or a fresh rest slot cannot replace
+                    // the caller's binding.
+                    if suffix.is_empty() {
+                        return None;
+                    }
+                    let mut target = argument.as_ref()?.clone();
+                    target.path.extend_from_slice(suffix);
+                    Some(self.bounded(target))
+                })
+                .collect()
+        } else if self.bindings.get(&effect.binding) != Some(&function) {
+            vec![effect]
+        } else {
+            Vec::new()
+        }
     }
 
     fn loop_history(&mut self, owner: Span, first_call: usize, before: &HashSet<Span>, key: Span) {
@@ -1343,10 +1567,9 @@ impl Graph {
                 }
                 for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
                     self.reachable.insert(*function);
-                    let params = &self.functions[function];
-                    for (arg, param) in call.arguments(self.methods.contains(function)).iter().zip(params) {
+                    for (arg, param) in self.call_bindings(call, *function) {
                         if let Some(arg) = arg {
-                            self.copies.insert((arg.clone(), param.clone(), call.owner));
+                            self.copies.insert((arg, param, call.owner));
                         }
                     }
                     self.copies
@@ -1402,8 +1625,8 @@ impl Graph {
                     continue;
                 }
                 for (_, function) in self.values.iter().filter(|(value, _)| callable_at(value, &call.callee)) {
-                    let arguments = call.arguments(self.methods.contains(function));
-                    for (arg, param) in arguments.iter().zip(&self.functions[function]) {
+                    let bindings = self.call_bindings(call, *function);
+                    for (arg, param) in &bindings {
                         let Some(arg) = arg else {
                             continue;
                         };
@@ -1452,53 +1675,21 @@ impl Graph {
                     }
                     let summary = self.function_numeric.get(function).cloned().unwrap_or_default();
                     for p in summary {
-                        let param = self.functions[function]
-                            .iter()
-                            .position(|param| param.binding == p.binding);
-                        let target = if let Some(i) = param {
-                            if p.path.is_empty() {
-                                continue;
-                            }
-                            let Some(Some(arg)) = arguments.get(i) else {
-                                continue;
-                            };
-                            let mut target = arg.clone();
-                            target.path.extend_from_slice(&p.path);
-                            self.bounded(target)
-                        } else if self.bindings.get(&p.binding) != Some(function) {
-                            p
-                        } else {
-                            continue;
-                        };
-                        self.events.entry(call.span).or_default().insert(target.clone());
-                        self.function_numeric
-                            .entry(call.owner)
-                            .or_default()
-                            .insert(target.clone());
-                        self.numeric.insert(target);
+                        for target in self.caller_effects(*function, &bindings, p) {
+                            self.events.entry(call.span).or_default().insert(target.clone());
+                            self.function_numeric
+                                .entry(call.owner)
+                                .or_default()
+                                .insert(target.clone());
+                            self.numeric.insert(target);
+                        }
                     }
                     let summary = self.function_writes.get(function).cloned().unwrap_or_default();
                     for p in summary {
-                        let param = self.functions[function]
-                            .iter()
-                            .position(|param| param.binding == p.binding);
-                        let target = if let Some(i) = param {
-                            if p.path.is_empty() {
-                                continue;
-                            }
-                            let Some(Some(arg)) = arguments.get(i) else {
-                                continue;
-                            };
-                            let mut target = arg.clone();
-                            target.path.extend_from_slice(&p.path);
-                            self.bounded(target)
-                        } else if self.bindings.get(&p.binding) != Some(function) {
-                            p
-                        } else {
-                            continue;
-                        };
-                        self.write_events.entry(call.span).or_default().insert(target.clone());
-                        self.function_writes.entry(call.owner).or_default().insert(target);
+                        for target in self.caller_effects(*function, &bindings, p) {
+                            self.write_events.entry(call.span).or_default().insert(target.clone());
+                            self.function_writes.entry(call.owner).or_default().insert(target);
+                        }
                     }
                 }
             }
@@ -1561,8 +1752,9 @@ impl Graph {
                     Self::expand_aliases(paths, &aliases, self.max_depth);
                 }
             }
-            Self::expand_aliases(&mut self.incoming, &aliases, self.max_depth);
-            Self::expand_aliases(&mut self.incoming_writes, &aliases, self.max_depth);
+            // Entry views only flow from a caller's prior events into that
+            // invocation. Expanding them back through callback aliases would
+            // move writes performed inside a function before its own entry.
             if before
                 == (
                     self.reachable.len(),
@@ -1683,5 +1875,22 @@ impl Graph {
             effects.incoming_writes.entry(p.binding).or_default().insert(p.path);
         }
         effects
+    }
+}
+
+fn scalar_return_annotation(annotation: &TyAnn) -> bool {
+    match annotation {
+        TyAnn::Num
+        | TyAnn::NumLit(_)
+        | TyAnn::Str
+        | TyAnn::StrLit(_)
+        | TyAnn::Bool
+        | TyAnn::BoolLit(_)
+        | TyAnn::Null
+        | TyAnn::Undefined
+        | TyAnn::Void
+        | TyAnn::Never => true,
+        TyAnn::Union(parts) => parts.iter().all(scalar_return_annotation),
+        _ => false,
     }
 }

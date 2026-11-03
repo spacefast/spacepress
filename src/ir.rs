@@ -20,6 +20,8 @@ pub struct Module {
 #[derive(Debug)]
 pub struct Func {
     pub name: Option<String>,
+    /// Arrows inherit `arguments` from their defining function.
+    pub is_arrow: bool,
     pub params: Vec<Param>,
     pub body: FnBody,
     pub is_async: bool,
@@ -69,6 +71,7 @@ impl ClassField {
     pub fn initializer(&self, module: usize) -> Option<Rc<Func>> {
         Some(Rc::new(Func {
             name: None,
+            is_arrow: true,
             params: vec![Param {
                 pat: Pat::Id(
                     "this".into(),
@@ -145,6 +148,7 @@ impl Pat {
 pub enum DeclKind {
     Const,
     Let,
+    Var,
 }
 
 #[derive(Debug)]
@@ -185,6 +189,14 @@ pub enum Stmt {
     ForOf {
         kind: DeclKind,
         pat: Pat,
+        iter: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    ForIn {
+        /// `None` assigns an existing target; a declaration binds an identifier.
+        kind: Option<DeclKind>,
+        target: Expr,
         iter: Expr,
         body: Vec<Stmt>,
         span: Span,
@@ -261,6 +273,8 @@ pub enum BinOp {
     /// `===`, and `==` against a null/undefined literal (lowered to `IsNullish`).
     Eq,
     Ne,
+    LooseEq,
+    LooseNe,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +326,7 @@ pub enum ExprKind {
     IsNullish(P<Expr>, bool),
     Logical(LogOp, P<Expr>, P<Expr>),
     Cond(P<Expr>, P<Expr>, P<Expr>),
+    Sequence(Vec<Expr>),
     /// `op` is `None` for plain `=`.
     Assign {
         op: Option<AssignOp>,

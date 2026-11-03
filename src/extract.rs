@@ -1894,7 +1894,9 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
                 }
             }
             Stmt::Block(b) | Stmt::While(_, b) => scan_stmts(b, param, out),
-            Stmt::For { body, .. } | Stmt::ForOf { body, .. } => scan_stmts(body, param, out),
+            Stmt::For { body, .. } | Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => {
+                scan_stmts(body, param, out)
+            }
             Stmt::Try {
                 block,
                 handler,
@@ -1922,6 +1924,11 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
 /// `data.slug = slugify(data.name)` fills `slug`; `data.name = data.name.trim()`
 /// only rewrites `name`, which the writer must still provide.
 fn scan_expr(e: &crate::ir::Expr, param: &str, out: &mut Vec<String>) {
+    if let ExprKind::Sequence(items) = &e.kind {
+        for item in items {
+            scan_expr(item, param, out);
+        }
+    }
     if let ExprKind::Assign {
         op: None,
         target,
@@ -1960,7 +1967,7 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
         | ExprKind::NonNull(x)
         | ExprKind::IsNullish(x, _) => r(x),
         ExprKind::Index { obj, index, .. } => r(obj) || r(index),
-        ExprKind::Template(_, xs) => xs.iter().any(r),
+        ExprKind::Template(_, xs) | ExprKind::Sequence(xs) => xs.iter().any(r),
         ExprKind::Array(items) => items
             .iter()
             .any(|a| matches!(a, ArrEl::Item(x) | ArrEl::Spread(x) if r(x))),

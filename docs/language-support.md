@@ -36,9 +36,17 @@ Install the package with your package manager. Zero reads supported local TypeSc
 
 Status: **supported**.
 
-Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and ESM main entries. Scoped packages and exact exported subpaths are supported. Every reachable TypeScript/ESM line is compiled under the same language restrictions. CommonJS, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Resolving a package does not establish compatibility with its JavaScript language features or effects.
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. The CommonJS subset accepts one static top-level function export; require, named CommonJS exports, implicit sloppy arguments, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
 
 [Evidence](../src/loader.rs) (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
+
+## unannotated-javascript
+
+Status: **supported**.
+
+Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations and coercions through checked PHP dispatch. Missing values preserve undefined identity, invalid methods and null receivers throw TypeError, and TypeScript unknown still requires refinement. This supplies no Node/browser APIs, arbitrary prototypes, accessors, sparse arrays or custom iterators. The pinned npm matrix separately qualifies selected original library algorithms and combinations.
+
+[Evidence](../tests/compiler_contracts.rs) (`unannotated_javascript_uses_checked_value_operations_without_weakening_typescript_unknown`)
 
 ## build-time-clock
 
@@ -68,7 +76,7 @@ Use an integer percentage from 1 to 100 for .ui({ width }).
 
 Status: **divergence**.
 
-Compiled PHP represents undefined as null (including typeof); pure configuration evaluation still distinguishes undefined. The differential oracle normalizes undefined results explicitly.
+Explicit undefined preserves typeof, coercion and JSON omission in compiled PHP. Some statically typed missing reads and annotation-only undefined/void still normalize to null; raw imported JavaScript uses a distinct undefined sentinel. The differential oracle normalizes final undefined results explicitly.
 
 [Evidence](../tests/compiler_contracts.rs) (`documented_runtime_differences_are_measured_in_evaluation_and_compiled_php`)
 
@@ -220,6 +228,6 @@ Equality and inequality comparisons of typeof with number, string or boolean nar
 
 Status: **supported**.
 
-Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. The existing undefined-as-null PHP boundary still applies.
+Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. Typed missing values retain the documented nullable boundary; explicit undefined is distinct from null.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)

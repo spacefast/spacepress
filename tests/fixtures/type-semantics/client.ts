@@ -66,3 +66,9 @@ if (report.optionalSnapshot.note !== undefined) {
   void [nullableNote, definiteNote];
 }
 void [presentUndefined, nullableLabel];
+
+// Array.from and map retain the minimum length of their nonempty input.
+declare const nonemptyValues: Actions["nonemptyValues"]["output"];
+const firstValue: string = nonemptyValues[0];
+const remainingValues: string[] = nonemptyValues.slice(1);
+void [firstValue, remainingValues];

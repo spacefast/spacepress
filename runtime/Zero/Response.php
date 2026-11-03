@@ -17,7 +17,7 @@ final class Response
 
     public static function json(mixed $data, int $status = 200, array $headers = []): self
     {
-        return new self($status, $data, $headers, null);
+        return new self($status, $data === JsUndefined::Value ? null : $data, $headers, null);
     }
 
     /** A raw string or deferred emitter; the emitter must not perform database mutations. */

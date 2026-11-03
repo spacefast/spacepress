@@ -21,6 +21,7 @@ final class RegExp implements \Stringable
     public readonly string $source;
     public readonly string $flags;
     public readonly bool $global;
+    public mixed $lastIndex = 0;
     /** The compiled PCRE pattern, including delimiters and modifiers. */
     public readonly string $pattern;
     private readonly string $anchoredPattern;

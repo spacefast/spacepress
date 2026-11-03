@@ -174,6 +174,7 @@ impl Compiler<'_, '_> {
                 }
                 match (name.as_str(), args.as_slice()) {
                     ("Array" | "ReadonlyArray", [t]) => Ty::Array(Box::new(self.resolve_ann(t, module, generics)?)),
+                    ("TemplateStringsArray", []) => Ty::NonEmptyArray(Box::new(Ty::Str)),
                     ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),
                     ("Date", []) => Ty::Date,
                     ("RegExp", []) => Ty::Regex,
@@ -640,7 +641,9 @@ fn indexed(t: &Ty, key: &Ty, span: Span) -> Result<Ty> {
             }),
             None => err(span, format!("{} has no field `{k}`", t.describe())),
         },
-        (Ty::Map(t), Ty::Str | Ty::StrLit(_)) | (Ty::Array(t), Ty::Num | Ty::NumLit(_)) => Ok((**t).clone()),
+        (Ty::Map(t), Ty::Str | Ty::StrLit(_)) | (Ty::Array(t) | Ty::NonEmptyArray(t), Ty::Num | Ty::NumLit(_)) => {
+            Ok((**t).clone())
+        }
         (Ty::Tuple(ts), Ty::Num) => Ok(Ty::union(ts.clone())),
         (Ty::Tuple(ts), Ty::NumLit(n)) if n.fract() == 0.0 && *n >= 0.0 => ts
             .get(*n as usize)
@@ -704,7 +707,10 @@ pub(super) fn structural_extends(a: &Ty, b: &Ty) -> bool {
                     None => *optional,
                 })
         }
-        (Ty::Array(a), Ty::Array(b)) => structural_extends(a, b),
+        (Ty::Array(a) | Ty::NonEmptyArray(a), Ty::Array(b)) | (Ty::NonEmptyArray(a), Ty::NonEmptyArray(b)) => {
+            structural_extends(a, b)
+        }
+        (Ty::Tuple(xs), Ty::NonEmptyArray(b)) => !xs.is_empty() && xs.iter().all(|a| structural_extends(a, b)),
         (Ty::Tuple(ts), Ty::Array(b)) => ts.iter().all(|a| structural_extends(a, b)),
         (Ty::Tuple(xs), Ty::Tuple(ys)) => {
             xs.len() == ys.len() && xs.iter().zip(ys).all(|(a, b)| structural_extends(a, b))
@@ -728,7 +734,7 @@ fn predicate_type(t: &Ty) -> bool {
         | Ty::Null
         | Ty::Undefined => true,
         Ty::Obj(fields) => fields.values().all(|(t, _)| predicate_type(t)),
-        Ty::Array(t) => predicate_type(t),
+        Ty::Array(t) | Ty::NonEmptyArray(t) => predicate_type(t),
         Ty::Tuple(ts) | Ty::Union(ts) => ts.iter().all(predicate_type),
         _ => false,
     }
@@ -772,7 +778,9 @@ fn check_structural_predicate(a: &Ty, b: &Ty, span: Span) -> Result<()> {
                 "conditional structural matching of primitives or arrays against object properties isn't supported",
             );
         }
-        (Ty::Array(a), Ty::Array(b)) => check_structural_predicate(a, b, span)?,
+        (Ty::Array(a) | Ty::NonEmptyArray(a), Ty::Array(b) | Ty::NonEmptyArray(b)) => {
+            check_structural_predicate(a, b, span)?
+        }
         (Ty::Tuple(xs), Ty::Array(b)) => {
             for a in xs {
                 check_structural_predicate(a, b, span)?;
@@ -809,7 +817,9 @@ fn type_step(steps: &mut usize, span: Span) -> Result<()> {
 fn type_copy(t: &Ty, span: Span, steps: &mut usize) -> Result<()> {
     type_step(steps, span)?;
     match t {
-        Ty::Array(t) | Ty::Map(t) | Ty::Promise(t) | Ty::Instance(_, t) => type_copy(t, span, steps)?,
+        Ty::Array(t) | Ty::NonEmptyArray(t) | Ty::Rest(t) | Ty::Map(t) | Ty::Promise(t) | Ty::Instance(_, t) => {
+            type_copy(t, span, steps)?
+        }
         Ty::Tuple(parts) | Ty::ArrayLiteral(parts) | Ty::Union(parts) => {
             for t in parts {
                 type_copy(t, span, steps)?;
@@ -959,6 +969,8 @@ pub(super) fn runtime_type(t: Ty) -> Ty {
     match t {
         Ty::Undefined | Ty::Void => Ty::Null,
         Ty::Array(t) => Ty::Array(Box::new(runtime_type(*t))),
+        Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(runtime_type(*t))),
+        Ty::Rest(t) => Ty::Rest(Box::new(runtime_type(*t))),
         Ty::Tuple(ts) => Ty::Tuple(ts.into_iter().map(runtime_type).collect()),
         Ty::Obj(fields) => Ty::Obj(
             fields

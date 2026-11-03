@@ -57,7 +57,7 @@ try {
         })(),
         default => throw new \LogicException("unknown case $case"),
     };
-    echo \Zero\Js::jsonStringify(['data' => $data]), "\n";
+    echo \Zero\Response::json($data)->http()[2], "\n";
 } catch (\Throwable $e) {
     echo \Zero\Js::jsonStringify(['error' => $e->getMessage()]), "\n";
 }

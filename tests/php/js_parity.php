@@ -27,6 +27,40 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    // Imported JS values use checked dynamic operations, with undefined distinct from null.
+    ['(() => { const v = {present: null}; return [v.present === null, typeof v.missing, Boolean(v.missing), String(v.missing), Number.isNaN(Number(v.missing)), JSON.stringify({a: undefined, b: null, c: [undefined]})]; })()',
+        function () { $v = new JsObject(['present' => null]); $missing = Js::dynamicGet($v, 'missing'); return [Js::dynamicGet($v, 'present') === null, Js::typeOf($missing), Js::truthy($missing), Js::str($missing), is_nan(Js::toNumber($missing)), Js::jsonStringify(new JsObject(['a' => $missing, 'b' => null, 'c' => new JsArray([$missing])]))]; }],
+    ['(() => { const a = [1, 2]; a.extra = null; a[1] = 4; const o = {10: 1, 2: 1, z: 1, a: 1}; return [Object.keys(a), a.length, a[1], a.extra, Object.keys(o), Object.keys("🙂"), Object.keys(3)]; })()',
+        function () { $a = new JsArray([1, 2]); Js::dynamicSet($a, 'extra', null); Js::dynamicSet($a, '1', 4); return [Js::dynamicKeys($a), Js::dynamicGet($a, 'length'), Js::dynamicGet($a, '1'), Js::dynamicGet($a, 'extra'), Js::dynamicKeys(new JsObject(['10' => 1, '2' => 1, 'z' => 1, 'a' => 1])), Js::dynamicKeys('🙂'), Js::dynamicKeys(3)]; }],
+    ['(function () { "use strict"; const a = arguments; a.length = 1; a[5] = null; return [Array.isArray(a), a.length, Object.keys(a), JSON.stringify(a), a.caller === undefined, Object.hasOwn(a,"length"), Object.hasOwn(a,"callee")]; })(3, 4)',
+        function () { $a = Js::arguments([3, 4]); Js::dynamicSet($a, 'length', 1); Js::dynamicSet($a, '5', null); return [$a instanceof JsArray, Js::dynamicGet($a, 'length'), Js::dynamicKeys($a), Js::jsonStringify($a), Js::dynamicGet($a, 'caller') === Js::undefined(), Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([$a, 'length'])), Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([$a, 'callee']))]; }],
+    ['[[] == 0, false == "0", null == undefined, NaN == NaN, "" == 0, [1] == true, {} == "[object Object]", {} == {}]',
+        fn () => [Js::looseEq(new JsArray(), 0), Js::looseEq(false, '0'), Js::looseEq(null, Js::undefined()), Js::looseEq(NAN, NAN), Js::looseEq('', 0), Js::looseEq(new JsArray([1]), true), Js::looseEq(new JsObject(), '[object Object]'), Js::looseEq(new JsObject(), new JsObject())]],
+    ['["ab".slice(0, null), "ab".slice(0, undefined), "ab".charCodeAt(5), "éCOLE".toLowerCase(), "Straße".toUpperCase()]',
+        fn () => [Js::dynamicCallMethod('ab', 'slice', new JsArray([0, null])), Js::dynamicCallMethod('ab', 'slice', new JsArray([0, Js::undefined()])), Js::dynamicCallMethod('ab', 'charCodeAt', new JsArray([5])), Js::dynamicCallMethod('éCOLE', 'toLowerCase', new JsArray()), Js::dynamicCallMethod('Straße', 'toUpperCase', new JsArray())]],
+    ['(() => { const r = /(a)?b/g; const m = r.exec("🙂b ab"); const n = r.exec("🙂b ab"); const end = r.exec("🙂b ab"); return [m.index, m[1] === undefined, n.index, n[1], end, r.lastIndex]; })()',
+        function () { $r = new \Zero\RegExp('(a)?b', 'g'); $m = Js::dynamicRegExpExec($r, '🙂b ab'); $n = Js::dynamicRegExpExec($r, '🙂b ab'); $end = Js::dynamicRegExpExec($r, '🙂b ab'); return [Js::dynamicGet($m, 'index'), Js::dynamicGet($m, '1') === Js::undefined(), Js::dynamicGet($n, 'index'), Js::dynamicGet($n, '1'), $end, $r->lastIndex]; }],
+    ['(() => { const s = new Set([1, 1, NaN, NaN]); const m = new Map([["a", 1], ["a", 2], [null, 3]]); return [[...s], [...m], s.size, m.get(null), m.has("x"), Object.prototype.toString.call(s), Object.prototype.toString.call(m), new Date(0).toISOString()]; })()',
+        function () { $s = Js::dynamicConstruct('Set', new JsArray([new JsArray([1, 1, NAN, NAN])])); $m = Js::dynamicConstruct('Map', new JsArray([new JsArray([new JsArray(['a', 1]), new JsArray(['a', 2]), new JsArray([null, 3])])])); return [Js::dynamicIterable($s), Js::dynamicIterable($m), Js::dynamicGet($s, 'size'), Js::dynamicCallMethod($m, 'get', new JsArray([null])), Js::dynamicCallMethod($m, 'has', new JsArray(['x'])), Js::dynamicObjectTag($s), Js::dynamicObjectTag($m), Js::dynamicCallMethod(Js::dynamicConstruct('Date', new JsArray([0])), 'toISOString', new JsArray())]; }],
+    ['[Array.from({0:"a", 1:null, length:2}, (v,i) => String(v)+i), Math.round(-0.2), Math.min(), Number.isFinite("3"), JSON.stringify(undefined)]',
+        fn () => [Js::dynamicStaticCall('Array', 'from', new JsArray([new JsObject(['0' => 'a', '1' => null, 'length' => 2]), static fn ($v, $i) => Js::str($v) . $i])), Js::dynamicStaticCall('Math', 'round', new JsArray([-0.2])), Js::dynamicStaticCall('Math', 'min', new JsArray()), Js::dynamicStaticCall('Number', 'isFinite', new JsArray(['3'])), Js::dynamicStaticCall('JSON', 'stringify', new JsArray([Js::undefined()])) === Js::undefined() ? null : false]],
+    ['[...["at","pop","shift","find","findLast","forEach"].map(n => [][n](() => false) === undefined), [null].find(() => true) === null, Object.fromEntries([["x"]]).x === undefined, Object.hasOwn([], "length")]',
+        function () { $values = array_map(static fn ($name) => Js::dynamicCallMethod(new JsArray(), $name, new JsArray([static fn () => false])) === Js::undefined(), ['at', 'pop', 'shift', 'find', 'findLast', 'forEach']); return [...$values, Js::dynamicCallMethod(new JsArray([null]), 'find', new JsArray([static fn () => true])) === null, Js::dynamicGet(Js::dynamicStaticCall('Object', 'fromEntries', new JsArray([new JsArray([new JsArray(['x'])])])), 'x') === Js::undefined(), Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([new JsArray(), 'length']))]; }],
+    ['[(() => {const a=[1,2]; return Array.from(a,(v,i)=>{if(i===0)a[1]=9;return v})})(), (() => {const a={0:1,1:2,length:2}; return Array.from(a,(v,i)=>{if(i===0)a[1]=9;return v})})()]',
+        function () { return array_map(static function ($a) { return Js::dynamicStaticCall('Array', 'from', new JsArray([$a, static function ($value, $i) use ($a) { if ($i === 0) { Js::dynamicSet($a, '1', 9); } return $value; }])); }, [new JsArray([1, 2]), new JsObject(['0' => 1, '1' => 2, 'length' => 2])]); }],
+    ['(() => { const r=/(x)?b/; const m="ab".match(r); const g=/a/g; g.lastIndex=1; const all="aa".match(g); g.lastIndex=1; const text="aa".replace(g,"x"); return [m[1]===undefined,m.index,m.input,"ab".split(/(x)?/)[1]===undefined,"b".replace(/(a)?b/,(m,g)=>typeof g),all,text,g.lastIndex]; })()',
+        function () { $m = Js::dynamicCallMethod('ab', 'match', new JsArray([new \Zero\RegExp('(x)?b')])); $g = new \Zero\RegExp('a', 'g'); $g->lastIndex = 1; $all = Js::dynamicCallMethod('aa', 'match', new JsArray([$g])); $afterMatch = $g->lastIndex; $g->lastIndex = 1; $text = Js::dynamicCallMethod('aa', 'replace', new JsArray([$g, 'x'])); return [Js::dynamicGet($m, '1') === Js::undefined(), Js::dynamicGet($m, 'index'), Js::dynamicGet($m, 'input'), Js::dynamicCallMethod('ab', 'split', new JsArray([new \Zero\RegExp('(x)?')]))->a[1] === Js::undefined(), Js::dynamicCallMethod('b', 'replace', new JsArray([new \Zero\RegExp('(a)?b'), static fn ($m, $capture) => Js::typeOf($capture)])), $all, $text, $g->lastIndex + $afterMatch]; }],
+    ['(() => {const a=[1,2]; const f=a.join; a.join=()=>"own"; const o={m:()=>1}; const n=o.m(o.m=()=>2); return [typeof f, f.call(a,"-"), a.join(), n, Math.min.apply(Math,[3,1]), Object.prototype.toString.call(Math), Object.keys(Math), JSON.stringify(Math)];})()',
+        function () { $a = new JsArray([1, 2]); $f = Js::dynamicGet($a, 'join'); Js::dynamicSet($a, 'join', static fn () => 'own'); $o = new JsObject(['m' => static fn () => 1]); $method = Js::dynamicMethod($o, 'm'); $n = $method(Js::dynamicSet($o, 'm', static fn () => 2)); $math = Js::dynamicNamespace('Math'); return [Js::typeOf($f), Js::dynamicCallMethod($f, 'call', new JsArray([$a, '-'])), Js::dynamicCallMethod($a, 'join', new JsArray()), $n, Js::dynamicCallMethod(Js::dynamicGet($math, 'min'), 'apply', new JsArray([$math, new JsArray([3, 1])])), Js::dynamicObjectTag($math), Js::dynamicKeys($math), Js::jsonStringify($math)]; }],
+    ['[Math.round(0.49999999999999994), Math.round(4503599627370497), "abc".endsWith("ab",-1), "abc".split(undefined,0)]',
+        fn () => [Js::dynamicStaticCall('Math', 'round', new JsArray([0.49999999999999994])), Js::dynamicStaticCall('Math', 'round', new JsArray([4503599627370497])), Js::dynamicCallMethod('abc', 'endsWith', new JsArray(['ab', -1])), Js::dynamicCallMethod('abc', 'split', new JsArray([Js::undefined(), 0]))]],
+    ['"foo".includes(/foo/)', fn () => Js::dynamicCallMethod('foo', 'includes', new JsArray([new \Zero\RegExp('foo')]))],
+    ['(() => { const e = Error("bad input"); return [e.name,e.message,String(e),JSON.stringify(e),Object.keys(e),Object.prototype.toString.call(e),Error(undefined).message,Error(null).message]; })()',
+        function () { $e = Js::dynamicConstruct('Error', new JsArray(['bad input'])); return [Js::dynamicGet($e, 'name'), Js::dynamicGet($e, 'message'), Js::str($e), Js::jsonStringify($e), Js::dynamicKeys($e), Js::dynamicObjectTag($e), Js::dynamicConstruct('Error', new JsArray([Js::undefined()]))->getMessage(), Js::dynamicConstruct('Error', new JsArray([null]))->getMessage()]; }],
+    ['(() => {const o={valueOf:()=>7};return [Number(o),o+2]})()',
+        function () { $o = new JsObject(['valueOf' => static fn () => 7]); return [Js::toNumber($o), Js::dynamicBinary('+', $o, 2)]; }],
+    ['null.x', fn () => Js::dynamicGet(null, 'x')],
+    ['"x".missing()', fn () => Js::dynamicCallMethod('x', 'missing', new JsArray())],
     // ---- numStr / str
     ['String(0.1 + 0.2)', fn () => Js::numStr(0.1 + 0.2)],
     ['String(1e21)', fn () => Js::numStr(1e21)],
@@ -197,7 +231,12 @@ $cases = [
 ];
 
 $deviations = [
-    ['String(undefined): undefined is null in the value model', fn () => Js::str(null), 'null'],
+    ['dynamic JSON replacer fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'stringify', new JsArray([new JsObject(['public' => 1, 'private' => 2]), new JsArray(['public'])])), ['$err' => 'TypeError']],
+    ['dynamic JSON reviver fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'parse', new JsArray(['{}', static fn ($k, $v) => $v])), ['$err' => 'TypeError']],
+    ['dynamic Date component overload fails explicitly', fn () => Js::dynamicConstruct('Date', new JsArray([2020, 0])), ['$err' => 'TypeError']],
+    ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
+    ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
+    ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
     ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
     ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
     ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
@@ -262,8 +301,8 @@ $cases[] = ['(() => { const p = {x:1}; const a = [[p]]; const flat = a.flat(); f
 $cases[] = ['(() => { const a = [3,1,2]; return [a.toSorted((x,y) => x-y), a.concat([4],5), a]; })()', static function () {
     $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, static fn ($x, $y) => $x - $y), Js::concat($a, new JsArray([4]), 5), $a];
 }];
-$cases[] = ['(() => { const p = {x:1}; const copy = structuredClone([p,p]); copy[0].x = 2; return [copy[0] === copy[1], p.x, copy]; })()', static function () {
-    $p = new JsObject(['x' => 1]); $copy = Js::clone(new JsArray([$p, $p])); $copy->a[0]->p['x'] = 2; return [$copy->a[0] === $copy->a[1], $p->p['x'], $copy];
+$cases[] = ['(() => { const p = {x:1}; const source = [p,p]; source.extra = p; const copy = structuredClone(source); copy[0].x = 2; return [copy[0] === copy[1], copy.extra === copy[0], p.x, copy]; })()', static function () {
+    $p = new JsObject(['x' => 1]); $source = new JsArray([$p, $p]); $source->p['extra'] = $p; $copy = Js::clone($source); $copy->a[0]->p['x'] = 2; return [$copy->a[0] === $copy->a[1], $copy->p['extra'] === $copy->a[0], $p->p['x'], $copy];
 }];
 
 // ---------------------------------------------------------------- run node once

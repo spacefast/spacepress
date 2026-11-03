@@ -106,7 +106,8 @@ export async function archive({ binary, target, output, revision, workingTree = 
       version, target, revision, sourceKind: workingTree ? 'local-working-tree-test' : 'git-commit', source: `https://github.com/spacefast/zero/tree/${revision}`,
       signed: false, licenses: 'See LICENSE for component ownership; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
     }, null, 2) + '\n');
-    await exec('tar', ['-czf', destination, '-C', stage, 'zero', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types']);
+    // GNU tar treats a drive letter in the archive argument as a remote host.
+    await exec('tar', ['-czf', name, '-C', stage, 'zero', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(destination)) hash.update(chunk);
     const sha256 = hash.digest('hex');

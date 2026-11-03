@@ -4,7 +4,7 @@ Run the **actual official `blank`, `starter` and `blog` Astro frontends**, with 
 
 Upstream: [emdash-cms/emdash](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates), commit `1824902c0c383c052b623528799427b8a5ff75d0`. The [MIT notice](LICENSE.upstream) applies to the copied template files. [`upstream.json`](upstream.json) records every original file and its SHA-256; every build verifies those bytes. The CMS-specific `src/live.config.ts` loader is replaced by the typed adapter.
 
-From the repository root, with Zero's native development dependencies installed:
+Use Node.js 22.23.4 or newer on Linux; the launcher verifies process ownership through `/proc`. From the repository root, with Zero's native development dependencies installed:
 
 ```sh
 cargo build --bin zero
@@ -30,10 +30,10 @@ The cleanup checks ownership, stops that frontend and native site, removes its S
 
 | Source | Compiler and runtime |
 | --- | --- |
-| Original `.astro` pages, components, styles, and frontend TypeScript | Astro 7.3.2 → Node SSR and browser JavaScript |
+| Original `.astro` pages, components, styles, and frontend TypeScript | Astro 7.4.5 → Node SSR and browser JavaScript |
 | `zero.config.ts`, native collections, access controls, and the `readingTime` action | Zero → PHP in native WordPress Studio |
 | `backend/reading-time.ts` | The original official reading-time algorithm → PHP; only its imported host type changes |
-| `shared/client.ts` and UI adapters | Type-checked Astro adapters; all native JSON is parsed with Zod |
+| `shared/client.ts` and UI adapters | Type-checked Astro adapters; all native JSON is parsed with Zod 4.6.7 |
 | `bridge.php` | Native WordPress reads, signed draft previews, menus, comments, and Appearance settings |
 
 This does **not** compile Astro into PHP. The frontend and native backend are separate local processes. The original reading-time utility also remains in the Astro frontend; its server action demonstrates the same official algorithm executing as compiled PHP over native HTTP.

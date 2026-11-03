@@ -29,6 +29,10 @@ if (requested.includes('--help') || requested.includes('--list')) {
   const unknown = selected.filter((name) => !Object.hasOwn(suites, name));
   if (unknown.length) throw new Error(`Unknown suite: ${unknown.join(', ')}. Use --list.`);
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Node.js 22 or newer is required.');
+  const [major, minor, patch] = process.versions.node.split('.').map(Number);
+  if (selected.includes('official-source') && major === 22 && (minor < 23 || (minor === 23 && patch < 4))) {
+    throw new Error('The official-source suite requires Node.js 22.23.4 or newer.');
+  }
   const run = (program, args, env = process.env) => {
     console.log(`\n> ${program} ${args.join(' ')}`);
     const result = spawnSync(program, args, { cwd: root, env, stdio: 'inherit' });

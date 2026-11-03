@@ -30,7 +30,7 @@ receipts, owners, commands, pending proofs and known gaps.
 | [agents](agents/README.md) | Real MCP, core Abilities, REST, native editor and public page | `agents/acceptance.test.mjs` |
 | [platform](platform/) | Relations, identity, locales, jobs, sync and media | `platform/acceptance.test.mjs` |
 
-Run from the repository root with Node.js 22+, npm/npx and the Rust toolchain.
+Run from the repository root with Node.js 22.23.4+, npm/npx and the Rust toolchain.
 Studio supplies WordPress, PHP and SQLite; Docker is not required:
 
 ```sh

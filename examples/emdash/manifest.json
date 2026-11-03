@@ -37,7 +37,7 @@
   },
   "nativeAcceptance": {
     "prerequisites": [
-      "Node.js 22+ and npm/npx",
+      "Node.js 22.23.4+ and npm/npx for the default suite (22+ for suites excluding official-source)",
       "npm --prefix examples/emdash ci",
       "npm --prefix examples/emdash exec -- playwright install chromium",
       "Native WordPress Studio 2.1.1 downloads/runtime available",

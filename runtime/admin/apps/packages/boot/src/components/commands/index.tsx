@@ -71,18 +71,18 @@ function useNavigateLoader() {
 						),
 						icon: wrapIcon( item.icon ),
 						callback: ( { close }: CommandCallbackArgs ) => {
-							// If this is a parent item, find its first child
-							if ( item.parent_type ) {
-								const firstChild = items.find(
-									( child ) =>
-										child.parent === item.id &&
-										! child.parent_type
-								);
-								navigate( {
-									to: firstChild ? firstChild.to : item.to,
-								} );
+							const firstChild = item.parent_type
+								? items.find(
+										( child ) =>
+											child.parent === item.id &&
+											! child.parent_type
+								  )
+								: undefined;
+							const target = firstChild ? firstChild.to : item.to;
+							if ( /^https?:\/\//i.test( target ) || target.startsWith( '//' ) ) {
+								window.location.assign( target );
 							} else {
-								navigate( { to: item.to } );
+								navigate( { to: target } );
 							}
 							close();
 						},

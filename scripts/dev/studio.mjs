@@ -264,14 +264,20 @@ async function main() {
     if (managed.owner.snapshot && !allowDestructive) {
       // A prebuilt/edited migration can hide an intermediate destructive step even if the final
       // snapshot looks unchanged. Only the dev-owned build may extend the accepted history.
-      if (JSON.stringify(await migrationHistory(project)) !== JSON.stringify(managed.owner.migrations)) {
+      const history = JSON.stringify(await migrationHistory(project));
+      if (history !== JSON.stringify(managed.owner.migrations) && history !== JSON.stringify(managed.owner.pending?.migrations)) {
         throw new Error('Migration history changed outside zero dev. Inspect it, then restart once with --allow-destructive to apply deliberately.');
       }
       const snapshot = join(managed.state, 'preserve.json');
-      await atomicJson(snapshot, managed.owner.snapshot);
+      await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
       args.push('--preserve-data', snapshot);
     }
     await execute(zero, args, { timeout: 300000 });
+    managed.owner.pending = {
+      migrations: await migrationHistory(project),
+      snapshot: await json(join(project, 'zero/migrations/snapshot.json')),
+    };
+    await atomicJson(managed.marker, managed.owner);
   };
   const configure = async () => {
     const snapshot = await json(join(project, 'zero/migrations/snapshot.json'));
@@ -293,6 +299,7 @@ async function main() {
     managed.owner.generated = Object.keys(manifest.plugins);
     managed.owner.snapshot = snapshot;
     managed.owner.migrations = await migrationHistory(project);
+    delete managed.owner.pending;
     await atomicJson(managed.marker, managed.owner);
   };
   try {

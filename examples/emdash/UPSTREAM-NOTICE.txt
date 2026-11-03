@@ -1,0 +1,30 @@
+Upstream provenance for the Zero EmDash adaptations
+
+Canonical source: https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0
+Inventory: manifest.json (schemaVersion 1; inventoryVersion 2026-11-03.1)
+
+Examples in blank/, starter/, blog/, marketing/, portfolio/, plugins/, agents/
+and platform/ adapt or map examples and documentation from this revision.
+The inventory distinguishes adaptations, framework alternatives, fixtures,
+deployment variants, and gaps. Inclusion is not a claim of acceptance success.
+Preserve file-level notices and this license when distributing adaptations.
+
+The following license is reproduced verbatim from the canonical source:
+
+The MIT License
+
+Copyright 2026 Cloudflare Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Other official repositories are independently pinned in manifest.json.
+References alone do not relicense their code. In particular, wp-emdash declares
+GPL3. Its code is not included under the MIT notice above. The separate
+emdash-build and plugin-troubleshooting repositories carry their own MIT
+copyright notices; preserve those notices if adapting their implementations.
+Third-party media, fonts, packages, and WordPress plugins retain their own
+licenses. This notice does not grant rights beyond the original licenses.

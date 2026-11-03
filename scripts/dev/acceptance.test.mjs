@@ -15,7 +15,7 @@ const command = async (args, env = process.env) => (await exec(zero, args, { env
 const config = (version, extra = '', admin = true) => `
 import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'zero';
 const items = table({ name: text().notNull(), processed: boolean().notNull().default(false), ${extra} });
-const stories = collection({ title: text().notNull(), body: richText(), details: json() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
+const stories = collection({ title: text().notNull().max(160), body: richText(), details: json() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
 export default defineConfig({
   admin: ${admin}, tables: { items }, collections: { stories },
   hooks: { items: { afterCreate: async (item) => { await jobs.stamp.enqueue({ itemId: item.id }); } } },

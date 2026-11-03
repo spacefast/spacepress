@@ -28,12 +28,17 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_items_permissions_check($request)
     {
-        return CoreAccess::readDenial($this->collection, CoreAccess::viewer())
+        return $this->readRequest($request, fn () => CoreAccess::readDenial($this->collection, CoreAccess::viewer())
             ?? CoreAccess::queryDenial($this->collection, $request, CoreAccess::viewer())
-            ?? parent::get_items_permissions_check($request);
+            ?? parent::get_items_permissions_check($request));
     }
 
     public function get_items($request)
+    {
+        return $this->readRequest($request, fn () => $this->readItems($request));
+    }
+
+    private function readItems(\WP_REST_Request $request)
     {
         $keys = CoreAccess::keys($this->collection, 'read', CoreAccess::viewer() ?? throw new \LogicException('checked'));
         if (!is_array($keys)) {
@@ -56,17 +61,53 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_item_permissions_check($request)
     {
+        return $this->readRequest($request, fn () => $this->readItemPermissions($request));
+    }
+
+    private function readItemPermissions(\WP_REST_Request $request)
+    {
         $viewer = CoreAccess::viewer();
         if (($denied = CoreAccess::readDenial($this->collection, $viewer)) !== null) {
             return $denied;
         }
         $post = $this->get_post($request['id']);
+        if ($post instanceof \WP_Post && !empty($request->get_query_params()['password'])) {
+            $native = parent::get_item_permissions_check($request);
+            if (is_wp_error($native) && $native->get_error_code() === 'rest_post_incorrect_password') {
+                // A wrong password must not reveal a row the collection's own rule conceals.
+                $readable = $this->readRequest($request,
+                    fn () => CoreAccess::covers($this->collection, 'read', $post->ID, $viewer),
+                    $post->post_password,
+                );
+                if ($readable) {
+                    return $native;
+                }
+            }
+        }
         if ($post instanceof \WP_Post && $post->post_status !== 'auto-draft' && $post->post_status !== 'trash'
             && !CoreAccess::covers($this->collection, 'read', $post->ID, $viewer)) {
             return new \WP_Error('rest_post_invalid_id', __('Invalid post ID.'), ['status' => 404]);
         }
 
         return parent::get_item_permissions_check($request);
+    }
+
+    public function get_item($request)
+    {
+        return $this->readRequest($request, fn () => parent::get_item($request));
+    }
+
+    private function readRequest(\WP_REST_Request $request, callable $read, ?string $passwordProof = null): mixed
+    {
+        $password = $passwordProof ?? $request['password'];
+        $viewer = CoreAccess::viewer();
+        $store = Plugin::instance()?->db()->store();
+        if ($viewer === null || !$store instanceof CompositeStore) {
+            return $read();
+        }
+        $password = in_array($request->get_method(), ['GET', 'HEAD'], true) && is_string($password) && $password !== '' ? $password : null;
+
+        return $store->posts->withReadPassword($this->collection, $viewer, $password, $read);
     }
 
     public function check_read_permission($post)

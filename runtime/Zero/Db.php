@@ -285,7 +285,7 @@ final class Db
             $guards[] = ['status' => 'published'];
         }
 
-        return $guards;
+        return [...$guards, ...$this->store->readGuards($collection, $viewer)];
     }
 
     /** Load each requested relation with one query, never N+1; populate media columns in place. */

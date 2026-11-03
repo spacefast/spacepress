@@ -452,12 +452,12 @@ pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
                     "primaryKey",
                     "autoIncrement",
                     "unique",
-                    "max",
                     "enum",
                     "references",
                 ]
                 .iter()
                 .any(|key| column[*key] != replacement[*key])
+                    || column["max"].as_f64() != replacement["max"].as_f64()
                 {
                     problems.push(format!("changes field {name}.{field}"));
                 }
@@ -544,6 +544,30 @@ mod tests {
         let mut defaulted = v3.clone();
         defaulted["tables"]["items"]["columns"]["note"]["default"] = json!("Ready");
         assert!(preservation_problems(&v1, &defaulted).is_empty());
+        let mut bounded = v3.clone();
+        bounded["tables"]["items"]["columns"]["note"]["max"] = json!(160.0);
+        // Studio's JSON roundtrip writes an unchanged integral bound without the decimal.
+        let mut accepted = bounded.clone();
+        accepted["tables"]["items"]["columns"]["note"]["max"] = json!(160);
+        assert!(preservation_problems(&accepted, &bounded).is_empty());
+        accepted["tables"]["items"]["columns"]["note"]["max"] = json!(161);
+        assert_eq!(
+            preservation_problems(&bounded, &accepted),
+            vec!["changes field items.note"]
+        );
+        accepted["tables"]["items"]["columns"]["note"]["max"] = Json::Null;
+        assert_eq!(
+            preservation_problems(&bounded, &accepted),
+            vec!["changes field items.note"]
+        );
+        accepted["tables"]["items"]["columns"]["note"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max");
+        assert_eq!(
+            preservation_problems(&bounded, &accepted),
+            vec!["changes field items.note"]
+        );
         assert!(plan(&v3, &v3).is_empty());
         // A dropped column and a dropped table.
         let mut v4 = v3.clone();

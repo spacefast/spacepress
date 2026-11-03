@@ -21,6 +21,11 @@ use Zero\Store;
  */
 final class WpUserStore implements Store
 {
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array
+    {
+        return [];
+    }
+
     public const META = 'zero_';
     private const ROLES = ['guest' => 'zero_guest', 'subscriber' => 'subscriber', 'author' => 'author', 'editor' => 'editor', 'admin' => 'administrator'];
     /** @var array<string, Source> */

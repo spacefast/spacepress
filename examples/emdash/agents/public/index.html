@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The agent notebook</title>
+<style>
+  :root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #252720; background: #f8f7f2; }
+  body { margin: 0 auto; max-width: 880px; padding: 48px 24px; }
+  header { border-bottom: 1px solid #cccfc0; padding-bottom: 32px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .15em; font-size: .75rem; color: #55734a; }
+  h1 { font: 500 clamp(2.5rem, 8vw, 4rem)/1.1 Georgia, serif; margin: 16px 0; }
+  h2 { font: 500 1.7rem/1.3 Georgia, serif; }
+  article { padding: 24px 0; border-bottom: 1px solid #ddd; }
+  article p { white-space: pre-wrap; }
+  a { color: #365a2b; text-underline-offset: 4px; }
+  footer { margin-top: 40px; font-size: .85rem; color: #5e6357; }
+  #state { padding: 24px 0; } .reviewed { color: #55734a; font-size: .8rem; }
+</style>
+<header><div class="eyebrow">Zero / Native WordPress / MCP</div><h1 id="heading">The agent notebook</h1><p id="description">Loading notebook…</p></header>
+<main aria-live="polite"><p id="state" role="status">Loading published articles…</p><div id="articles"></div></main>
+<footer>Drafts and operator notes stay private. <a href="/wp-admin/">Open WordPress admin</a> · <a href="/wp-json/zero/v1/_schema">API schema</a></footer>
+<script type="module">
+  const state = document.querySelector('#state');
+  try {
+    const read = async (path) => {
+      const response = await fetch('/wp-json/zero/v1' + path);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail ?? 'Could not load notebook');
+      return result.data;
+    };
+    const [settings, articles] = await Promise.all([read('/globals/settings'), read('/articles?orderBy=-id')]);
+    document.title = settings.heading;
+    document.querySelector('#heading').textContent = settings.heading;
+    document.querySelector('#description').textContent = settings.description;
+    for (const article of articles) {
+      const card = document.createElement('article');
+      const title = document.createElement('h2'); title.textContent = article.title;
+      // Render saved editor text without allowing an article to inject executable HTML.
+      const saved = new DOMParser().parseFromString(article.body ?? '', 'text/html');
+      const body = document.createElement('p'); body.textContent = saved.body.textContent;
+      card.append(title, body);
+      if (article.reviewed) {
+        const reviewed = document.createElement('span'); reviewed.className = 'reviewed';
+        reviewed.textContent = 'Review job completed'; card.append(reviewed);
+      }
+      document.querySelector('#articles').append(card);
+    }
+    state.textContent = articles.length ? '' : 'No articles published yet. Create a draft in WordPress or through MCP, then publish it.';
+  } catch (error) {
+    state.setAttribute('role', 'alert');
+    state.textContent = error instanceof Error ? error.message : 'Could not load notebook. Refresh to try again.';
+  }
+</script>
+</html>

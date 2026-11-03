@@ -181,6 +181,41 @@ eq('patch merges; untouched fields keep their defaults', req('PATCH', '/globals/
 eq('trusted db sees the same values', $db->globalGet('settings')['postsPerPage'], 20);
 isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
 
+// Native SCF writes cross WordPress's scalar-meta serialization before Zero decodes them.
+// A nullable boolean must retain explicit false separately from null and an omitted default.
+(static function () use ($db): void {
+    $fields = ['featured' => ['type' => 'boolean', 'default' => ['value' => false]]];
+    // Each type has a separate SCF writer and a different sub-field key shape.
+    foreach ([
+        'group' => ['type' => 'group', 'fields' => $fields],
+        'repeater' => ['type' => 'repeater', 'fields' => $fields],
+        'blocks' => ['type' => 'blocks', 'layouts' => ['toggle' => $fields]],
+    ] as $type => $def) {
+        $key = 'field_zero_nullable_' . $type;
+        $field = \Zero\Wp\Scf::fieldFor($db->schema(), $key, 'zero_nullable_' . $type, 'probe', $def, []);
+        acf_add_local_field_group(['key' => 'group_zero_nullable_' . $type, 'title' => 'Nullable probe', 'fields' => [$field]]);
+        $id = wp_insert_post(['post_type' => 'post', 'post_title' => 'SCF round trip', 'post_status' => 'draft']);
+        $save = static function (array $input) use ($id, $key, $def, $type): mixed {
+            $raw = match ($type) {
+                'group' => $input,
+                'repeater' => [$input],
+                'blocks' => [['acf_fc_layout' => 'toggle'] + $input],
+            };
+            update_field($key, $raw, $id);
+            $row = \Zero\Wp\Scf::fromScf($def, get_field($key, $id, false), $key);
+
+            return ($type === 'group' ? $row : $row[0])['featured'];
+        };
+        if ($type === 'group') {
+            eq('SCF omitted nested boolean takes its declared default', $save([]), false);
+        }
+        eq("SCF $type nullable false survives WordPress meta storage", $save(['featured' => false]), false);
+        eq("SCF $type explicit null stays null", $save(['featured' => null]), null);
+        eq("SCF $type checked nullable boolean stays true", $save(['featured' => true]), true);
+        wp_delete_post($id, true);
+    }
+})();
+
 \Zero\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
 
 // ================================================================ media (§4.6)

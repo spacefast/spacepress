@@ -106,6 +106,7 @@ final class Scf
         foreach (self::SCF_TYPES as $type) {
             add_filter("acf/validate_rest_value/type=$type", [self::class, 'validateRestValue'], 20, 3);
         }
+        add_filter('acf/update_value', [self::class, 'prepareValue'], 5, 3);
         add_filter('acf/update_value', [self::class, 'updateValue'], 20, 3);
         add_filter('acf/load_value', [self::class, 'loadValue'], 20, 3);
         // Zero's validator is the one authority on core REST: drop the schema's own bounds so a too-long
@@ -272,9 +273,57 @@ final class Scf
         return null;
     }
 
+    /** SCF's structured writers use isset(), so explicit nullable toggles need a stored empty value. */
+    public static function prepareValue(mixed $value, mixed $postId, mixed $field): mixed
+    {
+        $def = is_array($field) ? ($field['zero'] ?? null) : null;
+        if (!is_array($def) || !is_array($value)) {
+            return $value;
+        }
+        $key = $field['key'];
+        if ($def['type'] === 'group') {
+            return self::nullableToggles($def['fields'] ?? [], $value, $key . '_');
+        }
+        if ($def['type'] === 'repeater' || $def['type'] === 'blocks') {
+            foreach ($value as &$row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $layout = (string) ($row['acf_fc_layout'] ?? $row['layout'] ?? '');
+                $row = $def['type'] === 'blocks'
+                    ? self::nullableToggles($def['layouts'][$layout] ?? [], $row, $key . '_' . $layout . '_')
+                    : self::nullableToggles($def['fields'] ?? [], $row, $key . '_');
+            }
+            unset($row);
+        }
+
+        return $value;
+    }
+
+    private static function nullableToggles(array $fields, array $row, string $prefix): array
+    {
+        foreach ($fields as $name => $def) {
+            if ($def['type'] !== 'boolean' || ($def['notNull'] ?? false)) {
+                continue;
+            }
+            foreach ([$prefix . $name, $name] as $key) {
+                if (array_key_exists($key, $row) && $row[$key] === null) {
+                    $row[$key] = '';
+                }
+            }
+        }
+
+        return $row;
+    }
+
     public static function updateValue(mixed $value, mixed $postId, mixed $field): mixed
     {
         $def = is_array($field) ? ($field['zero'] ?? null) : null;
+        // WordPress serializes PHP false as '', which is also SCF's nullable
+        // sub-field representation. Keep booleans in SCF's numeric storage form.
+        if (is_array($def) && $def['type'] === 'boolean' && is_bool($value)) {
+            return $value ? 1 : 0;
+        }
         if (!is_array($def) || $value === null || $value === '' || $value === false) {
             return $value;
         }

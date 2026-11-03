@@ -133,9 +133,10 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
     }
     let mut names = HashSet::new();
     let mut code = String::from(
-        "import { collection, defineConfig, defineRelations, id, text, integer, real, boolean, timestamp, url, email, json, select, media, type Column, type ColumnKind } from \"zero\";\n\n",
+        "import { collection, table, defineConfig, defineRelations, text, integer, real, boolean, timestamp, url, email, json, select, media, type Column, type ColumnKind } from \"zero\";\n\n",
     );
-    let mut schema = Vec::new();
+    let mut content = Vec::new();
+    let mut tables = Vec::new();
     let mut relations = Vec::new();
     // Reference targets may be declared after the field that names them.
     let targets: HashMap<&str, usize> = collections
@@ -154,31 +155,42 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
                 "native WordPress posts/pages/media adoption needs an explicit storage migration; a new custom post type would change ownership",
             ));
         }
-        let (fields, options, links) = collection(def, source, at, report, slug, &targets)?;
+        let (fields, mut options, links) = collection(def, source, at, report, slug, &targets)?;
         if !links.is_empty() {
             relations.push(format!("    {}: {{ {} }},\n", q(slug), links.join(", ")));
         }
+        let editor = options
+            .as_object_mut()
+            .unwrap()
+            .remove("editor")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+        let builder = if editor { "collection" } else { "table" };
         code.push_str(&format!(
-            "const imported{i} = collection({}, {{\n  id: id(),\n{fields}}}, {});\n\n",
-            q(slug),
+            "const imported{i} = {builder}({{\n{fields}}}, {});\n\n",
             serde_json::to_string(&options).expect("options JSON")
         ));
-        schema.push(format!("{}: imported{i}", q(slug)));
+        (if editor { &mut content } else { &mut tables }).push(format!("{}: imported{i}", q(slug)));
         report.push(entry(
             at,
             "mapped",
             format!("collection {slug}; new data requires a separate import and ID mapping"),
         ));
     }
-    code.push_str(&format!("export const schema = {{ {} }};\n\n", schema.join(", ")));
+    code.push_str(&format!(
+        "const collections = {{ {} }};\nconst tables = {{ {} }};\n\n",
+        content.join(", "),
+        tables.join(", ")
+    ));
     if !relations.is_empty() {
         code.push_str(&format!(
-            "export const relations = defineRelations(schema, (r) => ({{\n{}}}));\n\n",
+            "export const relations = defineRelations({{ ...collections, ...tables }}, (r) => ({{\n{}}}));\n\n",
             relations.concat()
         ));
     }
     code.push_str(&format!(
-        "export default defineConfig({{\n  name: {},\n  schema,\n{}}});\n",
+        "export default defineConfig({{\n  name: {},\n  collections,\n  tables,\n{}}});\n",
         q(name),
         if relations.is_empty() { "" } else { "  relations,\n" }
     ));
@@ -619,12 +631,6 @@ fn field(
         "defaultValue"
     };
     if let Some(value) = o.get(default_key) {
-        if crate::extract::has_list_shaped_object(value) {
-            return Err(fail(
-                &pointer(at, default_key),
-                "Zero's PHP runtime reads objects keyed \"0\", \"1\", ... back as arrays; choose another default explicitly",
-            ));
-        }
         builder.push_str(&format!(".default({value})"));
     } else if matches!(source, Source::Payload) && kind == "checkbox" && required {
         builder.push_str(".default(false)");

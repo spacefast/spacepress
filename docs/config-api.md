@@ -18,106 +18,43 @@ Values are exact WordPress.org versions or resource objects with `version`,
 `pluginData`, optional `requires`, and a checksum (required for direct URLs).
 See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
 
-## Full example (the pantry tracker)
+## Mixed content and app data
 
 ```ts
 import {
-  collection, id, text, integer, real, boolean, date, timestamp, json,
-  defineRelations, defineConfig, action, db, HttpError,
-  type InferSelectModel,
+  collection, table, text, integer, defineRelations, defineConfig,
 } from "zero";
 
-// Composition is plain TypeScript: shared field sets, factories, spreads.
-const timestamps = {
-  createdAt: timestamp().notNull().defaultNow(),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
-};
-
-const named = (extra = {}) => ({ id: id(), name: text().notNull(), ...extra });
-
-export const locations = collection("locations", {
-  ...named(),
-  kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
+// Native WordPress content with an editor and an implicit id: id().
+const posts = collection({ title: text().notNull() });
+// App data in SQL, with a reference to the content.
+const stock = table({
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  quantity: integer().notNull().default(0),
 });
-
-export const items = collection("items", {
-  ...named(),
-  quantity: integer().notNull().default(1),
-  unit: text({ enum: UNITS }).notNull().default("pcs"),
-  lowStockAt: integer().notNull().default(LOW_STOCK),
-  expiresOn: date(),
-  opened: boolean().notNull().default(false),
-  locationId: integer().references(() => locations.id, { onDelete: "set null" }),
-  tags: json().$type<string[]>().notNull().$default(() => []),
-  ...timestamps,
-});
-
-export const shoppingList = collection("shopping_list", {
-  id: id(),
-  itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
-  name: text().notNull(),
-  done: boolean().notNull().default(false),
-  ...timestamps,
-});
-
-export const schema = { locations, items, shoppingList };
-
-export const relations = defineRelations(schema, (r) => ({
-  items: {
-    location: r.one.locations({ from: r.items.locationId, to: r.locations.id }),
-  },
-  locations: { items: r.many.items() },
-  shoppingList: {
-    item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id }),
-  },
+const collections = { posts };
+const tables = { stock };
+const relations = defineRelations({ ...collections, ...tables }, (r) => ({
+  stock: { post: r.one.posts({ from: r.stock.postId, to: r.posts.id }) },
+  posts: { stock: r.many.stock() },
 }));
 
-type Item = InferSelectModel<typeof items>;
-
-async function restock(item: Item) {
-  if (item.quantity > item.lowStockAt) return;
-  const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
-  if (!existing) {
-    await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
-  }
-}
-
 export default defineConfig({
-  schema,
-  relations,
-  hooks: {
-    items: {
-      beforeCreate(data) {
-        data.name = data.name.trim();
-        if (data.name === "") throw new HttpError(422, "invalid_input", "name can't be empty");
-      },
-      afterCreate: restock,
-      afterUpdate: restock,
-    },
-  },
-  actions: {
-    consume: action({
-      input: { itemId: integer().notNull(), amount: integer().notNull().default(1) },
-      async handler({ itemId, amount }) {
-        const item = await db.query.items.findFirst({ where: { id: itemId } });
-        if (!item) throw new HttpError(404, "not_found", `No item ${itemId}`);
-        const [updated] = await db
-          .update(items)
-          .set({ quantity: Math.max(0, item.quantity - amount) })
-          .where({ id: itemId })
-          .returning();
-        if (!updated) throw new HttpError(404, "not_found", `No item ${itemId}`);
-        return { item: updated, message: `${updated.name}: ${updated.quantity} ${updated.unit} left` };
-      },
-    }),
-  },
+  collections, tables, relations,
+  hooks: { posts: { beforeCreate(data) { data.title = data.title.trim(); } } },
 });
 ```
 
+The generated client stays flat: `zero.posts.create({ title: "Hello" })`,
+`zero.stock.create({ postId, quantity: 2 })`, then
+`zero.stock.list({ where: { post: { title: "Hello" } }, with: { post: true } })`.
+See the [pantry](../examples/pantry/zero.config.ts) for a table-only app and
+[blog](../examples/blog/zero.config.ts) for editorial content with related app data.
+
 ## Columns
 
-The SQL column is the one a custom table (`editor: false`) gets in the
-generated MySQL migration; a collection with an editor stores the same values
+The SQL column is the one a `table()` gets in the generated MySQL migration;
+a `collection()` stores the same values
 as post fields and meta.
 
 | builder | SQL | TS select type |
@@ -184,40 +121,102 @@ at most 3 deep.
 
 Column keys are the SQL column names.
 
-## Collections
+## Collections, tables and user projections
 
-`collection(name, columns, options?)`. `name` is the table name and the
-REST path segment (`/wp-json/zero/v1/<name>`); the key under `schema` is the name used in
-`db.query.<key>` and in `hooks`/`relations`. A collection with no primary key
-is a build error.
+`collection(fields, options?)` is editorial content: a WordPress custom post
+type with the native editor, draft status and revisions. `table(fields,
+options?)` is app/relational data in its own SQL table. Fields never choose
+storage. Register each definition in its matching namespace:
+
+```ts
+const posts = collection({ title: text().notNull() });
+const stock = table({ postId: integer().references(() => posts.id) });
+export default defineConfig({ collections: { posts }, tables: { stock } });
+```
+
+Definitions need no exports. Backend-only config is sufficient; `zero build`
+emits `zero.gen.ts` to type `db.query` without importing authored definitions.
+An `id: id()` primary key is implicit. Tables may declare a custom single primary
+key; collections and user projections use the native integer `id`.
+
+The registry key is the logical name, used verbatim by `db.query`, hooks,
+relations and the flat generated client (`zero.shoppingList`). Physical names
+and REST paths default to deterministic snake_case: `shoppingList` → `shopping_list`,
+`HTTPLogs` → `http_logs`. A table uses `wp_zero_shopping_list`; a collection
+registers `zero_shopping_list`. Duplicate logical or physical names across all
+registries are rejected before artifacts are emitted. A definition may be
+registered once.
 
 | option | default | meaning |
 |---|---|---|
-| `label` | title-cased name | wp-admin menus, client docs |
-| `editor` | `true` | WordPress: posts + SCF fields (wp-admin editing). `false`: a plain table everywhere |
-| `drafts` | `editor` | adds system columns `status` (`draft \| published \| scheduled`) and `publishedAt` |
-| `revisions` | `editor` | keep a revision per write |
-| `title` | a `title: text()` column | the WordPress post title; must be `text().notNull()`; required when `editor` |
-| `content` | a `content: richText()` column | the WordPress post content |
+| `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `zero_` prefixes; retain existing storage on upgrade |
+| `label` | title-cased physical name | wp-admin menus, client docs |
+| `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
+| `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
+| `title` | a `title: text()` column | WordPress post title; must be `text().notNull()` for collections |
+| `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
 | `api` | all `true` | `{ list?, get?, create?, update?, delete? }` |
-| `uid` | `false` (`true` with `sync`) | a stable `uid` (`zr_` + 20 hex) on every row, immutable once set |
-| `sync` | none | `"content/posts/*.md"` or `"*.json"`: keep rows and files in step with `zero sync`. See [Sync](#sync) |
-| `auth` | `false` | this collection's rows are the app's users. See [Sign-in](#sign-in) |
-| `agents` | `true` | WordPress: expose its operations as abilities, and so over MCP |
+| `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
+| `sync` | none | project-relative `*.md` or `*.json` pattern for `zero sync` |
+| `agents` | `true` | expose operations as WordPress abilities |
 
-Rejected: an editor collection without a title, names longer than 15
-characters on editor collections (WordPress post types are ≤ 20 with the
-`zero_` prefix), the reserved names `media`, `globals`, `actions`, `me`,
-`_schema`, `auth`, two `slug()` columns, `drafts: false` with `editor: true`,
-and user columns named `status`/`publishedAt` on drafts collections.
+Collections need a title and physical names of at most 15 characters (WordPress
+prefixes `zero_`). Built-in route names are reserved. User projections retain
+WordPress identity storage; see [Sign-in](#sign-in).
+
+### Upgrading authoring
+
+Replace named builders with unnamed `collection()` or `table()` and register
+under `collections` or `tables`. Keep the logical keys, existing physical storage
+and committed migration snapshots. The snapshot format and runtime storage
+model are unchanged: an authoring-only change must produce no migration.
+For a persisted name that differs from the derived snake_case name, set
+`storageName` to the exact name in `zero/migrations/snapshot.json`. For example,
+old `collection("stockItems", fields, { editor: false, revisions: true })`
+becomes:
+
+```ts
+const stockItems = table(fields, { storageName: "stockItems", revisions: true });
+export default defineConfig({ name: "my-app", tables: { stockItems } });
+```
+
+Keep the app `name`, logical keys, fields, relations, access and storage options
+(including drafts, revisions, uid and sync) as before. Bind each resource whose
+physical name differs, including reference targets. `storageName` accepts letters,
+digits and underscores, starting with a letter; reserved names, duplicate logical
+keys, duplicate physical names and collection post-type limits still apply.
+The binding is permanent config, not a one-time rename instruction: retain it
+on subsequent builds. It controls SQL tables, post types, routes and persisted
+revision ownership; relations and client properties still use logical keys.
+
+1. Keep the entire committed `zero/migrations/` directory, including the v2
+   `snapshot.json` and every numbered SQL file. Do not remove registrations as
+   an intermediate step: that authors a destructive migration.
+2. Change the builders/registries and add the physical bindings, then run
+   `zero build .`. This authoring-only transition must leave the snapshot and
+   historical SQL unchanged and produce no new numbered SQL. Review with
+   `git diff -- zero/migrations` before deployment.
+3. Deploy the generated `.zero/wp-content` plugins together as an ordinary
+   file-copy update to the existing site. The runtime keeps the app's migration
+   ledger, rows, reference targets and revision identities; it has no data
+   migration to apply. Verify existing reads, relations and revision history
+   through the new client/runtime before making schema changes.
+
+This also supports old logical aliases: use the original physical name as the
+binding even if the registry key is different. Changing a binding does not move
+or rename data. Snapshots contain physical names without old logical aliases.
+A build that removes existing storage while adding new storage is refused as
+an ambiguous replacement, even when both names are snake_case. Retain the
+binding during the authoring cut; stage intentional resource removal separately
+after reviewing its data migration.
 
 ### Access
 
 `access: { read, create, update, delete }`, each one of `true`/`false`,
 `"anyone"`, `"authenticated"` (signed in, guests included), a role (`"guest" <
 "subscriber" < "author" < "editor" < "admin"`, that role or higher), `"self"`
-(on an `auth` collection: the signed-in user's own row), or
+(on a user projection: the signed-in user's own row), or
 `(ctx) => boolean | filter` with `ctx = {
 user, op, data? }`. Functions are compiled to PHP like hooks; they
 can't use `db`. A returned filter is checked against the collection like any
@@ -242,7 +241,7 @@ sub-field rules, and notNull fields need a default. `GET`/`PATCH
 
 ## defineConfig
 
-`defineConfig({ name?, schema, relations?, globals?, hooks?, actions?,
+`defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
 jobs?, webhooks?, media?, files?, locales?, plugins?, admin? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `zero-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
@@ -250,10 +249,15 @@ default: the project directory) names the WordPress plugin `zero-app-<name>`.
 
 ## Relations
 
-`defineRelations(schema, (r) => ({ ... }))`, Drizzle 1.0 style:
+`defineRelations({ ...collections, ...tables, ...users }, (r) => ({ ... }))`, Drizzle 1.0 style:
 `r.one.<key>({ from: r.<this>.<col>, to: r.<target>.<col>, optional? })`,
 `r.many.<key>({ from, to })`. `r.many.<key>()` with no config is inferred from
 the single `one` relation pointing back.
+
+One graph covers collection↔collection, table↔table and both directions across
+storage kinds. Relation filters and `with` loads use the same runtime machinery
+and target row/field access rules. Hidden target fields stay masked; relation
+filters cannot probe them. Media and private file references work on both kinds.
 
 ## Hooks
 
@@ -316,7 +320,7 @@ focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
 centre by default); `inside` scales to fit. Media rows carry
 `sizes.<name>.url`.
 
-<a id="files"></a>Private files live in buckets:
+<a id="files"></a>Private files live in logical file resources:
 
 ```ts
 files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
@@ -327,6 +331,34 @@ public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
 valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
 `accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
 `payload_too_large`.
+
+Configure durable uploads once for the app:
+
+```ts
+uploads: {
+  backend: "s3",
+  bucket: env("UPLOAD_BUCKET"),
+  region: "us-east-1",
+  // endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, // compatible providers
+  prefix: "my-app",
+  credentials: {
+    accessKeyId: env("UPLOAD_ACCESS_KEY_ID"),
+    secretAccessKey: env("UPLOAD_SECRET_ACCESS_KEY"),
+  },
+},
+```
+
+This backend stores private files, media originals and generated sizes, including
+standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
+keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
+Collections and tables can both reference files and media. Credentials resolve
+only at runtime; the compiler requires `env()` references. An optional
+`sessionToken: env("UPLOAD_SESSION_TOKEN")` supports temporary credentials.
+
+`uploads: { backend: "local" }` selects the existing local development behavior
+(also the default when omitted). S3 never falls back to durable local storage.
+See [upload storage](uploads.md) for provider permissions, failure recovery,
+existing-data cutover and the WordPress plugin boundary.
 
 ## Locales
 
@@ -349,9 +381,11 @@ fields translate.
 
 ## Sign-in
 
-One collection may be `auth: true`: its rows are the app's users, which are
-WordPress users. It needs a unique `email`, gets a write-only `password` and
-an admin-only `role`, and can't be an editor collection. Members sign in
+Register one `userProjection(fields, options?)` under `users: { members }`.
+It projects existing WordPress users and usermeta, preserving their IDs and
+authentication; it creates no second user table or post type. It needs
+`email: email().notNull().unique()`, gets a write-only `password` and an
+admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
 through the zero-identity screens (register the frontend once with
 `wp zero-identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
@@ -422,7 +456,7 @@ What the design specifies and this build doesn't do yet:
 Supported: `const`/`let`, functions, arrows, closures, destructuring,
 spread, template literals, `if`/`for`/`for...of`/`while`/`switch`/`try`,
 `?.`, `??`, objects, arrays, type annotations, type aliases, interfaces,
-generics (erased).
+generics (erased), `structuredClone`.
 
 `encodeURI(value)` and `encodeURIComponent(value)` accept exactly one string in
 configuration evaluation and compiled handlers. Both preserve `-_.!~*'()`;
@@ -440,28 +474,36 @@ entry is missing (Zero represents `undefined` as PHP null). Check the fetched
 value or supply a default with `??` or a destructuring initializer. A non-null
 assertion (`values[0]!`) is available when your code guarantees the entry exists.
 
-Mutating a tuple broadens its positional reads to the union of its element
-types; its authored assignment constraints remain unchanged. Optional parameters
-include null in body reads, while a default initializer supplies the missing value.
+Objects and arrays have reference identity: assignment, argument passing,
+spreads and closures share their descendants as in JavaScript. Use
+`structuredClone(value)` for an independent graph; shared descendants and
+cycles survive cloning. Class instances become plain own-field objects when cloned. Captured module-level objects live for the PHP process
+(one web request, or the worker's lifetime), as module data does in Node.
 
-Rejected with a located error and a fix: classes, `this`, `var`, `enum`,
-`==` (except `== null`), `in`, `instanceof`, `delete`, generators,
+Arrays are dense. Writing at `length` appends; writing past `length`, at a
+negative or fractional index, or at `NaN`/`Infinity` throws `RangeError`.
+Grow arrays with `push` or `Array.from({ length: n }, mapper)`.
+Fixed-length callback walks (`map`, `filter`, `forEach`, `some`, `every`,
+`reduce`, `flatMap`, `find*`) throw `RangeError` if they reach an index their
+callback removed. Shrinkage after the final visit or an early return is fine;
+growth is ignored by these walks. `for…of` and `Array.from(array, mapper)`
+read live length. Elisions, `new Array(n)`, `delete a[i]`, `a.length = n` and
+non-numeric index types are compile errors.
+
+Zero represents `undefined` as `null`: `typeof undefined` gives `"object"`,
+`JSON.stringify({ x: undefined })` gives `{"x":null}`, `String(undefined)`
+gives `"null"`, and destructuring defaults also fire on explicit `null`.
+Optional parameters include null in body reads; defaults supply missing values.
+
+Rejected with a located error and a fix: `this` outside class methods or their
+arrows, `var`, `enum`, `==` (except `== null`), `in`, `delete`, generators,
 `for...in`, labels, getters/setters, BigInt, dynamic `import()`, `any`,
-`eval`/`Function`, assigning to module-level state from a hook, mutating an
-object after storing it in another (PHP copies on store), changing an array
-element in place (`list[i] = v`, `list[i] += v`, `list[i]++`, `list[i].x = v`;
-use `push`, or build the new array with `map`; PHP turns a hole into a key), a closure
-capturing a `for (let …)` variable that holds an object or array (copy what it
-needs into a `const` inside the loop body),
+`eval`/`Function`, assigning to module-level state from a hook,
 `includes`/`startsWith`/`endsWith` on a string with a position (slice first),
 a string `lastIndexOf` position other than a numeric, null or undefined literal
-(use a literal position or omit it; PHP erases runtime undefined into null), reassigning a
-parameter that also mutates its object or array (use a separate local
-binding for the replacement), mutating a nested container through a
-destructured parameter (accept the whole parameter), replacing an earlier
-object/array argument passed to a mutating parameter while evaluating a
-later argument (evaluate them in separate statements), `await` on anything that isn't a Zero API call or your own `async` function, an
-`async` call without `await`.
+(use a literal position or omit it; PHP erases runtime undefined into null), `await` on
+anything that isn't a Zero API call or your own `async` function, an `async`
+call without `await`.
 
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.
@@ -469,3 +511,82 @@ and `db`, and stops runaway loops with a step budget.
 Imports: type-only imports (erased), relative `.ts` files (compiled with the
 config), and `"zero"`. npm packages are rejected unless they ship TypeScript
 source that fits the subset (not implemented yet: today they're rejected).
+
+
+### Classes in callbacks
+
+Declare concrete named classes at module scope, including in relative modules
+with named exports. Construct them inside actions, hooks and other compiled
+callbacks. Public instance fields, ordinary methods, `this` member reads and
+writes, `new`, identity comparisons, named `extends`, overrides, `super(...)`,
+`super.method(...)` and `instanceof` are supported. Arrows inside methods keep
+that method's `this`. `typeof Counter` returns `"function"`; instances return
+`"object"`. Extracting a prototype method is refused; use
+`() => instance.method()` when passing a callback.
+
+```ts
+class Counter {
+  value = 0;
+  constructor(public label: string) {}
+  add(n: number): number { this.value += n; return this.value; }
+  reader(): () => number { return () => this.value; }
+}
+class DoubleCounter extends Counter {
+  add(n: number): number { return super.add(n * 2); }
+}
+const countVisits = action({
+  input: {},
+  handler: () => {
+    const counter = new DoubleCounter("visits");
+    const read = counter.reader();
+    counter.add(2);
+    return { value: read(), isCounter: counter instanceof Counter }; // 4, true
+  },
+});
+```
+
+Base fields initialize in declaration order before constructor parameter defaults.
+Derived fields initialize immediately after `super(...)`, before the rest of the
+constructor. A derived constructor must call `super(...)` as its first statement;
+an omitted constructor forwards arguments to the parent. Public/readonly typed
+TypeScript parameter properties create own fields, then receive their parameter
+values before authored constructor statements. Defaults and other field
+initializers cannot read those parameter values yet, matching TypeScript's ES2022 class-field emit.
+Uninitialized fields read as nullable because missing/undefined is PHP null.
+
+Field types infer from plain data initializers; annotate fields initialized from
+`this` or calls. Parameters need a type or a primitive default. Annotate recursive,
+forward or overridden method returns when inference cannot establish a signature.
+Derived instances can pass to helpers expecting their base. Mutation effects
+include receivers, arguments, constructors, inherited methods and captured values;
+numeric updates widen literal reads and writes invalidate prior narrowing.
+
+Static fields start from pure build-time data and live for the PHP process.
+Static methods inherit and dispatch with the actual class receiver. A subclass
+write to an inherited static field creates its own value; nested objects retain
+their shared identity. Static initializers cannot use runtime `this`, construct
+instances or perform I/O.
+
+Instances retain identity through assignment, arguments and closures. JSON
+responses and generated client types contain own fields only; they do not
+include methods or class metadata. Object spread copies own fields shallowly.
+`structuredClone`, stored JSON, callback inputs and persistent `once` results
+produce plain data without class identity. Use object types in `json().$type<T>()`;
+class types and assertions that would pretend to hydrate a class are refused.
+
+These class features remain outside the supported surface, with located errors:
+class expressions, default-export class declarations and
+anonymous/local/abstract/ambient/generic classes;
+decorators; private/protected/`#` members; accessors; static blocks; computed names;
+generic/rest methods; dynamic or built-in inheritance; constructor return values;
+prototype/reflection machinery and custom coercion/serialization protocol members.
+Indexed class members and recursive class field types are also refused.
+Uninitialized optional fields follow the same missing-to-null boundary. Class
+values are limited to construction, `instanceof`, `typeof` and static access.
+Method calls and escaping instances during construction/initialization are refused
+to avoid partially initialized virtual receivers. Construction and method calls
+inside access rules are refused; return filters from plain functions instead.
+
+See [class compilation and library reuse](class-compilation.md) for the runtime
+representation, validation owners and the OXC/SWC assessment. This support does
+not enable arbitrary npm execution.

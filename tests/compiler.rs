@@ -41,7 +41,7 @@ fn rejects(fixture: &str, message: &str, at: &str) {
 fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-class",
-        "Zero code doesn't support classes",
+        "abstract, ambient or generic classes",
         "zero.config.ts:2:1",
     );
     rejects(
@@ -67,19 +67,19 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-bad-reference",
         "`aName` is integer() but references a.name, which is text()",
-        "zero.config.ts:3:56",
+        "zero.config.ts:3:46",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "zero.config.ts:2:55",
+        "zero.config.ts:2:45",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "zero.config.ts:2:76",
+        "zero.config.ts:2:66",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
@@ -97,12 +97,12 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "zero.config.ts:2:52",
+        "zero.config.ts:2:42",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "zero.config.ts:2:80",
+        "zero.config.ts:2:71",
     );
     // §1.5
     rejects(
@@ -110,23 +110,87 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "global fields that are notNull need a default (`title`)",
         "zero.config.ts:3:38",
     );
-    // PHP decodes {} and "0".."n" keyed objects as lists, in a json() column or a json sub-field;
-    // group defaults are normalized against their fields and stay valid.
-    rejects(
-        "reject-json-list-shaped-default",
-        "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
-        "zero.config.ts:2:",
-    );
-    rejects(
-        "reject-json-list-shaped-object",
-        "`meta` defaults to a JSON object that the PHP runtime reads back as an array",
-        "zero.config.ts:3:",
-    ); // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
+    // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
         "reject-default-timestamp",
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
         "zero.config.ts:4:",
     );
+    // Each case owns a separate registry invariant, exercised through the compiler.
+    let tmp = tempfile::tempdir().unwrap();
+    for (body, message) in [
+        (
+            "collections: { notes: table({ title: text().notNull() }) }",
+            "table() belongs in `tables`",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}) }",
+            "share the physical name `notes`",
+        ),
+        (
+            "collections: { stockItems: collection({ title: text().notNull() }) }, tables: { stock_items: table({}) }",
+            "share the physical name `stock_items`",
+        ),
+        (
+            "tables: { first: shared, second: shared }",
+            "a definition can only be registered once",
+        ),
+        (
+            "tables: { notes: table({}, { storageName: 'bad-name' }) }",
+            "`storageName` must be an identifier",
+        ),
+        (
+            "tables: { notes: table({}, { storageName: 'media' }) }",
+            "\"media\" is reserved",
+        ),
+        (
+            "tables: { media: table({}, { storageName: 'assets' }) }",
+            "\"media\" is reserved",
+        ),
+        (
+            "tables: { notes: table({}, { storageName: 'existing' }), other: table({}, { storageName: 'existing' }) }",
+            "share the physical name `existing`",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
+            "duplicate logical registration `notes`",
+        ),
+        ("tables: []", "`tables` must be an object"),
+        (
+            "tables: { notes: table({}), notes: table({}) }",
+            "duplicate registration `tables.notes`",
+        ),
+        ("tables: {}, tables: {}", "duplicate `tables` registry"),
+        (
+            "uploads: { backend: 's3', bucket: 'uploads', credentials: { accessKeyId: 'literal', secretAccessKey: 'literal' } }",
+            "must be env(",
+        ),
+        (
+            "uploads: { backend: 's3', bucket: 'uploads' }",
+            "need runtime credentials",
+        ),
+        ("uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
+        (
+            "collections: { notes: collection({ postId: id(), title: text().notNull() }) }",
+            "primary key is the WordPress post ID",
+        ),
+        (
+            "collections: { notes: collection({ title: text().notNull() }, { revisions: false }) }",
+            "collections always have native revisions",
+        ),
+    ] {
+        std::fs::write(tmp.path().join("zero.config.ts"), format!(
+            "import {{ collection, table, id, text, defineConfig }} from 'zero'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+        )).unwrap();
+        let checked = zero().arg("check").arg(tmp.path()).output().unwrap();
+        assert_eq!(checked.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&checked.stderr).contains(message),
+            "{}",
+            String::from_utf8_lossy(&checked.stderr)
+        );
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1);
+    }
 }
 
 #[test]
@@ -375,6 +439,111 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let again = zero().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
     assert!(!project.join("zero/migrations/0002_update.sql").exists());
+    for example in ["pantry", "blog", "site"] {
+        let stored: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root().join(format!("examples/{example}/zero/migrations/snapshot.json"))).unwrap(),
+        )
+        .unwrap();
+        let persisted = tmp.join(format!("preserved-{example}"));
+        copy(&root().join(format!("examples/{example}")), &persisted);
+        let result = zero().arg("build").arg(&persisted).output().unwrap();
+        assert!(
+            result.status.success(),
+            "{example}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let actual: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(persisted.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+        assert_eq!(
+            actual, stored,
+            "{example}: the authoring change must preserve stored resources"
+        );
+        let migrations = std::fs::read_dir(persisted.join("zero/migrations"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
+            .count();
+        let original = std::fs::read_dir(root().join(format!("examples/{example}/zero/migrations")))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
+            .count();
+        assert_eq!(
+            migrations, original,
+            "{example}: no new SQL for an authoring-only change"
+        );
+    }
+    // Main-built storage, including FK targets and revision storage, survives the authoring cut.
+    let upgraded = tmp.join("storage-upgrade");
+    let fixture = root().join("tests/fixtures/storage-upgrade");
+    copy(&fixture, &upgraded);
+    let built = zero().arg("build").arg(&upgraded).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    for file in ["snapshot.json", "0001_init.sql"] {
+        assert_eq!(
+            std::fs::read(upgraded.join("zero/migrations").join(file)).unwrap(),
+            std::fs::read(fixture.join("zero/migrations").join(file)).unwrap(),
+            "the historical ledger must remain unchanged"
+        );
+    }
+    assert_eq!(std::fs::read_dir(upgraded.join("zero/migrations")).unwrap().count(), 2);
+
+    // Neither camel-case names nor canonical names behind aliases may be silently replaced.
+    let conflict = tmp.join("name-conflict");
+    std::fs::create_dir_all(&conflict).unwrap();
+    std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+    let built = zero().arg("build").arg(&conflict).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let ledger = conflict.join("zero/migrations/snapshot.json");
+    let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+    for stored_name in ["stockItems", "inventory"] {
+        let mut legacy = canonical.clone();
+        let tables = legacy["tables"].as_object_mut().unwrap();
+        let stored = tables.remove("stock_items").unwrap();
+        tables.insert(stored_name.into(), stored);
+        let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+        std::fs::write(&ledger, &legacy_bytes).unwrap();
+        let refused = zero().arg("build").arg(&conflict).output().unwrap();
+        assert_eq!(refused.status.code(), Some(1));
+        let error = String::from_utf8_lossy(&refused.stderr);
+        assert!(error.contains(&format!("stored resource `{stored_name}`")), "{error}");
+        assert!(
+            error.contains("an authoring change cannot rename persisted storage"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
+        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        std::fs::write(conflict.join("zero.config.ts"), format!("import {{ table, defineConfig }} from 'zero'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
+        let preserved = zero().arg("build").arg(&conflict).output().unwrap();
+        assert!(
+            preserved.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preserved.stderr)
+        );
+        let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+        assert_eq!(actual, legacy);
+        assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
+        std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+    }
+    // Physical-only siblings do not establish who owned the retained resource.
+    let mut siblings = canonical.clone();
+    siblings["tables"]["stockItems"] = canonical["tables"]["stock_items"].clone();
+    let sibling_bytes = serde_json::to_vec(&siblings).unwrap();
+    std::fs::write(&ledger, &sibling_bytes).unwrap();
+    let refused = zero().arg("build").arg(&conflict).output().unwrap();
+    assert_eq!(
+        refused.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        error.contains("stored resource `stockItems` conflicts with canonical physical name `stock_items`"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
+    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");
@@ -629,18 +798,21 @@ fn localized_generated_client_types() {
     copy(&root().join("tests/fixtures/locales-client"), &tmp);
     let out = zero().arg("build").arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    std::fs::write(
+        tmp.join("tsconfig.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "compilerOptions": {
+                "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+                "paths": { "zero": [root().join("types/zero/index.d.ts")] }
+            },
+            "files": ["client.ts", "zero.gen.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
-        .args([
-            "--strict",
-            "--noEmit",
-            "--target",
-            "ES2022",
-            "--module",
-            "ESNext",
-            "--moduleResolution",
-            "bundler",
-        ])
-        .arg(tmp.join("client.ts"))
+        .arg("--project")
+        .arg(tmp.join("tsconfig.json"))
         .output()
         .expect("tsc (or TSC) must be installed to check generated clients");
     assert!(
@@ -696,7 +868,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     // §3.5.1: post-backed columns that only postmeta can filter get a one-line hint.
     assert!(
         String::from_utf8_lossy(&out.stderr).contains(
-            "hint: \"posts.authorId\" is filtered through postmeta on WordPress; set editor: false on \"posts\" if this list grows large"
+            "hint: \"posts.authorId\" is filtered through postmeta on WordPress; use table() for SQL data if this list grows large"
         ),
         "{}",
         String::from_utf8_lossy(&out.stderr)
@@ -713,7 +885,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let content = project.join(".zero/wp-content");
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(content.join("zero-manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["runtime"], "0.2");
+    assert_eq!(manifest["runtime"], "0.3");
     assert_eq!(manifest["app"], "blog");
     for slug in ["zero-runtime", "zero-identity", "zero-app-blog"] {
         let archive = std::fs::File::open(content.join("plugins").join(format!("{slug}.zip"))).unwrap();
@@ -851,7 +1023,7 @@ fn rejects_phase2_static_contracts() {
             "reject-field-access-catch-fallthrough",
             "field rules must return a boolean on every path",
         ),
-        ("reject-field-access-self", "self is only allowed on auth collection"),
+        ("reject-field-access-self", "self is only allowed on user projection"),
         (
             "reject-field-access-global",
             "field access applies to collection columns",
@@ -870,8 +1042,11 @@ fn rejects_phase2_static_contracts() {
         ("reject-showif-structured", "compare a scalar sibling"),
         ("reject-showif-nested-sibling", "showIf names non-sibling"),
         ("reject-showif-title", "title is always readable"),
-        ("reject-sync-auth", "auth collections cannot sync"),
-        ("reject-auth-primary-key", "auth: true needs the primary key id: id()"),
+        ("reject-sync-auth", "user projections cannot sync"),
+        (
+            "reject-auth-primary-key",
+            "userProjection() needs the primary key id: id()",
+        ),
         ("reject-sync-directory", "two collections sync into the same directory"),
         ("reject-sync-outside", "sync directory must stay inside the project"),
         ("reject-sync-content", "Markdown sync needs a content designation"),
@@ -905,28 +1080,27 @@ fn rejects_phase2_static_contracts() {
             "reject-env-captured",
             "env() values can't be stored inside captured data",
         ),
-        ("reject-auth-duplicate", "at most one auth: true collection"),
+        ("reject-auth-duplicate", "at most one userProjection()"),
         (
             "reject-auth-email",
-            "auth: true needs email: email().notNull().unique()",
+            "userProjection() needs email: email().notNull().unique()",
         ),
-        ("reject-auth-editor", "auth: true requires editor: false"),
-        ("reject-auth-drafts", "auth: true requires drafts: false"),
-        ("reject-auth-revisions", "auth: true requires revisions: false"),
+        ("reject-auth-drafts", "userProjection() requires drafts: false"),
+        ("reject-auth-revisions", "userProjection() requires revisions: false"),
         (
             "reject-auth-slug",
-            "auth collections cannot have slug() or localized fields",
+            "user projections cannot have slug() or localized fields",
         ),
-        ("reject-auth-self", "self is only allowed on auth collection"),
-        ("reject-auth-create-self", "self is only allowed on auth collection"),
+        ("reject-auth-self", "self is only allowed on user projection"),
+        ("reject-auth-create-self", "self is only allowed on user projection"),
         (
             "reject-auth-reserved-password",
-            "password is reserved on auth collections",
+            "password is reserved on user projections",
         ),
-        ("reject-auth-reserved-role", "role is reserved on auth collections"),
+        ("reject-auth-reserved-role", "role is reserved on user projections"),
         (
             "reject-auth-reserved-passwordHash",
-            "passwordHash is reserved on auth collections",
+            "passwordHash is reserved on user projections",
         ),
         ("reject-agents-kebab", "ability kebab collision: notes-list"),
         ("reject-agents-media", "media has no option `agents`"),
@@ -951,7 +1125,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-localized-unique", "unique is not allowed on a localized column"),
         (
             "reject-localized-auth",
-            "auth collections cannot have slug() or localized fields",
+            "user projections cannot have slug() or localized fields",
         ),
         (
             "reject-localized-reserved-locale",
@@ -993,16 +1167,24 @@ fn rejects_phase2_static_contracts() {
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
-            "const make = (value: number[]) => { value.push(1); return () => value.length; }; make([]); return true;",
-            "a captured mutating parameter needs an object with required fields",
+            "const root: { x: number | string } = { x: 1 }; const alias = root; if (typeof root.x === 'number') { alias.x = 'hi'; return root.x + 1 > 0; } return true;",
+            "is ambiguous",
         ),
         (
-            "for (const values of [[1]]) values.push(2); return true;",
-            "a mutating loop binding needs an object with required fields",
+            "const root: { child: { x: number | string } } = { child: { x: 1 } }; const alias = root.child; if (typeof root.child.x === 'number') { alias.x = 'hi'; return root.child.x + 1 > 0; } return true;",
+            "is ambiguous",
         ),
         (
-            "for (const { items } of [{ items: [1] }]) items.push(2); return true;",
-            "through a destructured loop binding",
+            "const root: { child: { x: number | string } } = { child: { x: 1 } }; const { child } = root; if (typeof root.child.x === 'number') { child.x = 'hi'; return root.child.x + 1 > 0; } return true;",
+            "is ambiguous",
+        ),
+        (
+            "const root: { x: number | string } = { x: 1 }; const change = () => { root.x = 'hi'; }; if (typeof root.x === 'number') { change(); return root.x + 1 > 0; } return true;",
+            "is ambiguous",
+        ),
+        (
+            "const check = (a: { x: number | string }, b: { x: number | string }) => { if (typeof a.x === 'number') { b.x = 'hi'; return a.x + 1 > 0; } return true; }; const root = { x: 1 }; return check(root, root);",
+            "is ambiguous",
         ),
         (
             "[1].map((value: 1) => value); return true;",
@@ -1014,7 +1196,7 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "const read = (value: number, index: number, extra: number) => value; [1].map(read); return true;",
-            "this parameter is declared as number, but it receives null",
+            "this parameter is declared as number, but it receives number[]",
         ),
         (
             "'a'.replace('a', (match: string, offset: 'zero') => offset); return true;",
@@ -1069,14 +1251,6 @@ fn rejects_phase2_static_contracts() {
             "field rules must return a boolean on every path",
         ),
         (
-            "const a = { inner: { count: 0 } }; const mutate = ({ inner }: { inner: { count: number } }) => { inner.count++; }; mutate(a); return true;",
-            "through a destructured parameter",
-        ),
-        (
-            "let a = { count: 0 }; const mutate = (v: { count: number }, extra: number[]) => { v.count++; }; const reset = () => { a = { count: 9 }; return []; }; mutate(a, reset()); return true;",
-            "a later argument replaces an object or array",
-        ),
-        (
             "let value: 'a' | 'b' | null = 'a'; if (value === null) return false; const read = () => value; value = null; switch (read()) { case 'a': case 'b': return true; }",
             "field rules must return a boolean on every path",
         ),
@@ -1091,10 +1265,6 @@ fn rejects_phase2_static_contracts() {
         (
             "const record: { inner: { count: number } | null } = { inner: { count: 0 } }; function clear(value: { inner: { count: number } | null }) { value.inner = null; } if (record.inner !== null) { clear(record); record.inner.count = 1; } return true;",
             "object might be null",
-        ),
-        (
-            "const a = { count: 0 }; const reset = (v: { count: number }) => { if (v.count < 0) v.count++; v = { count: 9 }; }; reset(a); return true;",
-            "this parameter also shares member mutations",
         ),
         (
             "let value: 0 | 1 = 1; const read = () => value; value++; switch (read()) { case 0: case 1: return true; }",
@@ -1159,38 +1329,10 @@ fn rejects_phase2_static_contracts() {
             "function bump(value: { count: 0 | 1 }) { value.count++; } bump({ count: 2 }); return true;",
             "function expects",
         ),
-        (
-            "const a: number[] = []; a[2] = 5; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: (number | null)[] = []; a[2] ??= 5; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: string[] = []; a[2] += 'x'; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: number[] = [1]; a[5]!++; return a.length === 6;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const values: true[] = []; const value = (values[0] &&= true); return value === true;",
-            "changing an array element in place isn't supported",
-        ),
-        (
-            "const a: { x: number }[] = []; a[2]!.x = 1; return a.length === 3;",
-            "changing an array element in place isn't supported",
-        ),
         ("return 'ab'.startsWith('b', 1);", "with a position isn't supported"),
         (
             "return 'ab'.lastIndexOf('b', Number(undefined)) === 1;",
             "position must be a literal number, null or undefined",
-        ),
-        (
-            "const fns: (() => number)[] = []; for (let state = { x: 0 }; state.x < 3; state.x++) fns.push(() => state.x); return fns.length === 3;",
-            "holds an object or array",
         ),
         ("let value: 0 | 1 = 1; value++; value = 2; return true;", "can't assign"),
         (
@@ -1199,7 +1341,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1219,7 +1361,7 @@ fn rejects_phase2_static_contracts() {
         "'aa'.replaceAll('a', () => { value++; return 'b'; })",
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1246,7 +1388,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("zero.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'zero'; const notes = collection('notes', {{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}, {{ editor: false }}); export default defineConfig({{ schema: {{ notes }} }});"
+            "import {{ collection, id, text, defineConfig , table}} from 'zero'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = zero().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1277,7 +1419,12 @@ fn phase2_schema_and_closures_match_the_contract() {
     .unwrap();
     let golden: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/phase2.schema.json")).unwrap()).unwrap();
-    let out = zero().arg("build").arg(&tmp).output().unwrap();
+    let out = zero()
+        .arg("build")
+        .arg(&tmp)
+        .env("UPLOAD_SECRET", "compile-time-secret-must-not-resolve")
+        .output()
+        .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
@@ -1334,43 +1481,43 @@ fn phase2_schema_and_closures_match_the_contract() {
         $schema = $db->schema();
         $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
         $fn = '\\ZeroApp\\' . $col['access']['read']['fn'];
-        $private = $fn(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read']);
-        $public = $fn(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read']);
-        $authenticated = $fn(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read']);
+        $private = $fn(\Zero\Seam::ctx(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $public = $fn(\Zero\Seam::ctx(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $authenticated = $fn(\Zero\Seam::ctx(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read'], ['label' => ['type' => 'text']]));
         $fieldThrows = false;
         try {
-            $fn(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read']);
+            $fn(\Zero\Seam::ctx(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
         } catch (\Zero\JsError $error) {
             $fieldThrows = $error->getMessage() === 'denied';
         }
         $action = $schema->action('inbound');
         $fn = '\\ZeroApp\\' . $action['handler'];
         $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor']];
-        $actionAllowed = $fn(\Zero\Schema::validateInput($action['input'], []), $actor);
+        $actionAllowed = $fn(\Zero\Seam::toJs(\Zero\Schema::validateInput($action['input'], []), $action['input']), \Zero\Seam::ctx($actor));
         $actionThrows = false;
         try {
-            $fn(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $actor);
+            $fn(\Zero\Seam::toJs(\Zero\Schema::validateInput($action['input'], ['allow' => false]), $action['input']), \Zero\Seam::ctx($actor));
         } catch (\Zero\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
         $fn = '\\ZeroApp\\' . $schema->action('widened')['handler'];
-        $widened = $fn([]);
+        $widened = $fn(new \Zero\JsObject());
         // Ordinary array mutation/reduction results belong to the differential
         // owner; this fixture retains their generated-client type proof.
-        unset($widened['values'], $widened['choice'], $widened['nested'], $widened['reduced'], $widened['reducedNested']);
+        foreach (['values', 'choice', 'nested', 'reduced', 'reducedNested'] as $key) { unset($widened->p[$key]); }
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
         $fn = '\\ZeroApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(['data' => [], 'op' => 'update'] + $actor);
-        $subscriberUpdate = $fn(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']]);
+        $update = $fn(\Zero\Seam::ctx(['data' => [], 'op' => 'update'] + $actor, []));
+        $subscriberUpdate = $fn(\Zero\Seam::ctx(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']], []));
         $bucket = $schema->files()['decks'];
         $fn = '\\ZeroApp\\' . $bucket['access']['create']['fn'];
-        $bucketGuest = $fn(['user' => null, 'op' => 'create']);
+        $bucketGuest = $fn(\Zero\Seam::ctx(['user' => null, 'op' => 'create']));
         $job = $schema->jobs()['sendWelcome'];
         $input = \Zero\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
         $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\ZeroApp\\' . $job['handler'];
-        $db->transaction(static fn () => $fn($input, $ctx));
-        echo json_encode([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
+        $db->transaction(static fn () => $fn(\Zero\Seam::toJs($input, $job['input']), \Zero\Seam::ctx($ctx)));
+        echo \Zero\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
     "#,
         &serde_json::Value::Null,
     );
@@ -1507,7 +1654,7 @@ fn auth_fixture_matches_the_compiler() {
         actual, golden,
         "tests/fixtures/auth/schema.json drifted from the compiler"
     );
-    // The generated client types the auth collection as §6.2 says (tests/fixtures/auth/client.ts).
+    // The generated client types the user projection as §6.2 says (tests/fixtures/auth/client.ts).
     std::fs::copy(fixture.join("client.ts"), tmp.join("client.ts")).unwrap();
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args([

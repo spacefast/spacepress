@@ -1,4 +1,4 @@
-import { collection, id, text, integer, defineConfig } from "zero";
-const a = collection("a", { id: id(), name: text() }, { editor: false });
-const b = collection("b", { id: id(), aName: integer().references(() => a.name) }, { editor: false });
-export default defineConfig({ schema: { a, b } });
+import { collection, id, text, integer, defineConfig, table } from "zero";
+const a = table({ id: id(), name: text() });
+const b = table({ id: id(), aName: integer().references(() => a.name) });
+export default defineConfig({ tables: { a, b } });

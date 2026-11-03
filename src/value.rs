@@ -6,7 +6,7 @@ use crate::ir::{Func, TyAnn};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use indexmap::IndexMap;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -15,6 +15,7 @@ pub type Arr = Rc<RefCell<Vec<Value>>>;
 
 #[derive(Clone, Debug)]
 pub enum Value {
+    Class(Rc<ClassValue>),
     Undef,
     Null,
     Bool(bool),
@@ -40,6 +41,14 @@ pub enum Value {
 }
 
 #[derive(Debug)]
+pub struct ClassValue {
+    pub class: Rc<crate::ir::Class>,
+    pub base: Option<Rc<ClassValue>>,
+    pub env: Rc<Scope>,
+    pub statics: IndexMap<String, Value>,
+}
+
+#[derive(Debug)]
 pub struct Closure {
     pub func: Rc<Func>,
     pub env: Rc<Scope>,
@@ -48,7 +57,7 @@ pub struct Closure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
     // "zero" exports
-    Collection,
+    Collection(StorageKind),
     Column(ColType),
     Id,
     /// email, url, slug, richText, media, select, group, repeater, blocks
@@ -137,12 +146,46 @@ pub enum DefaultVal {
     Fn(Rc<Closure>),
 }
 
+/// Authored storage is explicit; user projections retain WordPress's identity store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    Collection,
+    Table,
+    UserProjection,
+}
+
+impl StorageKind {
+    pub fn builder(self) -> &'static str {
+        match self {
+            Self::Collection => "collection",
+            Self::Table => "table",
+            Self::UserProjection => "userProjection",
+        }
+    }
+
+    pub fn registry(self) -> &'static str {
+        match self {
+            Self::Collection => "collections",
+            Self::Table => "tables",
+            Self::UserProjection => "users",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CollectionVal {
-    pub table: String,
+    pub kind: StorageKind,
+    /// Bound exactly once from the registry key, before references are extracted.
+    pub table: OnceCell<String>,
     pub columns: IndexMap<String, Rc<ColBuilder>>,
     pub options: Option<Value>,
     pub span: Span,
+}
+
+impl CollectionVal {
+    pub fn table(&self) -> &str {
+        self.table.get().map(String::as_str).unwrap_or("<unregistered>")
+    }
 }
 
 #[derive(Debug)]
@@ -241,7 +284,7 @@ impl Value {
             Value::Bool(_) => "boolean",
             Value::Num(_) => "number",
             Value::Str(_) => "string",
-            Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
+            Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
             _ => "object",
         }
     }
@@ -249,6 +292,7 @@ impl Value {
     /// A short description for error messages.
     pub fn describe(&self) -> String {
         match self {
+            Value::Class(c) => format!("class {}", c.class.name),
             Value::Undef => "undefined".into(),
             Value::Null => "null".into(),
             Value::Bool(b) => b.to_string(),
@@ -259,8 +303,8 @@ impl Value {
             Value::Closure(_) | Value::Bound(..) => "a function".into(),
             Value::Builtin(b) => format!("{b:?}"),
             Value::Column(c) => format!("a {} column", c.ty.name()),
-            Value::Collection(c) => format!("collection \"{}\"", c.table),
-            Value::ColRef(r) => format!("column {}.{}", r.collection.table, r.column),
+            Value::Collection(c) => format!("collection \"{}\"", c.table()),
+            Value::ColRef(r) => format!("column {}.{}", r.collection.table(), r.column),
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
             Value::Job(_) => "a job".into(),
@@ -301,6 +345,7 @@ impl Value {
 
     pub fn strict_eq(&self, other: &Value) -> bool {
         match (self, other) {
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
             (Value::Undef, Value::Undef) | (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Num(a), Value::Num(b)) => a == b,

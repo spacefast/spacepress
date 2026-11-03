@@ -16,7 +16,7 @@ use Zero\Schema;
  * `post_title`, and a reference as the target's post id. Its compiled release (`content-model.php`,
  * format `spacefast.wordpress-content-model.php` v1) names every resource and field.
  *
- * Collections and fields map by name, the way `zero migrate config --from zero` emits them: a
+ * Collections map by authored key and fields by name, as `zero migrate config --from zero` emits them: a
  * reference field `project` becomes the column `projectId`. Anything the new schema can't hold
  * refuses the whole plan with an RFC 6901 pointer into the release.
  */
@@ -40,6 +40,11 @@ final class Model
         if (($release['format'] ?? null) !== self::FORMAT || ($release['version'] ?? null) !== 1 || !is_array($release['postTypes'] ?? null)) {
             throw self::refuse('', 'not an original Zero content-model.php release (format ' . self::FORMAT . ' v1)');
         }
+        // Releases name authored collection keys; the schema is indexed by physical storage.
+        $targets = [];
+        foreach ($schema->collections() as $storage => $spec) {
+            $targets[$spec['key'] ?? $storage] = $storage;
+        }
         $out = [];
         foreach ($release['postTypes'] as $i => $resource) {
             $at = "/postTypes/$i";
@@ -52,10 +57,11 @@ final class Model
                 continue;
             }
             $id = $resource['id'];
-            if (!$schema->hasCollection($id)) {
+            $collection = $targets[$id] ?? null;
+            if ($collection === null) {
                 throw self::refuse("$at/id", "collection $id has no counterpart in the new app; migrate its config first");
             }
-            $spec = $schema->collection($id);
+            $spec = $schema->collection($collection);
             if (!($spec['editor'] ?? true) || ($spec['wp'] ?? null) === null) {
                 throw self::refuse("$at/id", "collection $id is an editor: false table in the new app; only post-backed collections keep WordPress revisions and authors");
             }
@@ -94,14 +100,15 @@ final class Model
                     }
                     continue;
                 }
-                $fields[$name] = self::field($spec, $id, $name, $key, $field['definition'], $fat);
+                $fields[$name] = self::field($spec, $id, $name, $key, $field['definition'], $fat, $targets);
             }
             self::refuseUnwritableDefaults($spec, $id, $fields, $at);
-            $out[$id] = ['collection' => $id, 'pointer' => $at, 'fields' => $fields];
+            $out[$id] = ['collection' => $collection, 'pointer' => $at, 'fields' => $fields];
         }
-        foreach ($out as $id => $c) {
+        $mapped = array_column($out, 'collection');
+        foreach ($out as $c) {
             foreach ($c['fields'] as $f) {
-                if ($f['kind'] === 'reference' && !isset($out[$schema->collection($id)['columns'][$f['column']]['references']['collection']])) {
+                if ($f['kind'] === 'reference' && !in_array($schema->collection($c['collection'])['columns'][$f['column']]['references']['collection'], $mapped, true)) {
                     throw self::refuse($f['pointer'], 'reference target is not a migrated collection');
                 }
             }
@@ -111,9 +118,11 @@ final class Model
     }
 
     /** @return array{key: string, column: string, kind: string, multiple: bool, pointer: string} */
-    private static function field(array $spec, string $collection, string $name, string $key, array $def, string $at): array
+    private static function field(array $spec, string $collection, string $name, string $key, array $def, string $at, array $targets): array
     {
         $type = $def['type'];
+        $target = $def['collection'] ?? null;
+        $target = is_string($target) ? ($targets[$target] ?? null) : null;
         $multiple = (bool) ($def['multiple'] ?? false);
         $column = $type === 'relation' ? $name . 'Id' : $name;
         $col = $spec['columns'][$column] ?? null;
@@ -137,7 +146,7 @@ final class Model
                 : ['scalar', $have === 'text' && self::sameOptions($col['enum'] ?? [], $def['options'] ?? [])],
             'media' => $multiple ? ['mediaList', $have === 'mediaList'] : ['media', $have === 'media'],
             // Post ids are kept, so the reference must target the collection's id (the post id).
-            'relation' => ['reference', !$multiple && $have === 'integer' && ($col['references']['collection'] ?? null) === ($def['collection'] ?? null)
+            'relation' => ['reference', !$multiple && $have === 'integer' && $target !== null && ($col['references']['collection'] ?? null) === $target
                 && ($col['references']['column'] ?? null) === 'id'],
             default => [null, false],
         };

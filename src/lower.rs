@@ -13,6 +13,8 @@ use std::rc::Rc;
 pub struct Lowerer {
     pub file: u32,
     pub module: usize,
+    pub class_context: std::cell::Cell<bool>,
+    pub super_call: std::cell::Cell<bool>,
 }
 
 fn js(s: impl AsRef<str>, _span: Span) -> Result<String> {
@@ -29,11 +31,13 @@ impl Lowerer {
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}")).code(if what == "classes" {
-            crate::diag::Code::Classes
-        } else {
-            crate::diag::Code::Unsupported
-        });
+        let mut d = Diag::new(self.sp(s), format!("Zero code doesn't support {what}")).code(
+            if what.contains("class") || self.class_context.get() {
+                crate::diag::Code::Classes
+            } else {
+                crate::diag::Code::Unsupported
+            },
+        );
         if !help.is_empty() {
             d = d.help(help);
         }
@@ -168,7 +172,11 @@ impl Lowerer {
                         kind: ExprKind::Func(self.function(f)?),
                     },
                     a::ExportDefaultDeclarationKind::ClassDeclaration(c) => {
-                        return self.unsupported(c.span, "classes", "use plain objects and functions");
+                        return self.unsupported(
+                            c.span,
+                            "default-export class declarations",
+                            "use a named module-level class and a named export",
+                        );
                     }
                     a::ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => return Ok(()),
                     other => self.expr(other.to_expression())?,
@@ -202,28 +210,40 @@ impl Lowerer {
                 Ok(())
             }
             a::Declaration::ClassDeclaration(c) => {
-                self.unsupported(c.span, "classes", "use plain objects and functions")
+                let class = self.class(c)?;
+                out.push(Stmt::Decl {
+                    kind: DeclKind::Const,
+                    pat: Pat::Id(class.name.clone(), self.sp(c.span)),
+                    ann: None,
+                    init: Some(self.mk(c.span, ExprKind::Class(class))),
+                    span: self.sp(c.span),
+                });
+                Ok(())
             }
             a::Declaration::TSTypeAliasDeclaration(t) => {
                 out.push(Stmt::TypeAlias {
                     name: t.id.name.to_string(),
-                    params: self.type_params(t.type_parameters.as_deref()),
+                    params: self.alias_params(t.type_parameters.as_deref())?,
                     ty: self.ty(&t.type_annotation)?,
                 });
                 Ok(())
             }
             a::Declaration::TSInterfaceDeclaration(i) => {
-                if !i.extends.is_empty() {
-                    return self.unsupported(
-                        i.span,
-                        "`interface ... extends`",
-                        "use a type alias with `&`, or list the fields",
-                    );
+                let mut parts = Vec::new();
+                for base in &i.extends {
+                    let args = base
+                        .type_arguments
+                        .as_ref()
+                        .map(|args| args.params.iter().map(|t| self.ty(t)).collect::<Result<Vec<_>>>())
+                        .transpose()?
+                        .unwrap_or_default();
+                    parts.push(TyAnn::Ref(self.type_name(&base.type_name), args, self.sp(base.span)));
                 }
+                parts.push(self.members(&i.body.body)?);
                 out.push(Stmt::TypeAlias {
                     name: i.id.name.to_string(),
-                    params: self.type_params(i.type_parameters.as_deref()),
-                    ty: self.members(&i.body.body)?,
+                    params: self.alias_params(i.type_parameters.as_deref())?,
+                    ty: TyAnn::Intersection(parts, self.sp(i.span)),
                 });
                 Ok(())
             }
@@ -277,6 +297,30 @@ impl Lowerer {
             });
         }
         Ok(())
+    }
+
+    fn alias_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Result<Vec<TypeParam>> {
+        t.map(|t| {
+            t.params
+                .iter()
+                .map(|p| {
+                    if p.r#in || p.out || p.r#const {
+                        return self.unsupported(
+                            p.span,
+                            "variance or const type parameters",
+                            "use an ordinary type parameter",
+                        );
+                    }
+                    Ok(TypeParam {
+                        name: p.name.name.to_string(),
+                        constraint: p.constraint.as_ref().map(|t| self.ty(t)).transpose()?,
+                        default: p.default.as_ref().map(|t| self.ty(t)).transpose()?,
+                        span: self.sp(p.span),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
     }
 
     fn type_params(&self, t: Option<&a::TSTypeParameterDeclaration<'_>>) -> Vec<String> {
@@ -470,15 +514,283 @@ impl Lowerer {
     }
 
     fn function(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
+        let saved = self.class_context.replace(false);
+        let super_call = self.super_call.replace(false);
+        let result = self.function_inner(f);
+        self.class_context.set(saved);
+        self.super_call.set(super_call);
+        result
+    }
+
+    fn class(&self, c: &a::Class<'_>) -> Result<Rc<Class>> {
+        if !c.decorators.is_empty() || c.r#abstract || c.declare || c.type_parameters.is_some() {
+            return self.unsupported(
+                c.span,
+                "decorated, abstract, ambient or generic classes",
+                "use a concrete named class",
+            );
+        }
+        let Some(id) = &c.id else {
+            return self.unsupported(c.span, "anonymous classes", "name the class");
+        };
+        let base = match &c.heritage {
+            None => None,
+            Some(h) => match &h.expression {
+                a::Expression::Identifier(i) if h.type_arguments.is_none() => Some(i.name.to_string()),
+                _ => return self.unsupported(c.span, "dynamic class inheritance", "extend a named concrete class"),
+            },
+        };
+        let saved = self.class_context.replace(true);
+        let result = (|| {
+            let mut fields = Vec::new();
+            let mut methods = Vec::new();
+            let mut constructor = None;
+            let mut names = std::collections::HashSet::new();
+            for element in &c.body.body {
+                match element {
+                    a::ClassElement::PropertyDefinition(p) => {
+                        let Some(name) = p.key.static_name() else {
+                            return self.unsupported(p.span, "private class fields", "use public fields");
+                        };
+                        if p.computed
+                            || !p.decorators.is_empty()
+                            || p.declare
+                            || p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                        {
+                            return self.unsupported(
+                                p.span,
+                                "computed, decorated, ambient or private class fields",
+                                "use public named fields",
+                            );
+                        }
+                        if matches!(
+                            name.as_ref(),
+                            "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                        ) || !names.insert((p.r#static, name.to_string()))
+                        {
+                            return self.unsupported(
+                                p.span,
+                                "duplicate or protocol class members",
+                                "use distinct ordinary member names",
+                            );
+                        }
+                        fields.push(ClassField {
+                            name: name.to_string(),
+                            is_static: p.r#static,
+                            ann: p
+                                .type_annotation
+                                .as_ref()
+                                .map(|t| self.ty(&t.type_annotation))
+                                .transpose()?,
+                            init: p.value.as_ref().map(|e| self.expr(e)).transpose()?,
+                            span: self.sp(p.span),
+                        });
+                    }
+                    a::ClassElement::MethodDefinition(m) => {
+                        let Some(name) = m.key.static_name() else {
+                            return self.unsupported(m.span, "private class methods", "use public methods");
+                        };
+                        if m.computed
+                            || !m.decorators.is_empty()
+                            || m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                            || matches!(m.kind, a::MethodDefinitionKind::Get | a::MethodDefinitionKind::Set)
+                        {
+                            return self.unsupported(
+                                m.span,
+                                "computed, decorated, private or accessor class methods",
+                                "use public named methods",
+                            );
+                        }
+                        if m.value.type_parameters.is_some() || m.value.params.rest.is_some() {
+                            return self.unsupported(
+                                m.span,
+                                "generic or rest class methods",
+                                "use explicitly typed ordinary parameters",
+                            );
+                        }
+                        self.super_call
+                            .set(m.kind == a::MethodDefinitionKind::Constructor && base.is_some());
+                        let mut f = self.function_inner(&m.value)?;
+                        self.super_call.set(false);
+                        let f_mut = Rc::get_mut(&mut f).expect("new function");
+                        let is_ctor = m.kind == a::MethodDefinitionKind::Constructor;
+                        for p in &m.value.params.items {
+                            if !p.decorators.is_empty()
+                                || p.accessibility.is_some_and(|a| a != a::TSAccessibility::Public)
+                            {
+                                return self.unsupported(
+                                    p.span,
+                                    "decorated or private parameter properties",
+                                    "use public parameter properties",
+                                );
+                            }
+                            if p.accessibility.is_some() || p.readonly {
+                                if !is_ctor {
+                                    return self.unsupported(p.span, "parameter properties outside constructors", "");
+                                }
+                                let a::BindingPattern::BindingIdentifier(i) = &p.pattern else {
+                                    return self.unsupported(
+                                        p.span,
+                                        "destructured parameter properties",
+                                        "use a named parameter",
+                                    );
+                                };
+                                if matches!(
+                                    i.name.as_str(),
+                                    "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                                ) || !names.insert((false, i.name.to_string()))
+                                {
+                                    return self.unsupported(
+                                        p.span,
+                                        "duplicate or protocol class members",
+                                        "use distinct ordinary member names",
+                                    );
+                                }
+                                fields.push(ClassField {
+                                    name: i.name.to_string(),
+                                    is_static: false,
+                                    ann: p
+                                        .type_annotation
+                                        .as_ref()
+                                        .map(|t| self.ty(&t.type_annotation))
+                                        .transpose()?,
+                                    init: None,
+                                    span: self.sp(p.span),
+                                });
+                            }
+                        }
+                        f_mut.params.insert(
+                            0,
+                            Param {
+                                pat: Pat::Id(
+                                    "this".into(),
+                                    Span {
+                                        end: m.span.start,
+                                        ..self.sp(m.span)
+                                    },
+                                ),
+                                ann: None,
+                                default: None,
+                                optional: false,
+                                rest: false,
+                                span: self.sp(m.span),
+                            },
+                        );
+                        if is_ctor {
+                            let FnBody::Block(body) = &mut f_mut.body else {
+                                unreachable!()
+                            };
+                            if contains_constructor_return(body) {
+                                return self.unsupported(m.span, "constructor return values", "mutate this instead");
+                            }
+                            let at = if base.is_some() {
+                                if !body.first().is_some_and(|s| matches!(s, Stmt::Expr(Expr { kind: ExprKind::Call { callee, .. }, .. }) if matches!(&callee.kind, ExprKind::Ident(n) if n == "super"))) {
+                                    return self.unsupported(m.span, "derived constructors without a first-statement super(...) call", "call super(...) first");
+                                }
+                                1
+                            } else {
+                                0
+                            };
+                            let mut at = at;
+                            if base.is_some() {
+                                let initialize = self.mk(
+                                    m.span,
+                                    ExprKind::Call {
+                                        callee: Box::new(self.mk(m.span, ExprKind::Ident(":fields".into()))),
+                                        args: vec![],
+                                        optional: false,
+                                        type_args: vec![],
+                                    },
+                                );
+                                body.insert(at, Stmt::Expr(initialize));
+                                at += 1;
+                            }
+                            for p in &m.value.params.items {
+                                if p.accessibility.is_some() || p.readonly {
+                                    let a::BindingPattern::BindingIdentifier(i) = &p.pattern else {
+                                        unreachable!()
+                                    };
+                                    body.insert(
+                                        at,
+                                        Stmt::Expr(self.mk(
+                                            p.span,
+                                            ExprKind::Assign {
+                                                op: None,
+                                                target: Box::new(self.mk(
+                                                    p.span,
+                                                    ExprKind::Member {
+                                                        obj: Box::new(self.mk(p.span, ExprKind::Ident("this".into()))),
+                                                        prop: i.name.to_string(),
+                                                        optional: false,
+                                                        prop_span: self.sp(p.span),
+                                                    },
+                                                )),
+                                                value: Box::new(self.mk(p.span, ExprKind::Ident(i.name.to_string()))),
+                                            },
+                                        )),
+                                    );
+                                    at += 1;
+                                }
+                            }
+                            constructor = Some(f);
+                        } else {
+                            if matches!(
+                                name.as_ref(),
+                                "__proto__" | "prototype" | "constructor" | "toJSON" | "toString" | "valueOf"
+                            ) || !names.insert((m.r#static, name.to_string()))
+                            {
+                                return self.unsupported(
+                                    m.span,
+                                    "duplicate or protocol class members",
+                                    "use distinct ordinary member names",
+                                );
+                            }
+                            methods.push((name.to_string(), m.r#static, f));
+                        }
+                    }
+                    _ => {
+                        return self.unsupported(
+                            c.span,
+                            "class static blocks, accessors or index signatures",
+                            "use public fields and methods",
+                        );
+                    }
+                }
+            }
+            fields.sort_by_key(|field| {
+                !constructor
+                    .as_ref()
+                    .is_some_and(|f| f.params.iter().skip(1).any(|p| p.span == field.span))
+            });
+            Ok(Rc::new(Class {
+                name: id.name.to_string(),
+                base,
+                fields,
+                methods,
+                constructor,
+                span: self.sp(c.span),
+            }))
+        })();
+        self.class_context.set(saved);
+        result
+    }
+
+    fn function_inner(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
         if f.generator {
             return self.unsupported(f.span, "generators", "return an array");
         }
         let Some(body) = &f.body else {
             return self.unsupported(f.span, "a function without a body", "");
         };
+        let context = self.class_context.get();
+        if self.super_call.get() {
+            self.class_context.set(false);
+        }
+        let params = self.params(&f.params, context);
+        self.class_context.set(context);
         Ok(Rc::new(Func {
             name: f.id.as_ref().map(|i| i.name.to_string()),
-            params: self.params(&f.params)?,
+            params: params?,
             body: FnBody::Block(self.block(&body.statements)?),
             is_async: f.r#async,
             ret: f
@@ -499,7 +811,7 @@ impl Lowerer {
         };
         Ok(Rc::new(Func {
             name: None,
-            params: self.params(&f.params)?,
+            params: self.params(&f.params, false)?,
             body,
             is_async: f.r#async,
             ret: f
@@ -513,10 +825,10 @@ impl Lowerer {
         }))
     }
 
-    fn params(&self, p: &a::FormalParameters<'_>) -> Result<Vec<Param>> {
+    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool) -> Result<Vec<Param>> {
         let mut out = Vec::new();
         for item in &p.items {
-            if item.accessibility.is_some() || item.readonly {
+            if (item.accessibility.is_some() || item.readonly) && !parameter_properties {
                 return self.unsupported(item.span, "parameter properties", "");
             }
             out.push(Param {
@@ -761,7 +1073,10 @@ impl Lowerer {
                     }
                     BO::In => return self.unsupported(b.span, "`in`", "use `Object.hasOwn(obj, key)`"),
                     BO::Instanceof => {
-                        return self.unsupported(b.span, "`instanceof`", "use `typeof` or `Array.isArray`");
+                        return Ok(self.mk(
+                            b.span,
+                            ExprKind::Instanceof(Box::new(self.expr(&b.left)?), Box::new(self.expr(&b.right)?)),
+                        ));
                     }
                     _ => return self.unsupported(b.span, "bitwise operators", ""),
                 };
@@ -856,11 +1171,25 @@ impl Lowerer {
             E::TSNonNullExpression(x) => self.mk(span, ExprKind::NonNull(Box::new(self.expr(&x.expression)?))),
             E::TSInstantiationExpression(x) => self.expr(&x.expression)?,
             E::SequenceExpression(s) => return self.unsupported(s.span, "the comma operator", "split into statements"),
-            E::ThisExpression(t) => return self.unsupported(t.span, "`this`", "pass values as parameters"),
-            E::ClassExpression(c) => return self.unsupported(c.span, "classes", "use plain objects and functions"),
+            E::ThisExpression(t) if self.class_context.get() => self.mk(t.span, ExprKind::Ident("this".into())),
+            E::ThisExpression(t) => {
+                return self.unsupported(
+                    t.span,
+                    "`this` outside a class or its arrows",
+                    "pass values as parameters",
+                );
+            }
+            E::ClassExpression(c) => {
+                return self.unsupported(
+                    c.span,
+                    "class expressions",
+                    "use a named module-level class declaration",
+                );
+            }
             E::YieldExpression(y) => return self.unsupported(y.span, "generators", ""),
             E::ImportExpression(i) => return self.unsupported(i.span, "dynamic `import()`", "use a static import"),
-            E::Super(s) => return self.unsupported(s.span, "`super`", ""),
+            E::Super(s) if self.class_context.get() => self.mk(s.span, ExprKind::Ident("super".into())),
+            E::Super(s) => return self.unsupported(s.span, "`super` outside a class", ""),
             E::JSXElement(j) => return self.unsupported(j.span, "JSX", ""),
             E::JSXFragment(j) => return self.unsupported(j.span, "JSX", ""),
             other => return self.unsupported(other.span(), "this expression", ""),
@@ -878,6 +1207,27 @@ impl Lowerer {
     }
 
     fn call(&self, c: &a::CallExpression<'_>) -> Result<Expr> {
+        if matches!(c.callee, a::Expression::Super(_)) {
+            if !self.super_call.replace(false) {
+                return self.unsupported(
+                    c.span,
+                    "super() outside the first derived constructor statement",
+                    "call super(...) exactly once, first",
+                );
+            }
+            let saved = self.class_context.replace(false);
+            let args = self.args(&c.arguments);
+            self.class_context.set(saved);
+            return Ok(self.mk(
+                c.span,
+                ExprKind::Call {
+                    callee: Box::new(self.mk(c.span, ExprKind::Ident("super".into()))),
+                    args: args?,
+                    optional: false,
+                    type_args: vec![],
+                },
+            ));
+        }
         let type_args = match &c.type_arguments {
             Some(t) => t.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
             None => vec![],
@@ -960,20 +1310,10 @@ impl Lowerer {
                 TyAnn::Tuple(items)
             }
             T::TSUnionType(u) => TyAnn::Union(u.types.iter().map(|t| self.ty(t)).collect::<Result<_>>()?),
-            T::TSIntersectionType(i) => {
-                // Only object intersections: merge fields.
-                let mut fields = Vec::new();
-                for part in &i.types {
-                    match self.ty(part)? {
-                        TyAnn::Obj(f) => fields.extend(f),
-                        other => {
-                            let r = TyAnn::Ref("&".into(), vec![other], self.sp(i.span));
-                            return Ok(TyAnn::Union(vec![TyAnn::Obj(fields), r]));
-                        }
-                    }
-                }
-                TyAnn::Obj(fields)
-            }
+            T::TSIntersectionType(i) => TyAnn::Intersection(
+                i.types.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
+                self.sp(i.span),
+            ),
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
                 a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
@@ -984,7 +1324,13 @@ impl Lowerer {
                     };
                     TyAnn::StrLit(js(cooked, self.sp(q.span))?)
                 }
-                a::TSLiteral::TemplateLiteral(_) => TyAnn::Str,
+                a::TSLiteral::TemplateLiteral(t) => {
+                    return self.unsupported(
+                        t.span,
+                        "interpolated template literal types",
+                        "use a finite union of string literals",
+                    );
+                }
                 a::TSLiteral::NumericLiteral(n) => TyAnn::NumLit(n.value),
                 a::TSLiteral::BooleanLiteral(value) => TyAnn::BoolLit(value.value),
                 a::TSLiteral::UnaryExpression(u) if matches!(u.argument, a::Expression::NumericLiteral(_)) => {
@@ -1001,6 +1347,13 @@ impl Lowerer {
             },
             T::TSTypeLiteral(lit) => self.members(&lit.members)?,
             T::TSFunctionType(f) => {
+                if f.type_parameters.is_some() || f.params.rest.is_some() || f.params.items.iter().any(|p| p.optional) {
+                    return self.unsupported(
+                        f.span,
+                        "generic, optional or rest parameters in function types",
+                        "use a concrete function type with required parameters",
+                    );
+                }
                 let mut params = Vec::new();
                 for p in &f.params.items {
                     let ann = p
@@ -1018,14 +1371,6 @@ impl Lowerer {
                     Some(a) => a.params.iter().map(|t| self.ty(t)).collect::<Result<_>>()?,
                     None => vec![],
                 };
-                if name == "Record" && args.len() == 2 {
-                    let mut args = args;
-                    return Ok(TyAnn::Map(Box::new(args.pop().expect("value type"))));
-                }
-                if name == "Array" && args.len() == 1 {
-                    let mut args = args;
-                    return Ok(TyAnn::Array(Box::new(args.pop().expect("element type"))));
-                }
                 TyAnn::Ref(name, args, self.sp(r.span))
             }
             T::TSTypeQuery(q) => match &q.expr_name {
@@ -1037,20 +1382,41 @@ impl Lowerer {
                     TyAnn::Query(name.split('.').map(str::to_string).collect(), self.sp(q.span))
                 }
             },
-            T::TSIndexedAccessType(i) => {
-                let key = match &i.index_type {
-                    T::TSLiteralType(l) => match &l.literal {
-                        a::TSLiteral::StringLiteral(s) => js(s.value, self.sp(s.span))?,
-                        _ => {
-                            return self.unsupported(i.span, "this indexed access type", "index with a string literal");
-                        }
-                    },
-                    _ => return self.unsupported(i.span, "this indexed access type", "index with a string literal"),
+            T::TSIndexedAccessType(i) => TyAnn::Indexed(
+                Box::new(self.ty(&i.object_type)?),
+                Box::new(self.ty(&i.index_type)?),
+                self.sp(i.span),
+            ),
+            T::TSMappedType(m) => {
+                if m.name_type.is_some() {
+                    return self.unsupported(
+                        m.span,
+                        "mapped type key remapping",
+                        "use a finite mapped type without `as`",
+                    );
+                }
+                let Some(value) = &m.type_annotation else {
+                    return self.unsupported(m.span, "untyped mapped types", "provide a value type");
                 };
-                TyAnn::Indexed(Box::new(self.ty(&i.object_type)?), key)
+                TyAnn::Mapped {
+                    key: m.key.name.to_string(),
+                    keys: Box::new(self.ty(&m.constraint)?),
+                    value: Box::new(self.ty(value)?),
+                    optional: m.optional.map(|o| !matches!(o, a::TSMappedTypeModifierOperator::Minus)),
+                    span: self.sp(m.span),
+                }
             }
+            T::TSConditionalType(c) => TyAnn::Conditional {
+                check: Box::new(self.ty(&c.check_type)?),
+                extends: Box::new(self.ty(&c.extends_type)?),
+                yes: Box::new(self.ty(&c.true_type)?),
+                no: Box::new(self.ty(&c.false_type)?),
+                span: self.sp(c.span),
+            },
             T::TSTypeOperatorType(o) => match o.operator {
-                a::TSTypeOperatorOperator::Keyof => TyAnn::Str,
+                a::TSTypeOperatorOperator::Keyof => {
+                    TyAnn::KeyOf(Box::new(self.ty(&o.type_annotation)?), self.sp(o.span))
+                }
                 a::TSTypeOperatorOperator::Readonly => self.ty(&o.type_annotation)?,
                 a::TSTypeOperatorOperator::Unique => return self.unsupported(o.span, "`unique symbol`", ""),
             },
@@ -1071,6 +1437,13 @@ impl Lowerer {
         for m in members {
             match m {
                 a::TSSignature::TSPropertySignature(p) => {
+                    if matches!(p.key, a::PropertyKey::NumericLiteral(_)) {
+                        return self.unsupported(
+                            p.span,
+                            "numeric property names in types",
+                            "use string property names",
+                        );
+                    }
                     let Some(key) = p.key.static_name() else {
                         return self.unsupported(p.span, "computed keys in types", "");
                     };
@@ -1081,6 +1454,16 @@ impl Lowerer {
                     fields.push((js(key, self.sp(p.span))?, ty, p.optional));
                 }
                 a::TSSignature::TSIndexSignature(i) => {
+                    if !matches!(
+                        i.parameter.type_annotation.type_annotation,
+                        a::TSType::TSStringKeyword(_)
+                    ) {
+                        return self.unsupported(
+                            i.span,
+                            "non-string index signatures",
+                            "use a finite Record of string keys",
+                        );
+                    }
                     if !fields.is_empty() || members.len() > 1 {
                         return self.unsupported(
                             i.span,
@@ -1091,6 +1474,23 @@ impl Lowerer {
                     return Ok(TyAnn::Map(Box::new(self.ty(&i.type_annotation.type_annotation)?)));
                 }
                 a::TSSignature::TSMethodSignature(ms) => {
+                    if matches!(ms.key, a::PropertyKey::NumericLiteral(_)) {
+                        return self.unsupported(
+                            ms.span,
+                            "numeric property names in types",
+                            "use string property names",
+                        );
+                    }
+                    if ms.type_parameters.is_some()
+                        || ms.params.rest.is_some()
+                        || ms.params.items.iter().any(|p| p.optional)
+                    {
+                        return self.unsupported(
+                            ms.span,
+                            "generic, optional or rest parameters in method types",
+                            "use concrete required parameters",
+                        );
+                    }
                     let Some(key) = ms.key.static_name() else {
                         return self.unsupported(ms.span, "computed keys in types", "");
                     };
@@ -1121,3 +1521,27 @@ impl Lowerer {
 }
 
 use oxc_span::GetSpan;
+
+fn contains_constructor_return(body: &[Stmt]) -> bool {
+    body.iter().any(|s| match s {
+        Stmt::Return(Some(_), _) => true,
+        Stmt::Block(b) | Stmt::While(_, b) | Stmt::For { body: b, .. } | Stmt::ForOf { body: b, .. } => {
+            contains_constructor_return(b)
+        }
+        Stmt::If(_, a, b) => {
+            contains_constructor_return(a) || b.as_ref().is_some_and(|b| contains_constructor_return(b))
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            contains_constructor_return(block)
+                || handler.as_ref().is_some_and(|b| contains_constructor_return(b))
+                || finalizer.as_ref().is_some_and(|b| contains_constructor_return(b))
+        }
+        Stmt::Switch { cases, .. } => cases.iter().any(|(_, b)| contains_constructor_return(b)),
+        _ => false,
+    })
+}

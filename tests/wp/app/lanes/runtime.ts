@@ -6,30 +6,33 @@
 // `bulkTourPrice` is one trusted update over two rows of a translation group (hooks once per row).
 // `guest_carts` (cascade) and `guest_notes` (set null) are rows a member owns, for guest pruning.
 // `big_counts` holds integers past 2^53 (BIGINT): compiled arithmetic on them must match JS.
-import { action, collection, db, id, integer, text } from "zero";
+import { action, collection, db, id, integer, text, table } from "zero";
 import { tours } from "./locales.ts";
 import { members } from "./auth.ts";
 
-export const legs = collection("legs", {
+export const legs = collection({
   id: id(),
   title: text().notNull().localized(),
   tourId: integer().references(() => tours.id, { onDelete: "cascade" }),
 }, { title: "title", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-export const guestCarts = collection("guest_carts", {
+export const guestCarts = table({
   id: id(),
   memberId: integer().notNull().references(() => members.id, { onDelete: "cascade" }),
-}, { editor: false, access: { read: "anyone", create: "authenticated" } });
+}, { access: { read: "anyone", create: "authenticated" } });
 
-export const guestNotes = collection("guest_notes", {
+export const guestNotes = table({
   id: id(),
   body: text().notNull(),
   memberId: integer().references(() => members.id, { onDelete: "set null" }),
-}, { editor: false, access: { read: "anyone", create: "authenticated" } });
+}, { access: { read: "anyone", create: "authenticated" } });
 
-export const bigCounts = collection("big_counts", { id: id(), n: integer().notNull() }, { editor: false, access: { read: "anyone", create: "editor" } });
+export const bigCounts = table({ id: id(), n: integer().notNull() }, { access: { read: "anyone", create: "editor" } });
 
-export const schema = { legs, guestCarts, guestNotes, bigCounts };
+export const collections = { legs };
+export const tables = { guestCarts, guestNotes, bigCounts };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: any) => ({
   tours: { legs: r.many.legs({ from: r.tours.id, to: r.legs.tourId }) },

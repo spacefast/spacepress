@@ -1,9 +1,20 @@
 # Authoring direction: content, data, files and optional pages
 
-Selected direction, 2026-11-02. This is a design and implementation brief,
-not documentation of released APIs. Main at `2700ebc1` has the previous
-config surface. Explicit storage, S3 uploads and class support are implementation
-changes in progress. The pages and agents proposal remains a draft.
+Selected direction, 2026-11-02; implementation status refreshed 2026-11-03
+against main `4fc803b6`. This brief records the authoring direction and future
+pages/agents contracts. Released API details belong to the implementation docs.
+
+| Implemented foundation | Current reference |
+|---|---|
+| Concrete classes, inheritance and instance identity | [Class compilation](class-compilation.md), shipped in `a2ec286d` |
+| Finite TypeScript type algebra and bounded normalization | [Runtime contract](runtime-contract.md), shipped in `9395ba26` and `df61274a` |
+| Explicit collections, tables, user projections and shared relations | [Config API](config-api.md), shipped in `a08b2d16` |
+| Shared S3 files, native media originals and derivatives | [Uploads](uploads.md), shipped in `b8c2a670`; qualification is S3-compatible/Garage, not every provider |
+| Native admin login, editing and draft protection | Shipped in `d6d10eda`; [examples](examples.md) describe the current workflows |
+
+Optional pages, universal components, paired theme publishing, host process
+drain, the Data Machine adapter and approval bridge remain future design.
+Their acceptance obligations below are not qualified by the shipped foundation.
 
 The latest owner requirements are explicit: collections and tables are
 different authoring concepts, both support relations, files need an S3-compatible
@@ -73,7 +84,8 @@ const rows = await zero.stock.list({ with: { product: true } });
 const products = await zero.products.list({ with: { stock: true } });
 ```
 
-These are target snippets, not a claim that current main accepts the new config.
+The collection/table example uses the accepted configuration vocabulary;
+optional page, theme and agent declarations below remain proposal snippets.
 Resource keys must be unique across both registries. SQL name derivation must
 detect collisions as well. Changing fields never changes storage. The initial
 cutover preserves existing physical names and snapshots so a syntax change
@@ -113,10 +125,10 @@ option, separate from a collection or SQL table. Keep logical file names,
 permissions and typed file references independent of provider bucket names.
 Both collections and tables can reference files and media.
 
-Configure a shared storage backend for managed uploads, with S3 bucket, region,
+The implemented shared storage backend configures S3 bucket, region,
 optional compatible-service endpoint, path-style addressing and an app-specific
-object prefix. The implementation must settle the exact option spelling and
-provide an executable config; this brief does not introduce an accepted API.
+object prefix. Use the accepted spelling and executable configuration in
+[uploads](uploads.md); this brief does not define a second storage API.
 Runtime environment references supply credentials. Generated clients, public
 schemas, build artifacts and diagnostics must not contain credential values.
 
@@ -272,11 +284,12 @@ failures. Runtime credentials come from environment configuration; do not put
 them in the plugin lock or public schema. Readiness must exercise the declared
 capability rather than merely detect the plugin's files.
 
-For S3, compare maintained offload plugins with a maintained PHP SDK against the
-complete files contract above before selecting a provider. Originals,
+The S3 implementation uses the maintained AsyncAWS SDK; its selection and
+scope are recorded in the [provider decision](decisions/2026-11-02-upload-provider-adapter.md).
+Any additional provider must meet the complete files contract. Originals,
 derivatives, private reads, native-editor uploads and replica replacement must
 all work; a public-media-only offload plugin is insufficient for private files.
-No new S3 or SEO provider is selected or qualified by this document. A PHP
+This document adds no provider qualification or SEO integration. A PHP
 library may still be bundled and scoped for reproducible deployment; reuse
 means avoiding a hand-written replacement, not requiring a live package manager
 on the deployed site. Retain dependency licenses, exact pins and provenance.
@@ -312,16 +325,16 @@ capabilities and gaps rather than claiming full product equivalence.
 
 ## Delivery and evidence
 
-1. Finish and independently review class support and the explicit data model.
-   Prove one mixed-storage application with relation loading, target access and
-   generated-client typing through the existing owners.
-2. Run the current system against real disposable WordPress, its pinned plugins
+1. Preserve the shipped class support and explicit data model. Their existing
+   owners qualify mixed-storage relations, target access and generated-client
+   typing; extend those owners when the contract changes.
+2. Continue qualifying the current system against real disposable WordPress, its pinned plugins
    and database. Report exact revisions and failed checks, including editor,
    installed-system and migration seams; do not replace these with mocks.
-3. Implement and independently review S3 uploads, including media derivatives
-   and the replica-replacement proof. Complete the admin login and real
-   list/create/edit/save/reload journey; packaging and unit tests do not prove
-   browser reachability or usable screens.
+3. Preserve the shipped S3 replica-replacement and native admin browser owners.
+   They qualify their recorded service/artifact scope. Additional providers,
+   plugins and new editing flows need their own real operations; packaging and
+   unit tests alone do not prove browser reachability or usable screens.
 4. Reconcile this direction with the draft pages design. Keep the reviewed
    process/session drain, cache, password, private-memory and durable retirement
    contracts. Do not call them qualified because the design passed review.
@@ -331,10 +344,11 @@ capabilities and gaps rather than claiming full product equivalence.
 6. Update executable examples, public docs and the explainer from the exact
    merged implementation. Maintain one behavioral test owner per seam.
 
-Fresh validation of the tracked tree at main `2700ebc1` passed its existing
+Historical validation of the tracked tree at main `2700ebc1` passed its existing
 Rust, PHP, types/client, Docker WordPress, system/installed, legacy, identity,
 admin bundle and native/WASM/site owners. A separate real-browser audit found
 an admin login loop and missing or blank SPA routes; native Gutenberg saved
-successfully. Those admin gaps need implementation and a real browser journey.
-The baseline validation does not cover the collection/table, class or S3
-changes in progress, or qualify the draft pages/agents implementation.
+successfully. Later implementation `d6d10eda` supplied the native login/editing
+boundaries and browser ownership. The old failure is not a current-head result.
+Neither that historical baseline nor the later foundation checks qualify the
+future pages/agents implementation, host publisher or Data Machine bridge.

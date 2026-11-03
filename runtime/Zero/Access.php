@@ -13,7 +13,7 @@ final class Access
     public const DEFAULT_READ = ['role' => 'anyone'];
     public const DEFAULT_WRITE = ['role' => 'editor'];
     /** The built-in media collection's fixed rules (§4.6). */
-    public const MEDIA = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'delete' => ['role' => 'editor']];
+    public const MEDIA = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']];
 
     /** @return array{read: array, create: array, update: array, delete: array} */
     public static function collectionRules(array $spec): array
@@ -36,7 +36,7 @@ final class Access
         return ['read' => $a['read'] ?? self::DEFAULT_READ, 'update' => $a['update'] ?? self::DEFAULT_WRITE];
     }
 
-    public static function evaluate(array $rule, Viewer $viewer, string $op, ?array $data = null): bool|array
+    public static function evaluate(array $rule, Viewer $viewer, string $op, ?array $data = null, ?array $dataShape = null, ?string $collection = null): bool|array
     {
         $user = $viewer->user;
         if (array_key_exists('allow', $rule)) {
@@ -54,10 +54,17 @@ final class Access
             };
         }
         if (isset($rule['fn'])) {
-            $fn = '\\ZeroApp\\' . $rule['fn'];
+            $slot = $rule['fn'];
+            $fn = is_string($slot) ? '\\ZeroApp\\' . $slot : $slot;
             $ctx = ['user' => $user, 'op' => $op, 'data' => $data];
-            $ctx = Seam::ctx($ctx);
+            $ctx = is_string($slot) ? Seam::ctx($ctx, $dataShape) : $ctx;
             $r = $fn($ctx);
+            if ($r instanceof JsObject || is_array($r)) {
+                if ($collection === null) {
+                    throw new \LogicException('A filter-valued access rule requires its collection');
+                }
+                $r = Seam::filter($collection, $r);
+            }
             if (is_array($r)) {
                 return $r;
             }
@@ -82,9 +89,9 @@ final class Access
     }
 
     /** An access rule that is a plain boolean check (create, actions, globals, media): throw unless allowed. */
-    public static function require(array $rule, Viewer $viewer, string $op, ?array $data, string $what): void
+    public static function require(array $rule, Viewer $viewer, string $op, ?array $data, string $what, ?array $dataShape = null): void
     {
-        $r = self::evaluate($rule, $viewer, $op, $data);
+        $r = self::evaluate($rule, $viewer, $op, $data, $dataShape);
         if (is_array($r)) {
             throw new \LogicException("The $op rule for $what returned a filter; it must return a boolean");
         }

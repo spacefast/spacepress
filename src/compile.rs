@@ -6,10 +6,12 @@
 //! unknown operands, string indexing, sort order) the output calls a `Js::`
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
+mod annotations;
+mod classes;
 mod effects;
 
 use crate::diag::{Diag, Result, Span, suggest};
-use crate::eval::{Evaluator, GLOBALS, to_json};
+use crate::eval::{Evaluator, GLOBALS};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
@@ -54,26 +56,6 @@ pub fn php_json(v: &serde_json::Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-    }
-}
-
-/// A captured value as a compiled-code PHP expression: like php_json, but an empty object `{}` is the
-/// JsObject marker so it stays an object in JSON. schema.php keeps plain arrays (php_json): it is data,
-/// loaded by tools without the runtime.
-fn php_js_value(v: &serde_json::Value) -> String {
-    use serde_json::Value as J;
-    match v {
-        // Parenthesized: PHP 8.2/8.3 can't index or call on a bare `new` expression.
-        J::Object(map) if map.is_empty() => "(new \\Zero\\JsObject())".into(),
-        J::Array(items) => format!("[{}]", items.iter().map(php_js_value).collect::<Vec<_>>().join(", ")),
-        J::Object(map) => format!(
-            "[{}]",
-            map.iter()
-                .map(|(k, v)| format!("{} => {}", php_str(k), php_js_value(v)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        other => php_json(other),
     }
 }
 
@@ -153,12 +135,20 @@ struct Out {
 struct AssignmentPlace {
     read: Out,
     constraint: Ty,
-    /// For a place inside an object/Record: the root PHP variable and the key path, so writes go
-    /// through `Js::write`, which unwraps empty-object markers only as it writes (reads keep `{}`).
-    path: Option<(String, Vec<String>)>,
-    /// The place is, or is reached through, an array element (`list[i]`, `list[i].x`): see
-    /// `element_write`.
-    through_element: bool,
+    /// A captured handle and key keep the reference stable while the right side runs.
+    target: Option<WriteTarget>,
+}
+
+struct WriteTarget {
+    receiver: String,
+    key: String,
+    array: bool,
+}
+
+enum CapturedPlace {
+    Binding(String),
+    Object { receiver: String, key: String },
+    Array { receiver: String, key: String },
 }
 
 impl Out {
@@ -202,8 +192,6 @@ impl Out {
 #[derive(Clone)]
 struct Local {
     php: String,
-    /// Keeps shared object field cells alive independently of PHP array copies.
-    capture_anchor: Option<String>,
     ty: Ty,
     constraint: Ty,
     mutable: bool,
@@ -241,7 +229,6 @@ struct FnCtx {
     env: Rc<Scope>,
     module: usize,
     /// Parameter names that need `&` because the function mutates them.
-    by_ref: HashSet<String>,
     /// Locals declared so far in this PHP function (for closure `use` lists).
     declared: Vec<String>,
     /// Inside a nested closure: names from the enclosing function it uses.
@@ -258,13 +245,20 @@ struct FnCtx {
 }
 
 pub struct Compiler<'a, 'p> {
+    classes: HashMap<usize, classes::CompiledClass>,
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
-    type_aliases: HashMap<(usize, String), (Vec<String>, TyAnn)>,
+    type_aliases: HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
+    duplicate_type_aliases: HashSet<(usize, String)>,
+    annotation_depth: usize,
+    annotation_steps: usize,
+    resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, bool), String>,
+    helper_values: HashMap<usize, String>,
     helper_types: HashMap<usize, Ty>,
+    data_helpers: HashMap<(u8, usize), String>,
     effects: effects::Effects,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
@@ -288,17 +282,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         program: &crate::loader::Program,
     ) -> Self {
         let mut type_aliases = HashMap::new();
+        let mut duplicate_type_aliases = HashSet::new();
         for m in &program.modules {
-            collect_aliases(&m.body, m.id, &mut type_aliases);
+            collect_aliases(&m.body, m.id, &mut type_aliases, &mut duplicate_type_aliases);
         }
         Compiler {
+            classes: HashMap::new(),
             schema,
             ev,
             collections: &ext.collections,
             type_aliases,
+            duplicate_type_aliases,
+            annotation_depth: 0,
+            annotation_steps: 0,
+            resolving_json_types: HashSet::new(),
             async_callback: false,
             helpers: HashMap::new(),
+            helper_values: HashMap::new(),
             helper_types: HashMap::new(),
+            data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
             used_names: HashSet::new(),
             pending: Vec::new(),
@@ -317,60 +319,91 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
             .collect();
-        if self.used_names.contains(&name) {
+        if self.used_names.contains(&name.to_ascii_lowercase()) {
             let mut i = 2;
-            while self.used_names.contains(&format!("{name}_{i}")) {
+            while self.used_names.contains(&format!("{name}_{i}").to_ascii_lowercase()) {
                 i += 1;
             }
             name = format!("{name}_{i}");
         }
-        self.used_names.insert(name.clone());
+        self.used_names.insert(name.to_ascii_lowercase());
         name
     }
 
     /// Resolves all JSON annotations before any function is compiled, including nested handler inputs.
     pub fn resolve_json_types(&mut self) -> Result<()> {
-        fn collect<'a>(columns: &'a IndexMap<String, Column>, out: &mut Vec<&'a Column>) {
-            for col in columns.values() {
-                if col.ts_type.is_some() {
-                    out.push(col);
-                }
-                if let Some(fields) = &col.fields {
-                    collect(fields, out);
-                }
-                if let Some(layouts) = &col.layouts {
-                    for fields in layouts.values() {
-                        collect(fields, out);
-                    }
+        JSON_TYPES.with(|m| m.borrow_mut().clear());
+        for collection in self.schema.collections.values() {
+            self.resolve_json_columns(&collection.columns)?;
+        }
+        for global in self.schema.globals.values() {
+            self.resolve_json_columns(&global.fields)?;
+        }
+        for action in self.schema.actions.values() {
+            self.resolve_json_columns(&action.input)?;
+        }
+        for job in self.schema.jobs.values() {
+            self.resolve_json_columns(&job.input)?;
+        }
+        Ok(())
+    }
+
+    fn resolve_json_columns(&mut self, columns: &IndexMap<String, Column>) -> Result<()> {
+        for col in columns.values() {
+            self.resolve_json_column(col)?;
+            if let Some(fields) = &col.fields {
+                self.resolve_json_columns(fields)?;
+            }
+            if let Some(layouts) = &col.layouts {
+                for fields in layouts.values() {
+                    self.resolve_json_columns(fields)?;
                 }
             }
         }
-        JSON_TYPES.with(|m| m.borrow_mut().clear());
-        let mut annotated = Vec::new();
-        for collection in self.schema.collections.values() {
-            collect(&collection.columns, &mut annotated);
-        }
-        for global in self.schema.globals.values() {
-            collect(&global.fields, &mut annotated);
-        }
-        for action in self.schema.actions.values() {
-            collect(&action.input, &mut annotated);
-        }
-        for job in self.schema.jobs.values() {
-            collect(&job.input, &mut annotated);
-        }
-        for col in annotated {
-            let (ann, module) = col.ts_type.as_ref().expect("annotated column");
-            let ty = self.resolve_ann(ann, *module, &HashMap::new())?;
-            JSON_TYPES.with(|m| m.borrow_mut().insert(col as *const Column as usize, ty));
-        }
         Ok(())
+    }
+
+    fn resolve_json_column(&mut self, col: &Column) -> Result<()> {
+        let Some((ann, module)) = &col.ts_type else {
+            return Ok(());
+        };
+        let key = col as *const Column as usize;
+        if JSON_TYPES.with(|m| m.borrow().contains_key(&key)) {
+            return Ok(());
+        }
+        if self.resolving_json_types.len() >= 96 {
+            return err(
+                annotations::annotation_span(ann),
+                "JSON model expansion exceeds Zero's 96-level limit",
+            );
+        }
+        if !self.resolving_json_types.insert(key) {
+            return err(
+                annotations::annotation_span(ann),
+                "recursive JSON model annotations aren't supported",
+            );
+        }
+        let result = (|| {
+            let authored = self.resolve_annotation_root(ann, *module)?;
+            let ty = annotations::runtime_type(authored.clone());
+            if classes::wire_type(&ty) != ty {
+                return err_help(
+                    annotations::annotation_span(ann),
+                    "JSON schemas cannot use class instance types",
+                    "describe the stored own fields with an object type; JSON does not restore methods or instanceof identity",
+                );
+            }
+            JSON_TYPES.with(|m| m.borrow_mut().insert(key, types::JsonType { authored, runtime: ty }));
+            Ok(())
+        })();
+        self.resolving_json_types.remove(&key);
+        result
     }
 
     /// Compiles every root (hooks, actions, defaults) and returns slot → PHP function name.
     pub fn compile_roots(&mut self, roots: &[Root]) -> Result<Vec<(Slot, String)>> {
         // Solve all roots together before emitting shared helper signatures.
-        self.effects = effects::Effects::analyze(roots);
+        self.effects = effects::Effects::analyze(roots, self.schema);
         let mut out = Vec::new();
         for root in roots {
             let params = self.root_params(&root.slot);
@@ -403,8 +436,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::Hook { table, kind } => {
                 let row = types::row(self.schema, table);
                 match kind {
-                    HookKind::BeforeCreate => vec![types::insert(self.schema, table), ctx],
-                    HookKind::BeforeUpdate => vec![types::partial(types::insert(self.schema, table)), row, ctx],
+                    HookKind::BeforeCreate => {
+                        let data = types::insert(self.schema, table);
+                        vec![data.clone(), types::data_ctx(data)]
+                    }
+                    HookKind::BeforeUpdate => {
+                        let data = types::partial(types::insert(self.schema, table));
+                        vec![data.clone(), row, types::data_ctx(data)]
+                    }
                     HookKind::AfterUpdate => vec![row.clone(), row, ctx],
                     _ => vec![row, ctx],
                 }
@@ -429,7 +468,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Slot::Validate { at } => {
                 let col = self.schema.column_at(at);
-                vec![types::col_base(col, &types::json_ty, false), types::validate_ctx()]
+                let fields = match &at.owner {
+                    Owner::Collection(table) => &self.schema.collections[table].columns,
+                    Owner::Global(name) => &self.schema.globals[name].fields,
+                    Owner::Action(name) => &self.schema.actions[name].input,
+                    Owner::Job(name) => &self.schema.jobs[name].input,
+                    Owner::FileBucket(_) => unreachable!("file buckets have no validator fields"),
+                };
+                vec![
+                    types::col_base(col, &types::json_ty, false),
+                    types::data_ctx(types::action_input(fields, &types::json_ty)),
+                ]
             }
             Slot::Default { .. } | Slot::OnUpdate { .. } => vec![],
         }
@@ -462,7 +511,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             loop_bindings: HashSet::new(),
             env: closure.env.clone(),
             module: f.module,
-            by_ref: HashSet::new(),
             declared: Vec::new(),
             captures: None,
             outer: None,
@@ -481,11 +529,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => None,
             },
         };
-        let generics: HashMap<String, Ty> = f.type_params.iter().map(|t| (t.clone(), Ty::Unknown)).collect();
+        if !f.type_params.is_empty() {
+            return err_help(
+                f.span,
+                "generic runtime functions aren't supported",
+                "use generic type aliases with concrete function signatures",
+            );
+        }
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
             let declared = match &p.ann {
-                Some(a) => Some(self.resolve_ann(a, f.module, &generics)?),
+                Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
             };
             let given = params.as_ref().and_then(|ps| ps.get(i)).cloned();
@@ -507,7 +561,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             param_tys.push(parameter_input_type(p, t));
         }
         if let Some(r) = &f.ret {
-            let t = self.resolve_ann(r, f.module, &generics)?;
+            let t = self.resolve_runtime_ann(r, f.module)?;
             fx.ret = Some(match t {
                 Ty::Promise(inner) if f.is_async => *inner,
                 t => t,
@@ -529,18 +583,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
             );
         }
-        fx.by_ref = f
-            .params
-            .iter()
-            .filter(|p| self.effects.by_ref(&p.pat))
-            .filter_map(|p| {
-                if let Pat::Id(name, _) = &p.pat {
-                    Some(name.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
         // Recursive calls need the signature before the body is compiled.
         if let Some(ret) = &fx.ret {
             let ret = if f.is_async {
@@ -551,7 +593,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.helper_types
                 .insert(closure_key(closure), Ty::Fn(param_tys.clone(), Box::new(ret)));
         }
-        check_aliasing(&f)?;
         let saved = self.fx.replace(fx);
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
@@ -572,58 +613,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
-    fn check_destructured_mutation(&self, pat: &Pat, context: &str) -> Result<()> {
-        match pat {
-            Pat::Id(name, _) if self.effects.by_ref(pat) => {
-                return err_help(
-                    pat.span(),
-                    format!("can't mutate `{name}` through a destructured {context}"),
-                    "use the whole object or array and mutate the nested value through that binding",
-                );
-            }
-            Pat::Obj { props, rest, .. } => {
-                for (_, pat) in props {
-                    self.check_destructured_mutation(pat, context)?;
-                }
-                if let Some((name, span)) = rest {
-                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
-                }
-            }
-            Pat::Arr { elems, rest, .. } => {
-                for pat in elems.iter().flatten() {
-                    self.check_destructured_mutation(pat, context)?;
-                }
-                if let Some((name, span)) = rest {
-                    self.check_destructured_mutation(&Pat::Id(name.clone(), *span), context)?;
-                }
-            }
-            Pat::Default(pat, _) => self.check_destructured_mutation(pat, context)?,
-            _ => {}
-        }
-        Ok(())
-    }
-
     fn compile_function_body(
         &mut self,
         f: &Func,
         _name: &str,
         param_tys: &[Ty],
-        slot: Option<&Slot>,
+        _slot: Option<&Slot>,
     ) -> Result<(String, String)> {
         let mut params_php = Vec::new();
         let mut prologue = String::new();
         for (i, p) in f.params.iter().enumerate() {
             let t = param_tys[i].clone();
             match &p.pat {
-                Pat::Id(n, _) => {
+                Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
-                    let amp = if self.fx().by_ref.contains(n) { "&" } else { "" };
                     let default = parameter_default_suffix(p);
                     let hint = php_hint(&t);
-                    params_php.push(format!("{hint}{amp}{php}{default}"));
+                    params_php.push(format!("{hint}{php}{default}"));
                 }
                 pat => {
-                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
                     params_php.push(format!("{}{tmp}{}", php_hint(&t), parameter_default_suffix(p)));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
@@ -653,15 +661,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 body.push_str(&self.block(stmts, 1)?);
                 self.note_fallthrough(stmts, f.span)?;
             }
-        }
-        if let Some(Slot::Hook {
-            kind: HookKind::BeforeCreate | HookKind::BeforeUpdate,
-            ..
-        }) = slot
-            && let Some(Pat::Id(n, _)) = f.params.first().map(|p| &p.pat)
-            && self.fx().by_ref.contains(n)
-        {
-            // The runtime passes data by reference; nothing else to do.
         }
         Ok((params_php.join(", "), body))
     }
@@ -711,14 +710,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             fx.tmp += 1;
             format!("${}_{}", name, fx.tmp)
         } else {
-            format!("${name}")
+            if name == "this" {
+                "$__zero_this".into()
+            } else {
+                format!("${name}")
+            }
         };
         fx.declared.push(php.trim_start_matches('$').to_string());
         fx.scopes.last_mut().expect("scope").insert(
             name.to_string(),
             Local {
                 php: php.clone(),
-                capture_anchor: None,
                 constraint: ty.clone(),
                 ty: read_ty,
                 mutable,
@@ -774,10 +776,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(caps) = &mut c.captures
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
-                    caps.push((var.clone(), l.mutable || self.effects.shared(l.binding)));
-                    if let Some(anchor) = &l.capture_anchor {
-                        caps.push((anchor.trim_start_matches('$').to_string(), false));
-                    }
+                    caps.push((var.clone(), l.mutable));
                 }
                 cur = c.outer.as_deref_mut();
             }
@@ -798,150 +797,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     // ---- types --------------------------------------------------------------
-
-    fn resolve_ann(&mut self, a: &TyAnn, module: usize, generics: &HashMap<String, Ty>) -> Result<Ty> {
-        Ok(match a {
-            TyAnn::Num => Ty::Num,
-            TyAnn::NumLit(n) => Ty::NumLit(*n),
-            TyAnn::Str => Ty::Str,
-            TyAnn::StrLit(s) => Ty::StrLit(s.clone()),
-            TyAnn::Bool => Ty::Bool,
-            TyAnn::BoolLit(value) => Ty::BoolLit(*value),
-            TyAnn::Null | TyAnn::Undefined | TyAnn::Void => Ty::Null,
-            TyAnn::Unknown => Ty::Unknown,
-            TyAnn::Never => Ty::Never,
-            TyAnn::Any => {
-                return err_help(
-                    Span::NONE,
-                    "`any` isn't allowed in Zero code",
-                    "use a precise type, or `unknown` and narrow it",
-                );
-            }
-            TyAnn::Array(t) => Ty::Array(Box::new(self.resolve_ann(t, module, generics)?)),
-            TyAnn::Tuple(ts) => Ty::Tuple(
-                ts.iter()
-                    .map(|t| self.resolve_ann(t, module, generics))
-                    .collect::<Result<_>>()?,
-            ),
-            TyAnn::Obj(fields) => {
-                let mut out = IndexMap::new();
-                for (k, t, opt) in fields {
-                    let t = self.resolve_ann(t, module, generics)?;
-                    out.insert(k.clone(), (if *opt { t.nullable() } else { t }, *opt));
-                }
-                Ty::Obj(out)
-            }
-            TyAnn::Map(t) => Ty::Map(Box::new(self.resolve_ann(t, module, generics)?)),
-            TyAnn::Union(ts) => Ty::union(
-                ts.iter()
-                    .map(|t| self.resolve_ann(t, module, generics))
-                    .collect::<Result<Vec<_>>>()?,
-            ),
-            TyAnn::Fn(params, ret) => Ty::Fn(
-                params
-                    .iter()
-                    .map(|(t, _)| self.resolve_ann(t, module, generics))
-                    .collect::<Result<_>>()?,
-                Box::new(self.resolve_ann(ret, module, generics)?),
-            ),
-            TyAnn::Ref(name, args, span) => {
-                if let Some(t) = generics.get(name) {
-                    return Ok(t.clone());
-                }
-                if args.is_empty() {
-                    for stmt in &self.ev_program().modules[module].body {
-                        if let Stmt::Import { source, specs, .. } = stmt
-                            && source == crate::loader::ZERO_MODULE
-                        {
-                            for spec in specs {
-                                if spec.local == *name
-                                    && let ImportName::Named(imported) = &spec.imported
-                                {
-                                    match imported.as_str() {
-                                        "FieldAccessCtx" => return Ok(types::field_access_ctx()),
-                                        "JobCtx" => return Ok(types::job_ctx()),
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                match (name.as_str(), args.as_slice()) {
-                    ("Promise", [t]) => Ty::Promise(Box::new(self.resolve_ann(t, module, generics)?)),
-                    ("Date", []) => Ty::Date,
-                    ("RegExp", []) => Ty::Regex,
-                    ("Error", []) => Ty::Error,
-                    ("Partial", [t]) => types::partial(self.resolve_ann(t, module, generics)?),
-                    ("Readonly", [t]) | ("NonNullable", [t]) => {
-                        let t = self.resolve_ann(t, module, generics)?;
-                        if name == "NonNullable" { t.non_null() } else { t }
-                    }
-                    ("InferSelectModel" | "InferInsertModel", [TyAnn::Query(path, qspan)]) => {
-                        let table = self.collection_from_query(path, *qspan, module)?;
-                        if name == "InferSelectModel" {
-                            types::row(self.schema, &table)
-                        } else {
-                            types::insert(self.schema, &table)
-                        }
-                    }
-                    _ => {
-                        let key = (module, name.clone());
-                        if let Some((params, body)) = self.type_aliases.get(&key).cloned() {
-                            let mut g = generics.clone();
-                            for (i, p) in params.iter().enumerate() {
-                                let t = match args.get(i) {
-                                    Some(a) => self.resolve_ann(a, module, generics)?,
-                                    None => Ty::Unknown,
-                                };
-                                g.insert(p.clone(), t);
-                            }
-                            return self.resolve_ann(&body, module, &g);
-                        }
-                        // An imported type alias: follow the import.
-                        if let Some((src_module, src_name)) = self.imported_type(module, name) {
-                            return self.resolve_ann(&TyAnn::Ref(src_name, args.clone(), *span), src_module, generics);
-                        }
-                        return err(*span, format!("unknown type `{name}`"));
-                    }
-                }
-            }
-            TyAnn::Query(_, span) => {
-                return err_help(
-                    *span,
-                    "`typeof` types aren't supported here",
-                    "use InferSelectModel<typeof items> for rows",
-                );
-            }
-            TyAnn::Indexed(t, key) => {
-                let t = self.resolve_ann(t, module, generics)?;
-                match t.field(key) {
-                    Some((t, _)) => t,
-                    None => return err(Span::NONE, format!("{} has no field `{key}`", t.describe())),
-                }
-            }
-        })
-    }
-
-    fn imported_type(&self, module: usize, name: &str) -> Option<(usize, String)> {
-        let program_modules = self.ev_program();
-        let m = &program_modules.modules[module];
-        for s in &m.body {
-            if let Stmt::Import { source, specs, .. } = s {
-                for spec in specs {
-                    if spec.local == name {
-                        let target = *program_modules.resolved.get(&(module, source.clone()))?;
-                        let src = match &spec.imported {
-                            ImportName::Named(n) => n.clone(),
-                            _ => return None,
-                        };
-                        return Some((target, src));
-                    }
-                }
-            }
-        }
-        None
-    }
 
     fn ev_program(&self) -> &crate::loader::Program {
         self.ev.program()
@@ -970,9 +825,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn table_of(&self, c: &Rc<CollectionVal>, span: Span) -> Result<String> {
         if self.collections.iter().any(|x| Rc::ptr_eq(x, c)) {
-            Ok(c.table.clone())
+            Ok(c.table().to_string())
         } else {
-            err(span, format!("collection \"{}\" isn't in `schema`", c.table))
+            err(span, format!("collection \"{}\" is not registered", c.table()))
         }
     }
 
@@ -1025,7 +880,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let declared = match ann {
                     Some(a) => {
                         let module = self.fx().module;
-                        Some(self.resolve_ann(a, module, &HashMap::new())?)
+                        Some(self.resolve_runtime_ann(a, module)?)
                     }
                     None => None,
                 };
@@ -1080,7 +935,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Stmt::Func(_) => {} // hoisted in `stmts`
             Stmt::TypeAlias { .. } => {}
             Stmt::Expr(e) => {
-                let v = self.expr(e)?;
+                let v = match &e.kind {
+                    ExprKind::Assign { op, target, value } => self.assign(*op, target, value, e.span, true)?,
+                    _ => self.expr(e)?,
+                };
                 if matches!(v.ty, Ty::Promise(_)) {
                     return err_help(
                         e.span,
@@ -1091,7 +949,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if matches!(v.ty, Ty::Builder(_)) {
                     return err_help(e.span, "this database call never runs", "add `await` in front of it");
                 }
-                let _ = writeln!(out, "{p}{};", v.php);
+                self.apply_effects(e.span);
+                let _ = writeln!(out, "{p}{};", v.php.replace('\n', &format!("\n{p}")));
             }
             Stmt::Return(e, span) => match e {
                 Some(e) => {
@@ -1151,9 +1010,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => String::new(),
                 };
                 // `for (let i ...)`: JS gives each iteration its own `i`, and a closure keeps the one
-                // it saw. PHP closures capture by reference, so a captured primitive loop variable
-                // moves to a fresh cell before each update (earlier closures keep theirs; `continue`
-                // too). A captured object or array loop variable is refused.
+                // it saw. A fresh cell before each update keeps earlier closures on their binding,
+                // including across `continue`; copying a handle preserves the object identity.
                 let fresh: Vec<String> = match init.as_deref() {
                     Some(Stmt::Decl {
                         kind: DeclKind::Let,
@@ -1168,20 +1026,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let mut locals: Vec<&Local> =
                             scope.values().filter(|l| captured.contains(&l.binding)).collect();
                         locals.sort_by(|a, b| a.php.cmp(&b.php));
-                        // A cell copies the value: faithful for primitives only. JS's per-iteration
-                        // bindings of an object all point at one object; PHP copies would diverge.
-                        if let Some(l) = locals.iter().find(|l| !primitive(&l.ty)) {
-                            let name = l.php.trim_start_matches('$');
-                            return err_help(
-                                l.binding,
-                                format!(
-                                    "a closure captures the loop variable `{name}`, which holds an object or array: each iteration would get its own copy in compiled PHP"
-                                ),
-                                format!(
-                                    "loop over a number or string instead, or copy what the closure needs into a `const` inside the loop body (`const snapshot = {name}.x;`)"
-                                ),
-                            );
-                        }
                         locals
                             .into_iter()
                             .map(|l| format!("{php} = &\\Zero\\Js::cell({php})", php = l.php))
@@ -1216,7 +1060,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let (el, src) = match &it.ty.non_null() {
                     Ty::Array(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    t if t.is_str() => (Ty::Str, format!("mb_str_split({}, 1, 'UTF-8')", it.php)),
+                    t if t.is_str() => (Ty::Str, format!("\\Zero\\Js::from({})", it.php)),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
                 if it.ty.is_nullable() {
@@ -1229,46 +1073,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.push(HashMap::new());
                 let el = widen_fresh_literals(&el);
                 let mutable = *kind == DeclKind::Let;
-                match pat {
-                    Pat::Id(n, _) => {
-                        let php = self.declare_local(n, el.clone(), mutable, pat.span());
-                        if self.effects.by_ref(pat) {
-                            if !matches!(el.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional))
-                            {
-                                return err_help(
-                                    pat.span(),
-                                    "a mutating loop binding needs an object with required fields",
-                                    "rebuild the array instead, for example with `map`",
-                                );
-                            }
-                            let source = match &it.place {
-                                Some(place) => place.clone(),
-                                None => {
-                                    let tmp = self.tmp_var();
-                                    let _ = writeln!(out, "{p}{tmp} = {src};");
-                                    tmp
-                                }
-                            };
-                            let tmp = self.tmp_var();
-                            let _ = writeln!(out, "{p}foreach ({source} as &{tmp}) {{");
-                            let anchor = self.object_binding(&php, &tmp, &mut out, indent + 1);
-                            self.fx().scopes.last_mut().unwrap().get_mut(n).unwrap().capture_anchor = Some(anchor);
-                        } else if self.effects.captured(pat.span()) {
-                            let tmp = self.tmp_var();
-                            let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
-                            self.fresh_binding(&php, pat.span(), &mut out, indent + 1);
-                            let _ = writeln!(out, "{}{php} = {tmp};", pad(indent + 1));
-                        } else {
-                            let _ = writeln!(out, "{p}foreach ({src} as {php}) {{");
-                        }
-                    }
-                    pat => {
-                        self.check_destructured_mutation(pat, "loop binding")?;
-                        let tmp = self.tmp_var();
-                        let _ = writeln!(out, "{p}foreach ({src} as {tmp}) {{");
-                        self.bind_pattern(pat, &tmp, &el, mutable, &mut out, indent + 1)?;
-                    }
-                }
+                let source = self.tmp_var();
+                let index = self.tmp_var();
+                let value = self.tmp_var();
+                let _ = writeln!(
+                    out,
+                    "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
+                );
+                let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                self.bind_pattern(pat, &value, &el, mutable, &mut out, indent + 1)?;
                 self.invalidate_loop(*span);
                 out.push_str(&self.loop_body(body, indent + 1)?);
                 let _ = writeln!(out, "{p}}}");
@@ -1595,6 +1408,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
+                let source = self.tmp_var();
+                let _ = writeln!(out, "{p}{source} = {src};");
+                let src = &source;
                 let t = ty.non_null();
                 if ty.is_nullable() {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
@@ -1610,9 +1426,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         return Err(d);
                     };
                     let access = if optional || matches!(t, Ty::Map(_)) {
-                        format!("({src}[{}] ?? null)", php_str(key))
+                        format!("({src}->p[{}] ?? null)", php_str(key))
                     } else {
-                        format!("{src}[{}]", php_str(key))
+                        format!("{src}->p[{}]", php_str(key))
                     };
                     let read = if optional || matches!(t, Ty::Map(_)) {
                         ft.nullable()
@@ -1648,6 +1464,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             Pat::Arr { elems, rest, span } => {
+                let source = self.tmp_var();
+                let _ = writeln!(out, "{p}{source} = {src};");
+                let src = &source;
                 if ty.is_nullable() {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
@@ -1659,9 +1478,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if element(&ty, 0).is_none() {
                     return err(*span, format!("can't destructure {} as an array", ty.describe()));
                 }
+                let done = self.tmp_var();
+                let _ = writeln!(out, "{p}{done} = false;");
                 for (i, e) in elems.iter().enumerate() {
+                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
-                        let access = format!("({src}[{i}] ?? null)");
+                        let access = format!("({done} ? null : \\Zero\\Js::get({src}, {i}))");
                         let types = BindingTypes {
                             read: element(&ty, i).expect("array read"),
                             constraint: element(&constraint, i).expect("authored array"),
@@ -1683,7 +1505,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
                     self.fresh_binding(&php, *span, out, indent);
-                    let _ = writeln!(out, "{p}{php} = array_slice({src}, {});", elems.len());
+                    let _ = writeln!(
+                        out,
+                        "{p}{php} = {done} ? new \\Zero\\JsArray() : \\Zero\\Js::arrSlice({src}, {});",
+                        elems.len()
+                    );
                 }
             }
         }
@@ -1869,7 +1695,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     constraint = constraint
                         .non_null()
                         .field(part)
-                        .map(|(ty, _)| ty)
+                        .map(|(ty, optional)| if optional { ty.nullable() } else { ty })
                         .unwrap_or_else(|| t.clone());
                     view.push(effects::Step::Field(part.to_string()));
                 }
@@ -1878,7 +1704,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     name.clone(),
                     Local {
                         php: String::new(),
-                        capture_anchor: None,
                         constraint,
                         ty: t,
                         mutable: false,
@@ -1936,7 +1761,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Rejects values that can't exist at runtime as plain data (unawaited calls, builders).
     fn finish_value(&mut self, v: Out, span: Span) -> Result<Out> {
+        if self.constructing_class() && matches!(v.ty.non_null(), Ty::Instance(..)) {
+            return err_help(
+                span,
+                "instances cannot escape during construction",
+                "assign fields through this; pass or capture the instance after new returns",
+            );
+        }
         match &v.ty {
+            Ty::Class(_) => err(
+                span,
+                "class values can only be used with new, instanceof, typeof, or static member access",
+            ),
             Ty::Builder(_) => err_help(span, "this database call never runs", "add `await` in front of it"),
             Ty::Promise(_) => err_help(
                 span,
@@ -1958,6 +1794,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn expr(&mut self, e: &Expr) -> Result<Out> {
         let span = e.span;
         let out = match &e.kind {
+            ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
+            ExprKind::Instanceof(left, right) => {
+                let left = self.expr(left)?;
+                let right = self.expr(right)?;
+                if !matches!(right.ty, Ty::Class(_)) {
+                    return err(span, "instanceof requires a named Zero class");
+                }
+                Out::atom(
+                    format!("\\Zero\\JsClass::isInstance({}, {})", left.php, right.php),
+                    Ty::Bool,
+                )
+            }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
@@ -2009,7 +1857,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     return err(x.span, format!("can't spread {} into an array", other.describe()));
                                 }
                             }
-                            parts.push(format!("...{}", v.wrapped()));
+                            parts.push(format!("...({})->a", v.php));
                         }
                     }
                 }
@@ -2018,7 +1866,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Array(Box::new(Ty::union(tys)))
                 };
-                Out::atom(format!("[{}]", parts.join(", ")), ty)
+                Out::atom(format!("(new \\Zero\\JsArray([{}]))", parts.join(", ")), ty)
             }
             ExprKind::Object(props) => {
                 let mut parts = Vec::new();
@@ -2033,24 +1881,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 PropKey::Static(k) => {
                                     fields.shift_remove(k);
                                     fields.insert(k.clone(), (v.ty.clone(), false));
-                                    parts.push(format!("{} => {}", php_str(k), v.php));
+                                    parts.push(format!("[{} => {}]", php_str(k), v.php));
                                 }
                                 PropKey::Computed(kx) => {
                                     let k = self.expr(kx)?;
-                                    if !k.ty.is_str() {
+                                    if !k.ty.all(|t| t.is_str() || t.is_num() || t.is_bool() || *t == Ty::Null) {
                                         return err(
                                             kx.span,
-                                            format!("computed keys must be strings, not {}", k.ty.describe()),
+                                            format!("computed key type is not supported: {}", k.ty.describe()),
                                         );
                                     }
                                     is_map = true;
-                                    parts.push(format!("{} => {}", k.php, v.php));
+                                    parts.push(format!("[\\Zero\\Js::key({}) => {}]", k.php, v.php));
                                 }
                             }
                         }
                         Prop::Spread(x) => {
                             let v = self.expr(x)?;
-                            match v.ty.non_null() {
+                            let shape = match v.ty.non_null() {
+                                Ty::Instance(_, fields) => *fields,
+                                ty => ty,
+                            };
+                            match shape {
                                 Ty::Obj(f) => {
                                     for (k, t) in f {
                                         fields.shift_remove(&k);
@@ -2062,12 +1914,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     return err(x.span, format!("can't spread {} into an object", other.describe()));
                                 }
                             }
-                            let src = if v.ty.is_nullable() {
-                                format!("({} ?? [])", v.php)
-                            } else {
-                                v.wrapped()
-                            };
-                            parts.push(format!("...\\Zero\\Js::copyObject({src})"));
+                            parts.push(format!("({})->p ?? []", v.wrapped()));
                         }
                     }
                 }
@@ -2076,21 +1923,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Obj(fields)
                 };
-                // `{}` stays an object in JSON (PHP's [] is also the empty list): the JsObject marker.
-                // An object built only from spreads may be empty too, so Js::obj decides at runtime.
-                let php = if parts.is_empty() {
-                    "(new \\Zero\\JsObject())".to_string()
-                } else if parts.iter().all(|p| p.starts_with("...")) {
-                    format!("\\Zero\\Js::obj([{}])", parts.join(", "))
+                let php = if props.iter().all(|p| matches!(p, Prop::KV(PropKey::Static(_), _))) {
+                    let fields = parts.iter().map(|p| &p[1..p.len() - 1]).collect::<Vec<_>>().join(", ");
+                    format!("(new \\Zero\\JsObject([{fields}]))")
                 } else {
-                    format!("[{}]", parts.join(", "))
+                    format!("\\Zero\\Js::obj({})", parts.join(", "))
                 };
                 Out::atom(php, ty)
             }
             ExprKind::Func(f) => self.closure_expr(f)?,
             ExprKind::Unary(op, x) => {
                 let v = self.expr(x)?;
-                let v = self.finish_value(v, x.span)?;
+                let v = if matches!(op, UnOp::TypeOf) && matches!(v.ty, Ty::Class(_)) {
+                    v
+                } else {
+                    self.finish_value(v, x.span)?
+                };
                 match op {
                     UnOp::Not => {
                         let ty = match (truthiness_part(&v.ty, true), truthiness_part(&v.ty, false)) {
@@ -2126,7 +1974,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let a = self.finish_value(a, l.span)?;
                 let b = self.expr(r)?;
                 let b = self.finish_value(b, r.span)?;
-                self.binary(*op, a, b, span)?
+                let container = |ty: &Ty| {
+                    ty.all(|t| {
+                        matches!(
+                            t,
+                            Ty::Obj(_) | Ty::Map(_) | Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
+                        )
+                    })
+                };
+                if matches!(op, BinOp::Eq | BinOp::Ne) && container(&a.ty) && container(&b.ty) && pure_read(r) {
+                    Out::new(
+                        format!(
+                            "{} {} {}",
+                            a.wrapped(),
+                            if *op == BinOp::Eq { "===" } else { "!==" },
+                            b.wrapped()
+                        ),
+                        Ty::Bool,
+                    )
+                } else {
+                    self.binary(*op, a, b, span)?
+                }
             }
             ExprKind::IsNullish(x, negated) => {
                 let v = self.expr(x)?;
@@ -2191,23 +2059,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::union([av.ty, bv.ty]),
                 )
             }
-            ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span)?,
-            ExprKind::Update { inc, prefix, target } => {
-                let place = self.place(target)?;
-                element_write(place.through_element, target.span)?;
-                let t = place.read;
-                self.need_num(&t, target.span, if *inc { "`++`" } else { "`--`" })?;
-                // Past ±2^53 the variable becomes a double, as in JS (`Js::add`). Postfix returns the old value.
-                let d = if *inc { "1" } else { "-1" };
-                Out::atom(
-                    format!(
-                        "\\Zero\\Js::{}({}, {d})",
-                        if *prefix { "preStep" } else { "postStep" },
-                        t.php
-                    ),
-                    Ty::Num,
-                )
-            }
+            ExprKind::Assign { op, target, value } => self.assign(*op, target, value, span, false)?,
+            ExprKind::Update { inc, prefix, target } => self.update(target, *inc, *prefix)?,
             ExprKind::Call {
                 callee, args, optional, ..
             } => self.call(callee, args, *optional, span)?,
@@ -2224,7 +2077,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
                 let module = self.fx().module;
-                let t = self.resolve_ann(ann, module, &HashMap::new())?;
+                let t = self.resolve_runtime_ann(ann, module)?;
+                if classes::wire_type(&t) != t && !assignable(&v.ty, &t) {
+                    return err(
+                        span,
+                        "a class instance must come from new; assertions cannot restore class identity",
+                    );
+                }
                 if !(assignable(&v.ty, &t) || assignable(&t, &v.ty) || v.ty == Ty::Unknown) {
                     return err(span, format!("can't treat {} as {}", v.ty.describe(), t.describe()));
                 }
@@ -2239,6 +2098,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if out.ty == Ty::Never {
             self.fx().diverging.insert(span);
         }
+        self.apply_effects(span);
+        Ok(out)
+    }
+
+    fn apply_effects(&mut self, span: Span) {
         // A closure's body is compiled now, but its captured writes occur at
         // its call sites. Do not apply them to the enclosing function here.
         for local in self
@@ -2254,7 +2118,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .invalidate(span, local.binding, &local.view, &local.ty, &local.constraint);
             local.ty = self.effects.write_type(span, local.binding, &local.view, &local.ty);
         }
-        Ok(out)
     }
 
     fn need_num(&self, v: &Out, span: Span, what: &str) -> Result<()> {
@@ -2341,7 +2204,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             BinOp::Eq | BinOp::Ne => {
-                self.check_identity_eq(&a, &b, span)?;
                 let eq = self.strict_eq(&a, &b);
                 if op == BinOp::Eq {
                     Out::new(eq, Ty::Bool)
@@ -2352,34 +2214,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    /// `===` on arrays/objects compares identity in JS; PHP arrays have none.
-    fn check_identity_eq(&self, a: &Out, b: &Out, span: Span) -> Result<()> {
-        let by_ref = |t: &Ty| {
-            matches!(
-                t.non_null(),
-                Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) | Ty::Obj(_) | Ty::Map(_)
-            )
-        };
-        if by_ref(&a.ty) && by_ref(&b.ty) {
-            return err_help(
-                span,
-                "`===` between arrays or objects compares identity, which compiled code can't preserve",
-                "compare a field (`a.id === b.id`), or check for null (`a === null`)",
-            );
-        }
-        Ok(())
-    }
-
     fn strict_eq(&self, a: &Out, b: &Out) -> String {
-        let num_like = |t: &Ty| t.non_null().is_num();
-        if num_like(&a.ty) && num_like(&b.ty) && !(a.ty.is_nullable() || b.ty.is_nullable()) {
-            // int 1 and float 1.0 are the same JS number.
-            format!("{} == {}", a.wrapped(), b.wrapped())
-        } else if num_like(&a.ty) || num_like(&b.ty) || a.ty == Ty::Unknown || b.ty == Ty::Unknown {
-            format!("\\Zero\\Js::strictEq({}, {})", a.php, b.php)
-        } else {
-            format!("{} === {}", a.wrapped(), b.wrapped())
-        }
+        format!("\\Zero\\Js::strictEq({}, {})", a.php, b.php)
     }
 
     fn ident(&mut self, n: &str, span: Span) -> Result<Out> {
@@ -2396,6 +2232,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 helper: None,
             }),
             Resolved::Value(v, b) => self.captured(n, v, &b, span),
+            Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
+            Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global(g) => err(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -2413,6 +2251,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         match &v {
+            Value::Class(class) => self.class_value(class),
             Value::Closure(c) => {
                 let key = closure_key(c);
                 let helper_key = (key, self.fx().no_db);
@@ -2432,7 +2271,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("annotate it: `function {n}(...): number`"),
                     );
                 };
-                let mut out = Out::atom(format!("'\\\\ZeroApp\\\\{name}'"), ty);
+                let wrapper = match self.helper_values.get(&key) {
+                    Some(wrapper) => wrapper.clone(),
+                    None => {
+                        let wrapper = self.unique_name(&format!("{name}_value"));
+                        self.helper_values.insert(key, wrapper.clone());
+                        let _ = writeln!(
+                            self.output,
+                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= \\Closure::fromCallable('\\\\ZeroApp\\\\{name}'); }}\n"
+                        );
+                        wrapper
+                    }
+                };
+                let mut out = Out::atom(format!("\\ZeroApp\\{wrapper}()"), ty);
                 out.helper = Some(format!("\\ZeroApp\\{name}"));
                 Ok(out)
             }
@@ -2480,19 +2331,57 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )),
             data => {
                 validate_captured_data(data, span, &mut HashSet::new())?;
-                let Some(json) = to_json(data) else {
-                    return err(
-                        span,
-                        format!("`{n}` is {}, which can't be used in PHP", data.describe()),
-                    );
-                };
                 let ty = match &b.ann {
-                    Some((ann, module)) => self.resolve_ann(ann, *module, &HashMap::new())?,
-                    None => ty_of_json(&json),
+                    Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
+                    None => inferred_binding_type(&ty_of_data(data), false),
                 };
-                Ok(Out::atom(php_js_value(&json), ty))
+                let ty = self.effects.captured_data_type(data, &ty);
+                Ok(Out::atom(self.captured_data(data)?, ty))
             }
         }
+    }
+
+    fn captured_data(&mut self, value: &Value) -> Result<String> {
+        let (key, array) = match value {
+            Value::Array(a) => ((0, Rc::as_ptr(a) as usize), true),
+            Value::Object(o) => ((1, Rc::as_ptr(o) as usize), false),
+            _ => {
+                return Ok(match value {
+                    Value::Null | Value::Undef => "null".into(),
+                    Value::Bool(b) => b.to_string(),
+                    Value::Num(n) => php_number(*n),
+                    Value::Str(s) => php_str(s),
+                    _ => unreachable!("validated captured scalar"),
+                });
+            }
+        };
+        if let Some(name) = self.data_helpers.get(&key) {
+            return Ok(format!("\\ZeroApp\\{name}()"));
+        }
+        let name = self.unique_name("captured");
+        self.data_helpers.insert(key, name.clone());
+        let fields: Vec<(String, Value)> = match value {
+            Value::Array(a) => a
+                .borrow()
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (i.to_string(), v.clone()))
+                .collect(),
+            Value::Object(o) => o.borrow().iter().map(|(k, v)| (php_str(k), v.clone())).collect(),
+            _ => unreachable!(),
+        };
+        let class = if array { "JsArray" } else { "JsObject" };
+        let storage = if array { "a" } else { "p" };
+        let mut body = format!(
+            "function {name}(): \\Zero\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\Zero\\{class}();\n"
+        );
+        for (key, value) in fields {
+            let value = self.captured_data(&value)?;
+            let _ = writeln!(body, "        $value->{storage}[{key}] = {value};");
+        }
+        body.push_str("    }\n    return $value;\n}\n\n");
+        self.output.push_str(&body);
+        Ok(format!("\\ZeroApp\\{name}()"))
     }
 
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str) -> Result<()> {
@@ -2533,18 +2422,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             Ty::union([present, value.ty])
         };
-        let initialization = if self.effects.by_ref(&parameter.pat) {
-            format!(
-                "{}if ({php} === null) {{\n{}unset({php});\n{}{php} = {};\n{}}}\n",
-                pad(indent),
-                pad(indent + 1),
-                pad(indent + 1),
-                value.php,
-                pad(indent),
-            )
-        } else {
-            format!("{}{php} ??= {};\n", pad(indent), value.php)
-        };
+        let initialization = format!("{}{php} ??= {};\n", pad(indent), value.php);
         Ok((initialized, initialization))
     }
 
@@ -2554,19 +2432,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let php = self.declare_local(name, ty.clone(), true, parameter.pat.span());
         let (read, initialization) = self.initialize_parameter(parameter, &php, ty, indent)?;
-        body.push_str(&initialization);
-        let capture_anchor = if self.effects.by_ref(&parameter.pat) && self.effects.captured(parameter.pat.span()) {
-            if !matches!(ty.non_null(), Ty::Obj(fields) if fields.values().all(|(_, optional)| !optional)) {
-                return err_help(
-                    parameter.span,
-                    "a captured mutating parameter needs an object with required fields",
-                    "capture scalar values instead of a mutable array, record, or object with optional fields",
-                );
-            }
-            Some(self.object_binding(&php, &php, body, indent))
+        let read = if name == "this" {
+            self.constructor_receiver_read(&read)
         } else {
-            None
+            read
         };
+        body.push_str(&initialization);
         let local = self
             .fx()
             .scopes
@@ -2575,26 +2446,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .get_mut(name)
             .expect("parameter");
         local.ty = read;
-        local.capture_anchor = capture_anchor;
         Ok(php)
-    }
-
-    fn object_binding(&mut self, binding: &str, source: &str, out: &mut String, indent: usize) -> String {
-        let tmp = self.tmp_var();
-        let anchor = self.tmp_var();
-        let _ = writeln!(
-            out,
-            "{}{tmp} = null;\n{}{anchor} = null;\n{}if ({source} !== null) {{\n{}{tmp} = \\Zero\\Js::objectBinding({source});\n{}{anchor} = {source};\n{}}}\n{}unset({binding});\n{}{binding} = {tmp};",
-            pad(indent),
-            pad(indent),
-            pad(indent),
-            pad(indent + 1),
-            pad(indent + 1),
-            pad(indent),
-            pad(indent),
-            pad(indent),
-        );
-        anchor
     }
 
     fn closure_body(&mut self, f: &Func, param_tys: &[Ty]) -> Result<(String, String)> {
@@ -2605,11 +2457,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
                     let default = parameter_default_suffix(p);
-                    let amp = if self.effects.by_ref(&p.pat) { "&" } else { "" };
-                    params.push(format!("{amp}{php}{default}"));
+                    params.push(format!("{php}{default}"));
                 }
                 pat => {
-                    self.check_destructured_mutation(pat, "parameter")?;
                     let tmp = format!("$__arg{i}");
                     params.push(format!("{tmp}{}", parameter_default_suffix(p)));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;
@@ -2663,7 +2513,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let given = params.and_then(|ps| ps.get(i));
             let t = match &p.ann {
                 Some(a) => {
-                    let declared = self.resolve_ann(a, module, &HashMap::new())?;
+                    let declared = self.resolve_runtime_ann(a, module)?;
                     if let Some(given) = given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
                     } else if params.is_some() && !p.optional && p.default.is_none() {
@@ -2689,7 +2539,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             loop_bindings: HashSet::new(),
             env: self.fx().env.clone(),
             module,
-            by_ref: HashSet::new(),
             declared: Vec::new(),
             captures: Some(Vec::new()),
             outer: None,
@@ -2707,7 +2556,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         self.async_callback = false;
         if let Some(r) = &f.ret {
-            inner.ret = Some(match self.resolve_ann(r, module, &HashMap::new())? {
+            inner.ret = Some(match self.resolve_runtime_ann(r, module)? {
                 Ty::Promise(t) if f.is_async => *t,
                 t => t,
             });
@@ -2715,7 +2564,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let outer = self.fx.take().expect("fn");
         inner.outer = Some(Box::new(outer));
         self.fx = Some(inner);
-        check_aliasing(f)?;
         let result = self.closure_body(f, &param_tys);
         let mut inner = self.fx.take().expect("inner");
         self.fx = Some(*inner.outer.take().expect("outer"));
@@ -2750,302 +2598,325 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(php, Ty::Fn(param_tys, Box::new(ret))))
     }
 
-    fn assign(&mut self, op: Option<AssignOp>, target: &Expr, value: &Expr, span: Span) -> Result<Out> {
-        let AssignmentPlace {
-            read: t,
-            constraint,
-            path,
-            through_element,
-        } = self.place(target)?;
-        element_write(through_element, span)?;
-        // A place inside an object/Record (a path of keys under a root variable): the keys are
-        // evaluated into temporaries first (JS evaluates the target, then the value), the value runs
-        // while the object still reads as it was, and Js::write unwraps empty-object markers only as
-        // it writes. `o["k" + i++] = i` and `o.x = JSON.stringify(o)` behave as in JS.
-        let object_path = path.filter(|(_, keys)| !keys.is_empty() && Self::writes_into_object(&t, keys));
-        let keys_php = object_path.as_ref().map(|(root, keys)| {
-            let mut pre = Vec::new();
-            let mut ks = Vec::new();
-            for k in keys {
-                // Only a lone literal key needs no temporary; any expression (even one that starts
-                // with a quote, like `'k' . $i++`) is evaluated exactly once.
-                let literal =
-                    (k.len() >= 2 && k.starts_with('\'') && k.ends_with('\'') && !k[1..k.len() - 1].contains('\''))
-                        || (!k.is_empty() && k.chars().all(|c| c.is_ascii_digit()));
-                if literal {
-                    ks.push(k.clone());
-                } else {
-                    let tmp = self.tmp_var();
-                    pre.push(format!("{tmp} = {k}"));
-                    ks.push(tmp);
-                }
-            }
-            (root.clone(), pre, ks)
-        });
-        let v = self.expr(value)?;
-        let v = self.finish_value(v, value.span)?;
-        if let Some((root, pre, ks)) = keys_php {
-            if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
+    fn assign(
+        &mut self,
+        op: Option<AssignOp>,
+        target: &Expr,
+        value: &Expr,
+        span: Span,
+        statement: bool,
+    ) -> Result<Out> {
+        let place = self.place(target)?;
+        if op.is_none()
+            && !statement
+            && let Some(target) = place.target
+        {
+            let v = self.expr(value)?;
+            let v = self.finish_value(v, value.span)?;
+            if !assignable(&v.ty, &place.constraint) {
                 return err(
                     span,
                     format!(
                         "can't assign {} to something of type {}",
                         v.ty.describe(),
-                        constraint.describe()
+                        place.constraint.describe()
                     ),
                 );
             }
-            let read = format!("\\Zero\\Js::at({root}, [{}])", ks.join(", "));
-            let mut bin_ty = None;
-            let mut logical_keep = None;
-            let new = match op {
-                None => v.php.clone(),
-                Some(AssignOp::Bin(b)) => {
-                    let r = self.binary(b, Out::atom(read.clone(), t.ty.clone()), v.clone(), span)?;
-                    if !(assignable(&r.ty, &constraint)
-                        || r.ty.is_num()
-                            && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
+            return Ok(Out::atom(
+                format!(
+                    "\\Zero\\Js::{}({}, {}, {})",
+                    if target.array { "setAt" } else { "set" },
+                    target.receiver,
+                    target.key,
+                    v.php
+                ),
+                v.ty,
+            ));
+        }
+        let (mut steps, read, write) = self.capture_place(place.target, &place.read);
+        if let Some(op) = op {
+            let old = self.tmp_var();
+            steps.push(format!("{old} = {read}"));
+            let present = if matches!(op, AssignOp::Bin(_)) {
+                match &write {
+                    CapturedPlace::Binding(_) => None,
+                    CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key } => {
+                        let present = self.tmp_var();
+                        steps.push(format!("{present} = \\Zero\\Js::has({receiver}, {key})"));
+                        Some(present)
+                    }
+                }
+            } else {
+                None
+            };
+            let v = self.expr(value)?;
+            let v = self.finish_value(v, value.span)?;
+            let (result, ty) = match op {
+                AssignOp::Bin(b) => {
+                    let mut left = Out::atom(old.clone(), place.read.ty.clone());
+                    if let Some(present) = &present {
+                        left.ty = place.constraint.non_null();
+                        if place.constraint.non_null().is_num() {
+                            left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
+                        }
+                    }
+                    let right = v.php.clone();
+                    let mut result = self.binary(b, left, v, span)?;
+                    if b == BinOp::Add
+                        && let Some(present) = present
                     {
+                        result.php = format!("\\Zero\\Js::plus({old}, {right}, !{present})");
+                        result.atomic = true;
+                    }
+                    if !(assignable(&result.ty, &place.constraint) || result.ty.is_num() && place.constraint.is_num()) {
                         return err(
                             span,
                             format!(
                                 "can't assign {} to something of type {}",
-                                r.ty.describe(),
-                                constraint.describe()
+                                result.ty.describe(),
+                                place.constraint.describe()
                             ),
                         );
                     }
-                    bin_ty = Some(r.ty.clone());
-                    r.php
+                    (Self::write_place(&write, &result.php), result.ty)
                 }
-                // Logical assignment writes only when it assigns (JS leaves the place untouched).
-                Some(AssignOp::Log(l)) => {
+                AssignOp::Log(l) => {
+                    if !assignable(&v.ty, &place.constraint) {
+                        return err(
+                            span,
+                            format!(
+                                "can't assign {} to something of type {}",
+                                v.ty.describe(),
+                                place.constraint.describe()
+                            ),
+                        );
+                    }
+                    let ty = logical_result_type(l, &place.read.ty, &v.ty);
                     let keep = match l {
-                        LogOp::Nullish => format!("{read} !== null"),
-                        LogOp::Or => self.truthy(&Out::atom(read.clone(), t.ty.clone())),
-                        LogOp::And => format!("!{}", paren(&self.truthy(&Out::atom(read.clone(), t.ty.clone())))),
+                        LogOp::Nullish => format!("{old} !== null"),
+                        LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
+                        LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
-                    logical_keep = Some(keep);
-                    v.php.clone()
+                    (format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php)), ty)
                 }
             };
-            let ty = match op {
-                None => v.ty.clone(),
-                Some(AssignOp::Log(l)) => logical_result_type(l, &t.ty, &v.ty),
-                Some(AssignOp::Bin(_)) => bin_ty.expect("binary result type"),
-            };
-            let mut write = format!("\\Zero\\Js::write({root}, [{}], {new})", ks.join(", "));
-            if let Some(keep) = logical_keep {
-                write = format!("({} ? {read} : {write})", paren(&keep));
-            }
-            let php = if pre.is_empty() {
-                write
-            } else {
-                format!("[{}, {write}][{}]", pre.join(", "), pre.len())
-            };
-            return Ok(Out::new(php, ty));
+            return Ok(Out::new(Self::assignment_sequence(steps, result, statement), ty));
         }
-        if matches!(op, None | Some(AssignOp::Log(_))) && !assignable(&v.ty, &constraint) {
+        let v = self.expr(value)?;
+        let v = self.finish_value(v, value.span)?;
+        if !assignable(&v.ty, &place.constraint) {
             return err(
                 span,
                 format!(
                     "can't assign {} to something of type {}",
                     v.ty.describe(),
-                    constraint.describe()
+                    place.constraint.describe()
                 ),
             );
         }
-        match op {
-            None => Ok(Out::new(format!("{} = {}", t.php, v.php), v.ty)),
-            Some(AssignOp::Bin(b)) => {
-                let r = self.binary(b, t.clone(), v, span)?;
-                if !(assignable(&r.ty, &constraint)
-                    || r.ty.is_num() && constraint.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))))
-                {
-                    return err(
-                        span,
-                        format!(
-                            "can't assign {} to something of type {}",
-                            r.ty.describe(),
-                            constraint.describe()
-                        ),
-                    );
-                }
-                Ok(Out::new(format!("{} = {}", t.php, r.php), r.ty))
-            }
-            Some(AssignOp::Log(LogOp::Nullish)) => Ok(Out::new(
-                format!("{} ??= {}", t.php, v.php),
-                logical_result_type(LogOp::Nullish, &t.ty, &v.ty),
-            )),
-            Some(AssignOp::Log(l)) => {
-                let cond = self.truthy(&t);
-                let keep = if l == LogOp::Or {
-                    cond
+        Ok(Out::new(
+            Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
+            v.ty,
+        ))
+    }
+
+    fn assignment_sequence(mut steps: Vec<String>, result: String, statement: bool) -> String {
+        if statement {
+            steps.push(result);
+            return steps.join(";\n");
+        }
+        Self::sequence(steps, result)
+    }
+
+    fn sequence(mut steps: Vec<String>, result: String) -> String {
+        if steps.is_empty() {
+            return result;
+        }
+        let index = steps.len();
+        steps.push(result);
+        format!("[{}][{index}]", steps.join(", "))
+    }
+
+    fn capture_place(&mut self, target: Option<WriteTarget>, read: &Out) -> (Vec<String>, String, CapturedPlace) {
+        match target {
+            None => (Vec::new(), read.php.clone(), CapturedPlace::Binding(read.php.clone())),
+            Some(target) => {
+                let receiver = self.tmp_var();
+                let key = self.tmp_var();
+                let steps = vec![
+                    format!("{receiver} = {}", target.receiver),
+                    format!("{key} = {}", target.key),
+                ];
+                let read = if target.array {
+                    format!("\\Zero\\Js::get({receiver}, {key})")
                 } else {
-                    format!("!{}", paren(&cond))
+                    format!("\\Zero\\Js::prop({receiver}, {key})")
                 };
-                Ok(Out::new(
-                    format!("({} ? {} : ({} = {}))", paren(&keep), t.php, t.php, v.php),
-                    logical_result_type(l, &t.ty, &v.ty),
-                ))
+                let write = if target.array {
+                    CapturedPlace::Array { receiver, key }
+                } else {
+                    CapturedPlace::Object { receiver, key }
+                };
+                (steps, read, write)
             }
         }
     }
 
-    /// True when some step of this write path goes through an object/Record value (which may be the
-    /// empty-object marker); array-only paths keep plain PHP writes.
-    fn writes_into_object(_t: &Out, keys: &[String]) -> bool {
-        keys.iter().any(|k| !k.starts_with("(int) "))
+    fn write_place(write: &CapturedPlace, value: &str) -> String {
+        match write {
+            CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
+            CapturedPlace::Object { receiver, key } => format!("\\Zero\\Js::set({receiver}, {key}, {value})"),
+            CapturedPlace::Array { receiver, key } => format!("\\Zero\\Js::setAt({receiver}, {key}, {value})"),
+        }
     }
 
-    /// An assignable PHP place.
+    fn update(&mut self, target: &Expr, inc: bool, prefix: bool) -> Result<Out> {
+        let place = self.place(target)?;
+        let property_number = place.target.is_some() && place.constraint.non_null().is_num();
+        if !property_number {
+            self.need_num(&place.read, target.span, if inc { "`++`" } else { "`--`" })?;
+        }
+        let (mut steps, read, write) = self.capture_place(place.target, &place.read);
+        let old = self.tmp_var();
+        steps.push(format!("{old} = {read}"));
+        if property_number {
+            let (CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key }) = &write else {
+                unreachable!()
+            };
+            steps.push(format!(
+                "{old} = (\\Zero\\Js::has({receiver}, {key}) ? \\Zero\\Js::toNumber({old}) : NAN)"
+            ));
+        }
+        let value = format!("\\Zero\\Js::add({old}, {})", if inc { "1" } else { "-1" });
+        let written = Self::write_place(&write, &value);
+        let result = if prefix {
+            written
+        } else {
+            steps.push(written);
+            old
+        };
+        Ok(Out::new(Self::sequence(steps, result), Ty::Num))
+    }
+
     fn place(&mut self, target: &Expr) -> Result<AssignmentPlace> {
-        self.place_inner(target, true)
-    }
-
-    fn place_inner(&mut self, target: &Expr, assign_binding: bool) -> Result<AssignmentPlace> {
-        let mut place = match &target.kind {
+        match &target.kind {
             ExprKind::Ident(n) => match self.resolve(n, target.span)? {
                 Resolved::Local(l) => {
-                    if assign_binding && l.view.is_empty() && self.effects.shared_parameter(l.binding) {
-                        return err_help(
-                            target.span,
-                            format!(
-                                "can't reassign `{n}`: this parameter also shares member mutations with its caller"
-                            ),
-                            "change the parameter's fields, or use a separate local binding for the replacement",
-                        );
-                    }
-                    if assign_binding && !l.mutable {
+                    if !l.mutable {
                         return err(target.span, format!("can't assign to `{n}`: it's a constant"));
                     }
-                    let ty = if self.fx().loop_bindings.contains(&l.binding) {
-                        self.effects.read_view_type(l.binding, &l.view, &l.ty)
-                    } else {
-                        l.ty
-                    };
                     Ok(AssignmentPlace {
-                        through_element: false,
                         constraint: l.constraint,
-                        path: Some((l.php.clone(), Vec::new())),
-                        read: Out {
-                            php: l.php.clone(),
-                            ty,
-                            place: Some(l.php),
-                            atomic: true,
-                            helper: None,
-                        },
+                        target: None,
+                        read: Out::atom(l.php, l.ty),
                     })
                 }
-                Resolved::Value(..) => err_help(
+                Resolved::Value(_, binding) if binding.mutable && binding.module_level => err_help(
                     target.span,
-                    format!("hooks can't change `{n}`: it belongs to the config, not the request"),
-                    "keep request state in local variables",
+                    format!("hooks can't change `{n}`: it's a module-level `let`"),
+                    "store state in the database or use a local variable",
                 ),
-                Resolved::Global(g) => err(target.span, format!("can't assign to `{g}`")),
+                _ => err(target.span, format!("can't assign to `{n}`")),
             },
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                let AssignmentPlace {
-                    read: o,
-                    constraint,
-                    path,
-                    through_element,
-                } = self.place_inner(obj, false)?;
-                let Some((ft, optional)) = o.ty.non_null().field(prop) else {
-                    return Err(self.no_field(&o.ty, prop, *prop_span));
-                };
+                let mut o = self.expr(obj)?;
+                if let Some(path) = self.path_of(obj)
+                    && let Some(ty) = self.narrowed_path(&path)
+                {
+                    o.ty = ty;
+                }
                 if o.ty.is_nullable() {
                     return err(target.span, format!("can't set `{prop}`: the object might be null"));
                 }
-                let php = format!("{}[{}]", o.php, php_str(prop));
-                let constraint = constraint
+                if let Ty::Class(id) = o.ty {
+                    o.ty = self.class_shape(id);
+                }
+                if !matches!(
+                    o.ty.non_null(),
+                    Ty::Obj(_) | Ty::Map(_) | Ty::Union(_) | Ty::Instance(..)
+                ) {
+                    return err(target.span, "can't assign this property");
+                }
+                let Some((ft, optional)) = o.ty.non_null().field(prop) else {
+                    return Err(self.no_field(&o.ty, prop, *prop_span));
+                };
+                let constraint = self
+                    .argument_constraint(obj)
+                    .unwrap_or(o.ty.clone())
                     .non_null()
                     .field(prop)
-                    .map(|(t, _)| t)
-                    .ok_or_else(|| self.no_field(&constraint, prop, *prop_span))?;
-                let path = path.map(|(root, mut keys)| {
-                    keys.push(php_str(prop));
-                    (root, keys)
-                });
+                    .map(|(t, optional)| if optional { t.nullable() } else { t })
+                    .unwrap_or(ft.clone());
+                let read_ty = self
+                    .path_of(target)
+                    .and_then(|path| self.narrowed_path(&path))
+                    .unwrap_or_else(|| if optional { ft.nullable() } else { ft });
+                let read = Out::atom(format!("({}->p[{}] ?? null)", o.wrapped(), php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
-                    through_element,
                     constraint,
-                    path,
-                    read: Out {
-                        php: php.clone(),
-                        ty: if optional { ft.nullable() } else { ft },
-                        place: Some(php),
-                        atomic: true,
-                        helper: None,
-                    },
+                    read,
+                    target: Some(WriteTarget {
+                        receiver: o.php,
+                        key: php_str(prop),
+                        array: false,
+                    }),
                 })
             }
             ExprKind::Index { obj, index, .. } => {
-                let AssignmentPlace {
-                    read: o,
-                    constraint,
-                    path,
-                    through_element,
-                } = self.place_inner(obj, false)?;
+                let o = self.expr(obj)?;
                 let i = self.expr(index)?;
                 if o.ty.is_nullable() {
                     return err(target.span, "can't index this: it might be null");
                 }
-                let through_element = through_element || matches!(o.ty.non_null(), Ty::Array(_));
-                let (php, ty) = match o.ty.non_null() {
-                    Ty::Array(t) if i.ty.is_num() => (format!("{}[(int) {}]", o.php, i.wrapped()), t.nullable()),
-                    Ty::Map(t) if i.ty.is_str() => (format!("{}[{}]", o.php, i.php), t.nullable()),
-                    other => {
+                let original = self.argument_constraint(obj).unwrap_or(o.ty.clone());
+                let (ty, constraint, array) = match (o.ty.non_null(), original.non_null()) {
+                    (Ty::Array(t), Ty::Array(c)) if i.ty.is_num() => (*t, *c, true),
+                    (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), Ty::Tuple(cs) | Ty::ArrayLiteral(cs)) if i.ty.is_num() => {
+                        (Ty::union(ts), Ty::union(cs), true)
+                    }
+                    (Ty::Map(t), Ty::Map(c)) if i.ty.is_str() => (*t, *c, false),
+                    _ => {
                         return err(
                             target.span,
-                            format!("can't assign into {} with {}", other.describe(), i.ty.describe()),
+                            format!("can't assign into {} with {}", o.ty.describe(), i.ty.describe()),
                         );
                     }
                 };
-                let path = match (path, o.ty.non_null()) {
-                    (Some((root, mut keys)), Ty::Map(_)) => {
-                        keys.push(i.php.clone());
-                        Some((root, keys))
-                    }
-                    (Some((root, mut keys)), Ty::Array(_)) => {
-                        keys.push(format!("(int) {}", i.wrapped()));
-                        Some((root, keys))
-                    }
-                    _ => None,
-                };
-                let constraint = match constraint.non_null() {
-                    Ty::Array(t) | Ty::Map(t) => *t,
-                    other => return err(target.span, format!("can't assign into {}", other.describe())),
+                let read = Out::atom(
+                    format!(
+                        "\\Zero\\Js::{}({}, {})",
+                        if array { "get" } else { "prop" },
+                        o.php,
+                        i.php
+                    ),
+                    ty.nullable(),
+                );
+                let key = if array {
+                    i.php
+                } else {
+                    format!("\\Zero\\Js::key({})", i.php)
                 };
                 Ok(AssignmentPlace {
-                    through_element,
+                    read,
                     constraint,
-                    path,
-                    read: Out {
-                        php: php.clone(),
-                        ty,
-                        place: Some(php),
-                        atomic: true,
-                        helper: None,
-                    },
+                    target: Some(WriteTarget {
+                        receiver: o.php,
+                        key,
+                        array,
+                    }),
                 })
             }
             ExprKind::NonNull(x) => {
-                let mut p = self.place_inner(x, assign_binding)?;
+                let mut p = self.place(x)?;
                 p.read.ty = p.read.ty.non_null();
                 Ok(p)
             }
-            ExprKind::As(x, _) => self.place_inner(x, assign_binding),
+            ExprKind::As(x, _) => self.place(x),
             _ => err(target.span, "can't assign to this"),
-        }?;
-        if matches!(target.kind, ExprKind::Member { .. })
-            && let Some(ty) = self.path_of(target).and_then(|path| self.narrowed_path(&path))
-        {
-            place.read.ty = ty;
         }
-        Ok(place)
     }
 
     fn no_field(&self, t: &Ty, prop: &str, span: Span) -> Diag {
@@ -3072,6 +2943,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
         }
         let o = self.expr(obj)?;
+        if matches!(o.ty.non_null(), Ty::Instance(..) | Ty::Class(_)) {
+            if optional {
+                return err(
+                    span,
+                    "optional class member reads are unsupported; check the instance first",
+                );
+            }
+            return self.class_member(o, prop, prop_span);
+        }
         match &o.ty {
             Ty::Db if prop == "query" => return Ok(Out::atom("\\Zero\\db()", Ty::DbQuery)),
             Ty::Db if prop == "globals" => return Ok(Out::atom("\\Zero\\db()", Ty::DbGlobals)),
@@ -3095,7 +2975,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => {
                         let mut d = Diag::new(
                             prop_span,
-                            format!("`db.query.{prop}` doesn't match a collection in `schema`"),
+                            format!(
+                                "`db.query.{prop}` doesn't match a registered collection, table, or user projection"
+                            ),
                         );
                         let keys: Vec<&str> = self.schema.collections.values().map(|c| c.key.as_str()).collect();
                         if let Some(s) = suggest(prop, keys) {
@@ -3143,7 +3025,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
-                let php = guarded(self, &|x| format!("count({x})"));
+                let php = guarded(self, &|x| format!("count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Error, "message") => Out::atom(format!("{}->getMessage()", o.wrapped()), Ty::Str),
@@ -3156,13 +3038,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let php = if optional && o.ty.is_nullable() || opt_field || map {
-                    format!("({}[{}] ?? null)", o.php, php_str(prop))
-                } else {
-                    format!("{}[{}]", o.php, php_str(prop))
-                };
+                let php = guarded(self, &|x| format!("\\Zero\\Js::prop({x}, {})", php_str(prop)));
                 let ft = if map || opt_field { ft.nullable() } else { ft };
-                let place = o.place.as_ref().map(|p| format!("{p}[{}]", php_str(prop)));
+                let place = o.place.as_ref().map(|p| format!("{p}->p[{}]", php_str(prop)));
                 Out {
                     php,
                     ty: suffix_null(ft),
@@ -3184,7 +3062,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
         let o = self.expr(obj)?;
-        let o = self.finish_value(o, obj.span)?;
+        let mut o = self.finish_value(o, obj.span)?;
         let i = self.expr(index)?;
         if o.ty.is_nullable() && !optional {
             return err_help(
@@ -3194,6 +3072,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let base = o.ty.non_null();
+        let receiver = o.php.clone();
+        let guard = optional && o.ty.is_nullable();
+        if guard {
+            o.php = self.tmp_var();
+            o.place = None;
+        }
         let wrap = |t: Ty| {
             if optional && o.ty.is_nullable() {
                 t.nullable()
@@ -3201,17 +3085,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 t
             }
         };
-        Ok(match (&base, &i.ty) {
+        let mut out = match (&base, &i.ty) {
             (Ty::Array(t), it) if it.is_num() => Out::atom(
-                format!("({}[{}] ?? null)", o.php, int_index(&i)),
+                format!("\\Zero\\Js::get({}, {})", o.php, i.php),
                 wrap((**t).clone().nullable()),
             ),
             (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
                 ExprKind::Num(n) if n.fract() == 0.0 && *n >= 0.0 => {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Null);
-                    let place = o.place.as_ref().map(|p| format!("{p}[{}]", *n as usize));
+                    let place = o.place.as_ref().map(|p| format!("{p}->a[{}]", *n as usize));
                     Out {
-                        php: format!("({}[{}] ?? null)", o.php, *n as usize),
+                        php: format!("\\Zero\\Js::get({}, {})", o.php, *n as usize),
                         ty: wrap(t.nullable()),
                         place,
                         atomic: true,
@@ -3219,25 +3103,44 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 _ if i.ty.is_num() => Out::atom(
-                    format!("({}[{}] ?? null)", o.php, int_index(&i)),
+                    format!("\\Zero\\Js::get({}, {})", o.php, i.php),
                     wrap(Ty::union(ts.clone()).nullable()),
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
             (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
-                format!("({}[{}] ?? null)", o.php, i.php),
+                format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
                 wrap((**t).clone().nullable()),
             ),
-            (Ty::Obj(fields), i) if i.is_str() => {
+            (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
                 if let ExprKind::Str(k) = &index.kind {
                     return self.member(obj, k, optional, index.span, span);
                 }
-                let _ = fields;
-                return err_help(
-                    index.span,
-                    "dynamic keys on an object with fixed fields aren't supported",
-                    "use a `Record<string, T>` or a `switch`",
-                );
+                let keys = match key_ty {
+                    Ty::Union(parts) => parts.clone(),
+                    t => vec![t.clone()],
+                };
+                let mut values = Vec::new();
+                for key in keys {
+                    let name = match key {
+                        Ty::StrLit(k) | Ty::FreshStrLit(k) => k,
+                        _ => {
+                            return err_help(
+                                index.span,
+                                "dynamic keys on an object need a finite key union",
+                                "use `keyof` on a finite object, a `Record<string, T>` or a `switch`",
+                            );
+                        }
+                    };
+                    let Some((t, opt)) = fields.get(&name) else {
+                        return err(index.span, format!("this object has no property `{name}`"));
+                    };
+                    values.push(if *opt { t.clone().nullable() } else { t.clone() });
+                }
+                Out::atom(
+                    format!("\\Zero\\Js::prop({}, {})", o.php, i.php),
+                    wrap(Ty::union(values)),
+                )
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
                 format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
@@ -3249,7 +3152,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("can't index {} with {}", base.describe(), i.ty.describe()),
                 );
             }
-        })
+        };
+        if guard {
+            out.php = format!("(({} = {receiver}) === null ? null : {})", o.php, out.php);
+            out.place = None;
+        }
+        Ok(out)
     }
 
     fn await_expr(&mut self, x: &Expr, span: Span) -> Result<Out> {
@@ -3275,6 +3183,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if let ExprKind::Ident(n) = &callee.kind
+            && let Resolved::Value(Value::Class(class), _) = self.resolve(n, callee.span)?
+        {
+            return self.construct_class(&class, args, span);
+        }
         let ExprKind::Ident(n) = &callee.kind else {
             return err(span, "`new` only works with Date, Error, and HttpError");
         };
@@ -3367,9 +3280,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Resolved::Local(local) => Some(local.constraint),
                 _ => None,
             },
-            ExprKind::Member { obj, prop, .. } => {
-                self.argument_constraint(obj)?.non_null().field(prop).map(|(ty, _)| ty)
-            }
+            ExprKind::Member { obj, prop, .. } => self
+                .argument_constraint(obj)?
+                .non_null()
+                .field(prop)
+                .map(|(ty, optional)| if optional { ty.nullable() } else { ty }),
             ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
                 Ty::Array(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
@@ -3390,6 +3305,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
+        if let ExprKind::Ident(name) = &callee.kind
+            && let Some(out) = self.class_internal_call(name, args, span)?
+        {
+            return Ok(out);
+        }
         if optional {
             return err(span, "optional calls (`f?.()`) aren't supported");
         }
@@ -3403,6 +3323,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 optional: opt,
                 prop_span,
             } => {
+                if matches!(&obj.kind, ExprKind::Ident(n) if n == "super") {
+                    return self.super_method(prop, args, span);
+                }
                 // Static functions on globals: Math.max, Object.keys, ...
                 if let ExprKind::Ident(n) = &obj.kind
                     && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -3500,7 +3423,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(Out::atom(
             format!("\\Zero\\Jobs\\Receipts::once('fn', {}, {})", key.php, cb.php),
-            Ty::Promise(Box::new(ret)),
+            Ty::Promise(Box::new(classes::wire_type(&ret))),
         ))
     }
 
@@ -3568,7 +3491,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut result = IndexMap::new();
         result.insert("id".to_string(), (Ty::Str, false));
         Ok(Out::atom(
-            format!("\\Zero\\Jobs\\Jobs::enqueue({}, {}, {opts})", php_str(job), input.php),
+            format!("\\Zero\\Seam::enqueue({}, {}, {opts})", php_str(job), input.php),
             Ty::Promise(Box::new(Ty::Obj(result))),
         ))
     }
@@ -3578,8 +3501,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(callee_span, format!("{} isn't a function", f.ty.describe()));
         };
         let mut argv = Vec::new();
-        let mut unpacked = Vec::new();
-        let mut needs_unpack = false;
         for (i, a) in args.iter().enumerate() {
             let ArrEl::Item(x) = a else {
                 return err(span, "spread arguments aren't supported in calls");
@@ -3609,41 +3530,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if want.is_none() {
                 return err(x.span, "too many arguments");
             }
-            let by_ref = self.effects.argument_by_ref(span, i);
-            if by_ref && v.place.is_some() {
-                for later in &args[i + 1..] {
-                    let (ArrEl::Item(later) | ArrEl::Spread(later)) = later;
-                    if self.effects.replaces_argument(x.span, later.span) {
-                        return err_help(
-                            later.span,
-                            "a later argument replaces an object or array already passed by reference",
-                            "evaluate the arguments in separate statements before calling this function",
-                        );
-                    }
-                }
-            }
-            if by_ref {
-                needs_unpack = true;
-            }
-            unpacked.push(match (&v.place, by_ref) {
-                // A guarded read (`?? null`) is not addressable in PHP. Keep
-                // present storage by reference, but don't create missing fields
-                // or array elements merely by passing them to a function.
-                (Some(place), true) => format!("...(isset({place}) ? [&{place}] : [null])"),
-                _ => v.php.clone(),
-            });
             argv.push(v.php);
         }
-        // Unpacking gives temporary containers addressable storage for helpers
-        // that mutate their parameters. Existing local containers retain references.
-        let argv = if needs_unpack {
-            format!("...[{}]", unpacked.join(", "))
-        } else {
-            argv.join(", ")
-        };
+        let argv = argv.join(", ");
         let php = match &f.helper {
             Some(name) => format!("{name}({argv})"),
-            None => format!("{}({argv})", f.wrapped()),
+            None => format!("({})({argv})", f.php),
         };
         Ok(Out::new(php, *ret))
     }
@@ -3656,6 +3548,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let a0 = argv.first();
         Ok(match (g, a0) {
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
+            ("structuredClone", Some(v)) => {
+                Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
+            }
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
@@ -3704,27 +3599,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 let ret = (**ret).clone();
                 return Ok(Out::atom(
-                    format!(
-                        "\\Zero\\Js::range((int) {}, fn($i) => ({})(null, $i))",
-                        n.wrapped(),
-                        cb.php
-                    ),
+                    format!("\\Zero\\Js::range((int) {}, {})", n.wrapped(), cb.php),
                     Ty::Array(Box::new(ret)),
                 ));
             }
             let v = self.expr(src)?;
-            let Ty::Array(el) = v.ty.non_null() else {
-                return err(src.span, "Array.from needs an array or `{ length: n }`");
+            let el = match v.ty.non_null() {
+                Ty::Array(t) => *t,
+                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),
+                t if t.is_str() => Ty::Str,
+                _ => return err(src.span, "Array.from needs an array, string or `{ length: n }`"),
             };
             if let Some(ArrEl::Item(f)) = args.get(1) {
-                let cb = self.callback(f, &[(*el).clone(), Ty::Num])?;
+                let cb = self.callback(f, &[el.clone(), Ty::Num])?;
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 return Ok(Out::atom(
-                    format!("\\Zero\\Js::map({}, {})", v.php, cb.php),
+                    format!("\\Zero\\Js::from({}, {})", v.php, cb.php),
                     Ty::Array(ret.clone()),
                 ));
             }
-            return Ok(Out::atom(format!("array_values({})", v.php), Ty::Array(el)));
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::from({})", v.php),
+                Ty::Array(Box::new(el)),
+            ));
         }
         let argv = self.plain_args(args)?;
         let php_args = || argv.iter().map(|a| a.php.clone()).collect::<Vec<_>>().join(", ");
@@ -3799,7 +3696,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Object", "hasOwn") => Out::atom(format!("\\Zero\\Js::hasOwn({})", php_args()), Ty::Bool),
             ("Array", "isArray") => Out::atom(
                 format!(
-                    "(is_array({0}) && array_is_list({0}))",
+                    "({0} instanceof \\Zero\\JsArray)",
                     a0.map(|a| a.php.clone()).unwrap_or_default()
                 ),
                 Ty::Bool,
@@ -3827,7 +3724,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn obj_arg(&self, a: Option<&Out>, span: Span) -> Result<String> {
         match a {
-            Some(v) if matches!(v.ty.non_null(), Ty::Obj(_) | Ty::Map(_)) && !v.ty.is_nullable() => Ok(v.php.clone()),
+            Some(v) if v.ty.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_) | Ty::Instance(..))) && !v.ty.is_nullable() => {
+                Ok(v.php.clone())
+            }
             Some(v) => err(span, format!("this needs an object, not {}", v.ty.describe())),
             None => err(span, "missing argument"),
         }
@@ -3844,6 +3743,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         args: &[ArrEl],
         span: Span,
     ) -> Result<Out> {
+        if matches!(recv.ty.non_null(), Ty::Instance(..) | Ty::Class(_)) {
+            if optional {
+                return err(span, "optional class calls are unsupported; check the receiver first");
+            }
+            return self.class_method(recv, m, args, span);
+        }
         let recv_span = recv_expr.span;
         match recv.ty.clone() {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
@@ -3925,10 +3830,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn member_of_out(&self, o: &Out, prop: &str, span: Span) -> Result<Out> {
-        let Some((t, _)) = o.ty.non_null().field(prop) else {
+        let Some((t, optional)) = o.ty.non_null().field(prop) else {
             return Err(self.no_field(&o.ty, prop, span));
         };
-        Ok(Out::atom(format!("{}[{}]", o.php, php_str(prop)), t))
+        let t = if optional || matches!(o.ty.non_null(), Ty::Map(_)) {
+            t.nullable()
+        } else {
+            t
+        };
+        Ok(Out::atom(format!("\\Zero\\Js::prop({}, {})", o.php, php_str(prop)), t))
     }
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
@@ -4076,7 +3986,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let cb = |c: &mut Self, extra: &[Ty]| -> Result<Out> {
             let f = c.arg(args, 0, span, "a function")?;
-            let mut ps = vec![el.clone(), Ty::Num];
+            let mut ps = vec![el.clone(), Ty::Num, a.ty.clone()];
             ps.splice(0..0, extra.iter().cloned());
             c.callback(f, &ps)
         };
@@ -4085,14 +3995,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => Ty::Unknown,
         };
         // In-place mutators need an assignable variable.
-        let place = || -> Result<String> {
-            a.place.clone().ok_or_else(|| {
-                Diag::new(
-                    span,
-                    format!("`{m}()` changes the array in place; call it on a variable"),
-                )
-            })
-        };
         Ok(match m {
             "map" => {
                 let f = cb(self, &[])?;
@@ -4136,11 +4038,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "forEach" => {
                 let f = cb(self, &[])?;
-                let tmp = self.tmp_var();
-                Out::new(
-                    format!("array_map({}, {tmp} = {}, array_keys({tmp}))", f.php, a.php),
-                    Ty::Null,
-                )
+                Out::atom(format!("\\Zero\\Js::forEach({}, {})", a.php, f.php), Ty::Null)
             }
             "reduce" => {
                 let init = match args.get(1) {
@@ -4153,7 +4051,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .map(|i| widen_fresh_literals(&i.ty))
                     .unwrap_or_else(|| widen_fresh_literals(&el));
                 let f = self.arg(args, 0, span, "a function")?;
-                let f = self.callback(f, &[acc_ty.clone(), el.clone(), Ty::Num])?;
+                let f = self.callback(f, &[acc_ty.clone(), el.clone(), Ty::Num, a.ty.clone()])?;
                 let r = ret_of(&f);
                 if !assignable(&r, &acc_ty) {
                     return err(
@@ -4179,33 +4077,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "the comparator must return a number");
                 }
                 let fp = f.map(|f| format!(", {}", f.php)).unwrap_or_default();
-                // Sorting a temporary (`[...xs].sort()`) mutates nothing anyone can see.
-                if m == "sort" && a.place.is_some() {
-                    Out::atom(format!("\\Zero\\Js::sort({}{fp})", place()?), Ty::Array(Box::new(el)))
-                } else {
-                    Out::atom(format!("\\Zero\\Js::sorted({}{fp})", a.php), Ty::Array(Box::new(el)))
-                }
+                Out::atom(format!("\\Zero\\Js::{m}({}{fp})", a.php), Ty::Array(Box::new(el)))
             }
             "push" | "unshift" => {
-                let p = place()?;
+                let p = &a.php;
                 let argv = self.plain_args(args)?;
                 check_insert(&argv)?;
                 let items: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
-                Out::atom(format!("array_{m}({p}, {})", items.join(", ")), Ty::Num)
+                Out::atom(
+                    format!(
+                        "\\Zero\\Js::{m}({p}{})",
+                        if items.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", {}", items.join(", "))
+                        }
+                    ),
+                    Ty::Num,
+                )
             }
-            "pop" => Out::atom(format!("array_pop({})", place()?), el.nullable()),
-            "shift" => Out::atom(format!("array_shift({})", place()?), el.nullable()),
-            "reverse" if a.place.is_some() => {
-                Out::atom(format!("\\Zero\\Js::reverse({})", place()?), Ty::Array(Box::new(el)))
-            }
-            "reverse" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
-            "toReversed" => Out::atom(format!("array_reverse({})", a.php), Ty::Array(Box::new(el))),
+            "pop" => Out::atom(format!("\\Zero\\Js::pop({})", a.php), el.nullable()),
+            "shift" => Out::atom(format!("\\Zero\\Js::shift({})", a.php), el.nullable()),
+            "reverse" | "toReversed" => Out::atom(format!("\\Zero\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
-                    format!("\\Zero\\Js::splice({}, {})", place()?, extra.join(", ")),
+                    format!("\\Zero\\Js::splice({}, {})", a.php, extra.join(", ")),
                     Ty::Array(Box::new(el)),
                 )
             }
@@ -4237,14 +4136,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 Ty::Array(e) => t.push(*e),
                                 other => {
                                     t.push(other);
-                                    parts.push(format!("[{}]", x.php));
+                                    parts.push(x.php.clone());
                                     continue;
                                 }
                             }
                             parts.push(x.php.clone());
                         }
                         Out::atom(
-                            format!("array_merge({})", parts.join(", ")),
+                            format!("\\Zero\\Js::concat({})", parts.join(", ")),
                             Ty::Array(Box::new(Ty::union(t))),
                         )
                     }
@@ -4257,7 +4156,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     _ => {
                         check_insert(&argv[..argv.len().min(1)])?;
-                        let p = place()?;
+                        let p = &a.php;
                         Out::atom(
                             format!("\\Zero\\Js::fill({p}, {})", extra.join(", ")),
                             Ty::Array(Box::new(el)),
@@ -4287,12 +4186,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let _ = span;
         let (php, ty) = if m == "findMany" {
             (
-                format!("\\Zero\\db()->findMany({}, {opts})", php_str(table)),
+                format!("\\Zero\\Seam::findMany({}, {opts})", php_str(table)),
                 Ty::Array(Box::new(row_ty)),
             )
         } else {
             (
-                format!("\\Zero\\db()->findFirst({}, {opts})", php_str(table)),
+                format!("\\Zero\\Seam::findFirst({}, {opts})", php_str(table)),
                 row_ty.nullable(),
             )
         };
@@ -4752,7 +4651,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Typed like collection rows: `json().$type<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
-            ("get", []) => format!("\\Zero\\db()->globalGet({})", php_str(name)),
+            ("get", []) => format!("\\Zero\\Seam::globalGet({})", php_str(name)),
             ("update", [ArrEl::Item(patch)]) => {
                 let v = self.expr(patch)?;
                 let v = self.finish_value(v, patch.span)?;
@@ -4781,7 +4680,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ),
                     );
                 }
-                format!("\\Zero\\db()->globalUpdate({}, {})", php_str(name), v.php)
+                format!("\\Zero\\Seam::globalUpdate({}, {})", php_str(name), v.php)
             }
             ("get", _) => return err(m_span, "`get()` takes no arguments"),
             ("update", _) => return err(m_span, "`update()` takes one patch object"),
@@ -4955,18 +4854,6 @@ fn obj_values_ty(t: Option<&Ty>) -> Ty {
     }
 }
 
-fn int_index(i: &Out) -> String {
-    if i.atomic && i.php.chars().all(|c| c.is_ascii_digit()) {
-        i.php.clone()
-    } else {
-        format!("(int) {}", i.wrapped())
-    }
-}
-
-fn paren(s: &str) -> String {
-    format!("({s})")
-}
-
 /// `.` binds tighter than `+`/`-`... in PHP 8 they're equal-precedence-ish; parenthesize non-trivial parts.
 fn pad(n: usize) -> String {
     "    ".repeat(n)
@@ -4974,8 +4861,14 @@ fn pad(n: usize) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Obj(_) | Ty::Map(_) => "array|\\Zero\\JsObject ",
-        Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "array ",
+        Ty::Instance(..) => "\\Zero\\JsObject ",
+        Ty::Class(_) => "\\Zero\\JsClass ",
+        Ty::Obj(_) | Ty::Map(_) => "\\Zero\\JsObject ",
+        Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\Zero\\JsArray ",
+        t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => "?\\Zero\\JsObject ",
+        t if t.is_nullable() && matches!(t.non_null(), Ty::Array(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)) => {
+            "?\\Zero\\JsArray "
+        }
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
         Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => "int|float ",
@@ -4983,15 +4876,20 @@ fn php_hint(t: &Ty) -> &'static str {
     }
 }
 
-fn ty_of_json(v: &serde_json::Value) -> Ty {
-    use serde_json::Value as J;
-    match v {
-        J::Null => Ty::Null,
-        J::Bool(value) => Ty::FreshBoolLit(*value),
-        J::Number(value) => Ty::FreshNumLit(value.as_f64().expect("JSON number")),
-        J::String(s) => Ty::FreshStrLit(s.clone()),
-        J::Array(items) => Ty::Array(Box::new(Ty::union(items.iter().map(ty_of_json)))),
-        J::Object(map) => Ty::Obj(map.iter().map(|(k, v)| (k.clone(), (ty_of_json(v), false))).collect()),
+fn ty_of_data(value: &Value) -> Ty {
+    match value {
+        Value::Null | Value::Undef => Ty::Null,
+        Value::Bool(b) => Ty::FreshBoolLit(*b),
+        Value::Num(n) => Ty::FreshNumLit(*n),
+        Value::Str(s) => Ty::FreshStrLit(s.to_string()),
+        Value::Array(a) => Ty::Array(Box::new(Ty::union(a.borrow().iter().map(ty_of_data)))),
+        Value::Object(o) => Ty::Obj(
+            o.borrow()
+                .iter()
+                .map(|(k, v)| (k.clone(), (ty_of_data(v), false)))
+                .collect(),
+        ),
+        _ => unreachable!("validated captured data"),
     }
 }
 
@@ -5024,12 +4922,14 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         Ty::BoolLit(_) | Ty::FreshBoolLit(_) => Ty::Never,
         Ty::NumLit(n) | Ty::FreshNumLit(n) if (*n != 0.0 && !n.is_nan()) != truthy => Ty::Never,
         Ty::NumLit(_) | Ty::FreshNumLit(_) => t.clone(),
-        Ty::Null if truthy => Ty::Never,
-        Ty::Null => Ty::Null,
+        Ty::Null | Ty::Undefined | Ty::Void if truthy => Ty::Never,
+        Ty::Null | Ty::Undefined | Ty::Void => t.clone(),
         Ty::Str if !truthy => Ty::StrLit(String::new()),
         Ty::StrLit(value) | Ty::FreshStrLit(value) if value.is_empty() == truthy => Ty::Never,
         Ty::Str | Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::Num | Ty::Unknown | Ty::Never => t.clone(),
         Ty::Array(_)
+        | Ty::Instance(..)
+        | Ty::Class(_)
         | Ty::Tuple(_)
         | Ty::ArrayLiteral(_)
         | Ty::Obj(_)
@@ -5138,6 +5038,8 @@ fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
 
 fn widen_fresh_literals(t: &Ty) -> Ty {
     match t {
+        Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(widen_fresh_literals(fields))),
+        Ty::Class(_) => t.clone(),
         Ty::FreshNumLit(_) => Ty::Num,
         Ty::FreshStrLit(_) => Ty::Str,
         Ty::FreshBoolLit(_) => Ty::Bool,
@@ -5163,6 +5065,8 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Bool
         | Ty::BoolLit(_)
         | Ty::Null
+        | Ty::Undefined
+        | Ty::Void
         | Ty::Unknown
         | Ty::Never
         | Ty::Date
@@ -5184,6 +5088,16 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         return true;
     }
     match (a, b) {
+        (Ty::Instance(id, fields), Ty::Instance(other, want)) => {
+            (id.id == other.id || id.ancestors.contains(&other.id))
+                && match (&**fields, &**want) {
+                    (Ty::Obj(have), Ty::Obj(need)) => need.iter().all(|(key, (ty, optional))| {
+                        have.get(key).map_or(*optional, |(value, _)| assignable(value, ty))
+                    }),
+                    _ => false,
+                }
+        }
+        (Ty::Instance(_, fields), Ty::Obj(_)) => assignable(fields, b),
         (Ty::NumLit(_) | Ty::FreshNumLit(_), Ty::Num) => true,
         (Ty::NumLit(x), Ty::FreshNumLit(y)) | (Ty::FreshNumLit(x), Ty::NumLit(y)) => x == y,
         (Ty::StrLit(_) | Ty::FreshStrLit(_), Ty::Str) => true,
@@ -5200,7 +5114,10 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         }
         (Ty::Obj(have), Ty::Obj(need)) => {
             need.iter().all(|(k, (t, optional))| match have.get(k) {
-                Some((ht, _)) => assignable(ht, t),
+                Some((ht, have_optional)) => {
+                    (!have_optional || *optional)
+                        && assignable(ht, &if *optional { t.clone().nullable() } else { t.clone() })
+                }
                 None => *optional,
             }) && have.keys().all(|k| need.contains_key(k))
         }
@@ -5377,251 +5294,42 @@ fn stmt_completions(
     }
 }
 
-fn collect_aliases(body: &[Stmt], module: usize, out: &mut HashMap<(usize, String), (Vec<String>, TyAnn)>) {
+fn collect_aliases(
+    body: &[Stmt],
+    module: usize,
+    out: &mut HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
+    duplicates: &mut HashSet<(usize, String)>,
+) {
     for s in body {
         match s {
             Stmt::TypeAlias { name, params, ty } => {
-                out.insert((module, name.clone()), (params.clone(), ty.clone()));
+                let key = (module, name.clone());
+                if out.insert(key.clone(), (params.clone(), ty.clone())).is_some() {
+                    duplicates.insert(key);
+                }
             }
-            Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out),
+            Stmt::Exported(inner) => collect_aliases(std::slice::from_ref(inner.as_ref()), module, out, duplicates),
             _ => {}
         }
     }
 }
 
-/// JS shares arrays and objects by reference; compiled PHP copies them when
-/// they're stored. Code that stores a local container inside another value
-/// and then mutates it would silently diverge, so it's a build error.
-fn check_aliasing(f: &Func) -> Result<()> {
-    struct Walk {
-        /// Local name → span where it was stored into another value.
-        stored: HashMap<String, Span>,
-    }
-    fn root(e: &Expr) -> Option<&str> {
-        match &e.kind {
-            ExprKind::Ident(n) => Some(n),
-            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } | ExprKind::NonNull(obj) => root(obj),
-            _ => None,
-        }
-    }
-    impl Walk {
-        fn mutated(&self, name: &str, span: Span) -> Result<()> {
-            if let Some(at) = self.stored.get(name) {
-                let _ = at;
-                return err_help(
-                    span,
-                    format!("`{name}` was stored in another value earlier, so changing it here wouldn't show up there"),
-                    "build the value completely before storing it, or change it through the place you stored it",
-                );
-            }
-            Ok(())
-        }
-        /// Bare identifiers placed inside array/object literals or passed into db calls get copied.
-        fn note_stores(&mut self, e: &Expr) {
-            match &e.kind {
-                ExprKind::Array(items) => {
-                    for it in items {
-                        if let ArrEl::Item(x) = it {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                ExprKind::Object(props) => {
-                    for p in props {
-                        if let Prop::KV(_, x) = p {
-                            self.note_store(x);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        fn note_store(&mut self, x: &Expr) {
-            if let ExprKind::Ident(n) = &x.kind {
-                self.stored.entry(n.clone()).or_insert(x.span);
-            }
-        }
-        fn expr(&mut self, e: &Expr) -> Result<()> {
-            match &e.kind {
-                ExprKind::Assign { target, value, .. } => {
-                    self.expr(value)?;
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                    if !matches!(target.kind, ExprKind::Ident(_)) {
-                        self.note_store(value);
-                    }
-                    self.note_stores(value);
-                }
-                ExprKind::Update { target, .. } => {
-                    if !matches!(target.kind, ExprKind::Ident(_))
-                        && let Some(r) = root(target)
-                    {
-                        self.mutated(r, target.span)?;
-                    }
-                }
-                ExprKind::Call { callee, args, .. } => {
-                    if let ExprKind::Member { obj, prop, .. } = &callee.kind
-                        && crate::builtins::array_mutation(prop).is_some()
-                        && let Some(r) = root(obj)
-                    {
-                        self.mutated(r, e.span)?;
-                    }
-                    self.expr(callee)?;
-                    for a in args {
-                        let (ArrEl::Item(x) | ArrEl::Spread(x)) = a;
-                        self.expr(x)?;
-                        if let ArrEl::Item(x) = a
-                            && matches!(&callee.kind, ExprKind::Member { prop, .. } if prop == "push" || prop == "unshift")
-                        {
-                            self.note_store(x);
-                        }
-                        self.note_stores(x);
-                    }
-                }
-                ExprKind::Array(_) | ExprKind::Object(_) => {
-                    self.note_stores(e);
-                    match &e.kind {
-                        ExprKind::Array(items) => {
-                            for it in items {
-                                let (ArrEl::Item(x) | ArrEl::Spread(x)) = it;
-                                self.expr(x)?;
-                            }
-                        }
-                        ExprKind::Object(props) => {
-                            for p in props {
-                                let (Prop::KV(_, x) | Prop::Spread(x)) = p;
-                                self.expr(x)?;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                }
-                ExprKind::Cond(a, b, c) => {
-                    self.expr(a)?;
-                    self.expr(b)?;
-                    self.expr(c)?;
-                }
-                ExprKind::Unary(_, x)
-                | ExprKind::Await(x)
-                | ExprKind::Chain(x)
-                | ExprKind::As(x, _)
-                | ExprKind::NonNull(x)
-                | ExprKind::IsNullish(x, _)
-                | ExprKind::Member { obj: x, .. } => self.expr(x)?,
-                ExprKind::Index { obj, index, .. } => {
-                    self.expr(obj)?;
-                    self.expr(index)?;
-                }
-                ExprKind::Template(_, xs) => {
-                    for x in xs {
-                        self.expr(x)?;
-                    }
-                }
-                // Nested functions are checked on their own.
-                _ => {}
-            }
-            Ok(())
-        }
-        fn stmts(&mut self, stmts: &[Stmt]) -> Result<()> {
-            for s in stmts {
-                match s {
-                    Stmt::Decl { init: Some(e), .. } => {
-                        self.expr(e)?;
-                        self.note_stores(e);
-                    }
-                    Stmt::Expr(e) | Stmt::Throw(e) | Stmt::Return(Some(e), _) => self.expr(e)?,
-                    Stmt::If(t, a, b) => {
-                        self.expr(t)?;
-                        self.stmts(a)?;
-                        if let Some(b) = b {
-                            self.stmts(b)?;
-                        }
-                    }
-                    Stmt::Block(b) => self.stmts(b)?,
-                    Stmt::While(t, b) => {
-                        self.expr(t)?;
-                        self.stmts(b)?;
-                    }
-                    Stmt::For {
-                        init,
-                        test,
-                        update,
-                        body,
-                        ..
-                    } => {
-                        if let Some(i) = init {
-                            self.stmts(std::slice::from_ref(i))?;
-                        }
-                        if let Some(t) = test {
-                            self.expr(t)?;
-                        }
-                        if let Some(u) = update {
-                            self.expr(u)?;
-                        }
-                        self.stmts(body)?;
-                    }
-                    Stmt::ForOf { iter, body, .. } => {
-                        self.expr(iter)?;
-                        self.stmts(body)?;
-                    }
-                    Stmt::Try {
-                        block,
-                        handler,
-                        finalizer,
-                        ..
-                    } => {
-                        self.stmts(block)?;
-                        if let Some(h) = handler {
-                            self.stmts(h)?;
-                        }
-                        if let Some(f) = finalizer {
-                            self.stmts(f)?;
-                        }
-                    }
-                    Stmt::Switch { disc, cases, .. } => {
-                        self.expr(disc)?;
-                        for (t, b) in cases {
-                            if let Some(t) = t {
-                                self.expr(t)?;
-                            }
-                            self.stmts(b)?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(())
-        }
-    }
-    let mut w = Walk { stored: HashMap::new() };
-    match &f.body {
-        FnBody::Expr(e) => w.expr(e),
-        FnBody::Block(b) => w.stmts(b),
-    }
+fn paren(s: &str) -> String {
+    format!("({s})")
 }
 
-/// Whether every value of `t` is a primitive (copied and shared alike in JS and PHP).
-fn primitive(t: &Ty) -> bool {
-    match t {
-        Ty::Union(ts) => ts.iter().all(primitive),
-        Ty::Num
-        | Ty::NumLit(_)
-        | Ty::FreshNumLit(_)
-        | Ty::Str
-        | Ty::StrLit(_)
-        | Ty::FreshStrLit(_)
-        | Ty::Bool
-        | Ty::BoolLit(_)
-        | Ty::FreshBoolLit(_)
-        | Ty::Null
-        | Ty::Date => true,
+/// Direct PHP comparisons are safe only when evaluating the right side cannot replace the left.
+fn pure_read(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Ident(_)
+        | ExprKind::Num(_)
+        | ExprKind::Str(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Null
+        | ExprKind::Undefined => true,
+        ExprKind::Member { obj, .. } => pure_read(obj),
+        ExprKind::Index { obj, index, .. } => pure_read(obj) && pure_read(index),
+        ExprKind::NonNull(e) | ExprKind::As(e, _) | ExprKind::Chain(e) => pure_read(e),
         _ => false,
     }
 }
@@ -5648,22 +5356,6 @@ fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
             }
         }
     }
-}
-
-/// Writes into an array element, or through one (`list[i] = v`, `list[i] += v`, `list[i]++`,
-/// `list[i].x = v`), are refused. Past the end JS grows the array (holes read as `undefined`) while
-/// PHP adds a key and the array becomes an object (`[1, , 3]` vs `{"0":1,"2":3}`); a write through a
-/// missing element must throw a TypeError before the value runs. Doing either faithfully needs the
-/// array to be a handle, not a PHP value: that is the handle switch's job (design #79).
-fn element_write(through_element: bool, span: Span) -> Result<()> {
-    if !through_element {
-        return Ok(());
-    }
-    err_help(
-        span,
-        "changing an array element in place isn't supported: compiled PHP can't grow an array by index",
-        "build the new array instead (`list.map((v, j) => j === i ? next : v)`), or `list.push(value)` to append",
-    )
 }
 
 /// Numeric literals may have signs and erased type annotations, but no runtime computation.

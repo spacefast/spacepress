@@ -76,7 +76,8 @@ function getErrorMessage( error: unknown ): string {
 export default function UnsavedChangesModal() {
 	const router = useRouter();
 	const registry = useRegistry();
-	const { isEntityValid } = useEntityValidity();
+	const { isEntityValid: entityValid, documentChanges } = useEntityValidity();
+	const isEntityValid = entityValid && (documentChanges?.valid ?? true);
 	const { clearEntityRecordEdits } = useDispatch( coreStore );
 	const { createErrorNotice } = useDispatch( noticesStore );
 	const { entityRecords, isSaving } = useSelect< {
@@ -105,11 +106,13 @@ export default function UnsavedChangesModal() {
 	const isPendingSaveRef = useRef( false );
 	const shouldClearOnNavigationRef = useRef( false );
 	const recordsToClearRef = useRef< DirtyEntityRecord[] >( entityRecords );
-	const hasUnsavedChanges = entityRecords.length > 0;
-	const isSaveInFlight = isPendingSave || isSaving;
+	const hasUnsavedChanges = entityRecords.length > 0 || Boolean(documentChanges?.dirty) || !isEntityValid;
+	const changesRef = useRef(hasUnsavedChanges);
+	changesRef.current = hasUnsavedChanges;
+	const isSaveInFlight = isPendingSave || isSaving || Boolean(documentChanges?.saving);
 	const blocker = useBlocker( {
 		shouldBlockFn: ( { current, next } ) =>
-			hasUnsavedChanges && current.pathname !== next.pathname,
+			changesRef.current && current.pathname !== next.pathname,
 		withResolver: true,
 		enableBeforeUnload: hasUnsavedChanges,
 	} ) ?? {
@@ -232,6 +235,9 @@ export default function UnsavedChangesModal() {
 										dirtyEntityRecords: entityRecords,
 									}
 								);
+								if (documentChanges?.dirty) {
+									results.push(...await Promise.allSettled([documentChanges.save()]));
+								}
 
 								if (
 									results.every(

@@ -40,7 +40,7 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["zero-global-settings", "zero_global_settings", "zero-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_zero%' AND TABLE_NAME NOT LIKE 'wp\\_zero\\_identity\\_%'");
-  const sharedTables = ["wp_zero__files", "wp_zero__jobs", "wp_zero__migrations", "wp_zero__outbox", "wp_zero__receipts", "wp_zero__revisions", "wp_zero_comments", "wp_zero_field_teams", "wp_zero_fuse_log", "wp_zero_guestbook", "wp_zero_hookNotes", "wp_zero_jobNotes", "wp_zero_key_links", "wp_zero_key_roots", "wp_zero_phrases", "wp_zero_reviews", "wp_zero_signups", "wp_zero_tour_log"];
+  const sharedTables = ["wp_zero__files", "wp_zero__jobs", "wp_zero__migrations", "wp_zero__outbox", "wp_zero__receipts", "wp_zero__revisions", "wp_zero_comments", "wp_zero_field_teams", "wp_zero_fuse_log", "wp_zero_guestbook", "wp_zero_hook_notes", "wp_zero_job_notes", "wp_zero_key_links", "wp_zero_key_roots", "wp_zero_phrases", "wp_zero_reviews", "wp_zero_signups", "wp_zero_tour_log"];
   assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
   assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);
   assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
@@ -49,8 +49,9 @@ test("activation registers the post types, field groups and options page, and cr
     $plugin = \\Zero\\Wp\\Runtime::plugin();
     $description = $plugin->schema->describe();
     echo wp_json_encode([
-      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.2' : get_option('zero_runtime_tables'),
+      get_option('zero_runtime_tables') === \\Zero\\Wp\\Runtime::tablesVersion() ? '0.3' : get_option('zero_runtime_tables'),
       $description['runtime']['series'],
+      $description['runtime']['identity'],
       $description['runtime']['wp']['actionScheduler'],
       $description['runtime']['wp']['mcpAdapter'],
       $description['runtime']['wp']['incompatibleTables'],
@@ -59,7 +60,7 @@ test("activation registers the post types, field groups and options page, and cr
       \\Zero\\Wp\\Runtime::plugin() === $plugin,
     ]);
   `));
-  assert.deepEqual(registry, ["0.2", "0.2", "4.2.0", "0.7.1", [], [], null, true]);
+  assert.deepEqual(registry, ["0.3", "0.3", true, "4.2.0", "0.7.1", [], [], null, true]);
   const incompatible: unknown = JSON.parse(wp("eval", `
     $dir = sys_get_temp_dir() . '/zero-series-' . bin2hex(random_bytes(6));
     mkdir($dir . '/zero/app', 0777, true);
@@ -68,7 +69,7 @@ test("activation registers the post types, field groups and options page, and cr
       file_put_contents($file, '<?php return ' . var_export(['version'=>3, 'runtime'=>'0.1'], true) . ';');
       $result = \\Zero\\Wp\\Runtime::app($dir, $dir . '/app.php');
       ob_start(); do_action('admin_notices'); $notice = ob_get_clean();
-      echo wp_json_encode([$result, \\Zero\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'zero 0.2.x')]);
+      echo wp_json_encode([$result, \\Zero\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'zero 0.3.x')]);
     } finally {
       unlink($file); rmdir($dir . '/zero/app'); rmdir($dir . '/zero'); rmdir($dir);
     }
@@ -525,7 +526,7 @@ test("two apps' uninstallers run in one request, remove only derived capabilitie
 
 test("a job falling due while the app is deactivated keeps its delivery and runs once the app is back", async () => {
   // jobNotes' afterCreate enqueues `stamp`; deactivate the app before Action Scheduler runs it.
-  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `away ${run}` }) })).json();
+  const note = await (await fetch(`${api}/job_notes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `away ${run}` }) })).json();
   const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
   const deliveries = () => sql(`SELECT a.status AS s, g.slug AS g FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.hook = 'zero_job' AND a.args = '{"id":"${job.id}"}' ORDER BY a.action_id`).map((r) => `${r.g}:${r.s}`);
   wp("plugin", "deactivate", harness.plugin);
@@ -542,7 +543,7 @@ test("a job falling due while the app is deactivated keeps its delivery and runs
 });
 
 test("a cancelled job's delivery isn't kept while the app is away", async () => {
-  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `cancelled ${run}` }) })).json();
+  const note = await (await fetch(`${api}/job_notes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `cancelled ${run}` }) })).json();
   const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
   wp("zero", "jobs", "cancel", job.id);
   wp("plugin", "deactivate", harness.plugin);
@@ -556,7 +557,7 @@ test("a cancelled job's delivery isn't kept while the app is away", async () => 
 });
 
 test("if the job's state can't be read while the app is away, the action fails instead of completing", async () => {
-  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `unreadable ${run}` }) })).json();
+  const note = await (await fetch(`${api}/job_notes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `unreadable ${run}` }) })).json();
   const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
   wp("plugin", "deactivate", harness.plugin);
   sql("RENAME TABLE wp_zero__jobs TO wp_zero__jobs_away");
@@ -572,7 +573,7 @@ test("if the job's state can't be read while the app is away, the action fails i
 });
 
 test("if the delivery can't be kept while the app is away, the action fails visibly instead of completing", async () => {
-  const note = await (await fetch(`${api}/jobNotes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `refused ${run}` }) })).json();
+  const note = await (await fetch(`${api}/job_notes`, { method: "POST", headers: { ...authHeader("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `refused ${run}` }) })).json();
   const [job] = sql(`SELECT id FROM wp_zero__jobs WHERE job = 'stamp' AND JSON_VALUE(input, '$.noteId') = ${note.data.id}`);
   const statuses = () => sql(`SELECT status FROM wp_actionscheduler_actions WHERE hook = 'zero_job' AND args = '{"id":"${job.id}"}' ORDER BY action_id`).map((r) => r.status);
   wp("plugin", "deactivate", harness.plugin);

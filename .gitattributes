@@ -2,3 +2,6 @@
 runtime/Zero/vendor-prefixed/** -whitespace linguist-vendored
 # The upstream merge guide intentionally shows seven-character conflict markers.
 runtime/Zero/vendor-prefixed/wp-php-toolkit/merge/README.md conflict-marker-size=32
+# Upstream setext headings contain seven equals signs; preserve the original documents.
+runtime/Zero/vendor-prefixed/psr/log/README.md conflict-marker-size=32
+runtime/Zero/vendor-prefixed/symfony/polyfill-php83/README.md conflict-marker-size=32

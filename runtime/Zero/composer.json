@@ -5,6 +5,7 @@
   "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=8.2",
+    "async-aws/s3": "3.5.0",
     "wp-php-toolkit/blockparser": "^0.10",
     "wp-php-toolkit/markdown": "^0.10",
     "wp-php-toolkit/merge": "^0.10"

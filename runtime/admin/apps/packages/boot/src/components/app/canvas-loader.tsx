@@ -269,6 +269,10 @@ export async function canvasLoader(
 		return;
 	}
 
+	// Core-data parses and caches a post's blocks when resolving its record.
+	// Register editor blocks before that first parse, including on direct loads.
+	await loadEditorAssets();
+
 	let postsToPreload: { postType: string; postId: string }[];
 
 	if ( ! ( 'getTemplate' in routeCanvas ) ) {
@@ -289,7 +293,6 @@ export async function canvasLoader(
 	}
 
 	await Promise.allSettled( [
-		loadEditorAssets(),
 		...postsToPreload.map( async ( { postType, postId } ) =>
 			resolveSelect( coreStore )
 				.getEntityRecord( 'postType', postType, postId )

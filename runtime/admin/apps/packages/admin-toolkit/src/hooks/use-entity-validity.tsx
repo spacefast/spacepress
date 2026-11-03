@@ -2,14 +2,23 @@ import {
 	createContext,
 	useContext,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useState,
 } from '@wordpress/element';
 import type { PropsWithChildren } from 'react';
 
+type DocumentChanges = {
+	dirty: boolean;
+	valid: boolean;
+	saving: boolean;
+	save: () => Promise<unknown>;
+};
 type EntityValidityContextValue = {
 	isEntityValid: boolean;
 	setIsEntityValid: ( isEntityValid: boolean ) => void;
+	documentChanges: DocumentChanges | null;
+	setDocumentChanges: ( changes: DocumentChanges | null ) => void;
 };
 
 const EntityValidityContext = createContext<
@@ -18,13 +27,16 @@ const EntityValidityContext = createContext<
 
 export function EntityValidityProvider( { children }: PropsWithChildren ) {
 	const [ isEntityValid, setIsEntityValid ] = useState( true );
+	const [ documentChanges, setDocumentChanges ] = useState<DocumentChanges | null>( null );
 
 	const contextValue = useMemo(
 		() => ( {
 			isEntityValid,
 			setIsEntityValid,
+			documentChanges,
+			setDocumentChanges,
 		} ),
-		[ isEntityValid ]
+		[ isEntityValid, documentChanges ]
 	);
 
 	return (
@@ -51,4 +63,14 @@ export function useSetEntityValidity( isValid: boolean ) {
 	useEffect( () => {
 		setIsEntityValid( isValid );
 	}, [ isValid, setIsEntityValid ] );
+}
+
+/** The mounted plain document supplies the same leave flow as core-data editors. */
+export function useDocumentChanges({ dirty, valid, saving, save }: DocumentChanges) {
+	const { documentChanges, setDocumentChanges } = useEntityValidity();
+	useLayoutEffect(() => {
+		setDocumentChanges({ dirty, valid, saving, save });
+	}, [dirty, valid, saving, save, setDocumentChanges]);
+	useLayoutEffect(() => () => setDocumentChanges(null), [setDocumentChanges]);
+	return documentChanges;
 }

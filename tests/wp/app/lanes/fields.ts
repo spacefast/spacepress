@@ -2,17 +2,17 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 //
 // Lane B (field access + conditional fields, phase 2 §4): a post-backed collection whose columns
-// carry `.access` and `.showIf`, linked to an `editor: false` table with an admin-only column.
-import { boolean, collection, email, group, id, integer, text } from "zero";
+// carry `.access` and `.showIf`, linked to a `table()` table with an admin-only column.
+import { boolean, collection, email, group, id, integer, text, table } from "zero";
 import { posts } from "../../../fixtures/blog/zero.config.ts";
 
-export const fieldTeams = collection("field_teams", {
+export const fieldTeams = table({
   id: id(),
   name: text().notNull(),
   budget: integer().access({ read: "admin" }),
-}, { editor: false, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-export const fieldStaff = collection("field_staff", {
+export const fieldStaff = collection({
   id: id(),
   name: text().notNull(),
   email: email().access({ read: "editor" }),
@@ -33,7 +33,7 @@ export const fieldStaff = collection("field_staff", {
   always: text().showIf({ OR: [{}, { kind: "pro" }] }),
   postId: integer().references(() => posts.id, { onDelete: "set null" }),
   notes: group({ fields: {
-    public: text(),
+    public: text().validate((value, ctx) => ctx.data.notes?.public === value || "Invalid note"),
     private: text().access({ read: "editor" }).showIf({ public: { isNotNull: true } }),
   } }),
   teamId: integer().references(() => fieldTeams.id, { onDelete: "set null" }),
@@ -47,11 +47,14 @@ export const fieldStaff = collection("field_staff", {
   },
 });
 
-export const schema = { fieldTeams, fieldStaff };
+export const collections = { fieldStaff };
+export const tables = { fieldTeams };
+export const users = {  };
+export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: any) => ({
   fieldStaff: { team: r.one.fieldTeams({ from: r.fieldStaff.teamId, to: r.fieldTeams.id }) },
-  fieldTeams: { members: r.many.fieldStaff() },
+  fieldTeams: { members: r.many.fieldStaff(), signups: r.many.signups() },
 });
 export const actions = {};
 export const globals = {};

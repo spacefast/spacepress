@@ -2,7 +2,7 @@
 // Zero writes them through Polylang's API and keeps synced columns equal across the group. Group and
 // language assertions read Polylang's own functions through WP-CLI, not Zero's view of them.
 // Pipeline semantics (validation, 409s, fallback edge cases) are proven in tests/php; this file
-// proves what Polylang and MySQL add. `phrases` (editor: false) uses Zero's own group column.
+// proves what Polylang and MySQL add. `phrases` (table()) uses Zero's own group column.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -33,6 +33,7 @@ test("translationOf puts both posts in one Polylang group and copies synced colu
   assert.deepEqual([fr.locale, fr.price, fr.tags, fr.summary, fr.translations], ["fr", 3, ["tea"], null, { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(en.id), ["en", { en: en.id, fr: fr.id }]);
   assert.deepEqual(polylang(fr.id), ["fr", { en: en.id, fr: fr.id }]);
+  assert.deepEqual(await ok("POST", "/actions/refsTranslations", { as: "editor", body: { id: en.id } }), ["en", "fr"]);
   await problem("POST", "/tours", { as: "editor", body: { title: "Again", locale: "fr", translationOf: en.id } }, { status: 409, code: "unique_violation", pointer: "/locale" });
   assert.deepEqual(polylang(en.id)[1], { en: en.id, fr: fr.id }, "a refused join leaves Polylang's group as it was");
 });
@@ -126,7 +127,7 @@ test("a hook failing after a translation joined leaves Polylang's group as it wa
   assert.deepEqual(out[1], { en: out[0] }, "the rolled-back join is not visible through Polylang in the same process");
 });
 
-test("editor: false collections keep their own translation group", async () => {
+test("tables keep their own translation group", async () => {
   const en = await ok("POST", "/phrases", { as: "editor", body: { text: `Hello ${run}`, weight: 1 } });
   const fr = await ok("POST", "/phrases", { as: "editor", body: { text: `Bonjour ${run}`, locale: "fr", translationOf: en.id } });
   assert.deepEqual([fr.weight, fr.translations], [1, { en: en.id, fr: fr.id }]);

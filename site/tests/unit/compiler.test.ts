@@ -1,9 +1,10 @@
 // The browser compiler agrees with the command line: same envelope for the same sources.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 import { Compiler, type Compiled, type Request } from "../../src/lib/compiler.ts";
 import { repo, zeroBinary, wasmPath } from "./helpers.ts";
@@ -44,6 +45,7 @@ function browserCheck(request: Request) {
 }
 
 const compiler = await Compiler.load(readFileSync(wasmPath()));
+const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 test("a config that builds on the command line builds in the browser, to the same outputs", () => {
   const dir = path.join(repo, "examples/pantry");
@@ -56,6 +58,22 @@ test("a config that builds on the command line builds in the browser, to the sam
   assert.equal(output.client["types.ts"], readFileSync(path.join(dir, "zero/client/types.ts"), "utf8"));
   assert.equal(output.client["schema.ts"], readFileSync(path.join(dir, "zero/client/schema.ts"), "utf8"));
   assert.equal(output.genTs, readFileSync(path.join(dir, "zero.gen.ts"), "utf8"));
+  // Class lowering and inference run through this same core in both environments.
+  const classDir = path.join(repo, "tests/differential");
+  const classFiles = { "zero.config.ts": readFileSync(path.join(classDir, "classes.ts"), "utf8") };
+  const className = `zero-classes-${process.pid}`;
+  const classProject = path.join("/tmp", className);
+  mkdirSync(classProject, { recursive: true });
+  try {
+    // Native check takes a project, while the browser holds the identical source in memory.
+    writeFileSync(path.join(classProject, "zero.config.ts"), classFiles["zero.config.ts"]);
+    const classes = browserCheck({ name: `tmp/${className}`, files: classFiles, previous: null });
+    assert.equal(classes.envelope, nativeCheck(classProject));
+    assert.equal(classes.check.ok, true);
+    assert.ok(classes.output);
+  } finally {
+    rmSync(classProject, { recursive: true, force: true });
+  }
 });
 
 test("the previous snapshot and migration files drive the next migration like they do on disk", () => {
@@ -128,6 +146,180 @@ test("a project without zero.config.ts is the command line's diagnostic", () => 
     const { envelope, output } = browserCheck({ name: `tmp/${name}`, files: {} });
     assert.equal(envelope, native);
     assert.equal(output, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// This seam owns browser/native normalization and generated-client typing; the
+// differential oracle owns PHP execution of the language constructs.
+test("finite type algebra preserves native outputs and strict client boundaries in WASM", () => {
+  const fixture = path.join(repo, "tests/fixtures/type-semantics");
+  const name = `zero-type-semantics-${process.pid}`;
+  const dir = path.join("/tmp", name);
+  mkdirSync(dir, { recursive: true });
+  try {
+    const files = sources(fixture);
+    for (const [rel, text] of Object.entries(files)) {
+      writeFileSync(path.join(dir, rel), text);
+    }
+    const { envelope, check, output } = browserCheck({ name, files });
+    assert.equal(envelope, nativeCheck(dir));
+    assert.equal(check.ok, true);
+    assert.ok(output);
+    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const plugins = path.join(dir, ".zero/wp-content/plugins");
+    const app = readdirSync(plugins).find((name) => name.startsWith("zero-app-"));
+    assert.ok(app);
+    assert.equal(output.functionsPhp, readFileSync(path.join(plugins, app, "zero/app/functions.php"), "utf8"));
+    for (const [name, text] of Object.entries(output.client)) {
+      assert.equal(text, readFileSync(path.join(dir, "zero/client", name), "utf8"));
+    }
+    const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(typed.status, 0, typed.stdout + typed.stderr);
+    const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
+    assert.equal(client.status, 0, client.stdout + client.stderr);
+
+    // Backend queries retain the authored JSON domain; wire types retain nulls.
+    const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
+type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
+type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
+class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
+const source = table({ body: json().$type<Payload>().notNull().localized(), label: text({ enum: ["first", "second"] }).notNull(), slug: slug({ source: "label" }).notNull(), details: group({ fields: { nullable: text(), defaulted: text().notNull().default("source") } }) }, { uid: true });
+type Selected = InferSelectModel<typeof source>;
+type Inserted = InferInsertModel<typeof source>;
+const members = userProjection({ email: email().notNull().unique().max(191), name: text().notNull() });
+type Member = InferSelectModel<typeof members>;
+class MemberView { constructor(public row: Member) {} read(): string { return this.row.name; } }
+class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
+type WithoutLocale = Omit<Inserted, "locale">;
+class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
+class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
+const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull(), translation: json().$type<WithoutLocale>().notNull() });
+export default defineConfig({ tables: { documents, source }, users: { members }, locales: { default: "en", all: ["en", "de"] }, actions: { read: action({ input: {}, handler: async () => {
+  const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
+  const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
+  const member = await db.query.members.findFirst();
+  const memberName = !member ? "" : new MemberView(member).read();
+  const selected = await db.query.source.findFirst();
+  const sourceTitle = !selected ? "" : new SelectedView(selected).read();
+  const row = await db.query.documents.findFirst();
+  return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
+} }) } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), storedSource);
+    const stored = browserCheck({ name, files: { "zero.config.ts": storedSource } });
+    assert.equal(stored.envelope, nativeCheck(dir));
+    assert.equal(stored.check.ok, true, stored.envelope);
+    const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(storedBuild.status, 0, storedBuild.stderr);
+    writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
+const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
+const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
+const inserted: Document["inserted"] = { body: wire, label: "second" };
+const translated: Document["inserted"] = { body: wire, translationOf: 1 };
+void selected; void inserted;`);
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] } },
+      include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
+    }));
+    const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
+
+    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+type Payload = InferSelectModel<typeof source>;
+const source = table({ body: json().$type<Payload>() });
+export default defineConfig({ tables: { source } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), recursiveModel);
+    const recursive = browserCheck({ name, files: { "zero.config.ts": recursiveModel } });
+    assert.equal(recursive.envelope, nativeCheck(dir));
+    assert.equal(recursive.check.ok, false);
+    assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
+    assert.equal(recursive.check.diagnostics[0]?.location?.file, "zero.config.ts");
+
+    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull(), right: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull() });`).join("\n");
+    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "zero";
+${modelTables}
+export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;
+    writeFileSync(path.join(dir, "zero.config.ts"), modelExpansion);
+    const expandedModel = browserCheck({ name, files: { "zero.config.ts": modelExpansion } });
+    assert.equal(expandedModel.envelope, nativeCheck(dir));
+    assert.equal(expandedModel.check.ok, false);
+    assert.match(expandedModel.check.diagnostics[0]?.message ?? "", /type expansion.*16384-step limit/);
+    assert.equal(expandedModel.check.diagnostics[0]?.location?.file, "zero.config.ts");
+    const modelTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+    assert.equal(modelTypes.status, 0, modelTypes.stdout + modelTypes.stderr);
+
+    // Each annotation root fits its own budget. Compiling C from the nested
+    // annotation must accept the same program as compiling it from new C first.
+    const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
+    const nestedType = "Box<".repeat(75) + "C" + ">".repeat(75);
+    const nestedValue = "{ value: ".repeat(75) + "new C()" + " }".repeat(75);
+    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "zero";
+type Box<T> = { value: T };
+${aliases}
+class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
+  ${prime ? "new C();" : ""}
+  const x: ${nestedType} = ${nestedValue}; return x;
+} }) } });`;
+    writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] }, skipLibCheck: true },
+      include: ["zero.config.ts"],
+    }));
+    for (const prime of [false, true]) {
+      const source = budgetSource(prime);
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, true, result.envelope);
+      assert.ok(result.output);
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
+
+    // Compact intersections must be bounded before their Cartesian expansion.
+    // Nine binary unions reach the supported boundary; fifteen used to create
+    // 32,768 distinct objects without exhausting the annotation-visit budget.
+    const binaryParts = (count: number) => Array.from({ length: count }, (_, i) => `({ k${i}: "a" } | { k${i}: "b" })`);
+    const binaryValue = (count: number) => Array.from({ length: count }, (_, i) => `k${i}: "a"`).join(", ");
+    const wideFields = Array.from({ length: 512 }, (_, i) => `field${i}: number`).join("; ");
+    const wideValue = Array.from({ length: 512 }, (_, i) => `field${i}: 1`).join(", ");
+    for (const probe of [
+      { parts: binaryParts(9), value: binaryValue(9), error: null },
+      { parts: binaryParts(15), value: binaryValue(15), error: /intersection expansion.*512-alternative limit/ },
+      // Thirty-two alternatives fit the candidate limit, but merging 512
+      // properties into each must consume the shared resolution-work budget.
+      {
+        parts: [`(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`, `{ ${wideFields} }`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
+      {
+        parts: [`{ ${wideFields} }`, `(${Array.from({ length: 32 }, (_, i) => `{ tag: "t${i}" }`).join(" | ")})`],
+        value: `tag: "t0", ${wideValue}`,
+        error: /type expansion.*16384-step limit/,
+      },
+    ]) {
+      const source = `import { action, defineConfig } from "zero";
+type Expanded = ${probe.parts.join(" & ")};
+export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
+  const x: Expanded = { ${probe.value} }; return x;
+} }) } });`;
+      writeFileSync(path.join(dir, "zero.config.ts"), source);
+      const result = browserCheck({ name, files: { "zero.config.ts": source } });
+      assert.equal(result.envelope, nativeCheck(dir));
+      assert.equal(result.check.ok, probe.error === null, result.envelope);
+      if (probe.error === null) {
+        assert.ok(result.output);
+      } else {
+        assert.equal(result.output, null);
+        assert.match(result.check.diagnostics[0]?.message ?? "", probe.error);
+        assert.equal(result.check.diagnostics[0]?.location?.file, "zero.config.ts");
+      }
+      const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
+      assert.equal(strict.status, 0, strict.stdout + strict.stderr);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

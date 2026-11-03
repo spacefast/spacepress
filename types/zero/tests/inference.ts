@@ -1,9 +1,9 @@
 // Positive checks: inferred types are exactly what the spec says.
 import {
   action, db, defineConfig, integer, text, job, email,
-  type AccessCtx, type BlockValue, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
+  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "zero";
-import { authors, comments, items, locations, posts, relations, schema, settings, shoppingList } from "./schema";
+import { authors, comments, items, locations, posts, relations, entities, settings, shoppingList } from "./schema";
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 export declare function expectType<T extends true>(): void;
@@ -49,7 +49,7 @@ expectType<
 type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
 expectType<Equal<Hero, { layout: "hero"; heading: string | null }>>();
 
-// Drafts collections (editor default) gain status/publishedAt; editor: false collections don't.
+// Collections gain status/publishedAt; tables don't.
 expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();
 expectType<Equal<Post["publishedAt"], string | null>>();
 expectType<Equal<Author["status"], "draft" | "published" | "scheduled">>();
@@ -107,7 +107,7 @@ async function queries() {
 }
 
 // Access rule functions see a typed ctx; read/update may return filters (with relation keys).
-type PostAccess = NonNullable<NonNullable<Parameters<typeof import("zero").collection>[2]>["access"]>;
+type PostAccess = NonNullable<NonNullable<Parameters<typeof import("zero").collection>[1]>["access"]>;
 declare const accessCtx: AccessCtx<Partial<InferInsertModel<typeof posts>>>;
 expectType<Equal<typeof accessCtx.user, User | null>>();
 expectType<Equal<typeof accessCtx.op, "read" | "create" | "update" | "delete">>();
@@ -120,14 +120,15 @@ export default defineConfig({
   jobs: { sendWelcome: job({ input: { email: email().notNull(), name: text().notNull().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
-  schema,
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   relations,
   globals: { settings },
   hooks: {
     posts: {
       // Hooks get a trailing ctx: who's writing, and where.
       async beforeCreate(data, ctx) {
-        expectType<Equal<typeof ctx, HookCtx>>();
+        expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
+        expectType<Equal<typeof ctx.data, typeof data>>();
         if (data.authorId == null && ctx.user) {
           const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
           if (author) data.authorId = author.id;

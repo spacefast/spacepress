@@ -8,6 +8,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
 
+if [[ ${1:-} == --s3 ]]; then
+  export ZERO_WP_S3=1
+fi
 cargo build -q
 zero="${CARGO_TARGET_DIR:-target}/debug/zero"
 # Retain downloads across the disposable source builds unless the caller chose a shared cache.
@@ -22,6 +25,9 @@ cleanup() {
 }
 trap cleanup EXIT
 rsync -a --exclude '/zero/' --exclude '/.zero/' --exclude '/zero.gen.ts' "$here/app/" "$build_app/"
+if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+  cp "$here/uploads.s3.ts" "$build_app/uploads.ts"
+fi
 "$zero" build "$build_app" --quiet >/dev/null
 # The client integration tests import this stable path; leave existing fixture migrations alone.
 mkdir -p "$here/app/zero/client"
@@ -35,10 +41,15 @@ rsync -a --delete "$build_app/.zero/wp-content/" tests/wp/.wp-content/
 "$here/harness.sh" up --wp-content tests/wp/.wp-content > "$here/.harness.json"
 cat "$here/.harness.json"
 
+if [[ ${ZERO_WP_S3:-0} == 1 ]]; then
+  node --test "$here/media.test.ts"
+  exit
+fi
 node --test --test-concurrency=1 "$here"/*.test.ts
+"$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.
 "$here/admin/subdir-run.sh"
 # Lane M: an original Zero 0.8 site migrated in place, on a fresh stack running the migrated app.
 "$here/legacy/run.sh"
-# Lane M2: its app users into an `auth: true` collection.
+# Lane M2: its app users into an user projection.
 "$here/legacy/users-run.sh"

@@ -6,7 +6,16 @@ use crate::schema::{ColType, Collection, Column, ROLES, RelKind, Schema};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ClassIdentity {
+    pub id: usize,
+    pub ancestors: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
+    /// Instance own fields, with a nominal dispatch identity. Methods are not JSON fields.
+    Instance(ClassIdentity, Box<Ty>),
+    Class(usize),
     Num,
     NumLit(f64),
     FreshNumLit(f64),
@@ -20,6 +29,11 @@ pub enum Ty {
     FreshBoolLit(bool),
     /// `null` and `undefined` (both PHP null).
     Null,
+    /// Type-only undefined, retained during annotation normalization and collapsed
+    /// to Null before annotations reach the PHP compiler.
+    Undefined,
+    /// Type-only void; it is not equivalent to undefined in conditional types.
+    Void,
     /// Values whose shape isn't known (untyped `json()` columns, `JSON.parse`).
     Unknown,
     Never,
@@ -74,16 +88,16 @@ impl Builder {
         let r = if self.returning { ", true" } else { "" };
         match self.kind {
             BuilderKind::Insert => format!(
-                "\\Zero\\db()->insert({t}, {}{r})",
+                "\\Zero\\Seam::insert({t}, {}{r})",
                 self.values.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Update => format!(
-                "\\Zero\\db()->update({t}, {}, {}{r})",
+                "\\Zero\\Seam::update({t}, {}, {}{r})",
                 self.set.as_deref().unwrap_or("[]"),
                 self.filter.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Delete => format!(
-                "\\Zero\\db()->delete({t}, {}{r})",
+                "\\Zero\\Seam::delete({t}, {}{r})",
                 self.filter.as_deref().unwrap_or("[]")
             ),
         }
@@ -148,16 +162,23 @@ impl Ty {
 
     pub fn non_null(&self) -> Ty {
         match self {
-            Ty::Union(items) => Ty::union(items.iter().filter(|t| **t != Ty::Null).cloned()),
-            Ty::Null => Ty::Never,
+            Ty::Union(items) => Ty::union(
+                items
+                    .iter()
+                    .filter(|t| **t != Ty::Null && **t != Ty::Undefined)
+                    .cloned(),
+            ),
+            Ty::Null | Ty::Undefined => Ty::Never,
             other => other.clone(),
         }
     }
 
     pub fn is_nullable(&self) -> bool {
         match self {
-            Ty::Null | Ty::Unknown => true,
-            Ty::Union(items) => items.contains(&Ty::Null),
+            Ty::Null | Ty::Undefined | Ty::Void | Ty::Unknown => true,
+            Ty::Union(items) => {
+                items.contains(&Ty::Null) || items.contains(&Ty::Undefined) || items.contains(&Ty::Void)
+            }
             _ => false,
         }
     }
@@ -191,6 +212,8 @@ impl Ty {
 
     pub fn describe(&self) -> String {
         match self {
+            Ty::Instance(_, fields) => format!("an instance with {}", fields.describe()),
+            Ty::Class(_) => "a class".into(),
             Ty::Num | Ty::FreshNumLit(_) => "number".into(),
             Ty::NumLit(value) => value.to_string(),
             Ty::Str => "string".into(),
@@ -198,6 +221,8 @@ impl Ty {
             Ty::Bool => "boolean".into(),
             Ty::BoolLit(value) | Ty::FreshBoolLit(value) => value.to_string(),
             Ty::Null => "null".into(),
+            Ty::Undefined => "undefined".into(),
+            Ty::Void => "void".into(),
             Ty::Unknown => "unknown".into(),
             Ty::Never => "never".into(),
             Ty::Array(t) => format!("{}[]", t.describe()),
@@ -232,6 +257,7 @@ impl Ty {
 
     pub fn field(&self, name: &str) -> Option<(Ty, bool)> {
         match self {
+            Ty::Instance(_, fields) => fields.field(name),
             Ty::Obj(fields) => fields.get(name).cloned(),
             Ty::Map(t) => Some(((**t).clone(), false)),
             // A union of objects (blocks items): fields every member has.
@@ -260,6 +286,9 @@ impl Ty {
 pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     match c.ty {
         ColType::Integer | ColType::Real | ColType::Media | ColType::File => Ty::Num,
+        ColType::Text if c.enum_values.is_some() => {
+            Ty::union(c.enum_values.as_ref().expect("enum").iter().cloned().map(Ty::StrLit))
+        }
         ColType::Text
         | ColType::Timestamp
         | ColType::Date
@@ -270,7 +299,12 @@ pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty
         ColType::Boolean => Ty::Bool,
         ColType::Json => json_ty(c),
         ColType::MediaList => Ty::Array(Box::new(Ty::Num)),
-        ColType::Select => Ty::Array(Box::new(Ty::Str)),
+        ColType::Select => Ty::Array(Box::new(
+            c.enum_values
+                .as_ref()
+                .map(|values| Ty::union(values.iter().cloned().map(Ty::StrLit)))
+                .unwrap_or(Ty::Str),
+        )),
         ColType::Group => fields_obj(c.fields.as_ref().expect("group fields"), json_ty, insert),
         ColType::Repeater => Ty::Array(Box::new(fields_obj(
             c.fields.as_ref().expect("repeater fields"),
@@ -282,7 +316,7 @@ pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty
                 let Ty::Obj(mut f) = fields_obj(fields, json_ty, insert) else {
                     unreachable!()
                 };
-                f.shift_insert(0, "layout".into(), (Ty::Str, false));
+                f.shift_insert(0, "layout".into(), (Ty::StrLit(name.clone()), false));
                 // Not a real field: names the layout so `item.layout === "hero"` can narrow.
                 f.insert(layout_marker(name), (Ty::Never, true));
                 Ty::Obj(f)
@@ -317,19 +351,33 @@ fn fields_obj(fields: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty
 
 fn col_select(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty {
     let base = col_base(c, json_ty, insert);
-    if c.not_null { base } else { base.nullable() }
+    if c.authored_not_null() { base } else { base.nullable() }
+}
+
+pub struct JsonType {
+    pub authored: Ty,
+    pub runtime: Ty,
 }
 
 thread_local! {
-    /// Resolved annotations keyed by schema column identity, reset for each compilation.
-    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, Ty>> = Default::default();
+    /// Resolved domains keyed by schema column identity, reset for each compilation.
+    pub static JSON_TYPES: std::cell::RefCell<std::collections::HashMap<usize, JsonType>> = Default::default();
 }
 
 pub fn json_ty(c: &Column) -> Ty {
     JSON_TYPES.with(|m| {
         m.borrow()
             .get(&(c as *const Column as usize))
-            .cloned()
+            .map(|t| t.runtime.clone())
+            .unwrap_or(Ty::Unknown)
+    })
+}
+
+pub fn json_authored_ty(c: &Column) -> Ty {
+    JSON_TYPES.with(|m| {
+        m.borrow()
+            .get(&(c as *const Column as usize))
+            .map(|t| t.authored.clone())
             .unwrap_or(Ty::Unknown)
     })
 }
@@ -340,13 +388,28 @@ fn pk_ty(c: &Collection) -> Ty {
 }
 
 pub fn row_of(c: &Collection) -> Ty {
-    let mut row = columns_row(&c.columns, &json_ty);
+    row_of_with(c, &json_ty)
+}
+
+pub fn row_of_with(c: &Collection, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
+    let mut row = columns_row(&c.columns, json_ty);
+    if let Ty::Obj(fields) = &mut row {
+        fields.retain(|name, _| !c.columns[name].hidden);
+    }
     if c.localized
         && let Ty::Obj(fields) = &mut row
         && let Some(t) = fields.get_mut("translations")
     {
         // §7.3: derived locale → id of every row in the translation group.
-        t.0 = Ty::Map(Box::new(pk_ty(c)));
+        t.0 = Ty::Obj(
+            c.columns["locale"]
+                .enum_values
+                .as_ref()
+                .expect("locales")
+                .iter()
+                .map(|locale| (locale.clone(), (pk_ty(c), true)))
+                .collect(),
+        );
     }
     row
 }
@@ -365,8 +428,12 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
 }
 
 pub fn insert(schema: &Schema, table: &str) -> Ty {
+    insert_with(schema, table, &json_ty)
+}
+
+pub fn insert_with(schema: &Schema, table: &str, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     let c = &schema.collections[table];
-    let mut t = columns_insert(&c.columns, &json_ty);
+    let mut t = columns_insert(&c.columns, json_ty);
     if c.localized
         && let Ty::Obj(fields) = &mut t
     {
@@ -387,6 +454,112 @@ pub fn insert(schema: &Schema, table: &str) -> Ty {
         }
     }
     t
+}
+
+/// Authored model annotations follow the declaration contract, before PHP's
+/// broader row/insert approximation or wire null normalization is applied.
+pub fn authored_model(c: &Collection, insert: bool) -> Ty {
+    let primary_key = || {
+        c.primary_key()
+            .map(|col| authored_column(col, false))
+            .unwrap_or(Ty::Num)
+    };
+    let fields = || {
+        c.columns
+            .values()
+            .filter(|col| !(col.hidden || insert && col.system && col.name == "translations"))
+            .map(|col| {
+                let ty = if col.system && col.name == "translations" && c.localized {
+                    Ty::Obj(
+                        c.columns["locale"]
+                            .enum_values
+                            .as_ref()
+                            .expect("locales")
+                            .iter()
+                            .map(|locale| (locale.clone(), (primary_key(), true)))
+                            .collect(),
+                    )
+                } else {
+                    authored_column(col, insert)
+                };
+                (
+                    col.name.clone(),
+                    (ty, insert && (!col.authored_not_null() || col.authored_has_default())),
+                )
+            })
+            .chain((insert && c.auth).then(|| ("password".into(), (Ty::Str, true))))
+            .collect::<IndexMap<_, _>>()
+    };
+    let mut fresh = fields();
+    if !insert || !c.localized {
+        return Ty::Obj(fresh);
+    }
+    fresh.insert("translationOf".into(), (Ty::Undefined, true));
+    let mut translation = fields();
+    for col in c
+        .columns
+        .values()
+        .filter(|col| !col.translated() && !col.primary_key && col.ty != ColType::Slug && col.name != "locale")
+    {
+        if let Some(field) = translation.get_mut(&col.name) {
+            field.1 = true;
+        }
+    }
+    translation.insert("translationOf".into(), (primary_key(), false));
+    Ty::union([Ty::Obj(fresh), Ty::Obj(translation)])
+}
+
+fn authored_column(col: &Column, insert: bool) -> Ty {
+    let fields = |fields: &IndexMap<String, Column>| {
+        Ty::Obj(
+            fields
+                .values()
+                .filter(|f| !f.hidden)
+                .map(|f| (f.name.clone(), (authored_column(f, false), false)))
+                .collect(),
+        )
+    };
+    let base = match col.ty {
+        ColType::Group => fields(col.fields.as_ref().expect("fields")),
+        ColType::Repeater => Ty::Array(Box::new(fields(col.fields.as_ref().expect("fields")))),
+        ColType::Blocks => Ty::Array(Box::new(Ty::union(col.layouts.as_ref().expect("layouts").iter().map(
+            |(layout, columns)| {
+                let Ty::Obj(mut values) = fields(columns) else {
+                    unreachable!()
+                };
+                values.shift_insert(0, "layout".into(), (Ty::StrLit(layout.clone()), false));
+                Ty::Obj(values)
+            },
+        )))),
+        _ => col_base(col, &json_authored_ty, false),
+    };
+    let ty = if col.authored_not_null() { base } else { base.nullable() };
+    if insert && matches!(col.ty, ColType::Group | ColType::Repeater | ColType::Blocks) {
+        authored_structured_write(ty)
+    } else {
+        ty
+    }
+}
+
+/// Declaration WriteStructured: nullable members may be omitted, including
+/// nested JSON members; NOT NULL members with defaults remain required.
+fn authored_structured_write(ty: Ty) -> Ty {
+    match ty {
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .into_iter()
+                .map(|(key, (ty, optional))| {
+                    let nullable = ty == Ty::Null || matches!(&ty, Ty::Union(parts) if parts.contains(&Ty::Null));
+                    (key, (authored_structured_write(ty), optional || nullable))
+                })
+                .collect(),
+        ),
+        Ty::Array(inner) => Ty::Array(Box::new(authored_structured_write(*inner))),
+        Ty::Tuple(parts) => Ty::Array(Box::new(Ty::union(parts.into_iter().map(authored_structured_write)))),
+        Ty::Map(inner) => Ty::Map(Box::new(authored_structured_write(*inner))),
+        Ty::Union(parts) => Ty::union(parts.into_iter().map(authored_structured_write)),
+        other => other,
+    }
 }
 
 pub fn columns_insert(columns: &IndexMap<String, Column>, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
@@ -490,8 +663,8 @@ pub fn access_ctx(data: Ty) -> Ty {
 }
 
 /// `ctx` for `.validate` (§1.2): the whole row being written.
-pub fn validate_ctx() -> Ty {
-    obj(&[("data", Ty::Map(Box::new(Ty::Unknown))), ("user", user().nullable())])
+pub fn data_ctx(data: Ty) -> Ty {
+    obj(&[("data", data), ("user", user().nullable())])
 }
 
 /// A media row (§4.6), what `with: { cover: true }` puts in place of the id.

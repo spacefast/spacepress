@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig } from "zero";
-const notes = collection("notes", { id: id(), secret: text().access({ read: () => { return; } }) }, { editor: false });
-export default defineConfig({ schema: { notes } });
+import { collection, id, text, defineConfig, table } from "zero";
+const notes = table({ id: id(), secret: text().access({ read: () => { return; } }) });
+export default defineConfig({ tables: { notes } });

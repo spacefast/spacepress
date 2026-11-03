@@ -538,9 +538,9 @@ final class Plugin
             $raw = $exists ? get_post_meta($postId, $key, true) : null;
             $empty = !$exists || (!in_array($def['type'], ['boolean', 'select', 'mediaList'], true) && in_array($raw, ['', false], true));
             if (!$created && isset($def['onUpdate'])) {
-                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def['type']), $col);
+                $values[$col] = self::generated($def, Schema::generate($def['onUpdate'], $def), $col);
             } elseif (isset($def['default']) && $empty) {
-                $values[$col] = self::generated($def, Schema::generate($def['default'], $def['type']), $col);
+                $values[$col] = self::generated($def, Schema::generate($def['default'], $def), $col);
             } elseif ($def['type'] === 'boolean' && $raw === '') {
                 $values[$col] = Schema::store($def, false);
             }

@@ -67,7 +67,7 @@ add support for nested fields or executable admin components.
 
 A required text field named `title` enables a WordPress custom post type with
 the target's draft/revision behavior. Otherwise the imported collection uses a
-custom table (`editor: false`). The report calls out this storage choice and the
+SQL table (`table()` in `tables`). The report calls out this storage choice and the
 need to review publishing behavior. Import does not adopt existing WordPress
 post types. Original Zero's native `posts`, `pages` and `media` declarations are
 refused because creating new stores would change their ownership.
@@ -108,10 +108,10 @@ a date alone and epoch milliseconds; Sanity accepted many other ISO 8601
 spellings (week, ordinal, reduced and compact forms, expanded years, impossible
 dates, no timezone, and more), which are all refused now.
 
-Zero's PHP runtime reads an object keyed `"0"`, `"1"`, ... in order back as an
-array (`{}` itself is kept). A JSON default that is or contains one is refused
-at its `defaultValue` pointer, and `zero build` rejects such a `.default()` on
-any `json()` column.
+JSON defaults preserve objects and arrays as distinct shapes, including empty
+objects, empty arrays, and nested objects keyed `"0"`, `"1"`, ... in order.
+The importer, compiled handlers and storage round trip retain those objects;
+numeric property names alone do not cause a default to be refused.
 
 Unspecified REST permissions are emitted as `false` for read/create/update/
 delete, rather than inheriting Zero's public-read default. Literal Payload

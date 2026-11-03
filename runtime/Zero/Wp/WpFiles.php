@@ -8,8 +8,8 @@ use Zero\Media\FileStorage;
 use Zero\Media\Files;
 
 /**
- * Private files on WordPress (phase 2 §7.2): rows in `{prefix}zero__files`, bytes in
- * `uploads/zero-private/<app>/<bucket>/<uuid>`, denied to the web server by `.htaccess`.
+ * Private files on WordPress: app-scoped rows in `{prefix}zero__files`, bytes in S3 or
+ * local `uploads/zero-private/<app>/<bucket>/<uuid>`, denied by `.htaccess`.
  *
  * Nothing guarantees the web server reads `.htaccess` (nginx ignores it), so the runtime proves it:
  * on activation and daily on admin_init it writes a probe file and fetches its direct URL. Anything
@@ -36,14 +36,16 @@ final class WpFiles implements FileStorage
     {
         $install = static function (): void {
             self::ensureSecret();
-            self::protect();
-            self::probe();
+            if (!Uploads::active()) {
+                self::protect();
+                self::probe();
+            }
         };
         add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'zero-') ? $install() : null);
         // Sites upgraded in place (no reactivation) install protection when the runtime adds the table.
         add_action('zero_runtime_tables_installed', $install);
         add_action('admin_init', static function (): void {
-            if ((int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
+            if (!Uploads::active() && (int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
                 self::probe();
             }
         });
@@ -170,6 +172,10 @@ final class WpFiles implements FileStorage
 
     public function unavailable(): ?string
     {
+        if (Uploads::active()) {
+            Uploads::store();
+            return null;
+        }
         if (get_option(self::OK) === '1') {
             return null;
         }
@@ -179,6 +185,13 @@ final class WpFiles implements FileStorage
 
     public function store(string $tmpPath, string $rel): void
     {
+        if (Uploads::active()) {
+            $key = Uploads::fileKey($rel);
+            Uploads::store()->put($key, $tmpPath, (new \finfo(FILEINFO_MIME_TYPE))->file($tmpPath) ?: 'application/octet-stream');
+            $this->db->onRollback(static fn () => Uploads::discard($key));
+            @unlink($tmpPath);
+            return;
+        }
         self::protect();
         $dest = $this->absolute($rel);
         if (!is_dir(dirname($dest)) && !wp_mkdir_p(dirname($dest))) {
@@ -206,6 +219,9 @@ final class WpFiles implements FileStorage
 
     public function insert(array $row): int
     {
+        if (Uploads::active()) {
+            $row['path'] = 's3:' . Uploads::fileKey($row['path']);
+        }
         $this->db->run(
             'INSERT INTO `' . $this->table() . '` (`app`, `bucket`, `filename`, `mime`, `size`, `path`, `ownerId`, `createdAt`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [$this->app, $row['bucket'], $row['filename'], $row['mime'], $row['size'], $row['path'], $row['ownerId'], $row['createdAt']],
@@ -232,13 +248,44 @@ final class WpFiles implements FileStorage
     public function delete(array $row): void
     {
         $this->db->run('DELETE FROM `' . $this->table() . '` WHERE `app` = ? AND `id` = ?', [$this->app, $row['id']]);
-        $file = $this->absolute($row['path']);
-        $this->db->afterCommit(static fn () => @unlink($file));
+        if (str_starts_with($row['path'], 's3:')) {
+            if (!Uploads::active()) {
+                throw \Zero\Media\S3::unavailable();
+            }
+            $this->db->afterCommit(static fn () => Uploads::discard(substr($row['path'], 3)));
+        } else {
+            $file = $this->absolute($row['path']);
+            $this->db->afterCommit(static fn () => @unlink($file));
+        }
     }
 
-    public function absolute(string $rel): string
+    private function absolute(string $rel): string
     {
         return self::root() . '/' . $this->app . '/' . $rel;
+    }
+
+    public function stream(string $rel): \Closure
+    {
+        if (str_starts_with($rel, 's3:')) {
+            if (!Uploads::active()) {
+                throw \Zero\Media\S3::unavailable();
+            }
+            return Uploads::store()->stream(substr($rel, 3));
+        }
+        if (Uploads::active()) {
+            throw new \Zero\HttpError(503, 'uploads_migration_required', 'This file must be migrated before enabling S3 uploads');
+        }
+        $path = $this->absolute($rel);
+        if (!is_file($path)) {
+            throw \Zero\HttpError::notFound('No such file');
+        }
+        return static function () use ($path): void {
+            $in = fopen($path, 'rb');
+            if ($in !== false) {
+                fpassthru($in);
+                fclose($in);
+            }
+        };
     }
 
     public function apiUrl(string $route): string
@@ -248,6 +295,9 @@ final class WpFiles implements FileStorage
 
     public function describe(): array
     {
+        if (Uploads::active()) {
+            return ['backend' => 's3', 'protected' => true, 'checkedAt' => null];
+        }
         return ['protected' => get_option(self::OK) === '1', 'checkedAt' => (int) get_option(self::CHECKED, 0) ?: null];
     }
 

@@ -46,6 +46,53 @@ pub struct Param {
     pub span: Span,
 }
 
+#[derive(Debug)]
+pub struct Class {
+    pub name: String,
+    pub base: Option<String>,
+    pub fields: Vec<ClassField>,
+    pub methods: Vec<(String, bool, Rc<Func>)>,
+    pub constructor: Option<Rc<Func>>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct ClassField {
+    pub name: String,
+    pub is_static: bool,
+    pub ann: Option<TyAnn>,
+    pub init: Option<Expr>,
+    pub span: Span,
+}
+
+impl ClassField {
+    pub fn initializer(&self, module: usize) -> Option<Rc<Func>> {
+        Some(Rc::new(Func {
+            name: None,
+            params: vec![Param {
+                pat: Pat::Id(
+                    "this".into(),
+                    Span {
+                        end: self.span.start,
+                        ..self.span
+                    },
+                ),
+                ann: None,
+                default: None,
+                optional: false,
+                rest: false,
+                span: self.span,
+            }],
+            body: FnBody::Expr(self.init.as_ref()?.clone()),
+            is_async: false,
+            ret: self.ann.clone(),
+            type_params: vec![],
+            span: self.span,
+            module,
+        }))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Pat {
     Id(String, Span),
@@ -160,7 +207,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     TypeAlias {
         name: String,
-        params: Vec<String>,
+        params: Vec<TypeParam>,
         ty: TyAnn,
     },
     Import {
@@ -185,7 +232,7 @@ pub enum Stmt {
     Exported(P<Stmt>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
@@ -223,26 +270,28 @@ pub enum LogOp {
     Nullish,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ArrEl {
     Item(Expr),
     Spread(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PropKey {
     Static(String),
     Computed(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Prop {
     KV(PropKey, Expr),
     Spread(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind {
+    Class(Rc<Class>),
+    Instanceof(P<Expr>, P<Expr>),
     Num(f64),
     Str(String),
     Bool(bool),
@@ -309,7 +358,15 @@ pub enum AssignOp {
     Log(LogOp),
 }
 
-/// TypeScript type annotations, kept syntactic; resolved in `types.rs`.
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: String,
+    pub constraint: Option<TyAnn>,
+    pub default: Option<TyAnn>,
+    pub span: Span,
+}
+
+/// TypeScript type annotations, kept syntactic until PHP compilation.
 #[derive(Debug, Clone)]
 pub enum TyAnn {
     Num,
@@ -330,11 +387,26 @@ pub enum TyAnn {
     /// `Record<string, T>` and `{ [k: string]: T }`.
     Map(P<TyAnn>),
     Union(Vec<TyAnn>),
+    Intersection(Vec<TyAnn>, Span),
     Fn(Vec<(TyAnn, bool)>, P<TyAnn>),
     /// Named reference with type arguments, e.g. `Item`, `Promise<T>`, `InferSelect<typeof items>`.
     Ref(String, Vec<TyAnn>, Span),
     /// `typeof a.b.c`
     Query(Vec<String>, Span),
-    /// `T["key"]`
-    Indexed(P<TyAnn>, String),
+    KeyOf(P<TyAnn>, Span),
+    Indexed(P<TyAnn>, P<TyAnn>, Span),
+    Mapped {
+        key: String,
+        keys: P<TyAnn>,
+        value: P<TyAnn>,
+        optional: Option<bool>,
+        span: Span,
+    },
+    Conditional {
+        check: P<TyAnn>,
+        extends: P<TyAnn>,
+        yes: P<TyAnn>,
+        no: P<TyAnn>,
+        span: Span,
+    },
 }

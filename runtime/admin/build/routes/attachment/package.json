@@ -3,8 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/media/$id",
-		"beforeLoad": true
+		"path": "/media/$id"
 	},
 	"dependencies": {
 		"@wordpress/base-styles": "catalog:",
@@ -28,7 +27,8 @@
 		"@zero-admin/dataviews": "workspace:*",
 		"@zero-admin/design-system": "workspace:*",
 		"@zero-admin/fields-next": "workspace:*",
-		"clsx": "catalog:"
+		"clsx": "catalog:",
+		"@zero-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

@@ -1,0 +1,20 @@
+---
+// One file excerpt with its name, highlighted.
+import { highlight } from "../lib/highlight.ts";
+import type { ResolvedPane } from "../lib/tour.ts";
+
+interface Props {
+  pane: ResolvedPane;
+}
+const { pane } = Astro.props;
+---
+
+<figure class="pane">
+  <figcaption><code>{pane.label}</code></figcaption>
+  <Fragment set:html={await highlight(pane.code, pane.lang)} />
+</figure>
+
+<style>
+  .pane { margin: 0 0 0.75rem; }
+  figcaption { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.3rem; }
+</style>

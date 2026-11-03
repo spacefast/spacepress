@@ -1,5 +1,19 @@
 // Generated client types for localized collections (§7.3).
 import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./zero/client/types";
+import "./zero.gen";
+import { db } from "zero";
+
+async function registryTranslations() {
+  for (const row of await db.query.guides.findMany()) {
+    const translations: Partial<Record<"en" | "de", number>> = row.translations;
+    void translations;
+  }
+  for (const row of await db.query.codes.findMany()) {
+    const translations: Partial<Record<"en" | "de", string>> = row.translations;
+    void translations;
+  }
+}
+void registryTranslations;
 
 const locale: Locale = "de";
 // @ts-expect-error a locale outside the config

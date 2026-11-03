@@ -209,15 +209,8 @@ final class Db
                 array_push($guards, ...$this->readGuards($collection, $viewer));
             }
             $filterViewer ??= $viewer;
-            // The one point before SQL: query options and access guards are plain arrays, except json()
-            // operands (`{}` and `[]` compare differently). Validate even an empty partition.
-            $sqlOpts = Seam::query($collection, $opts, $this->schema);
-            $guards = array_map(fn ($g) => Seam::filter($collection, $g, $this->schema), $guards);
-            $q = Sql::select($this->schema, $this->store, $collection, $sqlOpts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => array_map(
-                    fn ($g) => Seam::filter($target, $g, $this->schema),
-                    $this->readGuards($target, $filterViewer),
-                ));
+            $q = Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
+                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
             if ($partition !== null && $partition[1] === []) {
                 return [];
             }
@@ -271,8 +264,6 @@ final class Db
     {
         return $this->current(function () use ($collection, $where, $guards): array {
             $pk = $this->schema->collection($collection)['primaryKey'];
-            $where = $where === null ? null : Seam::filter($collection, $where, $this->schema);
-            $guards = array_map(fn ($g) => Seam::filter($collection, $g, $this->schema), $guards);
             $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
 
             return array_column($this->store->select($collection, $q), $pk);
@@ -284,7 +275,7 @@ final class Db
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
-        $r = $this->current(fn () => Access::evaluate($rule, $viewer, 'read'));
+        $r = $this->current(fn () => Access::evaluate($rule, $viewer, 'read', null, $spec['columns'], $collection));
         if ($r === false) {
             throw Access::deny($viewer->user, "read $collection");
         }
@@ -457,11 +448,11 @@ final class Db
      * @param ?callable(callable(): array): array $around per-row persistence continuation, after access checks
      * @return ?list<array>
      */
-    public function insert(string $collection, array|JsObject $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
+    public function insert(string $collection, array|JsObject|JsArray $values, bool $returning = false, ?Viewer $viewer = null, ?callable $around = null): ?array
     {
         // Only the row containers unwrap here: a json() value inside a row keeps its `{}`.
         $values = Seam::container($values);
-        $rows = $values !== [] && array_is_list($values) ? array_map(static fn ($r) => Seam::container($r), $values) : [$values];
+        $rows = $values !== [] && array_is_list($values) ? array_map(fn ($r) => Seam::toPhp($r, $this->schema->collection($collection)['columns']), $values) : [Seam::toPhp($values, $this->schema->collection($collection)['columns'])];
 
         return $this->nested(function () use ($collection, $rows, $returning, $viewer, $around) {
             $spec = $this->schema->collection($collection);
@@ -531,7 +522,7 @@ final class Db
     /** update/delete rule → filters for the row select; throws 401/403 when false. */
     private function writeGuards(string $collection, string $op, Viewer $viewer, ?array $data): array
     {
-        $r = $this->current(fn () => Access::evaluate(Access::collectionRules($this->schema->collection($collection))[$op], $viewer, $op, $data));
+        $r = $this->current(fn () => Access::evaluate(Access::collectionRules($this->schema->collection($collection))[$op], $viewer, $op, $data, $this->schema->collection($collection)['columns'], $collection));
         if ($r === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
         }
@@ -552,7 +543,7 @@ final class Db
             }
             $this->requireGeneratedVisibility($collection, $generations, $viewer);
             foreach ($generations as $name => $generation) {
-                $data[$name] = Schema::generate($generation, $columns[$name]['type']);
+                $data[$name] = Schema::generate($generation, $columns[$name]);
             }
 
             return $data;
@@ -562,7 +553,6 @@ final class Db
     private function createOne(string $collection, array $spec, array $data, ?Viewer $viewer, ?callable $around = null): array
     {
         $columns = $spec['columns'];
-        $data = Seam::toPhp($data, $columns);
         $provided = $data;
         Extensions::input('create', $collection, $data, null, $viewer, $provided);
         $this->rejectUnknown($columns, $data);
@@ -581,7 +571,7 @@ final class Db
             }
         }
         if ($viewer !== null) {
-            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows");
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', $data, "create $collection rows", $columns);
         }
         $write = fn (): array => $this->persistCreate($collection, $spec, $data, $viewer);
 
@@ -593,12 +583,16 @@ final class Db
         $columns = $spec['columns'];
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeCreate'])) {
-            $fn = '\\ZeroApp\\' . $spec['hooks']['beforeCreate'];
-            $data = Seam::rowToJs($collection, $data);
-            $ctx = Seam::ctx($ctx, $columns);
-            $r = $fn($data, $ctx);
-            if (is_array($r) || $r instanceof JsObject) {
-                $data = Seam::toPhp($r, $columns);
+            $slot = $spec['hooks']['beforeCreate'];
+            if (is_string($slot)) {
+                $fn = '\\ZeroApp\\' . $slot;
+                $jsCtx = Seam::ctx($ctx + ['data' => $data], $columns);
+                $data = $jsCtx->p['data'];
+                $result = $fn($data, $jsCtx);
+                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data);
+            } else {
+                $result = $slot($data, $ctx);
+                if (is_array($result)) { $data = $result; }
             }
             $this->rejectUnknown($columns, $data);
         }
@@ -648,7 +642,6 @@ final class Db
     {
         $columns = $spec['columns'];
         $pk = $spec['primaryKey'];
-        $patch = Seam::toPhp($patch, $columns);
         $provided = $patch;
         Extensions::input('update', $collection, $patch, $existing, $viewer, $provided);
         $this->checkPatch($spec, $existing, $patch);
@@ -661,7 +654,7 @@ final class Db
         $this->requireGeneratedVisibility($collection, $generations, $viewer ?? $errorViewer);
         foreach ($columns as $name => $col) {
             if (isset($col['onUpdate']) && !array_key_exists($name, $patch)) {
-                $patch[$name] = Schema::generate($col['onUpdate'], $col['type']);
+                $patch[$name] = Schema::generate($col['onUpdate'], $col);
             }
         }
         if (($spec['drafts'] ?? false) && (array_key_exists('status', $patch) || array_key_exists('publishedAt', $patch))) {
@@ -673,13 +666,16 @@ final class Db
         $this->checkPatch($spec, $previous, $patch);
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {
-            $fn = '\\ZeroApp\\' . $spec['hooks']['beforeUpdate'];
-            $patch = Seam::rowToJs($collection, $patch);
-            $existing = Seam::rowToJs($collection, $existing);
-            $ctx = Seam::ctx($ctx, $columns);
-            $r = $fn($patch, $existing, $ctx);
-            if (is_array($r) || $r instanceof JsObject) {
-                $patch = Seam::toPhp($r, $columns);
+            $slot = $spec['hooks']['beforeUpdate'];
+            if (is_string($slot)) {
+                $fn = '\\ZeroApp\\' . $slot;
+                $jsCtx = Seam::ctx($ctx + ['data' => $patch], $columns);
+                $patch = $jsCtx->p['data'];
+                $result = $fn($patch, Seam::rowToJs($collection, $existing), $jsCtx);
+                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch);
+            } else {
+                $result = $slot($patch, $existing, $ctx);
+                if (is_array($result)) { $patch = $result; }
             }
             $this->checkPatch($spec, $previous, $patch);
         }
@@ -853,7 +849,7 @@ final class Db
                         }
                     });
                 } elseif ($action === 'set null' || $action === 'set default') {
-                    $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c['type']) : null;
+                    $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
                     $this->update((string) $child, [$col => $value], $where, errorViewer: $viewer);
                 } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
@@ -944,7 +940,7 @@ final class Db
         $this->checkReferences($columns, $norm, $viewer);
         $ctx = ['data' => $full, 'user' => $this->actor];
         foreach ($norm as $name => $v) {
-            Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx);
+            Schema::checkRules($columns[$name], $v, (string) $name, HttpError::seg($name), $ctx, $columns);
         }
         $refs = [];
         foreach ($norm as $name => $v) {
@@ -1159,10 +1155,15 @@ final class Db
         if (!isset($spec['hooks'][$name])) {
             return;
         }
-        $fn = '\\ZeroApp\\' . $spec['hooks'][$name];
-        $ctx = Seam::ctx($this->hookCtx(), $spec['columns']);
-        $row = Seam::rowToJs($collection, $row);
-        $previous = $previous === null ? null : Seam::rowToJs($collection, $previous);
+        $slot = $spec['hooks'][$name];
+        $ctx = $this->hookCtx();
+        $fn = $slot;
+        if (is_string($slot)) {
+            $fn = '\\ZeroApp\\' . $slot;
+            $ctx = Seam::ctx($ctx, $spec['columns']);
+            $row = Seam::rowToJs($collection, $row);
+            $previous = $previous === null ? null : Seam::rowToJs($collection, $previous);
+        }
         if ($previous === null) {
             $fn($row, $ctx);
         } else {
@@ -1342,7 +1343,7 @@ final class Db
                 if (array_key_exists($field, $stored)) {
                     $out[$field] = Schema::decode($f, $stored[$field]);
                 } else {
-                    $out[$field] = isset($f['default']) ? Schema::normalize($f, Schema::generate($f['default'], $f['type']), (string) $field, '') : null;
+                    $out[$field] = isset($f['default']) ? Schema::normalize($f, Schema::generate($f['default'], $f), (string) $field, '') : null;
                 }
             }
 
@@ -1356,7 +1357,7 @@ final class Db
         $g = $this->schema->global($name);
         $patch = Seam::toPhp($patch, $g['fields']);
         if ($viewer !== null) {
-            $this->current(fn () => Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name"));
+            $this->current(fn () => Access::require(Access::globalRules($g)['update'], $viewer, 'update', $patch, "update $name", $g['fields']));
         }
         $fields = $g['fields'];
         $this->rejectUnknown($fields, $patch);
@@ -1400,14 +1401,20 @@ final class Db
         return $this->current(fn () => $this->media->list($opts));
     }
 
-    /** Delete a media row: null `media` columns and drop the id from `mediaList` columns first (hooks + revisions apply). */
-    public function mediaDelete(int $id, ?Viewer $viewer = null): ?array
+    /**
+     * Delete a media row: null `media` columns and drop the id from `mediaList` columns first
+     * (hooks + revisions apply). A platform's native transport may supply its own removal callback
+     * to retain native response semantics and plugin hooks; a failure must throw to roll back.
+     *
+     * @param ?callable(): void $remove
+     */
+    public function mediaDelete(int $id, ?Viewer $viewer = null, ?callable $remove = null): ?array
     {
         if ($viewer !== null) {
             Access::require(Access::MEDIA['delete'], $viewer, 'delete', null, 'delete media');
         }
 
-        return $this->nested(function () use ($id) {
+        return $this->nested(function () use ($id, $remove) {
             $row = $this->media->get($id);
             if ($row === null) {
                 return null;
@@ -1426,7 +1433,7 @@ final class Db
                     }
                 }
             }
-            $this->media->delete($id);
+            $remove === null ? $this->media->delete($id) : $remove();
 
             return $row;
         });

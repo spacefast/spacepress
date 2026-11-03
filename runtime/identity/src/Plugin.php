@@ -7,7 +7,7 @@ namespace Zero\Identity;
 final class Plugin
 {
     /** Equal to the zero-runtime version built alongside it (`Runtime::identity()` compares them). */
-    public const VERSION = "0.2.0";
+    public const VERSION = "0.3.0";
     public static DB $db;
     public static Accounts $accounts;
     public static Sessions $sessions;

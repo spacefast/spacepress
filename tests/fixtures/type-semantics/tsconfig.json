@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2023",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "paths": { "zero": ["../../../types/zero/index.d.ts"] },
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "include": ["zero.config.ts", "shapes.ts"]
+}

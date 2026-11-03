@@ -11,7 +11,7 @@ import { defineConfig } from "zero";
 export default defineConfig({
   name: "site",
   target: "wp",
-  schema: {},
+  collections: {},
   plugins: {
     "classic-editor": "1.6.7",
   },

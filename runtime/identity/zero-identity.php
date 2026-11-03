@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zero Identity
  * Description: Accounts, verified emails, passkeys, MFA and an OpenID Connect issuer for WordPress.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires at least: 7.1
  * Requires PHP: 8.2
  * License: GPL-2.0-or-later

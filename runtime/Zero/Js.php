@@ -32,7 +32,7 @@ final class Js
             $v === null => 'null',
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
-            is_array($v) => array_is_list($v) ? self::join($v) : '[object Object]',
+            $v instanceof JsArray => self::join($v),
             $v instanceof JsObject => '[object Object]',
             $v instanceof RegExp => (string) $v,
             $v instanceof \Closure => 'function () { [native code] }',
@@ -126,8 +126,8 @@ final class Js
         if (is_bool($v)) {
             return (int) $v;
         }
-        if (is_array($v)) {
-            return array_is_list($v) ? self::toNumber(self::str($v)) : NAN;
+        if ($v instanceof JsArray) {
+            return self::toNumber(self::str($v));
         }
         if (!is_string($v)) {
             return NAN;
@@ -325,7 +325,11 @@ final class Js
         if (is_int($v)) {
             return self::n($v);
         }
-        if (is_array($v)) {
+        if ($v instanceof JsObject) {
+            foreach ($v->p as $k => $x) { $v->p[$k] = self::jsNumbers($x); }
+        } elseif ($v instanceof JsArray) {
+            foreach ($v->a as $k => $x) { $v->a[$k] = self::jsNumbers($x); }
+        } elseif (is_array($v)) {
             foreach ($v as $k => $x) {
                 if (is_int($x) || is_array($x)) {
                     $v[$k] = self::jsNumbers($x);
@@ -408,7 +412,7 @@ final class Js
             is_string($v) => 'string',
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
-            $v instanceof \Closure => 'function',
+            $v instanceof \Closure, $v instanceof JsClass => 'function',
             default => 'object',
         };
     }
@@ -554,15 +558,11 @@ final class Js
     private static function fromUnits(string $u): string
     {
         $n = strlen($u);
-        for ($i = 0; $i + 1 < $n; $i += 2) {
-            $c = ord($u[$i]) | (ord($u[$i + 1]) << 8);
-            if ($c >= 0xD800 && $c <= 0xDBFF) {
-                $next = $i + 3 < $n ? (ord($u[$i + 2]) | (ord($u[$i + 3]) << 8)) : 0;
-                if ($next < 0xDC00 || $next > 0xDFFF) {
-                    self::loneSurrogate();
-                }
-                $i += 2;
-            } elseif ($c >= 0xDC00 && $c <= 0xDFFF) {
+        // The input is a contiguous slice of well-formed UTF-16; only its boundaries can split a pair.
+        if ($n >= 2) {
+            $first = ord($u[0]) | (ord($u[1]) << 8);
+            $last = ord($u[$n - 2]) | (ord($u[$n - 1]) << 8);
+            if (($first >= 0xDC00 && $first <= 0xDFFF) || ($last >= 0xD800 && $last <= 0xDBFF)) {
                 self::loneSurrogate();
             }
         }
@@ -646,13 +646,13 @@ final class Js
     }
 
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
-    public static function indexOf(string|array $s, mixed $needle, mixed $from = 0): int
+    public static function indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int
     {
         $from = self::toNumber($from);
-        if (is_array($s)) {
-            $len = count($s);
+        if ($s instanceof JsArray) {
+            $len = count($s->a);
             for ($i = self::relIndex($from, $len); $i < $len; $i++) {
-                if (self::strictEq($s[$i], $needle)) {
+                if (self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -676,19 +676,19 @@ final class Js
      * An omitted `fromIndex` searches from the end; a given one (even `null`, which JS turns
      * into 0) is a number. Omission is the default argument, never `null`.
      */
-    public static function lastIndexOf(string|array $s, mixed $needle, mixed ...$fromArg): int
+    public static function lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int
     {
         $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
-        if (is_array($s)) {
+        if ($s instanceof JsArray) {
             // fromIndex: relative to the end when negative, clamped to the last element.
-            $last = count($s) - 1;
+            $last = count($s->a) - 1;
             if ($from !== null) {
                 // Clamp before the cast: -Infinity or -1e20 must search nothing, not index 0.
                 $f = self::toInteger($from);
-                $last = (int) ($f < 0 ? max(count($s) + $f, -1) : min($f, $last));
+                $last = (int) ($f < 0 ? max(count($s->a) + $f, -1) : min($f, $last));
             }
             for ($i = $last; $i >= 0; $i--) {
-                if (self::strictEq($s[$i], $needle)) {
+                if (self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -714,11 +714,11 @@ final class Js
     }
 
     /** @return list<?string> */
-    public static function split(string $s, string|RegExp $sep, int|float|null $limit = null): array
+    public static function split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray
     {
         $lim = $limit === null ? 0xFFFFFFFF : self::toUint32($limit);
         if ($lim === 0) {
-            return [];
+            return new JsArray();
         }
         if (is_string($sep)) {
             if ($sep === '') {
@@ -730,10 +730,10 @@ final class Js
                 $parts = explode($sep, $s);
             }
 
-            return array_slice($parts, 0, $lim);
+            return new JsArray(array_slice($parts, 0, $lim));
         }
         if ($s === '') {
-            return $sep->matchAt($s, 0) !== null ? [] : [$s];
+            return new JsArray($sep->matchAt($s, 0) !== null ? [] : [$s]);
         }
         $out = [];
         $size = strlen($s);
@@ -751,19 +751,19 @@ final class Js
             }
             $out[] = substr($s, $p, $start - $p);
             if (count($out) === $lim) {
-                return $out;
+                return new JsArray($out);
             }
             foreach ($groups as $g) {
                 $out[] = $g;
                 if (count($out) === $lim) {
-                    return $out;
+                    return new JsArray($out);
                 }
             }
             $p = $q = $end;
         }
         $out[] = substr($s, $p);
 
-        return $out;
+        return new JsArray($out);
     }
 
     /** Byte length of the UTF-8 character starting at byte $i (1 at end of string). */
@@ -953,7 +953,7 @@ final class Js
     }
 
     /** @return ?list<?string> */
-    public static function strMatch(string $s, RegExp $re): ?array
+    public static function strMatch(string $s, RegExp $re): ?JsArray
     {
         if ($re->global) {
             $all = [];
@@ -961,11 +961,11 @@ final class Js
                 $all[] = substr($s, $start, $end - $start);
             }
 
-            return $all === [] ? null : $all;
+            return $all === [] ? null : new JsArray($all);
         }
         $m = $re->matchAt($s, 0);
 
-        return $m === null ? null : [substr($s, $m[0], $m[1] - $m[0]), ...$m[2]];
+        return $m === null ? null : new JsArray([substr($s, $m[0], $m[1] - $m[0]), ...$m[2]]);
     }
 
     // ---------------------------------------------------------------- regexp
@@ -977,217 +977,355 @@ final class Js
 
     // ---------------------------------------------------------------- arrays
 
-    public static function find(array $a, callable $f): mixed
+    public static function index(int|float $i): ?int
     {
-        foreach ($a as $i => $item) {
-            if (self::truthy($f($item, $i))) {
-                return $item;
-            }
-        }
+        return self::isInteger($i) && $i >= 0 && $i <= 4294967294 ? (int) $i : null;
+    }
 
+    public static function get(?JsArray $a, int|float $i): mixed
+    {
+        if ($a === null) {
+            throw new JsError('Cannot read properties of null or undefined', 'TypeError');
+        }
+        $index = self::index($i);
+        return $index === null ? null : ($a->a[$index] ?? null);
+    }
+
+    public static function setAt(?JsArray $a, int|float $i, mixed $value): mixed
+    {
+        if ($a === null) {
+            throw new JsError('Cannot set properties of null or undefined', 'TypeError');
+        }
+        $index = self::index($i);
+        if ($index === null || $index > count($a->a)) {
+            throw new JsError('Zero arrays are dense: index ' . self::numStr($i) . ' is past length ' . count($a->a), 'RangeError');
+        }
+        $a->a[$index] = $value;
+        return $value;
+    }
+
+    public static function key(mixed $key): string
+    {
+        return self::str($key);
+    }
+
+    public static function prop(JsObject|JsClass|null $o, mixed $key): mixed
+    {
+        if ($o === null) {
+            throw new JsError('Cannot read properties of null or undefined', 'TypeError');
+        }
+        if ($o instanceof JsClass) { return $o->get(self::key($key)); }
+        return $o->p[self::key($key)] ?? null;
+    }
+
+    public static function set(JsObject|JsClass|null $o, string $key, mixed $value): mixed
+    {
+        if ($o === null) {
+            throw new JsError('Cannot set properties of null or undefined', 'TypeError');
+        }
+        if ($o instanceof JsClass) { return $o->set($key, $value); }
+        $o->p[$key] = $value;
+        return $value;
+    }
+
+    /** Snapshot presence before a compound assignment evaluates its right side. */
+    public static function has(JsArray|JsObject|JsClass $o, mixed $key): bool
+    {
+        if ($o instanceof JsArray) {
+            $index = self::index($key);
+            return $index !== null && $index < count($o->a);
+        }
+        if ($o instanceof JsClass) { return $o->has(self::key($key)); }
+        return array_key_exists(self::key($key), $o->p);
+    }
+
+    /** += needs the actual primitive types, including an absent old property. */
+    public static function plus(mixed $a, mixed $b, bool $missing): mixed
+    {
+        if ($a instanceof JsArray || $a instanceof JsObject || $a instanceof RegExp) {
+            $a = self::str($a);
+        }
+        if ($b instanceof JsArray || $b instanceof JsObject || $b instanceof RegExp) {
+            $b = self::str($b);
+        }
+        if (is_string($a) || is_string($b)) {
+            return ($missing ? 'undefined' : self::str($a)) . self::str($b);
+        }
+        return self::add($missing ? NAN : self::toNumber($a), self::toNumber($b));
+    }
+
+    /** A fixed-length walk may read only elements that still exist. */
+    private static function element(JsArray $a, int $index): mixed
+    {
+        if ($index >= count($a->a)) {
+            throw new JsError('Array shrank while being iterated', 'RangeError');
+        }
+        return $a->a[$index];
+    }
+
+    public static function find(JsArray $a, callable $f): mixed
+    {
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            if (self::truthy($f($value, $i, $a))) { return $value; }
+        }
         return null;
     }
 
-    public static function findIndex(array $a, callable $f): int
+    public static function findIndex(JsArray $a, callable $f): int
     {
-        foreach ($a as $i => $item) {
-            if (self::truthy($f($item, $i))) {
-                return $i;
-            }
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            if (self::truthy($f($value, $i, $a))) { return $i; }
         }
-
         return -1;
     }
 
-    public static function findLast(array $a, callable $f): mixed
+    public static function findLast(JsArray $a, callable $f): mixed
     {
-        $i = self::findLastIndex($a, $f);
-
-        return $i < 0 ? null : $a[$i];
+        for ($i = count($a->a) - 1; $i >= 0; $i--) {
+            $value = self::element($a, $i);
+            if (self::truthy($f($value, $i, $a))) { return $value; }
+        }
+        return null;
     }
 
-    public static function findLastIndex(array $a, callable $f): int
+    public static function findLastIndex(JsArray $a, callable $f): int
     {
-        for ($i = count($a) - 1; $i >= 0; $i--) {
-            if (self::truthy($f($a[$i], $i))) {
-                return $i;
-            }
+        for ($i = count($a->a) - 1; $i >= 0; $i--) {
+            $value = self::element($a, $i);
+            if (self::truthy($f($value, $i, $a))) { return $i; }
         }
-
         return -1;
     }
 
-    public static function some(array $a, callable $f): bool
+    public static function some(JsArray $a, callable $f): bool
     {
-        return self::findIndex($a, $f) >= 0;
+        return self::findIndex($a, $f) !== -1;
     }
 
-    public static function every(array $a, callable $f): bool
+    public static function every(JsArray $a, callable $f): bool
     {
-        foreach ($a as $i => $item) {
-            if (!self::truthy($f($item, $i))) {
-                return false;
-            }
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            if (!self::truthy($f($value, $i, $a))) { return false; }
         }
-
         return true;
     }
 
-    public static function filter(array $a, callable $f): array
+    public static function filter(JsArray $a, callable $f): JsArray
     {
-        $out = [];
-        foreach ($a as $i => $item) {
-            if (self::truthy($f($item, $i))) {
-                $out[] = $item;
-            }
+        $out = new JsArray();
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            if (self::truthy($f($value, $i, $a))) { $out->a[] = $value; }
         }
-
         return $out;
     }
 
-    public static function map(array $a, callable $f): array
+    public static function map(JsArray $a, callable $f): JsArray
     {
-        $out = [];
-        foreach ($a as $i => $item) {
-            $out[] = $f($item, $i);
+        $out = new JsArray();
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            $out->a[] = $f($value, $i, $a);
         }
-
         return $out;
     }
 
-    public static function includes(array $a, mixed $v, mixed $from = 0): bool
+    public static function forEach(JsArray $a, callable $f): void
     {
-        $from = self::toNumber($from);
-        $a = array_values($a);
-        for ($i = self::relIndex($from, count($a)), $n = count($a); $i < $n; $i++) {
-            if (self::sameValueZero($a[$i], $v)) {
-                return true;
-            }
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            $f($value, $i, $a);
         }
+    }
 
+    public static function includes(JsArray $a, mixed $value, mixed $from = 0): bool
+    {
+        $len = count($a->a);
+        $from = self::toInteger(self::toNumber($from));
+        $start = $from < 0 ? max(0, $len + $from) : min($from, $len);
+        for ($i = (int) $start; $i < $len; $i++) {
+            if (self::sameValueZero($a->a[$i], $value)) { return true; }
+        }
         return false;
     }
 
-    public static function join(array $a, string $sep = ','): string
+    public static function join(JsArray $a, string $sep = ','): string
     {
-        $parts = [];
-        foreach ($a as $item) {
-            $parts[] = $item === null ? '' : self::str($item);
-        }
-
-        return implode($sep, $parts);
+        return self::arrayString($a, $sep, new \SplObjectStorage());
     }
 
-    public static function arrSlice(array $a, int|float $start = 0, int|float|null $end = null): array
+    private static function arrayString(JsArray $a, string $sep, \SplObjectStorage $stack): string
     {
-        $len = count($a);
+        if ($stack->offsetExists($a)) { return ''; }
+        $stack->offsetSet($a);
+        try {
+            $parts = [];
+            for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+                $value = $a->a[$i];
+                $parts[] = $value === null ? '' : ($value instanceof JsArray ? self::arrayString($value, ',', $stack) : self::str($value));
+            }
+            return implode($sep, $parts);
+        } finally { $stack->offsetUnset($a); }
+    }
+
+    public static function arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray
+    {
+        $len = count($a->a);
         $from = self::relIndex($start, $len);
         $to = $end === null ? $len : self::relIndex($end, $len);
-
-        return $from >= $to ? [] : array_slice($a, $from, $to - $from);
+        return new JsArray(array_slice($a->a, $from, max(0, $to - $from)));
     }
 
-    public static function arrAt(array $a, mixed $i = 0): mixed
+    public static function arrAt(JsArray $a, mixed $i = 0): mixed
     {
         $i = self::toNumber($i);
-        $len = count($a);
+        $len = count($a->a);
         $i = self::toInteger($i);
-        $i = $i < 0 ? $len + $i : $i;
-
-        return $i >= 0 && $i < $len ? $a[(int) $i] : null;
+        return self::get($a, $i < 0 ? $len + $i : $i);
     }
 
-    public static function splice(array &$a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): array
+    public static function push(JsArray $a, mixed ...$values): int
     {
-        $len = count($a);
-        $from = self::relIndex($start, $len);
-        $count = $deleteCount === null ? $len - $from : self::clampIndex($deleteCount, $len - $from);
-
-        return array_splice($a, $from, $count, $items);
+        foreach ($values as $value) { $a->a[] = $value; }
+        return count($a->a);
     }
 
-    public static function reverse(array &$a): array
+    public static function unshift(JsArray $a, mixed ...$values): int
     {
-        $a = array_reverse($a);
-
-        return $a;
+        $a->a = [...$values, ...$a->a];
+        return count($a->a);
     }
 
-    public static function sort(array &$a, ?callable $cmp = null): array
+    public static function pop(JsArray $a): mixed { return array_pop($a->a); }
+    public static function shift(JsArray $a): mixed { return array_shift($a->a); }
+
+    public static function concat(JsArray $a, mixed ...$items): JsArray
     {
-        $a = self::sorted($a, $cmp);
-
-        return $a;
-    }
-
-    public static function sorted(array $a, ?callable $cmp = null): array
-    {
-        if ($cmp !== null) {
-            usort($a, static function (mixed $x, mixed $y) use ($cmp): int {
-                $r = $cmp($x, $y);
-                $r = is_int($r) || is_float($r) ? $r : self::toNumber($r);
-
-                return $r > 0 ? 1 : ($r < 0 ? -1 : 0);
-            });
-
-            return $a;
+        $out = new JsArray($a->a);
+        foreach ($items as $item) {
+            if ($item instanceof JsArray) {
+                foreach ($item->a as $value) { $out->a[] = $value; }
+            } else { $out->a[] = $item; }
         }
-        // Default order: String(x) compared by UTF-16 code units (UTF-16BE bytes), stable.
-        $keyed = [];
-        foreach ($a as $item) {
-            $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item];
-        }
-        usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
-
-        return array_column($keyed, 1);
-    }
-
-    public static function reduce(array $a, callable $f, mixed ...$init): mixed
-    {
-        $i = 0;
-        if ($init !== []) {
-            $acc = $init[0];
-        } elseif ($a === []) {
-            throw new JsError('Reduce of empty array with no initial value', 'TypeError');
-        } else {
-            $acc = $a[0];
-            $i = 1;
-        }
-        for ($n = count($a); $i < $n; $i++) {
-            $acc = $f($acc, $a[$i], $i);
-        }
-
-        return $acc;
-    }
-
-    public static function flat(array $a, int|float $depth = 1): array
-    {
-        $depth = self::toInteger($depth);
-        $out = [];
-        foreach ($a as $item) {
-            if ($depth >= 1 && is_array($item) && array_is_list($item)) {
-                array_push($out, ...self::flat($item, $depth - 1));
-            } else {
-                $out[] = $item;
-            }
-        }
-
         return $out;
     }
 
-    public static function flatMap(array $a, callable $f): array
+    public static function from(JsArray|string $source, ?callable $f = null): JsArray
     {
-        return self::flat(self::map($a, $f), 1);
+        $source = is_string($source) ? new JsArray(mb_str_split($source, 1, 'UTF-8')) : $source;
+        $out = new JsArray();
+        for ($i = 0; $i < count($source->a); $i++) {
+            $value = $source->a[$i];
+            $out->a[] = $f === null ? $value : $f($value, $i);
+        }
+        return $out;
     }
 
-    public static function fill(array &$a, mixed $v, int|float $start = 0, int|float|null $end = null): array
+    public static function arr(iterable $values): JsArray
     {
-        $len = count($a);
-        $to = $end === null ? $len : self::relIndex($end, $len);
-        for ($i = self::relIndex($start, $len); $i < $to; $i++) {
-            $a[$i] = $v;
-        }
+        $out = new JsArray();
+        foreach ($values as $value) { $out->a[] = $value; }
+        return $out;
+    }
 
+    public static function splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray
+    {
+        $len = count($a->a);
+        $start = self::relIndex($start, $len);
+        $count = $deleteCount === null ? $len - $start : self::clampIndex($deleteCount, $len - $start);
+        return new JsArray(array_splice($a->a, $start, $count, $items));
+    }
+
+    public static function reverse(JsArray $a): JsArray
+    {
+        $a->a = array_reverse($a->a);
+        return $a;
+    }
+
+    public static function toReversed(JsArray $a): JsArray { return new JsArray(array_reverse($a->a)); }
+
+    public static function sort(JsArray $a, ?callable $cmp = null): JsArray
+    {
+        $len = count($a->a);
+        $sorted = self::sorted($a, $cmp);
+        $a->a = [...$sorted->a, ...array_slice($a->a, $len)];
+        return $a;
+    }
+
+    public static function toSorted(JsArray $a, ?callable $cmp = null): JsArray { return self::sorted($a, $cmp); }
+
+    public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
+    {
+        $items = $a->a;
+        if ($cmp !== null) {
+            usort($items, static function (mixed $x, mixed $y) use ($cmp): int {
+                $r = self::toNumber($cmp($y, $x));
+                return $r > 0 ? -1 : ($r < 0 ? 1 : 0);
+            });
+            return new JsArray($items);
+        }
+        $keyed = [];
+        foreach ($items as $item) { $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item]; }
+        usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
+        return new JsArray(array_column($keyed, 1));
+    }
+
+    public static function with(JsArray $a, int|float $index, mixed $value): JsArray
+    {
+        $i = self::toInteger($index);
+        $i = $i < 0 ? count($a->a) + $i : $i;
+        if ($i < 0 || $i >= count($a->a)) { throw new JsError('Invalid index: ' . self::numStr($index), 'RangeError'); }
+        $out = new JsArray($a->a);
+        $out->a[(int) $i] = $value;
+        return $out;
+    }
+
+    public static function reduce(JsArray $a, callable $f, mixed ...$init): mixed
+    {
+        $len = count($a->a);
+        if ($init === [] && $len === 0) { throw new JsError('Reduce of empty array with no initial value', 'TypeError'); }
+        $acc = $init === [] ? $a->a[0] : $init[0];
+        for ($i = $init === [] ? 1 : 0; $i < $len; $i++) {
+            $value = self::element($a, $i);
+            $acc = $f($acc, $value, $i, $a);
+        }
+        return $acc;
+    }
+
+    public static function flat(JsArray $a, int|float $depth = 1): JsArray
+    {
+        $out = new JsArray();
+        $depth = self::toInteger($depth);
+        foreach ($a->a as $value) {
+            if ($depth > 0 && $value instanceof JsArray) {
+                foreach (self::flat($value, $depth - 1)->a as $item) { $out->a[] = $item; }
+            } else { $out->a[] = $value; }
+        }
+        return $out;
+    }
+
+    public static function flatMap(JsArray $a, callable $f): JsArray
+    {
+        $out = new JsArray();
+        for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+            $value = self::element($a, $i);
+            $mapped = $f($value, $i, $a);
+            if ($mapped instanceof JsArray) {
+                foreach ($mapped->a as $item) { $out->a[] = $item; }
+            } else { $out->a[] = $mapped; }
+        }
+        return $out;
+    }
+
+    public static function fill(JsArray $a, mixed $value, int|float $start = 0, int|float|null $end = null): JsArray
+    {
+        $len = count($a->a);
+        $from = self::relIndex($start, $len);
+        $to = $end === null ? $len : self::relIndex($end, $len);
+        for ($i = $from; $i < $to; $i++) { $a->a[$i] = $value; }
         return $a;
     }
 
@@ -1226,113 +1364,187 @@ final class Js
         return is_float($x) && $x === 0.0 && fdiv(1, $x) < 0;
     }
 
-    public static function range(int $n, callable $f): array
+    public static function range(int $n, callable $f): JsArray
     {
         $out = [];
         for ($i = 0; $i < $n; $i++) {
-            $out[] = $f($i);
+            $out[] = $f(null, $i);
         }
 
-        return $out;
+        return new JsArray($out);
     }
 
     // ---------------------------------------------------------------- objects
 
-    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` markers are equal). */
-    public static function sameJson(mixed $a, mixed $b): bool
+    /** Structural equality that tells `{}` from `[]` (two separately decoded `{}` handles are equal). */
+    public static function obj(array ...$parts): JsObject
     {
-        if ($a instanceof JsObject || $b instanceof JsObject) {
-            return $a instanceof JsObject && $b instanceof JsObject;
+        $out = new JsObject();
+        foreach ($parts as $part) {
+            foreach (self::ownKeys($part) as $key) { $out->p[$key] = $part[$key]; }
         }
-        if (is_array($a) && is_array($b)) {
-            if (array_keys($a) !== array_keys($b)) {
-                return false;
-            }
-            foreach ($a as $k => $x) {
-                if (!self::sameJson($x, $b[$k])) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return $a === $b;
+        return $out;
     }
 
-    /** Read `$root[k1][k2]...` (null when a step is missing or the empty-object marker). */
-    public static function at(mixed $root, array $path): mixed
+    public static function keys(JsObject $o): JsArray
     {
-        foreach ($path as $k) {
-            if (!is_array($root) || !array_key_exists($k, $root)) {
-                return null;
-            }
-            $root = $root[$k];
-        }
-
-        return $root;
+        return new JsArray(array_map('strval', self::ownKeys($o->p)));
     }
 
-    /**
-     * Compiled `root.k1[k2]... = value` through objects/Records: the keys and the value were already
-     * evaluated (JS order), and each container on the way that is the empty-object marker becomes a
-     * plain array only now, as it is written into. Returns the value, like a JS assignment.
-     */
-    public static function write(mixed &$root, array $path, mixed $value): mixed
+    public static function values(JsObject $o): JsArray
     {
-        $ref = &$root;
-        foreach ($path as $k) {
-            if ($ref instanceof JsObject || $ref === null) {
-                $ref = [];
-            }
-            $ref = &$ref[$k];
-        }
-        $ref = $value;
+        return new JsArray(array_map(static fn ($key) => $o->p[$key], self::ownKeys($o->p)));
+    }
 
+    public static function entries(JsObject $o): JsArray
+    {
+        return new JsArray(array_map(static fn ($key) => new JsArray([(string) $key, $o->p[$key]]), self::ownKeys($o->p)));
+    }
+
+    public static function fromEntries(JsArray $entries): JsObject
+    {
+        $out = new JsObject();
+        foreach ($entries->a as $entry) { $out->p[self::key($entry->a[0])] = $entry->a[1] ?? null; }
+        return $out;
+    }
+
+    public static function omit(JsObject $o, array $keys): JsObject
+    {
+        $skip = array_fill_keys($keys, true);
+        $out = new JsObject();
+        foreach (self::ownKeys($o->p) as $key) {
+            if (!isset($skip[$key])) { $out->p[$key] = $o->p[$key]; }
+        }
+        return $out;
+    }
+
+    public static function hasOwn(JsObject|JsArray $o, mixed $key): bool
+    {
+        $key = self::key($key);
+        if ($o instanceof JsObject) { return array_key_exists($key, $o->p); }
+        if ($key === 'length') { return true; }
+        if (!preg_match('/^(?:0|[1-9][0-9]*)$/D', $key)) { return false; }
+        $index = self::index((float) $key);
+        return $index !== null && (string) $index === $key && $index < count($o->a);
+    }
+
+    public static function clone(mixed $value): mixed
+    {
+        return self::copyGraph($value, new \SplObjectStorage(), true);
+    }
+
+    public static function detach(mixed $value): mixed
+    {
+        return self::copyGraph($value, new \SplObjectStorage(), false);
+    }
+
+    private static function copyGraph(mixed $value, \SplObjectStorage $seen, bool $structured): mixed
+    {
+        if ($value instanceof \Closure) {
+            if ($structured) { throw new JsError('Function could not be cloned', 'DataCloneError'); }
+            return $value;
+        }
+        if ($value instanceof RegExp && !$structured) { return $value; }
+        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
+            if ($seen->offsetExists($value)) { return $seen[$value]; }
+            if ($value instanceof JsError) {
+                $copy = new JsError($value->getMessage(), $value->jsName);
+                $seen[$value] = $copy;
+                return $copy;
+            }
+            if ($value instanceof RegExp) {
+                $copy = new RegExp($value->source, $value->flags);
+                $seen[$value] = $copy;
+                return $copy;
+            }
+            $copy = $value instanceof JsObject ? new JsObject() : new JsArray();
+            $seen[$value] = $copy;
+            if ($value instanceof JsObject) {
+                foreach (self::ownKeys($value->p) as $key) { $copy->p[$key] = self::copyGraph($value->p[$key], $seen, $structured); }
+            } else {
+                foreach ($value->a as $item) { $copy->a[] = self::copyGraph($item, $seen, $structured); }
+            }
+            return $copy;
+        }
+        if (is_array($value)) {
+            foreach ($value as $key => $item) { $value[$key] = self::copyGraph($item, $seen, $structured); }
+        }
         return $value;
     }
 
-    /** A JS object value: an empty array that stands for `{}` becomes the marker; anything else as is. */
-    public static function obj(array|JsObject $o): array|JsObject
+    /** The JSON value tree shared by Zero's encoder and foreign encoders. */
+    public static function jsonTree(mixed $value): mixed
     {
-        return $o === [] ? new JsObject() : $o;
+        return self::jsonValueTree($value, new \SplObjectStorage());
     }
 
-    /** A parameter has its own binding while sharing the object's existing fields. */
-    public static function objectBinding(array|JsObject &$source): array|JsObject
+    private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
-        if ($source instanceof JsObject) {
-            return $source;
+        if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }
+        if ($value instanceof \Closure) { return null; }
+        if ($value instanceof RegExp) { return new \stdClass(); }
+        if (!is_array($value) && !is_object($value)) { return $value; }
+        $object = is_object($value);
+        if ($object) {
+            if ($stack->offsetExists($value)) { throw new JsError('Converting circular structure to JSON', 'TypeError'); }
+            $stack->offsetSet($value);
         }
-        $binding = [];
-        foreach ($source as $key => &$field) {
-            $binding[$key] =& $field;
+        try {
+            if ($value instanceof \JsonSerializable) { return self::jsonValueTree($value->jsonSerialize(), $stack); }
+            $list = $value instanceof JsArray || is_array($value) && array_is_list($value);
+            $items = match (true) {
+                $value instanceof JsArray => $value->a,
+                $value instanceof JsObject => $value->p,
+                is_object($value) => get_object_vars($value),
+                default => $value,
+            };
+            if ($list) {
+                $out = [];
+                foreach ($items as $item) { $out[] = self::jsonValueTree($item, $stack); }
+                return $out;
+            }
+            $out = [];
+            $nulKey = false;
+            foreach (self::ownKeys($items) as $key) {
+                if ($items[$key] instanceof \Closure) { continue; }
+                $nulKey = $nulKey || str_starts_with((string) $key, "\0");
+                $out[$key] = self::jsonValueTree($items[$key], $stack);
+            }
+            if ($nulKey) { return $out; }
+            $result = new \stdClass();
+            foreach ($out as $key => $item) { $result->{(string) $key} = $item; }
+            return $result;
+        } finally {
+            if ($object) { $stack->offsetUnset($value); }
         }
-
-        return $binding;
     }
 
-    /** Object spread/rest copy field values without retaining PHP reference cells. */
-    public static function copyObject(array|JsObject $source): array
+    public static function sameJson(mixed $a, mixed $b): bool
     {
-        if ($source instanceof JsObject) {
-            return [];
-        }
-        $copy = [];
-        foreach ($source as $key => $value) {
-            $copy[$key] = $value;
-        }
-
-        return $copy;
+        return self::sameGraph($a, $b, []);
     }
 
-    /**
-     * Property order of an object: array-index keys ascending, then the rest in
-     * insertion order.
-     *
-     * @return list<int|string>
-     */
-    private static function ownKeys(array $o): array
+    private static function sameGraph(mixed $a, mixed $b, array $seen): bool
+    {
+        if ($a instanceof JsObject || $a instanceof JsArray || $b instanceof JsObject || $b instanceof JsArray) {
+            if (!is_object($a) || !is_object($b) || $a::class !== $b::class) { return false; }
+            $pair = spl_object_id($a) . ':' . spl_object_id($b);
+            if (isset($seen[$pair])) { return true; }
+            $seen[$pair] = true;
+            $a = $a instanceof JsObject ? $a->p : $a->a;
+            $b = $b instanceof JsObject ? $b->p : $b->a;
+        }
+        if (is_array($a) || is_array($b)) {
+            if (!is_array($a) || !is_array($b) || self::ownKeys($a) !== self::ownKeys($b)) { return false; }
+            foreach ($a as $key => $value) {
+                if (!self::sameGraph($value, $b[$key], $seen)) { return false; }
+            }
+            return true;
+        }
+        return self::strictEq($a, $b);
+    }
+
+    public static function ownKeys(array $o): array
     {
         if (array_is_list($o)) {
             return array_keys($o);
@@ -1351,52 +1563,12 @@ final class Js
         return [...$indexes, ...$names];
     }
 
-    /** @return list<string> */
-    public static function keys(array|JsObject $o): array
-    {
-        return $o instanceof JsObject ? [] : array_map('strval', self::ownKeys($o));
-    }
-
-    public static function values(array|JsObject $o): array
-    {
-        return $o instanceof JsObject ? [] : array_map(static fn ($k) => $o[$k], self::ownKeys($o));
-    }
-
-    /** @return list<array{string, mixed}> */
-    public static function entries(array|JsObject $o): array
-    {
-        return $o instanceof JsObject ? [] : array_map(static fn ($k) => [(string) $k, $o[$k]], self::ownKeys($o));
-    }
-
-    public static function fromEntries(iterable $e): array|JsObject
-    {
-        $out = [];
-        foreach ($e as $entry) {
-            $out[self::str($entry[0] ?? null)] = $entry[1] ?? null;
-        }
-
-        return self::obj($out);
-    }
-
-    public static function omit(array|JsObject $o, array $keys): array|JsObject
-    {
-        $o = self::copyObject($o);
-        foreach ($keys as $k) {
-            unset($o[$k]);
-        }
-
-        return self::obj($o);
-    }
-
-    public static function hasOwn(array|JsObject $o, string $k): bool
-    {
-        return is_array($o) && array_key_exists($k, $o);
-    }
-
-    // ---------------------------------------------------------------- JSON
-
     public static function jsonStringify(mixed $v, int|float|string|null $indent = null): ?string
     {
+        if ($v instanceof \Closure) {
+            return null;
+        }
+        $v = self::jsonTree($v);
         if (is_string($indent)) {
             // The first 10 units. Cutting a surrogate pair there only matters if the gap is
             // written (a non-empty array or object): a scalar or empty result never uses it.
@@ -1436,7 +1608,8 @@ final class Js
         if ($v instanceof \JsonSerializable) {
             return self::encode($v->jsonSerialize(), $gap, $indent);
         }
-        if (is_object($v)) {
+        $object = is_object($v);
+        if ($object) {
             $v = $v instanceof RegExp ? [] : get_object_vars($v);
             if ($v === []) {
                 return '{}';
@@ -1447,7 +1620,7 @@ final class Js
         }
         $inner = $indent . $gap;
         $parts = [];
-        $isList = array_is_list($v);
+        $isList = !$object && array_is_list($v);
         foreach ($isList ? array_keys($v) : self::ownKeys($v) as $k) {
             $enc = self::encode($v[$k], $gap, $inner);
             if ($isList) {
@@ -1468,8 +1641,8 @@ final class Js
     }
 
     /**
-     * JSON text → Zero values: objects as assoc arrays, the empty object `{}` as the JsObject marker (so
-     * it encodes back as `{}`, not `[]`). Integers stay exact: request bodies and stored json() values
+     * JSON text → handles, preserving object/list shape at every depth.
+     * Integers stay exact: request bodies and stored json() values
      * may carry ids. Throws \JsonException.
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
@@ -1493,61 +1666,27 @@ final class Js
         }
     }
 
-    /** The marker → plain arrays at every depth: for values outside json() columns (groups, inputs, filters). */
-    public static function plain(mixed $v): mixed
-    {
-        if ($v instanceof JsObject) {
-            return [];
-        }
-        if (is_array($v)) {
-            foreach ($v as $k => $x) {
-                if (is_array($x) || $x instanceof JsObject) {
-                    $v[$k] = self::plain($x);
-                }
-            }
-        }
-
-        return $v;
-    }
-
     private static function restoreNul(mixed $v, string $mark): mixed
     {
-        if (is_string($v)) {
-            return str_replace($mark, "\0", $v);
+        if (is_string($v)) { return str_replace($mark, "\0", $v); }
+        if ($v instanceof JsArray) {
+            foreach ($v->a as $i => $value) { $v->a[$i] = self::restoreNul($value, $mark); }
+        } elseif ($v instanceof JsObject) {
+            $props = [];
+            foreach ($v->p as $key => $value) { $props[is_string($key) ? str_replace($mark, "\0", $key) : $key] = self::restoreNul($value, $mark); }
+            $v->p = $props;
         }
-        if (!is_array($v)) {
-            return $v;
-        }
-        $out = [];
-        foreach ($v as $k => $x) {
-            $out[is_string($k) ? str_replace($mark, "\0", $k) : $k] = self::restoreNul($x, $mark);
-        }
-
-        return $out;
+        return $v;
     }
 
     private static function fromJson(mixed $v): mixed
     {
         if ($v instanceof \stdClass) {
-            $vars = get_object_vars($v);
-            if ($vars === []) {
-                return new JsObject();
-            }
-            foreach ($vars as $k => $x) {
-                $vars[$k] = self::fromJson($x);
-            }
-
-            return $vars;
+            $out = new JsObject();
+            foreach (get_object_vars($v) as $key => $value) { $out->p[$key] = self::fromJson($value); }
+            return $out;
         }
-        if (is_array($v)) {
-            foreach ($v as $k => $x) {
-                if (is_array($x) || $x instanceof \stdClass) {
-                    $v[$k] = self::fromJson($x);
-                }
-            }
-        }
-
-        return $v;
+        return is_array($v) ? new JsArray(array_map(self::fromJson(...), $v)) : $v;
     }
 
     public static function jsonParse(string $s): mixed
@@ -1633,7 +1772,7 @@ final class Js
         if ($v === null || is_bool($v)) {
             return (int) $v;
         }
-        if (is_array($v)) {
+        if ($v instanceof JsArray) {
             $v = self::str($v);
         }
 

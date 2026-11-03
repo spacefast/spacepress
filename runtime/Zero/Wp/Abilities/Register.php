@@ -140,7 +140,7 @@ final class Register
             return null;
         }
 
-        return is_array($body) && array_key_exists('input', $body) ? [urldecode($m[1]), $body['input']] : null;
+        return $body instanceof \Zero\JsObject && array_key_exists('input', $body->p) ? [urldecode($m[1]), $body->p['input']] : null;
     }
 
     /** The executing ability's input as sent, when the REST run endpoint carried it. */
@@ -223,6 +223,30 @@ final class Register
             }
         }
 
+        foreach ($ops as &$op) {
+            $zero = $op['zero'] ?? [];
+            if (isset($zero['action'])) {
+                $op['shape'] = $schema->action($zero['action'])['input'] ?? [];
+            } elseif (isset($zero['job'])) {
+                $op['shape'] = $schema->jobs()[$zero['job']]['input'] ?? [];
+            } elseif (isset($zero['global'])) {
+                $op['shape'] = $op['op'] === 'update' ? $schema->global($zero['global'])['fields'] : [];
+            } elseif (isset($zero['collection']) && $schema->hasCollection($zero['collection'])) {
+                $collection = $zero['collection'];
+                $columns = $schema->collection($collection)['columns'];
+                $op['shape'] = match ($op['op']) {
+                    'create' => $columns,
+                    'update' => ['id' => null, 'patch' => $columns],
+                    'sync-apply', 'sync-trash', 'sync-read' => ['type' => 'sync', 'collection' => $collection],
+                    default => ['type' => 'query', 'collection' => $collection],
+                };
+            } else {
+                $op['shape'] = [];
+            }
+            $op['bodyShape'] = $op['op'] === 'update' && isset($zero['collection']) ? $op['shape']['patch'] : $op['shape'];
+        }
+        unset($op);
+
         return $ops;
     }
 
@@ -280,7 +304,7 @@ final class Register
                 'name' => "$app/$k-update", 'op' => 'update',
                 'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay.",
                 'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']),
-                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'data' => static fn (array $in): array => \Zero\Seam::toPhp(Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'), $spec['columns']),
+                'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'dataShape' => $spec['columns'], 'data' => static fn (array $in): array => Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'),
                 'call' => static fn (array $in): array => ['PATCH', $item()($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ];
         }
@@ -369,7 +393,7 @@ final class Register
                 'name' => "$app/global-$k-update", 'op' => 'update', 'label' => "Update $label",
                 'description' => "Change some $label values of the $appLabel app; the input is the patch.",
                 'input' => JsonSchema::input($patch), 'output' => $values, 'annotations' => [],
-                'rule' => [$rules['update'], 'update', "update $name"], 'data' => static fn (array $in): array => \Zero\Seam::toPhp($in, $global['fields']),
+                'rule' => [$rules['update'], 'update', "update $name"], 'dataShape' => $global['fields'], 'data' => static fn (array $in): array => $in,
                 'call' => static fn (array $in): array => ['PATCH', '/globals/' . rawurlencode($name), [], $in],
             ],
         ];

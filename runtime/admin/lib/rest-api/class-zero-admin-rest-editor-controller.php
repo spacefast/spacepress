@@ -155,6 +155,24 @@ class Zero_Admin_REST_Editor_Controller extends WP_REST_Controller {
 		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
 		$hook_suffix = 'zero-admin-editor';
 
+		// REST initializes the asset registries before there is an admin screen.
+		// Register core's admin dependencies now, before plugins enqueue editor
+		// assets such as SCF's alpha picker (which depends on Iris's Color global).
+		$defaults = new WP_Scripts();
+		foreach ( $defaults->registered as $handle => $dependency ) {
+			if ( ! isset( wp_scripts()->registered[ $handle ] ) ) {
+				wp_scripts()->add( $handle, $dependency->src, $dependency->deps, $dependency->ver, $dependency->args );
+				wp_scripts()->registered[ $handle ] = $dependency;
+			}
+		}
+		$defaults = new WP_Styles();
+		foreach ( $defaults->registered as $handle => $dependency ) {
+			if ( ! isset( wp_styles()->registered[ $handle ] ) ) {
+				wp_styles()->add( $handle, $dependency->src, $dependency->deps, $dependency->ver, $dependency->args );
+				wp_styles()->registered[ $handle ] = $dependency;
+			}
+		}
+
 		// Remove unwanted scripts/styles.
 		remove_action( 'admin_enqueue_scripts', 'gutenberg_enqueue_command_palette_assets', 9 );
 		remove_action( 'admin_enqueue_scripts', 'gutenberg_enqueue_command_palette_assets' );

@@ -1,8 +1,10 @@
 # Zero pages, components, layouts, sync, publish and agents
 
-Status: implementation proposal under the owner's binding rulings (§2).
-Nothing here is implemented. Revision `af6ee887` passed independent review as
-a design proposal; that does not qualify the runtime or approve all of PR #55.
+Status: future implementation proposal under the owner's binding rulings (§2).
+The pages/agents/publish subsystem here is not implemented. Its collection,
+class and S3 foundations have shipped, as recorded in
+[authoring direction](authoring-direction.md). Revision `af6ee887` passed
+independent design review; that does not qualify this future runtime.
 The owner's 2026-11-02 direction now requires explicit collections and tables
 with relations between both. [Authoring direction](authoring-direction.md)
 records that target config, optional file layout and TypeScript expansion.
@@ -18,7 +20,8 @@ source evidence, not a passing runtime qualification.
 
 "Ruling" means an owner instruction. "Selected" means this proposal's
 implementation choice. "Owner-open" means no approval is inferred. Examples
-use #55's proposed config syntax conditionally (§5). Build errors carry
+use #55's historical proposed config syntax conditionally (§5); that PR is
+closed as superseded and its remaining API changes were not adopted. Build errors carry
 `file:line:column` and leave the previous output intact.
 
 ## 0. Decisions in one screen
@@ -1496,17 +1499,19 @@ Units may proceed independently once their prerequisites qualify.
 These are not approved by their recommendations. §2's rulings remain binding;
 the implementation choices elsewhere are a coherent proposed default, not
 additional owner rulings.
+These choices concern the future optional pages and Data Machine subsystem;
+they do not block current backend compiler, native development or example work.
 
 1. **Blocks/config boundary.** Approve or reject the precise exception for
    page-only serializer invocation, universal exports, page-derived
    viewability and `pages.sync` in config. Recommended: approve that bounded
    integration with backend-only independence. Until ruled, all dependent
    work waits. Calling it build-only does not make it approved.
-2. **#55.** Approve, amend or reject its config redesign and outstanding
-   questions 2–5 and 7–12. The owner has superseded q1 with explicit collections
-   and tables and requires same-kind and cross-kind relations; the binding
-   exposure rename supersedes q6. Recommended: settle the remaining shared
-   syntax before dependent implementation. This document adopts no
+2. **Remaining authoring choices.** #55 is closed as superseded. Explicit
+   collections/tables and their shared relation graph have shipped; unrelated
+   auth, ownership and syntax changes from that historical proposal remain
+   unselected. Start from the accepted config API and decide any additional
+   changes in their own implementation scope. This document adopts no
    auth/ownership deletion on the owner's behalf.
 3. **Authoring choices and islands.** Confirm the proposed stored compiled
    body for code Pages, the `pages/theme.config.ts` spelling and the config

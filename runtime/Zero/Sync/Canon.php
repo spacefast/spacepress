@@ -21,6 +21,8 @@ final class Canon
         return match (true) {
             $value === null || is_bool($value) || is_int($value) || is_string($value) => json_encode($value, self::FLAGS),
             is_float($value) => is_finite($value) ? Js::numStr($value) : throw new \InvalidArgumentException('Non-finite numbers have no JSON form'),
+            $value instanceof \Zero\JsObject => self::object($value->p),
+            $value instanceof \Zero\JsArray => '[' . implode(',', array_map(self::json(...), $value->a)) . ']',
             $value instanceof \stdClass => self::object(get_object_vars($value)),
             is_array($value) && array_is_list($value) => '[' . implode(',', array_map(self::json(...), $value)) . ']',
             is_array($value) => self::object($value),

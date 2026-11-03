@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig } from "zero";
-const a = collection("a", { id: id(), code: text().unique() }, { editor: false });
-export default defineConfig({ schema: { a } });
+import { collection, id, text, defineConfig, table } from "zero";
+const a = table({ id: id(), code: text().unique() });
+export default defineConfig({ tables: { a } });

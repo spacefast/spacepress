@@ -1,0 +1,67 @@
+{
+  "version": 2,
+  "tables": {
+    "stockItems": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "title": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      }
+    },
+    "stockLinks": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "stockId": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "stockItems",
+            "column": "id",
+            "onDelete": "set null",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        }
+      }
+    }
+  }
+}

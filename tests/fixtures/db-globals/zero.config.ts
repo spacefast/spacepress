@@ -1,11 +1,11 @@
-import { collection, id, text, integer, json, global, defineConfig, action, db } from "zero";
-const n = collection("n", { id: id(), meta: json() }, { editor: false });
+import { collection, id, text, integer, json, global, defineConfig, action, db, table } from "zero";
+const n = table({ id: id(), meta: json() });
 const settings = global("settings", {
   title: text().notNull().default("Hi"),
   stats: json().$type<{ visits: number }>(),
 });
 export default defineConfig({
-  schema: { n },
+  tables: { n },
   globals: { settings },
   actions: {
     // Never written: defaults. Then a typed JSON field round-trips through update().

@@ -1,9 +1,9 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, id, text, integer, defineConfig, action } from "zero";
+import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "zero";
 import { job, jobs, once, env } from "zero"; // lane D
 
-const n = collection("n", { id: id() }, { editor: false });
+const n = table({ id: id() });
 
 // Access rules run once per ctx below; validators once per value (with VALIDATE_CTX).
 export const ACCESS_CTXS = [
@@ -16,16 +16,24 @@ export const ACCESS_CTXS = [
 export const VALIDATE_VALUES = {
   "docs.title": ["Hello", "http://spam", "  ", "Ärtsoppa är god"],
   "docs.score": [0, 7, 11, 2.5],
+  "docs.meta": [{ x: 1 }],
+  "docs.info.meta": [{ x: 1 }],
+  "docs.entries.meta": [{ x: 1 }],
+  "docs.sections.hero.meta": [{ x: 1 }],
 };
-export const VALIDATE_CTX = { data: { title: "x", score: 1 }, user: { id: 1, name: "A", role: "admin" } };
+export const VALIDATE_CTX = { data: { title: "x", score: 1, info: { meta: { x: 0 } }, entries: [{ meta: { x: 0 } }], sections: [{ layout: "hero", meta: { x: 0 } }] }, user: { id: 1, name: "A", role: "admin" } };
 
 const RANK = ["subscriber", "author", "editor", "admin"];
 
-export const docs = collection("docs", {
+export const docs = collection({
   id: id(),
   title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
   score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)),
   ownerId: integer(),
+  meta: json().$type<{ x: number }>().validate((value, ctx) => { if (ctx.data.meta) ctx.data.meta.x = 7; return value.x === 7 || "root alias lost"; }),
+  info: group({ fields: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { if (ctx.data.info) ctx.data.info.meta.x = 8; return value.x === 8 || "group alias lost"; }) } }),
+  entries: repeater({ fields: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { const first = ctx.data.entries?.[0]; if (first) first.meta.x = 9; return value.x === 9 || "repeater alias lost"; }) } }),
+  sections: blocks({ layouts: { hero: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { const first = ctx.data.sections?.[0]; if (first && first.layout === "hero") first.meta.x = 10; return value.x === 10 || "block alias lost"; }) } } }),
 }, {
   title: "title",
   access: {
@@ -65,11 +73,341 @@ function makeCounterReader(value: { count: number }) {
   return forward();
 }
 
+// Finite type algebra must preserve literal boundaries and optional reads in emitted PHP.
+interface LanguageIdentity { id: number }
+interface LanguageContent<S extends string = "draft"> { state: S; note?: string | null | undefined }
+interface LanguageEntry<S extends string = "draft"> extends LanguageIdentity, LanguageContent<S> { title: string }
+type LanguageProjection<T, K extends keyof T = keyof T> = { [P in K]: T[P] };
+type LanguageFlags<K extends string> = { [P in K]: boolean };
+type LanguageCopy<T> = { [K in keyof T]: T[K] };
+type LanguageRequired<T> = { [K in keyof T]-?: T[K] };
+type LanguageTag<T> = T extends string ? { kind: T } : { count: T };
+type LanguageLiteral<T> = T extends "draft" ? "literal" : "broad";
+type LanguageAbsent<T> = T extends undefined ? "undefined" : T extends null ? "null" : "present";
+type Readonly<T> = { box: T }; // A local type shadows the global utility.
+type LanguageBoth = LanguageIdentity & { extra: "x" };
+type LanguageConstrained<T extends { id: number }> = { item: T };
+type LanguageBool<T> = T extends true ? "yes" : "no";
+type LanguageTogether<T> = [T] extends [string] ? "text" : "mixed";
+function languageRead(item: LanguageEntry, key: keyof LanguageProjection<LanguageEntry, "state" | "title">): string {
+  return item[key];
+}
+
+type LanguageBox<T> = { value: T };
+class LanguageView {
+  missing: undefined = undefined;
+  entry: LanguageCopy<LanguageEntry> = { id: 0, state: "draft", title: "" };
+  constructor(entry: LanguageCopy<LanguageEntry>) { this.entry = entry; }
+  snapshot(): Required<Pick<LanguageEntry, "id" | "note">> {
+    return { id: this.entry.id, note: this.entry.note ?? null };
+  }
+  clear(): void {
+    const empty: undefined = undefined;
+    this.missing = empty;
+  }
+}
+class LanguageDraftView extends LanguageView {
+  label: Exclude<"draft" | "published", "published"> = "draft";
+  constructor(entry: LanguageCopy<LanguageEntry>, label: Exclude<"draft" | "published", "published">) {
+    super(entry);
+    this.label = label;
+  }
+}
+
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
+
+// Each action is independent: Node shares one module; PHP starts a process per case.
+const sharedCaptured = { n: 0 };
+const capturedPairs = [sharedCaptured, sharedCaptured];
+const capturedOther = { inner: sharedCaptured };
+function refsRegistered(): number { return 1; }
+function refsCollision(): number { return 2; }
+function refsCollision_value(): number { return 3; }
+function REFSCOLLISION_VALUE(): number { return 4; }
+const laneRefs = {
+  refsRegisteredRoot: action({ input: {}, handler: refsRegistered }),
+  refsNamedWrappers: run(() => [refsRegistered === refsRegistered, [refsRegistered].includes(refsRegistered), refsCollision(), refsCollision_value(), REFSCOLLISION_VALUE()]),
+  refsOptionalIndex: run(() => {
+    let visited = 0;
+    const readArray = (a: number[] | null) => a?.[visited++] ?? 99;
+    const readRecord = (a: Record<string, number> | null) => a?.[(() => { visited++; return "x"; })()] ?? 99;
+    return [readArray(null), readRecord(null), visited, readArray([7]), readRecord({ x: 8 }), visited];
+  }),
+  refsDestructureExhaustion: run(() => { const a = [1]; const [head, next = a.push(2, 3), last = 9, ...rest] = a; return [head, next, last, rest, a]; }),
+  refsDestructureGrowth: run(() => { const a: number[] = []; const [next = a.push(2, 3), , last = 9, ...rest] = a; return [next, last, rest, a]; }),
+  refsGuardedUpdates: run(() => { const bump = (o: { n: number | null; s: string | null }) => { if (o.n !== null) o.n++; if (o.n !== null) o.n += 2; if (o.s !== null) o.s += "b"; return [o.n, o.s]; }; return [bump({ n: 1, s: "a" }), bump({ n: null, s: null })]; }),
+  refsCloneError: run(() => { const e = new Error("x"); const cloned = structuredClone([e, e]); return [cloned[0] === e, cloned[0] === cloned[1], cloned[0]!.message]; }),
+  refsOnceError: run(async () => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; }),
+  refsOnceFunction: run(async () => { try { await once("refs-function", () => ({ f: refsRegistered })); return false; } catch { return true; } }),
+  refsDateArrayCoercion: run(() => [
+    new Date(["2020-01-01"]).getTime(),
+    new Date([["2020-01-01"]]).getTime(),
+    isNaN(new Date([]).getTime()),
+    isNaN(new Date(["2020-01-01", "2020-01-02"]).getTime()),
+    isNaN(new Date({ x: 1 }).getTime()),
+  ]),
+  refsContainerCoercion: run(() => {
+    const nested = [1, null, [2, null], { x: 3 }];
+    const empty: number[] = [];
+    const object = { x: 1 };
+    const parsedArray = JSON.parse('[7]');
+    const parsedObject = JSON.parse('{}');
+    return [String(nested), `${nested}`, "v=" + nested, nested + "!", String(object), `${object}`, "v=" + object,
+      Number(empty), Number([null]), Number([[7]]), isNaN(Number([1, 2])), isNaN(Number(object)),
+      String([2]) < String([10]), Number([2]) < Number([10]),
+      Array.isArray(empty), Array.isArray(object), Array.isArray(parsedArray), Array.isArray(parsedObject),
+      JSON.stringify({ empty, nested, object }), JSON.stringify({ parsedArray, parsedObject })];
+  }),
+  refsMissingReceiverWrite: run(() => {
+    const a: { x: number }[] = []; let n = 0;
+    try { a[2]!.x = ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverCompound: run(() => {
+    const a: { x: number }[] = []; let n = 0;
+    try { a[0]!.x += ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverLogical: run(() => {
+    const a: { x: boolean }[] = [];
+    try { a[0]!.x &&= true; return false; } catch { return true; }
+  }),
+  refsMissingNestedReceiver: run(() => {
+    const a: { child: { x: number } }[] = []; let n = 0;
+    try { a[0]!.child.x = ++n; } catch { return n; }
+    return -1;
+  }),
+  refsMissingReceiverUpdate: run(() => {
+    const a: { x: number }[] = [];
+    try { return a[0]!.x++; } catch { return "caught"; }
+  }),
+  refsMissingElementCompound: run(() => {
+    const numbers: number[] = []; numbers[0] += 1; numbers[1] -= 1;
+    const strings: string[] = []; strings[0] += "x";
+    const numericText: string[] = []; numericText[0] += 1;
+    const props: Record<string, number> = {}; props.x += 1; props.y++;
+    const nulls: (number | null)[] = [null]; nulls[0]!++;
+    return [numbers.map(n => isNaN(n)), strings, isNaN(Number(numericText[0])), isNaN(props.x!), isNaN(props.y!), nulls];
+  }),
+  refsMissingPresenceSnapshot: run(() => {
+    const a: number[] = [];
+    const rhs = () => { a.push(10); return 1; };
+    a[0] += rhs();
+    return isNaN(a[0]!);
+  }),
+  refsUnusedJsonGap: run(() => [JSON.stringify({}, null, "123456789🙂"), JSON.stringify([], null, "123456789🙂")]),
+  refsIndexStringCompound: run(() => { const a = ['a', 'b', 'c']; a[2] += 'x'; return a; }),
+  refsIndexIncrement: run(() => { const a = [0, 1, 2, 3, 4, 5]; a[5]++; return a; }),
+  refsIndexLogical: run(() => {
+    const values: (boolean | null)[] = [true, false, null];
+    let calls = 0;
+    const rhs = () => { calls++; return true; };
+    values[0] &&= rhs(); values[1] ||= rhs(); values[2] ??= rhs();
+    values[0] ||= rhs(); values[1] ??= rhs();
+    const empty: true[] = [];
+    const skipped = (empty[0] &&= true);
+    return [values, calls, skipped === true, empty.length];
+  }),
+  refsIndexAppend: run(() => { const a: number[] = []; a[0] = 5; a[a.length] = 6; a[0]!--; return a; }),
+  refsIndexNullishAppend: run(() => { const a: (number | null)[] = [null]; a[0] ??= 5; a[1] ??= 6; return a; }),
+  refsIndexMemberWrite: run(() => { const a = [{ x: 0 }, { x: 0 }, { x: 0 }]; a[2]!.x = 1; return a; }),
+  refsObjectLoopBinding: run(() => { const fns: (() => number)[] = []; for (let s = { x: 0 }; s.x < 3; s.x++) fns.push(() => s.x); return fns.map(f => f()); }),
+  refsReplacedLoopBinding: run(() => {
+    const objectReaders: (() => number)[] = [];
+    for (let s = { x: 0 }; s.x < 3; s = { x: s.x + 1 }) {
+      objectReaders.push(() => s.x);
+      if (s.x === 1) continue;
+    }
+    const arrayReaders: (() => number)[] = [];
+    for (let s = [0]; s[0]! < 3; s = [s[0]! + 1]) arrayReaders.push(() => s[0]!);
+    return [objectReaders.map(f => f()), arrayReaders.map(f => f())];
+  }),
+  refsCaptured: run(() => { capturedPairs[0]!.n = 7; return [capturedPairs[0] === capturedPairs[1], capturedOther.inner === sharedCaptured, capturedOther.inner.n]; }),
+  refsCapturedOtherRoot: run(() => { capturedOther.inner.n = 9; return capturedPairs[1]!.n; }),
+  refsCallbackArray: run(() => { const a = [1, 2]; return a.map((v, i, source) => { source[1] = 5; return [v, i, source === a]; }); }),
+  refsOnceGraph: run(async () => { const p = { n: 1 }; const first = await once("refs-graph", () => p); first.n = 2; const second = await once("refs-graph", () => p); second.n = 3; const third = await once("refs-graph", () => p); return [first === p, first === second, third.n]; }),
+  refs01: run(() => { const a = { x: 1 }; const b = a; b.x = 2; return a.x === 2; }),
+  refs02: run(() => { const a = [1]; const b = a; b.push(2); return a.length === 2; }),
+  refs03: run(() => { const o = { inner: { x: 1 } }; const { inner } = o; inner.x = 2; return o.inner.x === 2; }),
+  refs04: run(() => { const list = [{ x: 1 }]; const f = list.find((e) => e.x === 1); if (f) f.x = 5; return list[0]?.x === 5; }),
+  refs05: run(() => { const same = (v: { x: number }) => v; const a = { x: 1 }; const b = same(a); b.x = 2; return a.x === 2; }),
+  refs06: run(() => { const a = { inner: { x: 1 } }; const b = { ...a }; b.inner.x = 2; return a.inner.x === 2; }),
+  refs07: run(() => { const list = [{ x: 1 }]; list.forEach((e) => { e.x = 9; }); return list[0]?.x === 9; }),
+  refs08: run(() => { const a: number[] = []; const box = { a }; a.push(1); return box.a.length === 1; }),
+  refs09: run(() => { const a = [{ x: 1 }]; const e = a.at(0)!; e.x = 2; return a[0]!.x === 2; }),
+  refs10: run(() => { const a = [{ x: 1 }]; const b = a.slice(); b[0]!.x = 2; return a[0]!.x === 2; }),
+  refs11: run(() => { const a = { x: 1 }; const b = a; const change = () => { b.x = 2; }; change(); return a.x === 2; }),
+  refs12: run(() => { const bump = (v: { x: number }) => { v.x++; }; const a = { x: 1 }; const b = a; bump(b); return a.x === 2; }),
+  refs13: run(() => { const bump = (v: { x: number }) => { v.x++; }; const list = [{ x: 1 }]; list.forEach(bump); return list[0]!.x === 2; }),
+  refs14: run(() => { const a = { x: 1 }; let b = a; if (a.x > 5) b = { x: 0 }; b.x = 2; return a.x === 2; }),
+  refs15: run(() => { const a = { x: 1 }; let b = { x: 0 }; for (let i = 0; i < 2; i++) { b.x = 9; b = a; } return a.x === 9; }),
+  refs16: run(() => { const keep = (v: number[]) => v; const a = [1]; const b = keep(a); a.push(2); return b.length === 2; }),
+  refs17: run(() => { const read = (p: { x: number }) => { const q = p; p.x = 1; return q.x; }; return read({ x: 0 }) === 1; }),
+  refs18: run(() => { const a = { x: 0 }; const f = () => { a.x++; }; const b = a; f(); return b.x === 1; }),
+  refs19: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => e); b[0]!.x = 1; return a[0]!.x === 1; }),
+  refs20: run(() => { const a: { x: number }[] = []; a.push({ x: 0 }); const b = a[0]!; b.x = 1; return a[0]!.x === 1; }),
+  refs21: run(() => { const a = { x: 0 }; const list = [a]; for (const item of list) item.x = 1; return a.x === 1; }),
+  refs22: run(() => { const a = { x: 0 }; let b = a; try { JSON.parse('x'); } catch { b = { x: 9 }; } b.x = 1; return a.x === 1; }),
+  refs23: run(() => { const a = { x: 0 }; let b = { x: 5 }; for (let i = 0; i < 2; i++) { b = a; if (i === 0) break; b = { x: 0 }; } b.x = 1; return a.x === 1; }),
+  refs24: run(() => { const fs: (() => number)[] = []; for (let o = { x: 0 }; o.x < 1; o.x++) fs.push(() => o.x); return fs[0]!() === 1; }),
+  refs25: run(() => { const o: { l: { x: number }, r: { x: number } } = { l: { x: 0 }, r: { x: 0 } }; o.r = o.l; o.l.x = 1; return o.r.x === 1; }),
+  refs26: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => e); a[0]!.x = 1; return b[0]!.x === 1; }),
+  refs27: run(() => { const both = (a: { x: number }, b: { x: number }) => { a.x = 1; return b.x; }; const o = { x: 0 }; return both(o, o) === 1; }),
+  refs28: run(() => { const a = [{ x: 0 }]; Array.from(a, (e) => { e.x = 1; return 0; }); return a[0]!.x === 1; }),
+  refs29: run(() => { const a = [{ x: 0 }, { x: 0 }]; a.sort((x, y) => { y.x = 1; return 0; }); return a[0]!.x === 1; }),
+  refs30: run(() => { const identity = (p: { x: number }) => p; const forward = (p: { x: number }) => identity(p); const o = { x: 0 }; const r = forward(o); o.x = 1; return r.x === 1; }),
+  refs31: run(() => { const reader = (p: { x: number }) => () => p.x; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1; }),
+  refs32: run(() => { const a = [{ x: 0 }]; const r = a.map((e) => { a[0]!.x = 1; return e.x; }); return r[0] === 1; }),
+  refs33: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => ({ e })); b[0]!.e.x = 1; return a[0]!.x === 1; }),
+  refs34: run(() => { const cmp = (x: { x: number }, y: { x: number }) => { y.x = 1; return 0; }; const a = [{ x: 0 }, { x: 0 }]; a.sort(cmp); return a[1]!.x === 1; }),
+  refs35: run(() => { const acc = (a: { x: number }, e: number) => { a.x += e; return a; }; const init = { x: 0 }; [1, 2].reduce(acc, init); return init.x === 3; }),
+  refs36: run(() => { const reader = (p: { x: number }) => { const q = p; return () => q.x; }; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1; }),
+  refs37: run(() => { const a = [1, 2]; (a.length > 0 ? a : a).reverse(); return a[0] === 2; }),
+  refs38: run(() => { const wrap = (p: { x: number }) => ({ p }); const a = { x: 0 }; const b = wrap(a); a.x = 1; return b.p.x === 1; }),
+  refs39: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => ({ e })); a[0]!.x = 1; return b[0]!.e.x === 1; }),
+  refs40: run(() => { const o = { x: 0 }; const f = (p: { x: number }) => { o.x = 1; return p.x; }; return f(o) === 1; }),
+  refs41: run(() => { const a = [{ x: 0 }]; const b = Array.from(a, (e) => e); a[0]!.x = 1; return b[0]!.x === 1; }),
+  refs42: run(() => { const rows = [{ x: 1 }]; const out: { x: number }[] = []; rows.forEach((r) => { out.push(r); }); out[0]!.x = 9; return rows[0]!.x === 9; }),
+  refs43: run(() => { const rows = [{ x: 1 }]; const out = rows.reduce((acc, r) => { acc.push(r); return acc; }, [] as { x: number }[]); out[0]!.x = 9; return rows[0]!.x === 9; }),
+  refs44: run(() => { const a = { x: 0 }; [a].map((e) => { e.x++; return e.x; }); return a.x === 1; }),
+  refs45: run(() => { const r = [1].reduce((acc, n) => { const q = acc; acc.push(n); return q; }, [] as number[]); return r.length === 1; }),
+  refs46: run(() => { const list = [{ x: 0 }, { x: 0 }]; list.reduce((acc, r) => { acc.x = 1; return r; }, { x: 0 }); return list[0]!.x === 1; }),
+  refs47: run(() => { const reader = (p: { x: number }) => { const box = { p }; return () => box.p.x; }; const o = { x: 0 }; const f = reader(o); o.x = 1; return f() === 1; }),
+  refs48: run(() => { const a = { x: 0 }; [{ child: a }].map((e) => { e.child.x = 1; return e; }); return a.x === 1; }),
+  refs49: run(() => { const a = [{ x: 0 }]; const mutate = () => { a[0]!.x = 1; }; const r = a.map((e) => { mutate(); return e.x; }); return r[0] === 1; }),
+  refs50: run(() => { const a = { x: 0 }; return ({ a, n: (a.x = 1) }).a.x === 1; }),
+  refs51: run(() => { const reader = (p: { child: { x: number } }) => { const q = p.child; return (_: number) => q.x; }; const o = { child: { x: 0 } }; return reader(o)((o.child.x = 1)) === 1; }),
+  refs52: run(() => { const a = [1, 2]; const r = a.map((e) => { a.reverse(); return e; }); return r[1] === 1; }),
+  refs53: run(() => { return [{ x: 0 }].filter((e) => { e.x = 1; return true; })[0]!.x === 1; }),
+  refs54: run(() => { const identity = (p: { x: number }) => p; const reader = (p: { x: number }) => { const q = identity(p); return () => q.x; }; const o = { x: 0 }; const f = reader(o); o.x = 1; return f() === 1; }),
+  refs55: run(() => { const a = { x: 0 }; const r: [{ x: number }, number] = [a, a.x++]; return r[1] === 0; }),
+  refs56: run(() => { const read = (p: { x: number }, n: number) => p.x; const a = { x: 0 }; return read(a, a.x++) === 1; }),
+  refs57: run(() => { const a = [1, 2]; const cb = (e: number) => { a.reverse(); return e; }; return a.map(cb)[1] === 1; }),
+  refs58: run(() => { const rows = [{ x: 1 }]; const keep: { x?: number }[] = []; rows.map((r) => { const o: { x?: number } = {}; keep.push(o); o.x = r.x; return o; }); return keep[0]!.x === 1; }),
+  refs59: run(() => { const deep = (o: { inner: { x: number } }) => { o.inner.x = 1; }; const shared = { x: 0 }; const o = { inner: { x: 0 } }; o.inner = shared; deep(o); return shared.x === 1; }),
+  refs60: run(() => { const a = { x: 0 }; let b = { x: 5 }; const f = () => { b = a; }; f(); b.x = 1; return a.x === 1; }),
+  refs61: run(() => { const a = { child: { x: 0 } }; const b = { ...(a.child.x === 0 ? a : a) }; a.child.x = 1; return b.child.x === 1; }),
+  refs62: run(() => { const shared = { x: 0 }; const list = [{ child: { x: 0 } }]; for (const e of list) { e.child = shared; e.child.x = 1; } return shared.x === 1; }),
+  refs63: run(() => { const read = (p: { x: number }, q: { x: number }) => p.x + q.x; const a = { x: 0 }; let b = { x: 5 }; read(a, b = a); a.x = 1; return b.x === 1; }),
+  refs64: run(() => { const a = [1, 2]; return a.slice(a.pop()! - 2).length === 1; }),
+  refs65: run(() => { const a = { x: 0 }; let b = { x: 9 }; const dst: Record<string, number> = {}; dst[(b = a).x === 0 ? 'x' : 'x'] = (a.x = 1); return b.x === 1; }),
+};
+
 export default defineConfig({
-  schema: { n, docs, fieldDocs: fieldDocs() },
+  collections: { docs }, tables: { n, field_docs: fieldDocs() },
   actions: {
+    ...laneRefs,
+    languageTypes: run(() => {
+      const item: LanguageCopy<LanguageEntry> = { id: 7, state: "draft", title: "Hello" };
+      const optional: Partial<Omit<LanguageEntry, "id">> = {};
+      const projectedOptional: LanguageProjection<LanguageEntry, "note"> = {};
+      const boxedView: LanguageBox<LanguageDraftView> = { value: new LanguageDraftView(item, "draft") };
+      boxedView.value.clear();
+      const required: Required<Pick<LanguageEntry, "id" | "note">> = boxedView.value.snapshot();
+      const mapped: LanguageRequired<LanguageProjection<LanguageEntry, "id" | "note">> = { id: item.id, note: "set" };
+      const flags: Record<"ready" | "visible", boolean> = { ready: true, visible: false };
+      const changed: LanguageFlags<"ready" | "visible"> = flags;
+      const key: keyof ({ common: number; left: string } | { common: string; right: boolean }) = "common";
+      const state: Exclude<Extract<"draft" | "published" | 7, string>, "published"> = item.state;
+      const value: LanguageEntry["id" | "state"] = item.id;
+      const element: Array<string>[number] = "element";
+      const pair: ["draft", number][0 | 1] = 8;
+      const tags: LanguageTag<"draft" | 7> = { count: 7 };
+      const together: LanguageTogether<"draft" | 7> = "mixed";
+      const args: Parameters<(n: number, s: string) => boolean> = [1, "one"];
+      const returned: ReturnType<(n: number) => "ok" | null> = null;
+      const awaited: Awaited<Promise<Promise<"done">>> = "done";
+      const bools: LanguageBool<boolean | "other">[] = ["yes", "no"];
+      const undefinedType: LanguageAbsent<undefined> = "undefined";
+      const nullType: LanguageAbsent<null> = "null";
+      const weak: { x: number } extends { y?: string } ? "yes" : "no" = "no";
+      const intersection: { note?: string } & { note: string | undefined } = { note: undefined };
+      const optionalConflict: { note?: string } & { note?: number } = {};
+      const directLabels: { [P in keyof { note?: number }]: string } = { note: undefined };
+      const optionalSnapshot: { note?: string } = { note: undefined };
+      const requiredUndefined: Required<{ label?: string | undefined }> = { label: "present" };
+      const both: LanguageBoth = { id: 9, extra: "x" };
+      const boxed: LanguageConstrained<{ id: number; title: string }> = { item: { id: 9, title: "extra" } };
+      const collapsed: LanguageLiteral<string | "draft"> = "broad";
+      const onlyFalse: Exclude<boolean, true> = false;
+      const shadowed: Readonly<number> = { box: 7 };
+      return { classMissing: boxedView.value.missing ?? null, classState: boxedView.value.label,
+        classInstance: boxedView.value instanceof LanguageView, classType: typeof LanguageDraftView,
+        required, mapped, changed, key, state, value, element, pair, tags, together, args, returned, awaited, bools, onlyFalse, undefinedType, nullType, weak, requiredUndefined, optionalConflict, directLabels: { note: directLabels.note ?? null }, optionalSnapshot: { note: optionalSnapshot.note ?? null }, intersection: { note: intersection.note ?? null }, both, boxed, shadowed, collapsed,
+        missing: projectedOptional.note ?? optional.note ?? null, title: languageRead(item, "title"), inherited: languageRead(item, "state") };
+    }),
+    refsReceiver: run(() => {
+      const old = { x: 0 }; const o = { child: old };
+      const rhs = () => { o.child = { x: 9 }; return 2; };
+      o.child.x = rhs(); return [old.x, o.child.x];
+    }),
+    refsLetReceiver: run(() => {
+      let o = { x: 0 }; const old = o;
+      const rhs = () => { o = { x: 9 }; return 2; };
+      o.x = rhs(); return [old.x, o.x];
+    }),
+    refsSpreadSnapshot: run(() => {
+      const a = { x: 1 }; const change = () => { a.x = 2; return 3; };
+      return { ...a, y: change() };
+    }),
+    refsDestructureSnapshot: run(() => {
+      let source: { x?: number; y: number } = { y: 1 };
+      const change = () => { source = { y: 9 }; return 2; };
+      const { x = change(), y } = source; return [x, y];
+    }),
+    refsConcatReceiver: run(() => {
+      const a = [1]; const change = () => { a.push(2); return [3]; };
+      return a.concat(change());
+    }),
+    refsCompoundOld: run(() => {
+      const o = { x: 1 }; const change = () => { o.x = 10; return 2; };
+      o.x += change(); return o.x;
+    }),
+    refsEqualityOrder: run(() => {
+      let o = {}; const old = o; const change = () => { o = {}; return old; };
+      return o === change();
+    }),
+    refsFlatMapSnapshot: run(() => {
+      const first = [1]; return [0, 1].flatMap(i => { if (i === 0) return first; first[0] = 9; return [2]; });
+    }),
+    refsFindLastValue: run(() => {
+      const a = [1, 2]; return a.findLast((v, i) => { a[i] = 9; return true; });
+    }),
+    refsLiveForOf: run(() => {
+      const a = [1]; const out: number[] = [];
+      for (const x of a) { out.push(x); if (x === 1) a.push(2); } return out;
+    }),
+    refsMapGrowth: run(() => { const a = [1, 2]; return a.map(x => { a.push(3); return x; }); }),
+    refsMapWrite: run(() => { const a = [1, 2]; return a.map((x, i) => { a[1] = 9; return x; }); }),
+    refsNamedIdentity: run(() => {
+      const a = [1]; const alias = a; const o = { x: 1 };
+      return [a === alias, a === [1], o === { x: 1 }, [o].includes(o), [o].includes({ x: 1 }), label === label, [label].includes(label)];
+    }),
+    refsKeyReceiver: run(() => {
+      let o: Record<string, number> = { x: 1 }; const old = o;
+      const key = () => { o = { x: 9 }; return 'x'; };
+      return [o[key()], old.x, o.x];
+    }),
+    refsLogicalAssignment: run(() => { const o: { x?: number } = {}; let n = 0; const x = (o.x ??= (n = 1)); return [x, n, o.x]; }),
+    refsStringAssignment: run(() => { const o = { s: 'a' }; o.s += 'b'; return o.s; }),
+    refsShortCircuitWrite: run(() => { const o = { x: 1 }; const take = false; const result = take ? (o.x += 1) : 0; return [result, o.x, o.x += 1]; }),
+    refsComputedKeys: run(() => { const o = { [1]: 'one', [false]: 'no', [null]: 'nil' }; return Object.entries(o); }),
+    refsKeyOrder: run(() => {
+      const a = { '1': 1, '0': 2, b: 3, '-1': 4 };
+      const spread = { ...a };
+      const reduced = Object.entries(a).reduce((acc, pair) => { acc[pair[0]!] = pair[1]!; return acc; }, {} as Record<string, number>);
+      const entries = Object.fromEntries(Object.entries(a));
+      return [a, spread, reduced, entries].map(o => [Object.keys(o), JSON.stringify(o)]).concat([[JSON.stringify(JSON.parse('{"1":1,"0":2,"b":3,"-1":4}'))]]);
+    }),
+    refsAppend: run(() => { const a = [1]; a[a.length] = 2; return a; }),
+    refsFractionalRead: run(() => { const a = [1]; return [a[0.5] ?? null, a[-1] ?? null, a[NaN] ?? null]; }),
+    refsCloneAlias: run(() => { const p = { x: 1 }; const copy = structuredClone([p, p]); copy[0]!.x = 9; return [copy[0] === copy[1], p.x, copy[1]!.x]; }),
+    refsCycleJson: run(() => { const a: unknown[] = []; a.push(a); try { JSON.stringify(a); return false; } catch { return true; } }),
+    refsCycleString: run(() => { const a: unknown[] = [1]; a.push(a); return String(a); }),
+    refsArrayFromLive: run(() => { const a = [1, 2, 3]; return Array.from(a, x => { a.pop(); return x; }); }),
+    refsArrayFromString: run(() => Array.from('a🙂b', (x, i) => `${i}:${x}`)),
+
     uriEncoding: run(() => {
       const values = ["https://mozilla.org/?x=шеллы", ";,/?:@&=+$#", "-_.!~*'()", "ABC abc 123", "é😀", "%20"];
       return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
@@ -378,13 +716,13 @@ export const FIELD_CTXS = [
 
 // A hoisted function, so the collection can live in this block below the default export.
 function fieldDocs() {
-  return collection("fieldDocs", {
+  return table({
     id: id(),
     ownerId: integer(),
     salary: integer().access({
       read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
       update: (ctx) => ctx.user?.role === "admin" || (ctx.data.salary !== null && ctx.op === "update"),
     }),
-  }, { editor: false });
+  });
 }
 

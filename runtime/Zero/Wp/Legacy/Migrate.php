@@ -238,7 +238,7 @@ final class Migrate
                 // A column the original app never had takes its declared default, normalized and
                 // checked like any written value (Model::map refused defaults it can't write).
                 if (isset($col['default'])) {
-                    $row[$column] = Schema::normalize($col, Schema::generate($col['default'], $col['type']), $column, $at);
+                    $row[$column] = Schema::normalize($col, Schema::generate($col['default'], $col), $column, $at);
                     $out[$column] = Schema::store($col, $row[$column]);
                 } elseif ($col['notNull'] ?? false) {
                     throw HttpError::invalidInput("$column is required in the new app and has no original field", $at);
@@ -262,7 +262,7 @@ final class Migrate
         foreach ($spec['columns'] as $column => $col) {
             $column = (string) $column;
             if (array_key_exists($column, $row) && $column !== $spec['primaryKey'] && !($col['system'] ?? false)) {
-                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null]);
+                Schema::checkRules($col, $row[$column], $column, $base . HttpError::seg($this->sourceName($map, $column)), ['data' => $full, 'user' => null], $spec['columns']);
             }
         }
 
@@ -363,9 +363,10 @@ final class Migrate
     private function checkReferences(Model $model, array $plan): void
     {
         $w = $this->db->wpdb();
+        $resources = array_flip(array_map(static fn (array $map): string => $map['collection'], $model->collections));
         foreach ($plan as $resource => $records) {
-            $spec = $this->schema->collection($resource);
             $map = $model->collections[$resource];
+            $spec = $this->schema->collection($map['collection']);
             foreach ($spec['columns'] as $column => $col) {
                 $column = (string) $column;
                 $target = $col['references']['collection'] ?? null;
@@ -380,7 +381,7 @@ final class Migrate
                     }
                     $at = "/records/$id" . HttpError::seg($this->sourceName($map, $column));
                     if ($target !== null) {
-                        if (!isset($plan[$target][(int) $v]) && !$this->isRowOf($target, (int) $v)) {
+                        if (!isset($plan[$resources[$target]][(int) $v]) && !$this->isRowOf($target, (int) $v)) {
                             throw new HttpError(409, 'reference_violation', "record $id references $v, which is not a $target record", $at);
                         }
                         continue;
@@ -422,8 +423,8 @@ final class Migrate
     {
         $w = $this->db->wpdb();
         foreach ($plan as $resource => $records) {
-            $spec = $this->schema->collection($resource);
             $map = $model->collections[$resource];
+            $spec = $this->schema->collection($map['collection']);
             $live = "p.post_type = ? AND p.post_status NOT IN ('trash', 'auto-draft', 'inherit')";
             foreach ($spec['columns'] as $column => $col) {
                 $column = (string) $column;

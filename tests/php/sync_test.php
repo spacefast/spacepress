@@ -29,7 +29,7 @@ $schema = [
         ],
         'notes' => [
             'primaryKey' => 'id', 'editor' => true, 'uid' => true, 'sync' => ['dir' => 'content/notes', 'format' => 'md'], 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
-            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update']] + $editor, 'api' => $api, 'relations' => [],
+            'drafts' => true, 'revisions' => true, 'access' => ['create' => ['fn' => 'notes__create'], 'update' => ['fn' => 'notes__update'], 'delete' => ['fn' => 'notes__delete']] + $editor, 'api' => $api, 'relations' => [],
             'hooks' => ['beforeCreate' => 'notes__beforeCreate', 'beforeUpdate' => 'notes__beforeUpdate'],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -53,28 +53,34 @@ $functions = <<<'PHP'
     namespace ZeroApp;
     // Authors and up create; while the test flag is set, only published rows (status comes from its default).
     function notes__create($ctx) {
-        $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx['user']['role'] ?? ''] ?? 0;
+        $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx->p['user']->p['role'] ?? ''] ?? 0;
         if (empty($GLOBALS['zeroCreateNeedsPublished'])) {
             return $rank >= 1;
         }
         // The generated `now` values must be the instant the rule itself reads.
         $now = \Zero\Js::iso(\Zero\Js::now());
-        return $rank >= 1 && ($ctx['data']['status'] ?? null) === 'published'
-            && ($ctx['data']['publishedAt'] ?? null) === $now && ($ctx['data']['updatedAt'] ?? null) === $now;
+        return $rank >= 1 && ($ctx->p['data']->p['status'] ?? null) === 'published'
+            && ($ctx->p['data']->p['publishedAt'] ?? null) === $now && ($ctx->p['data']->p['updatedAt'] ?? null) === $now;
     }
     // Editors may update every note; authors only notes credited to a person with their name (a filter).
     function notes__update($ctx) {
-        return match ($ctx['user']['role'] ?? null) {
+        return match ($ctx->p['user']->p['role'] ?? null) {
             'editor', 'admin' => true,
-            'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx['user']['name']]]), 'id')]],
+            'author' => ['authorId' => ['in' => array_column(\Zero\db()->findMany('people', ['where' => ['name' => $ctx->p['user']->p['name']]]), 'id')]],
             default => false,
         };
     }
+    function notes__delete($ctx) {
+        if (!empty($GLOBALS['zeroJsonDeleteFilter'])) {
+            return new \Zero\JsObject(['meta' => new \Zero\JsObject(['eq' => new \Zero\JsObject()])]);
+        }
+        return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true);
+    }
     // Normalisation the client didn't send: titles are trimmed.
-    function notes__beforeCreate($data) { return ['title' => trim($data['title'])] + $data; }
+    function notes__beforeCreate($data) { return new \Zero\JsObject(['title' => trim($data->p['title'])] + $data->p); }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
-    // A compiled hook returning `{}` (the empty-object marker) replaces the patch with nothing to change.
-    function notes__beforeUpdate($patch, $existing) { return match ($patch['title'] ?? null) { 'steal uid' => $patch + ['uid' => 'zr_99999999999999999999'], 'drop it' => new \Zero\JsObject(), default => $patch }; }
+    // A compiled hook returning `{}` replaces the patch with nothing to change.
+    function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \Zero\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \Zero\JsObject(), default => $patch }; }
     PHP;
 
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
@@ -164,7 +170,7 @@ check('pull includes drafts', $pulled[$noteUid]['record']['fields']['status'] ==
 
 eq('same record again is unchanged', req('POST', '/sync/notes', ['record' => $record, 'expect' => $created['digest']])[1]['status'], 'unchanged');
 isProblem('expect absent on an existing uid is stale', req('POST', '/sync/notes', ['record' => $record, 'expect' => 'absent']), 409, 'sync_stale');
-// `fields: {}` (an object on the wire, the marker once decoded) is an empty field set, not a type error.
+// `fields: {}` is an empty field set, not a type error.
 [$s, $empty] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_0e0e0e0e0e0e0e0e0e0e', 'fields' => new stdClass(), 'body' => null], 'expect' => 'absent']);
 check('a push with fields: {} is accepted as an object (then the required title is what is missing)', $s === 422 && ($empty['pointer'] ?? null) === '/title', $empty);
 $stale = req('POST', '/sync/notes', ['record' => ['fields' => ['title' => 'Later']] + $record, 'expect' => 'sha256:' . str_repeat('0', 64)]);
@@ -256,6 +262,26 @@ $leak = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as:
 isProblem('a stale write on a row the caller may update', $leak, 409, 'sync_stale');
 check('carries no current record for a caller who cannot pull', !array_key_exists('current', $leak[1]), $leak[1]);
 isProblem('trash needs the delete rule', req('POST', '/sync/notes/trash', ['uid' => $own['uid'], 'expect' => $mine['digest']], as: 'au'), 403, 'forbidden');
+
+$nulRow = $db->insert('notes', ['title' => 'NUL JSON', 'meta' => \Zero\Js::decodeJson('{"\\u0000":1}')], true)[0];
+$nul = pull('notes')[$nulRow['uid']];
+[$nulStatus, $nulResult] = req('POST', '/sync/notes', ['record' => $nul['record'], 'expect' => $nul['digest']]);
+eq('a NUL-key JSON record keeps its sent digest when echoed', [$nulStatus, $nulResult['status'] ?? null], [200, 'unchanged']);
+
+// Sync authorizes post-backed trash through the same schema-aware JSON filter as Db.
+$object = $db->insert('notes', ['title' => 'Object filter', 'meta' => \Zero\Js::decodeJson('{}')], true)[0];
+$list = $db->insert('notes', ['title' => 'List filter', 'meta' => \Zero\Js::decodeJson('[]')], true)[0];
+$filterRows = pull('notes');
+$GLOBALS['zeroJsonDeleteFilter'] = true;
+try {
+    $objectTrash = req('POST', '/sync/notes/trash', ['uid' => $object['uid'], 'expect' => $filterRows[$object['uid']]['digest']]);
+    $listTrash = req('POST', '/sync/notes/trash', ['uid' => $list['uid'], 'expect' => $filterRows[$list['uid']]['digest']]);
+    eq('a compiled JSON object filter authorizes {} and masks [] on Sync trash', [$objectTrash[0], $objectTrash[1]['status'] ?? null, $listTrash[0]], [200, 'applied', 404]);
+} finally {
+    unset($GLOBALS['zeroJsonDeleteFilter']);
+    wp_delete_post($object['id'], true);
+    wp_delete_post($list['id'], true);
+}
 
 // ================================================================ paging and trash
 

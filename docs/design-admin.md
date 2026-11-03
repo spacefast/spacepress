@@ -24,7 +24,7 @@ build of it.
 | Area | Decision |
 |---|---|
 | Plugin | A fourth generated plugin, **`zero-admin`**, emitted by `zero build` only when `defineConfig({ admin: true })`. No admin by default. |
-| Mount | Full-page app at `/zero-admin/` (rewrite rule, `auth_redirect()`), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
+| Mount | Full-page app at `/zero-admin/` (rewrite rule, frontend logged-in session check), plus a wp-admin menu entry "Zero" that redirects there. Pretty permalinks required; `zero doctor` reports a plain structure. |
 | Source of truth | `GET /zero/v1/_schema` describes collections, columns, globals, actions and access summaries. It is public metadata (it always was: the typed client, `zero doctor` and MCP read it) and stays so. The admin derives list fields and edit forms from it; what a viewer may *see* is decided by the data endpoints, never by the schema (§5). |
 | Data path | Post-backed collections through core `/wp/v2/zero_<table>` (lists, the block editor, SCF fields through the `acf` REST field), which PR #38 puts under Zero's access rules. Tables, globals, actions and the schema through `/zero/v1`. Media through `/zero/v1/media` for upload, delete, alt text and focal point; core `/wp/v2/media` only for reads and for the two attachment fields Zero has no column for, caption and title (§5.3). Image cropping is dropped. The admin plugin registers **no REST route that reads or writes Zero data**. |
 | Scope | Collections, media, globals, the block editor, and a "classic admin" escape hatch. Users, themes, plugins, settings, design and taxonomy screens are dropped: they duplicate wp-admin with no Zero gain. |
@@ -279,7 +279,7 @@ the manifest lists `zero-admin`, prints one row:
 | `permalinks: false` | ✗ "plain permalinks: /zero-admin/ needs a permalink structure" |
 | `rewrite: false` | ✗ "rewrite rule not persisted: deactivate and reactivate zero-admin" |
 | site WordPress minor above the floor | ✗ "WordPress <version> is newer than the tested 7.1.x" (§3.3 step 3b). `doctor` has no warning level: any ✗ makes `ok` false and exits 1, and this row is no exception; a site on a newer WordPress is outside the admin's supported range until the floor moves |
-| all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and `auth_redirect()` fired), anything else is ✗ with the status |
+| all true | doctor then sends one anonymous `GET /zero-admin/` with redirects disabled; a 302 whose `Location` is the site's `wp-login.php` is ✓ (the route resolves and the frontend logged-in session check fired), anything else is ✗ with the status |
 
 That probe is the only new request `doctor` makes; it reuses the HTTP client
 `doctor.rs` already has for `/_schema`.
@@ -287,7 +287,7 @@ That probe is the only new request `doctor` makes; it reuses the HTTP client
 ### 2.4 Mount and boot
 
 `/zero-admin/` and everything under it is served by the plugin (rewrite rule
-to `index.php?zero_admin=1`, `auth_redirect()`, then the page template). The
+to `index.php?zero_admin=1`, the frontend logged-in session check, then the page template). The
 page:
 
 1. runs `set_current_screen()` and `do_action('zero_admin_init')` so the menu
@@ -523,9 +523,9 @@ the content kernel Zero v2 replaces, or is capsule/host-specific.
 |---|---|---|---|---|
 | `dashboard` + `dashboard-widgets/*` | `/` | widget layout in user meta; widgets fetch nothing real | **drop**; `/` becomes the collections overview | the overview is what a Zero editor opens the admin for; the widget system is 240 KB plus PHP for a weather stub and "recent posts" |
 | `collection-index` | `/collections` | kernel bootstrap | **rewire** → `/` | tiles per collection from `/_schema`, filtered server-side to what the viewer may read (§5) |
-| `collection-list` | `/collections/$collection` | kernel bootstrap + core `/wp/v2/<type>` | **rewire** (replaces `post-list` for Zero types) | DataViews over core `/wp/v2/zero_<table>` for post-backed collections; fields from `/_schema` columns (title/content/slug/status/publishedAt as core fields, every SCF column through `acf`); `editor: false` collections over `/zero/v1/<c>` with the same field mapping |
+| `collection-list` | `/collections/$collection` | kernel bootstrap + core `/wp/v2/<type>` | **rewire** (replaces `post-list` for Zero types) | DataViews over core `/wp/v2/zero_<table>` for post-backed collections; fields from `/_schema` columns (title/content/slug/status/publishedAt as core fields, every SCF column through `acf`); `table()` definitions over `/zero/v1/<c>` with the same field mapping |
 | `collection-new` | `/collections/$collection/-/new` | kernel + core POST | **rewire** | `POST /wp/v2/zero_<table>` (post-backed) or `POST /zero/v1/<c>` (tables); required columns from `/_schema` |
-| `collection-edit` | `/collections/$collection/$slug` | kernel resolve + sync + field editor | **rewire** | by id, not slug; the block editor for `content` collections with a "Fields" sidebar panel rendered from `/_schema` columns and written through the `acf` REST field; a plain form for collections without `content`; `showIf` evaluated client-side from the sibling values; `editor: false` rows use the plain form over `/zero/v1` |
+| `collection-edit` | `/collections/$collection/$slug` | kernel resolve + sync + field editor | **rewire** | by id, not slug; the block editor for `content` collections with a "Fields" sidebar panel rendered from `/_schema` columns and written through the `acf` REST field; a plain form for collections without `content`; `showIf` evaluated client-side from the sibling values; table rows use the plain form over `/zero/v1` |
 | `post-list` | `/types/$type/list/$slug` | core `/wp/v2/<type>` + field collections | **keep for `attachment` only** (the media library); the generic post-type list is not exposed for Zero types | its DataViews/actions/quick-edit code is the base the collection list is built on |
 | `post-list-redirect`, `post`, `post-edit`, `post-new` | `/types/$type[...]` | core | **keep** the editor host (`boot/components/editor`), **drop** the public `/types/*` routes | the editor is reached through `/collections/...` only |
 | `attachment` | `/types/attachment/edit/$id` → `/media/$id` | core `/wp/v2/media`, image cropper | **keep** the details screen, re-path, mutations rewired; **drop the cropper** | the list reads core `/wp/v2/media`; the details screen reads **both** `GET /wp/v2/media/{id}` (caption, title, dimensions, sizes WordPress knows) and `GET /zero/v1/media/{id}` (`alt`, `focal`, Zero's `sizes`), because core REST does not expose Zero's focal meta. **Upload, delete, alt text and focal point go through `/zero/v1/media`** so Zero's fixed media rules (`create: author`, `update: editor`, `delete: editor`) and reference cleanup apply; caption and title, which Zero has no column or rule for, stay on core (§5.3). The crop/rotate editor rewrites the file through core's `/wp/v2/media/{id}/edit` with WordPress capabilities and would bypass Zero's `update` rule, so it goes; a focal-point picker over `PATCH /zero/v1/media/{id}` replaces it (the runtime regenerates `cover` sizes from `focal`) |
@@ -637,7 +637,7 @@ depend on it; PR 4's page-load test asserts only activation, the redirect for
 anonymous viewers, and a 200 with the boot payload for signed-in roles. The
 readable-menu assertions are PR 5's.
 
-`editor: false` collections: `/zero/v1/<c>` lists take `where`, `orderBy`,
+`table()` definitions: `/zero/v1/<c>` lists take `where`, `orderBy`,
 `limit` (max 200) and `offset`, so DataViews pagination, sorting and
 per-field filters map onto them directly; free-text search maps onto `like`
 over the title column and is noted in the UI as such. No runtime change.

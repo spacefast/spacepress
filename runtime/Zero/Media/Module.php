@@ -15,27 +15,28 @@ use function Zero\db;
 /** The media routes (phase-1 §4.6 + phase-2 §7.2 `PATCH /media/{id}`). */
 final class Module
 {
-    /** Fixed like the rest of media: editors change alt text and focal points. */
-    private const UPDATE = ['role' => 'editor'];
-
     public static function register(): void
     {
         Extensions::route('media', self::dispatch(...));
         Files::register();
         if (defined('ABSPATH') && function_exists('add_action')) {
+            \Zero\Wp\Uploads::boot();
             \Zero\Wp\WpMedia::boot();
             \Zero\Wp\WpFiles::boot();
         }
     }
 
-    /** @return array{int, mixed} */
-    public static function dispatch(string $method, array $segments, array $query, string $body, Viewer $viewer, array $files, array $form): array
+    /** @return array{int, mixed}|\Zero\Response */
+    public static function dispatch(string $method, array $segments, array $query, string $body, Viewer $viewer, array $files, array $form): array|\Zero\Response
     {
         $n = count($segments);
+        if ($n >= 5 && $segments[2] === 'file') {
+            return \Zero\Wp\Uploads::dispatch($method, $segments);
+        }
         if ($n === 1) {
             App::allow($method, ['GET', 'POST']);
             if ($method === 'GET') {
-                $opts = \Zero\Js::plain(App::listOptions($query)); // media has no json() columns
+                $opts = \Zero\Seam::toPhp(App::listOptions($query)); // media has no json() columns
                 if (isset($opts['with'])) {
                     throw HttpError::invalidQuery('media has no relations', '/with');
                 }
@@ -77,7 +78,7 @@ final class Module
     /** `PATCH /media/{id}` `{ alt?, focal? }`. */
     private static function update(int $id, string $body, Viewer $viewer): ?array
     {
-        Access::require(self::UPDATE, $viewer, 'update', null, 'update media');
+        Access::require(Access::MEDIA['update'], $viewer, 'update', null, 'update media');
         try {
             $in = trim($body) === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {

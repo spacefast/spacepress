@@ -88,7 +88,7 @@ final class WpUserStore implements Store
                 || metadata_exists('user', $userId, self::META . $col)) {
                 continue;
             }
-            $stored = Schema::store($def, Schema::generate($def['default'], $def['type']));
+            $stored = Schema::store($def, Schema::generate($def['default'], $def));
             if ($stored === null) {
                 continue;
             }

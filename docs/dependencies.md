@@ -9,6 +9,7 @@ End-user builds need neither Composer nor Strauss. The binary embeds the committ
 | runtime | `wp-php-toolkit/markdown` | 0.10.1 | WordPress-maintained Markdown to Gutenberg conversion and front matter parsing for sync | 7 shared toolkit packages |
 | runtime | `wp-php-toolkit/merge` | 0.10.1 | Server-side line differ and three-way merge for sync | 0 additional |
 | runtime | `wp-php-toolkit/blockparser` | 0.10.1 | WordPress's own block parser, so sync reads and writes block delimiters exactly as core does | 0 additional |
+| runtime | `async-aws/s3` | 3.5.0 | S3 request signing, XML protocol and streaming object transport (MIT) | AsyncAWS Core, Symfony HTTP client and PSR contracts |
 | identity | `web-auth/webauthn-lib` | 5.3.9 | Passkeys: CBOR/COSE/attestation parsing is not hand-rollable | 29 (Symfony serializer and friends, cose-lib, cbor-php, pki-framework) |
 | identity | `firebase/php-jwt` | 7.1.0 | RS256 signing for the issuer and inbound ID-token verification; one JWT library | 0 |
 | identity | `spomky-labs/otphp` | 11.5.0 | TOTP for MFA; small, maintained, proven by the MFA suites | 1 shared (`paragonie/constant_time_encoding`) |
@@ -17,7 +18,7 @@ The seven shared packages are `bytestream`, `data-liberation`, `encoding`,
 `filesystem`, `html`, `http-client` and `xml`, all locked at 0.10.1. Markdown
 also contains its upstream-patched CommonMark, Symfony YAML and Webuni front
 matter implementations. Strauss prefixes those nested definitions too.
-The generated tree currently occupies about 6.1 MiB before packaging; embedding
+The generated tree currently occupies about 8.7 MiB before packaging; embedding
 omits dependency tests, docs and Markdown files. Its aggregated license file and
 original license files ship with the runtime.
 

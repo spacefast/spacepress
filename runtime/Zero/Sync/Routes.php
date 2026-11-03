@@ -44,14 +44,15 @@ final class Routes
                 return [200, self::page($collection, $spec, $query, $viewer)];
             }
 
-            return self::apply($collection, $spec, self::input($body), $body, $viewer);
+            $decoded = self::decode($body);
+            return self::apply($collection, $spec, \Zero\Seam::sync($collection, $decoded), $decoded, $viewer);
         }
         App::allow($method, ['POST']);
 
         return match ($action) {
-            'trash' => self::trash($collection, $spec, self::input($body), $viewer),
-            'convert' => [200, self::batch($spec, self::input($body), $viewer, $collection, self::convert(...))],
-            'merge' => [200, self::batch($spec, self::input($body), $viewer, $collection, self::merge(...))],
+            'trash' => self::trash($collection, $spec, self::input($collection, $body), $viewer),
+            'convert' => [200, self::batch($spec, self::input($collection, $body), $viewer, $collection, self::convert(...))],
+            'merge' => [200, self::batch($spec, self::input($collection, $body), $viewer, $collection, self::merge(...))],
             default => throw HttpError::notFound('No such sync route'),
         };
     }
@@ -99,12 +100,12 @@ final class Routes
     // ================================================================ write
 
     /** One instant for the whole apply: the create rule previews the same `now` defaults the write stores. */
-    private static function apply(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
+    private static function apply(string $collection, array $spec, array $in, mixed $decoded, Viewer $viewer): array|Response
     {
-        return Js::atInstant(static fn () => self::applyAt($collection, $spec, $in, $body, $viewer));
+        return Js::atInstant(static fn () => self::applyAt($collection, $spec, $in, $decoded, $viewer));
     }
 
-    private static function applyAt(string $collection, array $spec, array $in, string $body, Viewer $viewer): array|Response
+    private static function applyAt(string $collection, array $spec, array $in, mixed $decoded, Viewer $viewer): array|Response
     {
         $record = $in['record'] ?? null;
         if (!is_array($record) || ($record !== [] && array_is_list($record))) {
@@ -117,8 +118,8 @@ final class Routes
         $expect = self::expect($in);
         // Digest the record as sent, objects kept: PHP arrays can't tell `{}` from `[]`, so a value the
         // runtime stores differently comes back as `normalized` instead of a digest the client can't reach.
-        $raw = json_decode($body, false)->record;
-        $sent = Wire::record($uid, $raw->fields ?? [], $raw->body ?? null, property_exists($raw, 'body'));
+        $raw = \Zero\Seam::container(\Zero\Seam::container($decoded)['record']);
+        $sent = Wire::record($uid, $raw['fields'] ?? [], $raw['body'] ?? null, array_key_exists('body', $raw));
         $pk = $spec['primaryKey'];
         $current = self::current($collection, $uid, $viewer);
         $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
@@ -134,12 +135,12 @@ final class Routes
         // Every stale answer comes before the first write: a returned 409 still commits the request.
         if ($trashed !== null) {
             // A trashed post is outside every filter, so restoring it needs an update rule that allows every row.
-            if (Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data) !== true) {
+            if (Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data, $spec['columns'], $collection) !== true) {
                 throw Access::deny($viewer->user, "restore $collection rows");
             }
             self::raiseMissing($missing);
             if (!Lock::fresh($collection, $trashed)) {
-                return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+                return self::stale($collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
             }
             Trash::restore($trashed);
             $current = self::current($collection, $uid, $viewer);
@@ -147,18 +148,18 @@ final class Routes
             // read-only one doesn't refuse the restore).
             $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
         } elseif ($current === null) {
-            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows");
+            Access::require(Access::collectionRules($spec)['create'], $viewer, 'create', self::createData($collection, $spec, ['uid' => $uid] + $data, $viewer), "create $collection rows", $spec['columns']);
             if ($expect !== 'absent') {
-                return self::stale($spec, $viewer, null, "$collection $uid is not on the site");
+                return self::stale($collection, $spec, $viewer, null, "$collection $uid is not on the site");
             }
             self::raiseMissing($missing);
         } else {
             self::authorizeRow($collection, $spec, 'update', $viewer, $current['row'][$pk], $data);
             if (!Lock::fresh($collection, $current['row'][$pk])) {
-                return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+                return self::stale($collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
             }
             if ($expect !== self::digestOf($current)) {
-                return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+                return self::stale($collection, $spec, $viewer, $current, "$collection $uid changed since it was read");
             }
             if (Canon::digest($sent) === $current['digest']) {
                 return [200, ['uid' => $uid, 'digest' => $current['digest'], 'status' => 'unchanged']];
@@ -176,7 +177,7 @@ final class Routes
         }
         $normalized = $stored['digest'] !== Canon::digest($sent);
         $out = ['uid' => $uid, 'digest' => $stored['digest'], 'status' => $normalized ? 'normalized' : 'applied'];
-        if ($normalized && self::maySyncRead($spec, $viewer)) {
+        if ($normalized && self::maySyncRead($collection, $spec, $viewer)) {
             $out['record'] = $stored['record'];
         }
 
@@ -190,7 +191,7 @@ final class Routes
             throw HttpError::invalidInput('uid must match zr_ + 20 hex characters', '/uid');
         }
         $expect = self::expect($in);
-        if (Access::evaluate(Access::collectionRules($spec)['delete'], $viewer, 'delete') === false) {
+        if (Access::evaluate(Access::collectionRules($spec)['delete'], $viewer, 'delete', null, $spec['columns'], $collection) === false) {
             throw Access::deny($viewer->user, "trash $collection rows");
         }
         $current = self::current($collection, $uid, $viewer);
@@ -201,10 +202,10 @@ final class Routes
         $id = $current['row'][$pk];
         self::authorizeRow($collection, $spec, 'delete', $viewer, $id, null);
         if (!Lock::fresh($collection, $id)) {
-            return self::stale($spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
+            return self::stale($collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
         }
         if ($expect !== self::digestOf($current)) {
-            return self::stale($spec, $viewer, $current, "$collection $uid changed since it was read");
+            return self::stale($collection, $spec, $viewer, $current, "$collection $uid changed since it was read");
         }
         if (!Trash::trash($collection, $spec, db()->editorRow($collection, $id))) {
             db()->delete($collection, [$pk => $id], false, $viewer);
@@ -268,14 +269,14 @@ final class Routes
      * Reading a collection as sync records (pull, conversions, the `current` record of a conflict) needs
      * its update rule to allow every row: true, not a filter. Writes are authorized row by row instead.
      */
-    private static function maySyncRead(array $spec, Viewer $viewer): bool
+    private static function maySyncRead(string $collection, array $spec, Viewer $viewer): bool
     {
-        return Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update') === true;
+        return Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', null, $spec['columns'], $collection) === true;
     }
 
     private static function requireSyncRead(array $spec, Viewer $viewer, string $collection): void
     {
-        if (!self::maySyncRead($spec, $viewer)) {
+        if (!self::maySyncRead($collection, $spec, $viewer)) {
             throw Access::deny($viewer->user, "sync $collection");
         }
     }
@@ -286,7 +287,7 @@ final class Routes
      */
     private static function authorizeRow(string $collection, array $spec, string $op, Viewer $viewer, int|string $id, ?array $data): void
     {
-        $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data);
+        $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data, $spec['columns'], $collection);
         if ($rule === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
         }
@@ -338,25 +339,29 @@ final class Routes
      * 409 sync_stale with `current` (the record stored now, or null when absent) for callers who may
      * pull. $current false = changed after this request's snapshot: unknown here, so it is left out.
      */
-    private static function stale(array $spec, Viewer $viewer, array|false|null $current, string $detail): Response
+    private static function stale(string $collection, array $spec, Viewer $viewer, array|false|null $current, string $detail): Response
     {
         $problem = App::problem(new HttpError(409, 'sync_stale', $detail));
-        if ($current !== false && self::maySyncRead($spec, $viewer)) {
+        if ($current !== false && self::maySyncRead($collection, $spec, $viewer)) {
             $problem['current'] = $current === null ? null : array_diff_key($current, ['row' => true, 'uid' => true]);
         }
 
         return Response::raw(Js::jsonStringify($problem) ?? '{}', 409, ['Content-Type' => 'application/problem+json']);
     }
 
-    private static function input(string $body): array
+    private static function input(string $collection, string $body): array
+    {
+        return \Zero\Seam::sync($collection, self::decode($body));
+    }
+
+    private static function decode(string $body): mixed
     {
         try {
             $in = trim($body) === '' ? [] : Js::decodeJson($body);
         } catch (\JsonException $e) {
             throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
         }
-        $in = \Zero\Seam::container($in);
-        if (!is_array($in) || ($in !== [] && array_is_list($in))) {
+        if (!$in instanceof \Zero\JsObject && $in !== []) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }
 

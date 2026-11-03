@@ -1,6 +1,6 @@
 {
     "version": 3,
-    "runtime": "0.2",
+    "runtime": "0.3",
     "name": "phase2",
     "admin": false,
     "site": {
@@ -656,6 +656,26 @@
             "agents": true,
             "idempotent": false,
             "signature": null
+        }
+    },
+    "uploads": {
+        "backend": "s3",
+        "bucket": {
+            "env": "UPLOAD_BUCKET"
+        },
+        "region": "us-east-1",
+        "endpoint": {
+            "env": "UPLOAD_ENDPOINT"
+        },
+        "pathStyle": true,
+        "prefix": "phase2",
+        "credentials": {
+            "accessKeyId": {
+                "env": "UPLOAD_KEY"
+            },
+            "secretAccessKey": {
+                "env": "UPLOAD_SECRET"
+            }
         }
     }
 }

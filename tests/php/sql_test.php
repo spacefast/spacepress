@@ -38,7 +38,7 @@ $columns = [
     'publishedAt' => ['type' => 'timestamp', 'system' => true],
 ];
 $schema = new Schema([
-    'version' => 3, 'runtime' => '0.2',
+    'version' => 3, 'runtime' => \Zero\Schema::SERIES,
     'collections' => [
         'notes' => [
             'primaryKey' => 'id', 'columns' => $columns, 'title' => 'title', 'content' => 'body', 'slug' => 'slug',
@@ -210,7 +210,7 @@ $reject('has on a scalar', ['where' => ['note' => ['has' => 'x']]], '`has` is on
 // The locale rule compiles the same on every store: a plain `locale`/`translationGroup` column pair,
 // or the post-backed Polylang term subqueries (WpPostStore's Source). The fallback subquery is
 // uncorrelated and carries the viewer's read guards, so a hidden translation never hides a fallback.
-$locSchema = new Schema(['version' => 3, 'runtime' => '0.2', 'locales' => ['default' => 'en', 'all' => ['en', 'de']], 'collections' => [
+$locSchema = new Schema(['version' => 3, 'runtime' => \Zero\Schema::SERIES, 'locales' => ['default' => 'en', 'all' => ['en', 'de']], 'collections' => [
     'docs' => ['primaryKey' => 'id', 'localized' => true, 'columns' => [
         'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
         'title' => ['type' => 'text', 'localized' => true],

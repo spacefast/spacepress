@@ -78,6 +78,8 @@ fn require_static_data(value: &Value, span: Span) -> R<()> {
 /// Names exported by `"zero"`.
 pub const ZERO_EXPORTS: &[&str] = &[
     "collection",
+    "table",
+    "userProjection",
     "id",
     "integer",
     "real",
@@ -156,6 +158,7 @@ pub const GLOBALS: &[&str] = &[
     "Array",
     "JSON",
     "String",
+    "structuredClone",
     "Number",
     "Boolean",
     "parseInt",
@@ -231,7 +234,7 @@ impl<'p> Evaluator<'p> {
                 },
                 "zero.config.ts has no default export",
             )
-            .help("end the file with `export default defineConfig({ schema, hooks, actions })`")),
+            .help("end the file with `export default defineConfig({ collections, tables, hooks, actions })`")),
         }
     }
 
@@ -704,6 +707,40 @@ impl<'p> Evaluator<'p> {
     pub fn eval(&mut self, e: &Expr, scope: &Rc<Scope>) -> R<Value> {
         self.tick(e.span)?;
         Ok(match &e.kind {
+            ExprKind::Class(class) => {
+                if !scope.is_module_scope() {
+                    return err(e.span, "class declarations must be at module scope");
+                }
+                let base = match &class.base {
+                    Some(name) => match self.lookup(name, scope, e.span)? {
+                        Value::Class(c) => Some(c),
+                        _ => {
+                            return err(
+                                e.span,
+                                "extend a named Zero class; built-in and dynamic inheritance are unsupported",
+                            );
+                        }
+                    },
+                    None => None,
+                };
+                let mut statics = IndexMap::new();
+                for field in &class.fields {
+                    if field.is_static {
+                        let value = match &field.init {
+                            Some(e) => self.eval_static_data(e, scope)?,
+                            None => Value::Undef,
+                        };
+                        statics.insert(field.name.clone(), value);
+                    }
+                }
+                Value::Class(Rc::new(ClassValue {
+                    class: class.clone(),
+                    base,
+                    env: scope.clone(),
+                    statics,
+                }))
+            }
+            ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
             ExprKind::Num(n) => Value::Num(*n),
             ExprKind::Str(s) => Value::str(s),
             ExprKind::Bool(b) => Value::Bool(*b),
@@ -903,6 +940,12 @@ impl<'p> Evaluator<'p> {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
                 match f {
+                    Value::Class(_) => {
+                        return err(
+                            e.span,
+                            "class instances are only constructed inside compiled callbacks; configuration stays plain data",
+                        );
+                    }
                     Value::Builtin(Builtin::Global(g @ ("Error" | "TypeError" | "RangeError"))) => {
                         for value in &argv {
                             require_static_data(value, e.span)?;
@@ -1067,7 +1110,7 @@ impl<'p> Evaluator<'p> {
                         column: prop.to_string(),
                     })))
                 } else {
-                    let mut d = Diag::new(span, format!("collection \"{}\" has no column `{prop}`", c.table));
+                    let mut d = Diag::new(span, format!("collection \"{}\" has no column `{prop}`", c.table()));
                     if let Some(s) = suggest(prop, c.columns.keys().map(String::as_str)) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
@@ -1146,16 +1189,13 @@ impl<'p> Evaluator<'p> {
     fn call_builtin(&mut self, b: &Builtin, args: Vec<Value>, span: Span) -> R<Value> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
-            Builtin::Collection => {
-                let Value::Str(name) = arg(0) else {
-                    return err(
-                        span,
-                        "collection() needs a table name first: `collection(\"items\", { ... })`",
-                    );
-                };
-                let cols_val = arg(1);
+            Builtin::Collection(kind) => {
+                if args.len() > 2 {
+                    return err(span, format!("{}() takes fields and optional options", kind.builder()));
+                }
+                let cols_val = arg(0);
                 let Value::Object(cols) = &cols_val else {
-                    return err(span, "collection() needs an object of columns as its second argument");
+                    return err(span, format!("{}() needs an object of fields first", kind.builder()));
                 };
                 let mut columns = IndexMap::new();
                 for (k, v) in cols.borrow().iter() {
@@ -1172,7 +1212,15 @@ impl<'p> Evaluator<'p> {
                         }
                     }
                 }
-                let options = match arg(2) {
+                // Both declaration and reference evaluation see the same implicit primary key.
+                if !columns.values().any(|c| c.primary_key) && !columns.contains_key("id") {
+                    let mut id = ColBuilder::new(ColType::Integer, span);
+                    id.primary_key = true;
+                    id.auto_increment = true;
+                    id.not_null = true;
+                    columns.shift_insert(0, "id".into(), Rc::new(id));
+                }
+                let options = match arg(1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -1183,7 +1231,8 @@ impl<'p> Evaluator<'p> {
                     }
                 };
                 Ok(Value::Collection(Rc::new(CollectionVal {
-                    table: name.to_string(),
+                    kind: *kind,
+                    table: std::cell::OnceCell::new(),
                     columns,
                     options,
                     span,
@@ -1798,7 +1847,9 @@ pub fn uncaught(c: Ctl) -> Diag {
 
 fn zero_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
-        "collection" => Builtin::Collection,
+        "collection" => Builtin::Collection(StorageKind::Collection),
+        "table" => Builtin::Collection(StorageKind::Table),
+        "userProjection" => Builtin::Collection(StorageKind::UserProjection),
         "id" => Builtin::Id,
         "integer" => Builtin::Column(ColType::Integer),
         "real" => Builtin::Column(ColType::Real),

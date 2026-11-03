@@ -1,5 +1,9 @@
 # Zero: WordPress parity — design contract
 
+Authoring uses explicit `collections`, `tables` and `users` registries; see
+[the current config API](config-api.md#collections-tables-and-user-projections).
+The storage-level `editor` flag below describes emitted metadata, not an authoring option.
+
 Status: frozen for implementation. Four owners build against this without
 talking: **R** (Rust compiler), **P** (shared PHP runtime + SQLite + standalone
 auth), **W** (WordPress stores + plugin), **T** (types + typed client +
@@ -33,8 +37,8 @@ config that can't build for WP doesn't build at all.
 |---|---|
 | Targets | `zero build --target standalone\|wp`. One `zero.config.ts`, one runtime pipeline, three stores: `SqliteStore`, `WpTableStore`, `WpPostStore`. |
 | WP content collections | One **custom post type per collection** (`zero_<table>`), not native `post` + taxonomy (§4.1 says why). Fields are SCF fields with meta key `zero_<column>`. |
-| WP reads | Post-backed collections are read from `wp_posts` + `wp_postmeta` directly: no duplicate data, no index table. One `Sql` compiler serves all stores through a `Source` mapping (column → SQL expression + join); on post-backed collections each filtered/ordered meta column is one `LEFT JOIN wp_postmeta`, typed via `CAST(NULLIF(meta_value,''))`. `editor: false` collections are real `{prefix}zero_<table>` tables and remain the fast path. |
-| Drafts | `drafts` defaults to `editor !== false`. Adds `status` (`draft\|published\|scheduled`) and `publishedAt`. API-created rows default to `published`. Sub-editor readers only see `published` unless the read rule is a function. |
+| WP reads | Post-backed collections are read from `wp_posts` + `wp_postmeta` directly: no duplicate data, no index table. One `Sql` compiler serves all stores through a `Source` mapping (column → SQL expression + join); on post-backed collections each filtered/ordered meta column is one `LEFT JOIN wp_postmeta`, typed via `CAST(NULLIF(meta_value,''))`. `table()` definitions are real `{prefix}zero_<table>` tables and remain the fast path. |
+| Drafts | `drafts` is always `true` for `collection()` and defaults to `false` for `table()`. Adds `status` (`draft\|published\|scheduled`) and `publishedAt`. API-created rows default to `published`. Sub-editor readers only see `published` unless the read rule is a function. |
 | Access | Payload-style `access: { read, create, update, delete }` = `boolean \| "anyone" \| "authenticated" \| Role \| (ctx) => boolean \| Filter`. Defaults: `read: "anyone"`, writes and actions `"editor"`. Hooks and `db` are trusted. |
 | Identity | WP: whatever WP REST authenticates (cookie+nonce, application passwords). Standalone: bearer tokens in `__zero_tokens`, minted by the CLI, with a role. Four roles: `subscriber < author < editor < admin`. |
 | Revisions | In on both targets. WP-native for post-backed; `__zero_revisions` table for everything else. `GET /{c}/{id}/revisions`, restore runs the update pipeline. |
@@ -153,17 +157,11 @@ column-name rules.
 export interface CollectionOptions {
   /** Shown in wp-admin menus and the typed client docs. Default: name with underscores → spaces, title-cased. */
   label?: string;
-  /**
-   * WP: true = posts + SCF fields (wp-admin editing, revisions, scheduling); false = custom table via $wpdb.
-   * Standalone: no storage effect; it only drives the drafts/revisions defaults so one config behaves the same everywhere.
-   * Default true.
-   */
-  editor?: boolean;
-  /** Adds `status` + `publishedAt` system columns (§6). Default `editor !== false`. `false` with `editor: true` is rejected. */
+  /** Native on collections, opt-in on tables. */
   drafts?: boolean;
-  /** Keep a revision per update (§6.4). Default `editor !== false`. */
+  /** Keep a revision per update (§6.4). Always enabled for `collection()`; defaults to false for `table()`. */
   revisions?: boolean;
-  /** Column that is the WP post title. Must be a notNull text(). Default: a column named `title` if it is text(). Required when `editor !== false`. */
+  /** Column that is the WP post title. Must be a notNull text(). Default: a column named `title` if it is text(). Required for `collection()`. */
   title?: string;
   /** Column that is the WP post_content (block editor). Must be richText(). Default: a column named `content` if it is richText(). Optional. */
   content?: string;
@@ -172,14 +170,14 @@ export interface CollectionOptions {
 }
 ```
 
-Rejections (both targets): `editor !== false` and no title designation ("add a
-`title: text().notNull()` column or `title:` option, or set `editor: false`");
+Rejections (both targets): using `collection()` and no title designation ("add a
+`title: text().notNull()` column or `title:` option, or use `table()`");
 `title` not a notNull text; `content` not richText; a collection named `media`,
 `globals`, `actions`, `me`, `_schema` (reserved); a table name longer than 15
-characters when `editor !== false` ("WordPress post types are limited to 20
+characters for `collection()` ("WordPress post types are limited to 20
 characters and Zero prefixes `zero_`"); more than one `slug()` column; a
 `slug({ source })` naming a column that isn't text; `drafts: false` with
-`editor: true`; a user column named `status` or `publishedAt` on a drafts
+`collection()`; a user column named `status` or `publishedAt` on a drafts
 collection ("reserved: drafts add these").
 
 ### 1.5 Globals
@@ -298,7 +296,7 @@ run on editor saves (the post is already saved when Zero learns about it);
 
 ### 1.8 Target behaviour matrix
 
-| Item | standalone | wp (`editor: true`) | wp (`editor: false`) |
+| Item | standalone | wp (`collection()`) | wp (`table()`) |
 |---|---|---|---|
 | email/url/slug | TEXT, validated | SCF email/url; slug = post_name | VARCHAR(191)/LONGTEXT, validated |
 | richText | TEXT verbatim | post_content (designated) or SCF wysiwyg; `wp_kses_post` unless `unfiltered_html` | LONGTEXT verbatim |
@@ -314,11 +312,11 @@ run on editor saves (the post is already saved when Zero learns about it);
 
 ```ts
 import {
-  collection, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
+  collection, table, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, db, HttpError,
 } from "zero";
 
-export const authors = collection("authors", {
+export const authors = collection({
   id: id(),
   name: text().notNull().max(80),
   email: email().notNull().unique().max(191),
@@ -327,7 +325,7 @@ export const authors = collection("authors", {
   userId: integer(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export const posts = collection("posts", {
+export const posts = collection({
   id: id(),
   title: text().notNull().min(1).max(120),
   slug: slug({ source: "title" }),
@@ -360,7 +358,7 @@ export const posts = collection("posts", {
   },
 });
 
-export const comments = collection("comments", {
+export const comments = table({
   id: id(),
   postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
   name: text().notNull().max(60),
@@ -368,13 +366,13 @@ export const comments = collection("comments", {
   approved: boolean().notNull().default(false),
   createdAt: timestamp().notNull().defaultNow(),
 }, {
-  editor: false,
   access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
-export const schema = { authors, posts, comments };
+export const collections = { authors, posts };
+export const tables = { comments };
 
-export const relations = defineRelations(schema, (r) => ({
+export const relations = defineRelations({ ...collections, ...tables }, (r) => ({
   posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
   authors: { posts: r.many.posts() },
   comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
@@ -389,7 +387,7 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "blog",
-  schema,
+  collections, tables,
   relations,
   globals: { settings },
   hooks: {
@@ -848,11 +846,11 @@ key)**. Zero adds **no** meta indexes in this pass (`meta_value` is LONGTEXT;
 a prefix index would need a schema change to core tables, which plugins must
 not make). Core-column filters (`id`, title, slug, `status`, `publishedAt`)
 use `wp_posts` indexes (`type_status_date`, `post_name`) and are fast.
-`editor: false` collections are real tables with real indexes and FKs and are
+`table()` definitions are real tables with real indexes and FKs and are
 the fast path for anything query-heavy. Build-time hint (R, cheap): when a
 post-backed collection has a `unique()` or `references()` on a meta column,
 or `.references()` from another collection targets a post-backed one, `zero
-build` prints `hint: "<table>.<col>" is filtered through postmeta on WordPress; set editor: false on "<table>" if this list grows large`
+build` prints `hint: "<table>.<col>" is filtered through postmeta on WordPress; use table() for SQL data if this list grows large`
 once per build (not an error; silenced with `--quiet`).
 
 ### 3.6 Media and globals in `Db`
@@ -869,7 +867,7 @@ call `Store::globalRead/globalWrite`.
 
 ### 4.1 Collections → post types
 
-One registered post type per `editor !== false` collection: `zero_<table>`
+One registered post type for each `collection()` definition: `zero_<table>`
 (≤20 chars, enforced at build). Not the original `post` + `zero_collection`
 taxonomy design, for three concrete reasons: (1) per-collection admin menus,
 labels and capabilities come free with a CPT and are what wp-admin users expect
@@ -893,7 +891,7 @@ Custom capabilities are granted on activation: `administrator` and `editor` get
 all; `author` gets `edit_/publish_/delete_` own; `subscriber` nothing. The
 `author`-level grants are what make `ctx.user.role` and wp-admin agree (§5.1).
 
-### 4.2 Custom tables (`editor: false`) and where post-backed data lives
+### 4.2 Custom tables (`table()`) and where post-backed data lives
 
 Post-backed collections have **no Zero table**: the row is the `wp_posts` row
 plus its `wp_postmeta` rows (SCF layout), read through the §3.5.1 mapping and
@@ -901,7 +899,7 @@ written through `wp_insert_post`/`wp_update_post` + `update_field`. There is
 no duplicate copy and nothing to resync; what wp-admin saved is what
 `/zero/v1` reads, in the same request.
 
-`editor: false` collections are real tables `{prefix}zero_<table>` with all
+`table()` definitions are real tables `{prefix}zero_<table>` with all
 columns in the §3.4 storage form, created by `Wp\Migrator`. They are the fast
 path (indexes, FKs, UNIQUE) and the right choice for anything query-heavy
 (comments, logs, reactions, carts).
@@ -917,9 +915,9 @@ Column DDL (`Wp\Migrator`, MySQL dialect; `dbDelta`-compatible):
 | other text, richText, json, mediaList, select, group, repeater, blocks | `LONGTEXT` |
 | timestamp | `CHAR(24)` (the ISO form; sorts lexically = chronologically) |
 | date | `CHAR(10)` |
-| references | `FOREIGN KEY ... ON DELETE <action>` — **only** when both sides are `editor: false`; cross-kind and post↔post references are checked by `Db` (existence on write, `set null`/`cascade` emulated in `Db::delete` — same code path on every store, so FK actions are pipeline-level semantics with the SQL FK as an extra guard) |
+| references | `FOREIGN KEY ... ON DELETE <action>` — **only** when both sides are `table()`; cross-kind and post↔post references are checked by `Db` (existence on write, `set null`/`cascade` emulated in `Db::delete` — same code path on every store, so FK actions are pipeline-level semantics with the SQL FK as an extra guard) |
 
-Migrations for `editor: false` tables (and the `zero__*` system tables) are
+Migrations for `table()` tables (and the `zero__*` system tables) are
 generated by the compiler as `zero/migrations/wp/NNNN_<name>.sql` (MySQL dialect, same snapshot
 diff as SQLite, `ALTER TABLE` for additive changes, no rebuilds), applied by
 `Wp\Migrator` on activation and on `admin_init` when `get_option('zero_blog_schema')`
@@ -1071,7 +1069,7 @@ zero-blog/
 
 | hook | work |
 |---|---|
-| `register_activation_hook` | require `wp-admin/includes/upgrade.php`; `Wp\Migrator::migrate()` (creates `editor: false` tables + `zero__*` system tables; InnoDB check on them and on `wp_posts`/`wp_postmeta`); grant capabilities; `flush_rewrite_rules` not needed (no rewrite) |
+| `register_activation_hook` | require `wp-admin/includes/upgrade.php`; `Wp\Migrator::migrate()` (creates `table()` tables + `zero__*` system tables; InnoDB check on them and on `wp_posts`/`wp_postmeta`); grant capabilities; `flush_rewrite_rules` not needed (no rewrite) |
 | `plugins_loaded` | abort with an admin notice if SCF (`class ACF`) is missing or `< 6.9.7`, or WP `< 6.7` |
 | `init` (10) | `register_post_type` for every post-backed collection; `App::boot($dir, new WpPostStore+WpTableStore composite, new WpAuth, new WpMedia)` |
 | `acf/init` (5) | `Scf::registerGroups()`: field groups + options pages + validate/update/load filters |
@@ -1170,8 +1168,8 @@ by clock drift — promotion handles it.
 
 | target | mechanism |
 |---|---|
-| standalone, WP `editor: false` | **Lazy promotion**: `App::handle`/`cli` call `Store::promoteDue($collection, now)` for every drafts collection at the start of each request/command (one cheap `UPDATE` per collection); plus `php zero/bin/zero.php publish-due` for cron. |
-| WP `editor: true` | `post_status = future` + WP cron (`publish_future_post`); reads see the new status immediately through the §3.5.1 `CASE`. |
+| standalone, WP `table()` | **Lazy promotion**: `App::handle`/`cli` call `Store::promoteDue($collection, now)` for every drafts collection at the start of each request/command (one cheap `UPDATE` per collection); plus `php zero/bin/zero.php publish-due` for cron. |
+| WP `collection()` | `post_status = future` + WP cron (`publish_future_post`); reads see the new status immediately through the §3.5.1 `CASE`. |
 
 Promotion fires **no hooks and writes no revision** on either target
 (parity: WP cron doesn't run Zero hooks). Teams that need "on publish" logic
@@ -1420,7 +1418,7 @@ extensions; the client runtime (`runtime/client/index.ts`, `README.md`
 template) implementing §7 against the generated `types.ts`/`schema.ts`;
 `examples/blog` (config, `public/` minimal HTML page that uses the client,
 hook bodies); the cross-target scenario function; the pantry example updated
-(`title: "name"` or `editor: false` — pantry becomes `editor: false`
+(`title: "name"` or `table()` — pantry becomes `table()`
 everywhere, it is an app not a CMS).
 Acceptance: `tsc -p types/zero/tests` and `tsc -p examples/blog/client-tests`
 green; the scenario passes on P's standalone lane (T runs it locally with P's
@@ -1443,7 +1441,7 @@ required — the scenario is pure client code).
    collections are O(postmeta for the key) with no `meta_value` index; `has`
    on multi-value fields is a serialized-substring LIKE; `group/repeater/blocks`
    can't be filtered on. One `Sql` compiler still covers every store through a
-   per-column `Source` mapping. `editor: false` is the documented fast path and
+   per-column `Source` mapping. `table()` is the documented fast path and
    `zero build` hints at it.
 3. **API-created rows default to `published`**, not `draft` (an app posting a
    row expects it to exist). wp-admin's own default (draft) still applies to
@@ -1462,7 +1460,7 @@ required — the scenario is pure client code).
    by WP capabilities, not Zero access rules. The typed client never uses it.
 10. **Unique text requires `.max(≤191)`** (MySQL index limit) on both targets,
     for one config.
-11. **`drafts: false` with `editor: true` rejected**; WP posts always have a
+11. **`drafts: false` with `collection()` rejected**; WP posts always have a
     status, so pretending otherwise would diverge.
 12. **FK actions are emulated in the pipeline** on every store (SQL FKs only
     where both sides are custom tables) so cross-kind references behave the
@@ -1474,7 +1472,7 @@ required — the scenario is pure client code).
     SQL; it deviates from SCF's default site-tz storage only for Zero fields.
 
 Deliberately out of this pass: i18n/translatable fields, field-level access,
-`auth: true` collections (user-backed collections), Sanity-style conditional
+`userProjection()` definitions, Sanity-style conditional
 `hidden`, focal point, live preview, webhooks, revision trimming, upload size
 policy beyond PHP's `upload_max_filesize`, rate limiting, `ilike` on SQLite
 for non-ASCII case folding beyond PCRE `i`, nested `blocks`, SCF conditional

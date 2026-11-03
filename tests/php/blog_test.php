@@ -345,7 +345,7 @@ $cache = [];
         return \Zero\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
     }
     $result = $next();
-    $wp->exec('INSERT INTO {prefix}zero__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(['status' => $result->status, 'data' => $result->data])]);
+    $wp->exec('INSERT INTO {prefix}zero__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(\Zero\Seam::toWire(['status' => $result->status, 'data' => $result->data]))]);
     if ($headers['idempotency-key'] === 'fail') {
         throw new \Zero\JsError('Receipt persistence failed');
     }

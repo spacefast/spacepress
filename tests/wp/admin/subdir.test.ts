@@ -10,17 +10,8 @@ const site = harness.url;
 const origin = new URL(site).origin;
 const subdir = new URL(site).pathname.replace(/\/$/, "");
 
-/** A WordPress login cookie for a harness user, as a browser would carry it. */
-async function loginCookie(role: "admin" | "editor"): Promise<string> {
-  const res = await fetch(`${site}/wp-login.php`, {
-    method: "POST", redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
-    body: new URLSearchParams({ log: role, pwd: `zero-test-${role}`, testcookie: "1" }),
-  });
-  const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-  assert.ok(cookie.includes("wordpress_logged_in"), `${role} signed in: ${res.status}`);
-  return cookie;
-}
+import { loginCookie } from "../login.ts";
+
 
 /** The JSON the page hands `init()`: routes, menu items, meta menu items, init modules, context. */
 function bootPayload(html: string): { menuItems: any[]; context: Record<string, unknown> } {
@@ -40,7 +31,7 @@ test("the admin is installed below the site root and derives every URL from it",
 
   // Signed in, the same URL serves the app, and the payload tells it where it is mounted and
   // where wp-admin is, both under /blog/.
-  const page = await fetch(`${site}/zero-admin/media`, { headers: { cookie: await loginCookie("editor") } });
+  const page = await fetch(`${site}/zero-admin/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/zero-admin/media`) } });
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.ok(html.includes('id="zero-admin-app"'));
@@ -53,8 +44,8 @@ test("the admin is installed below the site root and derives every URL from it",
   // A legacy menu route frames `<admin_url><slug>`: the base the page handed in reaches the real
   // wp-admin of this install, where the origin-root guess (`/wp-admin/`) would not.
   const adminUrl = String(context.admin_url);
-  const framed = await fetch(new URL("options-media.php", adminUrl), { headers: { cookie: await loginCookie("admin") }, redirect: "manual" });
+  const framed = await fetch(new URL("options-media.php", adminUrl), { headers: { cookie: await loginCookie(site, "admin", `${site}/wp-admin/options-media.php`) }, redirect: "manual" });
   assert.equal(framed.status, 200, `the framed wp-admin page is served (got ${framed.status} -> ${framed.headers.get("location")})`);
-  const guessed = await fetch(`${origin}/wp-admin/options-media.php`, { headers: { cookie: await loginCookie("admin") }, redirect: "manual" });
+  const guessed = await fetch(`${origin}/wp-admin/options-media.php`, { headers: { cookie: await loginCookie(site, "admin", `${site}/wp-admin/options-media.php`) }, redirect: "manual" });
   assert.notEqual(guessed.status, 200, "the origin-root guess is not this site's wp-admin");
 });

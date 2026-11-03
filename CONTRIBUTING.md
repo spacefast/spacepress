@@ -166,6 +166,34 @@ browser dependencies otherwise fail the lane. Screenshots and failure traces
 are written below the system temporary directory, or `ZERO_ADMIN_BROWSER_OUTPUT`.
 The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
+## Releases
+
+`.github/workflows/release.yml` builds `zero` for darwin-arm64, darwin-x64,
+linux-arm64, linux-x64 (static musl) and win32-x64, plus the wasm compiler core,
+and packages them for npm the way esbuild does: one package per platform holding
+the binary, and a wrapper whose `optionalDependencies` list them, whose `zero`
+bin runs the right one, and whose `/wasm` export compiles in process. The names
+are one constant in [`npm/targets.json`](npm/targets.json).
+
+A pull request that touches `npm/` or the workflow, and a manual run, build,
+pack and install every package on its own platform (`npm/smoke.mjs`) without
+publishing. Pushing a `v<version>` tag that matches `Cargo.toml` also publishes,
+platform packages first, through the `npm` environment's `NPM_TOKEN`.
+
+To check the packaging on one machine:
+
+```sh
+cargo build --release
+cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
+mkdir -p /tmp/zero-artifacts
+cp target/release/zero /tmp/zero-artifacts/zero-darwin-arm64        # this machine's <os>-<cpu>
+cp target/wasm32-unknown-unknown/wasm/zero.wasm /tmp/zero-artifacts/
+node npm/stage.mjs --artifacts /tmp/zero-artifacts --out /tmp/zero-npm --only darwin-arm64
+mkdir -p /tmp/zero-npm/packed
+for dir in /tmp/zero-npm/darwin-arm64 /tmp/zero-npm/wrapper; do (cd $dir && npm pack --pack-destination ../packed); done
+node npm/smoke.mjs /tmp/zero-npm/packed
+```
+
 ## Layout
 
 | Path | What |
@@ -190,6 +218,7 @@ The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 | `examples/` | pantry, blog, site, wp-plugins, reusable field recipes |
 | `tests/` | Rust, PHP, WordPress and system suites, fixtures |
 | `docs/` | API, contracts, design documents |
+| `npm/` | the npm packages: binaries per platform, the wrapper, the wasm entry |
 
 ## Licensing
 

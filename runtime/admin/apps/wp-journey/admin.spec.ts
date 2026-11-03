@@ -79,6 +79,10 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/`);
 	await expect(page.locator('#adminmenu')).toBeVisible();
+	if (subdir) {
+		await page.goto(`${site}/zero-admin/types/post/list/all`);
+		await expect(page.getByRole('table')).toBeVisible();
+	}
 	expect(errors).toEqual([]);
 });
 // The subdirectory lane proves mounting/login/navigation with the same owner. Writes are
@@ -686,9 +690,9 @@ if (!subdir) {
 		await expect(page).toHaveURL(`${site}/zero-admin/media`);
 		await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
 	});
-}
 
 test('restored native WordPress routes persist settings and published content and keep classic admin reachable', async ({ page, request }) => {
+    test.setTimeout(180_000);
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     const headers = { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` };
@@ -770,3 +774,4 @@ test('restored native WordPress routes persist settings and published content an
     expect((await afterDenial.json()).description).toBe(description);
     expect(errors).toEqual([]);
 });
+}

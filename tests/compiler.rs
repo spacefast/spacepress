@@ -525,6 +525,25 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
         std::fs::write(conflict.join("zero.config.ts"), "import { table, defineConfig } from 'zero'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
     }
+    // Physical-only siblings do not establish who owned the retained resource.
+    let mut siblings = canonical.clone();
+    siblings["tables"]["stockItems"] = canonical["tables"]["stock_items"].clone();
+    let sibling_bytes = serde_json::to_vec(&siblings).unwrap();
+    std::fs::write(&ledger, &sibling_bytes).unwrap();
+    let refused = zero().arg("build").arg(&conflict).output().unwrap();
+    assert_eq!(
+        refused.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        error.contains("stored resource `stockItems` conflicts with canonical physical name `stock_items`"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
+    assert_eq!(std::fs::read_dir(conflict.join("zero/migrations")).unwrap().count(), 2);
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join(".zero/wp-content");

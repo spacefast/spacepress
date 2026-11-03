@@ -75,7 +75,9 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "agents",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
-const RESERVED_COLLECTIONS: &[&str] = &["media", "files", "globals", "actions", "me", "_schema", "auth"];
+const RESERVED_COLLECTIONS: &[&str] = &[
+    "media", "files", "globals", "actions", "me", "_schema", "auth", "services",
+];
 /// WordPress limits post types to 20 characters; Zero prefixes `zero_`.
 const MAX_POST_TYPE_TABLE: usize = 15;
 /// MySQL utf8mb4 index prefix limit.

@@ -148,6 +148,10 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "\"media\" is reserved",
         ),
         (
+            "collections: { services: collection({ title: text().notNull() }) }",
+            "\"services\" is reserved",
+        ),
+        (
             "tables: { notes: table({}, { storageName: 'existing' }), other: table({}, { storageName: 'existing' }) }",
             "share the physical name `existing`",
         ),

@@ -220,15 +220,42 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
 })();
 
 // The first result is original; every replay comes from the persisted snapshot.
-$db->transaction(static function (): void {
-    $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1]), 'error' => new \Zero\JsError('snapshot')]);
-    $first = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
+(static function (): void {
+    $point = new \Zero\JsObject(['x' => 1]);
+    $set = (new \Zero\JsSet())->add($point);
+    $set->add($set);
+    $map = (new \Zero\JsMap())->set($point, $set);
+    $map->set($map, $point);
+    $date = new \Zero\JsDate(0);
+    $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1]), 'error' => new \Zero\JsError('snapshot'),
+        'point' => $point, 'set' => $set, 'map' => $map, 'date' => $date, 'again' => $date, 'absent' => \Zero\Js::undefined()]);
+    $runs = 0;
+    $load = static function () use ($source, &$runs): \Zero\JsObject { $runs++; return $source; };
+    $first = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', $load);
     $first->p['nested']->a[] = 2;
-    $second = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
+    $first->p['point']->p['x'] = 2;
+    $first->p['set']->add('first');
+    $first->p['map']->set('first', 2);
+    $first->p['date']->milliseconds = 1;
+    $second = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', $load);
     $second->p['nested']->a[] = 3;
-    $third = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', static fn () => $source);
-    eq('once() returns the original first and an independent snapshot on every replay', [$first === $source, $first === $second, $third->p['nested']->a, $third->p['error'] === $source->p['error'], $third->p['error']->getMessage()], [true, false, [1], false, 'snapshot']);
-});
+    $second->p['point']->p['x'] = 3;
+    $second->p['set']->add('second');
+    $second->p['map']->set('second', 3);
+    $second->p['date']->milliseconds = 2;
+    $third = \Zero\Jobs\Receipts::once('fn', 'graph-snapshot', $load);
+    eq('once() returns the original first and an independent snapshot on every replay', [
+        'runs' => $runs, 'original' => $first === $source, 'independent' => $first !== $second,
+        'nested' => $third->p['nested']->a,
+        'error' => [$third->p['error'] !== $source->p['error'], $third->p['error']->getMessage()],
+        'point' => $third->p['point']->p['x'],
+        'set' => [count($third->p['set']->values), $third->p['set']->has($third->p['point']), $third->p['set']->has($third->p['set'])],
+        'map' => [count($third->p['map']->entries), $third->p['map']->get($third->p['point']) === $third->p['set'], $third->p['map']->get($third->p['map']) === $third->p['point']],
+        'date' => [$third->p['date'] instanceof \Zero\JsDate, $third->p['date'] !== $date, $third->p['date'] === $third->p['again'], $third->p['date']->milliseconds],
+        'undefined' => $third->p['absent'] === \Zero\Js::undefined(),
+    ], ['runs' => 1, 'original' => true, 'independent' => true, 'nested' => [1], 'error' => [true, 'snapshot'],
+        'point' => 1, 'set' => [2, true, true], 'map' => [2, true, true], 'date' => [true, true, true, 0], 'undefined' => true]);
+})();
 
 // ---- once() and Idempotency-Key ------------------------------------------------------------------------------------
 [$s1, $r1] = $request('POST', '/actions/remember', ['note' => 'a']);

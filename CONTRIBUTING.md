@@ -173,31 +173,25 @@ The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
 ## Releases
 
-`.github/workflows/release.yml` builds `zero` for darwin-arm64, darwin-x64,
-linux-arm64, linux-x64 (static musl) and win32-x64, plus the wasm compiler core,
-and packages them for npm the way esbuild does: one package per platform holding
-the binary, and a wrapper whose `optionalDependencies` list them, whose `zero`
-bin runs the right one, and whose `/wasm` export compiles in process. The names
-are one constant in [`npm/targets.json`](npm/targets.json).
+The existing unsigned release workflow also builds the static musl Linux and
+Windows compiler archives and `zero.wasm` for Spacefast. It never publishes npm
+packages. PRs and manual runs retain Actions artifacts. A maintainer-created
+`v<Cargo version>` tag attaches the archives, wasm, and `compiler-assets.json`
+to a GitHub release. The manifest records the exact Git revision and SHA-256 of
+each asset. Every native archive retains its source revision, editor types,
+Cargo lockfile, and original dependency license notices.
 
-A pull request that touches `npm/` or the workflow, and a manual run, build,
-pack and install every package on its own platform (`npm/smoke.mjs`) without
-publishing. Pushing a `v<version>` tag that matches `Cargo.toml` also publishes,
-platform packages first, through the `npm` environment's `NPM_TOKEN`.
+The `spacefast` npm release owns the platform packages and their versions.
+Its `packages/cli/zero-compiler.json` is the package-name and compiler pin
+constant. Each platform package has the same exact npm version as `spacefast`,
+which depends on it directly through `optionalDependencies`. The compiler's
+Cargo version can differ from that npm version. Its Git source revision must
+match both the downloaded manifest and each archive's `SOURCE.json`.
+Changing that pin requires a Spacefast changeset. Users install `spacefast`
+and run `sf zero`; there is no `@spacefast/zero-v2` wrapper.
 
-To check the packaging on one machine:
-
-```sh
-cargo build --release
-cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
-mkdir -p /tmp/zero-artifacts
-cp target/release/zero /tmp/zero-artifacts/zero-darwin-arm64        # this machine's <os>-<cpu>
-cp target/wasm32-unknown-unknown/wasm/zero.wasm /tmp/zero-artifacts/
-node npm/stage.mjs --artifacts /tmp/zero-artifacts --out /tmp/zero-npm --only darwin-arm64
-mkdir -p /tmp/zero-npm/packed
-for dir in /tmp/zero-npm/darwin-arm64 /tmp/zero-npm/wrapper; do (cd $dir && npm pack --pack-destination ../packed); done
-node npm/smoke.mjs /tmp/zero-npm/packed
-```
+The independent upstream `@spacefast/zero-cli` scaffolding and acceptance
+checks remain available. They are not dependencies of `spacefast`.
 
 ## Layout
 
@@ -223,7 +217,6 @@ node npm/smoke.mjs /tmp/zero-npm/packed
 | `examples/` | pantry, blog, site, wp-plugins, reusable field recipes |
 | `tests/` | Rust, PHP, WordPress and system suites, fixtures |
 | `docs/` | API, contracts, design documents |
-| `npm/` | the npm packages: binaries per platform, the wrapper, the wasm entry |
 
 ## Licensing
 

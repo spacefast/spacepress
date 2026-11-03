@@ -1,6 +1,11 @@
 name: Unsigned release artifacts
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/release/**'
+      - 'packages/cli/lib/release.mjs'
   workflow_dispatch:
     inputs:
       version:
@@ -23,6 +28,9 @@ jobs:
           - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { runner: macos-14, target: aarch64-apple-darwin }
           - { runner: macos-15-intel, target: x86_64-apple-darwin }
+          - { runner: ubuntu-24.04, target: x86_64-unknown-linux-musl }
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { runner: windows-2025, target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -32,19 +40,44 @@ jobs:
           node-version: '22'
       - name: Verify release versions
         env:
-          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+          REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: node scripts/release/version.mjs "$REQUESTED_VERSION"
       - name: Install compiler toolchain
         run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target "${{ matrix.target }}"
-      - run: cargo build --release --locked --target "${{ matrix.target }}"
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - shell: bash
+        env:
+          CC_aarch64_unknown_linux_musl: musl-gcc
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked --target "${{ matrix.target }}"
       - name: Package executable and original license notices
-        run: node scripts/release/archive.mjs "target/${{ matrix.target }}/release/zero" "${{ matrix.target }}" release "$GITHUB_SHA"
+        shell: bash
+        run: |
+          exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
+          node scripts/release/archive.mjs "target/${{ matrix.target }}/release/zero$exe" "${{ matrix.target }}" release "$GITHUB_SHA"
       - name: Smoke compiled executable
-        run: "target/${{ matrix.target }}/release/zero check examples/pantry"
+        shell: bash
+        run: |
+          exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
+          "target/${{ matrix.target }}/release/zero$exe" check examples/pantry
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unsigned-${{ matrix.target }}
           path: release/*
+          if-no-files-found: error
+
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target wasm32-unknown-unknown
+      - run: cargo build --locked --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: compiler-wasm
+          path: target/wasm32-unknown-unknown/wasm/zero.wasm
           if-no-files-found: error
 
   npm:
@@ -57,7 +90,7 @@ jobs:
           node-version: '22'
       - name: Verify release versions
         env:
-          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+          REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: node scripts/release/version.mjs "$REQUESTED_VERSION"
       - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
       - run: mkdir -p release && npm pack ./packages/cli --pack-destination release && npm pack ./packages/create-zero --pack-destination release
@@ -101,7 +134,9 @@ jobs:
           if-no-files-found: warn
 
   assemble:
-    needs: [binary, npm, install]
+    permissions:
+      contents: write
+    needs: [binary, wasm, npm, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -118,6 +153,11 @@ jobs:
         with:
           name: npm-tarballs
           path: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: compiler-wasm
+          path: release
+      - run: node scripts/release/compiler-assets.mjs release "$GITHUB_SHA"
       - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/zero.rb
       - name: Include exact compiler/runtime source and dependency provenance
         run: git archive --format=tar.gz --output=release/zero-source.tar.gz "$GITHUB_SHA"
@@ -127,3 +167,12 @@ jobs:
           path: release/
           if-no-files-found: error
           retention-days: 14
+
+      # Tagging is a separate maintainer action. PR/manual runs only retain Actions artifacts.
+      - name: Attach compiler assets to the tagged GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes "Unsigned compiler assets. See compiler-assets.json for source and checksums."
+          gh release upload "$GITHUB_REF_NAME" release/zero-v*.tar.gz release/zero-v*.tar.gz.sha256 release/zero.wasm release/compiler-assets.json

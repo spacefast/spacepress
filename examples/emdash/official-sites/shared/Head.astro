@@ -1,0 +1,17 @@
+---
+import { getSiteSettings } from './client';
+const settings = await getSiteSettings();
+interface Props { page: { title: string; description?: string | null; canonical?: string | null; image?: string | null; pageType?: string; seo?: { robots?: string | null }; articleMeta?: { publishedTime?: string | null; modifiedTime?: string | null; author?: string | null } } }
+const { page } = Astro.props;
+---
+{settings.favicon && <link rel="icon" href={settings.favicon.url} />}
+<meta name="description" content={page.description} />
+<meta property="og:title" content={page.title} />
+<meta property="og:description" content={page.description} />
+<meta property="og:type" content={page.pageType ?? 'website'} />
+{page.image && <meta property="og:image" content={page.image} />}
+{page.canonical && <link rel="canonical" href={page.canonical} />}
+{page.seo?.robots && <meta name="robots" content={page.seo.robots} />}
+{page.articleMeta?.publishedTime && <meta property="article:published_time" content={page.articleMeta.publishedTime} />}
+{page.articleMeta?.modifiedTime && <meta property="article:modified_time" content={page.articleMeta.modifiedTime} />}
+{page.articleMeta?.author && <meta name="author" content={page.articleMeta.author} />}

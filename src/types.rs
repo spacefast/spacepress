@@ -47,6 +47,8 @@ pub enum Ty {
     Map(Box<Ty>),
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
+    /// Boolean return carrying a declared parameter refinement in a function signature.
+    Predicate(usize, Box<Ty>),
     Promise(Box<Ty>),
     /// Epoch milliseconds (a PHP number) that remembers it came from `Date`.
     Date,
@@ -241,6 +243,7 @@ impl Ty {
             Ty::Map(t) => format!("Record<string, {}>", t.describe()),
             Ty::Union(ts) => ts.iter().map(Ty::describe).collect::<Vec<_>>().join(" | "),
             Ty::Fn(..) => "a function".into(),
+            Ty::Predicate(_, target) => format!("a type predicate for {}", target.describe()),
             Ty::Promise(t) => format!("Promise<{}>", t.describe()),
             Ty::Date => "Date".into(),
             Ty::Regex => "RegExp".into(),

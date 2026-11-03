@@ -24,13 +24,21 @@ Use concrete named classes with public fields and methods. See config-api.md for
 
 [Evidence](../tests/fixtures/reject-class)
 
-## npm-imports
+## uninstalled-package
 
 Status: **refused**. Diagnostic: `Z1102`.
 
-Import from zero or a relative TypeScript module.
+Install the package with your package manager. Zero reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript.
 
-[Evidence](../tests/fixtures/reject-npm-import)
+[Evidence](../tests/fixtures/reject-uninstalled-package)
+
+## installed-source-packages
+
+Status: **supported**.
+
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and ESM main entries. Scoped packages and exact exported subpaths are supported. Every reachable TypeScript/ESM line is compiled under the same language restrictions. CommonJS, Node built-ins, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Resolving a package does not establish compatibility with its JavaScript language features or effects.
+
+[Evidence](../src/loader.rs) (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
 
 ## build-time-clock
 
@@ -93,6 +101,14 @@ Field .ui() metadata survives nested schema emission and schema description and 
 Status: **supported**.
 
 Finite object interface inheritance and intersections, generic aliases/interfaces with constraints and defaults, finite keyof/indexed access and dynamic key reads, mapped types and selected utility/conditional types retain literal and optional boundaries. Concrete aliases also preserve class identity, typed fields/constructor parameter properties and method results while generated clients erase methods at the wire boundary. See runtime-contract.md (TypeScript type normalization) for the supported domains and refusals; the strict type-semantics fixture also checks generated-client boundaries and native/WASM parity.
+
+[Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
+
+## declared-type-predicates
+
+Status: **supported**.
+
+Synchronous concrete helpers and inline callbacks can return named-parameter type predicates. The target must be a subtype of the parameter and the body must return booleans. Calls narrow their checked argument on the true branch; filter, find and findLast narrow elements when their first callback parameter is refined. Function aliases preserve predicates; map produces booleans. As in TypeScript, the authored predicate declares the refinement; the compiler does not prove nested runtime checks. Assertions, this predicates and predicate function-type annotations are refused. Direct Boolean callbacks retain JavaScript truthiness. Required tuple destructuring positions retain their declared types; array positions remain nullable, and mutation widens tuple read views. The type-semantics fixture checks native/WASM emission and strict client types.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 
@@ -191,3 +207,19 @@ Status: **refused**. Diagnostic: `Z4001`.
 Use direct keyof T, a direct key parameter constrained by keyof T, or literal key domains. Aliased or reduced mapped key expressions (including Keys<T>, Identity<K> and keyof T | never) are refused before shape emission because reduction can change optional presence. Aliased or reduced key-parameter constraints are also refused.
 
 [Evidence](../tests/fixtures/reject-type-mapped-provenance)
+
+## scalar-typeof-guards
+
+Status: **supported**.
+
+Equality and inequality comparisons of typeof with number, string or boolean narrow unknown values and known scalar unions, including reversed operand order, property paths, conjunctions and early returns. False branches remove matching known union members; the complement of unknown remains unknown. Object, function, symbol, bigint and undefined guard domains are not added. The type-semantics fixture checks identical native/WASM output and strict generated-client types.
+
+[Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
+
+## numeric-finiteness
+
+Status: **supported**.
+
+Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. The existing undefined-as-null PHP boundary still applies.
+
+[Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)

@@ -1,0 +1,6 @@
+---
+import type { PortableTextBlock } from './client';
+interface Props { value?: PortableTextBlock[] }
+const { value = [] } = Astro.props;
+---
+{value.map(block => block._html ? <Fragment set:html={block._html} /> : <p>{block.children?.map(child => child.text ?? '').join('')}</p>)}

@@ -166,6 +166,7 @@ pub const GLOBALS: &[&str] = &[
     "encodeURI",
     "encodeURIComponent",
     "isNaN",
+    "isFinite",
     "Date",
     "console",
     "Error",
@@ -1936,6 +1937,9 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
     if matches!(g, "encodeURI" | "encodeURIComponent") && args.len() != 1 {
         return err(span, format!("`{g}` needs exactly one string argument"));
     }
+    if g == "isFinite" && args.len() > 1 {
+        return err(span, "isFinite() accepts at most one argument in Zero code");
+    }
     for value in args {
         require_static_data(value, span)?;
     }
@@ -1951,6 +1955,7 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
         "parseInt" => Value::Num(parse_int(&arg(0).to_js_string().unwrap_or_default(), &arg(1))),
         "parseFloat" => Value::Num(parse_float(&arg(0).to_js_string().unwrap_or_default())),
         "isNaN" => Value::Bool(to_number(&arg(0)).is_nan()),
+        "isFinite" => Value::Bool(to_number(&arg(0)).is_finite()),
         "Error" | "TypeError" | "RangeError" => error_object(g, args),
         "Date" => return err(span, "dates aren't available while the config is evaluated"),
         "console" => return err(span, "`console` isn't available while the config is evaluated"),
@@ -2225,10 +2230,35 @@ fn error_object(name: &str, args: &[Value]) -> Value {
 }
 
 pub fn to_number(v: &Value) -> f64 {
+    // Arrays convert through their comma-joined string, rather than by
+    // recursively coercing the element (Number([false]) is NaN, not zero).
+    fn array_number(a: &Arr, active: &mut HashSet<usize>) -> f64 {
+        let key = Rc::as_ptr(a) as usize;
+        if !active.insert(key) {
+            return 0.0; // Array stringification omits a cyclic element.
+        }
+        let items = a.borrow();
+        let number = match items.as_slice() {
+            [] | [Value::Null | Value::Undef] => 0.0,
+            [Value::Num(n)] => {
+                if *n == 0.0 {
+                    0.0
+                } else {
+                    *n
+                }
+            }
+            [value @ Value::Str(_)] => to_number(value),
+            [Value::Array(inner)] => array_number(inner, active),
+            _ => f64::NAN,
+        };
+        active.remove(&key);
+        number
+    }
     match v {
         Value::Num(n) => *n,
         Value::Bool(b) => f64::from(u8::from(*b)),
         Value::Null => 0.0,
+        Value::Array(a) => array_number(a, &mut HashSet::new()),
         Value::Str(s) => {
             let t = s.trim();
             if t.is_empty() {

@@ -1295,6 +1295,22 @@ impl Lowerer {
             T::TSAnyKeyword(_) => TyAnn::Any,
             T::TSUnknownKeyword(_) => TyAnn::Unknown,
             T::TSNeverKeyword(_) => TyAnn::Never,
+            T::TSTypePredicate(p) => {
+                let a::TSTypePredicateName::Identifier(name) = &p.parameter_name else {
+                    return self.unsupported(p.span, "this type predicates", "refine a named parameter");
+                };
+                let Some(target) = &p.type_annotation else {
+                    return self.unsupported(p.span, "untyped assertions", "return a boolean type predicate");
+                };
+                if p.asserts {
+                    return self.unsupported(p.span, "assertion functions", "return a boolean type predicate");
+                }
+                TyAnn::Predicate(
+                    name.name.to_string(),
+                    Box::new(self.ty(&target.type_annotation)?),
+                    self.sp(p.span),
+                )
+            }
             T::TSObjectKeyword(_) => TyAnn::Map(Box::new(TyAnn::Unknown)),
             T::TSArrayType(arr) => TyAnn::Array(Box::new(self.ty(&arr.element_type)?)),
             T::TSTupleType(tup) => {

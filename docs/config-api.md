@@ -508,9 +508,21 @@ call without `await`.
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.
 
-Imports: type-only imports (erased), relative `.ts` files (compiled with the
-config), and `"zero"`. npm packages are rejected unless they ship TypeScript
-source that fits the subset (not implemented yet: today they're rejected).
+Imports: `"zero"`, relative TypeScript/ESM JavaScript sources, and locally installed
+source packages. Package imports search the nearest `node_modules`, support scoped
+names and exact subpath exports, and select `import`/`default` export conditions,
+an explicit `module` entry, or an ESM `main` entry. `.js` package entries require
+`"type": "module"` or an explicit `module` entry; `.mjs`, `.ts` and `.mts` identify
+source directly. Export patterns, `require`-only/CommonJS packages, Node built-ins,
+package aliases and declaration-only targets are refused. Package entry targets
+must name existing files inside the package; the compiler does not install them.
+Relative `.js` imports can resolve to their TypeScript source counterparts.
+
+Every reachable module is checked against the same language subset. Finding a
+package does not make its untyped JavaScript, `var`, host APIs or other unsupported
+constructs compile. Declaration files are not automatically applied as parameter
+types. Type-only bare imports remain erased. See the [real package probes](../examples/npm-compat/README.md)
+for pinned versions, source adaptations, Node/PHP comparisons and known failures.
 
 
 ### Classes in callbacks

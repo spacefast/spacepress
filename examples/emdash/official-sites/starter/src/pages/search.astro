@@ -1,0 +1,7 @@
+---
+import { search } from '../../../shared/client';
+import Base from '../layouts/Base.astro';
+const query = Astro.url.searchParams.get('q')?.trim() ?? '';
+const [posts, pages] = query ? await Promise.all([search(query, { collections: ['posts'], limit: 30 }), search(query, { collections: ['pages'], limit: 30 })]) : [{ items: [] }, { items: [] }];
+---
+<Base title="Search"><h1>Search</h1><form role="search" method="get"><label>Search <input type="search" name="q" value={query} /></label><button>Search</button></form><ul>{posts.items.map(item => <li><a href={`/posts/${item.slug}`}>{item.title}</a></li>)}{pages.items.map(item => <li><a href={`/${item.slug}`}>{item.title}</a></li>)}</ul>{query && !posts.items.length && !pages.items.length && <p>No results</p>}</Base>

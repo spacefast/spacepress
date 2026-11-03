@@ -35,7 +35,7 @@ def render():
             assert entry["code"].startswith("Z") and entry["message"]
         if status != "refused":
             test = entry["test"]
-            assert re.search(r"\nfn " + re.escape(test) + r"\(", (ROOT / evidence).read_text()), f"missing test: {test}"
+            assert re.search(r"\n\s*fn " + re.escape(test) + r"\(", (ROOT / evidence).read_text()), f"missing test: {test}"
         lines += [f"## {identity}", "", f"Status: **{status}**." + (f" Diagnostic: `{entry['code']}`." if status == "refused" else ""),
                   "", entry["guidance"], "", f"[Evidence](../{evidence})" + (f" (`{entry['test']}`)" if status != "refused" else ""), ""]
     return "\n".join(lines)

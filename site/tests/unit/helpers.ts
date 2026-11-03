@@ -9,7 +9,7 @@ const target = process.env.CARGO_TARGET_DIR ?? path.join(repo, "target");
 
 /** `pnpm build:wasm` must have run. */
 export function wasmPath(): string {
-  const served = path.join(site, "public/zero.wasm");
+  const served = process.env.ZERO_WASM_PATH ?? path.join(site, "public/zero.wasm");
   if (!existsSync(served)) throw new Error(`${served} is missing; run pnpm build:wasm`);
   return served;
 }

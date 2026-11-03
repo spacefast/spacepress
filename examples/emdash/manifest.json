@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "inventoryVersion": "2026-11-03.1",
+  "inventoryVersion": "2026-11-03.2",
   "auditedAt": "2026-11-03",
   "upstream": {
     "repository": "emdash-cms/emdash",
@@ -37,11 +37,12 @@
   },
   "nativeAcceptance": {
     "prerequisites": [
-      "Node.js 22+ and npm/npx",
+      "Node.js 22.23.4+ and npm/npx for the default suite (22+ for suites excluding official-source)",
       "npm --prefix examples/emdash ci",
       "npm --prefix examples/emdash exec -- playwright install chromium",
       "Native WordPress Studio 2.1.1 downloads/runtime available",
-      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with ZERO_BIN"
+      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with ZERO_BIN",
+      "npm --prefix examples/emdash/official-sites ci --ignore-scripts when selecting official-source; the runner performs this automatically"
     ],
     "cwd": "repository root",
     "commands": {
@@ -124,6 +125,16 @@
           "platform"
         ],
         "scope": "Only executedRuns.platform.scope is qualified; this suite result does not promote every mapped upstream behavior."
+      },
+      "official-source": {
+        "command": "node examples/emdash/test.mjs official-source",
+        "testPath": "examples/emdash/official-sites/acceptance.test.mjs",
+        "availability": "present",
+        "status": "proven",
+        "scope": "Original pinned blank/starter/blog Astro sources against compiled Zero/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
+        "evidence": [
+          "official-source"
+        ]
       }
     },
     "lifecycleCommand": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test scripts/dev/acceptance.test.mjs",
@@ -152,17 +163,26 @@
         "portfolio",
         "agents",
         "platform",
-        "plugins"
+        "plugins",
+        "official-source"
       ],
       "selectionExample": "node examples/emdash/test.mjs marketing portfolio",
       "optionalLifecycle": "node examples/emdash/test.mjs lifecycle",
       "build": "Runs cargo build --locked unless ZERO_BIN selects an existing matching binary.",
       "execution": "Sequential; each suite owns its disposable Studio resources.",
-      "lastCombinedResult": "All seven default suites passed in zero-emdash-suite-elxR7b. After the scoped native REST password-parameter compatibility delta, plugins and platform passed again on final binary b70f243e in zero-emdash-suite-XCi02S; all fifteen PHP suites and fresh marketing/portfolio leak repros passed. Unaffected earlier evidence retains its recorded binary and scope.",
-      "receipt": "zero-emdash-suite-elxR7b/results.json",
-      "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901",
-      "finalTargetedReceipt": "zero-emdash-suite-XCi02S/results.json",
-      "finalTargetedBinarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7"
+      "lastCombinedResult": "All eight default suites passed on the integrated compiler. The combined run used Astro 7.3.2 and Zod 4.3.6 installed before the dependency patch. All four original-source application tests then passed again on patched Astro 7.4.5/Zod 4.6.7; their source bytes and compiler binary were unchanged.",
+      "receipt": "zero-emdash-suite-kuMcTd/results.json",
+      "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
+      "revision": "c3925fe5ec511063ae7487470b6fba8185a71dbd",
+      "combinedDependencies": {
+        "astro": "7.3.2",
+        "zod": "4.3.6"
+      },
+      "previousTargetedReceipt": "zero-emdash-suite-XCi02S/results.json",
+      "previousTargetedBinarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
+      "finalTargetedReceipt": "zero-emdash-suite-Pfve5p/results.json",
+      "finalTargetedBinarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
+      "finalTargetedScope": "Original-source applications on patched frontend dependencies; prior native suites retain their exact integrated receipt."
     },
     "executedRuns": {
       "publishing": {
@@ -446,6 +466,38 @@
           "zero-official-plugins-BFA744-evidence"
         ],
         "runnerReceipt": "zero-emdash-suite-XCi02S/results.json"
+      },
+      "official-source": {
+        "status": "proven",
+        "date": "2026-11-03",
+        "runtime": "Native WordPress Studio 2.1.1/PHP/SQLite with original Astro Node frontends and Chromium.",
+        "command": "node examples/emdash/test.mjs official-source",
+        "artifact": "zero-official-full-app-pi9HkO",
+        "result": "4 tests passed; 0 failed; 0 skipped",
+        "files": [
+          "results.json",
+          "blank-cleanup.json",
+          "starter-cleanup.json",
+          "blog-cleanup.json",
+          "blog-desktop.png",
+          "blog-mobile.png"
+        ],
+        "revision": "87ed3a9796cf87c7e7869fc5cc892be60dad6bd6",
+        "scope": [
+          "31 pinned original blank/starter/blog frontend files retain upstream bytes",
+          "Original blank landing/admin entry, starter/blog routes and live search",
+          "Native WordPress and SCF edits, original media bytes, signed saved-draft preview and public privacy",
+          "Blog cursor pagination, parsed RSS, moderated threaded comments, native menus/widgets, theme and responsive browser journeys",
+          "Original reading-time algorithm executes as compiled PHP over native HTTP"
+        ],
+        "cleanup": "Exact three final projects and all earlier owned projects absent; frontends/backends offline; no owned Studio registrations remain.",
+        "boundaries": "Astro compiles to Node/browser JavaScript. Zero backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified.",
+        "runnerReceipt": "zero-emdash-suite-Pfve5p/results.json",
+        "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
+        "dependencies": {
+          "astro": "7.4.5",
+          "zod": "4.6.7"
+        }
       }
     },
     "evidenceStorage": "Artifact names identify retained campaign receipts outside Git; machine-local paths and credentials are intentionally omitted. Source paths identify reproducible suites. Earlier runs do not certify later edits.",

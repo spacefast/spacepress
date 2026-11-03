@@ -15,6 +15,7 @@ const suites = {
   agents: 'examples/emdash/agents/acceptance.test.mjs',
   platform: 'examples/emdash/platform/acceptance.test.mjs',
   plugins: 'examples/emdash/plugins/acceptance.test.mjs',
+  'official-source': 'examples/emdash/official-sites/acceptance.test.mjs',
   lifecycle: 'scripts/dev/acceptance.test.mjs',
 };
 const requested = process.argv.slice(2);
@@ -28,6 +29,10 @@ if (requested.includes('--help') || requested.includes('--list')) {
   const unknown = selected.filter((name) => !Object.hasOwn(suites, name));
   if (unknown.length) throw new Error(`Unknown suite: ${unknown.join(', ')}. Use --list.`);
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Node.js 22 or newer is required.');
+  const [major, minor, patch] = process.versions.node.split('.').map(Number);
+  if (selected.includes('official-source') && major === 22 && (minor < 23 || (minor === 23 && patch < 4))) {
+    throw new Error('The official-source suite requires Node.js 22.23.4 or newer.');
+  }
   const run = (program, args, env = process.env) => {
     console.log(`\n> ${program} ${args.join(' ')}`);
     const result = spawnSync(program, args, { cwd: root, env, stdio: 'inherit' });
@@ -41,6 +46,7 @@ if (requested.includes('--help') || requested.includes('--list')) {
   const binarySha256 = createHash('sha256').update(await readFile(binary)).digest('hex');
   run('npm', ['--prefix', here, 'ci', '--ignore-scripts']);
   run('npm', ['--prefix', here, 'exec', '--', 'playwright', 'install', 'chromium']);
+  if (selected.includes('official-source')) run('npm', ['--prefix', join(here, 'official-sites'), 'ci', '--ignore-scripts']);
   const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
   const changes = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' });
   const evidence = await mkdtemp(join(tmpdir(), 'zero-emdash-suite-'));

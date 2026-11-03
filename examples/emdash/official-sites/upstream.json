@@ -1,0 +1,161 @@
+{
+  "repository": "https://github.com/emdash-cms/emdash",
+  "commit": "1824902c0c383c052b623528799427b8a5ff75d0",
+  "files": [
+    {
+      "file": "starter/src/utils/site-identity.ts",
+      "upstream": "templates/starter/src/utils/site-identity.ts",
+      "sha256": "1014ab7696ecdb5d7bc49f49979f6c4fdd6e98cc1233eb3a18c2261c055db0e0"
+    },
+    {
+      "file": "starter/src/pages/[slug].astro",
+      "upstream": "templates/starter/src/pages/[slug].astro",
+      "sha256": "8dcbe33f24c7e21e48c591829d3a1e415f5931445388bbd6f2b67bd4b6384207"
+    },
+    {
+      "file": "starter/src/pages/404.astro",
+      "upstream": "templates/starter/src/pages/404.astro",
+      "sha256": "be83543a9cdadeec8e08aedfbd8e14579b154d2229ad8b8564e85bb8bbe4d966"
+    },
+    {
+      "file": "starter/src/pages/index.astro",
+      "upstream": "templates/starter/src/pages/index.astro",
+      "sha256": "3823623d11e2ce31ed54c2c422ef2e618967b84a3796eca2799a60e337f9f40c"
+    },
+    {
+      "file": "starter/src/layouts/Base.astro",
+      "upstream": "templates/starter/src/layouts/Base.astro",
+      "sha256": "53bfc988bf8f7378fcc8e361cce911a94e0f93b72b36d524687dacda4591ed38"
+    },
+    {
+      "file": "starter/src/pages/posts/[slug].astro",
+      "upstream": "templates/starter/src/pages/posts/[slug].astro",
+      "sha256": "2127f737631824391cfba3ce225256aa826155d82853a854c7e6cb74a2039f20"
+    },
+    {
+      "file": "starter/src/pages/posts/index.astro",
+      "upstream": "templates/starter/src/pages/posts/index.astro",
+      "sha256": "315747ac16727378dfc9bfd8de798a865872fbe83fc146953cc540e2f0c56adb"
+    },
+    {
+      "file": "starter/src/pages/category/[slug].astro",
+      "upstream": "templates/starter/src/pages/category/[slug].astro",
+      "sha256": "999c1c412d471d0f67757e6421fbbfa3cbfb9c0f216579a795ae486b1ee6d1ac"
+    },
+    {
+      "file": "starter/src/pages/tag/[slug].astro",
+      "upstream": "templates/starter/src/pages/tag/[slug].astro",
+      "sha256": "87a315cc7fab04af484b0e74a4d9fd55910e0dcd42415f330cc9b5cb81745c4d"
+    },
+    {
+      "file": "starter/seed/seed.json",
+      "upstream": "templates/starter/seed/seed.json",
+      "sha256": "d084ee52936ab238a547bf6ef1d94efadc6186577d44db314660d4afbdca634b"
+    },
+    {
+      "file": "blog/src/layouts/Base.astro",
+      "upstream": "templates/blog/src/layouts/Base.astro",
+      "sha256": "5d530e41d40915a0422c4f27f727788d4e8b7cd5888df5ad637896ee6e81bc68"
+    },
+    {
+      "file": "blog/src/styles/theme.css",
+      "upstream": "templates/blog/src/styles/theme.css",
+      "sha256": "52ff276c69fcee90621474a093fa960530c94a2aa63a5b239bd798a98ffd1b42"
+    },
+    {
+      "file": "blog/src/styles/prose.css",
+      "upstream": "templates/blog/src/styles/prose.css",
+      "sha256": "aefac3bc35b1a8f34fe799fc549fbe986beba6b3e13c8cdcf08cede3b1d692b4"
+    },
+    {
+      "file": "blog/src/styles/tokens.css",
+      "upstream": "templates/blog/src/styles/tokens.css",
+      "sha256": "07a4b38c1d20b4b811bb673ca00ef42a74fd52d410b1e98dcd98610ce2ceaac9"
+    },
+    {
+      "file": "blog/src/utils/site-identity.ts",
+      "upstream": "templates/blog/src/utils/site-identity.ts",
+      "sha256": "74cf498d0dd0c35878ad37272e29d3262c8ce8760c4589e279a250778fe5b363"
+    },
+    {
+      "file": "blog/src/utils/locale.ts",
+      "upstream": "templates/blog/src/utils/locale.ts",
+      "sha256": "b4805a75c85c214d2930c3eb6a3525ad42103ce52f4cb63ac1da9be3021eb539"
+    },
+    {
+      "file": "blog/src/utils/reading-time.ts",
+      "upstream": "templates/blog/src/utils/reading-time.ts",
+      "sha256": "e706c907b525fa75c3911402695e9d05581f463fac2a57cc3da0ab7ca884fbc2"
+    },
+    {
+      "file": "blog/src/pages/rss.xml.ts",
+      "upstream": "templates/blog/src/pages/rss.xml.ts",
+      "sha256": "e88561a6e8fe070f06e4f78b0ab9e429140c97d067a975ec88816682a62fc0d8"
+    },
+    {
+      "file": "blog/src/pages/404.astro",
+      "upstream": "templates/blog/src/pages/404.astro",
+      "sha256": "a218d2cbe0c71286f110bbe4094078344e2566b6ebec33f2e4612a70c877119c"
+    },
+    {
+      "file": "blog/src/pages/index.astro",
+      "upstream": "templates/blog/src/pages/index.astro",
+      "sha256": "e4b1536fbec94ec9aaa45058a5ed071bf850511ff8376076ea17733fbbc915fa"
+    },
+    {
+      "file": "blog/src/pages/search.astro",
+      "upstream": "templates/blog/src/pages/search.astro",
+      "sha256": "9261c392428070909f556a49b534df1ef713adb9e04409baa29fde248a6e9c2b"
+    },
+    {
+      "file": "blog/src/components/Byline.astro",
+      "upstream": "templates/blog/src/components/Byline.astro",
+      "sha256": "d3365f2ad7c841c791f4df50b1b5c2d6333a02d8f5f6cb275b694251038935a7"
+    },
+    {
+      "file": "blog/src/components/PostCard.astro",
+      "upstream": "templates/blog/src/components/PostCard.astro",
+      "sha256": "f36b4d513d43707409b061aa83d9514212f4ab68c4047ebef91aa74978f14fe1"
+    },
+    {
+      "file": "blog/src/components/Pagination.astro",
+      "upstream": "templates/blog/src/components/Pagination.astro",
+      "sha256": "d3565ad61f1ce0bbc53c15aedcad58a9626ba62dcbce42ab74a7271b69be2a29"
+    },
+    {
+      "file": "blog/src/pages/pages/[slug].astro",
+      "upstream": "templates/blog/src/pages/pages/[slug].astro",
+      "sha256": "3982b1f76e24b7582a0d245d1a25f58ec04fa6dd6aa38085cc5e40dbcf250001"
+    },
+    {
+      "file": "blog/src/pages/category/[slug].astro",
+      "upstream": "templates/blog/src/pages/category/[slug].astro",
+      "sha256": "4330657650f0c6a0ec7bcdf2541468175b2e84ccacb74baff21cdfb14ae8bb5b"
+    },
+    {
+      "file": "blog/src/pages/tag/[slug].astro",
+      "upstream": "templates/blog/src/pages/tag/[slug].astro",
+      "sha256": "53aeff85b906d58fcedd5f34449aa2752801ded27b5622c53065001f1c8267f5"
+    },
+    {
+      "file": "blog/src/pages/posts/[slug].astro",
+      "upstream": "templates/blog/src/pages/posts/[slug].astro",
+      "sha256": "2536ee223df0d23ae475d5c25dfa646e8ed8591974082edf74f295a37e0c4f1b"
+    },
+    {
+      "file": "blog/src/pages/posts/index.astro",
+      "upstream": "templates/blog/src/pages/posts/index.astro",
+      "sha256": "be6e23ce3c1a1a09a3e6ffe41eed5dca880f6b2798828385a4ec2f9881547f11"
+    },
+    {
+      "file": "blog/seed/seed.json",
+      "upstream": "templates/blog/seed/seed.json",
+      "sha256": "fe967342625f241b6f5c066f30ab23068b17f6ea7432ca22d49a6335040d9187"
+    },
+    {
+      "file": "blank/src/pages/index.astro",
+      "upstream": "templates/blank/src/pages/index.astro",
+      "sha256": "cfc52cc5cf555c867ef5aae48d970ecec7529b106a983587e5cfeb498a5646ba"
+    }
+  ]
+}

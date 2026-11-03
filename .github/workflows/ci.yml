@@ -60,6 +60,10 @@ jobs:
       - run: target/debug/zero check examples/showcase
       - name: Docker-free local development acceptance
         run: node --test scripts/dev/acceptance.test.mjs
+      - name: Offline deployment and recovery acceptance
+        env:
+          ZERO_DEPLOY_BIN: ${{ github.workspace }}/target/debug/zero
+        run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
   php:
     runs-on: ubuntu-24.04

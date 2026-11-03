@@ -67,6 +67,10 @@ zero doctor [dir] [--out <dir>] [--site <url> --token <t>]   check a build, and 
 zero sync [status|resolve <uid>] [dir] --site <url> <credential>
 zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>
 zero migrate site <content-model.php> [--dry-run]
+zero deploy inspect --artifact <dir> [--baseline <dir>]  inspect bytes, environment and migrations
+zero deploy <init|status|wp> <options>                   manage an offline recovery workspace
+zero backup --workspace <dir> --output <new.zip>         archive a managed offline site
+zero restore --archive <file> --workspace <new-dir> --wp-cli <phar>
 ```
 
 `zero build` writes new migrations to `zero/migrations/`, the typed client to
@@ -100,6 +104,7 @@ webhooks and translations, with a browser page. How to build and run it is in
 ```sh
 cargo test                       # rejections, goldens, the examples on WordPress-on-SQLite, Node↔PHP differential, generated client (needs tsc)
 node --test scripts/dev/studio.test.mjs scripts/dev/acceptance.test.mjs # local Studio workflow; build target/debug/zero first
+ZERO_DEPLOY_BIN="$PWD/target/debug/zero" node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs # offline preflight and recovery
 tests/php/run.sh                 # runtime: JS parity (checked against node) + the suites on an in-process WordPress
 tsc -p types/zero/tests          # the "zero" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)

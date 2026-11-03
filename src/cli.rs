@@ -26,7 +26,7 @@ pub struct Args {
     pub(crate) preserve_data: Option<PathBuf>,
 }
 
-pub const USAGE: &str = "usage: zero <build|check|dev|doctor> [project-dir] [--out dir] [--port n] [--quiet]\n       zero dev [project-dir] [--port n] [--no-watch] [--allow-destructive]\n       zero dev <stop|status> [project-dir]\n       zero dev wp [project-dir] -- <WP-CLI arguments>\n       zero build [project-dir] [--preserve-data snapshot.json]\n       zero check [project-dir] [--json]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>";
+pub const USAGE: &str = "usage: zero <build|check|dev|doctor|deploy|publish|backup|restore> [project-dir] [--out dir] [--port n] [--quiet]\n       zero dev [project-dir] [--port n] [--no-watch] [--allow-destructive]\n       zero dev <stop|status> [project-dir]\n       zero dev wp [project-dir] -- <WP-CLI arguments>\n       zero build [project-dir] [--preserve-data snapshot.json]\n       zero check [project-dir] [--json]\n       zero doctor [project-dir] [--out dir] --site <url> [--token <t>] [--json]\n       zero migrate config --from emdash|payload|sanity|zero <input> --out <new/zero.config.ts>\n       zero migrate site <content-model.php> [--dry-run] [--space <id>] [--wp \"<wp-cli command>\"]\n       zero sync [status | resolve <uid>] [dir] --site <url> --app-password <user:pass> | --bearer <jwt>\n       zero deploy <inspect|init|status|wp> <options>\n       zero publish --artifact dir [--baseline dir]\n       zero backup --workspace dir --output new.zip\n       zero restore --archive backup.zip --workspace new-dir --wp-cli file\n       Adapter scope and options: docs/deployment.md";
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
@@ -90,6 +90,15 @@ fn parse_args() -> Result<Args, String> {
 }
 
 pub fn main() -> ExitCode {
+    let lifecycle = std::env::args().nth(1);
+    let lifecycle_args: Vec<String> = std::env::args().skip(2).collect();
+    match lifecycle.as_deref() {
+        Some("deploy") => return crate::commands::deploy::cli(&lifecycle_args),
+        Some("publish") => return crate::commands::publish::cli(&lifecycle_args),
+        Some("backup") => return crate::commands::backup::cli(&lifecycle_args),
+        Some("restore") => return crate::commands::restore::cli(&lifecycle_args),
+        _ => {}
+    }
     if std::env::args().nth(1).as_deref() == Some("migrate") {
         if std::env::args().nth(2).as_deref() == Some("site") {
             return crate::commands::migrate_site(&std::env::args().skip(3).collect::<Vec<_>>());

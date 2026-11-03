@@ -35,6 +35,32 @@ eq('a reference maps to its <field>Id column', [$map->collections['tasks']['fiel
 eq('legacy storage names come from the release', $map->collections['projects']['fields']['gallery']['key'], '_zero_projects_gallery');
 eq('the native title is not a meta field', array_key_exists('title', $map->collections['projects']['fields']), false);
 
+$mixedRelease = $release;
+$names = ['projects' => 'stockItems', 'tasks' => 'stockTasks'];
+foreach ($mixedRelease['postTypes'] as &$resource) {
+    $resource['id'] = $names[$resource['id']] ?? $resource['id'];
+    foreach ($resource['fields'] as &$field) {
+        if (isset($field['definition']['collection'])) {
+            $field['definition']['collection'] = $names[$field['definition']['collection']];
+        }
+    }
+    unset($field);
+}
+unset($resource);
+$mixedCollections = [];
+foreach ($schema()->collections() as $name => $spec) {
+    $spec['key'] = $names[$name];
+    foreach ($spec['columns'] as &$column) {
+        if (isset($column['references'])) {
+            $column['references']['collection'] = $column['references']['collection'] === 'projects' ? 'stock_items' : 'stock_tasks';
+        }
+    }
+    unset($column);
+    $mixedCollections[$name === 'projects' ? 'stock_items' : 'stock_tasks'] = $spec;
+}
+$mixed = Model::map($mixedRelease, new Schema(['collections' => $mixedCollections]));
+eq('mixed-case release ids resolve authored keys to physical storage, including references', array_map(static fn (array $c) => $c['collection'], $mixed->collections), ['stockItems' => 'stock_items', 'stockTasks' => 'stock_tasks']);
+
 $refuses = static function (string $label, callable $fn, string $pointer) {
     try {
         $fn();

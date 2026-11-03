@@ -82,6 +82,61 @@ test("a dry run reports every record and changes nothing", () => {
     review: [],
   });
   assert.deepEqual(snapshot(), before_);
+  // Authored release ids can differ from storage keys. Exercise a real write inside
+  // a rolled-back transaction, retaining the same record/revision/reference owner.
+  const mixed = JSON.parse(wp("eval", `
+    $plugin = \\Zero\\Wp\\Runtime::plugin();
+    $plugin->app();
+    $raw = require $plugin->dir . '/zero/app/schema.php';
+    $release = require '/tmp/zero-legacy-release.php';
+    $names = ['projects' => 'stockProjects', 'tasks' => 'stockTasks'];
+    $storage = ['projects' => 'stock_projects', 'tasks' => 'stock_tasks'];
+    foreach ($release['postTypes'] as &$resource) {
+      $resource['id'] = $names[$resource['id']] ?? $resource['id'];
+      foreach ($resource['fields'] as &$field) {
+        if (isset($field['definition']['collection'])) {
+          $field['definition']['collection'] = $names[$field['definition']['collection']];
+        }
+      }
+      unset($field);
+    }
+    unset($resource);
+    $collections = [];
+    foreach ($raw['collections'] as $name => $spec) {
+      $spec['key'] = $names[$name];
+      $spec['wp']['postType'] = 'zero_' . $storage[$name];
+      foreach ($spec['columns'] as &$column) {
+        if (isset($column['references'])) {
+          $column['references']['collection'] = $storage[$column['references']['collection']];
+        }
+      }
+      unset($column);
+      $collections[$storage[$name]] = $spec;
+    }
+    $raw['collections'] = $collections;
+    $db = $plugin->connection();
+    $w = $db->wpdb();
+    $db->begin();
+    try {
+      foreach ($names as $old => $name) {
+        $db->run("UPDATE \`{$w->termmeta}\` SET meta_value = ? WHERE meta_key = ? AND meta_value = ?", [$name, '_zero_resource_id', $old]);
+      }
+      $migrate = new \\Zero\\Wp\\Legacy\\Migrate($db, new \\Zero\\Schema($raw));
+      $dry = $migrate->run($release, true);
+      $written = $migrate->run($release, false);
+      echo json_encode([
+        'dry' => $dry['collections'], 'written' => $written['collections'],
+        'postType' => $db->run("SELECT post_type FROM \`{$w->posts}\` WHERE ID = ?", [${ids.apollo}])[0]['post_type'],
+        'reference' => get_post_meta(${ids.parent}, 'zero_projectId', true),
+      ]);
+    } finally { $db->rollback(); }
+  `));
+  const expected = {
+    stockProjects: r.out.data.collections.projects,
+    stockTasks: r.out.data.collections.tasks,
+  };
+  assert.deepEqual(mixed, { dry: expected, written: expected, postType: "zero_stock_projects", reference: String(ids.apollo) });
+  assert.deepEqual(snapshot(), before_);
 });
 
 test("a database failure after writes have begun rolls every write back", () => {

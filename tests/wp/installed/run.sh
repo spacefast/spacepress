@@ -17,7 +17,7 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 mkdir -p "$src/scripts" "$bin" "$home" "$project"
 rsync -a --exclude node_modules --exclude target \
   "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,src,runtime} "$src/"
-rsync -a "$repo/scripts/dev" "$src/scripts/"
+rsync -a "$repo/scripts/dev" "$repo/scripts/deploy" "$src/scripts/"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" CARGO_TARGET_DIR="$target" \
   cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
 cp "$target/release/zero" "$bin/zero"

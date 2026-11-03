@@ -311,6 +311,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
+- [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
 - [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero

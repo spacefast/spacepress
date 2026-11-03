@@ -201,6 +201,75 @@ export async function sourceDigest(project) {
   return digest.digest('hex');
 }
 
+// Native recursive watchers descend into generated trees before event filters run.
+// Watch authored directories individually so rebuild output is never traversed.
+export async function watchSources(project, onChange, onError) {
+  const ignored = new Set(['.zero', '.git', 'node_modules', 'zero']);
+  const watchers = new Map();
+  let closed = false, refreshing, refreshAgain = false;
+  const close = () => {
+    closed = true;
+    for (const { watcher } of watchers.values()) watcher.close();
+    watchers.clear();
+  };
+  const changed = () => { if (!closed) onChange(); };
+  const failed = (error) => { if (!closed) onError(error); };
+  async function refresh() {
+    if (closed) return;
+    if (refreshing) { refreshAgain = true; return refreshing; }
+    refreshing = (async () => {
+      do {
+        refreshAgain = false;
+        const present = new Set();
+        async function visit(directory) {
+          if (closed) return;
+          try {
+            const identity = await lstat(directory);
+            if (closed || !identity.isDirectory()) return;
+            const previous = watchers.get(directory);
+            if (previous && (previous.device !== identity.dev || previous.inode !== identity.ino)) {
+              previous.watcher.close(); watchers.delete(directory);
+            }
+            if (!watchers.has(directory)) {
+              const watcher = watch(directory, (event, filename) => {
+                if (closed || !filename || ignored.has(String(filename))) return;
+                const name = relative(project, join(directory, String(filename)));
+                if (name === 'zero.gen.ts') return;
+                if (event === 'rename') {
+                  // Discover new directories before notifying: files may have been created
+                  // before their directory acquired its own watch handle.
+                  void refresh().then(changed, failed);
+                } else if (/\.[cm]?[jt]sx?$/.test(name) || name.split(/[\\/]/)[0] === 'public') {
+                  changed();
+                }
+              });
+              watcher.on('error', failed);
+              watchers.set(directory, { watcher, device: identity.dev, inode: identity.ino });
+            }
+            present.add(directory);
+            for (const entry of await readdir(directory, { withFileTypes: true })) {
+              if (entry.isDirectory() && !ignored.has(entry.name)) await visit(join(directory, entry.name));
+            }
+          } catch (error) {
+            if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;
+            watchers.get(directory)?.watcher.close(); watchers.delete(directory);
+            present.delete(directory);
+          }
+        }
+        await visit(project);
+        for (const [directory, { watcher }] of watchers) {
+          if (!present.has(directory)) { watcher.close(); watchers.delete(directory); }
+        }
+      } while (refreshAgain && !closed);
+    })();
+    try { await refreshing; }
+    finally { refreshing = undefined; }
+  }
+  try { await refresh(); }
+  catch (error) { close(); throw error; }
+  return { close };
+}
+
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('zero dev requires Node.js 22 or newer.');
   const [mode, directory, zero, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
@@ -356,14 +425,10 @@ async function main() {
       } catch (error) { console.error(error.message); }
       finally { running = false; if (stopping) finish(); }
     }
-    watcher = watch(project, { recursive: true }, (_event, name) => {
-      if (!name || stopping) return;
-      const parts = name.split(/[\\/]/);
-      if (parts.some((part) => ['.zero', '.git', 'node_modules', 'zero'].includes(part)) || name === 'zero.gen.ts') return;
-      if (!/\.[cm]?[jt]sx?$/.test(name) && parts[0] !== 'public') return;
+    watcher = await watchSources(project, () => {
+      if (stopping) return;
       dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 200);
-    });
-    watcher.on('error', (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
+    }, (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
     stopTimer = setInterval(() => { exists(join(managed.state, 'stop')).then((requested) => { if (requested) void stop(); }); }, 250);
     console.log('Watching config, TypeScript and public files. Ctrl+C stops WordPress; content is retained.');
     void rebuild();

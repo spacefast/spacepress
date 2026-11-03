@@ -1,3 +1,6 @@
+import type { ServicesConfig } from "./services";
+export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } from "./services";
+
 /**
  * Type declarations for the `"zero"` module.
  *
@@ -1091,6 +1094,8 @@ export interface ConfigInput<
   actions?: Record<string, AnyAction>;
   jobs?: TJobs;
   webhooks?: Webhook[];
+  /** Private native forms, queued mail, publication search and server-priced checkout. */
+  services?: ServicesConfig;
   files?: Record<string, AnyFileBucket>;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };

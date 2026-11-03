@@ -60,6 +60,7 @@ const CONFIG_KEYS: &[&str] = &[
     "locales",
     "plugins",
     "admin",
+    "services",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",

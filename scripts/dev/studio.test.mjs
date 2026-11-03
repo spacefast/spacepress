@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, lock } from './studio.mjs';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock } from './studio.mjs';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'zero-dev-ownership-'));
@@ -64,20 +64,84 @@ test('publishing replaces managed plugins while retaining extra plugins and refu
 });
 
 test('watch inputs include imported TypeScript and public files without reacting to generated output', async (t) => {
-  const project = await mkdtemp(join(tmpdir(), 'zero-dev-watch-'));
-  t.after(() => rm(project, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'zero-dev-watch-'));
+  const project = join(root, 'project');
+  let watcher;
+  let observing = Promise.resolve();
+  t.after(async () => {
+    watcher?.close();
+    await observing;
+    await rm(root, { recursive: true, force: true });
+  });
+  await mkdir(project);
   await mkdir(join(project, 'lib'));
   await mkdir(join(project, 'public'));
   await writeFile(join(project, 'zero.config.ts'), 'config');
   await writeFile(join(project, 'lib/fields.ts'), 'first');
+  const plugins = join(project, '.zero/dev/wordpress/wp-content/plugins');
+  const generated = join(plugins, 'zero-app-watch');
+  await mkdir(join(generated, 'blocks/deep/assets'), { recursive: true });
+  await writeFile(join(generated, 'blocks/deep/assets/generated.ts'), 'initial output');
   const first = await sourceDigest(project);
+  const updates = new EventEmitter();
+  let observed = first;
+  let watchError;
+  const failed = (error) => { watchError = error; updates.emit('change'); };
+  watcher = await watchSources(project, () => {
+    observing = observing.then(async () => {
+      observed = await sourceDigest(project);
+      updates.emit('change');
+    }).catch(failed);
+  }, failed);
+  async function waitForDigest(expected) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error('Source watcher did not observe the authored change')), 5000);
+    try {
+      while (observed !== expected) {
+        if (watchError) throw watchError;
+        await once(updates, 'change', { signal: controller.signal });
+      }
+      assert.equal(watchError, undefined);
+    } finally { clearTimeout(timeout); }
+  }
   await writeFile(join(project, 'lib/fields.ts'), 'second');
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
+  await waitForDigest(second);
   await writeFile(join(project, 'zero.gen.ts'), 'generated');
-  await mkdir(join(project, '.zero/dev'), { recursive: true });
-  await writeFile(join(project, '.zero/dev/state.ts'), 'generated');
+  for (let build = 0; build < 16; build++) {
+    const staged = join(plugins, `.zero-app-watch-${build}`);
+    const previous = `${staged}.previous`;
+    await mkdir(join(staged, 'blocks/deep/assets'), { recursive: true });
+    await writeFile(join(staged, 'blocks/deep/assets/generated.ts'), `build ${build}`);
+    await rename(generated, previous);
+    await rename(staged, generated);
+    await rm(previous, { recursive: true });
+  }
+  for (const ignored of ['.git', 'node_modules', 'zero']) {
+    const directory = join(project, ignored, 'nested/generated');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'output.ts'), 'generated');
+    await rm(join(project, ignored), { recursive: true });
+  }
   assert.equal(await sourceDigest(project), second);
+  await writeFile(join(project, 'lib/fields.ts'), 'after generated plugin replacement');
+  const afterBuild = await sourceDigest(project);
+  assert.notEqual(afterBuild, second);
+  await waitForDigest(afterBuild);
   await writeFile(join(project, 'public/card.html'), '<h1>Changed</h1>');
-  assert.notEqual(await sourceDigest(project), second);
+  const publicChange = await sourceDigest(project);
+  assert.notEqual(publicChange, afterBuild);
+  await waitForDigest(publicChange);
+  const incoming = join(root, 'incoming');
+  await mkdir(join(incoming, 'nested'), { recursive: true });
+  await writeFile(join(incoming, 'nested/helper.ts'), 'new imported module');
+  await rename(incoming, join(project, 'features'));
+  const newDirectory = await sourceDigest(project);
+  assert.notEqual(newDirectory, publicChange);
+  await waitForDigest(newDirectory);
+  await writeFile(join(project, 'features/nested/helper.ts'), 'edited imported module');
+  const nestedChange = await sourceDigest(project);
+  assert.notEqual(nestedChange, newDirectory);
+  await waitForDigest(nestedChange);
 });

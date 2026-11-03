@@ -116,7 +116,11 @@ Composer.
 
 ## Quick start
 
-There's no binary release or npm package yet. Build the compiler from source
+The [installation guide](docs/installation.md) covers the npm creator, compiler
+installer and unsigned Homebrew release tooling, including a local packed-install
+test. Public packages and release downloads still need maintainer publication.
+
+Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. Zero automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
@@ -310,6 +314,8 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/config-api.md`](docs/config-api.md): the `zero.config.ts` API, the enforced subset and the known gaps
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
+- [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
+- [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
 - [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero

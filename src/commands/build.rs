@@ -369,6 +369,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             &serde_json::json!({"zero":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
         )? + "\n",
     )?;
+    super::deploy::write_metadata(&stage, built)?;
     let lock_bytes = prepared.lock_bytes()?;
     std::fs::create_dir_all(lock.parent().unwrap())?;
     let mut lock_file = tempfile::NamedTempFile::new_in(lock.parent().unwrap())?;

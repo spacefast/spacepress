@@ -74,7 +74,7 @@ final class Extensions
 
     /**
      * Own a first path segment. The handler receives the full decoded segment list.
-     * @param callable(string, array, array, string, Viewer, array, array): (array{int, mixed}|Response) $handler
+     * @param callable(string, array, array, string, Viewer, array, array, array): (array{int, mixed}|Response) $handler
      */
     public static function route(string $prefix, callable $handler): void
     {

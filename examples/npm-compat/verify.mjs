@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
-import { probes, combined, popularCombined } from "./cases.mjs";
+import { probes, combined, popularCombined, applicationCombined } from "./cases.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const { values: options } = parseArgs({ options: {
@@ -14,8 +14,10 @@ const { values: options } = parseArgs({ options: {
   isolated: { type: "boolean", default: false },
   only: { type: "string", multiple: true },
 } });
-const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "zero-npm-compat-")) : path.join(root, ".work");
-const zero = path.resolve(process.env.ZERO_BIN ?? path.resolve(root, "../../target/debug/zero"));
+const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "zero-framework-compiler-npm-")) : path.join(root, ".work");
+const modules = path.resolve(process.env.NPM_COMPAT_NODE_MODULES ?? path.join(root, "node_modules"));
+const compiler = path.resolve(process.env.ZERO_BIN ?? path.resolve(root, "../../target/debug/zero"));
+const zero = path.join(work, process.platform === "win32" ? "zero.exe" : "zero");
 const run = (command, args) => {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -64,13 +66,19 @@ export default defineConfig({name: "npm-compat", actions: {probe: action({access
 `;
 if (!options.isolated) await rm(work, { recursive: true, force: true });
 await mkdir(work, { recursive: true });
-if (options.isolated) await symlink(path.join(root, "node_modules"), path.join(work, "node_modules"), "dir");
-const report = { compiler: zero, binarySha256: hash(await readFile(zero)), packages: [], probes: [] };
+await symlink(modules, path.join(work, "node_modules"), "dir");
+const binary = await readFile(compiler);
+await writeFile(zero, binary, { mode: 0o700 });
+const provenance = JSON.parse(await readFile(path.join(root, "provenance.json"), "utf8"));
+const report = { compiler, snapshot: zero, binarySha256: hash(binary), packages: [], probes: [] };
 for (const probe of probes) {
-  const packageRoot = path.join(root, "node_modules", probe.name);
+  const packageRoot = path.join(modules, probe.name);
   const metadata = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
   assert.equal(metadata.version, probe.version, "probe source version must remain pinned");
   const source = await readFile(path.join(packageRoot, probe.entry), "utf8");
+  const pinned = provenance.packages.find(entry => entry.name === probe.name);
+  assert.equal(pinned?.version, probe.version, "provenance version must remain pinned");
+  assert.equal(hash(source), pinned.selectedSourceSha256, "published source hash differs from provenance");
   report.packages.push({
     name: probe.name,
     version: probe.version,
@@ -84,13 +92,13 @@ for (const probe of probes) {
         : "module.exports → export default only; algorithm unchanged",
   });
 }
-const selected = [...probes, combined, popularCombined].filter(probe => !options.only || options.only.includes(probe.name));
+const selected = [...probes, combined, popularCombined, applicationCombined].filter(probe => !options.only || options.only.includes(probe.name));
 if (options.only?.some(name => !selected.some(probe => probe.name === name))) throw new Error("Unknown probe name");
 for (const probe of selected) {
   const libraries = probe.libraries
     ? probes.filter((entry) => probe.libraries.includes(entry.name))
     : [probe];
-  const result = { name: probe.name, fixtureSha256: probe.fixture ? hash(probe.fixture) : null, oracle: null, routes: [] };
+  const result = { name: probe.name, fixtureSha256: probe.fixture ? hash(probe.fixture) : null, bodySha256: hash(probe.body), oracle: null, routes: [] };
   const oracleDirectory = path.join(work, probe.name);
   await mkdir(oracleDirectory, { recursive: true });
   const bareImports = libraries
@@ -114,7 +122,7 @@ for (const probe of selected) {
     const imports = [];
     for (const entry of libraries) {
       const source = await readFile(
-        path.join(root, "node_modules", entry.name, entry.entry),
+        path.join(modules, entry.name, entry.entry),
         "utf8",
       );
       const extension = mode.startsWith("typed-") ? ".ts" : path.extname(entry.entry);

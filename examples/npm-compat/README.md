@@ -15,12 +15,27 @@ ZERO_BIN=/absolute/path/to/zero npm run verify -- --report-only
 ZERO_BIN=/absolute/path/to/zero npm run verify -- --isolated --only clsx
 ```
 
+The `app/zero.config.ts` example exposes `POST /actions/link` with `slug` and
+`title` text inputs. It uses the installed url-join, just-template and escape-html
+packages in a real Zero action. See [the compatibility guide](../../docs/npm-compatibility.md)
+for build, local WordPress and request instructions. URL joining covers array and
+variadic forms, protocol/query normalization, mutation, empty input and a thrown
+TypeError. Templates cover nested/repeated keys, missing/falsy values and Unicode.
+
+Concurrent workers can install the lockfile in their own npm directory and set
+`NPM_COMPAT_NODE_MODULES=/absolute/path/to/node_modules` with `--isolated`.
+`ZERO_WP_PLUGIN_CACHE` can select an independent plugin cache. Original source
+hashes must match `provenance.json`; changed installed bytes fail verification.
+The verifier executes a private compiler snapshot, so another build cannot
+replace the binary between routes.
+
 `ZERO_BIN` defaults to this checkout's `target/debug/zero`. PHP CLI needs the
 runtime's normal extensions, including mbstring. No WordPress site, database,
 network request, or JavaScript process participates in the PHP execution.
 `run-php.php` loads the generated runtime and calls the generated action handler.
 
 `cases.mjs` contains representative calls and observable edge cases. It also
+combines url-join + just-template + escape-html for application links,
 combines clsx + escape-html + just-capitalize, and separately combines safeDiv
 from `@thi.ng/math` with upper from `@thi.ng/strings`. Cloning checks mutation
 isolation and Set, Map, Date and RegExp values constructed by a raw JavaScript
@@ -51,7 +66,9 @@ for all exports in either package, nor automatic declaration-file hydration.
 `just-clone` also carries a generic `<T extends object>(obj: T): T` declaration;
 its raw JS probe retains the actual clone implementation.
 `ts-dedent` supplies an actual published `src/index.ts` probe of its callable
-string form. Tagged templates are outside Zero's syntax subset.
+string form. Repeated array/interpolation calls still encounter a located typing
+refusal; tagged-template syntax is outside Zero's subset. See the guide for the
+remaining coercion, sparse-array and borrowed-method boundaries.
 
 All raw compiler diagnostics, exact Node results, PHP stdout/stderr, source byte
 counts, hashes, compiler binary identity, and per-route statuses are written to
@@ -66,7 +83,8 @@ the final exit code and never labels blocked routes as passing.
 module formats, unpacked package sizes when available, and observed npm weekly
 download counts with their date range and source URL. Refresh it deliberately
 with `node provenance.mjs`; verification itself stays offline after `npm ci`.
-Upstream licenses remain available in each installed package's LICENSE file
+The unchanged url-join and just-template MIT notices are also retained in
+`licenses/`. Upstream licenses remain available in each installed package's LICENSE file
 (`ms/license.md` uses a lowercase filename). The initial broad probes are MIT;
 the thi.ng positive controls are Apache-2.0.
 

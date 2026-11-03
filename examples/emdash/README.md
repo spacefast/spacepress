@@ -3,8 +3,11 @@
 These examples map the official EmDash examples to native Zero and WordPress.
 The canonical source is pinned at
 [`1824902c0c383c052b623528799427b8a5ff75d0`](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0).
-They use WordPress collections, the native editor/SCF, PHP frontends and generated
-Abilities. Astro, Portable Text and Cloudflare services have different contracts.
+The behavioral counterparts use WordPress collections, native editor/SCF, PHP
+frontends and generated Abilities. [Official source migrations](official-sites/README.md)
+also retain the original blank, starter and blog Astro frontends, backed by native
+Zero data. Astro builds to Node; Zero backend TypeScript and selected original
+helpers compile to PHP. Provider and editor contracts remain explicit.
 
 **Native qualification is partial.** Publication, marketing, portfolio, plugins,
 agent and platform acceptance runs have passed their recorded native checks,
@@ -17,6 +20,7 @@ receipts, owners, commands, pending proofs and known gaps.
 
 | Counterpart | What to try | Native acceptance owner |
 | --- | --- | --- |
+| [original Astro sources](official-sites/README.md) | Original blank, starter and blog pages with native editing | `official-sites/acceptance.test.mjs` |
 | [blank](blank/README.md) | Empty welcome page and complete WordPress admin | `starter/acceptance.test.mjs` |
 | [starter](starter/README.md) | Posts, pages, native editing, media and navigation | `starter/acceptance.test.mjs` |
 | [blog](blog/README.md) | Publication, archives, search, comments and RSS | `starter/acceptance.test.mjs` |
@@ -35,11 +39,13 @@ node examples/emdash/test.mjs
 
 The runner builds Zero with `cargo build --locked`, refreshes the shared browser
 dependencies and Chromium, then runs `publishing`,
-`publishing-browser`, `marketing`, `portfolio`, `agents`, `platform` and `plugins`
+`publishing-browser`, `marketing`, `portfolio`, `agents`, `platform`, `plugins`
+and `official-source`
 sequentially. Set `ZERO_BIN` to an existing matching binary to skip the build.
 Select suites by name; the native lifecycle suite is optional:
 
 ```sh
+node examples/emdash/test.mjs official-source
 node examples/emdash/test.mjs marketing portfolio
 node examples/emdash/test.mjs lifecycle
 ```

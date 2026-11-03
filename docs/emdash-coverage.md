@@ -50,6 +50,24 @@ The current marketing template's contact block uses email/phone/address links.
 It does not implement a submission backend. Submission, spam and email delivery
 belong to the forms plugin; a decorative contact form cannot qualify that plugin.
 
+## Original source migrations
+
+[The original-source applications](../examples/emdash/official-sites/README.md)
+retain pinned blank, starter and blog Astro routes, components, styles and
+utilities with a source-hash drift guard. Astro compiles to a Node frontend;
+Zero compiles its backend and the original reading-time algorithm to PHP.
+The native adapter supplies WordPress/SCF content, menus, media, comments,
+Appearance widgets, saved-draft previews and privacy rules to those original
+routes. The deeper marketing and portfolio examples above remain behavioral
+counterparts; they do not claim unchanged upstream frontend source.
+
+Run the full application seam with `node examples/emdash/test.mjs official-source`.
+This is separate from EmDash's staged edit locks, unsaved inline editor,
+plugin contributions, sandbox execution and provider infrastructure, which
+remain explicit gaps. For npm source algorithms, the independent
+[package probe harness](../examples/npm-compat/README.md) distinguishes raw
+imports, export adaptation, authored parameter types and Node/PHP parity.
+
 ## All thirteen plugin directories
 
 | Source under `packages/plugins/` | Observable requirement | Owner / boundary |

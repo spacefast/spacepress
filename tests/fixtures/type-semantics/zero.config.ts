@@ -18,6 +18,8 @@ type State = Exclude<Choice, "published">;
 type Values<T> = T[keyof T];
 type Box<T> = { value: T };
 const NUMBER_IS_FINITE = Number.isFinite;
+const FINITE_VALUES = [NaN, Infinity, "3", null, [], [3], [false]];
+const PURE_FINITE = FINITE_VALUES.map(value => [Number.isFinite(value), isFinite(Number(value))]);
 type Candidate = { kind: string; label?: string };
 type Named = Candidate & { kind: "named"; label: string };
 function isNamed(item: Candidate): item is Named {
@@ -42,6 +44,7 @@ type Report = {
   finiteChecks: boolean[][];
   finiteIdentity: boolean;
   finiteCaptured: boolean;
+  pureFinite: boolean[][];
   scalarTypes: string[];
   scalarFalseBranches: string[];
   guardedLabels: string[];
@@ -103,9 +106,10 @@ export default defineConfig({
         const patch: Partial<Omit<Draft, "id">> = {};
         const projectedOptional: Projection<Draft, "note"> = {};
         return {
-          finiteChecks: [NaN, Infinity, "3", null].map(value => [finite(value), isFinite(Number(value))]),
+          finiteChecks: FINITE_VALUES.map(value => [finite(value), isFinite(Number(value))]),
           finiteIdentity: finite === Number.isFinite,
           finiteCaptured: NUMBER_IS_FINITE(3),
+          pureFinite: PURE_FINITE,
           scalarTypes: [7, "Hello", true, false, null].map(scalarLabel),
           scalarFalseBranches: [7, "Hello", null].map(scalarRemainder),
           guardedLabels: guarded,

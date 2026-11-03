@@ -15,6 +15,7 @@ const suites = {
   agents: 'examples/emdash/agents/acceptance.test.mjs',
   platform: 'examples/emdash/platform/acceptance.test.mjs',
   plugins: 'examples/emdash/plugins/acceptance.test.mjs',
+  'official-source': 'examples/emdash/official-sites/acceptance.test.mjs',
   lifecycle: 'scripts/dev/acceptance.test.mjs',
 };
 const requested = process.argv.slice(2);
@@ -41,6 +42,7 @@ if (requested.includes('--help') || requested.includes('--list')) {
   const binarySha256 = createHash('sha256').update(await readFile(binary)).digest('hex');
   run('npm', ['--prefix', here, 'ci', '--ignore-scripts']);
   run('npm', ['--prefix', here, 'exec', '--', 'playwright', 'install', 'chromium']);
+  if (selected.includes('official-source')) run('npm', ['--prefix', join(here, 'official-sites'), 'ci', '--ignore-scripts']);
   const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
   const changes = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' });
   const evidence = await mkdtemp(join(tmpdir(), 'zero-emdash-suite-'));

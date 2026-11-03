@@ -1,0 +1,22 @@
+{
+  "name": "zero-official-emdash-sites",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test acceptance.test.mjs",
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.5",
+    "astro": "7.3.2",
+    "linkedom": "0.18.12",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "24.10.13",
+    "typescript": "5.9.3"
+  }
+}

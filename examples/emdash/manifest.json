@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "inventoryVersion": "2026-11-03.1",
+  "inventoryVersion": "2026-11-03.2",
   "auditedAt": "2026-11-03",
   "upstream": {
     "repository": "emdash-cms/emdash",
@@ -41,7 +41,8 @@
       "npm --prefix examples/emdash ci",
       "npm --prefix examples/emdash exec -- playwright install chromium",
       "Native WordPress Studio 2.1.1 downloads/runtime available",
-      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with ZERO_BIN"
+      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with ZERO_BIN",
+      "npm --prefix examples/emdash/official-sites ci --ignore-scripts when selecting official-source; the runner performs this automatically"
     ],
     "cwd": "repository root",
     "commands": {
@@ -124,6 +125,16 @@
           "platform"
         ],
         "scope": "Only executedRuns.platform.scope is qualified; this suite result does not promote every mapped upstream behavior."
+      },
+      "official-source": {
+        "command": "node examples/emdash/test.mjs official-source",
+        "testPath": "examples/emdash/official-sites/acceptance.test.mjs",
+        "availability": "present",
+        "status": "proven",
+        "scope": "Original pinned blank/starter/blog Astro sources against compiled Zero/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
+        "evidence": [
+          "official-source"
+        ]
       }
     },
     "lifecycleCommand": "ZERO_BIN=\"$PWD/target/debug/zero\" node --test scripts/dev/acceptance.test.mjs",
@@ -152,7 +163,8 @@
         "portfolio",
         "agents",
         "platform",
-        "plugins"
+        "plugins",
+        "official-source"
       ],
       "selectionExample": "node examples/emdash/test.mjs marketing portfolio",
       "optionalLifecycle": "node examples/emdash/test.mjs lifecycle",
@@ -321,7 +333,7 @@
         "scope": [
           "authenticated real MCP initialization, discovery and echo",
           "core Abilities discovery/execution and agent opt-outs",
-          "MCP create → native REST/SCF edit → MCP publish → anonymous public read",
+          "MCP create \u2192 native REST/SCF edit \u2192 MCP publish \u2192 anonymous public read",
           "role/row/field restrictions and failure envelopes preserve state",
           "global mutation, durable Action Scheduler job result and desktop/mobile public rendering"
         ],
@@ -446,6 +458,32 @@
           "zero-official-plugins-BFA744-evidence"
         ],
         "runnerReceipt": "zero-emdash-suite-XCi02S/results.json"
+      },
+      "official-source": {
+        "status": "proven",
+        "date": "2026-11-03",
+        "runtime": "Native WordPress Studio 2.1.1/PHP/SQLite with original Astro Node frontends and Chromium.",
+        "command": "node examples/emdash/test.mjs official-source",
+        "artifact": "zero-official-full-app-xW9f7A",
+        "result": "4 tests passed; 0 failed; 0 skipped",
+        "files": [
+          "results.json",
+          "blank-cleanup.json",
+          "starter-cleanup.json",
+          "blog-cleanup.json",
+          "blog-desktop.png",
+          "blog-mobile.png"
+        ],
+        "revision": "f938153f6b58cef9ddf9636535819c5a2f59323d with uncommitted original-source examples",
+        "scope": [
+          "31 pinned original blank/starter/blog frontend files retain upstream bytes",
+          "Original blank landing/admin entry, starter/blog routes and live search",
+          "Native WordPress and SCF edits, original media bytes, signed saved-draft preview and public privacy",
+          "Blog cursor pagination, parsed RSS, moderated threaded comments, native menus/widgets, theme and responsive browser journeys",
+          "Original reading-time algorithm executes as compiled PHP over native HTTP"
+        ],
+        "cleanup": "Exact three final projects and all earlier owned projects absent; frontends/backends offline; no owned Studio registrations remain.",
+        "boundaries": "Astro compiles to Node/browser JavaScript. Zero backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified."
       }
     },
     "evidenceStorage": "Artifact names identify retained campaign receipts outside Git; machine-local paths and credentials are intentionally omitted. Source paths identify reproducible suites. Earlier runs do not certify later edits.",
@@ -665,7 +703,7 @@
     },
     "plugin-mcp": {
       "owner": "agents",
-      "contract": "Private mcp-smoke echo tool validates a 1–200 character message and returns message plus length.",
+      "contract": "Private mcp-smoke echo tool validates a 1\u2013200 character message and returns message plus length.",
       "requiredProof": "Authenticate a real MCP connection, discover and call the generated named tool, inspect value/schema and denied access; observe a subsequent content operation through REST/public page.",
       "zeroCounterpart": "examples/emdash/agents",
       "acceptanceCommand": "agents",

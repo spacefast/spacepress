@@ -11,8 +11,8 @@
   },
   "scripts": {
     "build:wasm": "node scripts/build-wasm.mjs",
-    "dev": "astro dev",
-    "build": "astro build",
+    "dev": "pnpm build:wasm && astro dev",
+    "build": "pnpm build:wasm && astro build",
     "preview": "astro preview",
     "typecheck": "astro check && tsc --noEmit -p tsconfig.json",
     "test": "node --test tests/unit/*.test.ts",
@@ -21,11 +21,13 @@
   },
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.2",
+    "@pierre/diffs": "1.6.2",
     "astro": "7.3.8"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
     "@playwright/test": "1.64.1",
+    "@types/hast": "3.0.4",
     "@types/mdast": "4.0.4",
     "@types/node": "22.19.3",
     "typescript": "5.9.3",

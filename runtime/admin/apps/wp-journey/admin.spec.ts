@@ -72,6 +72,11 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
+	await page.getByRole('combobox').fill('Classic admin');
+	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/wp-admin/`);
+	await expect(page.locator('#adminmenu')).toBeVisible();
 	expect(errors).toEqual([]);
 });
 // The subdirectory lane proves mounting/login/navigation with the same owner. Writes are

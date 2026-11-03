@@ -165,6 +165,20 @@ and `Seam` detachment copy the own-field graph into plain handles; descriptors
 and method tables are not traversed or serialized. Generated client types erase
 instance identity recursively at the wire boundary.
 
+## Native post password visibility
+
+Viewer-bound reads exclude password-protected WordPress records before filters,
+projections, pagination and relation matching. Locked item reads return 404;
+list and Ability reads omit the row. This boundary covers native core REST as
+well as Zero. An explicit viewer with native `edit_post` capability or a valid
+WordPress post-password cookie can read the record. Trusted server reads with
+no viewer retain their existing authority.
+
+Native core REST GET/HEAD requests also accept their `password` parameter.
+That proof is scoped to the collection and explicit viewer, accepts only rows
+with the matching password, and is suspended/restored across nested requests.
+It does not authorize a later Zero request or borrow the ambient user's rights.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.

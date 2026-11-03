@@ -27,6 +27,9 @@ final class WpPostStore implements Store
     /** @var array<string, Source> */
     private array $sources = [];
 
+    /** @var ?array{collection: string, viewer: \Zero\Viewer, password: string} */
+    private ?array $readPassword = null;
+
     public function __construct(
         private readonly Connection $db,
         private readonly Schema $schema,
@@ -59,6 +62,57 @@ final class WpPostStore implements Store
     public function source(string $collection): Source
     {
         return $this->sources[$collection] ??= $this->buildSource($collection);
+    }
+
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array
+    {
+        $spec = $this->schema->collection($collection);
+        $hidden = [];
+        $posts = $this->db->run(
+            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND post_password NOT IN (?, ?)',
+            [$spec['wp']['postType'], '', '0'],
+        );
+        foreach ($posts as $row) {
+            $id = (int) $row['ID'];
+            $post = get_post($id);
+            if ($post instanceof \WP_Post && !$this->passwordAccepted($post, $collection, $viewer)
+                && ($viewer->user === null || !user_can($viewer->user['id'], 'edit_post', $id))) {
+                $hidden[] = $id;
+            }
+        }
+
+        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
+    }
+
+    /** Native REST's password proof belongs only to its collection and explicit viewer, including nested dispatches. */
+    public function withReadPassword(string $collection, \Zero\Viewer $viewer, ?string $password, callable $read): mixed
+    {
+        $previous = $this->readPassword;
+        $this->readPassword = $password === null ? null : ['collection' => $collection, 'viewer' => $viewer, 'password' => $password];
+        CoreAccess::flush();
+        try {
+            return $read();
+        } finally {
+            $this->readPassword = $previous;
+            CoreAccess::flush();
+        }
+    }
+
+    private function passwordAccepted(\WP_Post $post, string $collection, \Zero\Viewer $viewer): bool
+    {
+        $proof = $this->readPassword;
+        if ($proof !== null && $proof['collection'] === $collection && $proof['viewer']->user === $viewer->user
+            && hash_equals($post->post_password, $proof['password'])) {
+            return true;
+        }
+        // Match WordPress's post-password cookie, without its REST filter borrowing the ambient user's edit authority.
+        $cookie = $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null;
+        if (!is_string($cookie) || !str_starts_with($hash = wp_unslash($cookie), '$P$B')) {
+            return false;
+        }
+        require_once ABSPATH . WPINC . '/class-phpass.php';
+
+        return (new \PasswordHash(8, true))->CheckPassword($post->post_password, $hash);
     }
 
     private function buildSource(string $collection): Source

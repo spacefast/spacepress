@@ -93,6 +93,8 @@ function postSource(array $columns): Source
 /** A Store that only answers dialect()/source(): enough to compile. */
 final class CompileOnlyStore implements Store
 {
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array { return []; }
+
     public function __construct(private readonly Dialect $d, private readonly array $sources)
     {
     }

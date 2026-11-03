@@ -81,6 +81,108 @@ eq('… editors see every status', array_column(req('GET', '/authors', as: 'ed',
 eq('… authors are below editor', array_column(req('GET', '/authors', as: 'alice')[1], 'name'), ['Alice']);
 eq('GET /me', [req('GET', '/me')[1], req('GET', '/me', as: 'alice')[1]], [null, $users['alice']]);
 
+// Native post passwords constrain every viewer-bound read before selection, not just its rendered body.
+$protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];
+$public = $db->insert('posts', ['title' => 'Public next page'], true)[0];
+wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
+$anon = new \Zero\Viewer(null);
+$protectedWhere = ['id' => $protected['id']];
+isProblem('native password masks Zero item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
+eq('native password constrains body-filtered projections', $db->findMany('posts', [
+    'where' => ['body' => ['like' => '%native-password-secret%']], 'columns' => ['body' => true],
+], $anon), []);
+eq('native password is applied before page limits', array_column($db->findMany('posts', [
+    'where' => ['id' => ['in' => [$protected['id'], $public['id']]]], 'orderBy' => ['id' => 'asc'], 'limit' => 1,
+], $anon), 'id'), [$public['id']]);
+$linked = $db->insert('comments', ['postId' => $protected['id'], 'name' => 'Linked', 'body' => 'Visible comment', 'approved' => true], true)[0];
+$related = $db->findFirst('comments', ['where' => ['id' => $linked['id']], 'with' => ['post' => true]], $anon);
+eq('native password hides attached relation', $related['post'], null);
+eq('native password prevents relation-filter inference', $db->findMany('comments', [
+    'where' => ['id' => $linked['id'], 'post' => ['body' => ['like' => '%native-password-secret%']]],
+], $anon), []);
+$wp->actAs('admin');
+$nativeController = new \WP_REST_Posts_Controller('zero_posts');
+add_filter('post_password_required', [$nativeController, 'check_password_required'], 10, 2);
+eq('native edit-context filter trusts the ambient administrator', post_password_required($protected['id']), false);
+eq('anonymous viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+eq('subscriber viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], new \Zero\Viewer($users['sub'])), []);
+remove_filter('post_password_required', [$nativeController, 'check_password_required']);
+$wp->actAs(null);
+eq('explicit editor retains native protected-post editing', $db->findFirst('posts', ['where' => $protectedWhere], new \Zero\Viewer($users['ed']))['body'] ?? null, $protected['body']);
+eq('trusted null viewer retains server authority', $db->findFirst('posts', ['where' => $protectedWhere])['body'], $protected['body']);
+$wp->actAs('ed');
+$nativeEdit = new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']);
+$nativeEdit->set_param('context', 'edit');
+$nativeEdited = rest_do_request($nativeEdit);
+eq('native editor can still load protected content for editing', [$nativeEdited->get_status(), $nativeEdited->get_data()['content']['raw'] ?? null], [200, $protected['body']]);
+$wp->actAs(null);
+wp_update_post(['ID' => $protected['id'], 'post_password' => '0']);
+eq('WordPress empty-password semantics remain public', [post_password_required($protected['id']), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null], [false, $protected['body']]);
+wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
+$coreRead = static function () use ($protected) {
+    return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $protected['id']));
+};
+eq('native core access shares the password row boundary', $coreRead()->get_status(), 404);
+wp_update_post(['ID' => $public['id'], 'post_password' => 'another-native-secret']);
+$corePassword = static function (string $password, bool $list = false) use ($protected, $public) {
+    $request = new \WP_REST_Request('GET', '/wp/v2/zero_posts' . ($list ? '' : '/' . $protected['id']));
+    $request->set_query_params(['password' => $password] + ($list ? ['include' => [$protected['id'], $public['id']]] : []));
+
+    return rest_do_request($request);
+};
+eq('native item rejects a wrong password parameter', $corePassword('wrong-password')->get_status(), 403);
+$concealed = new \WP_REST_Request('GET', '/wp/v2/zero_posts/' . $draft['id']);
+$concealed->set_query_params(['password' => 'wrong-password']);
+eq('wrong native password cannot distinguish a schema-hidden row', rest_do_request($concealed)->get_status(), 404);
+$unlocked = $corePassword('native-secret');
+eq('native item accepts its password parameter', [$unlocked->get_status(), str_contains($unlocked->get_data()['content']['rendered'] ?? '', 'native-password-secret')], [200, true]);
+$unlockedList = $corePassword('native-secret', true);
+eq('native list accepts its password parameter for matching rows', [$unlockedList->get_status(), array_column($unlockedList->get_data(), 'id'), str_contains($unlockedList->get_data()[0]['content']['rendered'] ?? '', 'native-password-secret')], [200, [$protected['id']], true]);
+eq('native list keeps rows locked with the wrong password', $corePassword('wrong-password', true)->get_data(), []);
+eq('native password parameter does not authorize a subsequent Zero read', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+$nestedProof = null;
+$inspectProof = static function ($response, $post) use (&$nestedProof, $coreRead, $corePassword, $db, $protectedWhere, $anon) {
+    if ($nestedProof === null) {
+        $nestedProof = []; // Nested dispatch must not recurse into this observation.
+        $nestedProof = [$coreRead()->get_status(), $corePassword('wrong-password')->get_status(), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null];
+    }
+
+    return $response;
+};
+add_filter('rest_prepare_zero_posts', $inspectProof, 20, 2);
+$corePassword('native-secret');
+remove_filter('rest_prepare_zero_posts', $inspectProof);
+eq('nested native requests suspend and then restore the outer password proof', $nestedProof, [404, 403, $protected['body']]);
+$wp->actAs('admin');
+$borrowedProof = null;
+$inspectViewer = static function ($response) use (&$borrowedProof, $db, $protectedWhere, $anon) {
+    $borrowedProof = $db->findMany('posts', ['where' => $protectedWhere], $anon);
+
+    return $response;
+};
+add_filter('rest_prepare_zero_posts', $inspectViewer);
+$corePassword('native-secret');
+remove_filter('rest_prepare_zero_posts', $inspectViewer);
+$wp->actAs(null);
+eq('native admin password proof does not authorize an explicit anonymous viewer', $borrowedProof, []);
+wp_update_post(['ID' => $public['id'], 'post_password' => '']);
+$ability = wp_get_ability('blog/posts-list');
+eq('native password applies to agent ability reads', $ability->execute(['where' => $protectedWhere]), ['rows' => []]);
+require_once ABSPATH . WPINC . '/class-phpass.php';
+$hasher = new \PasswordHash(8, true);
+$_COOKIE['wp-postpass_' . COOKIEHASH] = $hasher->HashPassword('wrong-password');
+eq('wrong native cookie keeps protected rows hidden', [post_password_required($protected['id']), $db->findMany('posts', ['where' => $protectedWhere], $anon)], [true, []]);
+$_COOKIE['wp-postpass_' . COOKIEHASH] = $hasher->HashPassword('native-secret');
+\Zero\Wp\CoreAccess::flush();
+eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_password_required($protected['id']), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null, $coreRead()->get_status()], [false, $protected['body'], 200]);
+unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+\Zero\Wp\CoreAccess::flush();
+$wp->startServer();
+$wire = json_decode(file_get_contents($wp->url() . '/wp-json/zero/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
+$db->delete('comments', ['id' => $linked['id']]);
+$db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
+
 // ================================================================ write access
 
 isProblem('anonymous create → 401', req('POST', '/posts', ['title' => 'x']), 401, 'unauthenticated');

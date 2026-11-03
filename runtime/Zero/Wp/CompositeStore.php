@@ -95,6 +95,11 @@ final class CompositeStore implements Store
         return $this->for($collection)->source($collection);
     }
 
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array
+    {
+        return $this->for($collection)->readGuards($collection, $viewer);
+    }
+
     public function globalRead(string $name): ?array
     {
         return $this->tables->globalRead($name);

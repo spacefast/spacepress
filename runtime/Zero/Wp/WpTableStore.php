@@ -72,6 +72,11 @@ final class WpTableStore implements Store
         return $rows;
     }
 
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array
+    {
+        return [];
+    }
+
     public function insert(string $collection, array $values): int|string
     {
         $q = $this->dialect->quote(...);

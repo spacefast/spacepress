@@ -419,6 +419,8 @@ final class WpMedia implements Media
 /** @internal Answers dialect()/source() for compiling media queries; never stores. */
 final class MediaView implements Store
 {
+    public function readGuards(string $collection, \Zero\Viewer $viewer): array { return []; }
+
     public function __construct(private readonly Dialect $d, private readonly Source $source)
     {
     }

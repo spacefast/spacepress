@@ -150,7 +150,7 @@ final class App
         $notFound = static fn () => HttpError::notFound("No route for $path");
 
         if (($handler = Extensions::routeHandler($name)) !== null) {
-            return $handler($method, $segments, $query, $body, $viewer, $files, $form);
+            return $handler($method, $segments, $query, $body, $viewer, $files, $form, $headers);
         }
         switch (true) {
             case $name === '_schema' && $n === 1:

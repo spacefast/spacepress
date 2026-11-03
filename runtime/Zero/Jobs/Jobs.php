@@ -67,10 +67,11 @@ final class Jobs
         return $row === null ? null : (string) $row['id'];
     }
 
-    /** The job's schema.php entry; the built-in `zero.webhook` comes from Webhooks. */
+    /** App-defined jobs take precedence over the runtime's native service and webhook jobs. */
     public static function spec(string $name): array
     {
         return db()->schema()->jobs()[$name]
+            ?? \Zero\Services\Definition::jobs()[$name]
             ?? ($name === Webhooks::JOB ? Webhooks::spec() : throw new \LogicException("Unknown job '$name'"));
     }
 

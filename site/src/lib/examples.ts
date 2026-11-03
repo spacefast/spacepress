@@ -5,13 +5,14 @@ import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { Compiler, type Output, type Request } from "./compiler.ts";
+import type { playgroundExamples } from "./playground-catalog.ts";
 
 // Astro bundles this module under dist/ at build time, so paths cannot come from import.meta.url;
 // the build and the tests both run from site/.
 export const site = process.cwd();
 export const repo = path.dirname(site);
 
-export type ExampleName = "pantry" | "blog";
+export type ExampleName = (typeof playgroundExamples)[number]["name"];
 
 export interface Example {
   name: ExampleName;

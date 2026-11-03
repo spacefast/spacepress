@@ -402,6 +402,7 @@ async function main() {
     const response = await fetch(`${url}/wp-json/zero/v1/_schema`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`Zero application is not ready: HTTP ${response.status}. Run zero doctor --site ${url}`);
     console.log(`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`);
+    if (await exists(join(project, 'public/index.html'))) console.log(`App:       ${url}/wp-content/plugins/zero-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
     if (managed.owner.generated.includes('zero-admin')) console.log(`Zero Admin: ${url}/zero-admin/`);
     console.log('Initial login: admin / zero-test-admin (local development only; unchanged if you edited it)\n');
     console.log(`Data persists in ${managed.owner.site}\nStop: zero dev stop ${JSON.stringify(project)}`);

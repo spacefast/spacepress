@@ -1,0 +1,8 @@
+version: 2
+
+# Retained upstream inputs are provenance, not installed dependency projects.
+# Generated manifests duplicate runtime/admin/apps; scan that workspace and its
+# pnpm lockfile instead of resolving the same packages again without a lockfile.
+projectIgnorePaths:
+  - "/runtime/admin/upstream-metadata/"
+  - "/runtime/admin/build/"

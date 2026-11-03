@@ -116,7 +116,11 @@ Composer.
 
 ## Quick start
 
-There's no binary release or npm package yet. Build the compiler from source
+The [installation guide](docs/installation.md) covers the npm creator, compiler
+installer and unsigned Homebrew release tooling, including a local packed-install
+test. Public packages and release downloads still need maintainer publication.
+
+Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. Zero automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)

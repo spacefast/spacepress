@@ -1,0 +1,129 @@
+name: Unsigned release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact Cargo/npm version (for example 0.3.0)
+        required: true
+        type: string
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  binary:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { runner: macos-14, target: aarch64-apple-darwin }
+          - { runner: macos-15-intel, target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Verify release versions
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+        run: node scripts/release/version.mjs "$REQUESTED_VERSION"
+      - name: Install compiler toolchain
+        run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target "${{ matrix.target }}"
+      - run: cargo build --release --locked --target "${{ matrix.target }}"
+      - name: Package executable and original license notices
+        run: node scripts/release/archive.mjs "target/${{ matrix.target }}/release/zero" "${{ matrix.target }}" release "$GITHUB_SHA"
+      - name: Smoke compiled executable
+        run: "target/${{ matrix.target }}/release/zero check examples/pantry"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-${{ matrix.target }}
+          path: release/*
+          if-no-files-found: error
+
+  npm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Verify release versions
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+        run: node scripts/release/version.mjs "$REQUESTED_VERSION"
+      - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
+      - run: mkdir -p release && npm pack ./packages/cli --pack-destination release && npm pack ./packages/create-zero --pack-destination release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-tarballs
+          path: release/*.tgz
+          if-no-files-found: error
+
+  install:
+    needs: [binary, npm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-x86_64-unknown-linux-gnu
+          path: release
+      - name: Prove packed install and native WordPress starter
+        run: |
+          version=$(node scripts/release/version.mjs)
+          mkdir compiler
+          tar -xzf "release/zero-v${version}-x86_64-unknown-linux-gnu.tar.gz" -C compiler zero
+          ZERO_SETUP_BINARY="$PWD/compiler/zero" \
+            ZERO_SETUP_EVIDENCE="/tmp/zero-framework-setup-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            node scripts/release/acceptance.mjs
+      - name: Retain setup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: setup-acceptance
+          path: |
+            /tmp/zero-framework-setup-ci-*/result.json
+            /tmp/zero-framework-setup-ci-*/cleanup.txt
+            /tmp/zero-framework-setup-ci-*/dev-output.txt
+            /tmp/zero-framework-setup-ci-*/commands.log
+          if-no-files-found: warn
+
+  assemble:
+    needs: [binary, npm, install]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release
+          merge-multiple: true
+          pattern: unsigned-*
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-tarballs
+          path: release
+      - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/zero.rb
+      - name: Include exact compiler/runtime source and dependency provenance
+        run: git archive --format=tar.gz --output=release/zero-source.tar.gz "$GITHUB_SHA"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zero-release-unsigned
+          path: release/
+          if-no-files-found: error
+          retention-days: 14

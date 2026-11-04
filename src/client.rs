@@ -5,7 +5,7 @@
 use crate::schema::{Access, ColType, Collection, Column, RelKind, Schema};
 use crate::types::Ty;
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 /// "posts" → "Post", "shopping_list" → "ShoppingListItem"? No: singularize the last word only.
@@ -297,14 +297,50 @@ pub(crate) fn reserved_type_name(name: &str) -> bool {
     )
 }
 
-fn names(schema: &Schema) -> IndexMap<String, String> {
-    let mut out = IndexMap::new();
+struct ClientNames {
+    collections: IndexMap<String, String>,
+    globals: IndexMap<String, String>,
+    actions: IndexMap<String, String>,
+}
+
+fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) -> String {
+    while suffixes.iter().any(|suffix| {
+        let candidate = format!("{name}{suffix}");
+        reserved_type_name(&candidate) || used.contains(&candidate)
+    }) {
+        name.push_str("Row");
+    }
+    used.extend(suffixes.iter().map(|suffix| format!("{name}{suffix}")));
+    name
+}
+
+fn names(schema: &Schema) -> ClientNames {
+    let mut out = ClientNames {
+        collections: IndexMap::new(),
+        globals: IndexMap::new(),
+        actions: IndexMap::new(),
+    };
+    let mut used = HashSet::new();
     for c in schema.collections.values() {
-        let mut n = type_name(&c.key);
-        while reserved_type_name(&n) || out.values().any(|x| *x == n) {
-            n.push_str("Row");
-        }
-        out.insert(c.table.clone(), n);
+        let suffixes: &[&str] = if c.localized {
+            &["", "Insert", "Patch", "With", "Filter", "Order", "Fields"]
+        } else {
+            &["", "Insert", "Patch", "With", "Filter", "Order"]
+        };
+        out.collections
+            .insert(c.table.clone(), claim_names(type_name(&c.key), suffixes, &mut used));
+    }
+    for g in schema.globals.values() {
+        out.globals.insert(
+            g.name.clone(),
+            claim_names(upper_first(&g.name), &["", "Patch"], &mut used),
+        );
+    }
+    for a in schema.actions.values() {
+        out.actions.insert(
+            a.name.clone(),
+            claim_names(action_type(&a.name), &["Input", "Output"], &mut used),
+        );
     }
     out
 }
@@ -366,7 +402,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
             let _ = writeln!(
                 s,
                 "export interface User {{ id: number; name: string; role: Role; member?: {} | null }}",
-                names[&c.table]
+                names.collections[&c.table]
             );
         }
         None => s.push_str("export interface User { id: number; name: string; role: Role }\n"),
@@ -380,11 +416,11 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     let _ = writeln!(s, "export type Locale = {};\n", locale_ts(schema));
 
     for c in schema.collections.values() {
-        collection_types(&mut s, c, &names, schema);
+        collection_types(&mut s, c, &names.collections, schema);
     }
 
     for g in schema.globals.values() {
-        let full = upper_first(&g.name);
+        let full = &names.globals[&g.name];
         let _ = writeln!(s, "export interface {full} {}", fields_ts(&g.fields, false));
         let patch: Vec<String> = g
             .fields
@@ -397,10 +433,10 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     let rows: Vec<(String, Ty)> = schema
         .collections
         .values()
-        .map(|c| (names[&c.table].clone(), crate::types::row_of(c)))
+        .map(|c| (names.collections[&c.table].clone(), crate::types::row_of(c)))
         .collect();
     for a in schema.actions.values() {
-        let n = action_type(&a.name);
+        let n = &names.actions[&a.name];
         let input: Vec<String> = a
             .input
             .values()
@@ -423,7 +459,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
 
     s.push_str("export interface Collections {\n");
     for c in schema.collections.values() {
-        let n = &names[&c.table];
+        let n = &names.collections[&c.table];
         let _ = writeln!(
             s,
             "  {}: {{ row: {n}; insert: {n}Insert; patch: {n}Patch; with: {n}With; filter: {n}Filter; order: {n}Order }};",
@@ -432,12 +468,12 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     }
     s.push_str("}\n\nexport interface Globals {\n");
     for g in schema.globals.values() {
-        let full = upper_first(&g.name);
+        let full = &names.globals[&g.name];
         let _ = writeln!(s, "  {}: {{ row: {full}; patch: {full}Patch }};", key(&g.name));
     }
     s.push_str("}\n\nexport interface Actions {\n");
     for a in schema.actions.values() {
-        let n = action_type(&a.name);
+        let n = &names.actions[&a.name];
         let _ = writeln!(s, "  {}: {{ input: {n}Input; output: {n}Output }};", key(&a.name));
     }
     s.push_str("}\n");

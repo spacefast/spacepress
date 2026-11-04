@@ -153,6 +153,7 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
         app_sha256: hash(&app),
         vendor_sha256: hash(&vendor),
     };
+    public_assets(&project.join("public"), None)?;
     std::fs::create_dir(destination).map_err(io)?;
     std::fs::write(destination.join(APP_FILE), app).map_err(io)?;
     std::fs::write(destination.join(VENDOR_FILE), vendor).map_err(io)?;

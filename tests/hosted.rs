@@ -103,7 +103,9 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         "import { defineConfig } from 'zero'; export default defineConfig({});",
     );
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
-    assert!(zero::bundle::sources(&project, &work.path().join("upload")).is_err());
+    let upload = work.path().join("upload");
+    assert!(zero::bundle::sources(&project, &upload).is_err());
+    assert!(!upload.exists());
     fs::remove_dir_all(project.join("public")).unwrap();
     let bundle = work.path().join("bundle");
     zero::bundle::sources(&project, &bundle).unwrap();

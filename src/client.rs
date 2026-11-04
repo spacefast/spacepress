@@ -227,11 +227,31 @@ fn filter_ts(c: &Column) -> String {
     )
 }
 
+pub(crate) fn reserved_type_name(name: &str) -> bool {
+    matches!(
+        upper_first(name).as_str(),
+        "Role"
+            | "User"
+            | "Media"
+            | "PrivateFile"
+            | "RevisionSummary"
+            | "Status"
+            | "Locale"
+            | "Collections"
+            | "Globals"
+            | "Actions"
+            | "Record"
+            | "Partial"
+            | "Pick"
+            | "Omit"
+    )
+}
+
 fn names(schema: &Schema) -> IndexMap<String, String> {
     let mut out = IndexMap::new();
     for c in schema.collections.values() {
         let mut n = type_name(&c.key);
-        if n == "Media" || n == "User" || n == "PrivateFile" || n == "Locale" || out.values().any(|x| *x == n) {
+        if reserved_type_name(&n) || out.values().any(|x| *x == n) {
             n.push_str("Row");
         }
         out.insert(c.table.clone(), n);

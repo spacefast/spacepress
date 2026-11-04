@@ -1007,6 +1007,12 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
     if !valid_ident(key) {
         return Err(Diag::new(g.span, format!("\"{key}\" isn't a valid global name")));
     }
+    if crate::client::reserved_type_name(key) {
+        return Err(
+            Diag::new(g.span, format!("\"{key}\" is reserved by generated client types"))
+                .help("choose a global name that does not conflict with a built-in client type"),
+        );
+    }
     let owner = Owner::Global(key.to_string());
     let mut fields = IndexMap::new();
     for (name, b) in &g.fields {

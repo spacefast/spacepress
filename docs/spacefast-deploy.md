@@ -22,17 +22,29 @@ unchanged vendor blob is reused. The manifest changes only when its independent
 hashes or metadata change. Source files and generated PHP are private, while
 public assets use the usual public file catalog.
 
-## Shared Atomic sites are blocked
+## Shared MySQL binding
 
-One PHP app per request prevents class collisions but does not isolate state.
-Zero currently uses the site's `$wpdb->prefix`, global options, native posts,
-users/identity, Action Scheduler and the WordPress object cache. Before shared
-hosting can be enabled, the host must select a complete per-Space WordPress
-binding before bootstrap, including tables/options, users/media, job scope and
-cache salt. A table-name prefix on custom Zero tables alone is insufficient.
-The prototype is opt-in for an isolated local WordPress site only. Space A/B
-isolation is not yet implemented or proven, so it is not ready for existing
-shared machines. Global Zero plugin activation is not a solution.
+The host binds a Space to its own WordPress table prefix before normal plugins,
+roles, sessions, Action Scheduler and Zero bootstrap. Core posts/options and
+users/usermeta use that binding, as do Zero and Action Scheduler tables. The host
+namespaces every object-cache group, including global user groups. Cache flushes
+invalidate only the selected Space. Media and request origins reuse the existing
+Spacefast content scope. Additional database environments are a later binding
+overlay; immutable versions on the selected box share its latest MySQL schema.
+
+A local WordPress 7.1.4/MariaDB proof publishes two versions and a second Space
+into one installation. It checks independent options, posts, product rows, users,
+job storage, cache groups and private-media bindings. Both immutable clients and
+saved-code rollback retain their original code after the forward schema change.
+Config-only publication takes the same migration lock as a source publication.
+A migrated table must match the host's existing Space/collection ownership rule.
+
+This does not qualify an Atomic installation. Its MU-plugin order and persistent
+cache drop-in must meet the binding contract. Bootstrap refuses identity that
+loaded too early and refuses multisite. Unscoped cron/WP-CLI loads no app;
+site-wide async job spawning is disabled. Autonomous scoped job dispatch,
+wp-admin/account overlays and Atomic SQLite are not implemented. Hosting remains
+explicitly enabled until those deployment prerequisites are qualified.
 
 ## SQLite for staging and tests, design only
 
@@ -70,9 +82,14 @@ Endpoint/page compilation remains a separate migration gap for 0.8 apps. Existin
 PHP Functions accept uploaded PHP outside v2. Whether that exception remains is
 an open user-policy decision; this work does not delete it.
 
-The current isolated-site prototype has additional release prerequisites: native
-builds must fetch the private compiler repository with approved build access;
-`sf publish` must use the release owner's binary resolver after its branch lands;
-and the released compiler pin must include the bundle entry API. Optional
-wp-admin/identity overlays and scoped job dispatch are not implemented by the
-prototype. These are not claims of deployable customer hosting.
+The host engine carries a separate native compiler executable from the same
+immutable source pin and verified artifacts as the CLI. Native runtime Cargo
+builds have no private Git dependency. The compiler build checks out the pin with
+a short-lived read token and records source identity and notices in its archive.
+No npm or compiler release is published by this integration.
+
+The separate 0.8 migration work must land before its adopted-table sources are
+included in the compiler pin and exercised through hosted publication. Its
+standalone acceptance does not establish the host's table ownership or retained
+migration behavior. Endpoint/page compilation, legacy identity continuity and
+realtime migration remain outside that accepted subset.

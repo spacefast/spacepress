@@ -333,6 +333,10 @@ final class Routes
                 $connection->touchPost($id);
                 update_post_meta($id, '_zero_pages_retired', gmdate('c'));
                 wp_trash_post($id);
+                $remaining = get_post($id);
+                if ($remaining instanceof \WP_Post && $remaining->post_status !== 'trash') {
+                    throw new \RuntimeException('Cannot retire managed Page #' . $id . '; WordPress did not trash or delete it.');
+                }
             }
         }
         $this->storeOption($connection, $this->option(), ['digest' => $this->manifest['digest'], 'pages' => $wanted, 'conflicts' => $conflicts]);

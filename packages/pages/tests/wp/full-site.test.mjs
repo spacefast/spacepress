@@ -117,6 +117,9 @@ add_action('updated_option', static function (string $name): void {
         throw new RuntimeException('Interrupted after route mapping');
     }
 });
+add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
+    return get_option('zero_pages_test_refuse_retirement') && $post->post_name === 'contact' ? false : $trash;
+}, 10, 2);
 `);
 
   const password = (await wp('user', 'application-password', 'create', 'admin', 'zero-pages-acceptance', '--porcelain')).split('\n').at(-1);
@@ -448,15 +451,28 @@ add_action('updated_option', static function (string $name): void {
   assert.deepEqual(JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json')).pages, recoveredState.pages);
   assert.equal(await wp('post', 'get', String(nativeFrontId), '--field=post_status'), 'publish');
 
-  // Removing the route itself still retires its managed Page.
+  // A refused retirement retains ownership and retries until WordPress actually trashes the Page.
+  const beforeRetirement = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
   await rm(join(project, 'pages/contact'), { recursive: true });
   assert.equal((await buildPages({ project, out: content })).ok, true);
+  await wp('option', 'update', 'zero_pages_test_refuse_retirement', '1');
   await rm(join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
   await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  assert.equal((await page('/about/')).status, 200);
+  assert.deepEqual(JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json')), beforeRetirement, 'a refused retirement retains the previous digest and ownership map');
+  const retainedId = recoveredState.pages['p:2f636f6e74616374'];
+  assert.equal(await wp('post', 'get', String(retainedId), '--field=post_status'), 'publish');
+  assert.equal(await wp('eval', `echo get_post_meta(${retainedId}, '_zero_pages_retired', true);`), '', 'the retirement marker rolls back with the refused trash');
+  assert.equal((await api(`/wp-json/wp/v2/pages/${retainedId}`, { method: 'POST', body: { title: 'Try to edit unretired Page' } })).status, 403);
+  const retainedList = await api('/wp-json/wp/v2/pages?context=edit&per_page=100');
+  assert.equal(retainedList.body.some((post) => post.id === retainedId), false, 'the retained Page stays hidden from editing');
+  assert.match(await wp('option', 'get', 'zero_pages_fullsite_error'), /Cannot retire managed Page/);
+  await wp('--skip-plugins=zero-pages-fullsite', 'option', 'delete', 'zero_pages_test_refuse_retirement');
   assert.equal((await page('/about/')).status, 200);
   const retiredState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
   assert.equal(Object.hasOwn(retiredState.pages, 'p:2f636f6e74616374'), false);
   assert.equal(await wp('post', 'get', String(recoveredState.pages['p:2f636f6e74616374']), '--field=post_status'), 'trash');
+  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retirement clears the failure notice');
 
   // 8. A refused rebuild leaves the installed site and the previous build untouched.
   await writeFile(join(project, 'pages/about/page.tsx'), `export default function About({ item }: { item: { dek: string } }) {

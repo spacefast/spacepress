@@ -360,3 +360,26 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
         }
     }
 }
+
+/// Native hosts pass private input/output directories, never author PHP.
+pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
+    let result = match args {
+        [source, output, assets] => compile(Path::new(source), Path::new(output), Path::new(assets), None),
+        [source, output, assets, previous] => compile(
+            Path::new(source),
+            Path::new(output),
+            Path::new(assets),
+            Some(Path::new(previous)),
+        ),
+        _ => Err(failure(
+            "usage: zero compile-sources <sources> <new-output> <assets> [previous-output]",
+        )),
+    };
+    match result {
+        Ok(_) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}", e.message);
+            std::process::ExitCode::FAILURE
+        }
+    }
+}

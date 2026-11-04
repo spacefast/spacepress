@@ -119,9 +119,9 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
                 .map(|(name, fields)| {
                     let inner = fields_ts_with(fields, insert, json_type);
                     let body = inner
-                        .trim_start_matches("{ ")
-                        .trim_end_matches(" }")
-                        .trim_end_matches('}');
+                        .strip_prefix("{ ")
+                        .and_then(|s| s.strip_suffix(" }"))
+                        .unwrap_or("");
                     if body.trim().is_empty() || inner == "{}" {
                         format!("{{ layout: {} }}", lit(name))
                     } else {
@@ -632,6 +632,7 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
+    #[cfg(feature = "cli")]
     if let Some(bytes) = runtime("client/index.ts") {
         let runtime = String::from_utf8_lossy(bytes);
         let body = runtime
@@ -663,6 +664,7 @@ pub(crate) fn registry_value(c: &Column) -> String {
 
 /// Emit a dependency-free browser module and matching declarations from the canonical client.
 /// This strips client TypeScript only; compiler input bundles retain their original sources.
+#[cfg(feature = "cli")]
 fn browser_artifacts(source: &str) -> (String, String) {
     use oxc_allocator::Allocator;
     use oxc_codegen::Codegen;

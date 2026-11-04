@@ -1,7 +1,7 @@
 // The browser compiler agrees with the command line: same envelope for the same sources.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -143,7 +143,7 @@ test("a project without zero.config.ts is the command line's diagnostic", () => 
   mkdirSync(dir, { recursive: true });
   try {
     const native = nativeCheck(dir);
-    const { envelope, output } = browserCheck({ name: `tmp/${name}`, files: {} });
+    const { envelope, output } = browserCheck({ name: realpathSync(dir).slice(1), files: {} });
     assert.equal(envelope, native);
     assert.equal(output, null);
   } finally {

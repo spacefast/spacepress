@@ -51,7 +51,19 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     assert_eq!(manifest["compiler"], zero::bundle::VERSION);
     let path = "plugins/zero-app-app/zero/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
-    zero::bundle::compile(&second, &compiled_second, &second, Some(&compiled_first)).unwrap();
+    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_zero"))
+        .arg("compile-sources")
+        .arg(&second)
+        .arg(&compiled_second)
+        .arg(&second)
+        .arg(&compiled_first)
+        .output()
+        .unwrap();
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
     assert_ne!(before, fs::read(compiled_second.join(path)).unwrap());
     assert_eq!(before, fs::read(compiled_first.join(path)).unwrap());
     assert!(zero::bundle::compile(&second, &compiled_first, &second, None).is_err());

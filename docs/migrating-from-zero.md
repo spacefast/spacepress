@@ -101,7 +101,8 @@ The executable proof is `cargo test --test app_migrate` plus
 `tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero
 and TypeScript; the latter adopts retained rows on WordPress/MariaDB, compares
 rows and DDL across activation, and exercises the migrated actions, including
-boolean predicates, safe BIGINT IDs and rollback. It also refuses a mismatched
+boolean predicates, safe BIGINT IDs, rollback and native password/PKCE sign-in.
+It also refuses a mismatched
 unique-index name, then adopts and removes the correctly named index.
 
 ## Before you start

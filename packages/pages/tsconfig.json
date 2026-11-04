@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@spacefast/zero-pages",
+    "baseUrl": ".",
+    "paths": {
+      "zero": ["../../types/zero/index.d.ts"],
+      "@spacefast/zero-pages": ["./src/index.ts"],
+      "@spacefast/zero-pages/*": ["./src/*.ts"],
+      "@spacefast/zero-blocks": ["../blocks/src/index.ts"],
+      "@spacefast/zero-blocks/*": ["../blocks/src/*.ts"]
+    }
+  },
+  "include": ["src", "tests/unit", "bin"]
+}

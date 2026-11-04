@@ -20,6 +20,9 @@ runtime/identity/apps/node_modules/
 /packages/blocks/dist/
 /packages/blocks/vendor/
 
+# The optional packages/pages package (its own pnpm project)
+/packages/pages/node_modules/
+
 # The website (its own pnpm project; zero.wasm is built from src/ by site/scripts/build-wasm.mjs)
 /site/node_modules/
 /site/dist/

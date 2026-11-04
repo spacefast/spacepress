@@ -316,6 +316,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
+- [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `zero-identity` plugin
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
 - [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero
@@ -332,6 +333,11 @@ binary releases yet; you build the compiler from source.
 In progress: Zero Admin, an optional admin plugin for Zero apps. Its source is
 in the repo under `runtime/admin/`, and `defineConfig({ admin: true })` ships
 it as a fourth plugin; its screens are still being completed.
+
+Zero Pages is an optional TSX frontend in `packages/pages`: layouts,
+collection routes and viewer-bound data rendered by WordPress.
+[`examples/full-site`](examples/full-site) is a complete site; see
+[`docs/pages.md`](docs/pages.md) for its supported subset and limits.
 
 What's next, none of it shipped:
 

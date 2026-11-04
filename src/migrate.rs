@@ -155,6 +155,10 @@ fn tables(snap: &Json) -> Map {
     out
 }
 
+fn unsigned_integer(c: &Json) -> bool {
+    (c["primaryKey"] == true && c["autoIncrement"] == true) || c["references"]["unsigned"] == true
+}
+
 /// A custom table's column as DDL (foreign keys are rendered separately, as constraints).
 fn column_sql(name: &str, c: &Json) -> String {
     let ty = c["type"].as_str().unwrap_or("text");
@@ -163,9 +167,8 @@ fn column_sql(name: &str, c: &Json) -> String {
     let pk = c["primaryKey"].as_bool() == Some(true);
     let auto = c["autoIncrement"].as_bool() == Some(true);
     let not_null = c["notNull"].as_bool() == Some(true) || pk;
-    let unsigned_ref = c["references"]["unsigned"].as_bool() == Some(true);
     let sql_ty = match ty {
-        "integer" | "media" | "file" if (pk && auto) || unsigned_ref => "BIGINT UNSIGNED".to_string(),
+        "integer" | "media" | "file" if unsigned_integer(c) => "BIGINT UNSIGNED".to_string(),
         "integer" | "media" | "file" => "BIGINT".into(),
         "real" => "DOUBLE".into(),
         "boolean" => "TINYINT(1)".into(),
@@ -284,6 +287,11 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
     let empty = Map::new();
     let cols = def["columns"].as_object().unwrap_or(&empty);
     if def["existingTable"].is_string() {
+        let integer_columns: Vec<Json> = cols
+            .iter()
+            .filter(|(_, c)| matches!(c["type"].as_str(), Some("integer" | "media" | "file")))
+            .map(|(name, c)| json!({ "name": name, "unsigned": unsigned_integer(c) }))
+            .collect();
         let mut expected_indexes: Vec<Json> = indexes(t, def)
             .into_iter()
             .map(|(name, unique, columns)| json!({ "name": name, "unique": unique, "columns": columns }))
@@ -306,8 +314,8 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
             })
             .collect();
-        let adoption =
-            json!({ "table": def["existingTable"], "indexes": expected_indexes, "foreignKeys": foreign_keys });
+        let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
+            "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
             "-- zero-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
             cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),

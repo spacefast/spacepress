@@ -153,6 +153,16 @@ final class Migrator
                 throw new DbError("Cannot adopt $table: index {$index['name']} must already have the declared columns and uniqueness, without prefix lengths");
             }
         }
+        // Later foreign keys use the schema's BIGINT signedness; never guess the adopted key's type.
+        $columns = array_column($this->db->run('SELECT COLUMN_NAME AS n, DATA_TYPE AS t, COLUMN_TYPE AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]), null, 'n');
+        foreach ($expected['integerColumns'] ?? [] as $column) {
+            $actual = $columns[$column['name']] ?? null;
+            $type = $column['unsigned'] ? 'BIGINT UNSIGNED' : 'BIGINT';
+            if ($actual === null || strtolower($actual['t']) !== 'bigint'
+                || str_contains(strtolower($actual['c']), 'unsigned') !== $column['unsigned']) {
+                throw new DbError("Cannot adopt $table: column {$column['name']} must use $type");
+            }
+        }
         foreach ($expected['foreignKeys'] as $key) {
             $actual = $this->db->run('SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', [$table, $key['name']]);
             $rule = static fn (string $value): string => $value === 'NO ACTION' ? 'RESTRICT' : $value;

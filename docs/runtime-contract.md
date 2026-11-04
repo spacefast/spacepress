@@ -517,6 +517,8 @@ files (MySQL dialect, `{prefix}` replaced by `$wpdb->prefix`) in filename
 order. Statements are separated by a line `--> statement-breakpoint`. The
 compiler's `-- zero-adopt` statement metadata makes the migrator validate existing
 primary/unique index names and foreign-key definitions before recording adoption.
+Integer columns must match the declared BIGINT signedness, so later generated
+foreign keys cannot silently assume a different physical key type.
 Unmanaged indexes are retained. The
 shared migration path checks existing tables before DDL or ledger writes, and
 checks the resulting tables before marking the app current. Non-InnoDB or

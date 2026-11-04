@@ -15,9 +15,21 @@ $check = static function (bool $ok, string $message): void {
     if (!$ok) { throw new \RuntimeException($message); }
 };
 try {
-    $db->run("CREATE TABLE `$table` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191), `active` TINYINT(1) DEFAULT 0, `parentId` BIGINT UNSIGNED NULL, PRIMARY KEY (`id`), UNIQUE KEY `old_email_key` (`email`), CONSTRAINT `old_parent_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $db->run("CREATE TABLE `$table` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191), `active` TINYINT(1) DEFAULT 0, `parentId` BIGINT UNSIGNED NULL, PRIMARY KEY (`id`), UNIQUE KEY `old_email_key` (`email`)) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4");
     $db->run("INSERT INTO `$table` (`id`, `email`) VALUES (9007199254740991, 'retained@example.test')");
     $rows = $db->run("SELECT * FROM `$table`");
+    $ddl = $db->run("SHOW CREATE TABLE `$table`");
+    try {
+        $migrator->migrate();
+        throw new \LogicException('adoption accepted a nontransactional table');
+    } catch (\RuntimeException $e) {
+        $check(str_contains($e->getMessage(), "InnoDB tables with utf8mb4; these are incompatible: $table"), $e->getMessage());
+    }
+    $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'refused storage engine changed the table');
+    $check(!$migrator->keyed(), 'refused storage engine created a migration ledger');
+    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'refused storage engine ran earlier migration DDL');
+    $db->run("ALTER TABLE `$table` ENGINE=InnoDB");
+    $db->run("ALTER TABLE `$table` ADD CONSTRAINT `old_parent_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
     $ddl = $db->run("SHOW CREATE TABLE `$table`");
     $check(!$migrator->keyed(), 'fixture already has a migration ledger');
     try {
@@ -64,7 +76,7 @@ try {
     $query = \Zero\Sql::select($schema, $store, 'contacts', ['where' => ['active' => true]]);
     $check($db->run($query['sql'], $query['params']) === [], 'adopted native boolean false matched true');
     $check($migrator->migrate() === [], 'completed migrations were repeated');
-    echo "adopted-constraint proof: wrong index names, foreign key names and referenced databases refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
+    echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names and referenced databases refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
 } finally {
     $db->run("DROP TABLE IF EXISTS `$table`");
     $db->run("DROP TABLE IF EXISTS `$otherDatabase`.`$table`");

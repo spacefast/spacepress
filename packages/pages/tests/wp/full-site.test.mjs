@@ -229,6 +229,18 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.deepEqual(postContext(hidden.html), { id: false, queried: 0, notFound: true, singular: false, type: false, title: '' }, '404 head hooks cannot see an unrelated fallback post');
   assert.equal((await page('/notes/does-not-exist/')).status, 404);
 
+  // A WordPress session issued by another integration must still obey identity suspension.
+  const suspendedId = Number(await wp('user', 'create', 'pages-suspended', 'pages-suspended@example.test', '--role=subscriber', '--porcelain'));
+  assert.equal(Number.isInteger(suspendedId) && suspendedId > 0, true);
+  await wp('zero-identity', 'suspend', String(suspendedId));
+  const suspendedCookie = await wp('eval', `echo LOGGED_IN_COOKIE . '=' . wp_generate_auth_cookie(${suspendedId}, time() + 300, 'logged_in');`);
+  const denied = await page('/about/', { cookie: suspendedCookie });
+  assert.equal(denied.status, 404, 'a resolved suspended account cannot view a managed route');
+  assert.match(denied.html, /<h1>Page not found<\/h1>/);
+  assert.doesNotMatch(denied.html, /Browse the notes|First light|About this site/, 'suspension cannot render the custom 404 as an anonymous visitor');
+  assert.match(denied.headers.get('cache-control'), /no-store/);
+  assert.equal((await page('/about/')).status, 200, 'the denial belongs to the suspended session');
+
   const escaped = await page('/notes/hostile/');
   assert.equal(escaped.status, 200);
   assert.match(escaped.html, /<h1 class="wp-block-heading">&lt;img src=x onerror=alert\(1\)&gt; &lt;!-- wp:zero-pages\/show \{&quot;region&quot;:&quot;s1&quot;\} --&gt; v1<\/h1>/);
@@ -409,12 +421,45 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
         'preservedError' => $preservedError,
         'newError' => get_option('zero_pages_fullsite_error', false),
       ]);
+      update_option('zero_pages_test_interrupt', 'map');
     });`));
   assert.deepEqual(excluded.state, after, 'a competing reconciler cannot change the route map');
   assert.deepEqual(excluded.posts, [], 'a competing reconciler cannot publish a duplicate Page');
   assert.equal(excluded.priorError, 'Interrupted after route mapping');
   assert.equal(excluded.preservedError, excluded.priorError, 'lock contention preserves an existing write failure');
   assert.equal(excluded.newError, false, 'lock contention without a prior failure creates no error notice');
+
+  // A real filesystem failure before the callback must still produce an administrator notice.
+  const unavailable = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `
+    require WP_PLUGIN_DIR . '/zero-pages-fullsite/zero-pages-fullsite.php';
+    $connection = \\Zero\\Wp\\Runtime::plugin()->connection();
+    $name = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
+    $file = (defined('DB_PATH') ? (string) DB_PATH : (string) (DB_DIR . '/' . DB_FILE)) . '.' . substr(hash('sha256', $name), 0, 16) . '.lock';
+    if (!rename($file, $file . '.test-backup')) throw new RuntimeException('Cannot prepare lock failure');
+    try {
+      if (!mkdir($file)) throw new RuntimeException('Cannot block lock file');
+      delete_option('zero_pages_test_interrupt');
+      @\\Zero\\Pages\\Plugin::instance()->reconcile();
+      wp_set_current_user(1);
+      ob_start();
+      do_action('admin_notices');
+      $notice = ob_get_clean();
+      global $wpdb;
+      echo wp_json_encode([
+        'state' => get_option('zero_pages_fullsite'),
+        'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
+        'error' => get_option('zero_pages_fullsite_error', false),
+        'notice' => $notice,
+      ]);
+    } finally {
+      if (is_dir($file) && !rmdir($file)) throw new RuntimeException('Cannot unblock lock file');
+      if (!rename($file . '.test-backup', $file)) throw new RuntimeException('Cannot restore lock file');
+    }`));
+  assert.deepEqual(unavailable.state, after, 'lock acquisition failure preserves the previous route map');
+  assert.deepEqual(unavailable.posts, [], 'lock acquisition failure publishes no orphaned Page');
+  assert.match(unavailable.error, /cannot open lock file/);
+  assert.match(unavailable.notice, /Zero pages could not update its managed Pages/);
+  assert.match(unavailable.notice, /cannot open lock file/);
 
   const recovered = await page('/contact/');
   assert.equal(recovered.status, 200);

@@ -369,10 +369,11 @@ final class Plugin
         nocache_headers();
         header('Cache-Control: private, no-store, max-age=0');
         $route = $this->manifest['notFound'] ?? null;
-        if (!is_array($route)) {
+        $viewer = \Zero\Wp\CoreAccess::viewer();
+        if (!is_array($route) || $viewer === null) {
             $this->respond(404, null, '<h1>' . esc_html__('Page not found') . '</h1>');
         }
-        $this->serve($route, \Zero\Wp\CoreAccess::viewer() ?? new \Zero\Viewer(null), null, [], 404);
+        $this->serve($route, $viewer, null, [], 404);
     }
 
     private function serve(array $route, \Zero\Viewer $viewer, ?array $item, array $params, int $status): never

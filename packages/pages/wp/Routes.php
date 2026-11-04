@@ -268,7 +268,7 @@ final class Routes
             });
             delete_option($this->option() . '_error');
         } catch (\Throwable $error) {
-            if (!$entered) {
+            if (!$entered && $error instanceof \Zero\Wp\LockBusy) {
                 return;
             }
             update_option($this->option() . '_error', $error->getMessage(), false);

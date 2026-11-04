@@ -595,7 +595,7 @@ file_put_contents($wp->dir . '/lock.php', <<<'PHP'
     wpLoad($argv[2]);
     try {
         echo \Zero\Wp\Runtime::plugin()->connection()->locked('zero:test', 1, static fn () => 'held');
-    } catch (RuntimeException $e) {
+    } catch (\Zero\Wp\LockBusy $e) {
         echo 'refused';
     }
     PHP);

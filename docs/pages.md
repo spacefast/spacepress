@@ -126,6 +126,9 @@ retries reconciliation on the next request. Page publication, ownership metadata
 route mappings and front-page settings commit in one Zero transaction, under
 the existing connection-owned database lock. An interrupted transaction rolls
 back rather than leaving a published Page outside its ownership map.
+Lock contention skips without changing any existing error notice. A failure
+to acquire the lock for another reason produces an administrator notice and
+retries on the next request.
 
 ## Data: what a page may do
 
@@ -148,8 +151,9 @@ Every read goes through Zero's own read pipeline with the visitor's `Viewer`:
 read rules, draft visibility and field access apply exactly as on the REST
 API. An anonymous visitor never sees a draft or a staff-only field, and no
 page reads with the trusted viewer. A missing, draft, unreadable or
-password-protected item is a real `404` with the not-found page. Query
-values may use `item` and `params` fields, never another query's rows.
+password-protected item is a real `404` with the not-found page. A suspended
+account receives a plain `404` without rendering the custom error page.
+Query values may use `item` and `params` fields, never another query's rows.
 
 The checker proves primitive literal and immutable primitive `const`
 conditions are static. Other conditions, operators and calls are refused

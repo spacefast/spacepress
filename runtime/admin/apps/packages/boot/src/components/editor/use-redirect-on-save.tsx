@@ -1,4 +1,4 @@
-import { collectionForPostType } from '@zero-admin/schema';
+import { entityEditorPath } from '@zero-admin/schema';
 import { useEffect, useRef } from 'react';
 import { useNavigate } from '@wordpress/route';
 import { useSelect } from '@wordpress/data';
@@ -54,9 +54,7 @@ export function useRedirectOnSave( postType: string, postId: string ) {
 			hasRedirectedRef.current = true;
 
 			navigate( {
-				to: `/collections/${ collectionForPostType(postType) }/${ encodeURIComponent(
-					postId
-				) }`,
+				to: entityEditorPath(postType, postId),
 				replace: true,
 			} );
 		}

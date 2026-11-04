@@ -48,10 +48,13 @@ import Sidebar from '../sidebar';
 import { useCommands } from '../commands';
 import './style.scss';
 import { ErrorBoundary } from '../error-boundary';
+import { store as agentContextStore } from '@zero-admin/ai-agent';
+import { buildSitemapData, preloadSitemapData } from '../../utils/sitemap-context';
 import { store as rootStore } from '../../store';
 import UnsavedChangesWarning from '../unsaved-changes-warning';
 import { findClosestMenuItem } from '../sidebar/path-matching';
 import NavigationProgressBar from '../navigation-progress-bar';
+const AIAgent = lazy(() => import('@zero-admin/ai-agent'));
 const Canvas = lazy( () => import('../canvas') );
 import UnsavedChangesModal from '../unsaved-changes-modal';
 
@@ -151,6 +154,7 @@ function useDocumentTitleManager( currentRouteId: string ) {
 }
 
 function Root() {
+	const agentEnabled = useSelect(select => select(rootStore).getDashboardContext().ai_agent_enabled === true, []);
 	const { themeColorSettings } = useColorPreference();
 	const isMobileViewport = useViewportMatch( 'medium', '<' );
 	const [ isMobileSidebarOpen, setIsMobileSidebarOpen ] = useState( false );
@@ -186,6 +190,18 @@ function Root() {
 	useEffect( () => {
 		setIsMobileSidebarOpen( false );
 	}, [ location.pathname, isMobileViewport ] );
+
+	useEffect(() => {
+        if (!agentEnabled) return;
+        void preloadSitemapData();
+        void dispatch(agentContextStore).addContextEntry({
+            id: 'sitemap', type: 'sitemap',
+            getData: () => buildSitemapData(
+                selectStore(rootStore).getRoutes(), selectStore(rootStore).getMenuItems()
+            ),
+        });
+        return () => { void dispatch(agentContextStore).removeContextEntry('sitemap'); };
+    }, [agentEnabled]);
 
 	const content = (
 		<>
@@ -376,6 +392,7 @@ function Root() {
 					</ThemeProvider>
 				</ThemeProvider>
 				<PluginArea onError={ onPluginAreaError } />
+				{agentEnabled && <ErrorBoundary><Suspense fallback={null}><AIAgent /></Suspense></ErrorBoundary>}
 			</EntityValidityProvider>
 		</>
 	);

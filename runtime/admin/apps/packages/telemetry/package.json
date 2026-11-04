@@ -1,0 +1,11 @@
+{
+	"name": "@zero-admin/telemetry",
+	"version": "1.0.0",
+	"description": "Inert telemetry shim: same API as the upstream tracking package, records nothing.",
+	"type": "module",
+	"main": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"license": "GPL-2.0-or-later"
+}

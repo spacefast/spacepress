@@ -8,7 +8,7 @@
 	"packageManager": "pnpm@10.16.0",
 	"scripts": {
 		"build": "node build.mjs",
-		"typecheck": "tsc -b && tsc -p wp-journey",
+		"typecheck": "tsc -p . --noEmit && tsc -p wp-journey",
 		"test": "jest"
 	},
 	"dependencies": {

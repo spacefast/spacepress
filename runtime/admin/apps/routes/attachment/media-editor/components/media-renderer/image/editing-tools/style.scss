@@ -1,0 +1,46 @@
+@use "@wordpress/base-styles/variables";
+@use "@wordpress/base-styles/colors";
+
+.zero-admin-media-editor-content__cropper {
+	position: relative;
+	display: flex;
+	align-items: center;
+	height: 100%;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.zero-admin-media-editor__tools-panel {
+	.zero-admin-media-editor__tools-panel-button.zero-admin-media-editor__tools-panel-button {
+		flex-grow: 1;
+		flex-basis: 0;
+		justify-content: center;
+	}
+
+	.zero-admin-media-editor__tools-panel-row {
+		.zero-admin-media-editor__tools-panel-heading {
+			margin-bottom: 0;
+		}
+	}
+}
+
+.zero-admin-media-editor__tools-panel-row {
+	padding: variables.$grid-unit-20;
+
+	&:not( :last-child ) {
+		border-bottom: 1px solid colors.$gray-300;
+	}
+}
+
+.zero-admin-media-editor__zoom-dropdown-popover .components-popover__content {
+	min-width: 200px;
+	overflow: visible !important; // Range control tooltip overflows the popover.
+}
+
+.zero-admin-media-editor__toolbar {
+	.zero-admin-media-editor__aspect-ratio-dropdown-button,
+	.zero-admin-media-editor__zoom-dropdown-button {
+		// This matches the IconButton height.
+		height: 40px;
+	}
+}

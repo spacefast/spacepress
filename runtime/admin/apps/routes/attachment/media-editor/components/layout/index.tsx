@@ -1,48 +1,64 @@
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
+import { useViewportMatch } from '@wordpress/compose';
 import { __ } from '@wordpress/i18n';
 import { unlock } from '@zero-admin/admin-toolkit';
 import { useLinkProps } from '@wordpress/route';
+import { ImageCropperProvider } from '@zero-admin/image-cropper';
 import MediaEditorNotices from '../notices';
 import MediaEditorHeader from '../header';
 import MediaEditorSidebar from '../sidebar';
 import MediaEditorCanvas from '../editor-canvas';
+import { EditingToolsToolbar } from '../media-renderer/image/editing-tools';
+import { useMediaEditorState } from '../../provider/with-media-editor-state-provider';
 import './style.scss';
 
 // Unlock WordPress private APIs
-const { InterfaceSkeleton, ComplementaryArea } = unlock(editorPrivateApis);
+const { InterfaceSkeleton, ComplementaryArea } = unlock( editorPrivateApis );
 
-export default function MediaEditorLayout({
+export default function MediaEditorLayout( {
 	isPreview,
 	editLink,
 }: {
 	isPreview: boolean;
 	editLink: string;
-}) {
-	const linkProps = useLinkProps({
+} ) {
+	const linkProps = useLinkProps( {
 		to: editLink,
 		className: 'zero-admin-site-editor__hyperlink',
-	});
+	} );
+	const isMobileViewport = useViewportMatch( 'medium', '<' );
+	const { isImageEditorOpen } = useMediaEditorState();
+	const isMobileImageEditorOpen = isMobileViewport && isImageEditorOpen;
+
 	return (
-		<div className="zero-admin-site-editor zero-admin-site-editor__media-editor-layout">
+		<ImageCropperProvider>
+			<div className="zero-admin-site-editor zero-admin-site-editor__media-editor-layout">
 				<InterfaceSkeleton
-					header={
-						!isPreview && (
-							<MediaEditorHeader
-								backLink={
-									editLink.startsWith('/collections/')
-										? editLink.slice(0, editLink.lastIndexOf('/'))
-										: undefined
-								}
-							/>
+					header={ ! isPreview && <MediaEditorHeader /> }
+					sidebar={
+						! isPreview && (
+							<ComplementaryArea.Slot scope="core/edit-media" />
 						)
 					}
-					sidebar={!isPreview && <ComplementaryArea.Slot scope="core/edit-media" />}
-					content={<MediaEditorCanvas />}
-					secondarySidebar={null}
+					content={
+						<>
+							{ isMobileImageEditorOpen && (
+								<EditingToolsToolbar />
+							) }
+							<MediaEditorCanvas />
+						</>
+					}
+					secondarySidebar={ null }
 				/>
-				{isPreview && <a {...linkProps} aria-label={__('Edit', 'zero-admin')} />}
+				{ isPreview && (
+					<a
+						{ ...linkProps }
+						aria-label={ __( 'Edit', 'zero-admin' ) }
+					/>
+				) }
 				<MediaEditorNotices />
 				<MediaEditorSidebar />
 			</div>
+		</ImageCropperProvider>
 	);
 }

@@ -515,6 +515,9 @@ post-backed collections are scheduled by WordPress itself.
 `Wp\Migrator` applies the app plugin's `zero/app/migrations/NNNN_<name>.sql`
 files (MySQL dialect, `{prefix}` replaced by `$wpdb->prefix`) in filename
 order. Statements are separated by a line `--> statement-breakpoint`. The
+compiler's `-- zero-adopt` statement metadata makes the migrator validate existing
+primary/unique index names and foreign-key definitions before recording adoption.
+Unmanaged indexes are retained. The
 ledger is `{prefix}zero__migrations(app, id, applied_at)`, keyed by app so two
 plugins' `0001_init` files stay apart. MySQL DDL commits implicitly, so every
 statement that succeeds is recorded as `<id>:<n>` before the next one runs;

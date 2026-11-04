@@ -10,13 +10,13 @@ $sql = "CREATE TABLE `$table` (
     createdAt TEXT NULL, updatedAt TEXT NULL,
     title TEXT NULL, done TEXT NULL, score DOUBLE NULL,
     note TEXT NULL, category TEXT NULL, owner TEXT NULL, parent TEXT NULL,
-    PRIMARY KEY (id), KEY by_owner (owner(191), createdAt(191), id)
+    PRIMARY KEY (id), KEY by_owner (owner(191), createdAt(191), id), KEY by_done (done(191), createdAt(191), id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 if ($wpdb->query($sql) === false) { WP_CLI::error($wpdb->last_error); }
 foreach ([
-    ['id' => 41, 'title' => 'Existing first', 'done' => '0', 'score' => 2.5, 'note' => null, 'category' => 'inbox', 'owner' => 'legacy-user', 'parent' => null],
+    ['id' => 41, 'title' => 'Existing first', 'done' => 'false', 'score' => 2.5, 'note' => null, 'category' => 'inbox', 'owner' => 'legacy-user', 'parent' => null],
     ['id' => 42, 'title' => 'Existing second', 'done' => 'true', 'score' => 0, 'note' => 'kept', 'category' => 'archive', 'owner' => 'legacy-user', 'parent' => '41'],
-    ['id' => 43, 'title' => 'Other owner', 'done' => '0', 'score' => -0.5, 'note' => null, 'category' => null, 'owner' => 'someone-else', 'parent' => null],
+    ['id' => 9007199254740900, 'title' => 'Other owner', 'done' => '0', 'score' => -0.5, 'note' => null, 'category' => null, 'owner' => 'someone-else', 'parent' => null],
 ] as $row) {
     $row += ['createdAt' => '2026-03-01T00:00:00.123Z', 'updatedAt' => '2026-03-01T00:00:00.123Z'];
     if ($wpdb->insert($table, $row) === false) { WP_CLI::error($wpdb->last_error); }

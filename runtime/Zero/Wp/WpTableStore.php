@@ -61,6 +61,7 @@ final class WpTableStore implements Store
             $this->dialect,
             $this->dialect->quote($this->table($collection)),
             $this->schema->collection($collection)['columns'],
+            textBooleans: isset($this->schema->collection($collection)['existingTable']),
         );
     }
 

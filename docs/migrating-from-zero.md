@@ -39,7 +39,11 @@ and `zero/migrations/snapshot.json`. It does not connect to a database. The SQL
 checks that the existing table and columns exist and creates v2's revisions
 system table. It does not copy rows, rename columns, or convert column types.
 `zero build` accepts this snapshot without generating a second initial migration.
-If a physical table or column is absent, activation fails at that check.
+If a physical table or column is absent, activation fails at that check. The
+WordPress migrator also checks any declared primary key, unique index and foreign
+key against the names and definitions assumed by the snapshot. A different name
+refuses adoption rather than allowing a later migration to drop an absent index.
+Unmanaged legacy indexes remain in place.
 
 `--space` is required when `schema` tables are present. It uses the original
 runner's exact binding formula: sanitize the Space ID and logical table name,
@@ -47,7 +51,8 @@ form `sf_<space>_<table>`, truncate the base to 53 ASCII characters, then append
 `_` and the first 10 hex digits of SHA-256 of `<space>\0<table>`. The physical ID
 is **BIGINT UNSIGNED AUTO_INCREMENT**, while action results keep decimal string
 IDs. Number fields remain DOUBLE. Other fields, including timestamps and
-booleans, keep their existing TEXT storage. `id("table")` and `userId()` values
+booleans, keep their existing TEXT storage. Boolean predicates match both legacy
+`true`/`false` text and `1`/`0` written by v2. `id("table")` and `userId()` values
 remain text and gain no foreign key or automatic identity rewrite.
 
 The supported handler subset includes typed named parameters, local pure helpers,
@@ -95,7 +100,9 @@ activation, hosted client URLs and realtime remain the hosting integration's wor
 The executable proof is `cargo test --test app_migrate` plus
 `tests/wp/app-migrate/run.sh`. The former compiles the generated apps with Zero
 and TypeScript; the latter adopts retained rows on WordPress/MariaDB, compares
-rows and DDL across activation, and exercises the migrated actions.
+rows and DDL across activation, and exercises the migrated actions, including
+boolean predicates, safe BIGINT IDs and rollback. It also refuses a mismatched
+unique-index name, then adopts and removes the correctly named index.
 
 ## Before you start
 

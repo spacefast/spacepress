@@ -46,7 +46,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
     owner: "legacy-user", category: "inbox", createdAt: "2026-03-01T00:00:00.123Z", updatedAt: "2026-03-01T00:00:00.123Z" });
   const list = await action("list");
   assert.ok(Array.isArray(list));
-  assert.deepEqual(list.map(row).map(r => r.id), ["43", "42", "41"]);
+  assert.deepEqual(list.map(row).map(r => r.id), ["9007199254740900", "42", "41"]);
   assert.equal(row(list[1]).done, true);
   assert.equal(row(list[0]).category, "inbox");
   assert.equal(row(list[1]).parent, "41");
@@ -56,16 +56,30 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   assert.deepEqual(await action("first"), existing);
   assert.equal(await action("count"), 3);
   assert.equal(await action("get", { id: "999" }), null);
+  const doneIds = async (done: boolean) => {
+    const result = await action("byDone", { done });
+    assert.ok(Array.isArray(result));
+    return result.map(row).map(r => r.id);
+  };
+  assert.deepEqual(await doneIds(true), ["42"]);
+  assert.deepEqual(await doneIds(false), ["41", "9007199254740900"]);
 
   const inserted = row(await action("add", { input: { title: "  New task  " } }));
-  assert.equal(inserted.id, "44");
+  assert.equal(inserted.id, "9007199254740901");
   assert.equal(inserted.title, "New task");
   assert.equal(inserted.done, false);
   assert.equal(inserted.score, 2);
   assert.equal(inserted.category, "inbox");
   assert.equal(inserted.createdAt, inserted.updatedAt);
   assert.ok(!("note" in inserted));
-  assert.deepEqual(await action("get", { id: "44" }), inserted);
+  assert.deepEqual(await action("get", { id: "9007199254740901" }), inserted);
+  assert.equal(inserted.owner, "legacy-user");
+  assert.deepEqual(await doneIds(false), ["41", "9007199254740900", "9007199254740901"]);
+  assert.equal(row(await action("setDone", { id: "9007199254740901", done: true })).done, true);
+  assert.deepEqual(await doneIds(true), ["42", "9007199254740901"]);
+  assert.deepEqual(await doneIds(false), ["41", "9007199254740900"]);
+  assert.equal(row(await action("setDone", { id: "9007199254740901", done: false })).done, false);
+  assert.deepEqual(await doneIds(true), ["42"]);
   const patched = row(await action("update", { id: "42", note: null }));
   assert.equal(patched.category, "inbox");
   assert.ok(!("note" in patched));
@@ -76,12 +90,12 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   const cleared = row(await action("clearNote", { id: "41" }));
   assert.ok(!("note" in cleared));
   assert.equal(await action("update", { id: "999", note: "missing" }), null);
-  assert.equal(await action("remove", { id: "44" }), true);
-  assert.equal(await action("remove", { id: "44" }), false);
+  assert.equal(await action("remove", { id: "9007199254740901" }), true);
+  assert.equal(await action("remove", { id: "9007199254740901" }), false);
   const rollback = await fetch(`${api}/actions/rollback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   assert.equal(rollback.status, 422);
   assert.equal(await action("count"), 3);
   // Every read, update, and delete above still targeted the original table.
-  assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "43" }]);
+  assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "9007199254740900" }]);
   assert.equal(harness.wp.startsWith("7.1"), true);
 });

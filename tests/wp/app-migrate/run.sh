@@ -24,6 +24,15 @@ docker compose -p "$ZERO_WP_PROJECT" cp "$here/seed.php" cli:/tmp/zero-app-migra
 "$wp/harness.sh" up --wp-content "$work/app/.zero/wp-content" > "$work/harness.json"
 ZERO_WP_HARNESS="$work/harness.json" ZERO_APP_ADOPTION_BEFORE="$work/before.json" \
   node --test "$here/adoption.test.ts"
+# Keep the original adoption requirements while building a later unique-index removal.
+mkdir "$work/indexes"
+cp "$here/indexes.config.ts" "$work/indexes/zero.config.ts"
+"$zero" build "$work/indexes" --quiet >/dev/null
+sed -e 's/\.unique()//' -e 's/\.references(() => contacts.id, { onDelete: "set null" })//' "$here/indexes.config.ts" > "$work/indexes/zero.config.ts"
+"$zero" build "$work/indexes" --quiet >/dev/null
+docker compose -p "$ZERO_WP_PROJECT" cp "$work/indexes/.zero/wp-content/plugins/zero-app-adoption-indexes" cli:/tmp/zero-app-migrate-indexes >/dev/null 2>&1
+docker compose -p "$ZERO_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/zero-app-migrate-indexes.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-indexes.php
 # A separate source candidate proves the portable zero-identity gate on a fresh site.
 "$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/content --out "$work/content" > "$work/content-report.json"
 "$zero" build "$work/content" --quiet >/dev/null

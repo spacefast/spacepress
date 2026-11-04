@@ -4,7 +4,9 @@
 `spacefast/monorepo`'s `packages/zero/src/server.ts` and the CLI starter apps.
 The board stores public string IDs over BIGINT UNSIGNED auto-increment SQL IDs.
 Fields use TEXT, except numbers use DOUBLE. Timestamps are ISO strings,
-booleans are `1`/`0` text, and optional SQL NULL fields are omitted in responses.
+booleans may be `true`/`false` or `1`/`0` text, and optional SQL NULL fields are
+omitted in responses. The board entry uses module-level declarators and a class
+helper; its MariaDB seed includes IDs near the JavaScript safe integer limit.
 
 `zero-all-features/runtime-compiler-finalize-input.json` is the existing
 monorepo e2e fixture, copied unchanged from commit

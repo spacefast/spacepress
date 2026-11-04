@@ -284,8 +284,32 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
     let empty = Map::new();
     let cols = def["columns"].as_object().unwrap_or(&empty);
     if def["existingTable"].is_string() {
+        let mut expected_indexes: Vec<Json> = indexes(t, def)
+            .into_iter()
+            .map(|(name, unique, columns)| json!({ "name": name, "unique": unique, "columns": columns }))
+            .collect();
+        if let Some((pk, _)) = cols.iter().find(|(_, c)| c["primaryKey"] == true) {
+            expected_indexes.push(json!({ "name": "PRIMARY", "unique": true, "columns": [pk] }));
+        }
+        let foreign_keys: Vec<Json> = cols
+            .iter()
+            .filter_map(|(name, c)| {
+                fk_sql(t, name, c, tables)?;
+                let r = &c["references"];
+                let target = r["table"].as_str()?;
+                let target_name = tables[target]["existingTable"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("{{prefix}}zero_{target}"));
+                Some(json!({ "name": fk_name(t, name), "column": name, "table": target_name,
+                "target": r["column"], "onDelete": r["onDelete"].as_str().unwrap_or("restrict").to_uppercase(),
+                "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
+            })
+            .collect();
+        let adoption =
+            json!({ "table": def["existingTable"], "indexes": expected_indexes, "foreignKeys": foreign_keys });
         return format!(
-            "SELECT {} FROM {} LIMIT 0;",
+            "-- zero-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
             cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),
             table(t, tables)
         );
@@ -662,7 +686,7 @@ mod tests {
         let def = json!({"editor":false,"drafts":false,"existingTable":"sf_space_tasks_hash","columns":{"id":col("integer")}});
         let previous = snap(json!({"tasks":def}));
         let initial = plan(&snap(json!({})), &previous);
-        assert_eq!(initial[0], "SELECT `id` FROM `sf_space_tasks_hash` LIMIT 0;");
+        assert!(initial[0].ends_with("\nSELECT `id` FROM `sf_space_tasks_hash` LIMIT 0;"));
         let mut next = previous.clone();
         next["tables"]["tasks"]["columns"]["note"] = col("text");
         assert_eq!(

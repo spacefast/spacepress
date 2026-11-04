@@ -1,6 +1,6 @@
 use super::super::{Entry, Failure, Source, entry, fail, input, pointer, translate};
 use crate::diag::{self, Span};
-use crate::ir::{ArrEl, Expr, ExprKind as E, FnBody, Func, ImportName, Pat, Prop, PropKey, Stmt, TyAnn};
+use crate::ir::{ArrEl, DeclKind, Expr, ExprKind as E, FnBody, Func, ImportName, Pat, Prop, PropKey, Stmt, TyAnn};
 use crate::lower::Lowerer;
 use indexmap::IndexMap;
 use oxc_allocator::Allocator;
@@ -342,11 +342,24 @@ pub(super) fn app(
                 prelude.push_str(raw(source, f.span));
                 prelude.push('\n');
             }
-            Stmt::Decl { span, pat, .. } => {
+            Stmt::Decl {
+                span, pat, kind, init, ..
+            } => {
                 let mut names = vec![];
                 pat.names(&mut names);
                 if names.iter().any(|n| n.starts_with("__z08")) {
                     return Err(fail("", "__z08 names are reserved for generated bindings"));
+                }
+                // Class declarations already include their keyword; variable spans start at the binding.
+                let class_declaration = init
+                    .as_ref()
+                    .is_some_and(|e| matches!(e.kind, E::Class(_)) && e.span == *span);
+                if !class_declaration {
+                    prelude.push_str(match kind {
+                        DeclKind::Const => "const ",
+                        DeclKind::Let => "let ",
+                        DeclKind::Var => "var ",
+                    });
                 }
                 prelude.push_str(raw(source, *span));
                 prelude.push_str(";\n");

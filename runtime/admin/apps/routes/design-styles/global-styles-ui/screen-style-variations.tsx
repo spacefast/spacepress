@@ -1,0 +1,30 @@
+import { Card, CardBody } from '@wordpress/components';
+import { __ } from '@wordpress/i18n';
+import { ScreenHeader } from './screen-header';
+import { StyleVariationsContent } from './style-variations-content';
+
+function ScreenStyleVariations() {
+	return (
+		<>
+			<ScreenHeader
+				title={ __( 'Browse styles', 'zero-admin' ) }
+				description={ __(
+					'Choose a variation to change the look of the site.',
+					'zero-admin'
+				) }
+			/>
+
+			<Card
+				size="small"
+				isBorderless
+				className="zero-admin-global-styles-screen-style-variations"
+			>
+				<CardBody>
+					<StyleVariationsContent />
+				</CardBody>
+			</Card>
+		</>
+	);
+}
+
+export default ScreenStyleVariations;

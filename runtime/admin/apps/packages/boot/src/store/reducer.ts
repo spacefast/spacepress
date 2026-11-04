@@ -1,8 +1,13 @@
 import { combineReducers } from '@wordpress/data';
 import type {
+	DashboardWidget,
+	RegisteredDashboardWidgetType,
+} from '@zero-admin/dashboard';
+import type {
 	Route,
 	FlatMenuItem,
 	Nudge,
+	DashboardNoticeConfig,
 	DashboardContext,
 	RegisteredModal,
 } from './types';
@@ -11,8 +16,11 @@ export type State = {
 	routes: Route[];
 	menuItems: FlatMenuItem[];
 	metaMenuItems: FlatMenuItem[];
+	dashboardWidgetTypes: RegisteredDashboardWidgetType[];
+	dashboardDefaultLayout: DashboardWidget< unknown >[];
 	dashboardContext: DashboardContext;
 	nudges: Nudge[];
+	dashboardNotices: DashboardNoticeConfig[];
 	modals: RegisteredModal[];
 };
 
@@ -36,12 +44,31 @@ type MetaMenuItemAction =
 	| { type: 'REGISTER_SITE_HUB_HELP_MENU_ITEM'; menuItem: FlatMenuItem }
 	| { type: 'UNREGISTER_SITE_HUB_HELP_MENU_ITEM'; id: string };
 
+type DashboardWidgetAction = {
+	type: 'SET_DASHBOARD_WIDGET_TYPES';
+	widgets: RegisteredDashboardWidgetType[];
+};
+
 type NudgeAction = { type: 'SET_NUDGES'; nudges: Nudge[] };
+
+type DashboardDefaultLayoutAction = {
+	type: 'SET_DASHBOARD_DEFAULT_LAYOUT';
+	widgets: DashboardWidget< unknown >[];
+};
 
 type DashboardContextAction = {
 	type: 'SET_DASHBOARD_CONTEXT';
 	context: Partial< DashboardContext >;
 };
+
+type DashboardNoticeAction =
+	| { type: 'REGISTER_DASHBOARD_NOTICE'; notice: DashboardNoticeConfig }
+	| { type: 'UNREGISTER_DASHBOARD_NOTICE'; id: string }
+	| {
+			type: 'UPDATE_DASHBOARD_NOTICE';
+			id: string;
+			changes: Partial< DashboardNoticeConfig >;
+	  };
 
 type ModalAction =
 	| { type: 'REGISTER_MODAL'; modal: RegisteredModal }
@@ -51,8 +78,11 @@ type Action =
 	| RouteAction
 	| MenuItemAction
 	| MetaMenuItemAction
+	| DashboardWidgetAction
+	| DashboardDefaultLayoutAction
 	| NudgeAction
 	| DashboardContextAction
+	| DashboardNoticeAction
 	| ModalAction;
 
 function routes( state: Route[] = [], action: Action ): Route[] {
@@ -95,8 +125,31 @@ function metaMenuItems(
 	return state;
 }
 
+function dashboardWidgetTypes(
+	state: RegisteredDashboardWidgetType[] = [],
+	action: Action
+): RegisteredDashboardWidgetType[] {
+	switch ( action.type ) {
+		case 'SET_DASHBOARD_WIDGET_TYPES':
+			return action.widgets;
+	}
+	return state;
+}
+
+function dashboardDefaultLayout(
+	state: DashboardWidget< unknown >[] = [],
+	action: Action
+): DashboardWidget< unknown >[] {
+	switch ( action.type ) {
+		case 'SET_DASHBOARD_DEFAULT_LAYOUT':
+			return action.widgets;
+	}
+	return state;
+}
+
 const DEFAULT_DASHBOARD_CONTEXT: DashboardContext = {
 	logout_url: '/wp-login.php?action=logout',
+	partner: { slug: '', dashboard_url: '', dashboard_name: '' },
 };
 
 function dashboardContext(
@@ -118,6 +171,33 @@ function nudges( state: Nudge[] = [], action: Action ): Nudge[] {
 	return state;
 }
 
+function dashboardNotices(
+	state: DashboardNoticeConfig[] = [],
+	action: Action
+): DashboardNoticeConfig[] {
+	switch ( action.type ) {
+		case 'REGISTER_DASHBOARD_NOTICE': {
+			// Replace if ID exists, otherwise add
+			const existing = state.find( ( n ) => n.id === action.notice.id );
+			if ( existing ) {
+				return state.map( ( n ) =>
+					n.id === action.notice.id ? action.notice : n
+				);
+			}
+			return [ ...state, action.notice ];
+		}
+		case 'UNREGISTER_DASHBOARD_NOTICE':
+			return state.filter( ( notice ) => notice.id !== action.id );
+		case 'UPDATE_DASHBOARD_NOTICE':
+			return state.map( ( notice ) =>
+				notice.id === action.id
+					? { ...notice, ...action.changes }
+					: notice
+			);
+	}
+	return state;
+}
+
 function modals(
 	state: RegisteredModal[] = [],
 	action: Action
@@ -135,7 +215,10 @@ export default combineReducers( {
 	routes,
 	menuItems,
 	metaMenuItems,
+	dashboardWidgetTypes,
+	dashboardDefaultLayout,
 	dashboardContext,
 	nudges,
+	dashboardNotices,
 	modals,
 } ) as ( state: State | undefined, action: Action ) => State;

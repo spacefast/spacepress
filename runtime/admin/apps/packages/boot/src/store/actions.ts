@@ -1,7 +1,12 @@
 import type {
+	DashboardWidget,
+	RegisteredDashboardWidgetType,
+} from '@zero-admin/dashboard';
+import type {
 	Route,
 	FlatMenuItem,
 	Nudge,
+	DashboardNoticeConfig,
 	DashboardContext,
 	RegisteredModal,
 } from './types';
@@ -62,6 +67,15 @@ export function updateMenuItem( id: string, changes: Partial< FlatMenuItem > ) {
 	};
 }
 
+export function setDashboardWidgetTypes(
+	widgets: RegisteredDashboardWidgetType[]
+) {
+	return {
+		type: 'SET_DASHBOARD_WIDGET_TYPES' as const,
+		widgets,
+	};
+}
+
 export function setDashboardContext( context: Partial< DashboardContext > ) {
 	return {
 		type: 'SET_DASHBOARD_CONTEXT' as const,
@@ -73,6 +87,40 @@ export function setNudges( nudges: Nudge[] ) {
 	return {
 		type: 'SET_NUDGES' as const,
 		nudges,
+	};
+}
+
+export function registerDashboardNotice( notice: DashboardNoticeConfig ) {
+	return {
+		type: 'REGISTER_DASHBOARD_NOTICE' as const,
+		notice,
+	};
+}
+
+export function unregisterDashboardNotice( id: string ) {
+	return {
+		type: 'UNREGISTER_DASHBOARD_NOTICE' as const,
+		id,
+	};
+}
+
+export function updateDashboardNotice(
+	id: string,
+	changes: Partial< DashboardNoticeConfig >
+) {
+	return {
+		type: 'UPDATE_DASHBOARD_NOTICE' as const,
+		id,
+		changes,
+	};
+}
+
+export function setDashboardDefaultLayout(
+	widgets: DashboardWidget< unknown >[]
+) {
+	return {
+		type: 'SET_DASHBOARD_DEFAULT_LAYOUT' as const,
+		widgets,
 	};
 }
 

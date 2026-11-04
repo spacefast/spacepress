@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,7 +16,7 @@ export async function archive({ binary, target, output, revision, workingTree = 
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error('Supply the exact 40-character Git source revision.');
   const observed = (await exec('git', ['rev-parse', 'HEAD'], { cwd: fileURLToPath(root) })).stdout.trim();
   if (observed !== revision) throw new Error('Source revision differs from the observed checkout HEAD.');
-  const sourceInputs = ['src', 'runtime', 'scripts', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL'];
+  const sourceInputs = ['types', 'src', 'runtime', 'scripts', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL'];
   const untracked = (await exec('git', ['ls-files', '--others', '--exclude-standard', '--', ...sourceInputs], { cwd: fileURLToPath(root) })).stdout.trim();
   if (untracked && !workingTree) throw new Error('Uncommitted compiler/runtime source files exist; commit the release sources or use --working-tree only for a local test archive.');
   try { await exec('git', ['diff', '--quiet', 'HEAD', '--', ...sourceInputs], { cwd: fileURLToPath(root) }); }
@@ -32,6 +32,7 @@ export async function archive({ binary, target, output, revision, workingTree = 
   const stage = await mkdtemp(join(tmpdir(), 'zero-release-'));
   try {
     await copyFile(binary, join(stage, 'zero'));
+    await cp(new URL('types/zero/', root), join(stage, 'types'), { recursive: true });
     for (const name of ['LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock']) await copyFile(new URL(name, root), join(stage, name));
     async function notices(directory, prefix = '') {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -105,7 +106,8 @@ export async function archive({ binary, target, output, revision, workingTree = 
       version, target, revision, sourceKind: workingTree ? 'local-working-tree-test' : 'git-commit', source: `https://github.com/spacefast/zero/tree/${revision}`,
       signed: false, licenses: 'See LICENSE for component ownership; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
     }, null, 2) + '\n');
-    await exec('tar', ['-czf', destination, '-C', stage, 'zero', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses']);
+    // GNU tar treats a drive letter in the archive argument as a remote host.
+    await exec('tar', ['-czf', name, '-C', stage, 'zero', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(destination)) hash.update(chunk);
     const sha256 = hash.digest('hex');

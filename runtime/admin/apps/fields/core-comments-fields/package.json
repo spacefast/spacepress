@@ -1,0 +1,17 @@
+{
+	"name": "core-comments-fields",
+	"version": "1.0.0",
+	"dependencies": {
+		"@zero-admin/admin-toolkit": "workspace:*",
+		"@zero-admin/design-system": "workspace:*",
+		"@zero-admin/dataviews": "workspace:*",
+		"@wordpress/components": "catalog:",
+		"@wordpress/core-data": "catalog:",
+		"@wordpress/dom": "catalog:",
+		"@wordpress/element": "catalog:",
+		"@wordpress/i18n": "catalog:",
+		"@wordpress/icons": "catalog:",
+		"@wordpress/ui": "catalog:",
+		"@wordpress/url": "catalog:"
+	}
+}

@@ -518,6 +518,10 @@ order. Statements are separated by a line `--> statement-breakpoint`. The
 compiler's `-- zero-adopt` statement metadata makes the migrator validate existing
 primary/unique index names and foreign-key definitions before recording adoption.
 Unmanaged indexes are retained. The
+shared migration path checks existing tables before DDL or ledger writes, and
+checks the resulting tables before marking the app current. Non-InnoDB or
+non-utf8mb4 tables refuse activation, first-request upgrades and CLI migration;
+failed upgrades keep Zero unavailable until the storage is corrected. The
 ledger is `{prefix}zero__migrations(app, id, applied_at)`, keyed by app so two
 plugins' `0001_init` files stay apart. MySQL DDL commits implicitly, so every
 statement that succeeds is recorded as `<id>:<n>` before the next one runs;

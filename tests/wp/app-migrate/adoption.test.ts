@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { api, harness, sql, wp } from "../env.ts";
+import { api, harness, sql, wp, wpTry } from "../env.ts";
 
 type Row = {
   id: string; title: string; done: boolean; score: number; owner: string;
@@ -97,5 +97,29 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   assert.equal(await action("count"), 3);
   // Every read, update, and delete above still targeted the original table.
   assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "9007199254740900" }]);
+  const schemaOption = `zero_${harness.plugin.slice("zero-app-".length)}_schema`;
+  const schemaBefore = sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`);
+  const ledgerBefore = sql("SELECT app, id FROM wp_zero__migrations ORDER BY app, id");
+  // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
+  sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
+  sql(`UPDATE wp_options SET option_value = 'pending-storage-upgrade' WHERE option_name = '${schemaOption}'`);
+  try {
+    const refused = await fetch(`${api}/actions/list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const problem: unknown = await refused.json();
+    assert.equal(refused.status, 503);
+    assert.ok(typeof problem === "object" && problem !== null && "code" in problem);
+    assert.equal(problem.code, "unavailable");
+    const cli: unknown = JSON.parse(wpTry("zero", "migrate"));
+    assert.ok(typeof cli === "object" && cli !== null && "error" in cli);
+    assert.ok(typeof cli.error === "object" && cli.error !== null && "status" in cli.error && "code" in cli.error);
+    assert.equal(cli.error.status, 500);
+    assert.equal(cli.error.code, "internal");
+    assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), [{ option_value: "pending-storage-upgrade" }]);
+    assert.deepEqual(sql("SELECT app, id FROM wp_zero__migrations ORDER BY app, id"), ledgerBefore);
+  } finally {
+    sql(`ALTER TABLE ${table} ENGINE=InnoDB, ADD KEY by_owner (owner(191), createdAt(191), id), ADD KEY by_done (done(191), createdAt(191), id)`);
+  }
+  assert.equal(await action("count"), 3);
+  assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
   assert.equal(harness.wp.startsWith("7.1"), true);
 });

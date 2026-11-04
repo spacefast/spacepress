@@ -18,7 +18,7 @@ namespace Zero\Wp;
  * `wp zero migrate --mark-applied <id>:<n>` (see `markApplied`); the next request resumes after it.
  *
  * After migrating, every Zero table plus wp_posts/wp_postmeta must be InnoDB: Zero's request
- * transactions depend on it (§3.3), so activation refuses otherwise.
+ * transactions depend on it (§3.3), so every migration path refuses otherwise.
  */
 final class Migrator
 {
@@ -70,6 +70,7 @@ final class Migrator
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
+        $this->requireCompatibleTables();
         $app = $this->schema->name();
         $files = glob($this->dir . '/*.sql') ?: [];
         sort($files, SORT_STRING);
@@ -121,7 +122,16 @@ final class Migrator
             $applied[] = $id;
         }
 
+        $this->requireCompatibleTables();
         return $applied;
+    }
+
+    private function requireCompatibleTables(): void
+    {
+        $bad = $this->nonInnoDb();
+        if ($bad !== []) {
+            throw new \RuntimeException('Zero needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad));
+        }
     }
 
     /** Adoption records compiler names in the snapshot; verify those names before recording the step. */

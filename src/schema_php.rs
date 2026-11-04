@@ -271,6 +271,9 @@ fn collection(out: &mut String, c: &Collection) {
         let _ = writeln!(out, "            'table' => null,");
     } else {
         let _ = writeln!(out, "            'wp' => null,");
+        if let Some(name) = &c.existing_table {
+            let _ = writeln!(out, "            'existingTable' => {},", php_str(name));
+        }
         let _ = writeln!(out, "            'table' => {},", php_str(&format!("zero_{}", c.table)));
     }
     let _ = writeln!(out, "        ],");

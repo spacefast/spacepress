@@ -52,7 +52,7 @@ final class WpTableStore implements Store
     {
         $spec = $this->schema->collection($collection);
 
-        return $this->db->prefix() . ($spec['table'] ?? 'zero_' . $collection);
+        return $spec['existingTable'] ?? $this->db->prefix() . ($spec['table'] ?? 'zero_' . $collection);
     }
 
     public function source(string $collection): Source
@@ -61,6 +61,7 @@ final class WpTableStore implements Store
             $this->dialect,
             $this->dialect->quote($this->table($collection)),
             $this->schema->collection($collection)['columns'],
+            textBooleans: isset($this->schema->collection($collection)['existingTable']),
         );
     }
 

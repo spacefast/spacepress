@@ -254,15 +254,11 @@ final class Plugin
     public function activate(): void
     {
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        $migrator = $this->migrator();
-        $bad = $migrator->nonInnoDb();
-        if ($bad === []) {
+        try {
             $this->migrateLocked();
-            $bad = $migrator->nonInnoDb();
-        }
-        if ($bad !== []) {
+        } catch (\Throwable $error) {
             deactivate_plugins(plugin_basename($this->mainFile));
-            wp_die(esc_html('Zero needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad)), 'Zero', ['back_link' => true]);
+            wp_die(esc_html($error->getMessage()), 'Zero', ['back_link' => true]);
         }
         // migrateLocked() already provisioned identity and backfilled members.
     }

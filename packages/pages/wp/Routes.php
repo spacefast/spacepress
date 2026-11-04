@@ -244,8 +244,10 @@ final class Routes
             return;
         }
         $lock = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':' . $this->manifest['app']), 0, 40);
+        $entered = false;
         try {
-            $connection->locked($lock, 0, function () use ($directory, $connection): void {
+            $connection->locked($lock, 0, function () use ($directory, $connection, &$entered): void {
+                $entered = true;
                 // A preceding reconciler may have committed while this request cached the old map.
                 wp_cache_delete($this->option(), 'options');
                 wp_cache_delete('alloptions', 'options');
@@ -266,6 +268,9 @@ final class Routes
             });
             delete_option($this->option() . '_error');
         } catch (\Throwable $error) {
+            if (!$entered) {
+                return;
+            }
             update_option($this->option() . '_error', $error->getMessage(), false);
         }
     }

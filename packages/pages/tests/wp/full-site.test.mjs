@@ -393,15 +393,25 @@ add_action('updated_option', static function (string $name): void {
     $name = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
     $connection->locked($name, 0, static function (): void {
       delete_option('zero_pages_test_interrupt');
+      $priorError = get_option('zero_pages_fullsite_error', false);
+      \\Zero\\Pages\\Plugin::instance()->reconcile();
+      $preservedError = get_option('zero_pages_fullsite_error', false);
+      delete_option('zero_pages_fullsite_error');
       \\Zero\\Pages\\Plugin::instance()->reconcile();
       global $wpdb;
       echo wp_json_encode([
         'state' => get_option('zero_pages_fullsite'),
         'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
+        'priorError' => $priorError,
+        'preservedError' => $preservedError,
+        'newError' => get_option('zero_pages_fullsite_error', false),
       ]);
     });`));
   assert.deepEqual(excluded.state, after, 'a competing reconciler cannot change the route map');
   assert.deepEqual(excluded.posts, [], 'a competing reconciler cannot publish a duplicate Page');
+  assert.equal(excluded.priorError, 'Interrupted after route mapping');
+  assert.equal(excluded.preservedError, excluded.priorError, 'lock contention preserves an existing write failure');
+  assert.equal(excluded.newError, false, 'lock contention without a prior failure creates no error notice');
 
   const recovered = await page('/contact/');
   assert.equal(recovered.status, 200);

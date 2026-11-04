@@ -19,6 +19,10 @@ oxc_ast = "=0.152.0"
 oxc_parser = "=0.152.0"
 oxc_span = "=0.152.0"
 oxc_syntax = "=0.152.0"
+oxc_codegen = { version = "=0.152.0", optional = true }
+oxc_isolated_declarations = { version = "=0.152.0", optional = true }
+oxc_semantic = { version = "=0.152.0", optional = true }
+oxc_transformer = { version = "=0.152.0", optional = true }
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
@@ -34,7 +38,7 @@ tempfile = "3.27.0"
 [features]
 default = ["cli"]
 # The commands: project I/O, plugin downloads, the embedded PHP runtime (build.rs).
-cli = ["dep:tempfile", "dep:ureq", "dep:zip"]
+cli = ["dep:tempfile", "dep:ureq", "dep:zip", "dep:oxc_codegen", "dep:oxc_isolated_declarations", "dep:oxc_semantic", "dep:oxc_transformer"]
 
 [[bin]]
 name = "zero"

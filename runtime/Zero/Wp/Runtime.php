@@ -10,6 +10,7 @@ final class Runtime
     private static ?Plugin $plugin = null;
     private static ?string $appFile = null;
     private static bool $booted = false;
+    private static bool $managed = false;
     /** Why the shared system tables are behind this runtime (failed or contended upgrade), else null. */
     private static ?string $unavailable = null;
 
@@ -27,7 +28,7 @@ final class Runtime
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
         add_action('init', static function (): void {
-            if (get_option('zero_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+            if (self::$managed || get_option('zero_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
                 return;
             }
             global $wpdb;
@@ -57,6 +58,42 @@ final class Runtime
             });
         }
         do_action('zero_runtime_loaded');
+    }
+
+    /** Mount exactly one version after platform plugins load. Visitors never migrate managed apps. */
+    public static function mount(string $runtimeFile, string $appDir, array $variables = []): Plugin
+    {
+        if (self::$booted && !self::$managed) {
+            throw new \RuntimeException('A site-wide Zero runtime is already loaded');
+        }
+        self::$managed = true;
+        \Zero\Env::isolate($variables);
+        self::boot($runtimeFile);
+        $plugin = self::app($appDir, $appDir . '/' . basename($appDir) . '.php');
+        if ($plugin === null) {
+            throw new \RuntimeException('Cannot mount the managed Zero app; check platform requirements');
+        }
+        return $plugin;
+    }
+
+    public static function managed(): bool
+    {
+        return self::$managed;
+    }
+
+    /** The host calls this on the candidate before exposing its immutable URL. */
+    public static function initialize(): array
+    {
+        if (!self::$managed || self::$plugin === null) {
+            throw new \LogicException('Mount a managed app before initializing it');
+        }
+        $problems = Platform::problems(self::$plugin->schema->locales() !== null);
+        if ($problems !== []) {
+            throw new \RuntimeException(implode('; ', $problems));
+        }
+        global $wpdb;
+        Migrator::locked(new Connection($wpdb), 'zero_runtime_tables', [self::class, 'applySystemTables']);
+        return self::$plugin->initialize();
     }
 
     public static function activate(): void

@@ -1,5 +1,5 @@
 pub(crate) mod backup;
-mod build;
+pub(crate) mod build;
 pub(crate) mod deploy;
 mod dev;
 mod doctor;

@@ -5,7 +5,7 @@
 use crate::schema::{Access, ColType, Collection, Column, RelKind, Schema};
 use crate::types::Ty;
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 /// "posts" → "Post", "shopping_list" → "ShoppingListItem"? No: singularize the last word only.
@@ -119,9 +119,9 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
                 .map(|(name, fields)| {
                     let inner = fields_ts_with(fields, insert, json_type);
                     let body = inner
-                        .trim_start_matches("{ ")
-                        .trim_end_matches(" }")
-                        .trim_end_matches('}');
+                        .strip_prefix("{ ")
+                        .and_then(|s| s.strip_suffix(" }"))
+                        .unwrap_or("");
                     if body.trim().is_empty() || inner == "{}" {
                         format!("{{ layout: {} }}", lit(name))
                     } else {
@@ -227,14 +227,120 @@ fn filter_ts(c: &Column) -> String {
     )
 }
 
-fn names(schema: &Schema) -> IndexMap<String, String> {
-    let mut out = IndexMap::new();
+pub(crate) fn reserved_type_name(name: &str) -> bool {
+    matches!(
+        upper_first(name).as_str(),
+        "Role"
+            | "User"
+            | "Media"
+            | "PrivateFile"
+            | "RevisionSummary"
+            | "Status"
+            | "Locale"
+            | "Collections"
+            | "Globals"
+            | "Actions"
+            | "Record"
+            | "Partial"
+            | "Pick"
+            | "Omit"
+            | "Extract"
+            | "Exclude"
+            | "PropertyKey"
+            | "Promise"
+            | "Error"
+            | "Blob"
+            | "URLSearchParams"
+            | "FormData"
+            | "Uint8Array"
+            | "Headers"
+            | "Request"
+            | "RequestInit"
+            | "Response"
+            | "SchemaDescriptor"
+            | "Descriptor"
+            | "CollectionDescriptors"
+            | "CollectionKey"
+            | "Row"
+            | "Rels"
+            | "IdOf"
+            | "Requested"
+            | "NestedWith"
+            | "RelationValue"
+            | "WithValue"
+            | "RowWith"
+            | "OptionalKeys"
+            | "ExactWith"
+            | "StatusQuery"
+            | "LocaleQuery"
+            | "ListQuery"
+            | "CollectionClient"
+            | "MediaQuery"
+            | "MediaClient"
+            | "FileBucketClient"
+            | "FilesClient"
+            | "ActionsClient"
+            | "GlobalsClient"
+            | "Session"
+            | "AuthClient"
+            | "Client"
+            | "ClientOptions"
+            | "AuthOptions"
+            | "Problem"
+            | "ZeroError"
+            | "Json"
+            | "Send"
+            | "Held"
+            | "Issued"
+            | "OidcTokens"
+            | "BrowserGlobals"
+    )
+}
+
+struct ClientNames {
+    collections: IndexMap<String, String>,
+    globals: IndexMap<String, String>,
+    actions: IndexMap<String, String>,
+}
+
+fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) -> String {
+    while suffixes.iter().any(|suffix| {
+        let candidate = format!("{name}{suffix}");
+        reserved_type_name(&candidate) || used.contains(&candidate)
+    }) {
+        name.push_str("Row");
+    }
+    used.extend(suffixes.iter().map(|suffix| format!("{name}{suffix}")));
+    name
+}
+
+fn names(schema: &Schema) -> ClientNames {
+    let mut out = ClientNames {
+        collections: IndexMap::new(),
+        globals: IndexMap::new(),
+        actions: IndexMap::new(),
+    };
+    let mut used = HashSet::new();
     for c in schema.collections.values() {
-        let mut n = type_name(&c.key);
-        if n == "Media" || n == "User" || n == "PrivateFile" || n == "Locale" || out.values().any(|x| *x == n) {
-            n.push_str("Row");
-        }
-        out.insert(c.table.clone(), n);
+        let suffixes: &[&str] = if c.localized {
+            &["", "Insert", "Patch", "With", "Filter", "Order", "Fields"]
+        } else {
+            &["", "Insert", "Patch", "With", "Filter", "Order"]
+        };
+        out.collections
+            .insert(c.table.clone(), claim_names(type_name(&c.key), suffixes, &mut used));
+    }
+    for g in schema.globals.values() {
+        out.globals.insert(
+            g.name.clone(),
+            claim_names(upper_first(&g.name), &["", "Patch"], &mut used),
+        );
+    }
+    for a in schema.actions.values() {
+        out.actions.insert(
+            a.name.clone(),
+            claim_names(action_type(&a.name), &["Input", "Output"], &mut used),
+        );
     }
     out
 }
@@ -296,7 +402,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
             let _ = writeln!(
                 s,
                 "export interface User {{ id: number; name: string; role: Role; member?: {} | null }}",
-                names[&c.table]
+                names.collections[&c.table]
             );
         }
         None => s.push_str("export interface User { id: number; name: string; role: Role }\n"),
@@ -310,11 +416,11 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     let _ = writeln!(s, "export type Locale = {};\n", locale_ts(schema));
 
     for c in schema.collections.values() {
-        collection_types(&mut s, c, &names, schema);
+        collection_types(&mut s, c, &names.collections, schema);
     }
 
     for g in schema.globals.values() {
-        let full = upper_first(&g.name);
+        let full = &names.globals[&g.name];
         let _ = writeln!(s, "export interface {full} {}", fields_ts(&g.fields, false));
         let patch: Vec<String> = g
             .fields
@@ -327,10 +433,10 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     let rows: Vec<(String, Ty)> = schema
         .collections
         .values()
-        .map(|c| (names[&c.table].clone(), crate::types::row_of(c)))
+        .map(|c| (names.collections[&c.table].clone(), crate::types::row_of(c)))
         .collect();
     for a in schema.actions.values() {
-        let n = action_type(&a.name);
+        let n = &names.actions[&a.name];
         let input: Vec<String> = a
             .input
             .values()
@@ -353,7 +459,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
 
     s.push_str("export interface Collections {\n");
     for c in schema.collections.values() {
-        let n = &names[&c.table];
+        let n = &names.collections[&c.table];
         let _ = writeln!(
             s,
             "  {}: {{ row: {n}; insert: {n}Insert; patch: {n}Patch; with: {n}With; filter: {n}Filter; order: {n}Order }};",
@@ -362,12 +468,12 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     }
     s.push_str("}\n\nexport interface Globals {\n");
     for g in schema.globals.values() {
-        let full = upper_first(&g.name);
+        let full = &names.globals[&g.name];
         let _ = writeln!(s, "  {}: {{ row: {full}; patch: {full}Patch }};", key(&g.name));
     }
     s.push_str("}\n\nexport interface Actions {\n");
     for a in schema.actions.values() {
-        let n = action_type(&a.name);
+        let n = &names.actions[&a.name];
         let _ = writeln!(s, "  {}: {{ input: {n}Input; output: {n}Output }};", key(&a.name));
     }
     s.push_str("}\n");
@@ -632,6 +738,21 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
+    #[cfg(feature = "cli")]
+    if let Some(bytes) = runtime("client/index.ts") {
+        let runtime = String::from_utf8_lossy(bytes);
+        let body = runtime
+            .lines()
+            .filter(|line| {
+                !line.starts_with("import ") && !line.starts_with("export type *") && *line != "export { SCHEMA };"
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let source = format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body);
+        let (javascript, declarations) = browser_artifacts(&source);
+        out.push(("client.js".into(), javascript.into_bytes()));
+        out.push(("client.d.ts".into(), declarations.into_bytes()));
+    }
     // The copied runtime half of the client is MIT; its notice travels with it.
     for f in ["index.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
@@ -645,4 +766,51 @@ pub fn files(
 /// The value type used by the backend registry, independently of config exports.
 pub(crate) fn registry_value(c: &Column) -> String {
     value_ts_with(c, false, &crate::types::json_authored_ty)
+}
+
+/// Emit a dependency-free browser module and matching declarations from the canonical client.
+/// This strips client TypeScript only; compiler input bundles retain their original sources.
+#[cfg(feature = "cli")]
+fn browser_artifacts(source: &str) -> (String, String) {
+    use oxc_allocator::Allocator;
+    use oxc_codegen::Codegen;
+    use oxc_isolated_declarations::{IsolatedDeclarations, IsolatedDeclarationsOptions};
+    use oxc_parser::Parser;
+    use oxc_semantic::SemanticBuilder;
+    use oxc_span::SourceType;
+    use oxc_transformer::{TransformOptions, Transformer};
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "invalid generated client: {:?}",
+        parsed.diagnostics
+    );
+    let mut program = parsed.program;
+    let declarations =
+        IsolatedDeclarations::new(&allocator, IsolatedDeclarationsOptions { strip_internal: true }).build(&program);
+    assert!(
+        declarations.diagnostics.is_empty(),
+        "invalid generated declarations: {:?}",
+        declarations.diagnostics
+    );
+    let declarations = Codegen::new().build(&declarations.program).code;
+    let semantic = SemanticBuilder::new().with_excess_capacity(2.0).build(&program);
+    assert!(
+        semantic.diagnostics.is_empty(),
+        "invalid client semantics: {:?}",
+        semantic.diagnostics
+    );
+    let transformed = Transformer::new(
+        &allocator,
+        std::path::Path::new("client.ts"),
+        &TransformOptions::default(),
+    )
+    .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
+    assert!(
+        transformed.diagnostics.is_empty(),
+        "invalid browser client: {:?}",
+        transformed.diagnostics
+    );
+    (Codegen::new().build(&program).code, declarations)
 }

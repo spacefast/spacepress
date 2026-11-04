@@ -133,7 +133,7 @@ fn copy_sql(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn runtime_file(rel: &str) -> Option<&'static [u8]> {
+pub(crate) fn runtime_file(rel: &str) -> Option<&'static [u8]> {
     runtime_files::FILES.iter().find(|(p, _)| *p == rel).map(|(_, b)| *b)
 }
 
@@ -158,7 +158,7 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
 }
 
 /// Generated plugins are prepared in the same private tree as acquired dependencies.
-fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Result<()> {
+pub(crate) fn emit_generated(project: &Path, migrations: &Path, plugins: &Path, built: &Built) -> std::io::Result<()> {
     let schema_php = schema_php::render(&built.schema);
     let vars = plugin_vars(&built.schema, &schema_php);
     for (slug, name) in [
@@ -198,7 +198,7 @@ fn emit_generated(project: &Path, plugins: &Path, built: &Built) -> std::io::Res
                 write(&directory.join("wpml-config.xml"), wpml)?;
             }
             write(&directory.join("zero/app/functions.php"), &built.functions_php)?;
-            copy_sql(&migrations_dir(project), &directory.join("zero/app/migrations"))?;
+            copy_sql(migrations, &directory.join("zero/app/migrations"))?;
             let public = project.join("public");
             if public.is_dir() {
                 copy_dir(&public, &directory.join("public"))?;
@@ -327,7 +327,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
             }
         }
     }
-    emit_generated(project, &plugins, built)?;
+    emit_generated(project, &migrations_dir(project), &plugins, built)?;
     let mut versions = serde_json::Map::new();
     let mut generated = vec![
         "zero-runtime".to_string(),

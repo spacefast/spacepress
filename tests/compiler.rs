@@ -159,6 +159,26 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
             "duplicate logical registration `notes`",
         ),
+        (
+            "globals: { status: global('status', { label: text().default('Ready') }) }",
+            "\"status\" is reserved by generated client types",
+        ),
+        (
+            "globals: { user: global('user', { label: text().default('Ready') }) }",
+            "\"user\" is reserved by generated client types",
+        ),
+        (
+            "globals: { record: global('record', { label: text().default('Ready') }) }",
+            "\"record\" is reserved by generated client types",
+        ),
+        (
+            "globals: { client: global('client', { label: text().default('Ready') }) }",
+            "\"client\" is reserved by generated client types",
+        ),
+        (
+            "globals: { extract: global('extract', { label: text().default('Ready') }) }",
+            "\"extract\" is reserved by generated client types",
+        ),
         ("tables: []", "`tables` must be an object"),
         (
             "tables: { notes: table({}), notes: table({}) }",
@@ -184,7 +204,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
     ] {
         std::fs::write(tmp.path().join("zero.config.ts"), format!(
-            "import {{ collection, table, id, text, defineConfig }} from 'zero'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+            "import {{ collection, table, global, id, text, defineConfig }} from 'zero'; const shared = table({{}}); export default defineConfig({{ {body} }});"
         )).unwrap();
         let checked = zero().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));

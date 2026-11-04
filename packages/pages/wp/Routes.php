@@ -11,7 +11,8 @@ namespace Zero\Pages;
  * the identity menus, SEO plugins and canonical URLs use. Each Page carries
  * `_zero_pages_app` and `_zero_pages_route` (the route ID), and the mapping
  * (app, route ID) → post ID lives in one autoloaded option so lookups never
- * scan post meta. Item routes map to the collection's existing posts.
+ * scan post meta. Publication, metadata and this map commit atomically.
+ * Item routes map to the collection's existing posts.
  *
  * Matching is explicit and static-first: an exact static pattern wins over an
  * item route's `[param]`, and the collection cannot store a slug a static
@@ -228,7 +229,7 @@ final class Routes
     /**
      * Make the hidden Pages match the manifest: create missing ones, refresh
      * code-owned title and body when the build changed, trash retired ones.
-     * Runs under a lock; a second request waits or skips.
+     * Runs under a connection-owned lock; a second request skips.
      */
     public function reconcile(string $directory): void
     {
@@ -237,79 +238,114 @@ final class Routes
             delete_option($this->option() . '_error');
             return;
         }
-        $lock = 'zero_pages_lock_' . $this->manifest['app'];
-        if (!add_option($lock, (string) time(), '', false)) {
-            $since = (int) get_option($lock);
-            if ($since > time() - 60) {
-                return;
-            }
-            update_option($lock, (string) time(), false);
+        $connection = \Zero\Wp\Runtime::plugin()?->connection();
+        // Do not release the publication lock while an enclosing transaction is still open.
+        if ($connection === null || $connection->inTransaction()) {
+            return;
         }
-        self::$reconciling = true;
+        $lock = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':' . $this->manifest['app']), 0, 40);
         try {
-            $pages = $this->pages();
-            $wanted = [];
-            $conflicts = [];
-            foreach ($this->static as $route) {
-                $owner = $this->foreignOwner($route, $pages);
-                if ($owner !== null) {
-                    // Never take over a URL or the front page that other content already owns.
-                    $conflicts[] = (string) $route['pattern'];
-                    if (isset($pages[$route['id']])) {
-                        $wanted[$route['id']] = $pages[$route['id']];
-                    }
-                    continue;
-                }
-                $body = (string) file_get_contents($directory . '/' . $route['body']);
-                $id = $pages[$route['id']] ?? 0;
-                $post = $id > 0 ? get_post($id) : null;
-                if (!$post instanceof \WP_Post || $post->post_type !== 'page' || $post->post_status === 'trash') {
-                    $id = $this->adopt((string) $route['id']);
-                    $post = $id > 0 ? get_post($id) : null;
-                }
-                $fields = [
-                    'post_type' => 'page',
-                    'post_status' => 'publish',
-                    'post_title' => (string) $route['title'],
-                    'post_content' => wp_slash($body),
-                    'post_name' => $route['pattern'] === '/' ? 'zero-home-' . substr((string) $route['key'], 0, 8) : basename((string) $route['pattern']),
-                    'post_parent' => 0,
-                    'comment_status' => 'closed',
-                    'ping_status' => 'closed',
-                ];
-                if ($post instanceof \WP_Post) {
-                    $fields['ID'] = $post->ID;
-                    $result = wp_update_post($fields, true);
-                } else {
-                    $result = wp_insert_post($fields, true);
-                }
-                if (is_wp_error($result)) {
-                    update_option($this->option() . '_error', 'Cannot write the Page for ' . $route['pattern'] . ': ' . $result->get_error_message(), false);
+            $connection->locked($lock, 0, function () use ($directory, $connection): void {
+                // A preceding reconciler may have committed while this request cached the old map.
+                wp_cache_delete($this->option(), 'options');
+                wp_cache_delete('alloptions', 'options');
+                wp_cache_delete('notoptions', 'options');
+                if (($this->state()['digest'] ?? null) === $this->manifest['digest'] && $this->pagesIntact()) {
+                    delete_option($this->option() . '_error');
                     return;
                 }
-                $id = (int) $result;
-                update_post_meta($id, self::META_APP, $this->manifest['app']);
-                update_post_meta($id, self::META_ROUTE, $route['id']);
-                update_post_meta($id, self::META_DIGEST, $route['bodyDigest']);
-                $wanted[$route['id']] = $id;
+                self::$reconciling = true;
+                $trackPost = $connection->touchPost(...);
+                add_action('clean_post_cache', $trackPost);
+                try {
+                    $connection->transaction(fn () => $this->reconcilePages($directory, $connection));
+                } finally {
+                    self::$reconciling = false;
+                    remove_action('clean_post_cache', $trackPost);
+                }
+            });
+            delete_option($this->option() . '_error');
+        } catch (\Throwable $error) {
+            update_option($this->option() . '_error', $error->getMessage(), false);
+        }
+    }
+
+    /** Page publication, ownership and routing must all survive or all roll back. */
+    private function reconcilePages(string $directory, \Zero\Wp\Connection $connection): void
+    {
+        $pages = $this->pages();
+        $wanted = [];
+        $conflicts = [];
+        foreach ($this->static as $route) {
+            $owner = $this->foreignOwner($route, $pages);
+            if ($owner !== null) {
+                // Never take over a URL or the front page that other content already owns.
+                $conflicts[] = (string) $route['pattern'];
+                if (isset($pages[$route['id']])) {
+                    $wanted[$route['id']] = $pages[$route['id']];
+                }
+                continue;
             }
-            $routeIds = array_column($this->static, 'id');
-            foreach ($pages as $routeId => $id) {
-                if (!in_array($routeId, $routeIds, true) && get_post($id) instanceof \WP_Post) {
-                    update_post_meta($id, '_zero_pages_retired', gmdate('c'));
-                    wp_trash_post($id);
+            $body = (string) file_get_contents($directory . '/' . $route['body']);
+            $id = $pages[$route['id']] ?? 0;
+            $post = $id > 0 ? get_post($id) : null;
+            if (!$post instanceof \WP_Post || $post->post_type !== 'page' || $post->post_status === 'trash') {
+                $id = $this->adopt((string) $route['id']);
+                $post = $id > 0 ? get_post($id) : null;
+            }
+            $fields = [
+                'post_type' => 'page',
+                'post_status' => 'publish',
+                'post_title' => (string) $route['title'],
+                'post_content' => wp_slash($body),
+                'post_name' => $route['pattern'] === '/' ? 'zero-home-' . substr((string) $route['key'], 0, 8) : basename((string) $route['pattern']),
+                'post_parent' => 0,
+                'comment_status' => 'closed',
+                'ping_status' => 'closed',
+            ];
+            if ($post instanceof \WP_Post) {
+                $connection->touchPost($post->ID);
+                $fields['ID'] = $post->ID;
+                $result = wp_update_post($fields, true);
+            } else {
+                $result = wp_insert_post($fields, true);
+            }
+            if (is_wp_error($result)) {
+                throw new \RuntimeException('Cannot write the Page for ' . $route['pattern'] . ': ' . $result->get_error_message());
+            }
+            $id = (int) $result;
+            $connection->touchPost($id);
+            foreach ([self::META_APP => $this->manifest['app'], self::META_ROUTE => $route['id'], self::META_DIGEST => $route['bodyDigest']] as $key => $value) {
+                if (update_post_meta($id, $key, $value) === false && get_post_meta($id, $key, true) !== $value) {
+                    throw new \RuntimeException('Cannot record Page ownership for ' . $route['pattern']);
                 }
             }
-            update_option($this->option(), ['digest' => $this->manifest['digest'], 'pages' => $wanted, 'conflicts' => $conflicts], true);
-            $root = $wanted[$this->static['/']['id'] ?? ''] ?? 0;
-            if ($root > 0 && !in_array('/', $conflicts, true)) {
-                update_option('show_on_front', 'page');
-                update_option('page_on_front', $root);
+            $wanted[$route['id']] = $id;
+        }
+        $routeIds = array_column($this->static, 'id');
+        foreach ($pages as $routeId => $id) {
+            if (!in_array($routeId, $routeIds, true) && get_post($id) instanceof \WP_Post) {
+                $connection->touchPost($id);
+                update_post_meta($id, '_zero_pages_retired', gmdate('c'));
+                wp_trash_post($id);
             }
-            delete_option($this->option() . '_error');
-        } finally {
-            self::$reconciling = false;
-            delete_option($lock);
+        }
+        $this->storeOption($connection, $this->option(), ['digest' => $this->manifest['digest'], 'pages' => $wanted, 'conflicts' => $conflicts]);
+        $root = $wanted[$this->static['/']['id'] ?? ''] ?? 0;
+        if ($root > 0 && !in_array('/', $conflicts, true)) {
+            $this->storeOption($connection, 'show_on_front', 'page');
+            $this->storeOption($connection, 'page_on_front', (string) $root);
+        }
+    }
+
+    private function storeOption(\Zero\Wp\Connection $connection, string $name, array|string $value): void
+    {
+        $connection->touchOption($name);
+        if (!update_option($name, $value, true)) {
+            $stored = get_option($name);
+            if (is_array($value) ? $stored !== $value : (string) $stored !== $value) {
+                throw new \RuntimeException('Cannot record managed Page state: ' . $name);
+            }
         }
     }
 

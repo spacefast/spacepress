@@ -115,13 +115,17 @@ the file. Generated file names use a SHA-256 key of the app and route ID.
   write that bypasses capabilities keeps the stored fields. Another URI for
   the Page (`/?page_id=6`) redirects to its route.
 - An item route serves the collection's **existing posts**. There is no
-  duplicate Page per item.
+  duplicate Page per item. A native WordPress Page at the same URL keeps
+  ownership until it is moved or removed.
 
 A temporary ownership conflict keeps the managed Page and its ID in place;
 Zero resumes serving it when the conflict clears. A managed Page write failure
 keeps the last successful route mapping and digest. WordPress continues
 serving requests, an administrator sees a separate error notice, and Zero
-retries reconciliation on the next request.
+retries reconciliation on the next request. Page publication, ownership metadata,
+route mappings and front-page settings commit in one Zero transaction, under
+the existing connection-owned database lock. An interrupted transaction rolls
+back rather than leaving a published Page outside its ownership map.
 
 ## Data: what a page may do
 

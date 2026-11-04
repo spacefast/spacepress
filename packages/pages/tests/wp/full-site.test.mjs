@@ -101,6 +101,22 @@ add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero
 add_filter('wp_insert_post_empty_content', static function (bool $empty, array $data): bool {
     return $empty || (get_option('zero_pages_test_fail_write') && ($data['post_type'] ?? '') === 'page' && ($data['post_name'] ?? '') === 'about');
 }, 10, 2);
+add_action('wp_after_insert_post', static function (int $id, WP_Post $post): void {
+    if ($post->post_type === 'page' && $post->post_name === 'contact') {
+        if (get_option('zero_pages_test_interrupt') === 'exit') exit(73);
+        if (get_option('zero_pages_test_interrupt') === 'post') throw new RuntimeException('Interrupted after publication');
+    }
+}, 10, 2);
+add_action('added_post_meta', static function (int $metaId, int $postId, string $key): void {
+    if ($key === '_zero_pages_app' && get_post($postId)->post_name === 'contact' && get_option('zero_pages_test_interrupt') === 'meta') {
+        throw new RuntimeException('Interrupted during ownership');
+    }
+}, 10, 3);
+add_action('updated_option', static function (string $name): void {
+    if ($name === 'zero_pages_fullsite' && get_option('zero_pages_test_interrupt') === 'map') {
+        throw new RuntimeException('Interrupted after route mapping');
+    }
+});
 `);
 
   const password = (await wp('user', 'application-password', 'create', 'admin', 'zero-pages-acceptance', '--porcelain')).split('\n').at(-1);
@@ -257,6 +273,20 @@ add_filter('wp_insert_post_empty_content', static function (bool $empty, array $
   assert.equal((await page(`/wp-admin/post.php?post=${aboutId}&action=edit`, { cookie })).status, 403);
   assert.equal((await page(`/?page_id=${aboutId}`)).headers.get('location'), `${base}/about/`);
 
+  // A native Page that occupies an item URL keeps ownership over the matching collection row.
+  const itemPathOwner = await api('/wp-json/wp/v2/pages', { method: 'POST', body: {
+    title: 'Native trail page', slug: 'first-light', parent: owned.pages['u:notes.index'],
+    status: 'publish', content: '<p>Native path stays in charge.</p>',
+  } });
+  assert.equal(itemPathOwner.status, 201, JSON.stringify(itemPathOwner.body));
+  assert.equal(itemPathOwner.body.link, `${base}/notes/first-light/`);
+  const nativeItemPath = await page('/notes/first-light/');
+  assert.equal(nativeItemPath.status, 200);
+  assert.match(nativeItemPath.html, /Native path stays in charge/);
+  assert.doesNotMatch(nativeItemPath.html, /<h1 class="wp-block-heading">First light<\/h1>/);
+  assert.equal((await api(`/wp-json/wp/v2/pages/${itemPathOwner.body.id}?force=true`, { method: 'DELETE' })).status, 200);
+  assert.match((await page('/notes/first-light/')).html, /<h1 class="wp-block-heading">First light<\/h1>/, 'the item route resumes after the native Page is removed');
+
   // 5. A native content edit (core REST, as the editor would save) is visible publicly on the next request.
   const edited = await api(`/wp-json/wp/v2/zero_notes/${note.id}`, { method: 'POST', body: { title: 'First light, revised' } });
   assert.equal(edited.status, 200, JSON.stringify(edited.body));
@@ -325,7 +355,54 @@ add_filter('wp_insert_post_empty_content', static function (bool $empty, array $
   assert.match(contact.html, /Contact us/);
   assert.doesNotMatch(contact.html, /Zero contact/);
   assert.deepEqual(after.conflicts, ['/contact']);
+  // Force rollback after publication, halfway through ownership, and after caching the new route map.
+  await wp('option', 'update', 'zero_pages_test_interrupt', 'post');
   await wp('post', 'delete', String(contactId), '--force');
+  await wp('--skip-plugins=zero-pages-fullsite', 'option', 'update', 'zero_pages_test_interrupt', 'exit');
+  await assert.rejects(wp('eval', 'echo "unexpected completion";'), /Failed/, 'an actual PHP exit interrupts publication');
+  const aborted = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `global $wpdb;
+    echo wp_json_encode([
+      'state' => get_option('zero_pages_fullsite'),
+      'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
+    ]);`));
+  assert.deepEqual(aborted.state, after, 'an abruptly ended process cannot commit a partial route map');
+  assert.deepEqual(aborted.posts, [], 'an abruptly ended process leaves no published orphan');
+  for (const phase of ['post', 'meta', 'map']) {
+    await wp('--skip-plugins=zero-pages-fullsite', 'option', 'update', 'zero_pages_test_interrupt', phase);
+    const interrupted = await page('/contact/');
+    assert.equal(interrupted.status, 404, `${phase}: the rolled-back Page is not publicly reachable`);
+    assert.doesNotMatch(interrupted.html, /Zero contact/);
+    const rollback = JSON.parse(await wp('eval', `global $wpdb;
+      echo wp_json_encode([
+        'state' => get_option('zero_pages_fullsite'),
+        'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
+        'error' => get_option('zero_pages_fullsite_error'),
+        'transaction' => \\Zero\\Wp\\Runtime::plugin()->connection()->inTransaction(),
+      ]);`));
+    assert.deepEqual(rollback.state, after, `${phase}: the route map and cached options roll back together`);
+    assert.deepEqual(rollback.posts, [], `${phase}: no orphaned Page remains in the database`);
+    assert.match(rollback.error, /Interrupted/);
+    assert.equal(rollback.transaction, false);
+    assert.match((await page('/about/')).html, /About this site/, `${phase}: unrelated routes remain usable`);
+  }
+
+  // A held connection lock excludes another reconciler even when no option lease exists.
+  const excluded = JSON.parse(await wp('--skip-plugins=zero-pages-fullsite', 'eval', `
+    require WP_PLUGIN_DIR . '/zero-pages-fullsite/zero-pages-fullsite.php';
+    $connection = \\Zero\\Wp\\Runtime::plugin()->connection();
+    $name = 'zero-pages:' . substr(hash('sha256', $connection->prefix() . ':fullsite'), 0, 40);
+    $connection->locked($name, 0, static function (): void {
+      delete_option('zero_pages_test_interrupt');
+      \\Zero\\Pages\\Plugin::instance()->reconcile();
+      global $wpdb;
+      echo wp_json_encode([
+        'state' => get_option('zero_pages_fullsite'),
+        'posts' => $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'"),
+      ]);
+    });`));
+  assert.deepEqual(excluded.state, after, 'a competing reconciler cannot change the route map');
+  assert.deepEqual(excluded.posts, [], 'a competing reconciler cannot publish a duplicate Page');
+
   const recovered = await page('/contact/');
   assert.equal(recovered.status, 200);
   assert.match(recovered.html, /Zero contact/, 'removing conflicting native content makes the code route available without another build');
@@ -333,6 +410,9 @@ add_filter('wp_insert_post_empty_content', static function (bool $empty, array $
   assert.equal(recoveredState.digest, after.digest);
   assert.deepEqual(recoveredState.conflicts, []);
   assert.equal(postContext(recovered.html).queried, recoveredState.pages['p:2f636f6e74616374']);
+  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared');
+  assert.equal(await wp('eval', `global $wpdb; echo $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'page' AND post_name = 'contact'");`), '1', 'retry publishes exactly one Page after the lock is released');
+  assert.equal((await api(`/wp-json/wp/v2/pages/${recoveredState.pages['p:2f636f6e74616374']}`, { method: 'POST', body: { title: 'Try to edit recovered Page' } })).status, 403);
 
   // A native front page selected after activation also keeps ownership without a code rebuild.
   const nativeFrontId = Number(await wp('post', 'create', '--post_type=page', '--post_status=publish', '--post_title=Native front choice', '--post_content=Native front remains in charge.', '--post_name=native-front', '--porcelain'));

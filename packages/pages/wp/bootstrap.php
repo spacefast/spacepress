@@ -4,7 +4,7 @@
  *
  * Self-contained on purpose: Zero core does not depend on the optional pages
  * add-on, and the add-on uses only Zero's public runtime seams (Runtime::plugin,
- * Db reads with a Viewer, Extensions::onWrite).
+ * Db reads with a Viewer, Connection locks/transactions, Extensions::onWrite).
  */
 declare(strict_types=1);
 defined('ABSPATH') || exit;

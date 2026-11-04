@@ -310,6 +310,10 @@ final class Plugin
             wp_safe_redirect($this->routes->urlFor((string) $owner['pattern']), 301);
             exit;
         }
+        if ($match !== null && $match['route']['param'] !== null && $queried instanceof \WP_Post
+            && $queried->post_type === 'page' && !$this->routes->isCodePage($queried->ID)) {
+            return;
+        }
         if ($match === null || !$this->routes->canServe($match['route'])) {
             return;
         }

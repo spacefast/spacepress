@@ -15,7 +15,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "zero.config.ts",
-        "import { defineConfig, action } from 'zero'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'zero'; import { message } from './src/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().notNull().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
     write(&project, "src/message.ts", "export const message = 'v1';");
     write(
@@ -84,6 +84,41 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let client_before = fs::read(compiled_first.join("client/client.js")).unwrap();
     assert!(client_before.len() > 1000);
     assert!(fs::metadata(compiled_first.join("client/client.d.ts")).unwrap().len() > 1000);
+    write(
+        work.path(),
+        "client.ts",
+        r#"import { createClient } from './compiled-first/client/client.js';
+const client = createClient();
+const label: Promise<string> = client.globals.settings.get().then(settings => settings.label);
+const version: Promise<string> = client.actions.version();
+client.globals.settings.update({ label: 'Updated' });
+// @ts-expect-error global labels must be strings
+client.globals.settings.update({ label: 1 });
+void label; void version;
+"#,
+    );
+    let types = std::process::Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args([
+            "--strict",
+            "--noEmit",
+            "--target",
+            "ES2022",
+            "--module",
+            "ESNext",
+            "--moduleResolution",
+            "bundler",
+            "--lib",
+            "ES2022,DOM",
+        ])
+        .arg(work.path().join("client.ts"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check generated clients");
+    assert!(
+        types.status.success(),
+        "hosted client contract failed: {}{}",
+        String::from_utf8_lossy(&types.stdout),
+        String::from_utf8_lossy(&types.stderr)
+    );
     fs::write(second.join("vendor.zero.json"), b"{}").unwrap();
     let error = zero::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
     assert!(error.message.contains("hash mismatch"));

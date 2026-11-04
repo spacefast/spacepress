@@ -1316,9 +1316,9 @@ export type ListQuery<
 	with?: W;
 } & StatusQuery<K> & LocaleQuery<K>;
 export interface CollectionClient<K extends CollectionKey> {
-	list<const W extends Collections[K]["with"] = {}>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
 	/** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
-	get<const W extends Collections[K]["with"] = {}>(id: IdOf<K>, q?: {
+	get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: {
 		with?: ExactWith<K, W>;
 	} & LocaleQuery<K>): Promise<RowWith<K, W>>;
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;

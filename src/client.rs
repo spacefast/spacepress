@@ -244,6 +244,56 @@ pub(crate) fn reserved_type_name(name: &str) -> bool {
             | "Partial"
             | "Pick"
             | "Omit"
+            | "Extract"
+            | "Exclude"
+            | "PropertyKey"
+            | "Promise"
+            | "Error"
+            | "Blob"
+            | "URLSearchParams"
+            | "FormData"
+            | "Uint8Array"
+            | "Headers"
+            | "Request"
+            | "RequestInit"
+            | "Response"
+            | "SchemaDescriptor"
+            | "Descriptor"
+            | "CollectionDescriptors"
+            | "CollectionKey"
+            | "Row"
+            | "Rels"
+            | "IdOf"
+            | "Requested"
+            | "NestedWith"
+            | "RelationValue"
+            | "WithValue"
+            | "RowWith"
+            | "OptionalKeys"
+            | "ExactWith"
+            | "StatusQuery"
+            | "LocaleQuery"
+            | "ListQuery"
+            | "CollectionClient"
+            | "MediaQuery"
+            | "MediaClient"
+            | "FileBucketClient"
+            | "FilesClient"
+            | "ActionsClient"
+            | "GlobalsClient"
+            | "Session"
+            | "AuthClient"
+            | "Client"
+            | "ClientOptions"
+            | "AuthOptions"
+            | "Problem"
+            | "ZeroError"
+            | "Json"
+            | "Send"
+            | "Held"
+            | "Issued"
+            | "OidcTokens"
+            | "BrowserGlobals"
     )
 }
 
@@ -251,7 +301,7 @@ fn names(schema: &Schema) -> IndexMap<String, String> {
     let mut out = IndexMap::new();
     for c in schema.collections.values() {
         let mut n = type_name(&c.key);
-        if reserved_type_name(&n) || out.values().any(|x| *x == n) {
+        while reserved_type_name(&n) || out.values().any(|x| *x == n) {
             n.push_str("Row");
         }
         out.insert(c.table.clone(), n);

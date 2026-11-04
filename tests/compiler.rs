@@ -171,6 +171,14 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "globals: { record: global('record', { label: text().default('Ready') }) }",
             "\"record\" is reserved by generated client types",
         ),
+        (
+            "globals: { client: global('client', { label: text().default('Ready') }) }",
+            "\"client\" is reserved by generated client types",
+        ),
+        (
+            "globals: { extract: global('extract', { label: text().default('Ready') }) }",
+            "\"extract\" is reserved by generated client types",
+        ),
         ("tables: []", "`tables` must be an object"),
         (
             "tables: { notes: table({}), notes: table({}) }",

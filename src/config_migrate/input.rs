@@ -14,17 +14,21 @@ use super::{Failure, Source, fail, pointer};
 
 pub(super) fn read(path: &Path, source: Source) -> Result<Value, Failure> {
     let text = std::fs::read_to_string(path).map_err(|e| fail("", format!("cannot read input: {e}")))?;
+    parse(path, &text, source)
+}
+
+pub(super) fn parse(path: &Path, text: &str, source: Source) -> Result<Value, Failure> {
     if path.extension().is_some_and(|ext| ext == "json") {
-        return serde_json::from_str::<UniqueJson>(&text)
+        return serde_json::from_str::<UniqueJson>(text)
             .map(|v| v.0)
             .map_err(|e| fail("", format!("invalid JSON: {e}")));
     }
     let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, &text, SourceType::ts()).parse();
+    let parsed = Parser::new(&allocator, text, SourceType::ts()).parse();
     if let Some(e) = parsed.diagnostics.errors().next() {
         return Err(fail("", format!("invalid TypeScript: {}", e.message)));
     }
-    let file = diag::register_file(path, &text);
+    let file = diag::register_file(path, text);
     let body = Lowerer {
         file,
         module: 0,

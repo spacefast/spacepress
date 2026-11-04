@@ -149,6 +149,7 @@ problem('blocks: field of another layout is unknown', fn () => Schema::encode($p
 eq('media refs found through nested values', Schema::mediaRefs($posts['sections'], Schema::normalize($posts['sections'], $sections, 'sections', '/sections'), '/sections'),
     [[3, '/sections/1/image', 'image']]);
 
+eq('boolean decodes numeric and legacy text storage', array_map(static fn ($v) => Schema::decode(['type' => 'boolean'], $v), ['0', '1', 'true', 'false', null]), [false, true, true, false, null]);
 $nested = ['type' => 'group', 'fields' => ['meta' => ['type' => 'json'], 'n' => ['type' => 'integer'], 'on' => ['type' => 'boolean']]];
 eq('nested json strings stay strings; WP-style string scalars are coerced',
     Schema::decode($nested, '{"meta":"hello","n":"5","on":"1"}'), ['meta' => 'hello', 'n' => 5, 'on' => true]);

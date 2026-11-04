@@ -23,7 +23,10 @@ fn q(ident: &str) -> String {
     format!("`{}`", ident.replace('`', "``"))
 }
 
-fn table(t: &str) -> String {
+fn table(t: &str, tables: &Map) -> String {
+    if let Some(name) = tables.get(t).and_then(|d| d["existingTable"].as_str()) {
+        return q(name);
+    }
     if t == REVISIONS {
         format!("`{{prefix}}{t}`")
     } else {
@@ -55,6 +58,9 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
         cols.insert(col.name.clone(), column_snapshot(col, schema));
     }
     let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
+    if let Some(name) = &c.existing_table {
+        table["existingTable"] = name.clone().into();
+    }
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
         table["auth"] = true.into();
@@ -208,7 +214,7 @@ fn fk_sql(t: &str, name: &str, c: &Json, tables: &Map) -> Option<String> {
         "CONSTRAINT `{}` FOREIGN KEY ({}) REFERENCES {} ({})",
         fk_name(t, name),
         q(name),
-        table(target),
+        table(target, tables),
         q(r["column"].as_str().unwrap_or("id"))
     );
     if let Some(a) = r["onDelete"].as_str() {
@@ -258,11 +264,11 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     out
 }
 
-fn create_index(t: &str, (name, unique, cols): &(String, bool, Vec<String>)) -> String {
+fn create_index(t: &str, (name, unique, cols): &(String, bool, Vec<String>), tables: &Map) -> String {
     let cols: Vec<String> = cols.iter().map(|c| q(c)).collect();
     format!(
         "ALTER TABLE {} ADD {}{} {} ({});",
-        table(t),
+        table(t, tables),
         if *unique { "UNIQUE " } else { "" },
         if *unique { "KEY" } else { "INDEX" },
         q(name),
@@ -270,13 +276,44 @@ fn create_index(t: &str, (name, unique, cols): &(String, bool, Vec<String>)) -> 
     )
 }
 
-fn drop_index(t: &str, name: &str) -> String {
-    format!("ALTER TABLE {} DROP INDEX {};", table(t), q(name))
+fn drop_index(t: &str, name: &str, tables: &Map) -> String {
+    format!("ALTER TABLE {} DROP INDEX {};", table(t, tables), q(name))
 }
 
 fn create_table(t: &str, def: &Json, tables: &Map) -> String {
     let empty = Map::new();
     let cols = def["columns"].as_object().unwrap_or(&empty);
+    if def["existingTable"].is_string() {
+        let mut expected_indexes: Vec<Json> = indexes(t, def)
+            .into_iter()
+            .map(|(name, unique, columns)| json!({ "name": name, "unique": unique, "columns": columns }))
+            .collect();
+        if let Some((pk, _)) = cols.iter().find(|(_, c)| c["primaryKey"] == true) {
+            expected_indexes.push(json!({ "name": "PRIMARY", "unique": true, "columns": [pk] }));
+        }
+        let foreign_keys: Vec<Json> = cols
+            .iter()
+            .filter_map(|(name, c)| {
+                fk_sql(t, name, c, tables)?;
+                let r = &c["references"];
+                let target = r["table"].as_str()?;
+                let target_name = tables[target]["existingTable"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("{{prefix}}zero_{target}"));
+                Some(json!({ "name": fk_name(t, name), "column": name, "table": target_name,
+                "target": r["column"], "onDelete": r["onDelete"].as_str().unwrap_or("restrict").to_uppercase(),
+                "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
+            })
+            .collect();
+        let adoption =
+            json!({ "table": def["existingTable"], "indexes": expected_indexes, "foreignKeys": foreign_keys });
+        return format!(
+            "-- zero-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
+            cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),
+            table(t, tables)
+        );
+    }
     let mut body: Vec<String> = cols.iter().map(|(n, c)| column_sql(n, c)).collect();
     if let Some((pk, _)) = cols.iter().find(|(_, c)| c["primaryKey"].as_bool() == Some(true)) {
         body.push(format!("PRIMARY KEY ({})", q(pk)));
@@ -297,7 +334,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
     }
     format!(
         "CREATE TABLE {} (\n\t{}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
-        table(t),
+        table(t, tables),
         body.join(",\n\t")
     )
 }
@@ -345,7 +382,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         let nr = render(nc);
         let p_ix = indexes(t, prev_def);
         let n_ix = indexes(t, next_def);
-        let table = table(t);
+        let table = table(t, &next_t);
         // Constraints that go away (or change) are dropped before columns change.
         for (k, c) in pc {
             let before = fk_sql(t, k, c, &prev_t);
@@ -356,7 +393,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
         for ix in &p_ix {
             if !n_ix.contains(ix) {
-                out.push(drop_index(t, &ix.0));
+                out.push(drop_index(t, &ix.0, &next_t));
             }
         }
         for (k, sql) in &nr {
@@ -373,7 +410,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
         for ix in &n_ix {
             if !p_ix.contains(ix) {
-                out.push(create_index(t, ix));
+                out.push(create_index(t, ix, &next_t));
             }
         }
         for (k, c) in nc {
@@ -386,7 +423,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
     }
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        out.push(format!("DROP TABLE {};", table(t)));
+        out.push(format!("DROP TABLE {};", table(t, &prev_t)));
     }
     out
 }
@@ -401,6 +438,11 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
         match next_t.get(t) {
             None => out.push(format!("drops table \"{t}\" and all its rows")),
             Some(n) => {
+                if def["existingTable"] != n["existingTable"] {
+                    out.push(format!(
+                        "changes the existing SQL table binding for \"{t}\"; rows are not moved"
+                    ));
+                }
                 for k in def["columns"].as_object().unwrap_or(&empty).keys() {
                     if !n["columns"].as_object().unwrap_or(&empty).contains_key(k) {
                         out.push(format!("drops column \"{t}\".\"{k}\""));
@@ -637,6 +679,19 @@ mod tests {
                 "ALTER TABLE `{prefix}zero_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
                 "ALTER TABLE `{prefix}zero_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
             ]
+        );
+    }
+    #[test]
+    fn adopts_exact_table_and_keeps_later_column_changes_on_that_table() {
+        let def = json!({"editor":false,"drafts":false,"existingTable":"sf_space_tasks_hash","columns":{"id":col("integer")}});
+        let previous = snap(json!({"tasks":def}));
+        let initial = plan(&snap(json!({})), &previous);
+        assert!(initial[0].ends_with("\nSELECT `id` FROM `sf_space_tasks_hash` LIMIT 0;"));
+        let mut next = previous.clone();
+        next["tables"]["tasks"]["columns"]["note"] = col("text");
+        assert_eq!(
+            plan(&previous, &next),
+            ["ALTER TABLE `sf_space_tasks_hash` ADD COLUMN `note` LONGTEXT;"]
         );
     }
 }

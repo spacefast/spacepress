@@ -53,3 +53,5 @@ node --test --test-concurrency=1 "$here"/*.test.ts
 "$here/legacy/run.sh"
 # Lane M2: its app users into an user projection.
 "$here/legacy/users-run.sh"
+# Lane M3: generated application handlers over retained Zero 0.8 SQL tables.
+"$here/app-migrate/run.sh"

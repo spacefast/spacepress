@@ -22,9 +22,9 @@ explicitly changed with the application's owner.
 | --- | --- | --- |
 | Capsule content fields, labels, `publicRead` | Primitive fields and enums can be imported; compiler supports richer fields than the importer | Add asset/reference/block conversions with data and permission proofs; editor field metadata mapping |
 | Native `posts`, `pages`, `media` ownership | New content collections are `zero_<name>` CPTs; media is built in | Explicit native-store adoption and stable route/data mapping; importer refuses these legacy stores |
-| `table`, `string`, `number`, `boolean`, `userId`, `id`, defaults, optional fields | Drizzle-style collections use numeric IDs and nullable fields | Preserve branded string IDs, reference/user identities, implicit timestamps, absent-versus-null/default behavior; no automatic table rewrite yet |
-| Named indexes, `by_creation`, range cursors and count | SQL filters/order/limit/offset and relations exist | Compatible named-index/cursor API and deterministic pagination under changes |
-| Queries, mutations, actions and their execution contexts | Hooks/actions compile to PHP; the request pipeline uses transactions | Preserve read-only queries/actions, mutation atomicity, action nontransactional effects, per-handler limits and return/error shapes; the action APIs are not equivalent |
+| `table`, scalar fields, defaults, optional fields | `zero migrate app --from zero-0.8` binds original BIGINT/TEXT/DOUBLE tables with `existingTable`; emitted helpers retain string result IDs, timestamps, defaults and omitted optional fields | IDs outside the safe integer range, principal/session migration, physical column renames and nonliteral schema declarations require a port |
+| Named indexes, `by_creation`, ranges and count | App migration translates static index chains with declared ordering and collect/count/first/take terminals; adoption validates the primary/unique index and foreign-key names used by later migrations | Pagination, dynamic builders and optional-field ranges are refused; unmanaged legacy indexes stay in place |
+| Queries, mutations, actions and their execution contexts | App migration emits v2 actions for typed handlers and supported DB calls; it refuses writes outside mutations and uses v2 transaction rollback | External services require a port; action inputs, routes, envelopes, error transport and execution limits use v2 contracts |
 | Custom method/path endpoints, read-only overrides, response helpers | Generated collection/action REST routes exist | Endpoint compilation, HTTP response/header semantics and collision checks shared with page routing |
 | Markdown/HTML/TSX documents and `pages/` file routes | Public assets can be copied; phase 2 plans record sync | Page compiler, `[id]`/catchall precedence, route ownership, `_pages` response templates and reload/client-navigation parity |
 | Gutenberg TSX serialization, islands, client pages and layouts | No old TSX/island compiler in this Rust branch | Client build boundary, hydration, CSS/assets, dynamic-block rendering and code-owned versus editor-owned pages |
@@ -42,7 +42,7 @@ explicitly changed with the application's owner.
 The phase-2 plan includes field access, content sync, jobs/outbox/webhooks,
 frontend auth, Abilities/MCP, image/private-file features and localization.
 Those lanes need their runtime tests and integration; accepting declarations in
-schema v3 is not completion. Pages/islands/realtime, legacy table semantics and
+schema v3 is not completion. Pages/islands/realtime, the remaining legacy table cases and
 the platform service/release contracts above require additional work beyond
 those lanes. Keep the PHP-only request runtime; build and import logic stay Rust.
 
@@ -78,7 +78,7 @@ explicit refusal for unsupported behavior. Full application support requires:
 2. Implementations of each missing PHP/runtime and Rust/build contract above,
    with tests against legacy behavior.
 3. A data migration preserving IDs/references/ownership/URLs, rich content and
-   private file permissions, plus a recoverable cutover. `zero migrate site`
+   private file permissions, plus a recoverable cutover. `zero migrate app` adopts supported application SQL tables; `zero migrate site`
    covers collection records, scalar/enum/media/single-reference fields,
    statuses, dates, authors and revisions on WordPress
    ([guide](migrating-from-zero.md)); rich content, native stores and private

@@ -18,11 +18,15 @@ final class Source
     }
 
     /** A plain table: every column is `{a}.<quoted col>`, kind from the schema type. */
-    public static function plain(Dialect $d, string $quotedTable, array $columnSpecs): self
+    public static function plain(Dialect $d, string $quotedTable, array $columnSpecs, bool $textBooleans = false): self
     {
         $refs = [];
         foreach ($columnSpecs as $name => $col) {
-            $refs[$name] = new ColumnRef('{a}.' . $d->quote((string) $name), '', '', ColumnRef::kindFor($col['type']));
+            $expr = '{a}.' . $d->quote((string) $name);
+            $cmp = $textBooleans && $col['type'] === 'boolean'
+                ? "CASE CAST($expr AS CHAR) WHEN 'true' THEN '1' WHEN 'false' THEN '0' ELSE CAST($expr AS CHAR) END"
+                : '';
+            $refs[$name] = new ColumnRef($expr, '', $cmp, ColumnRef::kindFor($col['type']));
         }
 
         return new self($quotedTable, '', $refs);

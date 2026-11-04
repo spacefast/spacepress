@@ -64,6 +64,7 @@ const CONFIG_KEYS: &[&str] = &[
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
+    "existingTable",
     "label",
     "drafts",
     "revisions",
@@ -271,6 +272,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 Collection {
                     key: key.clone(),
                     table: c.table().to_string(),
+                    existing_table: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,
@@ -321,6 +323,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         let opts = collection_options(&c, &columns, ev, &mut out)?;
         let coll = out.schema.collections.get_mut(c.table()).expect("collection");
         coll.columns = columns;
+        coll.existing_table = opts.existing_table;
         coll.label = opts.label;
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
@@ -594,6 +597,7 @@ pub fn slugify_name(s: &str) -> String {
 }
 
 struct CollOpts {
+    existing_table: Option<String>,
     label: String,
     editor: bool,
     drafts: bool,
@@ -666,6 +670,30 @@ fn collection_options(
             ));
         }
     };
+    let existing_table = match o.get("existingTable") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) && name.len() <= 64 => {
+            Some(name.to_string())
+        }
+        _ => {
+            return Err(Diag::new(
+                span("existingTable"),
+                "existingTable requires table() and an exact SQL identifier of at most 64 ASCII characters",
+            ));
+        }
+    };
+    if let Some(name) = &existing_table
+        && out
+            .schema
+            .collections
+            .values()
+            .any(|other| other.existing_table.as_ref() == Some(name))
+    {
+        return Err(Diag::new(
+            span("existingTable"),
+            "two tables cannot bind the same existingTable",
+        ));
+    }
     let auth = c.kind == StorageKind::UserProjection;
     let editor = c.kind == StorageKind::Collection;
     if auth {
@@ -902,6 +930,7 @@ fn collection_options(
         }
     }
     Ok(CollOpts {
+        existing_table,
         label,
         editor,
         drafts,

@@ -27,3 +27,6 @@ runtime/identity/apps/node_modules/
 /site/public/zero.wasm
 /site/test-results/
 /site/playwright-report/
+
+# Disposable SQL adoption proof artifacts.
+/tests/wp/app-migrate/.run.*/

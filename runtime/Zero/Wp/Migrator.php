@@ -70,19 +70,41 @@ final class Migrator
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
-        $ledger = $this->ledger();
         $app = $this->schema->name();
-        $done = array_flip($this->done());
         $files = glob($this->dir . '/*.sql') ?: [];
         sort($files, SORT_STRING);
-        $applied = [];
+        $migrations = [];
         foreach ($files as $file) {
             $id = basename($file, '.sql');
+            $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
+            $migrations[$id] = self::statements($sql);
+        }
+        // Check every pending adoption before any DDL or ledger writes, even across tables/files.
+        $done = $this->keyed() ? array_flip($this->done()) : [];
+        foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {
                 continue;
             }
-            $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
-            foreach (self::statements($sql) as $i => $statement) {
+            foreach ($statements as $i => $statement) {
+                if (!str_starts_with($statement, '-- zero-adopt ') || isset($done[$id . ':' . ($i + 1)])) {
+                    continue;
+                }
+                try {
+                    $this->validateAdoption($statement);
+                    $this->db->run($statement);
+                } catch (DbError $e) {
+                    throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
+                }
+            }
+        }
+        $ledger = $this->ledger();
+        $done = array_flip($this->done());
+        $applied = [];
+        foreach ($migrations as $id => $statements) {
+            if (isset($done[$id])) {
+                continue;
+            }
+            foreach ($statements as $i => $statement) {
                 $step = $id . ':' . ($i + 1);
                 if (isset($done[$step])) {
                     continue;
@@ -100,6 +122,35 @@ final class Migrator
         }
 
         return $applied;
+    }
+
+    /** Adoption records compiler names in the snapshot; verify those names before recording the step. */
+    private function validateAdoption(string $statement): void
+    {
+        if (!str_starts_with($statement, '-- zero-adopt ')) {
+            return;
+        }
+        $expected = json_decode(explode("\n", substr($statement, strlen('-- zero-adopt ')), 2)[0], true, flags: JSON_THROW_ON_ERROR);
+        $table = $expected['table'];
+        $indexes = [];
+        foreach ($this->db->run('SELECT INDEX_NAME AS n, NON_UNIQUE AS u, COLUMN_NAME AS c, SUB_PART AS p FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', [$table]) as $row) {
+            $indexes[$row['n']][] = $row;
+        }
+        foreach ($expected['indexes'] as $index) {
+            $actual = $indexes[$index['name']] ?? [];
+            if (array_column($actual, 'c') !== $index['columns']
+                || array_filter($actual, static fn (array $r): bool => (int) $r['u'] !== (int) !$index['unique'] || $r['p'] !== null) !== []) {
+                throw new DbError("Cannot adopt $table: index {$index['name']} must already have the declared columns and uniqueness, without prefix lengths");
+            }
+        }
+        foreach ($expected['foreignKeys'] as $key) {
+            $actual = $this->db->run('SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', [$table, $key['name']]);
+            $rule = static fn (string $value): string => $value === 'NO ACTION' ? 'RESTRICT' : $value;
+            if (count($actual) !== 1 || $actual[0]['c'] !== $key['column'] || $actual[0]['t'] !== $key['table'] || $actual[0]['r'] !== $key['target']
+                || $rule($actual[0]['d']) !== $rule($key['onDelete']) || $rule($actual[0]['u']) !== $rule($key['onUpdate'])) {
+                throw new DbError("Cannot adopt $table: foreign key {$key['name']} must already have the declared target and actions");
+            }
+        }
     }
 
     /**
@@ -223,9 +274,16 @@ final class Migrator
     {
         $wpdb = $this->db->wpdb();
         // Users join Zero's transactions too (auth collections and guests, §6.2): check them always.
+        $names = [$wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta];
+        foreach ($this->schema->collections() as $spec) {
+            if (isset($spec['existingTable'])) {
+                $names[] = $spec['existingTable'];
+            }
+        }
+        $placeholders = implode(', ', array_fill(0, count($names), '?'));
         $rows = $this->db->run(
-            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (?, ?, ?, ?) OR TABLE_NAME LIKE ?)',
-            [$wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
+            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (' . $placeholders . ') OR TABLE_NAME LIKE ?)',
+            [...$names, $wpdb->esc_like($this->db->prefix() . 'zero_') . '%'],
         );
         $bad = [];
         foreach ($rows as $r) {

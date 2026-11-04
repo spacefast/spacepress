@@ -156,6 +156,8 @@ behavior is implemented and validated in the new runtime.
 
 For a WordPress site built with the original Zero, `zero migrate site` moves
 the content after this import; see [migrating from Zero 0.8](migrating-from-zero.md).
+For supported application tables and handlers, use [`zero migrate app --from zero-0.8`](migrating-from-zero.md#application-source-migration). The config-only command still refuses those declarations.
+
 This command does not move documents, uploads, string IDs, user identities,
 sessions, secrets, URLs or browser clients. It does not convert existing PHP or
 JavaScript plugins into Rust declarations. A complete old Zero migration also

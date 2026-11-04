@@ -29,7 +29,7 @@ export function releaseTarget({ platform = process.platform, arch = process.arch
 
 export function assetName({ version = metadata.version, target }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid Zero release version: ${version}`);
-  if (!Object.values(targets).includes(target)) throw new Error(`Unsupported Zero release target: ${target}`);
+  if (![...Object.values(targets), "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"].includes(target)) throw new Error(`Unsupported Zero release target: ${target}`);
   return `zero-v${version}-${target}.tar.gz`;
 }
 

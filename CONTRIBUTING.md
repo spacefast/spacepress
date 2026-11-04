@@ -171,6 +171,28 @@ browser dependencies otherwise fail the lane. Screenshots and failure traces
 are written below the system temporary directory, or `ZERO_ADMIN_BROWSER_OUTPUT`.
 The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
+## Releases
+
+The existing unsigned release workflow also builds the static musl Linux and
+Windows compiler archives and `zero.wasm` for Spacefast. It never publishes npm
+packages. PRs and manual runs retain Actions artifacts. A maintainer-created
+`v<Cargo version>` tag attaches the archives, wasm, and `compiler-assets.json`
+to a GitHub release. The manifest records the exact Git revision and SHA-256 of
+each asset. Every native archive retains its source revision, editor types,
+Cargo lockfile, and original dependency license notices.
+
+The `spacefast` npm release owns the platform packages and their versions.
+Its `packages/cli/zero-compiler.json` is the package-name and compiler pin
+constant. Each platform package has the same exact npm version as `spacefast`,
+which depends on it directly through `optionalDependencies`. The compiler's
+Cargo version can differ from that npm version. Its Git source revision must
+match both the downloaded manifest and each archive's `SOURCE.json`.
+Changing that pin requires a Spacefast changeset. Users install `spacefast`
+and run `sf zero`; there is no `@spacefast/zero-v2` wrapper.
+
+The independent upstream `@spacefast/zero-cli` scaffolding and acceptance
+checks remain available. They are not dependencies of `spacefast`.
+
 ## Layout
 
 | Path | What |

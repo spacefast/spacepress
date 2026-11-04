@@ -64,6 +64,20 @@ try {
     $check(!$migrator->keyed(), 'cross-database adoption created a migration ledger');
     $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'cross-database adoption ran earlier migration DDL');
     $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `zero_contacts_parentId_fk`");
+    $db->run("ALTER TABLE `$table` MODIFY `id` BIGINT NOT NULL AUTO_INCREMENT, MODIFY `parentId` BIGINT NULL");
+    $db->run("ALTER TABLE `$table` ADD CONSTRAINT `zero_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
+    $ddl = $db->run("SHOW CREATE TABLE `$table`");
+    try {
+        $migrator->migrate();
+        throw new \LogicException('adoption accepted signed keys for an unsigned foreign key');
+    } catch (\RuntimeException $e) {
+        $check(str_contains($e->getMessage(), 'column id must use BIGINT UNSIGNED'), $e->getMessage());
+    }
+    $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'signed key refusal changed the table');
+    $check(!$migrator->keyed(), 'signed key refusal created a migration ledger');
+    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'signed key refusal ran earlier migration DDL');
+    $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `zero_contacts_parentId_fk`");
+    $db->run("ALTER TABLE `$table` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, MODIFY `parentId` BIGINT UNSIGNED NULL");
     $db->run("ALTER TABLE `$table` ADD CONSTRAINT `zero_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
     $applied = $migrator->migrate();
     $check($applied === ['0001_init', '0002_update'], 'adoption and unique removal did not finish');
@@ -76,7 +90,7 @@ try {
     $query = \Zero\Sql::select($schema, $store, 'contacts', ['where' => ['active' => true]]);
     $check($db->run($query['sql'], $query['params']) === [], 'adopted native boolean false matched true');
     $check($migrator->migrate() === [], 'completed migrations were repeated');
-    echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names and referenced databases refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
+    echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names, referenced databases and signed keys refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
 } finally {
     $db->run("DROP TABLE IF EXISTS `$table`");
     $db->run("DROP TABLE IF EXISTS `$otherDatabase`.`$table`");

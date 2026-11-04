@@ -6,6 +6,6 @@ const contacts = table({
   active: boolean().default(false),
   parentId: integer().references(() => contacts.id, { onDelete: "set null" }),
 }, { existingTable: "sf_migrate_index_contacts" });
-const bookmarks = table({ id: id() });
+const bookmarks = table({ id: id(), contactId: integer().references(() => contacts.id, { onDelete: "set null" }) });
 
 export default defineConfig({ name: "adoption-indexes", tables: { bookmarks, contacts } });

@@ -14,8 +14,9 @@
  * the rest rather than guessing.
  *
  * This module is bundled into every route's build, so each route gets a fresh
- * registry. It imports nothing.
+ * registry. It has no runtime imports.
  */
+import type { PagesCode } from "./diagnostics.ts";
 
 /** Private-use code points: no author text or JSON spelling produces them by accident, and PHP neutralizes them in data. */
 export const TOKEN_START = "\u{E000}";
@@ -127,8 +128,8 @@ export const registry = new Registry(globalThis.__zeroPagesBuild);
 
 /** An error an author caused, with the code a diagnostic carries. */
 export class PagesError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
+  readonly code: PagesCode;
+  constructor(code: PagesCode, message: string) {
     super(message);
     this.code = code;
     this.name = "PagesError";
@@ -234,6 +235,12 @@ const handler: ProxyHandler<Target> = {
     if (prop === SHAPE) return target[SHAPE];
     if (prop === FALLBACK) return target[FALLBACK];
     const path = target[PATH];
+    const shape = target[SHAPE];
+    if (typeof prop === "string" && (
+      (shape.kind === "row" && Object.hasOwn(registry.schema[shape.collection]?.columns ?? {}, prop))
+      || (shape.kind === "record" && Object.hasOwn(shape.fields, prop))
+      || shape.kind === "open"
+    )) return child(path, shape, prop);
     if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") {
       if (target[SHAPE].kind === "rows" || target[SHAPE].kind === "row" || target[SHAPE].kind === "record") {
         return () => {
@@ -257,7 +264,8 @@ const handler: ProxyHandler<Target> = {
         throw new PagesError("dynamic_value", `${describePath(path)} is request data; it has no value at build time to serialize.`);
       };
     }
-    // Probes from runtimes and the JSX normalizer: a symbolic value is never a thenable, iterator or React element.
+    // Runtime probes are absent unless the schema defines the field. A field proxy is not callable,
+    // so a real `then` field cannot accidentally turn its parent into a Promise-like value.
     if (typeof prop === "symbol" || prop === "then" || prop === "$$typeof" || prop === "kind") return undefined;
     if (prop === "map" && target[SHAPE].kind === "rows") {
       const shape = target[SHAPE];
@@ -267,12 +275,6 @@ const handler: ProxyHandler<Target> = {
       };
     }
     return child(path, target[SHAPE], prop);
-  },
-  apply(target) {
-    throw new PagesError(
-      "dynamic_call",
-      `${describePath(target[PATH])}() runs per request in PHP, so it cannot be called while the page builds.`,
-    );
   },
   set(target, prop) {
     throw new PagesError("dynamic_value", `${describePath(target[PATH])}.${String(prop)} is request data and is read-only.`);
@@ -299,8 +301,7 @@ function spec(path: PathSegment[], mode: TokenMode, fallback: string | number | 
 }
 
 export function symbolic(path: PathSegment[], shape: Shape, fallback?: string | number): unknown {
-  // A function target so `apply` can refuse a call with a clear message instead of "not a function".
-  const target = Object.assign(function symbolicValue() {}, { [PATH]: path, [SHAPE]: shape, [FALLBACK]: fallback }) as unknown as Target;
+  const target: Target = { [PATH]: path, [SHAPE]: shape, [FALLBACK]: fallback };
   return new Proxy(target, handler);
 }
 
@@ -311,7 +312,7 @@ export function fallbackOf(value: unknown): string | number | undefined {
 
 /** The path a symbolic value was read from, or undefined for an ordinary value. */
 export function pathOf(value: unknown): PathSegment[] | undefined {
-  if (typeof value !== "function") return undefined;
+  if (value === null || typeof value !== "object") return undefined;
   const path = (value as unknown as Record<symbol, unknown>)[PATH];
   return Array.isArray(path) ? (path as PathSegment[]) : undefined;
 }

@@ -125,6 +125,30 @@ export default function Note({ item }) { return <p>{count(item.title)}</p>; }
   const invalidCount = await buildPages({ project: nonRows, out: out(nonRows) });
   assert.equal(invalidCount.ok, false);
   assert.equal(invalidCount.diagnostics.some((diagnostic) => diagnostic.code === "dynamic_value"), true);
+
+  const namedFields = ["kind", "then", "$$typeof", "toString", "valueOf", "toJSON"];
+  const protocols = await project({ [NOTE_PAGE]: `import { collectionPage } from "@spacefast/zero-pages";
+export const page = collectionPage("notes");
+export function load({ content, item }) {
+  return { then: item.then, selected: content.query.notes.findFirst({ where: { kind: item.kind, then: item.then, $$typeof: item.$$typeof } }) };
+}
+export default function Note({ item, then, selected }) {
+  return <><p>{item.kind}{then}{item.$$typeof}{item.toString}{item.valueOf}{item.toJSON}</p><p>{selected.kind}</p></>;
+}
+` });
+  const snapshotFile = path.join(protocols, "zero/migrations/snapshot.json");
+  const snapshot = JSON.parse(await readFile(snapshotFile, "utf8"));
+  for (const name of namedFields) snapshot.tables.notes.columns[name] = { type: "text" };
+  await writeFile(snapshotFile, JSON.stringify(snapshot));
+  const protocolResult = await buildPages({ project: protocols, out: out(protocols) });
+  assert.equal(protocolResult.ok, true, JSON.stringify(protocolResult.diagnostics));
+  const protocolRoute = (await manifestOf(protocols)).routes.find((route) => route.param !== null)!;
+  assert.deepEqual(Object.values(protocolRoute.tokens).filter((token) => token.path[0] === "item").map((token) => token.path[1]), namedFields);
+  assert.deepEqual(Object.values(protocolRoute.queries), [{
+    collection: "notes", op: "first", options: { where: {
+      kind: { $zp: ["item", "kind"] }, then: { $zp: ["item", "then"] }, $$typeof: { $zp: ["item", "$$typeof"] },
+    } },
+  }]);
 });
 
 test("CSS modules become hashed class names, global CSS and file imports become hashed assets", async () => {
@@ -278,6 +302,11 @@ export default function Note({ item }: CollectionPageProps<typeof page>) {
 ` });
   const result = await buildPages({ project: root, out: out(root) });
   assert.deepEqual(result.diagnostics.map((d) => brief(d, root)), [{ code: "unknown_field", at: `${NOTE_PAGE}:5:20` }]);
+  const missingLink = await refusal("pages/about/page.tsx", `import { link } from "@spacefast/zero-pages";
+export default function About() { return <a href={link("/missing")}>Missing</a>; }
+`);
+  assert.deepEqual(missingLink.diagnostics.map((diagnostic) => diagnostic.code), ["unknown_route"]);
+  assert.equal(missingLink.kept, true);
   assert.match(result.diagnostics[0]!.message, /Did you mean "title"\?/);
 });
 

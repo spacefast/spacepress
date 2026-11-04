@@ -56,6 +56,12 @@ final class Routes
         return 'zero_pages_' . $this->manifest['app'];
     }
 
+    public function reconciliationError(): ?string
+    {
+        $error = get_option($this->option() . '_error', null);
+        return is_string($error) ? $error : null;
+    }
+
     /** @return list<string> static patterns another Page or front page already owns; never claimed */
     public function conflicts(): array
     {
@@ -80,6 +86,20 @@ final class Routes
     public function pageId(string $routeId): int
     {
         return $this->pages()[$routeId] ?? 0;
+    }
+
+    /** Static routes need a reconciled Page and must still own their URL if reconciliation failed. */
+    public function canServe(array $route): bool
+    {
+        if ($route['param'] !== null) {
+            return true;
+        }
+        $pages = $this->pages();
+        $id = $pages[$route['id']] ?? 0;
+        $post = $id > 0 ? get_post($id) : null;
+        return $post instanceof \WP_Post && $post->post_type === 'page' && $post->post_status === 'publish'
+            && !in_array($route['pattern'], $this->conflicts(), true)
+            && $this->foreignOwner($route, $pages) === null;
     }
 
     /** @return ?array<string, mixed> the code route a Page belongs to */
@@ -214,6 +234,7 @@ final class Routes
     {
         $state = $this->state();
         if (($state['digest'] ?? null) === $this->manifest['digest'] && $this->pagesIntact()) {
+            delete_option($this->option() . '_error');
             return;
         }
         $lock = 'zero_pages_lock_' . $this->manifest['app'];
@@ -234,6 +255,9 @@ final class Routes
                 if ($owner !== null) {
                     // Never take over a URL or the front page that other content already owns.
                     $conflicts[] = (string) $route['pattern'];
+                    if (isset($pages[$route['id']])) {
+                        $wanted[$route['id']] = $pages[$route['id']];
+                    }
                     continue;
                 }
                 $body = (string) file_get_contents($directory . '/' . $route['body']);
@@ -260,7 +284,8 @@ final class Routes
                     $result = wp_insert_post($fields, true);
                 }
                 if (is_wp_error($result)) {
-                    throw new \RuntimeException('Zero pages: cannot write the Page for ' . $route['pattern'] . ': ' . $result->get_error_message());
+                    update_option($this->option() . '_error', 'Cannot write the Page for ' . $route['pattern'] . ': ' . $result->get_error_message(), false);
+                    return;
                 }
                 $id = (int) $result;
                 update_post_meta($id, self::META_APP, $this->manifest['app']);
@@ -268,18 +293,20 @@ final class Routes
                 update_post_meta($id, self::META_DIGEST, $route['bodyDigest']);
                 $wanted[$route['id']] = $id;
             }
+            $routeIds = array_column($this->static, 'id');
             foreach ($pages as $routeId => $id) {
-                if (!isset($wanted[$routeId]) && get_post($id) instanceof \WP_Post) {
+                if (!in_array($routeId, $routeIds, true) && get_post($id) instanceof \WP_Post) {
                     update_post_meta($id, '_zero_pages_retired', gmdate('c'));
                     wp_trash_post($id);
                 }
             }
             update_option($this->option(), ['digest' => $this->manifest['digest'], 'pages' => $wanted, 'conflicts' => $conflicts], true);
             $root = $wanted[$this->static['/']['id'] ?? ''] ?? 0;
-            if ($root > 0) {
+            if ($root > 0 && !in_array('/', $conflicts, true)) {
                 update_option('show_on_front', 'page');
                 update_option('page_on_front', $root);
             }
+            delete_option($this->option() . '_error');
         } finally {
             self::$reconciling = false;
             delete_option($lock);
@@ -306,25 +333,27 @@ final class Routes
     private function pagesIntact(): bool
     {
         $pages = $this->pages();
-        foreach ($pages as $id) {
-            $post = get_post($id);
-            if (!$post instanceof \WP_Post || $post->post_status !== 'publish') {
-                return false;
-            }
-        }
-        foreach ($this->static as $route) {
-            if (isset($pages[$route['id']]) && $this->foreignOwner($route, $pages) !== null) {
-                return false;
-            }
-        }
         $conflicts = $this->conflicts();
-        foreach ($conflicts as $pattern) {
-            $route = $this->static[$pattern] ?? null;
-            if ($route === null || $this->foreignOwner($route, $pages) === null) {
+        foreach ($this->static as $route) {
+            $conflicted = in_array($route['pattern'], $conflicts, true);
+            if ($conflicted !== ($this->foreignOwner($route, $pages) !== null)) {
+                return false;
+            }
+            if ($conflicted) {
+                continue;
+            }
+            $id = $pages[$route['id']] ?? 0;
+            $post = $id > 0 ? get_post($id) : null;
+            if (!$post instanceof \WP_Post || $post->post_type !== 'page' || $post->post_status !== 'publish') {
                 return false;
             }
         }
-        return count($pages) + count($conflicts) === count($this->static);
+        foreach ($conflicts as $pattern) {
+            if (!isset($this->static[$pattern])) {
+                return false;
+            }
+        }
+        return array_diff(array_keys($pages), array_column($this->static, 'id')) === [];
     }
 
     /** A Page this app created earlier for the route (found by meta), so a lost option never duplicates Pages. */

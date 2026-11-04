@@ -117,6 +117,12 @@ the file. Generated file names use a SHA-256 key of the app and route ID.
 - An item route serves the collection's **existing posts**. There is no
   duplicate Page per item.
 
+A temporary ownership conflict keeps the managed Page and its ID in place;
+Zero resumes serving it when the conflict clears. A managed Page write failure
+keeps the last successful route mapping and digest. WordPress continues
+serving requests, an administrator sees a separate error notice, and Zero
+retries reconciliation on the next request.
+
 ## Data: what a page may do
 
 A page runs once at build time. Data exists only per request, so values from
@@ -141,15 +147,15 @@ page reads with the trusted viewer. A missing, draft, unreadable or
 password-protected item is a real `404` with the not-found page. Query
 values may use `item` and `params` fields, never another query's rows.
 
-These are refused at build time, with `file:line:column`, before or while the
-page runs:
-
 The checker proves primitive literal and immutable primitive `const`
 conditions are static. Other conditions, operators and calls are refused
 even when a helper's value might happen to be static. This keeps aliases,
 destructured props and imported components from silently deciding a
 request-dependent branch at build time. Use the explicit rendering helpers
 for request data.
+
+These are refused at build time, with `file:line:column`, before or while the
+page runs:
 
 | Refused | Code | Instead |
 |---|---|---|

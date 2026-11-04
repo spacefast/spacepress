@@ -10,6 +10,7 @@ export type PagesCode =
   | "route_collision"
   | "reserved_path"
   | "route_id"
+  | "unknown_route"
   | "config"
   | "metadata"
   | "load"

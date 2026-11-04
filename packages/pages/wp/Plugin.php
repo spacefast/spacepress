@@ -79,6 +79,18 @@ final class Plugin
         add_filter('wp_insert_post_data', [$this, 'refuseReservedSlug'], PHP_INT_MAX - 1, 4);
         add_filter('the_content', fn (string $html): string => Renderer::current() === null ? Renderer::strip($html, $this->assetBase()) : $html, PHP_INT_MAX);
         add_action('admin_notices', [$this, 'conflictNotice']);
+        add_action('admin_notices', [$this, 'reconciliationNotice']);
+    }
+
+    public function reconciliationNotice(): void
+    {
+        $error = $this->routes->reconciliationError();
+        if ($error === null || !current_user_can('manage_options')) {
+            return;
+        }
+        printf('<div class="notice notice-error"><p>%s</p></div>', esc_html(
+            'Zero pages could not update its managed Pages. ' . $error . ' WordPress remains available; Zero will retry on the next request.',
+        ));
     }
 
     public function conflictNotice(): void
@@ -298,7 +310,7 @@ final class Plugin
             wp_safe_redirect($this->routes->urlFor((string) $owner['pattern']), 301);
             exit;
         }
-        if ($match === null || in_array($match['route']['pattern'], $this->routes->conflicts(), true)) {
+        if ($match === null || !$this->routes->canServe($match['route'])) {
             return;
         }
         // The root route serves the front page only; `/` also carries search, feeds and `?p=` queries.

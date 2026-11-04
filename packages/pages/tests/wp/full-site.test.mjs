@@ -51,16 +51,18 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   }
   const config = join(project, 'zero.config.ts');
   await writeFile(config, (await readFile(config, 'utf8'))
+    .replace('title: text().notNull().min(1).max(120),', 'title: text().notNull().min(1).max(120),\n  kind: text(),\n  then: text(),')
     .replace('body: richText(),', 'body: richText().access({ read: (ctx) => ctx.user?.role === "admin" || ctx.data.slug !== "masked-body" }),')
     .replace('count: integer().notNull().default(0),', 'count: integer().notNull().default(0),\n  label: text().notNull().default(""),'));
   const detailSource = join(project, 'pages/notes/[slug]/page.tsx');
   await writeFile(detailSource, (await readFile(detailSource, 'utf8'))
-    .replace('return { cheers };', 'const fallbackNote = content.query.notes.findFirst({ where: { dek: orElse(item.dek, "Fallback query sentinel") } });\n  return { cheers, fallbackNote };')
-    .replace('NotePage({ item, cheers }: Props)', 'NotePage({ item, cheers, fallbackNote }: Props)')
+    .replace('return { cheers };', 'const fallbackNote = content.query.notes.findFirst({ where: { dek: orElse(item.dek, "Fallback query sentinel") } });\n  return { cheers, fallbackNote, then: item.then };')
+    .replace('NotePage({ item, cheers }: Props)', 'NotePage({ item, cheers, fallbackNote, then }: Props)')
     .replace('<RichText value={item.body} />', `<Show when={orElse(item.dek, "fallback")}><p className="fallback-truthy">Truthy fallback</p></Show>
       <Show when={orElse(item.dek, "fallback")} is="fallback"><p className="fallback-equals">Default summary</p></Show>
       <Show when={orElse(cheers.label, "fallback")}><p className="fallback-empty">No applause label yet</p></Show>
       <p className="fallback-query">{fallbackNote.title}</p>
+      <p className="schema-probes">{item.kind} | {then}</p>
       <RichText value={item.body} />`));
   const site = join(project, '.zero/dev/wordpress');
   let browser;
@@ -96,6 +98,9 @@ add_action('wp_head', static function (): void {
     echo '<meta name="zero-pages-test-body" content="' . esc_attr(base64_encode(wp_json_encode(['content' => get_the_content(), 'excerpt' => get_the_excerpt()]))) . '">';
 });
 add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero-pages-test-context">' . get_the_ID() . ':' . esc_html(get_the_title()) . '</p>');
+add_filter('wp_insert_post_empty_content', static function (bool $empty, array $data): bool {
+    return $empty || (get_option('zero_pages_test_fail_write') && ($data['post_type'] ?? '') === 'page' && ($data['post_name'] ?? '') === 'about');
+}, 10, 2);
 `);
 
   const password = (await wp('user', 'application-password', 'create', 'admin', 'zero-pages-acceptance', '--porcelain')).split('\n').at(-1);
@@ -123,6 +128,7 @@ add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero
     title: 'First light', slug: 'first-light', dek: 'Dawn on the <ridge> & beyond', status: 'published',
     body: '<!-- wp:paragraph --><p>The body of the <em>first</em> note.</p><!-- /wp:paragraph --><!-- wp:post-title {"isLink":true} /--><!-- wp:shortcode -->[zero_pages_test_context]<!-- /wp:shortcode -->',
     deskNotes: 'Desk-only remark',
+    kind: 'Field report', then: 'Next observation',
   } });
   assert.equal(published.status, 201, JSON.stringify(published.body));
   const note = published.body.data;
@@ -163,6 +169,7 @@ add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero
 
   const detail = await page('/notes/first-light/');
   assert.equal(detail.status, 200);
+  assert.match(detail.html, /class="[^"]*schema-probes[^"]*">Field report \| Next observation<\/p>/, 'schema fields remain data, including a loader prop named then');
   assert.match(detail.html, /<title>First light · Field Notes<\/title>/);
   assert.match(detail.html, /<meta name="description" content="Dawn on the &lt;ridge&gt; &amp; beyond">/);
   assert.match(detail.html, new RegExp(`<link rel="canonical" href="${base}/notes/first-light/">`));
@@ -284,9 +291,29 @@ add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero
   await writeFile(aboutSource, (await readFile(aboutSource, 'utf8')).replace('<h1>About</h1>', '<h1>About this site</h1>'));
   const rebuilt = await buildPages({ project, out: content });
   assert.equal(rebuilt.ok, true);
+  await wp('option', 'update', 'zero_pages_test_fail_write', '1');
   await rm(join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
   await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  assert.equal((await page('/about/')).status, 200, 'a managed Page write failure does not abort init');
+  const failedState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  assert.equal(failedState.digest, owned.digest, 'a failed reconciliation does not commit the new digest');
+  assert.deepEqual(failedState.pages, owned.pages);
+  assert.deepEqual(failedState.conflicts, []);
+  const contactDuringFailure = await page('/contact/');
+  assert.equal(contactDuringFailure.status, 200);
+  assert.match(contactDuringFailure.html, /Contact us/);
+  assert.doesNotMatch(contactDuringFailure.html, /Zero contact/, 'a new route cannot claim native content while reconciliation is incomplete');
+  assert.match(await wp('option', 'get', 'zero_pages_fullsite_error'), /Cannot write the Page for \/about:/);
+  assert.equal(await wp('eval', 'echo get_option("zero_pages_lock_fullsite", false) === false ? "released" : "held";'), 'released');
+  const nativeDuringFailure = await api('/wp-json/wp/v2/types/page', { auth: false });
+  assert.equal(nativeDuringFailure.status, 200);
+  assert.equal(nativeDuringFailure.body.slug, 'page', 'unrelated WordPress REST remains usable');
+  const errorNotice = await wp('eval', 'wp_set_current_user(1); do_action("admin_notices");');
+  assert.match(errorNotice, /Zero pages could not update its managed Pages/);
+  assert.match(errorNotice, /Cannot write the Page for \/about:/);
+  await wp('option', 'delete', 'zero_pages_test_fail_write');
   assert.match((await page('/about/')).html, /<h1 class="wp-block-heading">About this site<\/h1>/);
+  assert.equal(await wp('eval', 'echo get_option("zero_pages_fullsite_error", false) === false ? "cleared" : "present";'), 'cleared', 'successful retry clears the persisted notice');
   const after = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
   assert.deepEqual(Object.fromEntries(Object.entries(after.pages)), owned.pages);
   assert.notEqual(after.digest, owned.digest);
@@ -318,6 +345,28 @@ add_shortcode('zero_pages_test_context', static fn (): string => '<p class="zero
   const frontState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
   assert.equal(frontState.digest, recoveredState.digest);
   assert.deepEqual(frontState.conflicts, ['/']);
+  const homeId = owned.pages['u:home'];
+  assert.equal(frontState.pages['u:home'], homeId);
+  assert.equal(await wp('post', 'get', String(homeId), '--field=post_status'), 'publish', 'a temporary conflict does not retire the managed Page');
+  assert.match((await page(`/?page_id=${homeId}`)).headers.get('location'), new RegExp(`${base}/$`), 'an alternate URI redirects without serving the conflicted code page');
+  await wp('option', 'update', 'page_on_front', '0');
+  const restoredHome = await page('/');
+  assert.equal(restoredHome.status, 200);
+  assert.match(restoredHome.html, /<h1 class="wp-block-heading">Notes from the field<\/h1>/);
+  assert.equal(postContext(restoredHome.html).queried, homeId, 'clearing the conflict reuses the original Page identity');
+  assert.equal(Number(await wp('option', 'get', 'page_on_front')), homeId);
+  assert.deepEqual(JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json')).pages, recoveredState.pages);
+  assert.equal(await wp('post', 'get', String(nativeFrontId), '--field=post_status'), 'publish');
+
+  // Removing the route itself still retires its managed Page.
+  await rm(join(project, 'pages/contact'), { recursive: true });
+  assert.equal((await buildPages({ project, out: content })).ok, true);
+  await rm(join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
+  assert.equal((await page('/about/')).status, 200);
+  const retiredState = JSON.parse(await wp('option', 'get', 'zero_pages_fullsite', '--format=json'));
+  assert.equal(Object.hasOwn(retiredState.pages, 'p:2f636f6e74616374'), false);
+  assert.equal(await wp('post', 'get', String(recoveredState.pages['p:2f636f6e74616374']), '--field=post_status'), 'trash');
 
   // 8. A refused rebuild leaves the installed site and the previous build untouched.
   await writeFile(join(project, 'pages/about/page.tsx'), `export default function About({ item }: { item: { dek: string } }) {

@@ -14,8 +14,8 @@ this runtime and uses only Zero's public read and write seams.
 The design's Rust-compiled TSX regions, block-binding sources and compiled
 loaders would reuse Zero's JavaScript-to-PHP semantics for arbitrary
 expressions. That needs compiler and core changes this optional package must
-not own. The cost is a deliberately small subset: no expressions over request
-data beyond field reads, template strings, `<Show>`, `orElse` and `.map`.
-Everything else is refused with its source location. Widening it later means
-moving regions onto the compiler, not loosening the proxy. Details and limits
-are in [Pages](../pages.md).
+not own. The cost is a deliberately small subset with explicit helpers for
+conditions, fallbacks, row counts, rich text and links; [Pages](../pages.md)
+lists the supported operations. Other expressions are refused with their
+source location. Widening it later means moving regions onto the compiler,
+not loosening the proxy.

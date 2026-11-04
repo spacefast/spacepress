@@ -10,6 +10,7 @@ $dir = '/tmp/zero-app-migrate-indexes/zero/app/migrations';
 $migrator = new \Zero\Wp\Migrator($db, $dir, $schema);
 $ledger = $db->prefix() . 'zero__migrations';
 $table = 'sf_migrate_index_contacts';
+$otherDatabase = 'zero_adopt_other';
 $check = static function (bool $ok, string $message): void {
     if (!$ok) { throw new \RuntimeException($message); }
 };
@@ -38,7 +39,20 @@ try {
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'refused foreign key adoption changed the table');
     $check(!$migrator->keyed(), 'refused foreign key adoption created a migration ledger');
-    $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `old_parent_fk`, ADD CONSTRAINT `zero_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
+    $db->run("CREATE TABLE `$otherDatabase`.`$table` (`id` BIGINT UNSIGNED NOT NULL PRIMARY KEY) ENGINE=InnoDB");
+    $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `old_parent_fk`, ADD CONSTRAINT `zero_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$otherDatabase`.`$table` (`id`) ON DELETE SET NULL");
+    $ddl = $db->run("SHOW CREATE TABLE `$table`");
+    try {
+        $migrator->migrate();
+        throw new \LogicException('adoption accepted a foreign key targeting another database');
+    } catch (\RuntimeException $e) {
+        $check(str_contains($e->getMessage(), 'foreign key zero_contacts_parentId_fk'), $e->getMessage());
+    }
+    $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'cross-database adoption changed the table');
+    $check(!$migrator->keyed(), 'cross-database adoption created a migration ledger');
+    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'cross-database adoption ran earlier migration DDL');
+    $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `zero_contacts_parentId_fk`");
+    $db->run("ALTER TABLE `$table` ADD CONSTRAINT `zero_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
     $applied = $migrator->migrate();
     $check($applied === ['0001_init', '0002_update'], 'adoption and unique removal did not finish');
     $check($db->run("SHOW INDEX FROM `$table` WHERE Key_name = 'email_unique'") === [], 'the later migration did not remove the adopted index');
@@ -50,9 +64,10 @@ try {
     $query = \Zero\Sql::select($schema, $store, 'contacts', ['where' => ['active' => true]]);
     $check($db->run($query['sql'], $query['params']) === [], 'adopted native boolean false matched true');
     $check($migrator->migrate() === [], 'completed migrations were repeated');
-    echo "adopted-constraint proof: wrong index and foreign key names refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
+    echo "adopted-constraint proof: wrong index names, foreign key names and referenced databases refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
 } finally {
     $db->run("DROP TABLE IF EXISTS `$table`");
+    $db->run("DROP TABLE IF EXISTS `$otherDatabase`.`$table`");
     $db->run("DROP TABLE IF EXISTS `$ledger`");
     $db->run('DROP TABLE IF EXISTS adopt_zero__revisions');
     $db->run('DROP TABLE IF EXISTS adopt_zero_bookmarks');

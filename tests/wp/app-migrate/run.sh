@@ -32,6 +32,8 @@ sed -e 's/\.unique()//' -e 's/\.references(() => contacts.id, { onDelete: "set n
 "$zero" build "$work/indexes" --quiet >/dev/null
 docker compose -p "$ZERO_WP_PROJECT" cp "$work/indexes/.zero/wp-content/plugins/zero-app-adoption-indexes" cli:/tmp/zero-app-migrate-indexes >/dev/null 2>&1
 docker compose -p "$ZERO_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/zero-app-migrate-indexes.php >/dev/null 2>&1
+docker compose -p "$ZERO_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root -e \
+  "CREATE DATABASE zero_adopt_other; GRANT ALL ON zero_adopt_other.* TO 'wordpress'@'%';"
 "$wp/harness.sh" wp eval-file /tmp/zero-app-migrate-indexes.php
 # A separate source candidate proves the portable zero-identity gate on a fresh site.
 "$zero" migrate app --from zero-0.8 tests/fixtures/app-migrate/content --out "$work/content" > "$work/content-report.json"

@@ -144,7 +144,7 @@ final class Migrator
             }
         }
         foreach ($expected['foreignKeys'] as $key) {
-            $actual = $this->db->run('SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', [$table, $key['name']]);
+            $actual = $this->db->run('SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', [$table, $key['name']]);
             $rule = static fn (string $value): string => $value === 'NO ACTION' ? 'RESTRICT' : $value;
             if (count($actual) !== 1 || $actual[0]['c'] !== $key['column'] || $actual[0]['t'] !== $key['table'] || $actual[0]['r'] !== $key['target']
                 || $rule($actual[0]['d']) !== $rule($key['onDelete']) || $rule($actual[0]['u']) !== $rule($key['onUpdate'])) {

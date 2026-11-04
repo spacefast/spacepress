@@ -121,6 +121,17 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
     }
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
+    let migration_dir = project.join("zero/migrations");
+    if migration_dir.is_dir() {
+        for entry in std::fs::read_dir(&migration_dir).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            safe_migration_name(&name)?;
+            // Retain migration evidence as source data. Only the host's previous
+            // compiled tree may select the executable migration baseline.
+            fs.read_to_string(&entry.path()).map_err(io)?;
+        }
+    }
     for path in fs.files.borrow().iter() {
         safe_input(path)?;
         let bundle = if is_vendor(path) { &mut vendor } else { &mut app };
@@ -150,7 +161,7 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
         serde_json::to_vec(&manifest).map_err(|e| failure(e.to_string()))?,
     )
     .map_err(io)?;
-    copy_public(&project.join("public"), &destination.join("public"))?;
+    public_assets(&project.join("public"), Some(&destination.join("public")))?;
     Ok(manifest)
 }
 
@@ -170,20 +181,41 @@ fn safe_input(path: &str) -> Result<(), Diag> {
     Ok(())
 }
 
-fn copy_public(from: &Path, to: &Path) -> Result<(), Diag> {
-    if !from.exists() {
+fn safe_migration_name(name: &str) -> Result<(), Diag> {
+    safe_input(name)?;
+    if name == "snapshot.json"
+        || (name.len() > 9
+            && name.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+            && name.as_bytes()[4] == b'_'
+            && name.ends_with(".sql")
+            && !name.contains('/'))
+    {
         return Ok(());
     }
-    std::fs::create_dir_all(to).map_err(io)?;
+    Err(failure(format!("invalid hosted migration metadata: {name}")))
+}
+
+fn public_assets(from: &Path, to: Option<&Path>) -> Result<(), Diag> {
+    match std::fs::symlink_metadata(from) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(io(error)),
+        Ok(metadata) if !metadata.is_dir() => return Err(failure("public assets root must be a real directory")),
+        Ok(_) => {}
+    }
+    if let Some(to) = to {
+        std::fs::create_dir_all(to).map_err(io)?;
+    }
     for entry in std::fs::read_dir(from).map_err(io)? {
         let entry = entry.map_err(io)?;
         let name = entry.file_name();
         safe_input(&name.to_string_lossy())?;
         let kind = entry.file_type().map_err(io)?;
         if kind.is_dir() {
-            copy_public(&entry.path(), &to.join(name))?;
+            public_assets(&entry.path(), to.map(|to| to.join(&name)).as_deref())?;
         } else if kind.is_file() {
-            std::fs::copy(entry.path(), to.join(name)).map_err(io)?;
+            if let Some(to) = to {
+                std::fs::copy(entry.path(), to.join(name)).map_err(io)?;
+            }
         } else {
             return Err(failure("public assets cannot contain symlinks or special files"));
         }
@@ -232,7 +264,8 @@ impl Fs for CapturedFs {
 }
 
 /// Compile a captured source tree with a host-owned previous compiled tree as the migration baseline.
-/// Output is exclusively generated code, never user-provided PHP or SQL. It must not exist yet.
+/// Executable output is compiler-generated. Uploaded migration metadata is archived separately.
+/// The output directory must not exist yet.
 pub fn compile(
     source: &Path,
     output: &Path,
@@ -281,6 +314,15 @@ pub fn compile(
     }
     let name = manifest.name;
     let root = source.join("modules");
+    let source_migrations = sources
+        .files
+        .iter()
+        .filter_map(|(path, text)| path.strip_prefix("zero/migrations/").map(|name| (name, text)))
+        .map(|(name, text)| {
+            safe_migration_name(name)?;
+            Ok((name.to_owned(), text.clone()))
+        })
+        .collect::<Result<Vec<_>, Diag>>()?;
     let fs = Rc::new(CapturedFs {
         root: root.clone(),
         sources,
@@ -311,7 +353,15 @@ pub fn compile(
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
+    public_assets(&assets.join("public"), None)?;
     std::fs::create_dir(output).map_err(io)?;
+    if !source_migrations.is_empty() {
+        let archive = output.join("source-migrations");
+        std::fs::create_dir(&archive).map_err(io)?;
+        for (name, text) in source_migrations {
+            std::fs::write(archive.join(name), text).map_err(io)?;
+        }
+    }
     let migrations = output.join("migrations");
     std::fs::create_dir(&migrations).map_err(io)?;
     if let Some(previous) = previous_migrations {

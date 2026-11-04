@@ -22,6 +22,12 @@ unchanged vendor blob is reused. The manifest changes only when its independent
 hashes or metadata change. Source files and generated PHP are private, while
 public assets use the usual public file catalog.
 
+The app bundle also retains committed `zero/migrations` SQL and its snapshot as
+private source metadata. The host archives those bytes outside the executable
+plugin migrations. It generates executable plans from the compiled schema and
+its own previous compiled version, so uploaded SQL never selects the database
+baseline or executes during initialization.
+
 ## Shared MySQL binding
 
 The host binds a Space to its own WordPress table prefix before normal plugins,

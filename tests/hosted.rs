@@ -29,6 +29,12 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         "export const suffix = '-installed';",
     );
     write(&project, "public/logo.svg", "<svg/>");
+    write(&project, "zero/migrations/0001_adopt.sql", "SELECT 'archived only';");
+    write(
+        &project,
+        "zero/migrations/snapshot.json",
+        r#"{"version":2,"tables":{}}"#,
+    );
     write(&project, "unrelated.ts", "this is not an input");
     let first = work.path().join("first");
     let sources = zero::bundle::sources(&project, &first).unwrap();
@@ -49,6 +55,14 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let compiled_second = work.path().join("compiled-second");
     let manifest = zero::bundle::compile(&first, &compiled_first, &first, None).unwrap();
     assert_eq!(manifest["compiler"], zero::bundle::VERSION);
+    assert_eq!(
+        fs::read_to_string(compiled_first.join("source-migrations/0001_adopt.sql")).unwrap(),
+        "SELECT 'archived only';"
+    );
+    assert_eq!(
+        fs::read_to_string(compiled_first.join("source-migrations/snapshot.json")).unwrap(),
+        r#"{"version":2,"tables":{}}"#
+    );
     let path = "plugins/zero-app-app/zero/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
     let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_zero"))
@@ -91,8 +105,24 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
     assert!(zero::bundle::sources(&project, &work.path().join("upload")).is_err());
     fs::remove_dir_all(project.join("public")).unwrap();
+    let bundle = work.path().join("bundle");
+    zero::bundle::sources(&project, &bundle).unwrap();
+    write(&bundle, "public/nested/unsafe.PHP", "<?php echo 'no';");
+    let output = work.path().join("compiled");
+    assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+    assert!(!output.exists());
+    fs::remove_dir_all(bundle.join("public")).unwrap();
     #[cfg(unix)]
     {
+        fs::create_dir(bundle.join("public")).unwrap();
+        write(work.path(), "outside.txt", "private");
+        std::os::unix::fs::symlink(work.path().join("outside.txt"), bundle.join("public/linked.txt")).unwrap();
+        assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(!output.exists());
+        fs::remove_dir_all(bundle.join("public")).unwrap();
+        std::os::unix::fs::symlink(&project, bundle.join("public")).unwrap();
+        assert!(zero::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(!output.exists());
         write(work.path(), "outside.ts", "export const value = 1;");
         std::os::unix::fs::symlink(work.path().join("outside.ts"), project.join("outside.ts")).unwrap();
         write(

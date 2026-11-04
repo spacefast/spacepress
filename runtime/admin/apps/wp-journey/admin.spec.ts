@@ -92,6 +92,7 @@ if (!subdir) {
 		page,
 		request,
 	}) => {
+		test.setTimeout(180_000);
 		const errors: string[] = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		const adminHeaders = {

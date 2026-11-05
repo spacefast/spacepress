@@ -506,6 +506,30 @@ problem('outer rollback discards callbacks registered by a nested write', functi
         throw new JsError('rollback');
     });
 }, 422, 'rejected');
+// Catching an inner failure cannot make its partial writes durable.
+$beforeInnerFailure = $committed;
+try {
+    $db->transaction(function () use ($db, &$committed): void {
+        $db->update('items', ['qty' => 77], ['name' => 'Hammer']);
+        try {
+            $db->transaction(function () use ($db, &$committed): void {
+                $db->insert('logs', ['message' => 'caught-inner-write']);
+                \Zero\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'must not run'; });
+                throw new RuntimeException('inner failure');
+            });
+        } catch (RuntimeException) {
+            $db->insert('logs', ['message' => 'after-caught-inner']);
+        }
+    });
+    check('rollback-only commit throws', false);
+} catch (RuntimeException $e) {
+    eq('rollback-only commit throws', $e->getMessage(), 'Cannot commit: a joined transaction failed');
+}
+eq('caught inner failure rolls back the whole transaction and discards callbacks', [
+    $db->findFirst('items', ['where' => ['name' => 'Hammer']])['qty'],
+    $db->findMany('logs', ['where' => ['message' => ['in' => ['caught-inner-write', 'after-caught-inner']]]]),
+    $committed,
+], [6, [], $beforeInnerFailure]);
 // A post-commit failure cannot roll back durable data or undo callbacks already applied.
 problem('post-commit exception propagates', function () use ($db, $wp) {
     $db->transaction(function () use ($db, $wp) {

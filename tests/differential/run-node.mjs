@@ -5,6 +5,7 @@
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 register(new URL("./resolve-zero.mjs", import.meta.url));
+const { transaction } = await import("./zero-shim.mjs");
 const mod = await import(pathToFileURL(process.argv[2]).href);
 const config = mod.default;
 const out = {};
@@ -17,7 +18,7 @@ const run = async (name, fn) => {
 };
 const hookCtx = { user: null };
 for (const [name, a] of Object.entries(config.actions ?? {})) {
-  await run(name, () => a.handler({}, hookCtx));
+  await run(name, () => transaction(() => a.handler({}, hookCtx)));
 }
 function* columns(fields, prefix = [], dataPath = []) {
   for (const [name, b] of Object.entries(fields)) {

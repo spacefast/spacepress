@@ -261,7 +261,11 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Two things are outside that guarantee: an
+back every write of the request. Nested runtime transactions join without
+savepoints. Any failed joined operation marks the outer transaction rollback-only,
+even if an application hook catches its exception. Attempting the outer commit
+rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
+the outer operation fail and retry the complete unit of work. Two things are outside that guarantee: an
 `afterCommit` callback runs after the commit, so its failure propagates without
 undoing the request; and `wp zero migrate` records each DDL statement as it
 succeeds (MySQL DDL commits implicitly), so a later statement's failure leaves

@@ -738,7 +738,7 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
-    #[cfg(feature = "cli")]
+    #[cfg(feature = "host")]
     if let Some(bytes) = runtime("client/index.ts") {
         let runtime = String::from_utf8_lossy(bytes);
         let body = runtime
@@ -770,7 +770,7 @@ pub(crate) fn registry_value(c: &Column) -> String {
 
 /// Emit a dependency-free browser module and matching declarations from the canonical client.
 /// This strips client TypeScript only; compiler input bundles retain their original sources.
-#[cfg(feature = "cli")]
+#[cfg(feature = "host")]
 fn browser_artifacts(source: &str) -> (String, String) {
     use oxc_allocator::Allocator;
     use oxc_codegen::Codegen;

@@ -80,10 +80,12 @@ export class Compiler {
 
   /** From the module's bytes (Node, tests) or a fetch of it (the browser). */
   static async load(source: BufferSource | Response | Promise<Response>): Promise<Compiler> {
+    const unavailable = () => { throw new Error("Host filesystem requires a host adapter; pass files in memory in the browser"); };
+    const imports = { host: { read_file: unavailable, stat: unavailable, canonicalize: unavailable, read_dir: unavailable } };
     const result =
       source instanceof ArrayBuffer || ArrayBuffer.isView(source)
-        ? await WebAssembly.instantiate(source, {})
-        : await WebAssembly.instantiateStreaming(source, {});
+        ? await WebAssembly.instantiate(source, imports)
+        : await WebAssembly.instantiateStreaming(source, imports);
     return new Compiler(result.instance.exports as unknown as Exports);
   }
 

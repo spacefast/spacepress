@@ -65,6 +65,22 @@ jobs:
           ZERO_DEPLOY_BIN: ${{ github.workspace }}/target/debug/zero
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --component clippy --target x86_64-unknown-linux-musl --target wasm32-unknown-unknown
+      - run: cargo build --locked --no-default-features --features host --target x86_64-unknown-linux-musl
+      - run: cargo clippy --locked --lib --no-default-features --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo build --locked --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
+      - run: cargo build --locked --bin zero
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: node --test tests/wasm/host.test.mjs
+
   php:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

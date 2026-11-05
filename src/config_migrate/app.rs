@@ -1,4 +1,5 @@
 //! A one-time source transformation. No legacy runtime is installed in the target.
+mod spacefast;
 mod transform;
 
 use super::{Entry, Failure, fail};
@@ -23,8 +24,7 @@ pub struct Report {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str =
-    "usage: zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <space-id>] [--dry-run] [--json]";
+const USAGE: &str = "usage: zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <space-id>] [--users] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -32,6 +32,7 @@ struct Args {
     out: PathBuf,
     space: Option<String>,
     dry_run: bool,
+    users: bool,
 }
 
 #[cfg(feature = "cli")]
@@ -41,6 +42,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
     let mut out = None;
     let mut space = None;
     let mut dry_run = false;
+    let mut users = false;
     let mut json = false;
     let mut it = raw.iter();
     while let Some(arg) = it.next() {
@@ -48,6 +50,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
             "--from" if from.is_none() => from = Some(it.next().ok_or(USAGE)?.as_str()),
             "--out" if out.is_none() => out = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--space" if space.is_none() => space = Some(it.next().ok_or(USAGE)?.clone()),
+            "--users" if !users => users = true,
             "--dry-run" if !dry_run => dry_run = true,
             "--json" if !json => json = true,
             s if s.starts_with('-') => return Err(format!("unknown or repeated flag {s}\n{USAGE}")),
@@ -63,6 +66,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
         out: out.ok_or(USAGE)?,
         space,
         dry_run,
+        users,
     })
 }
 
@@ -75,7 +79,7 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let mut candidate = migrate(Rc::new(loader::Disk), &args.input, args.space.as_deref());
+    let mut candidate = migrate(Rc::new(loader::Disk), &args.input, args.space.as_deref(), args.users);
     if std::fs::symlink_metadata(&args.out).is_ok() {
         candidate.report.errors.push(fail(
             "",
@@ -111,7 +115,7 @@ pub struct Candidate {
     pub files: BTreeMap<String, String>,
 }
 
-pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>) -> Candidate {
+pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>, users: bool) -> Candidate {
     let mut report = Report {
         version: 1,
         source: "zero-0.8",
@@ -122,7 +126,7 @@ pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>) -> Candidate {
         connector_roles: serde_json::json!({}),
     };
     let mut files = BTreeMap::new();
-    if let Err(e) = convert(fs, input, space, &mut report, &mut files) {
+    if let Err(e) = convert(fs, input, space, users, &mut report, &mut files) {
         report.errors.push(e);
     }
     if !report.errors.is_empty() {
@@ -141,6 +145,7 @@ fn convert(
     fs: Rc<dyn Fs>,
     input: &Path,
     space: Option<&str>,
+    users: bool,
     report: &mut Report,
     files: &mut BTreeMap<String, String>,
 ) -> Result<(), Failure> {
@@ -159,6 +164,8 @@ fn convert(
             .get(&entry)
             .ok_or_else(|| fail("", "entry source must resolve to server/index.ts inside the capsule"))?,
         space,
+        users,
+        fs.is_dir(&root.join("content/posts")),
         &mut report.entries,
         &mut report.errors,
     )?;
@@ -211,16 +218,10 @@ fn convert(
         "zero/migrations/snapshot.json".into(),
         serde_json::to_string_pretty(&built.snapshot).unwrap(),
     );
-    if report
-        .connector_roles
-        .as_object()
-        .is_some_and(|roles| !roles.is_empty())
-    {
-        files.insert(
-            "connector-roles.json".into(),
-            serde_json::to_string_pretty(&report.connector_roles).unwrap(),
-        );
-    }
+    files.insert(
+        "connector-roles.json".into(),
+        serde_json::to_string_pretty(&report.connector_roles).unwrap(),
+    );
     Ok(())
 }
 

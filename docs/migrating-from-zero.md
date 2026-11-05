@@ -20,7 +20,8 @@ zero migrate app --from zero-0.8 ./old-app --out ./migrated-app --space spc_exam
 zero check ./migrated-app
 ```
 
-The input directory must contain `server/index.ts`. Local TypeScript helper
+The input may be a Spacefast 0.8 project root with `sf.jsonc`, `server/index.ts`
+and `content/`. It must contain `server/index.ts`. Local TypeScript helper
 imports are copied without running them. The destination must be new, including
 for a dry run. Both forms print JSON, and both compile the generated app before
 reporting success. `--json` is accepted for callers that set it explicitly.
@@ -66,14 +67,23 @@ run in v2's transaction. Parameters become named action inputs; URLs, envelopes
 and error transport use v2's action API. Existing browser clients require the
 v2 generated client and the hosting integration's reserved API URL.
 
-Content declarations use the existing config importer. Content rows still need
-`zero migrate site` and its content-model release, as described below. Do not
-activate a candidate that leaves unsupported source behavior behind.
+Content declarations use the existing config importer. Native `posts` declarations,
+or a `content/posts` directory, add a post-backed `posts` collection with title
+and rich-text body. Spacefast's data migration copies the fenced native rows
+into that collection with their IDs, authors, dates and revisions intact. Legacy
+sync declarations are dropped with a review hint; hosted edits do not rebuild
+static frontends. Custom native post fields need an explicit port. Other content
+collections use `zero migrate site` and their content-model release on standalone
+WordPress. Do not activate a candidate before its data migration succeeds.
 
-`auth.requireSignIn` becomes an existing zero-identity signed-in gate on actions.
+An `auth` declaration adds a `members` user projection with a required unique
+email and display name.
+Use `--users` when the Space has Space Users enabled but its capsule has no
+`auth` declaration. `auth.requireSignIn` becomes a zero-identity signed-in gate on actions.
 The portable `ctx.user` supplies signed-in/guest flags and display names. Legacy
-principal IDs, auth methods and upgrade callbacks are refused. Existing sessions,
+principal IDs, auth methods and upgrade callbacks are refused. Standalone sessions,
 account mappings and ownership transfer require a separate identity migration.
+Spacefast moves accounts and sessions in its scoped data migration.
 The command does not invent `wp:<id>` owners or install an identity framework.
 
 Connector declarations produce a separate `connector-roles.json` host overlay,
@@ -82,6 +92,7 @@ keep their roles. The file carries no credentials or grants and is not part of
 the portable v2 config. Connector calls in handlers are refused. Spacefast's
 hosting integration owns applying this overlay and account sessions.
 
+Realtime declarations are dropped with a review hint: realtime is not supported.
 Endpoints, pages, layouts, islands, unknown context services, dynamic database
 builders, pagination, optional-field range comparisons, npm imports and executable
 schema factories require an explicit port. Row IDs above JavaScript's safe integer

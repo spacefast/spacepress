@@ -1244,8 +1244,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }) => {
                         // Every binding the declaration introduces (`let { i } = ...` too).
                         let mut bindings = Vec::new();
-                        pat_bindings(pat, &mut bindings);
-                        let captured: Vec<Span> = bindings.into_iter().filter(|b| self.effects.captured(*b)).collect();
+                        pat.bindings(&mut bindings);
+                        let captured: Vec<Span> = bindings
+                            .into_iter()
+                            .map(|(_, span)| span)
+                            .filter(|span| self.effects.captured(*span))
+                            .collect();
                         let scope = self.fx().scopes.last().cloned().unwrap_or_default();
                         let mut locals: Vec<&Local> =
                             scope.values().filter(|l| captured.contains(&l.binding)).collect();
@@ -6325,30 +6329,6 @@ fn pure_read(e: &Expr) -> bool {
         ExprKind::Index { obj, index, .. } => pure_read(obj) && pure_read(index),
         ExprKind::NonNull(e) | ExprKind::As(e, _) | ExprKind::Chain(e) => pure_read(e),
         _ => false,
-    }
-}
-
-/// The binding spans a pattern introduces, in source order.
-fn pat_bindings(p: &Pat, out: &mut Vec<Span>) {
-    match p {
-        Pat::Id(_, span) => out.push(*span),
-        Pat::Default(p, _) => pat_bindings(p, out),
-        Pat::Obj { props, rest, .. } => {
-            for (_, p) in props {
-                pat_bindings(p, out);
-            }
-            if let Some((_, span)) = rest {
-                out.push(*span);
-            }
-        }
-        Pat::Arr { elems, rest, .. } => {
-            for p in elems.iter().flatten() {
-                pat_bindings(p, out);
-            }
-            if let Some((_, span)) = rest {
-                out.push(*span);
-            }
-        }
     }
 }
 

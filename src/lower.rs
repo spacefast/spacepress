@@ -17,10 +17,6 @@ pub struct Lowerer {
     pub super_call: std::cell::Cell<bool>,
 }
 
-fn js(s: impl AsRef<str>, _span: Span) -> Result<String> {
-    Ok(s.as_ref().to_string())
-}
-
 impl Lowerer {
     fn sp(&self, s: oxc_span::Span) -> Span {
         Span {
@@ -78,7 +74,7 @@ impl Lowerer {
                             let imported = match &s.imported {
                                 a::ModuleExportName::IdentifierName(n) => n.name.to_string(),
                                 a::ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-                                a::ModuleExportName::StringLiteral(l) => js(l.value, self.sp(l.span))?,
+                                a::ModuleExportName::StringLiteral(l) => l.value.to_string(),
                             };
                             let imported = if imported == "default" {
                                 ImportName::Default
@@ -107,7 +103,7 @@ impl Lowerer {
                     }
                 }
                 out.push(Stmt::Import {
-                    source: js(d.source.value, self.sp(d.source.span))?,
+                    source: d.source.value.to_string(),
                     specs,
                     type_only,
                     span: self.sp(d.span),
@@ -122,7 +118,7 @@ impl Lowerer {
                     if s.export_kind == a::ImportOrExportKind::Type {
                         continue;
                     }
-                    names.push((self.export_name(&s.local)?, self.export_name(&s.exported)?));
+                    names.push((self.export_name(&s.local), self.export_name(&s.exported)));
                 }
                 out.push(Stmt::ExportNames {
                     names,
@@ -139,11 +135,11 @@ impl Lowerer {
                     if s.export_kind == a::ImportOrExportKind::Type {
                         continue;
                     }
-                    names.push((self.export_name(&s.local)?, self.export_name(&s.exported)?));
+                    names.push((self.export_name(&s.local), self.export_name(&s.exported)));
                 }
                 out.push(Stmt::ExportNames {
                     names,
-                    from: Some(js(d.source.value, self.sp(d.source.span))?),
+                    from: Some(d.source.value.to_string()),
                     span: self.sp(d.span),
                 });
             }
@@ -156,7 +152,7 @@ impl Lowerer {
                     );
                 }
                 out.push(Stmt::ExportAll {
-                    from: js(d.source.value, self.sp(d.source.span))?,
+                    from: d.source.value.to_string(),
                     span: self.sp(d.span),
                 });
             }
@@ -191,12 +187,12 @@ impl Lowerer {
         Ok(())
     }
 
-    fn export_name(&self, n: &a::ModuleExportName<'_>) -> Result<String> {
-        Ok(match n {
+    fn export_name(&self, n: &a::ModuleExportName<'_>) -> String {
+        match n {
             a::ModuleExportName::IdentifierName(n) => n.name.to_string(),
             a::ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-            a::ModuleExportName::StringLiteral(l) => js(l.value, self.sp(l.span))?,
-        })
+            a::ModuleExportName::StringLiteral(l) => l.value.to_string(),
+        }
     }
 
     fn declaration(&self, d: &a::Declaration<'_>, out: &mut Vec<Stmt>) -> Result<()> {
@@ -909,7 +905,7 @@ impl Lowerer {
                     let Some(key) = prop.key.static_name() else {
                         return self.unsupported(prop.span, "computed keys in destructuring", "");
                     };
-                    let key = js(key, self.sp(prop.span))?;
+                    let key = key.to_string();
                     props.push((key, self.pattern(&prop.value)?));
                 }
                 let rest = match &o.rest {
@@ -989,7 +985,7 @@ impl Lowerer {
                     let Some(cooked) = q.value.cooked else {
                         return self.unsupported(q.span, "invalid escape sequences in templates", "");
                     };
-                    quasis.push(js(cooked, self.sp(q.span))?);
+                    quasis.push(cooked.to_string());
                 }
                 let exprs = t.expressions.iter().map(|e| self.expr(e)).collect::<Result<_>>()?;
                 self.mk(span, ExprKind::Template(quasis, exprs))
@@ -1034,7 +1030,7 @@ impl Lowerer {
                                 PropKey::Computed(self.expr(p.key.to_expression())?)
                             } else {
                                 match p.key.static_name() {
-                                    Some(n) => PropKey::Static(js(n, self.sp(p.span))?),
+                                    Some(n) => PropKey::Static(n.to_string()),
                                     None => return self.unsupported(p.span, "this property key", ""),
                                 }
                             };
@@ -1378,13 +1374,13 @@ impl Lowerer {
             ),
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
-                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(js(s.value, self.sp(s.span))?),
+                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(s.value.to_string()),
                 a::TSLiteral::TemplateLiteral(t) if t.expressions.is_empty() => {
                     let q = &t.quasis[0];
                     let Some(cooked) = q.value.cooked else {
                         return self.unsupported(q.span, "invalid escape sequences in templates", "");
                     };
-                    TyAnn::StrLit(js(cooked, self.sp(q.span))?)
+                    TyAnn::StrLit(cooked.to_string())
                 }
                 a::TSLiteral::TemplateLiteral(t) => {
                     return self.unsupported(
@@ -1513,7 +1509,7 @@ impl Lowerer {
                         Some(t) => self.ty(&t.type_annotation)?,
                         None => TyAnn::Any,
                     };
-                    fields.push((js(key, self.sp(p.span))?, ty, p.optional));
+                    fields.push((key.to_string(), ty, p.optional));
                 }
                 a::TSSignature::TSIndexSignature(i) => {
                     if !matches!(
@@ -1569,11 +1565,7 @@ impl Lowerer {
                         Some(t) => self.ty(&t.type_annotation)?,
                         None => TyAnn::Any,
                     };
-                    fields.push((
-                        js(key, self.sp(ms.span))?,
-                        TyAnn::Fn(params, Box::new(ret)),
-                        ms.optional,
-                    ));
+                    fields.push((key.to_string(), TyAnn::Fn(params, Box::new(ret)), ms.optional));
                 }
                 other => return self.unsupported(other.span(), "call and construct signatures", ""),
             }

@@ -139,12 +139,18 @@ impl Compiler<'_, '_> {
         if let FnBody::Block(body) = &f.body {
             let mut declarations = Vec::new();
             collect_var_declarations(body, &mut declarations);
-            for (name, span) in declarations {
-                if self.fx().scopes[0].contains_key(&name) {
+            let mut annotations = HashMap::new();
+            for declaration in &declarations {
+                if let Some(annotation) = declaration.annotation {
+                    annotations.entry(declaration.name).or_insert(annotation);
+                }
+            }
+            for VarBinding { name, span, .. } in declarations {
+                if self.fx().scopes[0].contains_key(name) {
                     continue;
                 }
                 let dynamic = self.javascript_module(f.module);
-                let annotation = find_var_annotation(body, &name);
+                let annotation = annotations.get(name);
                 let constraint = if dynamic {
                     Ty::Dynamic
                 } else if let Some(annotation) = annotation {
@@ -152,11 +158,11 @@ impl Compiler<'_, '_> {
                 } else {
                     Ty::Unknown
                 };
-                let php = self.declare_local(&name, constraint, true, span);
+                let php = self.declare_local(name, constraint, true, span);
                 let value = "\\Zero\\Js::undefined()";
                 let _ = writeln!(source, "{}{php} = {value};", pad(indent));
                 if !dynamic {
-                    self.set_local_ty(&name, Ty::Undefined);
+                    self.set_local_ty(name, Ty::Undefined);
                 }
             }
         }
@@ -164,51 +170,31 @@ impl Compiler<'_, '_> {
     }
 }
 
-fn find_var_annotation<'a>(stmts: &'a [Stmt], name: &str) -> Option<&'a TyAnn> {
-    for stmt in stmts {
-        let found = match stmt {
-            Stmt::Decl {
-                kind: DeclKind::Var,
-                pat: Pat::Id(n, _),
-                ann,
-                ..
-            } if n == name => ann.as_ref(),
-            Stmt::Block(body) | Stmt::While(_, body) | Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => {
-                find_var_annotation(body, name)
-            }
-            Stmt::If(_, yes, no) => {
-                find_var_annotation(yes, name).or_else(|| no.as_ref().and_then(|no| find_var_annotation(no, name)))
-            }
-            Stmt::For { init, body, .. } => init
-                .as_deref()
-                .and_then(|init| find_var_annotation(std::slice::from_ref(init), name))
-                .or_else(|| find_var_annotation(body, name)),
-            Stmt::Try {
-                block,
-                handler,
-                finalizer,
-                ..
-            } => find_var_annotation(block, name)
-                .or_else(|| handler.as_ref().and_then(|body| find_var_annotation(body, name)))
-                .or_else(|| finalizer.as_ref().and_then(|body| find_var_annotation(body, name))),
-            Stmt::Switch { cases, .. } => cases.iter().find_map(|(_, body)| find_var_annotation(body, name)),
-            _ => None,
-        };
-        if found.is_some() {
-            return found;
-        }
-    }
-    None
+pub(super) struct VarBinding<'a> {
+    pub name: &'a str,
+    pub span: Span,
+    annotation: Option<&'a TyAnn>,
 }
 
-pub(super) fn collect_var_declarations(stmts: &[Stmt], out: &mut Vec<(String, Span)>) {
+fn var_pattern<'a>(pat: &'a Pat, annotation: Option<&'a TyAnn>, out: &mut Vec<VarBinding<'a>>) {
+    let mut bindings = Vec::new();
+    pat.bindings(&mut bindings);
+    out.extend(
+        bindings
+            .into_iter()
+            .map(|(name, span)| VarBinding { name, span, annotation }),
+    );
+}
+
+pub(super) fn collect_var_declarations<'a>(stmts: &'a [Stmt], out: &mut Vec<VarBinding<'a>>) {
     for stmt in stmts {
         match stmt {
             Stmt::Decl {
                 kind: DeclKind::Var,
                 pat,
+                ann,
                 ..
-            } => collect_var_pattern(pat, out),
+            } => var_pattern(pat, if matches!(pat, Pat::Id(..)) { ann.as_ref() } else { None }, out),
             Stmt::Block(body) | Stmt::While(_, body) => collect_var_declarations(body, out),
             Stmt::If(_, yes, no) => {
                 collect_var_declarations(yes, out);
@@ -224,7 +210,7 @@ pub(super) fn collect_var_declarations(stmts: &[Stmt], out: &mut Vec<(String, Sp
             }
             Stmt::ForOf { kind, pat, body, .. } => {
                 if *kind == DeclKind::Var {
-                    collect_var_pattern(pat, out);
+                    var_pattern(pat, None, out);
                 }
                 collect_var_declarations(body, out);
             }
@@ -232,7 +218,11 @@ pub(super) fn collect_var_declarations(stmts: &[Stmt], out: &mut Vec<(String, Sp
                 if *kind == Some(DeclKind::Var)
                     && let ExprKind::Ident(name) = &target.kind
                 {
-                    out.push((name.clone(), target.span));
+                    out.push(VarBinding {
+                        name,
+                        span: target.span,
+                        annotation: None,
+                    });
                 }
                 collect_var_declarations(body, out);
             }
@@ -257,29 +247,6 @@ pub(super) fn collect_var_declarations(stmts: &[Stmt], out: &mut Vec<(String, Sp
             }
             _ => {}
         }
-    }
-}
-
-fn collect_var_pattern(pat: &Pat, out: &mut Vec<(String, Span)>) {
-    match pat {
-        Pat::Id(name, span) => out.push((name.clone(), *span)),
-        Pat::Arr { elems, rest, .. } => {
-            for item in elems.iter().flatten() {
-                collect_var_pattern(item, out);
-            }
-            if let Some((name, span)) = rest {
-                out.push((name.clone(), *span));
-            }
-        }
-        Pat::Obj { props, rest, .. } => {
-            for (_, pat) in props {
-                collect_var_pattern(pat, out);
-            }
-            if let Some((name, span)) = rest {
-                out.push((name.clone(), *span));
-            }
-        }
-        Pat::Default(pat, _) => collect_var_pattern(pat, out),
     }
 }
 

@@ -120,26 +120,27 @@ impl Pat {
         }
     }
 
-    pub fn names(&self, out: &mut Vec<String>) {
+    /// Binding names and their source spans, in declaration order.
+    pub fn bindings<'a>(&'a self, out: &mut Vec<(&'a str, Span)>) {
         match self {
-            Pat::Id(n, _) => out.push(n.clone()),
+            Pat::Id(name, span) => out.push((name, *span)),
             Pat::Obj { props, rest, .. } => {
-                for (_, p) in props {
-                    p.names(out);
+                for (_, pat) in props {
+                    pat.bindings(out);
                 }
-                if let Some((r, _)) = rest {
-                    out.push(r.clone());
+                if let Some((name, span)) = rest {
+                    out.push((name, *span));
                 }
             }
             Pat::Arr { elems, rest, .. } => {
-                for p in elems.iter().flatten() {
-                    p.names(out);
+                for pat in elems.iter().flatten() {
+                    pat.bindings(out);
                 }
-                if let Some((r, _)) = rest {
-                    out.push(r.clone());
+                if let Some((name, span)) = rest {
+                    out.push((name, *span));
                 }
             }
-            Pat::Default(p, _) => p.names(out),
+            Pat::Default(pat, _) => pat.bindings(out),
         }
     }
 }

@@ -1,11 +1,8 @@
-pub(crate) mod backup;
 pub(crate) mod build;
 pub(crate) mod deploy;
 mod dev;
 mod doctor;
 mod migrate_site;
-pub(crate) mod publish;
-pub(crate) mod restore;
 mod sync;
 
 pub(crate) use build::validate_config;

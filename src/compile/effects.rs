@@ -527,9 +527,12 @@ impl Graph {
         if let FnBody::Block(body) = &f.body {
             let mut vars = Vec::new();
             javascript::collect_var_declarations(body, &mut vars);
-            for (name, span) in vars {
-                if !names.last().expect("function scope").contains_key(&name) {
-                    names.last_mut().expect("function scope").insert(name, Place::new(span));
+            for javascript::VarBinding { name, span, .. } in vars {
+                if !names.last().expect("function scope").contains_key(name) {
+                    names
+                        .last_mut()
+                        .expect("function scope")
+                        .insert(name.to_string(), Place::new(span));
                     self.bindings.insert(span, owner);
                 }
             }

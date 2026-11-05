@@ -25,6 +25,75 @@ declare(strict_types=1);
     [$appPassword] = WP_Application_Passwords::create_new_application_password($uid, ['name' => 'storage']);
     $appLogin = static fn () => wp_authenticate_application_password(null, 'storage-' . $tag, $appPassword);
     $assert($appLogin() instanceof WP_User, 'application password without identity works');
+    $verified = [];
+    $observe = static function ($valid, $plain, $hash, $userId) use (&$verified) {
+        $verified[] = [$hash, $userId];
+        return $valid;
+    };
+    add_filter('check_password', $observe, 10, 4);
+    try {
+        foreach (['storage-' . $tag, 'absent-' . $tag, 'absent-' . $tag] as $login) {
+            try {
+                $accounts->password($login, 'incorrect-password');
+                throw new RuntimeException('Wrong password accepted');
+            } catch (\Zero\Identity\Failure $e) {
+                $assert($e->kind === 'invalid_credentials' && $e->getMessage() === 'The sign-in details are incorrect.', 'generic sign-in refusal');
+            }
+        }
+    } finally {
+        remove_filter('check_password', $observe);
+    }
+    $assert(count($verified) === 3 && $verified[0][1] === $uid && $verified[1][1] === 0, 'both known and absent accounts verify passwords');
+    $assert($verified[1][0] === $verified[2][0] && !wp_password_needs_rehash($verified[1][0]), 'absent account uses a fixed current-algorithm hash');
+    require_once ABSPATH . WPINC . '/class-phpass.php';
+    $legacyPassword = 'legacy profile password';
+    $legacyUsers = [];
+    foreach ([
+        md5($legacyPassword),
+        (new PasswordHash(8, true))->HashPassword($legacyPassword),
+        password_hash($legacyPassword, PASSWORD_BCRYPT, ['cost' => 4]),
+        crypt($legacyPassword, '$1$saltsalt$'),
+        crypt($legacyPassword, '$5$rounds=5000$saltsaltsalt$'),
+        crypt($legacyPassword, '$6$rounds=5000$saltsaltsalt$'),
+    ] as $i => $hash) {
+        $legacyId = wp_create_user('legacy-' . $i . '-' . $tag, $legacyPassword);
+        $old = get_userdata($legacyId);
+        $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $legacyId]);
+        clean_user_cache($legacyId);
+        do_action('profile_update', $legacyId, $old);
+        $legacyUsers[] = $legacyId;
+    }
+    $schedules = [];
+    foreach (array_merge([$uid], $legacyUsers, [0]) as $candidate) {
+        $profileChecks = [];
+        $observeProfiles = static function ($valid, $plain, $hash) use (&$profileChecks) {
+            $wp = str_starts_with($hash, '$wp');
+            $info = password_get_info($wp ? substr($hash, 3) : $hash);
+            $profileChecks[] = strlen($hash) <= 32 ? 'md5' : (str_starts_with($hash, '$P$') ? substr($hash, 0, 4) : json_encode([$wp, $info['algoName'], $info['options']]));
+            return $valid;
+        };
+        add_filter('check_password', $observeProfiles, 10, 3);
+        try {
+            $accounts->password($candidate ? get_userdata($candidate)->user_login : 'absent-profile-' . $tag, 'incorrect-password');
+            throw new RuntimeException('Wrong profile password accepted');
+        } catch (\Zero\Identity\Failure $e) {
+            $assert($e->kind === 'invalid_credentials', 'every password profile has the same generic refusal');
+        } finally {
+            remove_filter('check_password', $observeProfiles);
+        }
+        sort($profileChecks);
+        $schedules[] = $profileChecks;
+    }
+    $assert(count($schedules[0]) >= 7 && array_filter($schedules, static fn ($checks) => $checks !== $schedules[0]) === [], 'known, absent, MD5, phpass, cheaper bcrypt and imported crypt accounts perform the same verification work');
+    foreach ($legacyUsers as $legacyId) {
+        $assert($accounts->password(get_userdata($legacyId)->user_login, $legacyPassword) === $legacyId, 'legacy WordPress passwords still authenticate');
+    }
+    wp_set_password('replacement legacy password', $legacyUsers[0]);
+    require_once ABSPATH . 'wp-admin/includes/user.php';
+    wp_delete_user($legacyUsers[0]);
+    foreach (get_option('zero_identity_password_profiles') as $dummy) {
+        $assert(!wp_check_password($legacyPassword, $dummy), 'retained verification profiles cannot verify credentials after password replacement and user deletion');
+    }
     $accounts->ensure($uid);
     $client = 'storage_' . $tag;
     $db->insert('applications', ['id' => $client, 'name' => 'Storage test', 'redirects' => '[]', 'origins' => '[]']);

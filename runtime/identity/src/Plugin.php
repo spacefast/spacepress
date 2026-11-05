@@ -29,6 +29,7 @@ final class Plugin
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
+        add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,
@@ -163,6 +164,15 @@ final class Plugin
             },
             100,
         );
+        $rememberPassword = static function ($uid): void {
+            $user = get_userdata((int) $uid);
+            if ($user instanceof \WP_User) {
+                Accounts::rememberPasswordHash($user->user_pass);
+            }
+        };
+        add_action("user_register", $rememberPassword);
+        add_action("profile_update", $rememberPassword);
+        add_action("wp_set_password", static fn ($password, $uid) => $rememberPassword($uid), 10, 2);
         // Every WordPress user write inside an identity transaction is recorded, so a rollback
         // (identity's own or its host's) clears what the object cache learned from it.
         $touched = static function ($uid): void {

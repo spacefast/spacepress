@@ -177,6 +177,96 @@ final class Accounts
             $this->security->event($uid, "email.removed", ["email_id" => $id]);
         });
     }
+    private const DUMMY_PASSWORD_HASH = "zero_identity_dummy_password_hash";
+    private const PASSWORD_PROFILES = "zero_identity_password_profiles";
+
+    /** Persist fixed verification hashes once, including the site's existing WordPress hash profiles. */
+    public static function provisionPasswordHash(): void
+    {
+        $hash = get_option(self::DUMMY_PASSWORD_HASH);
+        if (!is_string($hash) || wp_password_needs_rehash($hash)) {
+            $hash = wp_hash_password(Security::token(48));
+            update_option(self::DUMMY_PASSWORD_HASH, $hash, false);
+        }
+        if (!is_array(get_option(self::PASSWORD_PROFILES))) {
+            global $wpdb;
+            $profiles = [self::passwordProfile($hash) => $hash];
+            foreach (Plugin::$db->rows("SELECT user_pass FROM {$wpdb->users}") as $row) {
+                $profile = self::passwordProfile($row['user_pass']);
+                $profiles[$profile] ??= self::dummyPasswordHash($row['user_pass']);
+            }
+            update_option(self::PASSWORD_PROFILES, $profiles, false);
+        }
+        self::rememberPasswordHash($hash);
+    }
+
+    /** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
+    public static function rememberPasswordHash(string $hash): void
+    {
+        $profile = self::passwordProfile($hash);
+        $profiles = get_option(self::PASSWORD_PROFILES, []);
+        if (!isset($profiles[$profile])) {
+            Plugin::$db->transaction(static function () use ($profile, $hash): void {
+                global $wpdb;
+                $row = Plugin::$db->row("SELECT option_value FROM {$wpdb->options} WHERE option_name=%s FOR UPDATE", self::PASSWORD_PROFILES);
+                $profiles = $row === null ? [] : unserialize($row['option_value'], ['allowed_classes' => false]);
+                $profiles[$profile] ??= self::dummyPasswordHash($hash);
+                update_option(self::PASSWORD_PROFILES, $profiles, false);
+            });
+        }
+    }
+
+    private static function passwordProfile(string $hash): string
+    {
+        if (strlen($hash) <= 32) {
+            return 'md5';
+        }
+        if (str_starts_with($hash, '$P$') && strlen($hash) === 34) {
+            return substr($hash, 0, 4);
+        }
+        $prefixed = str_starts_with($hash, '$wp');
+        $encoded = $prefixed ? substr($hash, 3) : $hash;
+        if (preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{53}$/D', $encoded, $match)) {
+            return json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]]);
+        }
+        if (preg_match('/^\$([56])\$(?:rounds=(\d+)\$)?/', $encoded, $match)) {
+            return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => (int) ($match[2] ?? 5000)]]);
+        }
+        if (str_starts_with($encoded, '$1$')) {
+            return json_encode([$prefixed, 'md5-crypt']);
+        }
+        $info = password_get_info($encoded);
+        // Unknown pluggable formats still reach WordPress's verifier.
+        return $info['algo'] === null
+            ? json_encode([$prefixed, 'opaque'])
+            : json_encode([$prefixed, $info['algoName'], $info['options']]);
+    }
+
+    /** Generate independent verification material; never retain a user's credential hash. */
+    private static function dummyPasswordHash(string $hash): string
+    {
+        $password = Security::token(48);
+        if (strlen($hash) <= 32) {
+            return md5($password);
+        }
+        if (str_starts_with($hash, '$P$') && strlen($hash) === 34) {
+            require_once ABSPATH . WPINC . '/class-phpass.php';
+            return (new \PasswordHash(8, true))->crypt_private($password, $hash);
+        }
+        $prefixed = str_starts_with($hash, '$wp');
+        $encoded = $prefixed ? substr($hash, 3) : $hash;
+        if ($prefixed) {
+            $password = base64_encode(hash_hmac('sha384', $password, 'wp-sha384', true));
+        }
+        $info = password_get_info($encoded);
+        $dummy = $info['algo'] === null ? crypt($password, $encoded) : password_hash($password, $info['algo'], $info['options']);
+        if (strlen($dummy) <= 2) {
+            // Pluggable formats without a PHP encoder still use independent verification material.
+            return wp_hash_password(Security::token(48));
+        }
+        return ($prefixed ? '$wp' : '') . $dummy;
+    }
+
     public function password(string $login, string $password): int
     {
         $uid = is_email($login) ? $this->owner($login) : 0;
@@ -185,10 +275,20 @@ final class Accounts
             : (is_email($login)
                 ? get_user_by("email", $login)
                 : get_user_by("login", $login));
-        if (
-            !$user ||
-            !wp_check_password($password, $user->user_pass, $user->ID)
-        ) {
+        $profile = $user ? self::passwordProfile($user->user_pass) : null;
+        if ($user) {
+            self::rememberPasswordHash($user->user_pass);
+        }
+        $valid = false;
+        // Every sign-in performs the same algorithm/cost schedule, including missing accounts.
+        foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
+            $actual = $user && $profile === $kind;
+            $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
+            if ($actual) {
+                $valid = $checked;
+            }
+        }
+        if (!$user || !$valid) {
             throw new Failure(
                 "invalid_credentials",
                 "The sign-in details are incorrect.",

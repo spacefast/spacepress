@@ -49,6 +49,7 @@ final class Migrate
         $model = Model::map($release, $this->schema);
         $this->requireTransactionalTables();
         $space = $this->space($model, $space);
+        $native = $this->nativePosts($space);
         $plan = [];
         $skipped = [];
         $review = [];
@@ -87,11 +88,45 @@ final class Migrate
                 'revisions' => array_sum(array_map(static fn (array $r) => count($r['revisions']), $records)),
             ];
         }
+        if ($native !== null) {
+            [$spec, $ids] = $native;
+            foreach ($ids as $id) {
+                if (!$dryRun) {
+                    $this->db->run("UPDATE `{$this->db->wpdb()->posts}` SET post_type = ? WHERE ID = ?", [$spec['wp']['postType'], $id]);
+                    $this->db->touchPost($id);
+                }
+            }
+            $report['collections']['posts'] = ['records' => $ids, 'revisions' => array_sum(array_map(fn (int $id) => count($this->revisionIds($id)), $ids))];
+        }
         if (!$dryRun) {
             $this->recount($touched);
         }
 
         return $report;
+    }
+
+    private function nativePosts(?string $space): ?array
+    {
+        if (!$this->schema->hasCollection('posts')) { return null; }
+        if ($space === null || $space === '') { throw Model::refuse('/space', 'native posts adoption requires --space'); }
+        $spec = $this->schema->collection('posts');
+        if (!isset($spec['wp']['postType']) || $spec['title'] !== 'title' || ($spec['content'] ?? null) !== 'content') {
+            throw Model::refuse('/collections/posts', 'native posts need a post-backed title and content collection');
+        }
+        $w = $this->db->wpdb();
+        $posts = $this->db->run("SELECT p.* FROM `{$w->posts}` p WHERE p.post_type = 'post'"
+            . " AND EXISTS (SELECT 1 FROM `{$w->postmeta}` m WHERE m.post_id=p.ID AND m.meta_key=? AND m.meta_value=?)"
+            . " AND NOT EXISTS (SELECT 1 FROM `{$w->term_relationships}` tr JOIN `{$w->term_taxonomy}` tt ON tt.term_taxonomy_id=tr.term_taxonomy_id JOIN `{$w->termmeta}` tm ON tm.term_id=tt.term_id WHERE tr.object_id=p.ID AND tt.taxonomy=? AND tm.meta_key=? AND tm.meta_value <> 'posts') ORDER BY p.ID",
+            [self::SPACE_META, $space, Model::TAXONOMY, Model::RESOURCE_META]);
+        foreach ($posts as $post) {
+            foreach (['title' => 'post_title', 'content' => 'post_content'] as $column => $native) {
+                $def = $spec['columns'][$column];
+                $ptr = '/records/' . $post['ID'] . '/' . $column;
+                $value = Schema::normalize($def, $post[$native], $column, $ptr);
+                Schema::checkRules($def, $value, $column, $ptr, ['data' => [$column => $value], 'user' => null], $spec['columns']);
+            }
+        }
+        return [$spec, array_map('intval', array_column($posts, 'ID'))];
     }
 
     /**

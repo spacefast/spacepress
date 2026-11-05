@@ -272,6 +272,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                     fs,
                     &project,
                     request["space"].as_str(),
+                    request["users"].as_bool().unwrap_or(false),
                 ))
                 .unwrap()),
                 "migrateConfig" => {

@@ -135,3 +135,90 @@ fn reports_all_unsupported_features_and_never_writes_a_refused_app() {
             .contains("compiled finalize payloads are not capsule source")
     );
 }
+
+fn project(root: &Path, capsule: &str) {
+    std::fs::create_dir_all(root.join("server")).unwrap();
+    std::fs::write(root.join("sf.jsonc"), r#"{"runtime":{"kind":"zero"}}"#).unwrap();
+    std::fs::write(
+        root.join("server/index.ts"),
+        format!("import {{ capsule }} from '@spacefast/zero/server'; export default capsule({capsule});"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn spacefast_content_only_root_adopts_native_posts_and_drops_realtime() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(&root, r#"{name:"spacefast-posts", realtime:{enabled:true}}"#);
+    std::fs::create_dir_all(root.join("content/posts")).unwrap();
+    std::fs::write(root.join("content/posts/hello.md"), "---\ntitle: Hello\n---\nBody").unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    let snapshot: Value =
+        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+    assert_eq!(snapshot["tables"]["posts"]["editor"], true);
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "review")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap(),
+        serde_json::json!({})
+    );
+    build(&out);
+}
+
+#[test]
+fn native_post_declarations_and_space_users_compile_together() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(
+        &root,
+        r#"{collections:{posts:{publicRead:true,fields:{title:{kind:"text",required:true},content:{kind:"blocks"}},sync:{directory:"content/posts"}},notes:{fields:{title:{kind:"text",required:true}}}}}"#,
+    );
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--users"]);
+    assert!(ok, "{report:#}");
+    let snapshot: Value =
+        serde_json::from_slice(&std::fs::read(out.join("zero/migrations/snapshot.json")).unwrap()).unwrap();
+    let keys: Vec<_> = snapshot["tables"].as_object().unwrap().keys().cloned().collect();
+    assert!(keys.contains(&"posts".to_string()), "{keys:?}");
+    assert!(keys.contains(&"notes".to_string()), "{keys:?}");
+    assert!(keys.contains(&"members".to_string()), "{keys:?}");
+    build(&out);
+}
+
+#[test]
+fn spacefast_pages_layouts_islands_and_endpoints_refuse_with_pointers() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(&root, r#"{endpoints:{health:{method:"GET",path:"/health"}}}"#);
+    for dir in ["pages", "layouts", "islands"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+        std::fs::write(root.join(dir).join("index.tsx"), "export default () => null;").unwrap();
+    }
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(!ok);
+    let pointers: Vec<_> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["pointer"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        pointers,
+        [
+            "/pages/index.tsx",
+            "/islands/index.tsx",
+            "/layouts/index.tsx",
+            "/endpoints/health"
+        ]
+    );
+    assert!(!out.exists());
+}

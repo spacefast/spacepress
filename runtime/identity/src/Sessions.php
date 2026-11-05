@@ -16,7 +16,7 @@ final class Sessions
             $session = [
                 "id" => bin2hex(random_bytes(16)),
                 "wp_user_id" => $uid,
-                "secret_hash" => SessionLookup::digest($secret),
+                "secret_hash" => self::digest($secret),
                 "csrf" => bin2hex(random_bytes(32)),
                 "created_at" => time(),
                 "expires_at" => time() + 86400,
@@ -34,12 +34,21 @@ final class Sessions
             return ["secret" => $secret, "session" => $session];
         });
     }
+    public static function digest(string $secret): string
+    {
+        return hash("sha256", "zero-identity-session-v1\0" . $secret);
+    }
     public function find(string $secret): ?array
     {
-        return SessionLookup::find(
-            $this->db->row(...),
-            $this->db->prefix,
-            $secret,
+        if ($secret === "" || strlen($secret) > 512) {
+            return null;
+        }
+        if (preg_match("/\A[A-Za-z0-9_]{1,56}\z/", $this->db->prefix) !== 1) {
+            throw new \InvalidArgumentException("Invalid identity table prefix");
+        }
+        return $this->db->row(
+            "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.secret_hash=%s AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
+            self::digest($secret),
             time(),
         );
     }

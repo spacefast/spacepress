@@ -17,7 +17,7 @@ use Zero\Store;
  * `display_name` (when the collection has a `name` column), `role` ↔ the WP role
  * (`admin` = administrator, `guest` = zero_guest), `suspendedAt` from zero-identity's account
  * status; every other column is usermeta `zero_<col>`. The password never touches this store: it
- * goes through `wp_set_password` (IdentityBridge::acceptPassword).
+ * goes through `wp_set_password` (PendingPassword).
  */
 final class WpUserStore implements Store
 {
@@ -335,7 +335,7 @@ final class WpUserStore implements Store
     }
 
     /**
-     * A write-only password (IdentityBridge::acceptPassword) goes through wp_set_password, so
+     * A write-only password (PendingPassword) goes through wp_set_password, so
      * WordPress hashes it and its `wp_set_password` hook runs for every plugin; on rollback the
      * user's cache is cleared with the rest.
      */

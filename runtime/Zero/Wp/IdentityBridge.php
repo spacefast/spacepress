@@ -116,16 +116,4 @@ final class IdentityBridge implements Issuer
     {
         return true;
     }
-
-    /** zero-identity forgets a deleted user itself (its `delete_user` hook, run by wp_delete_user). */
-    public function forget(int $userId): void
-    {
-    }
-
-    public function acceptPassword(array &$data, string $password, ?array $existing): void
-    {
-        // WpUserStore sets it with wp_set_password once the row exists; that ends identity sessions
-        // (zero-identity listens to wp_set_password).
-        $data['passwordHash'] = PendingPassword::put($password);
-    }
 }

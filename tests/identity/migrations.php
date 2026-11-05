@@ -3,7 +3,7 @@
 // InnoDB, a rerun is a no-op that keeps data, and the live-session lookup honours expiry/suspension.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use Zero\Identity\{DB, Schema, SessionLookup, Security};
+use Zero\Identity\{DB, Schema, Sessions, Security};
 
 $connection = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
 $connection->set_prefix('zim_' . bin2hex(random_bytes(4)) . '_');
@@ -36,9 +36,10 @@ try {
     check(proc_close($process) === 0 && $output === 'MIGRATED' && $errors === '', 'the waiting migrator completes after the lock is released');
     $db->insert('accounts', ['wp_user_id' => 123, 'created_at' => time()]);
     $token = Security::token();
-    $session = ['id' => bin2hex(random_bytes(16)), 'wp_user_id' => 123, 'secret_hash' => SessionLookup::digest($token), 'csrf' => str_repeat('a', 64),
+    $session = ['id' => bin2hex(random_bytes(16)), 'wp_user_id' => 123, 'secret_hash' => Sessions::digest($token), 'csrf' => str_repeat('a', 64),
         'created_at' => time(), 'expires_at' => time() + 3600, 'verified_at' => time(), 'label' => 'Migration fixture'];
     $db->insert('sessions', $session);
+    $sessions = new Sessions($db, new Security($db));
     Schema::migrate($db);
     $tables = $connection->get_col($connection->prepare('SHOW TABLES LIKE %s', $connection->esc_like($db->prefix) . '%'));
     check(count($tables) === 16 && $connection->last_error === '', 'sixteen identity tables, rerun clean');
@@ -51,10 +52,16 @@ try {
     $columns = array_column($connection->get_results("SHOW COLUMNS FROM {$db->prefix}tokens", ARRAY_A), 'Type', 'Field');
     check(($columns['kind'] ?? null) === "enum('access','refresh')" && isset($columns['family'], $columns['replaced_by'], $columns['used_at']), 'v3 tokens carry kind, family, replaced_by and used_at');
     check($connection->get_var("SELECT option_value FROM {$connection->options} WHERE option_name='zero_identity_schema_version'") === '3', 'schema version 3 recorded on the migrated prefix');
-    check((SessionLookup::find($db->row(...), $db->prefix, $token, time())['id'] ?? null) === $session['id'], 'a rerun keeps existing sessions live');
-    check(SessionLookup::find($db->row(...), $db->prefix, $token, time() + 3600) === null, 'session lookup honours expiry');
+    check(($sessions->find($token)['id'] ?? null) === $session['id'], 'a rerun keeps existing sessions live');
+    $db->run("UPDATE {$db->prefix}sessions SET expires_at=%d WHERE id=%s", time(), $session['id']);
+    check($sessions->find($token) === null, 'session lookup honours expiry');
+    $db->run("UPDATE {$db->prefix}sessions SET expires_at=%d WHERE id=%s", time() + 3600, $session['id']);
+    $db->run("UPDATE {$db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $session['id']);
+    check($sessions->find($token) === null, 'session lookup honours revocation');
+    $db->run("UPDATE {$db->prefix}sessions SET revoked_at=NULL WHERE id=%s", $session['id']);
+    check($sessions->find('') === null && $sessions->find(str_repeat('a', 513)) === null, 'session lookup refuses empty and oversized secrets');
     $db->run("UPDATE {$db->prefix}accounts SET status='suspended' WHERE wp_user_id=123");
-    check(SessionLookup::find($db->row(...), $db->prefix, $token, time()) === null, 'session lookup honours suspension');
+    check($sessions->find($token) === null, 'session lookup honours suspension');
 } finally {
     foreach ($tables as $table) {
         $connection->query("DROP TABLE `$table`");

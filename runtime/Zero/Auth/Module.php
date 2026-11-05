@@ -20,8 +20,7 @@ use function Zero\db;
  * - hidden columns (`passwordHash`, `suspendedAt`, `guest`) are stripped from every row the API
  *   serializes (list, get, `with`, revisions, write results) and refused in filters, ordering
  *   and `columns` selections, also through relation filters;
- * - `password` is a write-only virtual input: set with `wp_set_password` (through the issuer when
- *   zero-identity is active), never echoed;
+ * - `password` is a write-only virtual input: set with `wp_set_password`, never echoed;
  * - `role` is writable by admins only (its column `access.update` rule, enforced here too so it
  *   holds without the field-access lane) and system columns can't be written directly.
  *
@@ -39,7 +38,6 @@ final class Module
         Extensions::onRead(self::strip(...), constraintSafe: true);
         Extensions::normalizeWrite(self::password(...));
         Extensions::onWrite(self::guardWrite(...));
-        Extensions::onWritten(self::forgetDeleted(...));
         Extensions::schemaDescribe(self::describe(...));
         if (function_exists('add_action')) {
             \Zero\Wp\Guests::register(); // `zero.prune-guests` through Action Scheduler
@@ -214,7 +212,7 @@ final class Module
         return array_map(static fn (array $row): array => array_diff_key($row, $hidden), $rows);
     }
 
-    /** The virtual `password` input on the auth collection: handed to the issuer, or kept for wp_set_password. */
+    /** The virtual `password` input on the auth collection: kept for wp_set_password. */
     public static function password(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
     {
         if ($op === 'delete' || $collection !== (db()->schema()->auth()['collection'] ?? null) || !array_key_exists('password', $data)) {
@@ -225,12 +223,7 @@ final class Module
         if (!is_string($password) || strlen($password) < 12 || strlen($password) > 1024 || str_contains($password, "\0")) {
             throw HttpError::invalidInput('password must be a string of at least 12 characters, without NUL', '/password');
         }
-        if (self::$issuer !== null) {
-            self::$issuer->acceptPassword($data, $password, $existing);
-        } else {
-            // No identity issuer: WordPress still owns the password (wp_set_password in WpUserStore).
-            $data['passwordHash'] = \Zero\Wp\PendingPassword::put($password);
-        }
+        $data['passwordHash'] = \Zero\Wp\PendingPassword::put($password);
     }
 
     /** API writes never set system columns of the auth collection directly, and only admins change `role`. */
@@ -261,14 +254,6 @@ final class Module
             if (array_key_exists('email', $provided) && $existing !== null && $provided['email'] !== $existing['email']) {
                 throw new HttpError(403, 'forbidden', 'Change your email on the account screen, where it is verified', '/email');
             }
-        }
-    }
-
-    /** Every deleted member (API, CLI, cascades) loses its credentials in the same transaction. */
-    public static function forgetDeleted(string $op, string $collection, array $row, ?array $previous): void
-    {
-        if ($op === 'delete' && $collection === (db()->schema()->auth()['collection'] ?? null)) {
-            self::$issuer?->forget((int) $row['id']);
         }
     }
 

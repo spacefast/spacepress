@@ -70,12 +70,6 @@ jobs:
       - run: cargo build --locked --release
       - run: pnpm install --frozen-lockfile
         working-directory: site
-      - run: pnpm build:wasm
-        working-directory: site
-      - run: pnpm typecheck
-        working-directory: site
-      - run: pnpm test
-        working-directory: site
       - id: pages
         if: github.event_name == 'push'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
@@ -84,6 +78,10 @@ jobs:
         env:
           SITE_URL: ${{ steps.pages.outputs.origin || 'https://zero.spacefast.com' }}
           SITE_BASE: ${{ steps.pages.outputs.base_path || '/' }}
+      - run: pnpm typecheck
+        working-directory: site
+      - run: pnpm test
+        working-directory: site
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: site
       - run: pnpm test:browser

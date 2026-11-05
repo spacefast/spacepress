@@ -25,6 +25,12 @@ test('packed pages CLI builds a site from a normal npm installation', { timeout:
   await writeFile(join(scratch, 'package.json'), '{"private":true,"type":"module"}\n');
   await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', resolve(scratch, blockArchive), resolve(scratch, pageArchive)], scratch);
 
+  const blockCli = join(scratch, 'node_modules/@spacefast/zero-blocks/bin/zero-blocks.mjs');
+  const content = join(scratch, 'content.tsx');
+  await writeFile(content, 'export default function Content() { return <p>Hello <strong>WordPress</strong></p>; }\n');
+  const compiled = await run(process.execPath, [blockCli, 'content', content], scratch);
+  assert.equal(compiled.stdout, '<!-- wp:paragraph -->\n<p>Hello <strong>WordPress</strong></p>\n<!-- /wp:paragraph -->\n');
+
   const project = join(scratch, 'site');
   await cp(join(root, 'examples/full-site'), project, {
     recursive: true,

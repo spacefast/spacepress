@@ -344,13 +344,13 @@ impl<'p> Evaluator<'p> {
                     self.exec(inner, &scope)?;
                     let mut names = Vec::new();
                     match inner.as_ref() {
-                        Stmt::Decl { pat, .. } => pat.names(&mut names),
-                        Stmt::Func(f) => names.extend(f.name.clone()),
+                        Stmt::Decl { pat, .. } => pat.bindings(&mut names),
+                        Stmt::Func(f) => names.extend(f.name.as_deref().map(|name| (name, f.span))),
                         _ => {}
                     }
-                    for n in names {
-                        let v = scope.lookup(&n).map(|b| b.value).unwrap_or(Value::Undef);
-                        self.exports[id].insert(n, v);
+                    for (n, _) in names {
+                        let v = scope.lookup(n).map(|b| b.value).unwrap_or(Value::Undef);
+                        self.exports[id].insert(n.to_string(), v);
                     }
                 }
                 Stmt::ExportNames { names, from, span } => {
@@ -2047,10 +2047,10 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
 fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
     fn binding(pat: &Pat, ann: &Option<TyAnn>, scope: &Rc<Scope>) {
         let mut names = Vec::new();
-        pat.names(&mut names);
-        for name in names {
+        pat.bindings(&mut names);
+        for (name, _) in names {
             let mut vars = scope.vars.borrow_mut();
-            let b = vars.entry(name).or_insert_with(|| Binding {
+            let b = vars.entry(name.to_string()).or_insert_with(|| Binding {
                 value: Value::Undef,
                 mutable: true,
                 module_level: scope.is_module_scope(),

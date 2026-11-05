@@ -346,8 +346,8 @@ pub(super) fn app(
                 span, pat, kind, init, ..
             } => {
                 let mut names = vec![];
-                pat.names(&mut names);
-                if names.iter().any(|n| n.starts_with("__z08")) {
+                pat.bindings(&mut names);
+                if names.iter().any(|(n, _)| n.starts_with("__z08")) {
                     return Err(fail("", "__z08 names are reserved for generated bindings"));
                 }
                 // Class declarations already include their keyword; variable spans start at the binding.
@@ -928,8 +928,8 @@ impl Rewrite<'_> {
             E::Func(f) => {
                 if f.params.iter().any(|p| {
                     let mut ns = vec![];
-                    p.pat.names(&mut ns);
-                    ns.iter().any(|n| n == self.ctx || n.starts_with("__z08"))
+                    p.pat.bindings(&mut ns);
+                    ns.iter().any(|(n, _)| *n == self.ctx || n.starts_with("__z08"))
                 }) {
                     return Err(fail(self.at, "shadowed context binding requires a manual port"));
                 }
@@ -988,8 +988,8 @@ impl Rewrite<'_> {
         match s {
             Stmt::Decl { pat, init, .. } => {
                 let mut ns = vec![];
-                pat.names(&mut ns);
-                if ns.iter().any(|n| n == self.ctx || n.starts_with("__z08")) {
+                pat.bindings(&mut ns);
+                if ns.iter().any(|(n, _)| *n == self.ctx || n.starts_with("__z08")) {
                     return Err(fail(self.at, "reserved or shadowed binding"));
                 }
                 if let Some(e) = init {
@@ -1033,8 +1033,8 @@ impl Rewrite<'_> {
             }
             Stmt::ForOf { pat, iter, body, .. } => {
                 let mut names = vec![];
-                pat.names(&mut names);
-                if names.iter().any(|n| n == self.ctx || n.starts_with("__z08")) {
+                pat.bindings(&mut names);
+                if names.iter().any(|(n, _)| *n == self.ctx || n.starts_with("__z08")) {
                     return Err(fail(self.at, "shadowed context or reserved binding"));
                 }
                 self.expr(iter)?;

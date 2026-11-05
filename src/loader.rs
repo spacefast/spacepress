@@ -336,8 +336,8 @@ fn validate_commonjs_name(name: &str, span: Span) -> Result<()> {
 
 fn binds_arguments(pattern: &Pat) -> bool {
     let mut names = Vec::new();
-    pattern.names(&mut names);
-    names.iter().any(|name| name == "arguments")
+    pattern.bindings(&mut names);
+    names.iter().any(|(name, _)| *name == "arguments")
 }
 
 fn declares_lexical_arguments(statement: &Stmt) -> bool {

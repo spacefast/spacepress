@@ -777,3 +777,8 @@ test("application passwords still authenticate /zero/v1 as before", async () => 
   const me = await fetch(`${api}/me`, { headers: auth("editor") });
   assert.equal((await me.json()).data.role, "editor");
 });
+
+test("identity storage failures refuse every authentication path in the runtime", () => {
+  const probe = readFileSync(new URL("../identity/native-auth-storage.php", import.meta.url), "utf8").replace(/^<\?php\s*/, "");
+  assert.match(wp("eval", probe), /PASS identity storage failures refuse cookie, native password, application password, Bearer\/OAuth and runtime authentication/);
+});

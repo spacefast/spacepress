@@ -221,6 +221,9 @@ final class CoreAccess
 
     private static function viewerFor(int $userId): ?Viewer
     {
+        if (IdentityBridge::available() && (\Zero\Identity\Plugin::authenticationError() !== null || \Zero\Identity\Bearer::failure() !== null)) {
+            return null;
+        }
         $user = $userId > 0 ? get_userdata($userId) : false;
         if (!$user instanceof \WP_User) {
             return new Viewer(null);

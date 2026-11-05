@@ -6,3 +6,5 @@ $tag=bin2hex(random_bytes(5));$uid=Plugin::$accounts->emailLogin('native-'.$tag.
 $authenticated=wp_authenticate(strtoupper($alias),$password);if(!$authenticated instanceof WP_User||$authenticated->ID!==$uid||$authenticated->roles!==['editor']){throw new RuntimeException('Native secondary-email password did not preserve account/roles');}
 $mfa=new Mfa(Plugin::$db,Plugin::$security);$setup=$mfa->setup($uid,'Native test');$otp=\Zero\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret']);$mfa->verify($uid,$otp->now(),true);$blocked=wp_authenticate($alias,$password);if(!is_wp_error($blocked)||$blocked->get_error_code()!=='identity_mfa_required'){throw new RuntimeException('Native secondary-email login bypassed MFA');}
 echo "PASS native WordPress password sign-in accepts any verified email, preserves account/roles and enforces MFA\n";
+
+require __DIR__.'/native-auth-storage.php';

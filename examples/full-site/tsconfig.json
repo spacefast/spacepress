@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "jsx": "react-jsx",
+    "jsxImportSource": "@spacefast/zero-pages",
+    "paths": {
+      "zero": [
+        "../../types/zero/index.d.ts"
+      ],
+      "@spacefast/zero-pages": [
+        "../../packages/pages/src/index.ts"
+      ],
+      "@spacefast/zero-pages/*": [
+        "../../packages/pages/src/*.ts"
+      ],
+      "@spacefast/zero-blocks": [
+        "../../packages/blocks/src/index.ts"
+      ],
+      "@spacefast/zero-blocks/*": [
+        "../../packages/blocks/src/*.ts"
+      ],
+      "@wordpress/interactivity": [
+        "./islands/interactivity.d.ts"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "zero.config.ts",
+    "zero.gen.ts",
+    "pages",
+    "components",
+    "islands",
+    "pages.d.ts"
+  ]
+}

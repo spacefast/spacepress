@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "paths": {
+      "zero": [
+        "../../types/zero/index.d.ts"
+      ],
+      "@spacefast/zero-blocks": [
+        "../blocks/dist/index.d.ts"
+      ],
+      "@spacefast/zero-blocks/*": [
+        "../blocks/dist/*.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

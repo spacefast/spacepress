@@ -1,7 +1,9 @@
 # Zero pages, components, layouts, sync, publish and agents
 
-Status: future implementation proposal under the owner's binding rulings (§2).
-The pages/agents/publish subsystem here is not implemented. Its collection,
+Status: broader implementation proposal under the owner's binding rulings (§2).
+An optional [Pages subset](pages.md) now implements TSX routes, layouts,
+viewer-bound rendering and islands in a separate package. The remaining
+pages/agents/publish contracts here are proposals. Their collection,
 class and S3 foundations have shipped, as recorded in
 [authoring direction](authoring-direction.md). Revision `af6ee887` passed
 independent design review; that does not qualify this future runtime.

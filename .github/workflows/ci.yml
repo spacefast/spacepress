@@ -171,6 +171,35 @@ jobs:
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
 
+  pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: corepack enable
+      # The pages build reads the example's compiled schema, so the compiler builds it first.
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - run: cargo build --locked --bin zero
+      - run: target/debug/zero build examples/full-site
+      - run: pnpm install --frozen-lockfile
+        working-directory: packages/blocks
+      - run: pnpm build
+        working-directory: packages/blocks
+      - run: pnpm install --frozen-lockfile
+        working-directory: packages/pages
+      - run: pnpm check
+        working-directory: packages/pages
+      - run: pnpm test:package
+        working-directory: packages/pages
+      - run: npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
+      - run: pnpm test:wp
+        working-directory: packages/pages
+        env:
+          ZERO_BIN: ${{ github.workspace }}/target/debug/zero
+
   wp:
     runs-on: ubuntu-24.04
     timeout-minutes: 40

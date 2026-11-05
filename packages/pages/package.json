@@ -1,0 +1,62 @@
+{
+  "name": "@spacefast/zero-pages",
+  "version": "0.1.0",
+  "description": "Optional TSX pages, layouts and routes for Zero apps, rendered by WordPress as Gutenberg blocks and PHP.",
+  "license": "MIT AND GPL-2.0-or-later",
+  "type": "module",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "zero-pages": "./bin/zero-pages.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "wp",
+    "README.md",
+    "LICENSE",
+    "LICENSE.wp"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "default": "./dist/build.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p ../../examples/full-site/tsconfig.json",
+    "test": "node --test tests/unit/*.test.ts",
+    "test:wp": "node --test --test-concurrency=1 tests/wp/*.test.mjs",
+    "check": "pnpm typecheck && pnpm test",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
+    "test:package": "node --test tests/package/*.test.mjs"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.3",
+    "playwright-core": "1.62.1",
+    "@spacefast/zero-blocks": "link:../blocks"
+  },
+  "peerDependencies": {
+    "@spacefast/zero-blocks": "0.1.0"
+  }
+}

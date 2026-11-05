@@ -378,12 +378,17 @@ final class Connection
     /**
      * Hold a site-wide named lock while $fn runs: MySQL's `GET_LOCK`, or a lock file beside the SQLite
      * database (the translator answers `GET_LOCK` without locking anything). Waits up to $seconds.
+     * Throws LockBusy only for contention; infrastructure failures remain RuntimeExceptions.
      */
     public function locked(string $name, int $seconds, callable $fn): mixed
     {
         if (!$this->sqlite()) {
-            if ((int) ($this->run('SELECT GET_LOCK(?, ?) AS held', [$name, $seconds])[0]['held'] ?? 0) !== 1) {
-                throw new \RuntimeException('another request is still applying migrations; try again shortly');
+            $held = $this->run('SELECT GET_LOCK(?, ?) AS held', [$name, $seconds])[0]['held'] ?? null;
+            if ($held === 0 || $held === '0') {
+                throw new LockBusy('another request is still applying migrations; try again shortly');
+            }
+            if ($held !== 1 && $held !== '1') {
+                throw new \RuntimeException("cannot acquire named lock $name");
             }
             try {
                 return $fn();
@@ -395,9 +400,12 @@ final class Connection
         $handle = fopen($file, 'c') ?: throw new \RuntimeException("cannot open lock file $file");
         $deadline = microtime(true) + $seconds;
         try {
-            while (!flock($handle, LOCK_EX | LOCK_NB)) {
+            while (!flock($handle, LOCK_EX | LOCK_NB, $wouldBlock)) {
+                if (!$wouldBlock) {
+                    throw new \RuntimeException("cannot acquire lock file $file");
+                }
                 if (microtime(true) >= $deadline) {
-                    throw new \RuntimeException('another request is still applying migrations; try again shortly');
+                    throw new LockBusy('another request is still applying migrations; try again shortly');
                 }
                 usleep(50_000);
             }

@@ -2,14 +2,17 @@
 mod transform;
 
 use super::{Entry, Failure, fail};
+use crate::loader::Fs;
 use crate::{diag, loader, pipeline};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "cli")]
 use std::process::ExitCode;
+use std::rc::Rc;
 
 #[derive(Serialize)]
-struct Report {
+pub struct Report {
     version: u32,
     source: &'static str,
     status: &'static str,
@@ -19,9 +22,11 @@ struct Report {
     connector_roles: serde_json::Value,
 }
 
+#[cfg(feature = "cli")]
 const USAGE: &str =
     "usage: zero migrate app --from zero-0.8 <capsule-dir> --out <new-dir> [--space <space-id>] [--dry-run] [--json]";
 
+#[cfg(feature = "cli")]
 struct Args {
     input: PathBuf,
     out: PathBuf,
@@ -29,6 +34,7 @@ struct Args {
     dry_run: bool,
 }
 
+#[cfg(feature = "cli")]
 fn args(raw: &[String]) -> Result<Args, String> {
     let mut from = None;
     let mut input = None;
@@ -60,6 +66,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
     })
 }
 
+#[cfg(feature = "cli")]
 pub(crate) fn cli(raw: &[String]) -> ExitCode {
     let args = match args(raw) {
         Ok(args) => args,
@@ -68,6 +75,43 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let mut candidate = migrate(Rc::new(loader::Disk), &args.input, args.space.as_deref());
+    if std::fs::symlink_metadata(&args.out).is_ok() {
+        candidate.report.errors.push(fail(
+            "",
+            "output already exists; choose a new directory; no files are overwritten",
+        ));
+    }
+    if candidate.report.errors.is_empty() {
+        if args.dry_run {
+            candidate.report.status = "dry-run";
+        } else if let Err(e) = write_candidate(&args.out, &candidate.files) {
+            candidate.report.errors.push(e);
+        } else {
+            candidate.report.status = "written";
+        }
+    }
+    if !candidate.report.errors.is_empty() {
+        candidate.report.status = "refused";
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&candidate.report).expect("report JSON")
+    );
+    if candidate.report.errors.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+#[derive(Serialize)]
+pub struct Candidate {
+    pub report: Report,
+    pub files: BTreeMap<String, String>,
+}
+
+pub fn migrate(fs: Rc<dyn Fs>, input: &Path, space: Option<&str>) -> Candidate {
     let mut report = Report {
         version: 1,
         source: "zero-0.8",
@@ -77,35 +121,36 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
         adoption_sql: None,
         connector_roles: serde_json::json!({}),
     };
-    if let Err(e) = run(&args, &mut report) {
+    let mut files = BTreeMap::new();
+    if let Err(e) = convert(fs, input, space, &mut report, &mut files) {
         report.errors.push(e);
     }
-    println!("{}", serde_json::to_string_pretty(&report).expect("report JSON"));
-    if report.errors.is_empty() {
-        ExitCode::SUCCESS
+    if !report.errors.is_empty() {
+        files.clear();
     } else {
-        ExitCode::from(1)
+        report.status = "candidate";
     }
+    Candidate { report, files }
 }
 
 fn io(e: std::io::Error) -> Failure {
     fail("", e.to_string())
 }
 
-fn run(args: &Args, report: &mut Report) -> Result<(), Failure> {
-    if std::fs::symlink_metadata(&args.out).is_ok() {
-        return Err(fail(
-            "",
-            "output already exists; choose a new directory; no files are overwritten",
-        ));
-    }
-    let root = std::fs::canonicalize(&args.input).map_err(io)?;
+fn convert(
+    fs: Rc<dyn Fs>,
+    input: &Path,
+    space: Option<&str>,
+    report: &mut Report,
+    files: &mut BTreeMap<String, String>,
+) -> Result<(), Failure> {
+    let root = fs.canonicalize(input).map_err(io)?;
     let entry = PathBuf::from("server/index.ts");
     let mut sources = BTreeMap::new();
-    collect_sources(&root, &entry, &mut sources, &mut BTreeSet::new())?;
+    collect_sources(&*fs, &root, &entry, &mut sources, &mut BTreeSet::new())?;
     for dir in ["pages", "islands", "layouts"] {
-        if root.join(dir).exists() {
-            refuse_pages(&root.join(dir), &format!("/{dir}"), &mut report.errors)?;
+        if fs.exists(&root.join(dir)) {
+            refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
     let transformed = transform::app(
@@ -113,7 +158,7 @@ fn run(args: &Args, report: &mut Report) -> Result<(), Failure> {
         sources
             .get(&entry)
             .ok_or_else(|| fail("", "entry source must resolve to server/index.ts inside the capsule"))?,
-        args.space.as_deref(),
+        space,
         &mut report.entries,
         &mut report.errors,
     )?;
@@ -133,15 +178,15 @@ fn run(args: &Args, report: &mut Report) -> Result<(), Failure> {
     if !report.errors.is_empty() {
         return Ok(());
     }
-    let stage = tempfile::tempdir().map_err(io)?;
-    for (path, source) in &sources {
-        let target = stage.path().join(path);
-        std::fs::create_dir_all(target.parent().expect("file parent")).map_err(io)?;
-        std::fs::write(target, source).map_err(io)?;
-    }
-    let checked_root = std::fs::canonicalize(stage.path()).map_err(io)?;
-    let program =
-        loader::load(&checked_root.join("zero.config.ts")).map_err(|d| fail("", diag::render(&d, &checked_root)))?;
+    let checked_root = PathBuf::from("/candidate");
+    let memory = crate::wasm::Memory::new(
+        sources
+            .iter()
+            .map(|(path, text)| (checked_root.join(path), text.clone()))
+            .collect(),
+    );
+    let program = loader::load_from(Rc::new(memory), &checked_root.join("zero.config.ts"))
+        .map_err(|d| fail("", diag::render(&d[0], &checked_root)))?;
     let built = pipeline::build(&checked_root, &program, || Ok(pipeline::Previous::none()), |_| None).map_err(|d| {
         fail(
             "",
@@ -158,73 +203,63 @@ fn run(args: &Args, report: &mut Report) -> Result<(), Failure> {
         .collect::<Vec<_>>()
         .join("\n");
     report.adoption_sql = Some(sql.clone());
-    if args.dry_run {
-        report.status = "dry-run";
-        return Ok(());
+    for (path, text) in sources {
+        files.insert(path.to_string_lossy().replace('\\', "/"), text);
     }
-    let migrations = stage.path().join("zero/migrations");
-    std::fs::create_dir_all(&migrations).map_err(io)?;
-    std::fs::write(migrations.join("0001_adopt.sql"), sql).map_err(io)?;
-    std::fs::write(
-        migrations.join("snapshot.json"),
-        serde_json::to_string_pretty(&built.snapshot).expect("snapshot JSON"),
-    )
-    .map_err(io)?;
+    files.insert("zero/migrations/0001_adopt.sql".into(), sql);
+    files.insert(
+        "zero/migrations/snapshot.json".into(),
+        serde_json::to_string_pretty(&built.snapshot).unwrap(),
+    );
     if report
         .connector_roles
         .as_object()
         .is_some_and(|roles| !roles.is_empty())
     {
-        std::fs::write(
-            stage.path().join("connector-roles.json"),
-            serde_json::to_string_pretty(&report.connector_roles).expect("roles JSON"),
-        )
-        .map_err(io)?;
+        files.insert(
+            "connector-roles.json".into(),
+            serde_json::to_string_pretty(&report.connector_roles).unwrap(),
+        );
     }
-    // Publish with create_new per file in a newly owned directory. Never rename over another app.
-    let parent = args
-        .out
+    Ok(())
+}
+
+#[cfg(feature = "cli")]
+fn write_candidate(out: &Path, files: &BTreeMap<String, String>) -> Result<(), Failure> {
+    use std::io::Write;
+    let parent = out
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(io)?;
-    std::fs::create_dir(&args.out).map_err(io)?;
-    let result = copy_new(stage.path(), &args.out);
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&args.out);
-    }
-    result?;
-    report.status = "written";
-    Ok(())
-}
-
-fn copy_new(from: &Path, to: &Path) -> Result<(), Failure> {
-    use std::io::Write;
-    for entry in std::fs::read_dir(from).map_err(io)? {
-        let entry = entry.map_err(io)?;
-        let target = to.join(entry.file_name());
-        if entry.file_type().map_err(io)?.is_dir() {
-            std::fs::create_dir(&target).map_err(io)?;
-            copy_new(&entry.path(), &target)?;
-        } else {
+    std::fs::create_dir(out).map_err(io)?;
+    let result = (|| {
+        for (path, source) in files {
+            let target = out.join(path);
+            std::fs::create_dir_all(target.parent().expect("file parent")).map_err(io)?;
             let mut file = std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(target)
                 .map_err(io)?;
-            file.write_all(&std::fs::read(entry.path()).map_err(io)?).map_err(io)?;
+            file.write_all(source.as_bytes()).map_err(io)?;
         }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(out);
     }
-    Ok(())
+    result
 }
 
 fn collect_sources(
+    fs: &dyn Fs,
     root: &Path,
     path: &Path,
     out: &mut BTreeMap<PathBuf, String>,
     seen: &mut BTreeSet<PathBuf>,
 ) -> Result<(), Failure> {
-    let absolute = std::fs::canonicalize(root.join(path)).map_err(|e| {
+    let absolute = fs.canonicalize(&root.join(path)).map_err(|e| {
         fail(
             "",
             format!(
@@ -240,17 +275,17 @@ fn collect_sources(
     if !seen.insert(relative.clone()) {
         return Ok(());
     }
-    let source = std::fs::read_to_string(&absolute).map_err(io)?;
+    let source = fs.read_to_string(&absolute).map_err(io)?;
     let body = transform::parse(&relative, &source)?;
     for import in transform::imports(&body) {
         if import.starts_with('.') {
             let base = relative.parent().expect("source parent").join(import);
-            let target = if root.join(&base).is_file() {
+            let target = if fs.is_file(&root.join(&base)) {
                 base
             } else {
                 base.with_extension("ts")
             };
-            collect_sources(root, &target, out, seen)?;
+            collect_sources(fs, root, &target, out, seen)?;
         } else if import != "@spacefast/zero/server" {
             return Err(fail(
                 "",
@@ -262,20 +297,17 @@ fn collect_sources(
     Ok(())
 }
 
-fn refuse_pages(path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {
-    if !std::fs::symlink_metadata(path).map_err(io)?.file_type().is_dir() {
+fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {
+    if !fs.is_dir(path) || fs.is_symlink(path) {
         errors.push(fail(at, "page, layout and island compilation needs an explicit port"));
         return Ok(());
     }
-    let mut entries = std::fs::read_dir(path)
-        .map_err(io)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(io)?;
-    entries.sort_by_key(|e| e.file_name());
-    for entry in entries {
-        let at = super::pointer(at, &entry.file_name().to_string_lossy());
-        if entry.file_type().map_err(io)?.is_dir() {
-            refuse_pages(&entry.path(), &at, errors)?;
+    let mut entries = fs.read_dir(path).map_err(io)?;
+    entries.sort();
+    for path in entries {
+        let at = super::pointer(at, &path.file_name().unwrap_or_default().to_string_lossy());
+        if fs.is_dir(&path) && !fs.is_symlink(&path) {
+            refuse_pages(fs, &path, &at, errors)?;
         } else {
             errors.push(fail(&at, "page, layout and island compilation needs an explicit port"));
         }

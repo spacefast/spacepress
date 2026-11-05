@@ -8,7 +8,6 @@ pub(crate) mod publish;
 pub(crate) mod restore;
 mod sync;
 
-pub(crate) use build::validate_config;
 pub(crate) use migrate_site::cli as migrate_site;
 
 pub(crate) fn run(args: &crate::cli::Args) -> std::process::ExitCode {

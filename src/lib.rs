@@ -32,14 +32,18 @@ pub mod wpml_config;
 pub mod cli;
 #[cfg(feature = "cli")]
 mod commands;
-#[cfg(feature = "cli")]
-mod config_migrate;
+pub mod config_migrate;
+#[cfg(feature = "host")]
+mod emit;
+#[cfg(feature = "host")]
+pub mod host;
 #[cfg(feature = "cli")]
 mod sync;
-#[cfg(feature = "cli")]
+#[cfg(target_arch = "wasm32")]
+mod wasm_host_fs;
+#[cfg(feature = "host")]
 mod runtime_files {
     include!(concat!(env!("OUT_DIR"), "/runtime_files.rs"));
 }
 
-#[cfg(feature = "cli")]
 pub mod bundle;

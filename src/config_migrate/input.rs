@@ -12,11 +12,6 @@ use std::path::Path;
 
 use super::{Failure, Source, fail, pointer};
 
-pub(super) fn read(path: &Path, source: Source) -> Result<Value, Failure> {
-    let text = std::fs::read_to_string(path).map_err(|e| fail("", format!("cannot read input: {e}")))?;
-    parse(path, &text, source)
-}
-
 pub(super) fn parse(path: &Path, text: &str, source: Source) -> Result<Value, Failure> {
     if path.extension().is_some_and(|ext| ext == "json") {
         return serde_json::from_str::<UniqueJson>(text)

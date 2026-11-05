@@ -16,6 +16,15 @@ pub const ZERO_MODULE: &str = "zero";
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
 /// are absolute either way, so diagnostics and module identity work the same.
 pub trait Fs {
+    fn read_dir(&self, _path: &Path) -> std::io::Result<Vec<PathBuf>> {
+        Err(std::io::Error::other("directory listing is unavailable"))
+    }
+    fn is_symlink(&self, _path: &Path) -> bool {
+        false
+    }
+    fn allow_packages(&self) -> bool {
+        true
+    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
@@ -28,6 +37,12 @@ pub trait Fs {
 pub struct Disk;
 
 impl Fs for Disk {
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
+        std::fs::read_dir(path)?.map(|e| e.map(|e| e.path())).collect()
+    }
+    fn is_symlink(&self, path: &Path) -> bool {
+        std::fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink())
+    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         std::fs::read_to_string(path)
     }
@@ -633,6 +648,13 @@ impl CommonJsScope {
 }
 
 fn resolve(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
+    if !spec.starts_with('.') && !fs.allow_packages() {
+        return Err(
+            Diag::new(span, format!("npm import {spec:?} needs local source capture"))
+                .code(diag::Code::SourceNeedsLocalCapture)
+                .help("publish this project from the Spacefast CLI to capture installed npm sources"),
+        );
+    }
     if !spec.starts_with("./") && !spec.starts_with("../") {
         return resolve_package(fs, from, spec, span);
     }

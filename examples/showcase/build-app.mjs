@@ -3,7 +3,6 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
-import { stripTypeScriptTypes } from "node:module";
 
 const execute = promisify(execFile);
 export async function command(file, args, options = {}) {
@@ -31,13 +30,7 @@ export async function buildApp({ app, zero, files, log = () => {} }) {
   const plugin = join(app, ".zero/wp-content/plugins/zero-app-showcase");
   const generated = join(plugin, "zero/app");
   await mkdir(join(app, "public/client"), { recursive: true });
-  for (const name of ["index", "schema"]) {
-    const source = await readFile(join(app, `zero/client/${name}.ts`), "utf8");
-    await writeFile(
-      join(app, `public/client/${name}.js`),
-      stripTypeScriptTypes(source).replace(/(from\s+["']\.\/[\w-]+)\.ts(["'])/g, "$1.js$2"),
-    );
-  }
+  await copyFile(join(app, "zero/client/client.js"), join(app, "public/client/index.js"));
   await copyFile(join(app, "zero/client/LICENSE"), join(app, "public/client/LICENSE"));
   await copyFile(join(app, "zero.config.ts"), join(app, "public/source.ts.txt"));
   await copyFile(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));

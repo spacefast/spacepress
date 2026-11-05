@@ -64,7 +64,7 @@ export const comments = table({
   access: { read: (ctx) => ["author", "editor", "admin"].includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
-// Readers who sign in (§6.2): the hosted screens on WordPress, a password on standalone.
+// Readers who sign in (§6.2): the zero-identity screens on WordPress.
 export const members = userProjection({
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),

@@ -227,6 +227,16 @@ importers:
 
   .:
     dependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      happy-dom:
+        specifier: 21.0.4
+        version: 21.0.4
+    devDependencies:
+      '@types/node':
+        specifier: 22.19.3
+        version: 22.19.3
       '@wordpress/block-library':
         specifier: 10.2.0
         version: 10.2.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(date-fns@4.4.0)(esbuild@0.28.2)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -236,22 +246,12 @@ importers:
       '@wordpress/element':
         specifier: 8.3.0
         version: 8.3.0
-      esbuild:
-        specifier: 0.28.2
-        version: 0.28.2
-      happy-dom:
-        specifier: 21.0.4
-        version: 21.0.4
       react:
         specifier: 18.3.1
         version: 18.3.1
       react-dom:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
-    devDependencies:
-      '@types/node':
-        specifier: 22.19.3
-        version: 22.19.3
       typescript:
         specifier: 5.9.3
         version: 5.9.3

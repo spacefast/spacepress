@@ -1,7 +1,6 @@
 // A small publication: authors write posts with rich fields in English and German, readers sign in
 // as members and leave comments that editors moderate through an action, and editors keep the site
-// settings. tests/system drives a whole user journey through this app on both targets (WordPress and
-// standalone).
+// settings. tests/system drives a whole user journey through this app on WordPress.
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, job, jobs, env, file, files, db, HttpError,
@@ -80,8 +79,7 @@ export const announcements = table({
   attempt: integer().notNull(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
-// Readers who sign in: WordPress users through the zero-identity screens, or a password on
-// standalone. Readers see and edit their own row; administrators can read the identities they manage.
+// Readers who sign in: WordPress users through the zero-identity screens. Readers see and edit their own row; administrators can read the identities they manage.
 export const members = userProjection({
   email: email().notNull().unique().max(191),
   name: text().notNull().max(80),

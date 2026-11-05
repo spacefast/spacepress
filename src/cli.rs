@@ -96,9 +96,9 @@ pub fn main() -> ExitCode {
         Some("sources") => return crate::bundle::sources_cli(&lifecycle_args),
         Some("compile-sources") => return crate::bundle::compile_cli(&lifecycle_args),
         Some("deploy") => return crate::commands::deploy::cli(&lifecycle_args),
-        Some("publish") => return crate::commands::publish::cli(&lifecycle_args),
-        Some("backup") => return crate::commands::backup::cli(&lifecycle_args),
-        Some("restore") => return crate::commands::restore::cli(&lifecycle_args),
+        Some("publish" | "backup" | "restore") => {
+            return crate::commands::deploy::cli(&std::env::args().skip(1).collect::<Vec<_>>());
+        }
         _ => {}
     }
     if std::env::args().nth(1).as_deref() == Some("migrate") {

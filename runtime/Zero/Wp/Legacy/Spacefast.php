@@ -19,6 +19,9 @@ final class Spacefast
             || $this->db->prefix() !== $target) {
             throw new HttpError(400, 'invalid_command', 'Bind WordPress to the Space target prefix before migrate-spacefast; source and target must be distinct and target must match the Space.', '/target-prefix');
         }
+        if ($this->db->inTransaction()) {
+            throw new \LogicException('Spacefast migration requires its own per-group transactions');
+        }
         $lock = 'zero-spacefast-' . substr(hash('sha256', $target), 0, 40);
         if ((int) ($this->db->run('SELECT GET_LOCK(?, 10) AS acquired', [$lock])[0]['acquired'] ?? 0) !== 1) {
             throw new HttpError(409, 'migration_busy', 'Another Space data migration is running.');
@@ -208,6 +211,12 @@ final class Spacefast
                 if ($email !== [] && (int) $email[0]['verified_at'] > 0) { $row['user_email'] = $email[0]['normalized']; }
             }
             $count += $this->insert($target . 'users', $row);
+            // Identity versions with fixed-cost verification must know imported hash profiles
+            // before the first sign-in, including a sign-in for a missing account.
+            if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+                $this->db->touchOption('zero_identity_password_profiles');
+                \Zero\Identity\Accounts::rememberPasswordHash($row['user_pass']);
+            }
         }
         foreach ($this->rows($source . 'usermeta', 'user_id', $ids) as $row) {
             if (str_starts_with($row['meta_key'], $source)) { $row['meta_key'] = $target . substr($row['meta_key'], strlen($source)); }

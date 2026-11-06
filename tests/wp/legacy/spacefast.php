@@ -12,6 +12,9 @@ if ($phase === 'seed') {
     $uid = wp_insert_user(['user_login'=>'imported-member','user_email'=>'old@example.test','display_name'=>'Imported Member','user_pass'=>'disposable-member-password','role'=>'subscriber']);
     if (is_wp_error($uid)) { throw new RuntimeException($uid->get_error_message()); }
     add_user_meta($uid, '_spacefast_app_user', 'imported-space');
+    // A raw legacy hash arrives after identity provisioned its native profile schedule.
+    $wpdb->update('wp_users', ['user_pass' => md5('disposable-member-password')], ['ID' => $uid]);
+    clean_user_cache($uid);
     $foreign = wp_insert_user(['user_login'=>'foreign-member','user_email'=>'foreign@example.test','user_pass'=>'disposable-foreign-password','role'=>'subscriber']);
     add_user_meta($foreign, '_spacefast_app_user', 'foreign-space');
     $post = wp_insert_post(['post_title'=>'Imported post','post_content'=>'<p>Preserved body</p>','post_type'=>'post','post_status'=>'publish','post_author'=>$uid]);
@@ -62,7 +65,77 @@ if ($phase === 'seed') {
 $f = json_decode(file_get_contents('/tmp/spacefast-fixture.json'), true);
 extract($f, EXTR_SKIP);
 proof(wp_salt('auth') === $salt, 'auth salt retained across prefix bind');
-if ($phase === 'comments') {
+if ($phase === 'nested') {
+    $plugin = \Zero\Wp\Runtime::plugin();
+    $db = $plugin->connection();
+    $db->transaction(function () use ($db, $plugin, $target): void {
+        foreach ([false, true] as $dry) {
+            try {
+                (new \Zero\Wp\Legacy\Spacefast($db, $plugin->schema))->run('imported-space', 'wp_', $target, $dry);
+                throw new RuntimeException('Nested copier accepted');
+            } catch (LogicException $e) {
+                proof($e->getMessage() === 'Spacefast migration requires its own per-group transactions', 'copier refuses a joined transaction before writes');
+            }
+        }
+        proof($db->inTransaction(), 'copier leaves the owner transaction intact');
+    });
+    proof(!$db->inTransaction(), 'refusing nested copy does not poison the owner transaction');
+} elseif ($phase === 'storage-failure') {
+    // The pending security release makes failed reads distinct from an absent session.
+    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $suppress = $wpdb->suppress_errors(true);
+        try {
+            foreach (['sessions' => 'secret_hash', 'legacy_sessions' => 'pending'] as $name => $column) {
+                $table = $target . 'zero_identity_' . $name;
+                proof($wpdb->query("ALTER TABLE $table RENAME COLUMN $column TO unavailable") !== false, 'identity lookup column made unreadable');
+                try {
+                    try {
+                        Plugin::$sessions->find('old-token');
+                        throw new RuntimeException('Failed read became an absent session');
+                    } catch (\Zero\Identity\Failure $e) {
+                        proof($e->kind === 'storage_unavailable' && $e->status === 503 && !str_contains($e->getMessage(), $table), 'canonical and legacy reads propagate sanitized storage failures');
+                    }
+                    $_COOKIE['__Host-sfi_session'] = 'old-token';
+                    $GLOBALS['wp']->query_vars['rest_route'] = '/zero/v1/me';
+                    $_SERVER['REQUEST_METHOD'] = 'GET';
+                    wp_set_current_user(0);
+                    $error = apply_filters('rest_authentication_errors', null);
+                    proof(is_wp_error($error) && $error->get_error_code() === 'storage_unavailable' && $error->get_error_data()['status'] === 503, 'REST alias returns storage failure instead of anonymous success');
+                    proof(!isset($_COOKIE[Sessions::COOKIE]) && get_current_user_id() === 0, 'failed lookup issues no canonical cookie and authenticates nobody');
+                } finally {
+                    proof($wpdb->query("ALTER TABLE $table RENAME COLUMN unavailable TO $column") !== false, 'identity lookup column restored');
+                    unset($_COOKIE['__Host-sfi_session']);
+                }
+            }
+        } finally {
+            $wpdb->suppress_errors($suppress);
+        }
+    }
+} elseif ($phase === 'upgrade-failure') {
+    $table = $target . 'zero_identity_sessions';
+    proof($wpdb->query("CREATE TRIGGER zero_upgrade_failure BEFORE UPDATE ON $table FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='disposable upgrade failure'") !== false, 'upgrade failure trigger installed');
+    $suppress = $wpdb->suppress_errors(true);
+    try {
+        try {
+            Plugin::$sessions->find('old-token');
+            throw new RuntimeException('Failed upgrade accepted');
+        } catch (\Zero\Identity\Failure $e) {
+            proof($e->kind === 'storage_conflict' && $e->status === 409, 'upgrade write failure propagates');
+        }
+        $_COOKIE['__Host-sfi_session'] = 'old-token';
+        $GLOBALS['wp']->query_vars['rest_route'] = '/zero/v1/me';
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        wp_set_current_user(0);
+        $error = apply_filters('rest_authentication_errors', null);
+        proof(is_wp_error($error) && $error->get_error_code() === 'storage_conflict' && $error->get_error_data()['status'] === 409, 'REST alias refuses an upgrade failure instead of authenticating or serving a guest');
+    } finally {
+        $wpdb->query('DROP TRIGGER zero_upgrade_failure');
+        $wpdb->suppress_errors($suppress);
+        unset($_COOKIE['__Host-sfi_session']);
+    }
+    $hash = $wpdb->get_var($wpdb->prepare("SELECT secret_hash FROM $table WHERE id=%s", str_repeat('a',32)));
+    proof(hash_equals(hash_hmac('sha256','old-token',wp_salt('auth')), $hash) && (int)$wpdb->get_var($wpdb->prepare("SELECT pending FROM {$target}zero_identity_legacy_sessions WHERE session_id=%s",str_repeat('a',32)))===1, 'failed upgrade changes neither legacy hash nor pending flag');
+} elseif ($phase === 'comments') {
     $wpdb->insert('wp_comments', ['comment_post_ID' => $post, 'comment_content' => 'Unsupported comment']);
 } elseif ($phase === 'clear-comments') {
     $wpdb->delete('wp_comments', ['comment_post_ID' => $post]);
@@ -88,6 +161,29 @@ if ($phase === 'comments') {
     proof((int)get_term($child)->parent===$parent && get_term_meta($child,'fixture',true)==='retained' && wp_get_object_terms($post,'category',['fields'=>'ids'])===[$child], 'taxonomy hierarchy, metadata and relationships retained');
     proof(get_post($project)->post_type==='zero_projects' && get_post_meta($project,'zero_budget',true)==='42.5' && get_post_meta($project,'zero_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
     proof(get_post_meta($projectRevision,'zero_budget',true)==='12.5' && get_post_meta($projectRevision,'zero_active',true)==='0', 'collection revision fields use parent mapping');
+    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $schedules = [];
+        foreach (['missing-imported-member', 'imported-member'] as $login) {
+            $work = [];
+            $observe = static function ($valid, $plain, $hash) use (&$work) {
+                $info = password_get_info(str_starts_with($hash, '$wp') ? substr($hash, 3) : $hash);
+                $work[] = strlen($hash) <= 32 ? 'md5' : json_encode([$info['algoName'], $info['options']]);
+                return $valid;
+            };
+            add_filter('check_password', $observe, 10, 3);
+            try {
+                Plugin::$accounts->password($login, 'incorrect-password');
+                throw new RuntimeException('Incorrect imported password accepted');
+            } catch (\Zero\Identity\Failure $e) {
+                proof($e->kind === 'invalid_credentials', 'imported and absent accounts use the generic password refusal');
+            } finally {
+                remove_filter('check_password', $observe);
+            }
+            sort($work);
+            $schedules[] = $work;
+        }
+        proof(in_array('md5', $schedules[0], true) && count($schedules[0]) >= 2 && $schedules[0] === $schedules[1], 'copier registers legacy password cost before any imported sign-in');
+    }
     $u = get_userdata($uid);
     proof($u->user_email==='verified@example.test' && wp_check_password('disposable-member-password',$u->user_pass,$uid) && $u->roles===['subscriber'], 'user ID, verified email, password and scoped role retained');
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_identity_legacy_sessions WHERE pending=1")===4, 'only imported sessions marked for upgrade');

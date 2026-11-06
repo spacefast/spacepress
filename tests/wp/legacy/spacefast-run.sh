@@ -53,6 +53,7 @@ for mode in --dry-run ''; do
 done
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php clear-comments
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php nested
 "$wp/harness.sh" wp "${command[@]}" --dry-run > "$app/dry.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
 # A conflict rolls back the entire posts group; no receipt is written.
@@ -79,6 +80,8 @@ assert all(g['status']=='dry-run' for g in json.loads((p/'dry.json').read_text()
 assert all(g['status']=='copied' and g['copied']>0 for g in json.loads((p/'first.json').read_text())['data']['groups'].values())
 assert all(g=={'copied':0,'status':'already-migrated'} for g in json.loads((p/'second.json').read_text())['data']['groups'].values())
 CHECK
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php storage-failure
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php upgrade-failure
 ZERO_SPACEFAST_HARNESS="$app/harness.json" node --test "$here/spacefast.test.mjs"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php authenticated
 # Receipts must also protect upgraded hashes and revoked sessions on later retries.

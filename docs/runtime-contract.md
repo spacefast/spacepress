@@ -785,7 +785,9 @@ Missing indexed/optional arguments retain undefined in call constraints.
 Tuple destructuring widens later element/rest types after potentially effectful defaults,
 including nested defaults that can change the original array. Inherited Object valueOf
 method handles share identity across functions, arrays and other reference families;
-scalar and Date valueOf retain their own prototype methods.
+scalar and Date valueOf retain their own prototype methods. Inherited Object toString
+handles also share identity across Set, Map, Math and ordinary objects, while Error
+uses its own prototype method. Borrowed Object toString reports the receiver tag.
 
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 

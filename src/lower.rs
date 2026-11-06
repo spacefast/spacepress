@@ -822,16 +822,18 @@ impl Lowerer {
             return self.unsupported(f.span, "a function without a body", "");
         };
         let context = self.class_context.get();
-        let body = FnBody::Block(self.block(&body.statements)?);
         if self.super_call.get() {
             self.class_context.set(false);
         }
-        let params = self.params(&f.params, context, &body);
+        let params = self.params(&f.params, context);
         self.class_context.set(context);
+        let params = params?;
+        let body = FnBody::Block(self.block(&body.statements)?);
+        check_parameter_defaults(&params, &body)?;
         Ok(Rc::new(Func {
             name: f.id.as_ref().map(|i| i.name.to_string()),
             is_arrow: false,
-            params: params?,
+            params,
             body,
             is_async: f.r#async,
             ret: f
@@ -850,10 +852,12 @@ impl Lowerer {
             Some(e) => FnBody::Expr(self.expr(e)?),
             None => FnBody::Block(self.block(&f.get_function_body().expect("arrow body").statements)?),
         };
+        let params = self.params(&f.params, false)?;
+        check_parameter_defaults(&params, &body)?;
         Ok(Rc::new(Func {
             name: None,
             is_arrow: true,
-            params: self.params(&f.params, false, &body)?,
+            params,
             body,
             is_async: f.r#async,
             ret: f
@@ -867,7 +871,7 @@ impl Lowerer {
         }))
     }
 
-    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool, body: &FnBody) -> Result<Vec<Param>> {
+    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool) -> Result<Vec<Param>> {
         let mut out = Vec::new();
         for item in &p.items {
             if (item.accessibility.is_some() || item.readonly) && !parameter_properties {
@@ -899,17 +903,6 @@ impl Lowerer {
                 rest: true,
                 span: self.sp(r.span),
             });
-        }
-        let allow_functions = !parameter_body_has_bindings(body);
-        for (index, parameter) in out.iter().enumerate() {
-            let mut uninitialized = Vec::new();
-            for later in &out[index..] {
-                later.pat.bindings(&mut uninitialized);
-            }
-            if let Some(value) = &parameter.default {
-                check_parameter_default(value, &uninitialized, allow_functions)?;
-            }
-            check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
         }
         Ok(out)
     }
@@ -1853,6 +1846,21 @@ fn check_parameter_statements(body: &[Stmt], uninitialized: &[(&str, Span)]) -> 
             | Stmt::ExportNames { .. }
             | Stmt::ExportAll { .. } => {}
         }
+    }
+    Ok(())
+}
+
+fn check_parameter_defaults(parameters: &[Param], body: &FnBody) -> Result<()> {
+    let allow_functions = !parameter_body_has_bindings(body);
+    for (index, parameter) in parameters.iter().enumerate() {
+        let mut uninitialized = Vec::new();
+        for later in &parameters[index..] {
+            later.pat.bindings(&mut uninitialized);
+        }
+        if let Some(value) = &parameter.default {
+            check_parameter_default(value, &uninitialized, allow_functions)?;
+        }
+        check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
     }
     Ok(())
 }

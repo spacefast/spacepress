@@ -922,5 +922,11 @@
     "name": "parameterDefaultClosuresUseEarlierBindings",
     "expression": "(() => {function f(a:number,write:(()=>void)|null=()=>{a++;}){if(write!==null)write();return a;}return [f(1),f(1,null)];})()",
     "fold": true
+  },
+  {
+    "name": "dynamicArrayLengthNumericConversion",
+    "expression": "(() => {const result=[];for(const n of [1,1.0,'1',null,false,-0,1.5,-1,Infinity]){const a=[1,2,3];try{const value=(a.length=n);result.push([String(value),a]);}catch(e){result.push(e.name);}}const a=[1,2,3];let calls=0;a.length={valueOf:()=>{calls++;return 1;}};return [result,a,calls];})()",
+    "fold": false,
+    "javascript": true
   }
 ]

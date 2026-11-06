@@ -172,8 +172,8 @@ trait JsDynamic
             }
             if ($key === 'length') {
                 if ($target instanceof JsArguments) { $target->length = $value; return $value; }
-                $length = self::toNumber($value);
-                if (!is_finite((float) $length) || floor($length) !== $length || $length < 0 || $length > 4294967295) { throw new JsError('Invalid array length', 'RangeError'); }
+                $length = self::toUint32(self::toNumber($value));
+                if ((float) $length !== (float) self::toNumber($value)) { throw new JsError('Invalid array length', 'RangeError'); }
                 if ($length > count($target->a)) { throw new JsError('Zero arrays are dense: length cannot create holes', 'RangeError'); }
                 $target->a = array_slice($target->a, 0, (int) $length);
                 return $value;

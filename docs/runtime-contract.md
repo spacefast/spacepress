@@ -618,7 +618,7 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
-Runtime `void` results use undefined. Missing reads, uninitialized class fields, optional arguments, bare
+Runtime `void` results use undefined. Missing reads, uninitialized locals and class fields, optional arguments, bare
 returns and function fallthrough preserve undefined identity: it is falsy, has typeof `undefined`,
 stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
 JSON arrays. This distinction does not change schema nullability. Public client

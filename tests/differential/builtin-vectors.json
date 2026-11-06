@@ -503,5 +503,15 @@
     "declarations": "function parityUndefinedDomain(value: string | undefined) {return typeof value;}",
     "expression": "[parityUndefinedDomain(),parityUndefinedDomain(undefined),parityUndefinedDomain('x')]",
     "fold": true
+  },
+  {
+    "name": "uninitializedTypedLocal",
+    "expression": "(() => { let value: number | undefined; const {value: fallback = 42} = {value}; return [typeof value, String(value), value === undefined, fallback]; })()",
+    "fold": true
+  },
+  {
+    "name": "nonemptyOptionalCaptures",
+    "expression": "['x'.replace(/(a|bc)?/, '[$1]'), 'ab'.replace(/([^}]+)?/, '$1!'), 'b'.replace(/(a?b)?/, '[$1]') ]",
+    "fold": true
   }
 ]

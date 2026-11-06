@@ -1120,7 +1120,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         d.clone()
                     }
-                    (Some(d), None) => d.clone().nullable(),
+                    (Some(d), None) => Ty::union([d.clone(), Ty::Undefined]),
                     (None, Some(v)) => inferred_binding_type(&v.ty, *kind == DeclKind::Let),
                     (None, None) => {
                         return err_help(
@@ -1134,9 +1134,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match pat {
                     Pat::Id(n, _) => {
                         let php = self.declare_local(n, ty, mutable, pat.span());
-                        let v = value
-                            .map(|v| v.php)
-                            .unwrap_or_else(|| if javascript { "\\Zero\\Js::undefined()" } else { "null" }.into());
+                        let v = value.map(|v| v.php).unwrap_or_else(|| "\\Zero\\Js::undefined()".into());
                         self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }

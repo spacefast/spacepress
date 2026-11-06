@@ -271,13 +271,25 @@ fn optional_capture_body(body: &str) -> bool {
     } else {
         body.strip_prefix("?:").unwrap_or(body)
     };
-    !body.is_empty()
-        && !body.contains(['*', '?', '|', '^', '$'])
-        && !["()", "{0", "\\b", "\\B", "\\k"].iter().any(|part| body.contains(part))
-        && !body
-            .as_bytes()
-            .windows(2)
-            .any(|pair| pair[0] == b'\\' && matches!(pair[1], b'1'..=b'9'))
+    let mut in_class = false;
+    let mut escaped = false;
+    for c in body.chars() {
+        if escaped {
+            if !in_class && matches!(c, 'b' | 'B' | 'k' | '1'..='9') {
+                return false;
+            }
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == '[' {
+            in_class = true;
+        } else if c == ']' {
+            in_class = false;
+        } else if !in_class && matches!(c, '^' | '$') {
+            return false;
+        }
+    }
+    regex::Regex::new(body).is_ok_and(|re| !re.is_match(""))
 }
 
 /// Refuse engine-specific capture retention rather than emulate a regex engine.

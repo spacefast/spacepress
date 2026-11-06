@@ -65,7 +65,7 @@ final class RegExp implements \Stringable
         $this->multiline = in_array('m', $chars, true);
         $this->unicode = in_array('u', $chars, true);
 
-        self::checkCaptureContract($source);
+        $this->checkCaptureContract($source);
         $this->src = $source;
         $this->pos = 0;
         $body = $this->translate();
@@ -240,7 +240,7 @@ final class RegExp implements \Stringable
 
     // ---------------------------------------------------------------- translation
 
-    private static function checkCaptureContract(string $source): void
+    private function checkCaptureContract(string $source): void
     {
         $stack = []; $captures = 0; $inClass = false;
         for ($i = 0, $length = strlen($source); $i < $length; $i++) {
@@ -265,16 +265,36 @@ final class RegExp implements \Stringable
                 }
                 if ($captures > $before && ($source[$i + 1] ?? '') === '?') {
                     $body = substr($source, $start + 1, $i - $start - 1);
-                    if (str_starts_with($body, '?<')) { $body = substr($body, strpos($body, '>') + 1); }
-                    elseif (str_starts_with($body, '?:')) { $body = substr($body, 2); }
-                    if ($body === '' || strpbrk($body, '*?|^$') !== false
-                        || str_contains($body, '()') || str_contains($body, '{0')
-                        || preg_match('/\\\\[bBk1-9]/', $body)) {
+                    if (!$this->optionalCaptureBody($body)) {
                         throw new JsError('Optional regex groups containing captures must have a nonempty body', 'SyntaxError');
                     }
                 }
             }
         }
+    }
+
+    private function optionalCaptureBody(string $body): bool
+    {
+        if (str_starts_with($body, '?<')) { $body = substr($body, strpos($body, '>') + 1); }
+        elseif (str_starts_with($body, '?:')) { $body = substr($body, 2); }
+        $inClass = false;
+        for ($i = 0, $n = strlen($body); $i < $n; $i++) {
+            $c = $body[$i];
+            if ($c === '\\') {
+                $next = $body[++$i] ?? '';
+                if (!$inClass && ($next !== '' && str_contains('bBk123456789', $next))) { return false; }
+            } elseif ($c === '[') { $inClass = true; }
+            elseif ($c === ']') { $inClass = false; }
+            elseif (!$inClass && ($c === '^' || $c === '$')) { return false; }
+            elseif (!$inClass && $c === '(' && preg_match('/^\(\?(?:[=!]|<[=!])/', substr($body, $i))) { return false; }
+        }
+        $probe = clone $this;
+        $probe->src = $body;
+        $probe->pos = 0;
+        $pattern = '/' . $probe->translate() . '/u';
+        set_error_handler(static fn () => true);
+        try { return preg_match($pattern, '') === 0; }
+        finally { restore_error_handler(); }
     }
 
     private function translate(): string

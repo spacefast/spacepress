@@ -319,7 +319,7 @@ mod tests {
                 writeln!(php, "        '{key}' => {bounds},").unwrap();
             }
         }
-        php.push_str("    ];\n\n    public static function check(string $surface, string $name, int $count): void\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return; }\n        $arity = self::ARITIES[$key];\n        if ($arity === null || $count < $arity[0] || $count > $arity[1]) {\n            throw new JsError('Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError');\n        }\n    }\n}\n");
+        php.push_str("    ];\n\n    public static function has(string $surface, string $name): bool\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return false; }\n        if (self::ARITIES[$key] === null) { throw new JsError('Unsupported built-in ' . $key, 'TypeError'); }\n        return true;\n    }\n\n    public static function check(string $surface, string $name, int $count): void\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return; }\n        $arity = self::ARITIES[$key];\n        if ($arity === null || $count < $arity[0] || $count > $arity[1]) {\n            throw new JsError('Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError');\n        }\n    }\n}\n");
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/Zero/Builtins.php");
         if std::env::var_os("UPDATE_BUILTINS").is_some() {
             std::fs::write(&path, &php).unwrap();

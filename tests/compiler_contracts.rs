@@ -887,6 +887,10 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     for v in vectors.as_array().unwrap() {
         let name = v["name"].as_str().unwrap();
         let expression = v["expression"].as_str().unwrap();
+        if let Some(source) = v["declarations"].as_str() {
+            declarations.push_str(source);
+            declarations.push('\n');
+        }
         let body = if v["javascript"] == true {
             javascript.push_str(&format!("export const js_{name} = () => ({expression});\n"));
             declarations.push_str(&format!("import {{js_{name}}} from './helper.js';\n"));
@@ -1142,16 +1146,24 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
 
 #[test]
 fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
-    let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst trim=' x '.trim; const result=trim();\nexport default defineConfig({actions:{probe:action({handler:()=>result})}});").unwrap();
-    let (out, report) = checked(tmp.path());
-    assert_eq!(out.status.code(), Some(1), "{report}");
-    let diagnostic = &report["diagnostics"][0];
-    assert!(
-        diagnostic["message"].as_str().unwrap().contains("extracted methods"),
-        "{report}"
-    );
-    assert_eq!(diagnostic["location"]["line"], 2);
+    for source in [
+        "const trim=' x '.trim; const result=trim();",
+        "const holder={method:' abc '.trim}; const result=holder.method();",
+        "const holder={'method':' abc '.trim}; const result=holder['method']();",
+        "const methods=[' abc '.trim]; const result=methods[0]();",
+        "const methods=[' abc '.trim]; const result=methods['0']();",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\n{source}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>result}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("extracted methods"),
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["line"], 2);
+    }
 }
 
 #[test]

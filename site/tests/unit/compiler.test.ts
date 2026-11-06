@@ -337,6 +337,10 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
     assert.ok("expression" in value && typeof value.expression === "string");
     assert.ok("fold" in value && typeof value.fold === "boolean");
     let expression = value.expression;
+    if ("declarations" in value) {
+      assert.ok(typeof value.declarations === "string");
+      declarations.push(value.declarations);
+    }
     if ("javascript" in value && value.javascript === true) {
       javascript.push(`export const js_${value.name} = () => (${expression});`);
       declarations.push(`import {js_${value.name}} from './helper.js';`);

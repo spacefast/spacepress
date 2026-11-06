@@ -1237,14 +1237,28 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    fn stored_property(&self, value: Value, span: Span) -> R<Value> {
+        if matches!(value, Value::Bound(..)) {
+            return err_help(
+                span,
+                "calling extracted methods isn't supported during configuration evaluation",
+                "call the method on its receiver, or wrap that call in an arrow function",
+            );
+        }
+        Ok(value)
+    }
+
     fn get_index(&self, v: &Value, i: &Value, span: Span) -> R<Value> {
         require_static_data(i, span)?;
         match (v, i) {
-            (Value::Array(a), Value::Num(n)) => Ok(if *n >= 0.0 && n.fract() == 0.0 {
-                a.borrow().get(*n as usize).cloned().unwrap_or(Value::Undef)
-            } else {
-                Value::Undef
-            }),
+            (Value::Array(a), Value::Num(n)) => self.stored_property(
+                if *n >= 0.0 && n.fract() == 0.0 {
+                    a.borrow().get(*n as usize).cloned().unwrap_or(Value::Undef)
+                } else {
+                    Value::Undef
+                },
+                span,
+            ),
             (Value::Str(s), Value::Num(n)) => {
                 if *n >= 0.0 && n.fract() == 0.0 {
                     match s.encode_utf16().nth(*n as usize) {
@@ -1269,11 +1283,13 @@ impl<'p> Evaluator<'p> {
                 error_object("TypeError", &[Value::str("restricted arguments property")]),
                 span,
             )),
-            Value::Object(o) | Value::Arguments(o) => Ok(o.borrow().get(prop).cloned().unwrap_or(Value::Undef)),
+            Value::Object(o) | Value::Arguments(o) => {
+                self.stored_property(o.borrow().get(prop).cloned().unwrap_or(Value::Undef), span)
+            }
             Value::Array(a) => match prop {
                 "length" => Ok(Value::Num(a.borrow().len() as f64)),
                 _ => match prop.parse::<usize>() {
-                    Ok(i) => Ok(a.borrow().get(i).cloned().unwrap_or(Value::Undef)),
+                    Ok(i) => self.stored_property(a.borrow().get(i).cloned().unwrap_or(Value::Undef), span),
                     Err(_) => bound(),
                 },
             },

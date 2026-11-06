@@ -206,6 +206,14 @@ final class Builtins
         'function.valueOf' => [0, PHP_INT_MAX],
     ];
 
+    public static function has(string $surface, string $name): bool
+    {
+        $key = $surface . '.' . $name;
+        if (!array_key_exists($key, self::ARITIES)) { return false; }
+        if (self::ARITIES[$key] === null) { throw new JsError('Unsupported built-in ' . $key, 'TypeError'); }
+        return true;
+    }
+
     public static function check(string $surface, string $name, int $count): void
     {
         $key = $surface . '.' . $name;

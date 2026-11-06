@@ -2837,8 +2837,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Object(o) => ((if javascript { 4 } else { 1 }, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
-                    Value::Undef if javascript => "\\Zero\\Js::undefined()".into(),
-                    Value::Null | Value::Undef => "null".into(),
+                    Value::Undef => "\\Zero\\Js::undefined()".into(),
+                    Value::Null => "null".into(),
                     Value::Bool(b) => b.to_string(),
                     Value::Num(n) => php_number(*n),
                     Value::Str(s) => php_str(s),
@@ -5947,7 +5947,8 @@ fn php_hint(t: &Ty) -> &'static str {
 
 fn ty_of_data(value: &Value) -> Ty {
     match value {
-        Value::Null | Value::Undef => Ty::Null,
+        Value::Null => Ty::Null,
+        Value::Undef => Ty::Undefined,
         Value::Bool(b) => Ty::FreshBoolLit(*b),
         Value::Num(n) => Ty::FreshNumLit(*n),
         Value::Str(s) => Ty::FreshStrLit(s.to_string()),
@@ -6092,7 +6093,7 @@ fn replacement_parameters(ty: &Ty, pattern: Option<&str>, count: usize) -> Vec<T
                     let captures = tail.next() != Some('?')
                         || (tail.next() == Some('<') && !matches!(tail.next(), Some('=' | '!')));
                     if captures {
-                        params.push(Ty::Str.nullable());
+                        params.push(Ty::union([Ty::Str, Ty::Undefined]));
                     }
                 }
                 _ => {}

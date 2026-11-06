@@ -863,14 +863,14 @@ final class Js
         return preg_replace('/[' . self::WS . ']+$/uD', '', $s) ?? rtrim($s);
     }
 
-    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
+    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement): string
     {
         if ($pattern instanceof RegExp) {
             if ($pattern->sticky) { throw new JsError('Sticky replacement is not supported', 'TypeError'); }
             if ($pattern->global) { $pattern->lastIndex = 0; }
             $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->execMatch($s)]);
 
-            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups(), $dynamic);
+            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups());
         }
         $pos = strpos($s, $pattern);
         if ($pos === false) {
@@ -880,14 +880,14 @@ final class Js
         return self::applyReplacements($s, [[$pos, $pos + strlen($pattern), [], []]], $replacement, false);
     }
 
-    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
+    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string
     {
         if ($pattern instanceof RegExp) {
             if (!$pattern->global) {
                 throw new JsError('replaceAll must be called with a global RegExp', 'TypeError');
             }
 
-            return self::replace($s, $pattern, $replacement, $dynamic);
+            return self::replace($s, $pattern, $replacement);
         }
         $matches = [];
         $plen = strlen($pattern);
@@ -907,7 +907,7 @@ final class Js
     /**
      * @param iterable<array{int, int, list<?string>, array<string, ?string>}> $matches byte ranges + captures
      */
-    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named, bool $dynamic = false): string
+    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named): string
     {
         $out = '';
         $last = 0;
@@ -921,9 +921,9 @@ final class Js
             if (is_string($replacement)) {
                 $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null, $between);
             } else {
-                $captures = $dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups) : $groups;
+                $captures = array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups);
                 $args = [...$captures, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s];
-                if ($named) { $args[] = new JsObject($dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $names) : $names); }
+                if ($named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names)); }
                 $rep = self::str($replacement($matched, ...$args));
             }
             if ($between && $rep !== '') {

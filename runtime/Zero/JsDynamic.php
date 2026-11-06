@@ -5,9 +5,6 @@ namespace Zero;
 /** Checked operations for imported JavaScript; authored TypeScript keeps its static contracts. */
 trait JsDynamic
 {
-    private const DYNAMIC_ARRAY_METHODS = ['push', 'unshift', 'concat', 'pop', 'shift', 'reverse', 'toReversed', 'flat', 'map', 'filter', 'forEach', 'some', 'every', 'find', 'findIndex', 'findLast', 'findLastIndex', 'flatMap', 'reduce', 'sort', 'toSorted', 'slice', 'at', 'indexOf', 'lastIndexOf', 'includes', 'join', 'splice'];
-    private const DYNAMIC_STRING_METHODS = ['toUpperCase', 'toLowerCase', 'trim', 'trimStart', 'trimEnd', 'charAt', 'charCodeAt', 'slice', 'substring', 'includes', 'startsWith', 'endsWith', 'indexOf', 'lastIndexOf', 'split', 'replace', 'replaceAll', 'match', 'repeat', 'concat'];
-    private const DYNAMIC_MATH_METHODS = ['abs', 'floor', 'ceil', 'trunc', 'round', 'min', 'max', 'pow', 'sqrt', 'sign'];
     private static array $dynamicNamespaces = [];
     private static array $dynamicMethods = [];
     private static ?\WeakMap $dynamicMethodReceivers = null;
@@ -27,16 +24,13 @@ trait JsDynamic
             $receiver instanceof JsSet => 'Set', $receiver instanceof JsMap => 'Map',
             is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
         };
-        $methods = match ($owner) {
-            'Math' => self::DYNAMIC_MATH_METHODS, 'Array' => self::DYNAMIC_ARRAY_METHODS, 'String' => self::DYNAMIC_STRING_METHODS,
-            'Number' => ['toFixed'], 'RegExp' => ['exec', 'test'], 'Date' => ['getTime', 'toISOString', 'toJSON'], 'Set' => ['add', 'has'], 'Map' => ['set', 'get', 'has'], default => [],
-        };
-        if (!in_array($name, [...$methods, 'toString', 'valueOf'], true)) { return JsUndefined::Value; }
+        $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
+        if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) { return JsUndefined::Value; }
         $key = $owner . ':' . $name;
         if (!isset(self::$dynamicMethods[$key])) {
             $invoke = match (true) {
                 $owner === 'Array' && $name === 'slice' => self::dynamicBorrowedSlice(...),
-                $owner === 'Math' && in_array($name, $methods, true) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
+                $owner === 'Math' && Builtins::has('Math', $name) => static fn ($thisArg, JsArray $args) => self::dynamicStaticCall($owner, $name, $args),
                 default => static fn ($thisArg, JsArray $args) => self::dynamicCallMethod($thisArg, $name, $args, true),
             };
             $function = static fn (...$args) => $invoke(JsUndefined::Value, new JsArray($args));
@@ -233,7 +227,7 @@ trait JsDynamic
             default => 'object',
         };
         Builtins::check($surface, $name, count($a));
-        if ($receiver instanceof JsNamespace && in_array($name, self::DYNAMIC_MATH_METHODS, true)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
+        if ($receiver instanceof JsNamespace && Builtins::has($receiver->name, $name)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
         if ($name === 'toFixed' && (is_int($receiver) || is_float($receiver))) { return self::toFixed($receiver, $get(0, 0)); }
         if ($name === 'toString') {
             if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
@@ -267,6 +261,7 @@ trait JsDynamic
             return match ($name) { 'exec' => self::dynamicRegExpExec($receiver, self::str($get(0))), 'test' => self::dynamicRegExpExec($receiver, self::str($get(0))) !== null, default => throw new JsError($name . ' is not a function', 'TypeError') };
         }
         if (is_string($receiver)) {
+            if ($name === 'replaceAll' && $get(0) instanceof RegExp && !$get(0)->global) { throw new JsError('replaceAll must be called with a global RegExp', 'TypeError'); }
             if (in_array($name, ['includes', 'startsWith', 'endsWith'], true) && $get(0) instanceof RegExp) { throw new JsError('Search argument must not be a regular expression', 'TypeError'); }
             return match ($name) {
                 'toUpperCase' => mb_strtoupper($receiver, 'UTF-8'), 'toLowerCase' => mb_strtolower($receiver, 'UTF-8'),
@@ -281,7 +276,7 @@ trait JsDynamic
                 'indexOf' => self::indexOf($receiver, self::str($get(0)), self::toNumber($get(1, 0))),
                 'lastIndexOf' => count($a) < 2 ? self::lastIndexOf($receiver, self::str($get(0))) : self::lastIndexOf($receiver, self::str($get(0)), self::toNumber($get(1))),
                 'split' => self::dynamicSplit($receiver, $get(0), $get(1)),
-                'replace', 'replaceAll' => self::{$name}($receiver, $get(0) instanceof RegExp ? $get(0) : self::str($get(0)), $get(1) instanceof \Closure ? $get(1) : self::str($get(1)), true),
+                'replace', 'replaceAll' => self::{$name}($receiver, $get(0) instanceof RegExp ? $get(0) : self::str($get(0)), $get(1) instanceof \Closure ? $get(1) : self::str($get(1))),
                 'match' => self::dynamicStringMatch($receiver, $get(0) instanceof RegExp ? $get(0) : new RegExp($get(0) === JsUndefined::Value ? '' : self::str($get(0)))),
                 'repeat' => self::repeat($receiver, self::toNumber($get(0, 0))),
                 'concat' => $receiver . implode('', array_map(self::str(...), $a)),

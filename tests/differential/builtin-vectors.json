@@ -407,5 +407,28 @@
     "expression": "Object.hasOwn({['__proto__']:null}, '__proto__')",
     "fold": true,
     "javascript": true
+  },
+  {
+    "name": "capturedUndefinedIdentity",
+    "declarations": "const capturedUndefinedScalar=undefined; const capturedUndefinedArray=[undefined]; const capturedUndefinedObject={value:undefined}; const capturedUndefinedFolded=typeof capturedUndefinedScalar;",
+    "expression": "[capturedUndefinedFolded, typeof capturedUndefinedScalar, typeof capturedUndefinedArray[0], typeof capturedUndefinedObject.value, capturedUndefinedScalar === null]",
+    "fold": false
+  },
+  {
+    "name": "unmatchedReplacementCaptures",
+    "expression": "['b'.replace(/(a)?b/, (m,g) => typeof g), 'b'.replaceAll(/(a)?b/g, (m,g) => String(g)), 'b'.replace(/(a)?b/, (m,g='fallback') => g), 'b'.replace(/(?<x>a)?b/, function() { return typeof arguments[1] + ':' + JSON.stringify(arguments[4]); })]",
+    "fold": false
+  },
+  {
+    "name": "dynamicMethodValues",
+    "expression": "(() => { const get=()=>''; const s=get(); const a=[]; const pad=s.padStart; const fill=a.fill; const math=Math; const log=math.log; return [typeof s.padStart, typeof s.padEnd, typeof s.at, typeof a.fill, typeof /x/.exec, typeof /x/.test, typeof math.log, typeof math.exp, typeof math.random, pad.call('x',3,'0'), fill.call([1,2],3), log(1)]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "replaceAllRejectsBeforeCoercion",
+    "expression": "(() => {let n=0; try {'x'.replaceAll(/x/,{toString:()=>{n++;return 'y';}});} catch(e) {} return n;})()",
+    "fold": false,
+    "javascript": true
   }
 ]

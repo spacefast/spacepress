@@ -1439,7 +1439,10 @@ final class Js
     public static function fromEntries(JsArray $entries): JsObject
     {
         $out = new JsObject();
-        foreach ($entries->a as $entry) { $out->p[self::key($entry->a[0])] = $entry->a[1] ?? null; }
+        foreach ($entries->a as $entry) {
+            if (!$entry instanceof JsArray && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
+            $out->p[self::key(self::dynamicGet($entry, '0'))] = self::dynamicGet($entry, '1');
+        }
         return $out;
     }
 

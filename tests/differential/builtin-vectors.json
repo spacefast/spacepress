@@ -185,5 +185,42 @@
     "name": "hasOwnReceivers",
     "expression": "[Object.hasOwn([1], '0'), Object.hasOwn([1], 'length'), Object.hasOwn('x', '0'), Object.hasOwn('🙂', '1'), Object.hasOwn('x', 'length'), Object.hasOwn(3, '0'), Object.hasOwn(/a/, 'lastIndex')]",
     "fold": true
+  },
+  {
+    "name": "objectTagArgumentEffects",
+    "expression": "(() => { let n = 0; const tag = ({}).toString.call({}, n++); return [tag, n]; })()",
+    "fold": false
+  },
+  {
+    "name": "sliceNullishBounds",
+    "expression": "['abcd'.slice(1, null), 'abcd'.slice(undefined, 2), 'abcd'.slice(1, undefined), [1, 2].slice(1, null), [1, 2].slice(undefined, 1)]",
+    "fold": true
+  },
+  {
+    "name": "splitNullishLimits",
+    "expression": "['a,b'.split(',', null), 'a,b'.split(',', undefined)]",
+    "fold": true
+  },
+  {
+    "name": "stringNumericCoercion",
+    "expression": "['abcd'.substring(1, null), 'abcd'.substring(undefined, 2), 'ab'.repeat(undefined), 'ab'.charAt(undefined), 'ab'.padStart(null), 'ab'.at(null)]",
+    "fold": false
+  },
+  {
+    "name": "fromEmptyEntry",
+    "expression": "Object.keys(Object.fromEntries([[]]))",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "flatNullishDepth",
+    "expression": "[[[1]].flat(undefined), [[1]].flat(null)]",
+    "fold": false
+  },
+  {
+    "name": "javascriptFlatNullishDepth",
+    "expression": "[[[1]].flat(undefined), [[1]].flat(null)]",
+    "fold": false,
+    "javascript": true
   }
 ]

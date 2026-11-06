@@ -4000,10 +4000,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && prop == "toString"
             && matches!(&prototype.kind, ExprKind::Object(props) if props.is_empty())
         {
-            let value = self.arg(args, 0, span, "a receiver")?;
-            let value = self.expr(value)?;
+            self.arg(args, 0, span, "a receiver")?;
+            let argv = self.plain_args(args)?;
+            let values = argv
+                .iter()
+                .map(|value| value.php.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
             return Ok(Out::atom(
-                format!("\\Zero\\Js::dynamicObjectTag({})", value.php),
+                format!("\\Zero\\Js::dynamicObjectTag([{values}][0])"),
                 Ty::Str,
             ));
         }
@@ -4850,6 +4855,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
             parts.extend(extra.iter().flatten().cloned());
             Out::atom(format!("\\Zero\\Js::{f}({})", parts.join(", ")), Ty::Str)
         };
+        let dispatch = || {
+            format!(
+                "\\Zero\\Js::dynamicCallMethod({}, {}, new \\Zero\\JsArray([{}]))",
+                s.php,
+                php_str(m),
+                argv.iter()
+                    .map(|value| value.php.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
         Ok(match m {
             "concat" => Out::atom(
                 format!(
@@ -4879,11 +4895,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ..js(m, &[a(0), a(1)])
                 }
             }
-            "slice" | "substring" | "padStart" | "padEnd" | "repeat" | "charAt" => js(m, &[a(0), a(1)]),
-            "at" => Out {
-                ty: Ty::Str.nullable(),
-                ..js("strAt", &[a(0)])
-            },
+            "slice" | "substring" | "padStart" | "padEnd" | "repeat" | "charAt" => Out::atom(dispatch(), Ty::Str),
+            "at" => Out::atom(dispatch(), Ty::Str.nullable()),
             "split" => {
                 if let Some(separator) = argv.first()
                     && !(separator.ty.is_str() || separator.ty == Ty::Regex)
@@ -4900,10 +4913,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Ty::Array(Box::new(Ty::Str)),
                     )
                 } else {
-                    Out {
-                        ty: Ty::Array(Box::new(Ty::Str)),
-                        ..js("split", &[a(0), a(1)])
-                    }
+                    Out::atom(dispatch(), Ty::Array(Box::new(Ty::Str)))
                 }
             }
             "localeCompare" => {
@@ -5120,6 +5130,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .chain(extra.iter().cloned())
                     .collect::<Vec<_>>()
                     .join(", ");
+                let dispatch = || {
+                    format!(
+                        "\\Zero\\Js::dynamicCallMethod({}, {}, new \\Zero\\JsArray([{}]))",
+                        a.php,
+                        php_str(m),
+                        extra.join(", ")
+                    )
+                };
                 match m {
                     "includes" => Out::atom(format!("\\Zero\\Js::includes({all})"), Ty::Bool),
                     "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
@@ -5131,7 +5149,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         Out::atom(format!("\\Zero\\Js::join({all})"), Ty::Str)
                     }
-                    "slice" => Out::atom(format!("\\Zero\\Js::arrSlice({all})"), Ty::Array(Box::new(el))),
+                    "slice" => Out::atom(dispatch(), Ty::Array(Box::new(el))),
                     "at" => Out::atom(format!("\\Zero\\Js::arrAt({all})"), el.nullable()),
                     "concat" => {
                         let mut t = vec![el];
@@ -5157,15 +5175,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             Ty::Array(t) | Ty::NonEmptyArray(t) => *t,
                             t => t,
                         };
-                        Out::atom(format!("\\Zero\\Js::flat({all})"), Ty::Array(Box::new(inner)))
+                        Out::atom(dispatch(), Ty::Array(Box::new(inner)))
                     }
                     _ => {
                         check_insert(&argv[..argv.len().min(1)])?;
-                        let p = &a.php;
-                        Out::atom(
-                            format!("\\Zero\\Js::fill({p}, {})", extra.join(", ")),
-                            Ty::Array(Box::new(el)),
-                        )
+                        Out::atom(dispatch(), Ty::Array(Box::new(el)))
                     }
                 }
             }

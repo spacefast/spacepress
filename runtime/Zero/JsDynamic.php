@@ -278,7 +278,8 @@ trait JsDynamic
             return match ($name) {
                 'push', 'unshift', 'concat' => self::{$name}($receiver, ...$a),
                 'pop', 'shift' => $receiver->a === [] ? JsUndefined::Value : self::{$name}($receiver),
-                'reverse', 'toReversed', 'flat' => self::{$name}($receiver, ...$a),
+                'reverse', 'toReversed' => self::{$name}($receiver, ...$a),
+                'flat' => self::flat($receiver, $get(0) === JsUndefined::Value ? 1 : self::toNumber($get(0))),
                 'find', 'findLast' => self::dynamicArrayFind($receiver, $name, self::dynamicCallback($get(0))),
                 'forEach' => self::dynamicForEach($receiver, self::dynamicCallback($get(0))),
                 'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::dynamicCallback($get(0))),
@@ -397,12 +398,7 @@ trait JsDynamic
                 return in_array($key, self::dynamicKeys($source)->a, true);
             }
             if ($method === 'fromEntries') {
-                $result = new JsObject();
-                foreach (self::dynamicIterable($source)->a as $entry) {
-                    if (!$entry instanceof JsArray && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
-                    $result->p[self::key(self::dynamicGet($entry, '0'))] = self::dynamicGet($entry, '1');
-                }
-                return $result;
+                return self::fromEntries(self::dynamicIterable($source));
             }
         }
         if ($owner === 'Math') {

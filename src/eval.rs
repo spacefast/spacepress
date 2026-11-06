@@ -1739,10 +1739,14 @@ impl<'p> Evaluator<'p> {
                             return err(span, "Object.fromEntries needs [key, value] pairs");
                         };
                         let pair = pair.borrow();
-                        if let Some(key) = pair.first() {
-                            require_static_data(key, span)?;
-                        }
-                        let k = pair.first().and_then(Value::to_js_string).unwrap_or_default();
+                        let key = pair.first().cloned().unwrap_or(Value::Undef);
+                        require_static_data(&key, span)?;
+                        let Some(k) = key.to_js_string() else {
+                            return err(
+                                span,
+                                "Object.fromEntries cannot convert this property key at build time",
+                            );
+                        };
                         if map
                             .insert(k.clone(), pair.get(1).cloned().unwrap_or(Value::Undef))
                             .is_some()

@@ -135,14 +135,18 @@ declare(strict_types=1);
     require_once ABSPATH . WPINC . '/class-phpass.php';
     $legacyPassword = 'legacy profile password';
     $legacyUsers = [];
-    foreach ([
+    $legacyHashes = [
         md5($legacyPassword),
         (new PasswordHash(8, true))->HashPassword($legacyPassword),
         password_hash($legacyPassword, PASSWORD_BCRYPT, ['cost' => 4]),
         crypt($legacyPassword, '$1$saltsalt$'),
         crypt($legacyPassword, '$5$rounds=5000$saltsaltsalt$'),
         crypt($legacyPassword, '$6$rounds=5000$saltsaltsalt$'),
-    ] as $i => $hash) {
+    ];
+    if (in_array('argon2id', password_algos(), true)) {
+        $legacyHashes[] = password_hash($legacyPassword, 'argon2id', ['memory_cost' => 8192, 'time_cost' => 1, 'threads' => 1]);
+    }
+    foreach ($legacyHashes as $i => $hash) {
         $legacyId = wp_create_user('legacy-' . $i . '-' . $tag, $legacyPassword);
         $old = get_userdata($legacyId);
         $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $legacyId]);
@@ -151,7 +155,14 @@ declare(strict_types=1);
         $legacyUsers[] = $legacyId;
     }
     $unsupportedUsers = [];
-    foreach ([str_repeat('!', 60), '$2y$99$' . str_repeat('a', 53)] as $i => $hash) {
+    foreach ([
+        str_repeat('!', 60),
+        '$2y$99$' . str_repeat('a', 53),
+        '$wp$2y$12$' . str_repeat('!', 53),
+        '$2y$99$' . str_repeat('!', 53),
+        '$argon2id$v=19$m=1,t=2,p=1$' . str_repeat('!', 43),
+        '$argon2id$v=19$m=8192,t=1,p=1$' . str_repeat('A', 22) . '$' . str_repeat('!', 43),
+    ] as $i => $hash) {
         $invalidId = wp_create_user('disabled-' . $i . '-' . $tag, $legacyPassword);
         $old = get_userdata($invalidId);
         $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $invalidId]);

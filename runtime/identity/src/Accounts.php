@@ -295,7 +295,11 @@ final class Accounts
         }
         $prefixed = str_starts_with($hash, '$wp');
         $encoded = $prefixed ? substr($hash, 3) : $hash;
-        if (preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{53}$/D', $encoded, $match)) {
+        if (str_starts_with($encoded, '$2')) {
+            // password_get_info accepts broken bcrypt strings; require canonical encoding first.
+            if (!preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{21}[.Oeu][.\/A-Za-z0-9]{30}[.CGKOSWaeimquy26]$/D', $encoded, $match)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
             return (int) $match[1] >= 4 && (int) $match[1] <= 31
                 ? json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]])
                 : self::UNSUPPORTED_PASSWORD_PROFILE;
@@ -306,8 +310,20 @@ final class Accounts
         if (str_starts_with($encoded, '$1$')) {
             return json_encode([$prefixed, 'md5-crypt']);
         }
+        // PHP's Argon encoder emits v19, a 16-byte salt and a 32-byte digest.
+        if (!preg_match('/^\$(argon2i|argon2id)\$v=19\$m=(\d+),t=(\d+),p=(\d+)\$([A-Za-z0-9+\/]+)\$([A-Za-z0-9+\/]+)$/D', $encoded, $match)) {
+            return self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        $salt = base64_decode($match[5], true);
+        $digest = base64_decode($match[6], true);
+        if ($salt === false || strlen($salt) !== 16 || rtrim(base64_encode($salt), '=') !== $match[5]
+            || $digest === false || strlen($digest) !== 32 || rtrim(base64_encode($digest), '=') !== $match[6]
+            || (int) $match[4] < 1 || (int) $match[4] > 16777215
+            || (int) $match[2] < 8 * (int) $match[4] || (int) $match[2] > 4294967295
+            || (int) $match[3] < 1 || (int) $match[3] > 4294967295) {
+            return self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
         $info = password_get_info($encoded);
-        // Unknown formats have no reproducible verification cost and fail closed.
         return $info['algo'] === null
             ? self::UNSUPPORTED_PASSWORD_PROFILE
             : json_encode([$prefixed, $info['algoName'], $info['options']]);
@@ -330,10 +346,13 @@ final class Accounts
             $password = base64_encode(hash_hmac('sha384', $password, 'wp-sha384', true));
         }
         $info = password_get_info($encoded);
-        $dummy = $info['algo'] === null ? crypt($password, $encoded) : password_hash($password, $info['algo'], $info['options']);
+        try {
+            $dummy = $info['algo'] === null ? crypt($password, $encoded) : password_hash($password, $info['algo'], $info['options']);
+        } catch (\ValueError) {
+            return ''; // Unencodable profiles cannot enter or replace a verification slot.
+        }
         if (strlen($dummy) <= 2) {
-            // Pluggable formats without a PHP encoder still use independent verification material.
-            return wp_hash_password(Security::token(48));
+            return '';
         }
         return ($prefixed ? '$wp' : '') . $dummy;
     }

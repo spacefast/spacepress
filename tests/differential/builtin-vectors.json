@@ -283,5 +283,26 @@
     "expression": "['abc'.at(100) === undefined, 'abc'.at(-100) === undefined, 'abc'.at(1)]",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "arrayIndexCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const b = [1, 2, 3]; const c = [1, 2, 3]; const x = {valueOf: () => { a.push(4); return -1; }}; const y = {valueOf: () => { b.push(4); return -1; }}; const z = {valueOf: () => { c.push(4); return -1; }}; return [a.indexOf(4, x), b.lastIndexOf(4, y), c.at(z)]; })()",
+    "fold": false
+  },
+  {
+    "name": "emptyArraySearchCoercion",
+    "expression": "(() => { let n = 0; const position = {valueOf: () => { n++; return 0; }}; return [[].includes(1, position), [].indexOf(1, position), [].lastIndexOf(1, position), n]; })()",
+    "fold": false
+  },
+  {
+    "name": "arrayMutationCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; const removed = a.splice(start, 1); const b = [1, 2, 3]; const fillStart = {valueOf: () => { b.push(4); return -1; }}; b.fill(9, fillStart); const c = [[1]]; const depth = {valueOf: () => { c.push([2]); return 1; }}; const flat = c.flat(depth); return [removed, a, b, flat, c]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptArrayMutationCoercionOrder",
+    "expression": "(() => { const a = [1, 2, 3]; const start = {valueOf: () => { a.push(4); return -1; }}; const removed = a.splice(start, 1); const b = [1, 2, 3]; const fillStart = {valueOf: () => { b.push(4); return -1; }}; b.fill(9, fillStart); const c = [[1]]; const depth = {valueOf: () => { c.push([2]); return 1; }}; const flat = c.flat(depth); return [removed, a, b, flat, c]; })()",
+    "fold": false,
+    "javascript": true
   }
 ]

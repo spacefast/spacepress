@@ -279,18 +279,18 @@ trait JsDynamic
                 'push', 'unshift', 'concat' => self::{$name}($receiver, ...$a),
                 'pop', 'shift' => $receiver->a === [] ? JsUndefined::Value : self::{$name}($receiver),
                 'reverse', 'toReversed' => self::{$name}($receiver, ...$a),
-                'flat' => self::flat($receiver, $get(0) === JsUndefined::Value ? 1 : self::toNumber($get(0))),
+                'flat' => self::dynamicFlat($receiver, $get(0)),
                 'find', 'findLast' => self::dynamicArrayFind($receiver, $name, self::dynamicCallback($get(0))),
                 'forEach' => self::dynamicForEach($receiver, self::dynamicCallback($get(0))),
                 'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::dynamicCallback($get(0))),
                 'reduce' => count($a) < 2 ? self::reduce($receiver, self::dynamicCallback($get(0))) : self::reduce($receiver, self::dynamicCallback($get(0)), $a[1]),
                 'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::dynamicCallback($get(0))),
-                'fill' => self::fill($receiver, $get(0), self::toNumber($get(1, 0)), $get(2) === JsUndefined::Value ? null : self::toNumber($get(2))),
+                'fill' => self::dynamicFill($receiver, $get(0), $get(1), $get(2)),
                 'slice' => self::dynamicBorrowedSlice($receiver, $args),
-                'at' => self::dynamicArrayAt($receiver, self::toNumber($get(0, 0))),
+                'at' => self::dynamicArrayAt($receiver, $get(0)),
                 'indexOf', 'lastIndexOf', 'includes' => self::{$name}($receiver, $get(0), ...array_slice($a, 1, 1)),
                 'join' => self::join($receiver, $get(0) === JsUndefined::Value ? ',' : self::str($get(0))),
-                'splice' => $a === [] ? new JsArray() : (count($a) < 2 ? self::splice($receiver, self::toNumber($get(0, 0))) : self::splice($receiver, self::toNumber($a[0]), self::toNumber($a[1]), ...array_slice($a, 2))),
+                'splice' => self::dynamicSplice($receiver, $args),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
         }
@@ -303,11 +303,40 @@ trait JsDynamic
         return $callback;
     }
 
-    private static function dynamicArrayAt(JsArray $source, int|float $index): mixed
+    private static function dynamicArrayAt(JsArray $source, mixed $index): mixed
     {
-        $index = self::toInteger($index);
-        if ($index < 0) { $index += count($source->a); }
-        return $index >= 0 && $index < count($source->a) ? $source->a[(int) $index] : JsUndefined::Value;
+        $length = count($source->a);
+        $index = self::toInteger(self::toNumber($index));
+        if ($index < 0) { $index += $length; }
+        return $index >= 0 && $index < $length ? self::dynamicGet($source, (string) $index) : JsUndefined::Value;
+    }
+
+    private static function dynamicFlat(JsArray $source, mixed $depth): JsArray
+    {
+        $length = count($source->a);
+        $depth = $depth === JsUndefined::Value ? 1 : self::toNumber($depth);
+        return self::flat(new JsArray(array_slice($source->a, 0, $length)), $depth);
+    }
+
+    private static function dynamicFill(JsArray $source, mixed $value, mixed $start, mixed $end): JsArray
+    {
+        $length = count($source->a);
+        $from = self::relIndex(self::toNumber($start), $length);
+        $to = $end === JsUndefined::Value ? $length : self::relIndex(self::toNumber($end), $length);
+        if ($from < $to && $from > count($source->a)) { throw new JsError('Fill cannot create a sparse array after coercion', 'TypeError'); }
+        for ($i = $from; $i < $to; $i++) { $source->a[$i] = $value; }
+        return $source;
+    }
+
+    private static function dynamicSplice(JsArray $source, JsArray $args): JsArray
+    {
+        $length = count($source->a);
+        if ($args->a === []) { return new JsArray(); }
+        $start = self::relIndex(self::toNumber($args->a[0]), $length);
+        $count = count($args->a) < 2 ? $length - $start : self::clampIndex(self::toNumber($args->a[1]), $length - $start);
+        if (count($source->a) < $length) { throw new JsError('Splice cannot read a sparse array after coercion', 'TypeError'); }
+        $source->a = array_slice($source->a, 0, $length);
+        return new JsArray(array_splice($source->a, $start, $count, array_slice($args->a, 2)));
     }
 
     private static function dynamicArrayFind(JsArray $source, string $method, \Closure $callback): mixed

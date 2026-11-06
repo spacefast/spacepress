@@ -663,11 +663,12 @@ final class Js
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
     public static function indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int
     {
-        $from = self::toNumber($from);
         if ($s instanceof JsArray) {
             $len = count($s->a);
+            if ($len === 0) { return -1; }
+            $from = self::toNumber($from);
             for ($i = self::relIndex($from, $len); $i < $len; $i++) {
-                if (self::strictEq($s->a[$i], $needle)) {
+                if (array_key_exists($i, $s->a) && self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -676,6 +677,7 @@ final class Js
         }
         $u = self::units($s);
         $n = self::units(self::str($needle));
+        $from = self::toNumber($from);
         // A byte match at an odd offset straddles two units; keep looking.
         for ($at = 2 * self::clampIndex($from, intdiv(strlen($u), 2)); ($found = strpos($u, $n, $at)) !== false; $at = $found + 1) {
             if ($found % 2 === 0) {
@@ -693,17 +695,19 @@ final class Js
      */
     public static function lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int
     {
-        $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
         if ($s instanceof JsArray) {
+            $len = count($s->a);
+            if ($len === 0) { return -1; }
+            $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
             // fromIndex: relative to the end when negative, clamped to the last element.
-            $last = count($s->a) - 1;
+            $last = $len - 1;
             if ($from !== null) {
                 // Clamp before the cast: -Infinity or -1e20 must search nothing, not index 0.
                 $f = self::toInteger($from);
-                $last = (int) ($f < 0 ? max(count($s->a) + $f, -1) : min($f, $last));
+                $last = (int) ($f < 0 ? max($len + $f, -1) : min($f, $last));
             }
             for ($i = $last; $i >= 0; $i--) {
-                if (self::strictEq($s->a[$i], $needle)) {
+                if (array_key_exists($i, $s->a) && self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -713,6 +717,7 @@ final class Js
         $u = self::units($s);
         $n = self::units(self::str($needle));
         $len = intdiv(strlen($u), 2);
+        $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
         $start = $from === null || is_nan($from) ? $len : self::clampIndex($from, $len);
         if ($n === '') {
             return $start;
@@ -1177,10 +1182,12 @@ final class Js
     public static function includes(JsArray $a, mixed $value, mixed $from = 0): bool
     {
         $len = count($a->a);
+        if ($len === 0) { return false; }
         $from = self::toInteger(self::toNumber($from));
         $start = $from < 0 ? max(0, $len + $from) : min($from, $len);
         for ($i = (int) $start; $i < $len; $i++) {
-            if (self::sameValueZero($a->a[$i], $value)) { return true; }
+            $item = array_key_exists($i, $a->a) ? $a->a[$i] : JsUndefined::Value;
+            if (self::sameValueZero($item, $value)) { return true; }
         }
         return false;
     }
@@ -1214,10 +1221,10 @@ final class Js
 
     public static function arrAt(JsArray $a, mixed $i = 0): mixed
     {
-        $i = self::toNumber($i);
         $len = count($a->a);
-        $i = self::toInteger($i);
-        return self::get($a, $i < 0 ? $len + $i : $i);
+        $i = self::toInteger(self::toNumber($i));
+        if ($i < 0) { $i += $len; }
+        return $i >= 0 && $i < $len ? self::get($a, $i) : null;
     }
 
     public static function push(JsArray $a, mixed ...$values): int

@@ -557,8 +557,9 @@ refuses these calls rather than serialize with Rust's JSON rules or substitute
 plain objects for Errors. Keep configuration data plain; serialize and construct
 Errors inside handlers. Custom object and function coercion is also refused
 at build time; the pure conversion helpers never silently skip ToPrimitive hooks.
-Runtime conversions execute user code once, with array slice length captured
-before bound coercion. Typed string `at` retains its nullable-read boundary;
+Runtime conversions execute user code once, with array length captured before
+bound or depth coercion. Coercions that would require sparse splice/fill results
+are explicitly refused. Typed string `at` retains its nullable-read boundary;
 checked JavaScript string `at` returns undefined outside the string.
 
 `tests/differential/builtin-vectors.json` supplies the same expressions to

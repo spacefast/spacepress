@@ -2293,18 +2293,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Object(props) => {
                 let mut parts = Vec::new();
                 let mut fields: IndexMap<String, (Ty, bool)> = IndexMap::new();
+                let mut map_values = Vec::new();
                 let mut is_map = false;
                 for p in props {
                     match p {
                         Prop::KV(key, value) => {
-                            let v = self.expr(value)?;
-                            let v = self.finish_value(v, value.span)?;
-                            match key {
-                                PropKey::Static(k) => {
-                                    fields.shift_remove(k);
-                                    fields.insert(k.clone(), (v.ty.clone(), false));
-                                    parts.push(format!("[{} => {}]", php_str(k), v.php));
-                                }
+                            let (key_php, name) = match key {
+                                PropKey::Static(k) => (php_str(k), Some(k)),
                                 PropKey::Computed(kx) => {
                                     let k = self.expr(kx)?;
                                     if !k.ty.all(|t| t.is_str() || t.is_num() || t.is_bool() || *t == Ty::Null) {
@@ -2314,9 +2309,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         );
                                     }
                                     is_map = true;
-                                    parts.push(format!("[\\Zero\\Js::key({}) => {}]", k.php, v.php));
+                                    (format!("\\Zero\\Js::key({})", k.php), None)
                                 }
+                            };
+                            let v = self.expr(value)?;
+                            let v = self.finish_value(v, value.span)?;
+                            if let Some(k) = name {
+                                fields.shift_remove(k);
+                                fields.insert(k.clone(), (v.ty.clone(), false));
+                            } else {
+                                map_values.push(v.ty.clone());
                             }
+                            parts.push(format!("[{key_php} => {}]", v.php));
                         }
                         Prop::Spread(x) => {
                             let v = self.expr(x)?;
@@ -2331,7 +2335,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         fields.insert(k, t);
                                     }
                                 }
-                                Ty::Map(_) => is_map = true,
+                                Ty::Map(t) => {
+                                    is_map = true;
+                                    map_values.push(*t);
+                                }
                                 other => {
                                     return err(x.span, format!("can't spread {} into an object", other.describe()));
                                 }
@@ -2341,7 +2348,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 let ty = if is_map {
-                    Ty::Map(Box::new(Ty::union(fields.values().map(|(t, _)| t.clone()))))
+                    Ty::Map(Box::new(Ty::union(
+                        fields.values().map(|(t, _)| t.clone()).chain(map_values),
+                    )))
                 } else {
                     Ty::Obj(fields)
                 };
@@ -2515,7 +2524,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 prop_span,
             } => self.member(obj, prop, *optional, *prop_span, span)?,
             ExprKind::Index { obj, index, optional } => self.index(obj, index, *optional, span)?,
-            ExprKind::Chain(inner) => self.expr(inner)?,
+            ExprKind::Chain(inner) => {
+                check_optional_chain(inner)?;
+                self.expr(inner)?
+            }
             ExprKind::Await(x) => self.await_expr(x, span)?,
             ExprKind::As(x, ann) => {
                 let v = self.expr(x)?;
@@ -6649,6 +6661,27 @@ fn collect_aliases(
 
 fn paren(s: &str) -> String {
     format!("({s})")
+}
+
+fn check_optional_chain(e: &Expr) -> Result<bool> {
+    let (receiver, optional) = match &e.kind {
+        ExprKind::Member { obj, optional, .. } | ExprKind::Index { obj, optional, .. } => (obj, *optional),
+        ExprKind::Call { callee, optional, .. } => match &callee.kind {
+            ExprKind::Member { .. } | ExprKind::Index { .. } => return check_optional_chain(callee),
+            _ => (callee, *optional),
+        },
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return check_optional_chain(inner),
+        _ => return Ok(false),
+    };
+    let short = check_optional_chain(receiver)?;
+    if short && !optional {
+        return err_help(
+            e.span,
+            "non-optional continuation of an optional chain isn't supported",
+            "guard each nullable step explicitly before continuing the access or call",
+        );
+    }
+    Ok(short || optional)
 }
 
 /// Direct PHP comparisons are safe only when evaluating the right side cannot replace the left.

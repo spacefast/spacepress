@@ -776,6 +776,11 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
 depends on `mb_internal_encoding()`.
 
+Computed object keys evaluate before their values; computed fields and map spreads
+contribute to inferred map value types. Optional chains permit guarded steps and
+single optional method calls. Non-optional continuations after a short-circuiting
+link refuse at source; parenthesized chain boundaries retain ordinary access semantics.
+
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 
 RegExp:

@@ -853,5 +853,16 @@
     "expression": "[Object.hasOwn(Math,'PI'),Object.hasOwn(Math,'E'),Object.hasOwn(Math,'min'),Object.hasOwn(Math,'random'),Object.hasOwn(Math,'toString'),Object.hasOwn(Math,'valueOf'),Object.keys(Math),Object.hasOwn(structuredClone(Math),'PI')]",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "computedObjectValueTypes",
+    "expression": "(() => {const key='x';const o={[key]:1};const spread={...o};let k='old';const ordered={[k]: (k='new',2)};return [o[key],typeof o[key],typeof spread[key],typeof ordered.old,k];})()",
+    "fold": true
+  },
+  {
+    "name": "optionalGuardedSteps",
+    "expression": "(() => {let n=0;const a=null;const b={child:{value:2}};return [a?.child?.[n++],b?.child?.value,n,(b?.child).value];})()",
+    "fold": true,
+    "javascript": true
   }
 ]

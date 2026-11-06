@@ -228,6 +228,13 @@
       "fixture": "tests/fixtures/reject-locale-compare",
       "message": "localeCompare() isn't supported",
       "guidance": "Locale collation depends on the host and cannot be reproduced deterministically. localeCompare is refused in configuration and typed handlers; checked imported JavaScript throws TypeError. Use < or > for deterministic UTF-16 ordering. No byte-order substitute is exposed under the localeCompare name."
+    },
+    {
+      "id": "optional-chains",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "optional_chains_refuse_unguarded_continuations_at_source",
+      "guidance": "Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior."
     }
   ]
 }

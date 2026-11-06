@@ -247,3 +247,11 @@ Status: **refused**. Diagnostic: `Z4001`.
 Locale collation depends on the host and cannot be reproduced deterministically. localeCompare is refused in configuration and typed handlers; checked imported JavaScript throws TypeError. Use < or > for deterministic UTF-16 ordering. No byte-order substitute is exposed under the localeCompare name.
 
 [Evidence](../tests/fixtures/reject-locale-compare)
+
+## optional-chains
+
+Status: **supported**.
+
+Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
+
+[Evidence](../tests/compiler_contracts.rs) (`optional_chains_refuse_unguarded_continuations_at_source`)

@@ -1643,3 +1643,47 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
     }
 }
+
+#[test]
+fn optional_chains_refuse_unguarded_continuations_at_source() {
+    for expression in ["a?.b[n++]", "a?.b.c", "a?.b().c", "a?.b()()", "a?.b?.c[n++]"] {
+        for javascript in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let body = format!("const a=null;let n=0;try{{{expression};}}catch{{}}return n;");
+            let handler = if javascript {
+                std::fs::write(
+                    tmp.path().join("helper.js"),
+                    format!("export function probe(){{{body}}}"),
+                )
+                .unwrap();
+                "probe".to_string()
+            } else {
+                format!("()=>{{{body}}}")
+            };
+            let import = if javascript {
+                "import {probe} from './helper.js';"
+            } else {
+                ""
+            };
+            std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';{import}export default defineConfig({{actions:{{probe:action({{handler:{handler}}})}}}});")).unwrap();
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+            let diagnostic = &report["diagnostics"][0];
+            assert!(
+                diagnostic["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("continuation of an optional chain"),
+                "{report}"
+            );
+            assert!(diagnostic["location"].is_object(), "{report}");
+            assert!(
+                diagnostic["help"]
+                    .as_str()
+                    .unwrap()
+                    .contains("guard each nullable step"),
+                "{report}"
+            );
+        }
+    }
+}

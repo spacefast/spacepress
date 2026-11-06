@@ -522,7 +522,7 @@ trait JsDynamic
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $options = $a[1] ?? JsUndefined::Value;
-            if ($options instanceof JsObject && array_key_exists('cause', $options->p)) {
+            if (($options instanceof JsObject || $options instanceof JsArray || $options instanceof JsArguments) && array_key_exists('cause', $options->p)) {
                 throw new JsError('Error cause is not supported', 'TypeError');
             }
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;

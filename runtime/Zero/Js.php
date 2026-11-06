@@ -1362,6 +1362,12 @@ final class Js
             });
             return new JsArray([...$items, ...$tail]);
         }
+        if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
+        foreach ($items as $item) {
+            if (is_object($item)) {
+                throw new JsError('Default sorting of objects requires an explicit comparator', 'TypeError');
+            }
+        }
         $keyed = [];
         foreach ($items as $item) { $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item]; }
         usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
@@ -1925,11 +1931,8 @@ final class Js
     {
         $re = '/^([+-]\d{6}|\d{4})(?:-(\d{2})(?:-(\d{2}))?)?'
             . '(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?$/D';
-        if (!preg_match($re, $s, $m)) {
+        if (!preg_match($re, $s, $m) || str_starts_with($s, '-000000')) {
             throw new JsError('Date strings require the supported ISO format', 'RangeError');
-        }
-        if ($m[1] === '-000000') {
-            return NAN;
         }
         $y = (int) $m[1];
         $mo = ($m[2] ?? '') === '' ? 1 : (int) $m[2];

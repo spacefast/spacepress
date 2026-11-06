@@ -1415,24 +1415,26 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
 
 #[test]
 fn non_iso_date_literals_are_refused_at_the_call() {
-    for name in ["zero.config.ts", "helper.js"] {
-        let tmp = tempfile::tempdir().unwrap();
-        if name == "helper.js" {
-            std::fs::write(
-                tmp.path().join(name),
-                "export const probe=()=>new Date('2020-1-1').getTime();",
-            )
-            .unwrap();
-            std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
-        } else {
-            std::fs::write(tmp.path().join(name),"import {action,defineConfig} from 'zero';export default defineConfig({actions:{probe:action({handler:()=>new Date('2020-1-1').getTime()})}});").unwrap();
+    for text in ["2020-1-1", "-000000-01-01"] {
+        for name in ["zero.config.ts", "helper.js"] {
+            let tmp = tempfile::tempdir().unwrap();
+            if name == "helper.js" {
+                std::fs::write(
+                    tmp.path().join(name),
+                    format!("export const probe=()=>new Date({text:?}).getTime();"),
+                )
+                .unwrap();
+                std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
+            } else {
+                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>new Date({text:?}).getTime()}})}}}});")).unwrap();
+            }
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{report}");
+            assert_eq!(
+                report["diagnostics"][0]["message"],
+                "Date strings require the supported ISO format"
+            );
+            assert_eq!(report["diagnostics"][0]["location"]["file"], name);
         }
-        let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        assert_eq!(
-            report["diagnostics"][0]["message"],
-            "Date strings require the supported ISO format"
-        );
-        assert_eq!(report["diagnostics"][0]["location"]["file"], name);
     }
 }

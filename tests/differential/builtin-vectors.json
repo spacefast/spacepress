@@ -820,5 +820,22 @@
     "name": "unicodeSurrogatePairAtoms",
     "expression": "[/[\\uD83D\\uDE42]/u.test('🙂'), /[\\u{1F642}]/u.test('🙂'), /[^\\uD83D\\uDE42]/u.test('🙂'), /🙂?/u.test('a'), /\\uD83D\\uDE42?/u.test('a'), /[a-\\uD83D\\uDE42]/u.test('\\uE000'), /\\u{D800}/u.test('?')]",
     "fold": false
+  },
+  {
+    "name": "templateOperandSnapshots",
+    "expression": "(() => {let s='x';let n=1;return [`${s}${s='y'}`,`${n}${n=2}`,`${s}${s='z'}${s}`];})()",
+    "fold": true
+  },
+  {
+    "name": "templateCoercionOrder",
+    "expression": "(() => {let s='x';const value={toString:()=>{s='y';return 'o';}};return [`${s}${value}${s}`,s];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "clonedNamespaceIdentity",
+    "expression": "(() => {const source={a:Math,b:Math};const c=structuredClone(source);c.a.x=1;return [c.a===Math,c.a===c.b,c.b.x,Object.keys(c.a),Object.keys(structuredClone(Math)),typeof structuredClone(Math).min,String(c.a)];})()",
+    "fold": false,
+    "javascript": true
   }
 ]

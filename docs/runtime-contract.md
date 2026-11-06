@@ -768,6 +768,8 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
 depends on `mb_internal_encoding()`.
 
+Template interpolation converts and snapshots each substitution before evaluating the next one.
+
 RegExp:
 - `re(string $source, string $flags): RegExp` — creates a fresh instance and translates the supported JS regex subset to UTF-aware, delimiter-safe PCRE. Accepts `g i m s u y`; `d` and `v` throw `JsError`.
 - `dateJSON(int|float $ms): ?string` returns null for invalid dates and otherwise ISO text.
@@ -797,7 +799,7 @@ Objects (`JsObject`):
 - `keys(JsObject $o): JsArray`, `values(...)`: JsArray, `entries(...)`: JsArray of JsArray pairs; `fromEntries(JsArray $entries): JsObject`.
 - `obj(array ...$parts): JsObject` writes per key in source order; `omit(JsObject $o, array $keys): JsObject` implements object rest.
 - `hasOwn(JsObject|JsArray $o, mixed $key): bool`; `key(mixed $key): string` coerces computed keys as JS does.
-- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Internal `detach` also copies arguments objects, while preserving closures and RegExp by reference for runtime ownership.
+- `clone(mixed $v): mixed` independently copies objects, arrays, Set, Map and Date handles, preserving aliases and cycles; closures and arguments objects throw `DataCloneError`. Math namespace clones are plain empty objects, preserving repeated-reference aliases. Internal `detach` also copies arguments objects, while preserving closures, RegExp and namespace identity by reference for runtime ownership.
 
 JSON:
 - `jsonStringify(mixed $v, int|float|string|null $indent = null): ?string` — `JSON.stringify(v, null, indent)`: lists → arrays, assoc → objects, empty array → `[]`, NAN/INF → `null`, integral floats without `.0`, unescaped `/` and Unicode, `Closure` values omitted from objects and `null` in arrays, top-level Closure → null. Cycles throw `TypeError`; `jsonTree` provides the same value tree for foreign encoders. Indent number (clamped 10) or string, exactly as JS formats it.

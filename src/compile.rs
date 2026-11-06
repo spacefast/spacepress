@@ -2239,7 +2239,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if parts.is_empty() {
                     Out::atom("''", Ty::Str)
                 } else {
-                    Out::new(parts.join(" . "), Ty::Str)
+                    Out::atom(format!("implode('', [{}])", parts.join(", ")), Ty::Str)
                 }
             }
             ExprKind::Sequence(items) => {

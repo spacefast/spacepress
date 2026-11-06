@@ -1577,6 +1577,13 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if ($value instanceof JsNamespace) {
+            if (!$structured) { return $value; }
+            if ($seen->offsetExists($value)) { return $seen[$value]; }
+            $copy = new JsObject();
+            $seen[$value] = $copy;
+            return $copy;
+        }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsArguments) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             $copy = match (true) {

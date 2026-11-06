@@ -368,10 +368,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(params, _) = signature else { unreachable!() };
         let argv = self.plain_args(args)?;
         if argv.len() > params.len() && !matches!(params.last(), Some(Ty::Rest(_)))
-            || params
-                .iter()
-                .skip(argv.len())
-                .any(|t| !t.is_nullable() && !matches!(t, Ty::Rest(_)))
+            || params.iter().skip(argv.len()).any(|t| !accepts_omission(t))
         {
             return err(span, "wrong number of class arguments");
         }

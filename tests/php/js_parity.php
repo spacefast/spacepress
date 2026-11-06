@@ -429,6 +429,8 @@ $deviations = array_merge($deviations, [
     ['non-Unicode source folding is refused', fn () => Js::re('K', 'i')->test('k'), ['$err' => 'RangeError']],
     ['non-Unicode escaped source folding is refused', fn () => Js::re('\\u212a', 'i')->test('k'), ['$err' => 'RangeError']],
     ['engine-dependent reciprocal powers are refused', fn () => Js::pow(45.29, -1), ['$err' => 'RangeError']],
+    ['Unicode malformed regex braces are refused', fn () => Js::re('a{,2}', 'u'), ['$err' => 'SyntaxError']],
+    ['Unicode unmatched regex braces are refused', fn () => Js::re('a}', 'u'), ['$err' => 'SyntaxError']],
     ['possessive RegExp quantifiers are refused', fn () => Js::re('a++a', 'g'), ['$err' => 'SyntaxError']],
     ['Unicode class identity escapes are refused', fn () => Js::re('[\\k<a>]', 'u'), ['$err' => 'SyntaxError']],
     ['case-insensitive negated Unicode properties are refused', fn () => Js::re('\\P{Ll}', 'iu'), ['$err' => 'SyntaxError']],

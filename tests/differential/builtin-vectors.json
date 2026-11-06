@@ -763,5 +763,16 @@
     "name": "optionalPropertyNarrowing",
     "expression": "((input:{done?:boolean,score?:number})=>{const done:boolean=input.done===undefined?false:input.done;const score:number=input.score===undefined?2:input.score;return [done,score];})({})",
     "fold": true
+  },
+  {
+    "name": "legacyRegexBraces",
+    "expression": "['a'.replace(/a{,2}/,'X'),'a{,2}'.replace(/a{,2}/,'X'),'aa'.replace(/a{2}/,'X'),'a{'.replace(/a{/,'X'),'a}'.replace(/a}/,'X'),'aaa'.replace(/a{2,3}/,'X')]",
+    "fold": false
+  },
+  {
+    "name": "classOptionalArity",
+    "declarations": "class ParityOptionalArity {constructor(x?:number|null){} read(x?:number|null){return x===undefined;} static read(x?:number|null){return x===undefined;}} class ParityNullableDefault {constructor(x:number|null=null){} read(x:number|null=null){return x===null;}}",
+    "expression": "[new ParityOptionalArity() instanceof ParityOptionalArity,new ParityOptionalArity(null).read(),ParityOptionalArity.read(),new ParityNullableDefault().read()]",
+    "fold": false
   }
 ]

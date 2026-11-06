@@ -380,11 +380,25 @@ final class RegExp implements \Stringable
                 '$' => $this->multiline ? '(?![^' . self::LINE_TERMINATORS . '])' : '\z',
                 '/' => '\/',
                 '(' => $this->groupOpen(),
+                '{' => $this->quantifierOpen(),
+                '}' => $this->unicode ? throw new JsError('Unmatched regular expression brace', 'SyntaxError') : '\\}',
                 default => $c,
             };
         }
 
         return $out;
+    }
+
+    private function quantifierOpen(): string
+    {
+        if (preg_match('/\\G[0-9]+(?:,[0-9]*)?\\}/A', $this->src, $match, 0, $this->pos)) {
+            $this->pos += strlen($match[0]);
+            return '{' . $match[0];
+        }
+        if ($this->unicode) {
+            throw new JsError('Invalid regular expression quantifier', 'SyntaxError');
+        }
+        return '\\{';
     }
 
     private function groupOpen(): string

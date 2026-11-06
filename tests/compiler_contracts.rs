@@ -796,6 +796,26 @@ const sharedLiteral: 0 | 1 = effects.sharedCount;
 fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     for (declarations, handler, message) in [
         (
+            "class C { constructor(x: number|null) {} }",
+            "new C() instanceof C",
+            "wrong number of class arguments",
+        ),
+        (
+            "class C { read(x: number|null) {return x;} }",
+            "new C().read()",
+            "wrong number of class arguments",
+        ),
+        (
+            "class C { static read(x: number|null) {return x;} }",
+            "C.read()",
+            "wrong number of class arguments",
+        ),
+        (
+            "class C { constructor(x: number|null) {} } class D extends C {constructor(){super();}}",
+            "new D()",
+            "wrong number of class arguments",
+        ),
+        (
             "const state = { n: 0 }; function next(): number { state.n++; return state.n; } class C { value = next(); }",
             "new C()",
             "this field needs a type annotation",

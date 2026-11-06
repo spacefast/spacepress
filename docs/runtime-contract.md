@@ -653,7 +653,8 @@ Optional parameters accept undefined; null requires an explicit nullable type.
 Parameter and destructuring defaults run only for undefined. Typed object
 property reads distinguish missing properties from explicit null. Strict
 null/undefined comparisons refine only the value being compared; `!= null`
-excludes both. Undefined cannot be assigned to a null-only annotation. Optional method
+excludes both. Class calls use the same omission rules as ordinary typed calls:
+nullable parameters remain required unless their contract also accepts undefined. Undefined cannot be assigned to a null-only annotation. Optional method
 results include undefined. Conditional var initializers retain the prior type,
 including the hoisted undefined path.
 
@@ -709,6 +710,9 @@ inherited prototype properties; use `Object.hasOwn` before reading those names. 
 and ambiguous regex class delimiters are refused during evaluation. Optional
 regex groups containing captures require a nonempty body; the engines disagree
 about capture participation when that body can match empty text.
+
+Legacy regex braces that do not form JavaScript quantifiers remain literal text;
+Unicode mode refuses those malformed or unmatched braces.
 
 Case-insensitive negated Unicode regex properties (`\P{...}` with `iu`) are
 refused because JavaScript folds the complement while PCRE complements the fold.

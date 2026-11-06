@@ -3833,14 +3833,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
         if let ExprKind::Ident(name) = &callee.kind
+            && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
+        {
+            if name != "Map" && name != "Set" || self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                self.builtin_args("constructor", name, args, span)?;
+            }
+        }
+        if let ExprKind::Ident(name) = &callee.kind
             && name == "RegExp"
             && matches!(self.resolve(name, callee.span)?, Resolved::Global("RegExp"))
             && !self.javascript_module(self.fx.as_ref().expect("fn").module)
         {
-            let argv = self.plain_args(args)?;
-            let pattern = argv.first().map(|v| v.php.clone()).unwrap_or_else(|| "''".into());
-            let flags = argv.get(1).map(|v| v.php.clone()).unwrap_or_else(|| "''".into());
-            return Ok(Out::atom(format!("\\Zero\\Js::re({pattern}, {flags})"), Ty::Regex));
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\Zero\\Js::dynamicConstruct('RegExp', {argv})"),
+                Ty::Regex,
+            ));
         }
         if self.javascript_module(self.fx.as_ref().expect("fn").module) {
             if let ExprKind::Ident(name) = &callee.kind
@@ -4276,6 +4284,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn builtin_args(&self, surface: &str, name: &str, args: &[ArrEl], span: Span) -> Result<()> {
         if args.iter().any(|arg| matches!(arg, ArrEl::Spread(_))) {
+            if matches!(surface, "string" | "number" | "array" | "date" | "regex") {
+                return err_help(
+                    span,
+                    "spread arguments aren't supported in this call",
+                    "pass the supported arguments directly",
+                );
+            }
             return Ok(());
         }
         let phase = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
@@ -4324,14 +4339,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("encodeURI" | "encodeURIComponent", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
             }
-            ("parseInt", Some(v)) => Out::atom(
-                format!(
-                    "\\Zero\\Js::parseInt({})",
-                    argv.iter().map(|a| a.php.clone()).collect::<Vec<_>>().join(", ")
-                ),
-                Ty::Num,
-            )
-            .checked_str(v, span)?,
+            ("parseInt", Some(v)) => {
+                let radix = argv
+                    .get(1)
+                    .map(|a| format!(", \\Zero\\Js::toNumber({})", a.php))
+                    .unwrap_or_default();
+                Out::atom(format!("\\Zero\\Js::parseInt({}{radix})", v.php), Ty::Num).checked_str(v, span)?
+            }
             ("parseFloat", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
@@ -4370,6 +4384,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
                 Ty::Dynamic,
             ));
+        }
+        if g == "Number" && matches!(m, "parseInt" | "parseFloat") {
+            return self.global_call(m, args, span);
         }
         if (g, m) == ("Array", "from") {
             let src = self.arg(args, 0, span, "an argument")?;
@@ -4623,7 +4640,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {}
         }
         let family = match recv.ty.non_null() {
-            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => Some("number"),
+            t if t.is_num() => Some("number"),
             Ty::Date => Some("date"),
             Ty::Regex => Some("regex"),
             _ => None,
@@ -4689,10 +4706,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t if t.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_))) => match m {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
-                    let d = argv
-                        .first()
-                        .map(|a| format!("(int) {}", a.wrapped()))
-                        .unwrap_or_else(|| "0".into());
+                    let d = argv.first().map(|a| a.php.clone()).unwrap_or_else(|| "0".into());
                     Out::atom(format!("\\Zero\\Js::toFixed({}, {d})", recv.php), Ty::Str)
                 }
                 "toString" => Out::atom(format!("\\Zero\\Js::numStr({})", recv.php), Ty::Str),
@@ -4851,10 +4865,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ty: Ty::Str.nullable(),
                 ..js("strAt", &[a(0)])
             },
-            "split" => Out {
-                ty: Ty::Array(Box::new(Ty::Str)),
-                ..js("split", &[a(0), a(1)])
-            },
+            "split" => {
+                if let Some(separator) = argv.first()
+                    && !(separator.ty.is_str() || separator.ty == Ty::Regex)
+                {
+                    return err_help(
+                        span,
+                        "split() needs a string or regex separator",
+                        "omit the separator for a one-element array, or pass a string",
+                    );
+                }
+                if argv.is_empty() {
+                    Out::atom(
+                        format!("new \\Zero\\JsArray([{}])", s.php),
+                        Ty::Array(Box::new(Ty::Str)),
+                    )
+                } else {
+                    Out {
+                        ty: Ty::Array(Box::new(Ty::Str)),
+                        ..js("split", &[a(0), a(1)])
+                    }
+                }
+            }
             "localeCompare" => {
                 return err_help(
                     span,

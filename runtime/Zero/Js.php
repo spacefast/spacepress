@@ -441,7 +441,7 @@ final class Js
         return self::strictEq($a, $b);
     }
 
-    public static function isInteger(mixed $v): bool
+    public static function isInteger(mixed $v = null): bool
     {
         return is_int($v) || (is_float($v) && is_finite($v) && floor($v) === $v);
     }
@@ -458,11 +458,13 @@ final class Js
         return $function ??= static fn (mixed $value = null): bool => self::isFinite($value);
     }
 
-    public static function toFixed(int|float $n, int $digits = 0): string
+    public static function toFixed(int|float $n, mixed $digits = 0): string
     {
+        $digits = self::toInteger(self::toNumber($digits));
         if ($digits < 0 || $digits > 100) {
             throw new JsError('toFixed() digits argument must be between 0 and 100', 'RangeError');
         }
+        $digits = (int) $digits;
         if (is_int($n)) {
             return $n . ($digits > 0 ? '.' . str_repeat('0', $digits) : '');
         }
@@ -987,6 +989,7 @@ final class Js
     public static function strMatch(string $s, RegExp $re): ?JsArray
     {
         if ($re->global) {
+            $re->lastIndex = 0;
             $all = [];
             foreach ($re->matchAll($s) as [$start, $end]) {
                 $all[] = substr($s, $start, $end - $start);
@@ -994,8 +997,7 @@ final class Js
 
             return $all === [] ? null : new JsArray($all);
         }
-        $m = $re->matchAt($s, 0);
-
+        $m = $re->execMatch($s);
         return $m === null ? null : new JsArray([substr($s, $m[0], $m[1] - $m[0]), ...$m[2]]);
     }
 

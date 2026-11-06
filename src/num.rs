@@ -32,6 +32,31 @@ pub fn is_js_whitespace(c: char) -> bool {
         '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
 
+/// Convert power-of-two radix digits with one ties-to-even binary64 rounding.
+/// Rounding each multiply/add loses low bits before the last digit arrives.
+pub fn radix_number(digits: &[u32], radix: u32) -> f64 {
+    if !radix.is_power_of_two() {
+        return digits.iter().fold(0.0, |n, d| n * radix as f64 + *d as f64);
+    }
+    let width = radix.trailing_zeros();
+    let bits: Vec<_> = digits
+        .iter()
+        .flat_map(|digit| (0..width).rev().map(move |bit| (digit >> bit) & 1))
+        .skip_while(|bit| *bit == 0)
+        .collect();
+    if bits.len() > 1024 {
+        return f64::INFINITY;
+    }
+    let mut significand = bits.iter().take(53).fold(0u64, |n, bit| (n << 1) | *bit as u64);
+    if bits.len() <= 53 {
+        return significand as f64;
+    }
+    if bits[53] == 1 && (significand & 1 == 1 || bits[54..].contains(&1)) {
+        significand += 1;
+    }
+    significand as f64 * 2f64.powi((bits.len() - 53) as i32)
+}
+
 /// `Number.prototype.toString()` for any f64.
 pub fn js_number_to_string(x: f64) -> String {
     if x.is_nan() {

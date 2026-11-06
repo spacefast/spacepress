@@ -168,6 +168,8 @@ $cases = [
         fn () => [Js::replaceAll('a.b.c', '.', '-'), Js::replaceAll('aaa', '', '-'), Js::replaceAll('aXbX', $re('x', 'gi'), fn ($m) => strtolower($m))]],
     ['"a".replaceAll(/a/, "b")', fn () => Js::replaceAll('a', $re('a', ''), 'b')],
 
+    ['(() => { const g = /a/g, y = /a/y, empty = /a*/g; return [g.test("a"), g.lastIndex, g.test("a"), g.lastIndex, g.test("a"), y.test("ba"), y.lastIndex, y.test("a"), y.lastIndex, y.exec("a"), y.lastIndex, empty.test("b"), empty.lastIndex, empty.exec("b").index, empty.lastIndex]; })()',
+        function () { $g = new \Zero\RegExp('a', 'g'); $y = new \Zero\RegExp('a', 'y'); $e = new \Zero\RegExp('a*', 'g'); return [$g->test('a'), $g->lastIndex, $g->test('a'), $g->lastIndex, $g->test('a'), $y->test('ba'), $y->lastIndex, $y->test('a'), $y->lastIndex, Js::dynamicRegExpExec($y, 'a'), $y->lastIndex, $e->test('b'), $e->lastIndex, Js::dynamicGet(Js::dynamicRegExpExec($e, 'b'), 'index'), $e->lastIndex]; }],
     // ---- RegExp translation
     ['[/HELLO/i.test("hello"), /a.b/s.test("a\nb"), /a.b/.test("a\nb"), /a.b/.test("a b"), /^.$/u.test("🙂"), /^\d$/.test("٣"), /^\w$/.test("é"), /^\s$/.test(" ")]',
         fn () => [$re('HELLO', 'i')->test('hello'), $re('a.b', 's')->test("a\nb"), $re('a.b', '')->test("a\nb"), $re('a.b', '')->test("a\u{2028}b"), $re('^.$', 'u')->test('🙂'), $re('^\d$', '')->test('٣'), $re('^\w$', '')->test('é'), $re('^\s$', '')->test("\u{a0}")]],
@@ -177,8 +179,8 @@ $cases = [
         fn () => [Js::strMatch('$12 €34 $5', $re('(?<=\$)\d+', 'g')), Js::strMatch('ax cx bx', $re('(?<=ab|c)x', 'g')), Js::strMatch('price: 42', $re('(?<!\d)\d(?<num>\d)', '')), Js::strMatch('b', $re('(a)?b', '')), Js::strMatch('xyz', $re('q', 'g'))]],
     ['[/(a)?b\1/.test("b"), /^(?<q>["\x27]).*\k<q>$/.test("\x27hi\x27"), /[^]/.test("\n"), /[]/.test("a"), /[\d\-x]/.test("-"), /^[\w\s]+$/.test("a b_1"), /^[^\W\d]+$/.test("ab"), /^[\D]$/.test("5")]',
         fn () => [$re('(a)?b\1', '')->test('b'), $re('^(?<q>["\x27]).*\k<q>$', '')->test("'hi'"), $re('[^]', '')->test("\n"), $re('[]', '')->test('a'), $re('[\d\-x]', '')->test('-'), $re('^[\w\s]+$', '')->test('a b_1'), $re('^[^\W\d]+$', '')->test('ab'), $re('^[\D]$', '')->test('5')]],
-    ['[/é/.test("é"), /\u{1F642}/u.test("🙂"), /🙂/.test("🙂"), /a\/b/.test("a/b"), /\x41\t/.test("A\t"), /^\p{Lu}+$/u.test("ÀB"), /É/i.test("é"), /[a-z]/i.test("K")]',
-        fn () => [$re('é', '')->test('é'), $re('\u{1F642}', 'u')->test('🙂'), $re('🙂', '')->test('🙂'), $re('a\/b', '')->test('a/b'), $re('\x41\t', '')->test("A\t"), $re('^\p{Lu}+$', 'u')->test('ÀB'), $re('É', 'i')->test('é'), $re('[a-z]', 'i')->test('K')]],
+    ['[/é/.test("é"), /\u{1F642}/u.test("🙂"), /🙂/u.test("🙂"), /a\/b/.test("a/b"), /\x41\t/.test("A\t"), /^\p{Lu}+$/u.test("ÀB"), /É/i.test("é"), /[a-z]/i.test("K")]',
+        fn () => [$re('é', '')->test('é'), $re('\u{1F642}', 'u')->test('🙂'), $re('🙂', 'u')->test('🙂'), $re('a\/b', '')->test('a/b'), $re('\x41\t', '')->test("A\t"), $re('^\p{Lu}+$', 'u')->test('ÀB'), $re('É', 'i')->test('é'), $re('[a-z]', 'i')->test('K')]],
     ['[/x/gimsu.flags, /x/.source, new RegExp("").source, /a/g.global]', fn () => [$re('x', 'usmig')->flags, $re('x', '')->source, $re('', '')->source, $re('a', 'g')->global]],
     ['new RegExp("(", "")', fn () => $re('(', '')],
 
@@ -409,6 +411,7 @@ $deviations = array_merge($deviations, [
     ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
     ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['astral regex quantifiers need Unicode mode', fn () => Js::re('^😀+$', '')->test('😀😀'), ['$err' => 'RangeError']],
     ['slice ending inside a pair throws', fn () => Js::slice('a🙂b', 0, 2), ['$err' => 'RangeError']],
     ['slice starting inside a pair throws', fn () => Js::slice('a🙂b', 2), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],

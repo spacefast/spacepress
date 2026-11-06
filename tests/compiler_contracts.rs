@@ -927,6 +927,11 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "(1).toFixed(2, 3)",
+        "new RegExp('a', '', 3)",
+        "[2, 1].sort(...[(x: number, y: number) => y - x])",
+        "[1].map(n => n, ...[{}])",
+        "'a]'.replace(/[a[b]]/, 'X')",
         "'abc'.includes('a', 1)",
         "'abc'.startsWith('b', 1)",
         "'abc'.endsWith('b', 2)",
@@ -941,7 +946,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
     ] {
         for handler in [false, true] {
             // JSON formatting is implemented by the emitter, but refused by the evaluator.
-            if handler && expression.starts_with("JSON.stringify") {
+            if handler && (expression.starts_with("JSON.stringify") || expression.contains("[a[b]]")) {
                 continue;
             }
             let tmp = tempfile::tempdir().unwrap();

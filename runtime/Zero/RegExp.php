@@ -70,9 +70,9 @@ final class RegExp implements \Stringable
         $body = $this->translate();
         $this->pattern = '/' . $body . '/u' . (in_array('i', $chars, true) ? 'i' : '');
         $this->anchoredPattern = $this->pattern . 'A';
-        $this->requiresUnitMatching = $this->requiresUnicodeOnAstral;
         $this->requiresUnicodeOnAstral = $this->requiresUnicodeOnAstral
             || preg_match('/[\x{10000}-\x{10FFFF}]/u', $source) === 1;
+        $this->requiresUnitMatching = $this->requiresUnicodeOnAstral;
 
         set_error_handler(static fn () => true);
         try {
@@ -183,7 +183,7 @@ final class RegExp implements \Stringable
         $offset = 0;
         $size = strlen($s);
         while ($offset <= $size) {
-            $m = $this->matchAt($s, $offset);
+            $m = $this->matchAt($s, $offset, $this->sticky);
             if ($insideOffsets !== []) {
                 // PCRE may find no boundary match at the astral character's start. Try every
                 // in-pair position before the next ordinary match, including when none exists.

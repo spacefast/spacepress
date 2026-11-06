@@ -29,7 +29,7 @@ trait JsDynamic
         };
         $methods = match ($owner) {
             'Math' => self::DYNAMIC_MATH_METHODS, 'Array' => self::DYNAMIC_ARRAY_METHODS, 'String' => self::DYNAMIC_STRING_METHODS,
-            'RegExp' => ['exec', 'test'], 'Date' => ['getTime', 'toISOString', 'toJSON'], 'Set' => ['add', 'has'], 'Map' => ['set', 'get', 'has'], default => [],
+            'Number' => ['toFixed'], 'RegExp' => ['exec', 'test'], 'Date' => ['getTime', 'toISOString', 'toJSON'], 'Set' => ['add', 'has'], 'Map' => ['set', 'get', 'has'], default => [],
         };
         if (!in_array($name, [...$methods, 'toString', 'valueOf'], true)) { return JsUndefined::Value; }
         $key = $owner . ':' . $name;
@@ -220,6 +220,7 @@ trait JsDynamic
         };
         Builtins::check($surface, $name, count($a));
         if ($receiver instanceof JsNamespace && in_array($name, self::DYNAMIC_MATH_METHODS, true)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
+        if ($name === 'toFixed' && (is_int($receiver) || is_float($receiver))) { return self::toFixed($receiver, $get(0, 0)); }
         if ($name === 'toString') {
             if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
             if ($receiver instanceof JsArray) { return self::join($receiver, ','); }
@@ -453,6 +454,7 @@ trait JsDynamic
     {
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
+        if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
         if (in_array($constructor, ['Error', 'TypeError', 'RangeError'], true)) {
             $options = $a[1] ?? JsUndefined::Value;
             if ($options instanceof JsObject && array_key_exists('cause', $options->p)) {
@@ -487,6 +489,7 @@ trait JsDynamic
 
     public static function dynamicRegExpCall(JsArray $args): RegExp
     {
+        Builtins::check('global', 'RegExp', count($args->a));
         if (($args->a[0] ?? null) instanceof RegExp && (!array_key_exists(1, $args->a) || $args->a[1] === JsUndefined::Value)) { return $args->a[0]; }
         return self::dynamicConstruct('RegExp', $args);
     }

@@ -1027,6 +1027,12 @@ impl<'p> Evaluator<'p> {
             ExprKind::New { callee, args } => {
                 let f = self.eval(callee, scope)?;
                 let argv = self.eval_args(args, scope)?;
+                if let Value::Builtin(Builtin::Global(g)) = &f
+                    && *g != "Date"
+                {
+                    crate::builtins::check("constructor", g, argv.len(), crate::builtins::Phase::Evaluator, e.span)
+                        .map_err(Ctl::Err)?;
+                }
                 match f {
                     Value::Class(_) => {
                         return err(
@@ -2529,9 +2535,10 @@ pub fn to_number(v: &Value) -> f64 {
                 if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
                     f64::NAN
                 } else {
-                    digits
-                        .chars()
-                        .fold(0.0, |value, c| value * radix as f64 + c.to_digit(radix).unwrap() as f64)
+                    crate::num::radix_number(
+                        &digits.chars().map(|c| c.to_digit(radix).unwrap()).collect::<Vec<_>>(),
+                        radix,
+                    )
                 }
             } else if t == "Infinity" || t == "+Infinity" {
                 f64::INFINITY
@@ -2598,7 +2605,7 @@ fn parse_int(s: &str, radix: &Value) -> f64 {
     if radix == 10 {
         return sign * t[..digits.len()].parse::<f64>().unwrap_or(f64::INFINITY);
     }
-    sign * digits.iter().fold(0.0, |n, d| n * radix as f64 + *d as f64)
+    sign * crate::num::radix_number(&digits, radix as u32)
 }
 
 fn slice_bounds(len: f64, start: &Value, end: &Value) -> (usize, usize) {
@@ -2806,10 +2813,29 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
                             "build-time regex replacement supports ASCII text and patterns without escapes, set operations, multiline mode or line terminators; move this replacement into a handler",
                         );
                     }
+                    let mut in_class = false;
+                    for c in p.chars() {
+                        if c == '[' {
+                            if in_class {
+                                return err_help(
+                                    span,
+                                    "nested regex character classes aren't supported at build time",
+                                    "move this replacement into a handler",
+                                );
+                            }
+                            in_class = true;
+                        } else if c == ']' {
+                            in_class = false;
+                        }
+                    }
                     let re = build_regex(&p, &f, span)?;
                     let mut out = String::new();
                     let mut last = 0;
-                    for caps in re.captures_iter(s) {
+                    let mut offset = 0;
+                    while offset <= s.len() {
+                        let Some(caps) = re.captures_at(s, offset) else {
+                            break;
+                        };
                         let matched = caps.get(0).expect("complete match");
                         let (start, end) = (matched.start(), matched.end());
                         let groups: Vec<_> = caps.iter().skip(1).map(|m| m.map(|m| m.as_str())).collect();
@@ -2831,6 +2857,7 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
                         if !f.contains('g') {
                             break;
                         }
+                        offset = if end > start { end } else { end + 1 };
                     }
                     out.push_str(&s[last..]);
                     Value::str(&out)

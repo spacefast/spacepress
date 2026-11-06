@@ -555,7 +555,7 @@ checks freshness. Type/coercion guards remain at their language boundary.
 `tests/differential/builtin-vectors.json` supplies the same expressions to
 Node, captured configuration evaluation and generated PHP. Regex state is
 runtime-only because the pure evaluator has no mutable RegExp execution model.
-Build-time regex replacement accepts ASCII text/patterns without escapes,
+Build-time regex replacement accepts ASCII text/patterns without escapes or nested character classes,
 multiline mode, set operations or line terminators; other cases are refused
 instead of inheriting Rust regex semantics. String replacements have no such
 ASCII restriction. Replacement tokens implement GetSubstitution, including

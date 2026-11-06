@@ -314,10 +314,9 @@ const laneRefs = {
   refsMissingElementCompound: run(() => {
     const numbers: number[] = []; numbers[0] += 1; numbers[1] -= 1;
     const strings: string[] = []; strings[0] += "x";
-    const numericText: string[] = []; numericText[0] += 1;
     const props: Record<string, number> = {}; props.x += 1; props.y++;
     const nulls: (number | null)[] = [null]; nulls[0]!++;
-    return [numbers.map(n => isNaN(n)), strings, isNaN(Number(numericText[0])), isNaN(props.x!), isNaN(props.y!), nulls];
+    return [numbers.map(n => isNaN(n)), strings, isNaN(props.x!), isNaN(props.y!), nulls];
   }),
   refsMissingPresenceSnapshot: run(() => {
     const a: number[] = [];

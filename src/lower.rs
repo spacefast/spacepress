@@ -822,16 +822,17 @@ impl Lowerer {
             return self.unsupported(f.span, "a function without a body", "");
         };
         let context = self.class_context.get();
+        let body = FnBody::Block(self.block(&body.statements)?);
         if self.super_call.get() {
             self.class_context.set(false);
         }
-        let params = self.params(&f.params, context);
+        let params = self.params(&f.params, context, &body);
         self.class_context.set(context);
         Ok(Rc::new(Func {
             name: f.id.as_ref().map(|i| i.name.to_string()),
             is_arrow: false,
             params: params?,
-            body: FnBody::Block(self.block(&body.statements)?),
+            body,
             is_async: f.r#async,
             ret: f
                 .return_type
@@ -852,7 +853,7 @@ impl Lowerer {
         Ok(Rc::new(Func {
             name: None,
             is_arrow: true,
-            params: self.params(&f.params, false)?,
+            params: self.params(&f.params, false, &body)?,
             body,
             is_async: f.r#async,
             ret: f
@@ -866,7 +867,7 @@ impl Lowerer {
         }))
     }
 
-    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool) -> Result<Vec<Param>> {
+    fn params(&self, p: &a::FormalParameters<'_>, parameter_properties: bool, body: &FnBody) -> Result<Vec<Param>> {
         let mut out = Vec::new();
         for item in &p.items {
             if (item.accessibility.is_some() || item.readonly) && !parameter_properties {
@@ -899,15 +900,16 @@ impl Lowerer {
                 span: self.sp(r.span),
             });
         }
+        let allow_functions = !parameter_body_has_bindings(body);
         for (index, parameter) in out.iter().enumerate() {
             let mut uninitialized = Vec::new();
             for later in &out[index..] {
                 later.pat.bindings(&mut uninitialized);
             }
             if let Some(value) = &parameter.default {
-                check_parameter_default(value, &uninitialized)?;
+                check_parameter_default(value, &uninitialized, allow_functions)?;
             }
-            check_parameter_pattern(&parameter.pat, &uninitialized)?;
+            check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
         }
         Ok(out)
     }
@@ -1625,20 +1627,20 @@ fn contains_constructor_return(body: &[Stmt]) -> bool {
     })
 }
 
-fn check_parameter_pattern(pattern: &Pat, uninitialized: &[(&str, Span)]) -> Result<()> {
+fn check_parameter_pattern(pattern: &Pat, uninitialized: &[(&str, Span)], allow_functions: bool) -> Result<()> {
     match pattern {
         Pat::Default(inner, value) => {
-            check_parameter_default(value, uninitialized)?;
-            check_parameter_pattern(inner, uninitialized)?;
+            check_parameter_default(value, uninitialized, allow_functions)?;
+            check_parameter_pattern(inner, uninitialized, allow_functions)?;
         }
         Pat::Obj { props, .. } => {
             for (_, value) in props {
-                check_parameter_pattern(value, uninitialized)?;
+                check_parameter_pattern(value, uninitialized, allow_functions)?;
             }
         }
         Pat::Arr { elems, .. } => {
             for value in elems.iter().flatten() {
-                check_parameter_pattern(value, uninitialized)?;
+                check_parameter_pattern(value, uninitialized, allow_functions)?;
             }
         }
         Pat::Id(..) => {}
@@ -1646,12 +1648,25 @@ fn check_parameter_pattern(pattern: &Pat, uninitialized: &[(&str, Span)]) -> Res
     Ok(())
 }
 
-fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)]) -> Result<()> {
+fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)], allow_functions: bool) -> Result<()> {
     let children: Vec<&Expr> = match &value.kind {
+        ExprKind::Func(function) if allow_functions => {
+            for parameter in &function.params {
+                if let Some(default) = &parameter.default {
+                    check_parameter_default(default, uninitialized, false)?;
+                }
+                check_parameter_pattern(&parameter.pat, uninitialized, false)?;
+            }
+            match &function.body {
+                FnBody::Expr(value) => check_parameter_default(value, uninitialized, false)?,
+                FnBody::Block(body) => check_parameter_statements(body, uninitialized)?,
+            }
+            return Ok(());
+        }
         ExprKind::Func(_) | ExprKind::Class(_) => {
             return Err(Diag::new(
                 value.span,
-                "parameter defaults that create functions or classes aren't supported",
+                "parameter defaults that create functions with body bindings or classes aren't supported",
             )
             .help("define the function or class outside the parameter list and pass its name"));
         }
@@ -1714,7 +1729,130 @@ fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)]) -> Resu
         | ExprKind::Regex { .. } => Vec::new(),
     };
     for child in children {
-        check_parameter_default(child, uninitialized)?;
+        check_parameter_default(child, uninitialized, allow_functions)?;
+    }
+    Ok(())
+}
+
+fn parameter_body_has_bindings(body: &FnBody) -> bool {
+    fn statements(body: &[Stmt]) -> bool {
+        body.iter().any(|statement| match statement {
+            Stmt::Decl { .. } | Stmt::Func(_) | Stmt::ForOf { .. } | Stmt::ForIn { .. } => true,
+            Stmt::Block(body) | Stmt::While(_, body) => statements(body),
+            Stmt::If(_, yes, no) => statements(yes) || no.as_ref().is_some_and(|body| statements(body)),
+            Stmt::For { init, body, .. } => {
+                init.as_ref().is_some_and(|init| statements(std::slice::from_ref(init))) || statements(body)
+            }
+            Stmt::Try {
+                block,
+                param,
+                handler,
+                finalizer,
+            } => {
+                param.is_some()
+                    || statements(block)
+                    || handler.as_ref().is_some_and(|body| statements(body))
+                    || finalizer.as_ref().is_some_and(|body| statements(body))
+            }
+            Stmt::Switch { cases, .. } => cases.iter().any(|(_, body)| statements(body)),
+            Stmt::Exported(statement) => statements(std::slice::from_ref(statement)),
+            _ => false,
+        })
+    }
+    match body {
+        FnBody::Expr(_) => false,
+        FnBody::Block(body) => statements(body),
+    }
+}
+
+fn check_parameter_statements(body: &[Stmt], uninitialized: &[(&str, Span)]) -> Result<()> {
+    for statement in body {
+        match statement {
+            Stmt::Decl { pat, init, .. } => {
+                check_parameter_pattern(pat, uninitialized, false)?;
+                if let Some(value) = init {
+                    check_parameter_default(value, uninitialized, false)?;
+                }
+            }
+            Stmt::Func(function) => {
+                return Err(Diag::new(
+                    function.span,
+                    "parameter defaults with nested functions aren't supported",
+                )
+                .help("define the function outside the parameter list and pass its name"));
+            }
+            Stmt::Expr(value) | Stmt::Throw(value) | Stmt::ExportDefault(value) | Stmt::Return(Some(value), _) => {
+                check_parameter_default(value, uninitialized, false)?
+            }
+            Stmt::Block(body) => check_parameter_statements(body, uninitialized)?,
+            Stmt::While(value, body) => {
+                check_parameter_default(value, uninitialized, false)?;
+                check_parameter_statements(body, uninitialized)?;
+            }
+            Stmt::If(value, yes, no) => {
+                check_parameter_default(value, uninitialized, false)?;
+                check_parameter_statements(yes, uninitialized)?;
+                if let Some(body) = no {
+                    check_parameter_statements(body, uninitialized)?;
+                }
+            }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+                ..
+            } => {
+                if let Some(init) = init {
+                    check_parameter_statements(std::slice::from_ref(init), uninitialized)?;
+                }
+                for value in [test, update].into_iter().flatten() {
+                    check_parameter_default(value, uninitialized, false)?;
+                }
+                check_parameter_statements(body, uninitialized)?;
+            }
+            Stmt::ForOf { pat, iter, body, .. } => {
+                check_parameter_pattern(pat, uninitialized, false)?;
+                check_parameter_default(iter, uninitialized, false)?;
+                check_parameter_statements(body, uninitialized)?;
+            }
+            Stmt::ForIn { target, iter, body, .. } => {
+                check_parameter_default(target, uninitialized, false)?;
+                check_parameter_default(iter, uninitialized, false)?;
+                check_parameter_statements(body, uninitialized)?;
+            }
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+                ..
+            } => {
+                check_parameter_statements(block, uninitialized)?;
+                if let Some(body) = handler {
+                    check_parameter_statements(body, uninitialized)?;
+                }
+                if let Some(body) = finalizer {
+                    check_parameter_statements(body, uninitialized)?;
+                }
+            }
+            Stmt::Switch { disc, cases, .. } => {
+                check_parameter_default(disc, uninitialized, false)?;
+                for (test, body) in cases {
+                    if let Some(test) = test {
+                        check_parameter_default(test, uninitialized, false)?;
+                    }
+                    check_parameter_statements(body, uninitialized)?;
+                }
+            }
+            Stmt::Exported(statement) => check_parameter_statements(std::slice::from_ref(statement), uninitialized)?,
+            Stmt::Return(None, _)
+            | Stmt::Break(_)
+            | Stmt::Continue(_)
+            | Stmt::TypeAlias { .. }
+            | Stmt::Import { .. }
+            | Stmt::ExportNames { .. }
+            | Stmt::ExportAll { .. } => {}
+        }
     }
     Ok(())
 }

@@ -255,3 +255,11 @@ Status: **supported**.
 Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
 
 [Evidence](../tests/compiler_contracts.rs) (`optional_chains_refuse_unguarded_continuations_at_source`)
+
+## parameter-default-scope
+
+Status: **supported**.
+
+Defaults may reference earlier parameters. Closure defaults require a function body without new bindings and cannot refer to the current/later parameter. Classes and nested function creation in defaults are refused. These source diagnostics also cover nested destructuring defaults, preserving parameter initialization and closure scope.
+
+[Evidence](../tests/compiler_contracts.rs) (`parameter_default_scope_limits_are_located_refusals`)

@@ -801,8 +801,10 @@ share this boundary. Checked JavaScript retains inherited method lookup.
 Stored builtin method handles retain the property receiver for typed and checked JavaScript
 calls and primitive conversion. Missing typed compound reads retain undefined; ambiguous
 string/numeric additions refuse instead of fabricating a string result type.
-Parameter defaults may reference earlier parameters. Defaults creating functions/classes or
-referencing the current/later parameter refuse at source, including nested destructuring defaults.
+Parameter defaults may reference earlier parameters. Closure defaults require a function body
+without new bindings and cannot reference the current/later parameter. Defaults creating classes
+or nested functions, or referencing the current/later parameter, refuse at source, including nested
+destructuring defaults. These limits preserve parameter initialization and closure scope.
 
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 

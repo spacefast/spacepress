@@ -911,5 +911,16 @@
     "name": "parameterDefaultsUseEarlierBindings",
     "expression": "(() => {function f(a:number=1,b:number=a+1){return [a,b];}return [f(),f(4)];})()",
     "fold": true
+  },
+  {
+    "name": "dynamicMissingStringArrayCompoundAssignment",
+    "expression": "(() => {const o=[];const v=(o[0]+=1);return [String(v),`${v}`,String(o[0])];})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "parameterDefaultClosuresUseEarlierBindings",
+    "expression": "(() => {function f(a:number,write:(()=>void)|null=()=>{a++;}){if(write!==null)write();return a;}return [f(1),f(1,null)];})()",
+    "fold": true
   }
 ]

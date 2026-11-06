@@ -3305,10 +3305,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let (result, ty) = match op {
                 AssignOp::Bin(b) => {
                     let mut left = Out::atom(old.clone(), place.read.ty.clone());
-                    if let Some(present) = &present {
-                        if place.constraint.non_null().is_num() {
-                            left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
-                        }
+                    if let Some(present) = &present
+                        && place.constraint.non_null().is_num()
+                    {
+                        left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
                     }
                     let right = v.php.clone();
                     let mut result = self.binary(b, left, v, span)?;

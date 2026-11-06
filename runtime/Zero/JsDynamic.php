@@ -606,6 +606,8 @@ trait JsDynamic
         if ($ta === $tb) { return self::strictEq($a, $b); }
         if (is_bool($a)) { return self::looseEq((int) $a, $b); }
         if (is_bool($b)) { return self::looseEq($a, (int) $b); }
+        if ($ta === 'function' && ($tb === 'number' || $tb === 'string')) { return self::looseEq(self::dynamicPrimitive($a), $b); }
+        if ($tb === 'function' && ($ta === 'number' || $ta === 'string')) { return self::looseEq($a, self::dynamicPrimitive($b)); }
         if (($ta === 'number' && $tb === 'string') || ($ta === 'string' && $tb === 'number')) { return self::strictEq(self::toNumber($a), self::toNumber($b)); }
         if ($ta === 'object' && ($tb === 'string' || $tb === 'number')) { return self::looseEq(self::dynamicPrimitive($a), $b); }
         if ($tb === 'object' && ($ta === 'string' || $ta === 'number')) { return self::looseEq($a, self::dynamicPrimitive($b)); }

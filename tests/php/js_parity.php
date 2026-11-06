@@ -426,6 +426,7 @@ $deviations = array_merge($deviations, [
     ['empty array Date strings are refused', fn () => Js::date(new JsArray()), ['$err' => 'RangeError']],
     ['multi-element Date arrays are refused', fn () => Js::date(new JsArray(['2020-01-01','2020-01-02'])), ['$err' => 'RangeError']],
     ['plain object Date strings are refused', fn () => Js::date(new JsObject(['x'=>1])), ['$err' => 'RangeError']],
+    ['loose function comparison requiring source text is refused', fn () => Js::looseEq(static fn () => 1, '()=>1'), ['$err' => 'TypeError']],
     ['function string conversion is refused', fn () => Js::str(static fn () => 1), ['$err' => 'TypeError']],
     ['function metadata reads are refused', fn () => Js::dynamicGet(static fn () => 1, 'length'), ['$err' => 'TypeError']],
     ['function binding values are refused', fn () => Js::dynamicGet(static fn () => 1, 'bind'), ['$err' => 'TypeError']],

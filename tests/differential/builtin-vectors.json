@@ -669,7 +669,7 @@
   },
   {
     "name": "typedDateIdentity",
-    "expression": "(() => { function numeric(v:unknown){return Number(v);} const a=new Date(0); const b=new Date(0); const alias=a; const copy=new Date(a); return [a===b,a===alias,a===copy,numeric(a),Boolean(a),typeof a,a.getTime(),copy.getTime()]; })()",
+    "expression": "(() => { function numeric(v:unknown){return Number(v);} const a=new Date(0); const b=new Date(0); const alias=a; const copy=new Date(a); return [a===b,a===alias,a===copy,numeric(a),Boolean(a),typeof a,a.getTime(),copy.getTime(),Number.isFinite(a),Number.isInteger(a)]; })()",
     "fold": false
   }
 ]

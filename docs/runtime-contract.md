@@ -126,7 +126,9 @@ records and optional fields. Object spread/rest copies field values shallowly.
 Loop-local declarations receive a fresh binding on each execution, and a
 captured `for (let …)` header variable receives a fresh `Js::cell` per iteration.
 The evaluator also forks lexical header bindings before the first test and before
-each update. Copying a handle preserves the referenced container.
+each update. Copying a handle preserves the referenced container. Source bindings
+use valid local PHP names; dollar signs, Unicode and superglobal names are encoded.
+Captures, authored locals and compiler temporaries share one reserved name pool.
 
 Arrays remain dense. Indexed writes may replace an existing element or append
 at the current length; writes past the end throw a catchable `RangeError`.

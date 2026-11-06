@@ -1003,5 +1003,15 @@
     "declarations": "import {db as namespaceDb,jobs as namespaceJobs} from 'zero'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb,typeof namespaceJobs];",
     "expression": "[typeof Math,...foldedNamespaceKinds]",
     "fold": true
+  },
+  {
+    "name": "dollarBindingsUseLiteralPhpNames",
+    "expression": "(() => {const $a=1,$b=2,a$b=3;const __zero_local_2461=4;const $sum=($n:number)=>$n+$a;const café=6;return [$a,$b,a$b,__zero_local_2461,$sum(5),café];})()",
+    "fold": true
+  },
+  {
+    "name": "phpSuperglobalNamesStayLocal",
+    "expression": "(() => {let GLOBALS=1;const _GET=2;const read=(_POST:number)=>{const _SERVER=3;return [GLOBALS,_GET,_POST,_SERVER];};return [GLOBALS,_GET,read(4)];})()",
+    "fold": true
   }
 ]

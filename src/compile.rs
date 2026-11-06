@@ -898,8 +898,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if let Some(local) = fx.scopes.last().expect("scope").get(name) {
             local.php.clone()
         } else {
-            let base = if name == "this" { "__zero_this" } else { name };
-            let mut candidate = base.to_string();
+            let base = php_local_base(name);
+            let mut candidate = base.clone();
             while !fx.php_names.insert(candidate.clone()) {
                 fx.tmp += 1;
                 candidate = format!("{base}_{}", fx.tmp);
@@ -6126,6 +6126,25 @@ fn obj_values_ty(t: Option<&Ty>) -> Ty {
 /// `.` binds tighter than `+`/`-`... in PHP 8 they're equal-precedence-ish; parenthesize non-trivial parts.
 fn pad(n: usize) -> String {
     "    ".repeat(n)
+}
+
+fn php_local_base(name: &str) -> String {
+    if name == "this" {
+        return "__zero_this".into();
+    }
+    let reserved = matches!(
+        name,
+        "GLOBALS" | "_SERVER" | "_GET" | "_POST" | "_FILES" | "_COOKIE" | "_SESSION" | "_REQUEST" | "_ENV"
+    );
+    let valid_start = name
+        .bytes()
+        .next()
+        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
+    if !reserved && valid_start && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return name.to_string();
+    }
+    let encoded: String = name.bytes().map(|b| format!("{b:02x}")).collect();
+    format!("__zero_local_{encoded}")
 }
 
 fn php_hint(t: &Ty) -> &'static str {

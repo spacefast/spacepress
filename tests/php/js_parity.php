@@ -97,8 +97,8 @@ $cases = [
         fn () => array_map(fn ($s) => Js::n(Js::toNumber($s) - 1), ['9007199254740993', '-9007199254740993', '9007199254740992', '0x20000000000001', '0o400000000000000001', '0b100000000000000000000000000000000000000000000000000001'])],
     ['(() => { const v = JSON.parse(\'{"n":9007199254740993,"l":[-9007199254740995,3]}\'); return [v.n - 1, v.l[0] + 1, v.l[1] + 1]; })()',
         function () { $v = Js::jsonParse('{"n":9007199254740993,"l":[-9007199254740995,3]}'); return [Js::n($v->p['n'] - 1), Js::n($v->p['l']->a[0] + 1), Js::n($v->p['l']->a[1] + 1)]; }],
-    ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 10 ** -2, 2 ** 0.5, 1 ** Infinity, (-1) ** -Infinity, 2 ** Infinity, 1 ** NaN]',
-        fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(10, -2), Js::pow(2, 0.5), Js::pow(1, INF), Js::pow(-1, -INF), Js::pow(2, INF), Js::pow(1, NAN)]],
+    ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 2 ** -2, 2 ** 0.5, 1 ** Infinity, (-1) ** -Infinity, 2 ** Infinity, 1 ** NaN]',
+        fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(2, -2), Js::pow(2, 0.5), Js::pow(1, INF), Js::pow(-1, -INF), Js::pow(2, INF), Js::pow(1, NAN)]],
     ['[parseInt("ff", 16), parseInt("0xff", 16), parseInt("0xff", 10), parseInt("102", 2), parseInt("z", 36), parseInt("1", 37), parseInt("10", 0), parseInt("10", 4.9), parseInt("10", -1)]',
         fn () => [Js::parseInt('ff', 16), Js::parseInt('0xff', 16), Js::parseInt('0xff', 10), Js::parseInt('102', 2), Js::parseInt('z', 36), Js::parseInt('1', 37), Js::parseInt('10', 0), Js::parseInt('10', 4.9), Js::parseInt('10', -1)]],
     ['["3.14abc", ".5", "-.5e-3x", "Infinityx", "-Infinity", "e5", "  1e400", "-0", "1.e2", "0x10"].map(parseFloat)',
@@ -353,6 +353,7 @@ if (!is_array($expected) || count($expected) !== count($cases)) {
 /** Typed comparison of a PHP value against a tagged JS value. Returns null when equal, else a reason. */
 function mismatch(mixed $actual, mixed $exp, string $path = ''): ?string
 {
+    if ($actual === Js::undefined()) { $actual = null; }
     if ($actual instanceof JsObject || $actual instanceof JsArray) { $actual = \Zero\Seam::container($actual); }
     $show = fn ($v) => is_float($v) ? sprintf('%.17g', $v) : var_export($v, true);
     if (is_array($exp) && isset($exp['$'])) {

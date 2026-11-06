@@ -1801,7 +1801,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 for (i, e) in elems.iter().enumerate() {
                     let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
-                        let access = format!("({done} ? null : \\Zero\\Js::get({src}, {i}))");
+                        let access = format!("({done} ? \\Zero\\Js::undefined() : \\Zero\\Js::dynamicGet({src}, {i}))");
                         let types = BindingTypes {
                             read: element(&ty, i).expect("array read"),
                             constraint: element(&constraint, i).expect("authored array"),
@@ -2626,6 +2626,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 self.need_num(&a, span, &format!("`{sym}`"))?;
                 self.need_num(&b, span, &format!("`{sym}`"))?;
+                if op == BinOp::Exp {
+                    let literal = |ty: &Ty| match ty {
+                        Ty::NumLit(n) | Ty::FreshNumLit(n) => Some(*n),
+                        _ => None,
+                    };
+                    if let (Some(a), Some(b)) = (literal(&a.ty), literal(&b.ty)) {
+                        crate::builtins::check_power(a, b, span)?;
+                    }
+                }
                 match op {
                     BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
@@ -3310,13 +3319,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("{receiver} = {}", target.receiver),
                     format!("{key} = {}", target.key),
                 ];
-                let read = if target.dynamic {
-                    format!("\\Zero\\Js::dynamicGet({receiver}, {key})")
-                } else if target.array {
-                    format!("\\Zero\\Js::get({receiver}, {key})")
-                } else {
-                    format!("\\Zero\\Js::prop({receiver}, {key})")
-                };
+                let read = format!("\\Zero\\Js::dynamicGet({receiver}, {key})");
                 let write = if target.dynamic {
                     CapturedPlace::Dynamic { receiver, key }
                 } else if target.array {
@@ -3626,7 +3629,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 t
             }
         };
-        // `x?.length` on a nullable value: evaluate once, short-circuit to null.
+        // `x?.length` on a nullable value: evaluate once, short-circuit to undefined.
         let guarded = |c: &mut Self, f: &dyn Fn(&str) -> String| {
             if optional && o.ty.is_nullable() {
                 let tmp = c.tmp_var();
@@ -3659,8 +3662,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let method = if map || opt_field { "dynamicGet" } else { "prop" };
-                let php = guarded(self, &|x| format!("\\Zero\\Js::{method}({x}, {})", php_str(prop)));
+                let php = guarded(self, &|x| format!("\\Zero\\Js::dynamicGet({x}, {})", php_str(prop)));
                 let ft = if map || opt_field {
                     Ty::union([ft, Ty::Undefined])
                 } else {
@@ -3700,7 +3702,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && matches!(index.kind, ExprKind::Num(n) if n == 0.0)
         {
             return Ok(Out::atom(
-                format!("\\Zero\\Js::get({}, {})", o.php, i.php),
+                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
                 (**element).clone(),
             ));
         }
@@ -3730,24 +3732,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let mut out = match (&base, &i.ty) {
             (Ty::Array(t) | Ty::NonEmptyArray(t), it) if it.is_num() => Out::atom(
-                format!("\\Zero\\Js::get({}, {})", o.php, i.php),
-                wrap((**t).clone().nullable()),
+                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
                 ExprKind::Num(n) if n.fract() == 0.0 && *n >= 0.0 => {
-                    let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Null);
+                    let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined);
                     let place = o.place.as_ref().map(|p| format!("{p}->a[{}]", *n as usize));
                     Out {
-                        php: format!("\\Zero\\Js::get({}, {})", o.php, *n as usize),
-                        ty: wrap(t.nullable()),
+                        php: format!("\\Zero\\Js::dynamicGet({}, {})", o.php, *n as usize),
+                        ty: wrap(Ty::union([t, Ty::Undefined])),
                         place,
                         atomic: true,
                         helper: None,
                     }
                 }
                 _ if i.ty.is_num() => Out::atom(
-                    format!("\\Zero\\Js::get({}, {})", o.php, i.php),
-                    wrap(Ty::union(ts.clone()).nullable()),
+                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                    wrap(Ty::union(ts.iter().cloned().chain([Ty::Undefined]))),
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
@@ -3791,7 +3793,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
                 format!("\\Zero\\Js::strIndex({}, {})", o.php, i.php),
-                wrap(Ty::Str.nullable()),
+                wrap(Ty::union([Ty::Str, Ty::Undefined])),
             ),
             _ => {
                 return err(
@@ -3976,7 +3978,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ty::Array(ty) | Ty::NonEmptyArray(ty) | Ty::Map(ty) => Some((*ty).nullable()),
                 Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
                     ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => {
-                        Some(ts.get(*n as usize).cloned().unwrap_or(Ty::Null).nullable())
+                        Some(ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined).nullable())
                     }
                     _ => Some(Ty::union(ts).nullable()),
                 },
@@ -4383,6 +4385,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         self.builtin_args(g, m, args, span)?;
+        if (g, m) == ("Math", "pow") {
+            crate::builtins::check_power_literals(args, span)?;
+        }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
         }
@@ -4633,9 +4638,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Unknown,
                 )
             }
-            ("console", "log" | "info" | "warn" | "error" | "debug") => {
-                Out::atom(format!("\\Zero\\Js::log({}, {})", php_str(m), php_args()), Ty::Null)
-            }
+            ("console", "log" | "info" | "warn" | "error" | "debug") => Out::atom(
+                format!("\\Zero\\Js::log({}, {})", php_str(m), php_args()),
+                Ty::Undefined,
+            ),
             _ => return err(span, format!("`{g}.{m}` isn't supported in Zero code")),
         })
     }
@@ -4797,7 +4803,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             t
         };
-        Ok(Out::atom(format!("\\Zero\\Js::prop({}, {})", o.php, php_str(prop)), t))
+        Ok(Out::atom(
+            format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+            t,
+        ))
     }
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
@@ -4908,7 +4917,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     s.php,
                     a(0).unwrap_or("0".into())
                 ),
-                Ty::Str.nullable(),
+                Ty::union([Ty::Str, Ty::Undefined]),
             ),
             "split" => {
                 if let Some(separator) = argv.first()
@@ -4926,7 +4935,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Ty::Array(Box::new(Ty::Str)),
                     )
                 } else {
-                    Out::atom(dispatch(), Ty::Array(Box::new(Ty::Str)))
+                    Out::atom(
+                        dispatch(),
+                        Ty::Array(Box::new(if argv.first().is_some_and(|v| v.ty == Ty::Regex) {
+                            Ty::union([Ty::Str, Ty::Undefined])
+                        } else {
+                            Ty::Str
+                        })),
+                    )
                 }
             }
             "localeCompare" => {
@@ -4941,7 +4957,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "match() needs a regular expression");
                 }
                 Out {
-                    ty: Ty::Array(Box::new(Ty::Str.nullable())).nullable(),
+                    ty: Ty::Array(Box::new(Ty::union([Ty::Str, Ty::Undefined]))).nullable(),
                     ..js("strMatch", &[a(0)])
                 }
             }
@@ -5038,7 +5054,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     _ => el,
                 };
-                Out::atom(format!("\\Zero\\Js::{m}({}, {})", a.php, f.php), narrowed.nullable())
+                Out::atom(
+                    format!("\\Zero\\Js::{m}({}, {})", a.php, f.php),
+                    Ty::union([narrowed, Ty::Undefined]),
+                )
             }
             "findIndex" | "findLastIndex" => {
                 let f = cb(self, &[])?;
@@ -5066,7 +5085,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "forEach" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\Zero\\Js::forEach({}, {})", a.php, f.php), Ty::Null)
+                Out::atom(format!("\\Zero\\Js::forEach({}, {})", a.php, f.php), Ty::Undefined)
             }
             "reduce" => {
                 let init = match args.get(1) {
@@ -5124,8 +5143,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Num,
                 )
             }
-            "pop" => Out::atom(format!("\\Zero\\Js::pop({})", a.php), el.nullable()),
-            "shift" => Out::atom(format!("\\Zero\\Js::shift({})", a.php), el.nullable()),
+            "pop" => Out::atom(format!("\\Zero\\Js::pop({})", a.php), Ty::union([el, Ty::Undefined])),
+            "shift" => Out::atom(format!("\\Zero\\Js::shift({})", a.php), Ty::union([el, Ty::Undefined])),
             "reverse" | "toReversed" => Out::atom(format!("\\Zero\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
@@ -5167,7 +5186,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Out::atom(format!("\\Zero\\Js::join({all})"), Ty::Str)
                     }
                     "slice" => Out::atom(dispatch(), Ty::Array(Box::new(el))),
-                    "at" => Out::atom(format!("\\Zero\\Js::arrAt({all})"), el.nullable()),
+                    "at" => Out::atom(format!("\\Zero\\Js::arrAt({all})"), Ty::union([el, Ty::Undefined])),
                     "concat" => {
                         let mut t = vec![el];
                         let mut parts = vec![a.php.clone()];

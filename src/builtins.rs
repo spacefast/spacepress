@@ -76,7 +76,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("Math", &["min", "max"], overload("...values: number[]", arity(0, VARIADIC), arity(0, VARIADIC), arity(0, VARIADIC))),
     ("Math", &["floor", "ceil", "abs", "sqrt", "trunc", "round"], overload("value: number", arity(0, 1), arity(1, 1), arity(0, 1))),
     ("Math", &["sign", "log", "exp"], overload("value: number", None, arity(1, 1), arity(0, 1))),
-    ("Math", &["pow"], overload("base: number, exponent: number", arity(0, 2), arity(2, 2), arity(0, 2))),
+    ("Math", &["pow"], overload("base: number, exponent: number; exact powers, square roots and IEEE special values only", arity(0, 2), arity(2, 2), arity(0, 2))),
     ("Math", &["random"], overload("no arguments", None, arity(0, 0), arity(0, 0))),
     ("Date", &["now"], overload("no arguments", None, arity(0, 0), arity(0, 0))),
     ("Object", &["keys", "values", "entries"], overload("value: object", arity(1, 1), arity(1, 1), arity(1, 1))),
@@ -174,6 +174,38 @@ pub fn check_parse_int_literals(args: &[crate::ir::ArrEl], span: Span) -> Result
     };
     if crate::num::parse_int(text, radix).is_none() {
         return Err(Diag::new(span, UNSAFE_RADIX).help("use base 10, a power-of-two base, or a safe integer result"));
+    }
+    Ok(())
+}
+
+pub fn power_diagnostic(span: Span) -> Diag {
+    Diag::new(span, crate::num::UNSUPPORTED_POWER)
+        .help("use a safe integer power, an integral power of a binary base, a square root, or compute outside Zero")
+}
+
+pub fn check_power(a: f64, b: f64, span: Span) -> Result<(), Diag> {
+    if crate::num::pow(a, b).is_none() {
+        return Err(power_diagnostic(span));
+    }
+    Ok(())
+}
+
+pub fn check_power_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
+    use crate::ir::{ArrEl, Expr, ExprKind, UnOp};
+    fn number(e: &Expr) -> Option<f64> {
+        match &e.kind {
+            ExprKind::Num(n) => Some(*n),
+            ExprKind::Unary(UnOp::Neg, e) => number(e).map(|n| -n),
+            ExprKind::Unary(UnOp::Plus, e) | ExprKind::As(e, _) | ExprKind::NonNull(e) => number(e),
+            ExprKind::Ident(n) if n == "NaN" => Some(f64::NAN),
+            ExprKind::Ident(n) if n == "Infinity" => Some(f64::INFINITY),
+            _ => None,
+        }
+    }
+    if let [ArrEl::Item(a), ArrEl::Item(b)] = args
+        && let (Some(a), Some(b)) = (number(a), number(b))
+    {
+        check_power(a, b, span)?;
     }
     Ok(())
 }

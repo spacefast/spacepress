@@ -48,6 +48,10 @@ fn err_help<T>(span: Span, msg: impl Into<String>, help: impl Into<String>) -> R
     Err(Ctl::Err(Diag::new(span, msg).help(help)))
 }
 
+fn supported_power(a: f64, b: f64, span: Span) -> R<f64> {
+    crate::num::pow(a, b).ok_or_else(|| Ctl::Err(crate::builtins::power_diagnostic(span)))
+}
+
 fn require_callable(value: &Value, span: Span) -> R<()> {
     let accepted = |surface, name| crate::builtins::contract(surface, name).is_some_and(|c| c.evaluator.is_some());
     let callable = match value {
@@ -1276,7 +1280,24 @@ impl<'p> Evaluator<'p> {
     }
 
     fn get_prop(&self, v: &Value, prop: &str, span: Span) -> R<Value> {
-        let bound = || Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)));
+        let bound = || {
+            let surface = match v {
+                Value::Array(_) => "array",
+                Value::Str(_) => "string",
+                Value::Num(_) => "number",
+                Value::Column(_) => "column",
+                Value::Regex(..) => "regex",
+                _ => unreachable!(),
+            };
+            if crate::builtins::contract(surface, prop).is_none() {
+                return err_help(
+                    span,
+                    format!("unsupported built-in property `{surface}.{prop}`"),
+                    "use a property listed in the supported built-in contract",
+                );
+            }
+            Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+        };
         match v {
             Value::Undef | Value::Null => err(span, format!("can't read `{prop}` of {}", v.describe())),
             Value::Arguments(_) if prop == "callee" => Err(Ctl::Throw(
@@ -1324,7 +1345,14 @@ impl<'p> Evaluator<'p> {
                 ("Number", "MAX_SAFE_INTEGER") => Ok(Value::Num(9_007_199_254_740_991.0)),
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Value::Num(-9_007_199_254_740_991.0)),
                 ("Number", "EPSILON") => Ok(Value::Num(f64::EPSILON)),
-                _ => Ok(Value::Builtin(Builtin::Static(g, Rc::from(prop)))),
+                _ if crate::builtins::contract(g, prop).is_some() => {
+                    Ok(Value::Builtin(Builtin::Static(g, Rc::from(prop))))
+                }
+                _ => err_help(
+                    span,
+                    format!("unsupported built-in property `{g}.{prop}`"),
+                    "use a property listed in the supported built-in contract",
+                ),
             },
             other => err(span, format!("can't read `{prop}` of {}", other.describe())),
         }
@@ -1829,7 +1857,7 @@ impl<'p> Evaluator<'p> {
             ("Math", "trunc") => Value::Num(num(0).trunc()),
             ("Math", "abs") => Value::Num(num(0).abs()),
             ("Math", "sqrt") => Value::Num(num(0).sqrt()),
-            ("Math", "pow") => Value::Num(crate::num::pow(num(0), num(1))),
+            ("Math", "pow") => Value::Num(supported_power(num(0), num(1), span)?),
             ("Math", "random") => {
                 return err(
                     span,
@@ -3118,7 +3146,7 @@ fn binary(op: BinOp, a: &Value, b: &Value, span: Span) -> R<Value> {
         BinOp::Mul => Value::Num(to_number(a) * to_number(b)),
         BinOp::Div => Value::Num(to_number(a) / to_number(b)),
         BinOp::Rem => Value::Num(to_number(a) % to_number(b)),
-        BinOp::Exp => Value::Num(crate::num::pow(to_number(a), to_number(b))),
+        BinOp::Exp => Value::Num(supported_power(to_number(a), to_number(b), span)?),
         BinOp::Eq => Value::Bool(a.strict_eq(b)),
         BinOp::Ne => Value::Bool(!a.strict_eq(b)),
         BinOp::LooseEq => Value::Bool(loose_eq(a, b, span)?),

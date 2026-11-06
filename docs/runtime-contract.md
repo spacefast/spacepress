@@ -578,6 +578,12 @@ Large parseInt results are supported for base 10 and power-of-two bases; other
 radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
 PHP and Rust power-of-two parsing round once from the significant bits.
+Powers accept safe integer powers, integral powers of binary bases, squares,
+reciprocals, square roots and IEEE special values. Other powers are refused:
+Node and native math libraries can round them differently. Known literals have
+source diagnostics; dynamic values throw RangeError. Missing reads and built-in
+results preserve undefined separately from null in both language modes.
+Unknown built-in properties are refused during configuration evaluation.
 Database builders, configuration/schema factories and column modifiers also use
 the shared source arity contract, including runtime arguments to `$type`. Database
 collection arguments must resolve to static references; effectful expressions
@@ -667,7 +673,7 @@ Conversions:
 - `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So Zero ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
 - `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
 - Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
-- Arrays are dense: `get` returns null for an invalid/missing index; `setAt` permits overwrite or append at length and throws `RangeError` otherwise. Fixed-length walks throw if they reach an index removed by their callback; live-length `from` and `for…of` allow shrinking and growing.
+- Arrays are dense: compiled reads use `dynamicGet` and return undefined for invalid/missing indexes. Native `get` returns null; `setAt` permits overwrite or append at length and throws `RangeError` otherwise. Fixed-length walks throw if they reach an index removed by their callback; live-length `from` and `for…of` allow shrinking and growing.
 - `get`/`prop` and `setAt`/`set` throw catchable JS `TypeError` for a missing receiver. Writes evaluate their value first; read-modify-write operations read first.
 - `has` snapshots property presence for arithmetic compounds and updates. `plus` implements `+=` primitive coercion with that snapshot, distinguishing a missing old value from present null.
 - `parseInt(string $s, int|float|null $radix = null): int|float`, `parseFloat(string $s): int|float` — exact JS semantics, NAN when nothing parses.
@@ -680,7 +686,7 @@ Conversions:
 Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; negative/float/out-of-range arguments handled exactly like JS):
 - `slice(string $s, int|float $start = 0, int|float|null $end = null): string`
 - `substring(string $s, int|float $start, int|float|null $end = null): string`
-- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): ?string`
+- `charAt(string $s, int|float $i): string`, `strAt(string $s, mixed $i = 0): string|JsUndefined`
 - `indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int`, `lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int` (lists too: both honor `fromIndex`; a given `null` is 0, an omitted `lastIndexOf` position searches from the end)
 - `includes(string $s, string $needle): bool` is native (`str_contains`), not here.
 - `split(string $s, string|RegExp $sep, int|float|null $limit = null): JsArray` (`""` separator → UTF-16 code units; splitting a pair throws)
@@ -690,8 +696,8 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
 - `stringCompare(string $a, string $b): int` — -1/0/1 by UTF-16 code units, shared by typed and dynamic relational operators. `localeCompare` is refused; no host-dependent collation or byte-order substitute is exposed.
-- `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
-- `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
+- `strIndex(string $s, int|float $i): string|JsUndefined` — numeric bracket access; fractional, negative and non-finite indexes name no character.
+- `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups undefined) or null; global → list of all matches or null.
 
 Every runtime and emitted `mb_*` call passes explicit encodings; Zero never
 depends on `mb_internal_encoding()`.
@@ -702,10 +708,10 @@ RegExp:
 - Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
 Arrays (`JsArray`):
-- `find(JsArray $a, callable $f): mixed`, `findLast`; `findIndex`/`findLastIndex`: int (null/-1 when absent).
+- `find(JsArray $a, callable $f): mixed`, `findLast`; `findIndex`/`findLastIndex`: int (undefined/-1 when absent).
 - `some(JsArray $a, callable $f): bool`, `every(...)`: bool.
 - Callbacks receive `(value, index, array)`; fixed-length walks read each value live and keep the value read before the callback.
-- `filter(JsArray $a, callable $f): JsArray`, `map(...)`: JsArray, `forEach(...)`: void.
+- `filter(JsArray $a, callable $f): JsArray`, `map(...)`: JsArray, `forEach(...)`: JsUndefined.
 - `includes(JsArray $a, mixed $v): bool` uses SameValueZero; `indexOf`/`lastIndexOf` use strict equality.
 - `join(JsArray $a, string $sep = ','): string` (null elements → `""`; cyclic arrays render a revisited handle as `""`).
 - `arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray`, `arrAt(JsArray $a, int|float $i): mixed`.

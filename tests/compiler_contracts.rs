@@ -541,7 +541,7 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
             .as_array()
             .unwrap()
             .iter()
-            .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("string | null")),
+            .any(|diagnostic| diagnostic["message"].as_str().unwrap().contains("string | undefined")),
         "{report}"
     );
 
@@ -653,7 +653,7 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
         result,
         json!([
             ["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"],
-            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "object"]
+            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"]
         ])
     );
     std::fs::write(tmp.path().join("zero.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
@@ -938,6 +938,9 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "Math.pow(3, 35)",
+        "10 ** -2",
+        "Math.pow(1.3, 0.3)",
         "'aba'.replace(/(a(b)?)+/, '[$2]')",
         "'x'.replace(/[a-z--x]/g, '!')",
         "Object.hasOwn(() => 1, 'length')",
@@ -1194,4 +1197,66 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         assert!(diagnostic["location"].is_object());
         assert!(diagnostic["help"].as_str().unwrap().contains("computed"));
     }
+}
+
+#[test]
+fn unknown_configuration_builtin_properties_are_located_refusals() {
+    for expression in [
+        "typeof 'x'.notReal",
+        "typeof [].notReal",
+        "typeof Math.notReal",
+        "typeof /x/.global",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+        assert!(
+            report["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("unsupported built-in property"),
+            "{report}"
+        );
+        assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
+    }
+}
+
+#[test]
+fn console_results_preserve_undefined_and_emit_the_log() {
+    let tmp = tempfile::tempdir().unwrap();
+    let entry = tmp.path().join("zero.config.ts");
+    std::fs::write(&entry, "import {action,defineConfig} from 'zero'; export default defineConfig({name:'logresult',actions:{probe:action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}})}});").unwrap();
+    let node = Command::new("node")
+        .arg(root().join("tests/differential/run-node.mjs"))
+        .arg(&entry)
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    assert!(String::from_utf8_lossy(&node.stderr).contains("builtin-return-marker"));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-logresult/zero/app");
+    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn());"#]).arg(content.join("plugins/zero-runtime/zero/bootstrap.php")).arg(app).output().unwrap();
+    assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
+    assert!(String::from_utf8_lossy(&actual.stderr).contains("builtin-return-marker"));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&actual.stdout).unwrap(),
+        expected["cases"]["probe"]["data"]
+    );
+}
+
+#[test]
+fn dynamic_unsupported_powers_fail_explicitly() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>power(3,35)})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];try{$fn();echo '"accepted"';}catch(\Zero\JsError $e){echo json_encode($e->jsName);}"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-powerrefusal/zero/app"),
+        ],
+    );
+    assert_eq!(result, "RangeError");
 }

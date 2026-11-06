@@ -186,6 +186,7 @@ final class RegExp implements \Stringable
         $size = strlen($s);
         while ($offset <= $size) {
             $m = $this->matchAt($s, $offset, $this->sticky);
+            if ($m === null && $this->sticky) { break; }
             if ($insideOffsets !== []) {
                 // PCRE may find no boundary match at the astral character's start. Try every
                 // in-pair position before the next ordinary match, including when none exists.
@@ -201,8 +202,10 @@ final class RegExp implements \Stringable
             }
             $out[] = $m;
             $offset = $m[1] > $m[0] ? $m[1] : $m[1] + Js::charLenAt($s, $m[1]);
-            if ($m[1] === $m[0] && isset($insideOffsets[$m[1]]) && ($in = $this->insidePair($shadow, $insideOffsets[$m[1]], $m[1])) !== null) {
-                $out[] = $in;
+            if ($m[1] === $m[0] && isset($insideOffsets[$m[1]])) {
+                $in = $this->insidePair($shadow, $insideOffsets[$m[1]], $m[1]);
+                if ($in !== null) { $out[] = $in; }
+                elseif ($this->sticky) { break; }
             }
         }
 

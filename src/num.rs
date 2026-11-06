@@ -25,14 +25,52 @@ pub fn round(x: f64) -> f64 {
     if x - floor < 0.5 { floor } else { floor + 1.0 }
 }
 
-pub fn pow(a: f64, b: f64) -> f64 {
+pub const UNSUPPORTED_POWER: &str =
+    "power requires an exact supported result; engine-dependent rounding isn't supported";
+
+pub fn pow(a: f64, b: f64) -> Option<f64> {
     if b == 0.0 {
-        return 1.0;
+        return Some(1.0);
     }
     if a.is_nan() || b.is_nan() || (a.abs() == 1.0 && b.is_infinite()) {
-        return f64::NAN;
+        return Some(f64::NAN);
     }
-    a.powf(b)
+    if a == 0.0 || a.is_infinite() || b.is_infinite() || (a < 0.0 && b.fract() != 0.0) {
+        return Some(a.powf(b));
+    }
+    if b == 1.0 {
+        return Some(a);
+    }
+    if b == 2.0 {
+        return Some(a * a);
+    }
+    if b == -1.0 {
+        return Some(1.0 / a);
+    }
+    if b == 0.5 {
+        return Some(a.sqrt());
+    }
+    let bits = a.abs().to_bits();
+    let fraction = bits & ((1u64 << 52) - 1);
+    let binary_base = if bits >> 52 == 0 {
+        fraction.is_power_of_two()
+    } else {
+        fraction == 0
+    };
+    if binary_base && b.fract() == 0.0 {
+        return Some(a.powf(b));
+    }
+    if a.fract() == 0.0 && b.fract() == 0.0 && (0.0..=53.0).contains(&b) {
+        let mut result = 1.0;
+        for _ in 0..b as u32 {
+            result *= a;
+            if result.abs() > 9_007_199_254_740_991.0 {
+                return None;
+            }
+        }
+        return Some(result);
+    }
+    None
 }
 
 pub fn min(a: f64, b: f64) -> f64 {

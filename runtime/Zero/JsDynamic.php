@@ -290,7 +290,7 @@ trait JsDynamic
                 'reverse', 'toReversed' => self::{$name}($receiver, ...$a),
                 'flat' => self::dynamicFlat($receiver, $get(0)),
                 'find', 'findLast' => self::dynamicArrayFind($receiver, $name, self::dynamicCallback($get(0))),
-                'forEach' => self::dynamicForEach($receiver, self::dynamicCallback($get(0))),
+                'forEach' => self::forEach($receiver, self::dynamicCallback($get(0))),
                 'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::dynamicCallback($get(0))),
                 'reduce' => count($a) < 2 ? self::reduce($receiver, self::dynamicCallback($get(0))) : self::reduce($receiver, self::dynamicCallback($get(0)), $a[1]),
                 'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::dynamicCallback($get(0))),
@@ -365,12 +365,6 @@ trait JsDynamic
         };
         if ($method === 'find') { self::findIndex($source, $visit); } else { self::findLastIndex($source, $visit); }
         return $matched;
-    }
-
-    private static function dynamicForEach(JsArray $source, \Closure $callback): JsUndefined
-    {
-        self::forEach($source, $callback);
-        return JsUndefined::Value;
     }
 
     private static function dynamicArrayFrom(mixed $source, mixed $mapper = JsUndefined::Value): JsArray

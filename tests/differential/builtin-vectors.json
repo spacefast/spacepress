@@ -430,5 +430,30 @@
     "expression": "(() => {let n=0; try {'x'.replaceAll(/x/,{toString:()=>{n++;return 'y';}});} catch(e) {} return n;})()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "forEachResult",
+    "expression": "(() => {let n=0; const result=[1,2].forEach(x=>{n+=x;}); return [typeof result, result===undefined, result===null, n];})()",
+    "fold": true
+  },
+  {
+    "name": "typedUndefinedResults",
+    "expression": "[typeof [1].find(x=>false), typeof [1].findLast(x=>false), typeof [1].at(2), typeof 'x'.at(2), typeof [].pop(), typeof [].shift(), [null].find(x=>true)===null, [null].at(0)===null, typeof [][0], typeof 'x'[4]]",
+    "fold": false
+  },
+  {
+    "name": "unmatchedRegexResults",
+    "expression": "(() => {const m='b'.match(/(a)?b/); return [m===null ? 'no match' : typeof m[1], typeof 'ab'.split(/(x)?/)[1]];})()",
+    "fold": false
+  },
+  {
+    "name": "stickySurrogateBoundaries",
+    "expression": "['x😀'.match(/\\B/gy), '😀x'.match(/^|x/gy), '😀x'.match(/(?:)|x/gy), 'x😀'.match(/\\B/g), '😀'.match(/\\B/gy)]",
+    "fold": false
+  },
+  {
+    "name": "deterministicPowers",
+    "expression": "[String(Math.pow(3, 20)), String(Math.pow(2, 1024)), String(Math.pow(2, -1074)), String(Math.pow(2, -1075)), String(Math.pow(0.5, -4)), String(Math.pow(-2, 3)), String(Math.pow(1.3, 2)), String(Math.pow(3, -1)), String(Math.pow(2, 0.5)), String(1 / Math.pow(-0, 3)), String(Math.pow(-0, -3)), String(Math.pow(-3, 0.4)), String(Math.pow(-Infinity, 3)), String(Math.pow(-2, Infinity))]",
+    "fold": true
   }
 ]

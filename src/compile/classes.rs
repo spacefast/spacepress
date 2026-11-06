@@ -427,7 +427,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if is_static {
             format!("{}->get({})", receiver.wrapped(), php_str(prop))
         } else {
-            format!("\\Zero\\Js::prop({}, {})", receiver.php, php_str(prop))
+            format!("\\Zero\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
         };
         Ok(Out::atom(
             php,

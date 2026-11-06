@@ -531,7 +531,13 @@ impl Lowerer {
                     span: self.sp(s.span),
                 }
             }
-            a::Statement::LabeledStatement(l) => return self.unsupported(l.span, "labels", ""),
+            a::Statement::LabeledStatement(l) => {
+                return self.unsupported(
+                    l.span,
+                    "labels",
+                    "extract a helper and return early, or use a boolean flag to leave nested loops",
+                );
+            }
             a::Statement::WithStatement(w) => return self.unsupported(w.span, "`with`", ""),
             a::Statement::DebuggerStatement(d) => return self.unsupported(d.span, "`debugger`", ""),
             a::Statement::EmptyStatement(_) => Stmt::Block(vec![]),
@@ -1334,7 +1340,7 @@ impl Lowerer {
             T::TSNullKeyword(_) => TyAnn::Null,
             T::TSUndefinedKeyword(_) => TyAnn::Undefined,
             T::TSVoidKeyword(_) => TyAnn::Void,
-            T::TSAnyKeyword(_) => TyAnn::Any,
+            T::TSAnyKeyword(k) => TyAnn::Any(self.sp(k.span)),
             T::TSUnknownKeyword(_) => TyAnn::Unknown,
             T::TSNeverKeyword(_) => TyAnn::Never,
             T::TSTypePredicate(p) => {
@@ -1419,7 +1425,7 @@ impl Lowerer {
                         .as_ref()
                         .map(|t| self.ty(&t.type_annotation))
                         .transpose()?;
-                    params.push((ann.unwrap_or(TyAnn::Any), p.optional));
+                    params.push((ann.unwrap_or(TyAnn::Any(self.sp(p.span))), p.optional));
                 }
                 TyAnn::Fn(params, Box::new(self.ty(&f.return_type.type_annotation)?))
             }
@@ -1507,7 +1513,7 @@ impl Lowerer {
                     };
                     let ty = match &p.type_annotation {
                         Some(t) => self.ty(&t.type_annotation)?,
-                        None => TyAnn::Any,
+                        None => TyAnn::Any(self.sp(p.span)),
                     };
                     fields.push((key.to_string(), ty, p.optional));
                 }
@@ -1559,11 +1565,11 @@ impl Lowerer {
                             .as_ref()
                             .map(|t| self.ty(&t.type_annotation))
                             .transpose()?;
-                        params.push((ann.unwrap_or(TyAnn::Any), p.optional));
+                        params.push((ann.unwrap_or(TyAnn::Any(self.sp(p.span))), p.optional));
                     }
                     let ret = match &ms.return_type {
                         Some(t) => self.ty(&t.type_annotation)?,
-                        None => TyAnn::Any,
+                        None => TyAnn::Any(self.sp(ms.span)),
                     };
                     fields.push((key.to_string(), TyAnn::Fn(params, Box::new(ret)), ms.optional));
                 }

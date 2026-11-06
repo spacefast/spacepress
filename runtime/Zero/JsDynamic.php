@@ -106,7 +106,7 @@ trait JsDynamic
                 'source' => $value->source, 'flags' => $value->flags, 'global' => $value->global,
                 'ignoreCase' => str_contains($value->flags, 'i'), 'multiline' => str_contains($value->flags, 'm'),
                 'unicode' => str_contains($value->flags, 'u'), 'dotAll' => str_contains($value->flags, 's'),
-                'sticky' => false, 'lastIndex' => $value->lastIndex, default => self::dynamicMethodValue($value, $key),
+                'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, default => self::dynamicMethodValue($value, $key),
             };
         }
         if ($key === 'size' && ($value instanceof JsSet || $value instanceof JsMap)) {
@@ -212,6 +212,13 @@ trait JsDynamic
         $get = static fn (int $index, mixed $default = JsUndefined::Value): mixed => array_key_exists($index, $a) ? $a[$index] : $default;
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicCall($receiver->p[$name], $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicCall($receiver->p[$name], $args); }
+        $surface = match (true) {
+            is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
+            $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
+            $receiver instanceof JsDate => 'date', $receiver instanceof JsSet => 'set', $receiver instanceof JsMap => 'map',
+            default => '',
+        };
+        Builtins::check($surface, $name, count($a));
         if ($receiver instanceof JsNamespace && in_array($name, self::DYNAMIC_MATH_METHODS, true)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
         if ($name === 'toString') {
             if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
@@ -247,6 +254,8 @@ trait JsDynamic
                 'toUpperCase' => mb_strtoupper($receiver, 'UTF-8'), 'toLowerCase' => mb_strtolower($receiver, 'UTF-8'),
                 'trim' => self::trim($receiver), 'trimStart' => self::trimStart($receiver), 'trimEnd' => self::trimEnd($receiver),
                 'charAt' => self::charAt($receiver, self::toNumber($get(0, 0))),
+                'at' => self::strAt($receiver, self::toNumber($get(0, 0))),
+                'padStart', 'padEnd' => self::{$name}($receiver, self::toNumber($get(0)), $get(1) === JsUndefined::Value ? ' ' : self::str($get(1))),
                 'charCodeAt' => self::dynamicCharCodeAt($receiver, self::toNumber($get(0, 0))),
                 'slice' => self::slice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
                 'substring' => self::substring($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
@@ -273,6 +282,7 @@ trait JsDynamic
                 'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::dynamicCallback($get(0))),
                 'reduce' => count($a) < 2 ? self::reduce($receiver, self::dynamicCallback($get(0))) : self::reduce($receiver, self::dynamicCallback($get(0)), $a[1]),
                 'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::dynamicCallback($get(0))),
+                'fill' => self::fill($receiver, $get(0), self::toNumber($get(1, 0)), $get(2) === JsUndefined::Value ? null : self::toNumber($get(2))),
                 'slice' => self::arrSlice($receiver, self::toNumber($get(0, 0)), $get(1) === JsUndefined::Value ? null : self::toNumber($get(1))),
                 'at' => self::dynamicArrayAt($receiver, self::toNumber($get(0, 0))),
                 'indexOf', 'lastIndexOf', 'includes' => self::{$name}($receiver, $get(0), ...array_slice($a, 1, 1)),
@@ -356,16 +366,9 @@ trait JsDynamic
         return self::strMatch($source, $regexp);
     }
 
-    private static function dynamicRound(int|float $value): int|float
-    {
-        if (!is_finite((float) $value) || $value == 0) { return $value; }
-        if ($value < 0 && $value >= -0.5) { return -0.0; }
-        $floor = floor($value);
-        return self::n($value - $floor < 0.5 ? $floor : $floor + 1);
-    }
-
     public static function dynamicStaticCall(string $owner, string $method, JsArray $args): mixed
     {
+        Builtins::check($owner, $method, count($args->a));
         $a = $args->a;
         $get = static fn (int $i, mixed $default = JsUndefined::Value): mixed => array_key_exists($i, $a) ? $a[$i] : $default;
         if ($owner === 'Array') {
@@ -403,10 +406,10 @@ trait JsDynamic
             $n = array_map(self::toNumber(...), $a);
             $x = $n[0] ?? NAN;
             return match ($method) {
-                'abs' => abs($x), 'floor' => self::n(floor($x)), 'ceil' => self::n(ceil($x)), 'trunc' => self::n($x < 0 ? ceil($x) : floor($x)),
-                'round' => self::dynamicRound($x),
+                'random' => self::random(), 'abs' => abs($x), 'floor' => self::n(floor($x)), 'ceil' => self::n(ceil($x)), 'trunc' => self::trunc($x),
+                'round' => self::round($x),
                 'min' => self::min(...$n), 'max' => self::max(...$n), 'pow' => self::pow($x, $n[1] ?? NAN),
-                'sqrt' => sqrt($x), 'sign' => is_nan((float) $x) || $x == 0 ? $x : ($x < 0 ? -1 : 1),
+                'log' => log($x), 'exp' => exp($x), 'sqrt' => sqrt($x), 'sign' => self::sign($x),
                 default => throw new JsError('Unsupported Math method ' . $method, 'TypeError'),
             };
         }
@@ -438,13 +441,9 @@ trait JsDynamic
 
     public static function dynamicRegExpExec(RegExp $regexp, string $value): ?JsArray
     {
-        $offset = $regexp->global ? max(0, self::toInteger(self::toNumber($regexp->lastIndex))) : 0;
-        if ($offset > self::length($value)) { $regexp->lastIndex = 0; return null; }
-        $byteOffset = strlen(self::slice($value, 0, $offset));
-        $match = $regexp->matchAt($value, $byteOffset);
-        if ($match === null) { if ($regexp->global) { $regexp->lastIndex = 0; } return null; }
+        $match = $regexp->execMatch($value);
+        if ($match === null) { return null; }
         [$start, $end, $captures, $groups] = $match;
-        if ($regexp->global) { $regexp->lastIndex = self::length(substr($value, 0, $end)); }
         $result = new JsArray([substr($value, $start, $end - $start), ...array_map(static fn ($v) => $v ?? JsUndefined::Value, $captures)]);
         $result->p = ['index' => self::length(substr($value, 0, $start)), 'input' => $value, 'groups' => $regexp->hasNamedGroups() ? new JsObject(array_map(static fn ($v) => $v ?? JsUndefined::Value, $groups)) : JsUndefined::Value];
         return $result;
@@ -521,11 +520,7 @@ trait JsDynamic
             return is_string($left) || is_string($right) ? self::str($left) . self::str($right) : self::add(self::toNumber($left), self::toNumber($right));
         }
         if (in_array($operator, ['<', '<=', '>', '>='], true) && is_string($left) && is_string($right)) {
-            // UTF-16LE byte order is not code-unit order.
-            $a = unpack('v*', self::units($left)); $b = unpack('v*', self::units($right));
-            $comparison = 0;
-            for ($i = 1, $n = min(count($a), count($b)); $i <= $n; $i++) { if ($a[$i] !== $b[$i]) { $comparison = $a[$i] <=> $b[$i]; break; } }
-            if ($comparison === 0) { $comparison = count($a) <=> count($b); }
+            $comparison = self::stringCompare($left, $right);
             return match ($operator) { '<' => $comparison < 0, '<=' => $comparison <= 0, '>' => $comparison > 0, '>=' => $comparison >= 0 };
         }
         $a = self::toNumber($left); $b = self::toNumber($right);

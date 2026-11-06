@@ -88,9 +88,9 @@ impl Compiler<'_, '_> {
             TyAnn::Void => Ty::Void,
             TyAnn::Unknown => Ty::Unknown,
             TyAnn::Never => Ty::Never,
-            TyAnn::Any => {
+            TyAnn::Any(span) => {
                 return err_help(
-                    Span::NONE,
+                    *span,
                     "`any` isn't allowed in Zero code",
                     "use a precise type, or `unknown` and narrow it",
                 );
@@ -548,7 +548,8 @@ impl Compiler<'_, '_> {
 
 pub(super) fn annotation_span(a: &TyAnn) -> Span {
     match a {
-        TyAnn::Ref(_, _, s)
+        TyAnn::Any(s)
+        | TyAnn::Ref(_, _, s)
         | TyAnn::Query(_, s)
         | TyAnn::KeyOf(_, s)
         | TyAnn::Indexed(_, _, s)

@@ -238,9 +238,7 @@ $deviations = [
     ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
-    ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
     ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
-    ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
 ];
 
 // Each fixed-length helper owns a separate shrink/growth row because its walk can fail independently.

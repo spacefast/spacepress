@@ -21,6 +21,7 @@ final class RegExp implements \Stringable
     public readonly string $source;
     public readonly string $flags;
     public readonly bool $global;
+    public readonly bool $sticky;
     public mixed $lastIndex = 0;
     /** The compiled PCRE pattern, including delimiters and modifiers. */
     public readonly string $pattern;
@@ -37,15 +38,16 @@ final class RegExp implements \Stringable
     private bool $unicode;
     /** These atoms can consume a surrogate half or distinguish it from a UTF-8 stand-in. */
     private bool $requiresUnicodeOnAstral = false;
+    private bool $requiresUnitMatching = false;
 
     public function __construct(string $source, string $flags = '')
     {
         $chars = str_split($flags);
         foreach ($chars as $f) {
-            if ($f === 'y' || $f === 'd' || $f === 'v') {
+            if ($f === 'd' || $f === 'v') {
                 throw new JsError("RegExp flag '$f' is not supported", 'SyntaxError');
             }
-            if (!in_array($f, ['g', 'i', 'm', 's', 'u'], true)) {
+            if (!in_array($f, ['g', 'i', 'm', 's', 'u', 'y'], true)) {
                 throw new JsError("Invalid regular expression flags '$flags'", 'SyntaxError');
             }
         }
@@ -58,6 +60,7 @@ final class RegExp implements \Stringable
         $this->source = $source === '' ? '(?:)' : $source;
         $this->flags = implode('', $chars);
         $this->global = in_array('g', $chars, true);
+        $this->sticky = in_array('y', $chars, true);
         $this->dotAll = in_array('s', $chars, true);
         $this->multiline = in_array('m', $chars, true);
         $this->unicode = in_array('u', $chars, true);
@@ -67,6 +70,7 @@ final class RegExp implements \Stringable
         $body = $this->translate();
         $this->pattern = '/' . $body . '/u' . (in_array('i', $chars, true) ? 'i' : '');
         $this->anchoredPattern = $this->pattern . 'A';
+        $this->requiresUnitMatching = $this->requiresUnicodeOnAstral;
         $this->requiresUnicodeOnAstral = $this->requiresUnicodeOnAstral
             || preg_match('/[\x{10000}-\x{10FFFF}]/u', $source) === 1;
 
@@ -88,7 +92,22 @@ final class RegExp implements \Stringable
 
     public function test(string $s): bool
     {
-        return $this->matchAt($s, 0) !== null;
+        return $this->execMatch($s) !== null;
+    }
+
+    /** Stateful RegExpBuiltinExec, shared by test and exec. Empty matches keep lastIndex. */
+    public function execMatch(string $s): ?array
+    {
+        $stateful = $this->global || $this->sticky;
+        $offset = $stateful ? max(0, Js::toInteger(Js::toNumber($this->lastIndex))) : 0;
+        if ($offset > Js::length($s)) { $this->lastIndex = 0; return null; }
+        if (!$this->unicode && $this->requiresUnitMatching && preg_match('/[\x{10000}-\x{10FFFF}]/u', $s) === 1) {
+            throw new JsError('This RegExp on astral text requires the u flag', 'RangeError');
+        }
+        $byteOffset = strlen(Js::slice($s, 0, $offset));
+        $match = $this->matchAt($s, $byteOffset, $this->sticky);
+        if ($stateful) { $this->lastIndex = $match === null ? 0 : Js::length(substr($s, 0, $match[1])); }
+        return $match;
     }
 
     public function hasNamedGroups(): bool

@@ -324,3 +324,39 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("shared builtin vectors emit byte-identical PHP in native and WASM", () => {
+  const vectors: unknown = JSON.parse(readFileSync(path.join(repo, "tests/differential/builtin-vectors.json"), "utf8"));
+  assert.ok(Array.isArray(vectors));
+  const declarations: string[] = [];
+  const actions: string[] = [];
+  function addVector(value: unknown) {
+    assert.ok(value !== null && typeof value === "object");
+    assert.ok("name" in value && typeof value.name === "string");
+    assert.ok("expression" in value && typeof value.expression === "string");
+    assert.ok("fold" in value && typeof value.fold === "boolean");
+    actions.push(`${value.name}: action({ input: {}, handler: () => (${value.expression}) })`);
+    if (value.fold) {
+      declarations.push(`const folded_${value.name} = ${value.expression};`);
+      actions.push(`folded_${value.name}: action({ input: {}, handler: () => folded_${value.name} })`);
+    }
+  }
+  vectors.forEach(addVector);
+  const files = { "zero.config.ts": `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});` };
+  const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  try {
+    writeFileSync(path.join(dir, "zero.config.ts"), files["zero.config.ts"]);
+    const { envelope, check, output } = browserCheck({ name: "builtinparity", files });
+    assert.equal(envelope, nativeCheck(dir));
+    assert.equal(check.ok, true);
+    assert.ok(output);
+    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const app = path.join(dir, ".zero/wp-content/plugins/zero-app-builtinparity/zero/app");
+    assert.equal(output.functionsPhp, readFileSync(path.join(app, "functions.php"), "utf8"));
+    assert.equal(output.schemaPhp, readFileSync(path.join(app, "schema.php"), "utf8"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

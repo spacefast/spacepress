@@ -1,6 +1,37 @@
 //! JavaScript number formatting, shared by the evaluator (template literals at
 //! build time) and the PHP emitter (literals).
 
+/// ECMAScript ToUint32: truncate, then reduce modulo 2^32.
+pub fn to_uint32(x: f64) -> u32 {
+    if !x.is_finite() || x == 0.0 {
+        0
+    } else {
+        x.trunc().rem_euclid(4294967296.0) as u32
+    }
+}
+
+pub fn to_int32(x: f64) -> i32 {
+    to_uint32(x) as i32
+}
+
+pub fn round(x: f64) -> f64 {
+    if !x.is_finite() || x == 0.0 {
+        return x;
+    }
+    if (-0.5..0.0).contains(&x) {
+        return -0.0;
+    }
+    let floor = x.floor();
+    if x - floor < 0.5 { floor } else { floor + 1.0 }
+}
+
+/// ECMAScript WhiteSpace and LineTerminator (not Unicode's White_Space).
+pub fn is_js_whitespace(c: char) -> bool {
+    matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' |
+        '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' |
+        '\u{205f}' | '\u{3000}' | '\u{feff}')
+}
+
 /// `Number.prototype.toString()` for any f64.
 pub fn js_number_to_string(x: f64) -> String {
     if x.is_nan() {

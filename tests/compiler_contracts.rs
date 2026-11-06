@@ -876,3 +876,112 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
+
+#[test]
+fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
+    let vectors: Value = serde_json::from_str(include_str!("differential/builtin-vectors.json")).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut declarations = String::new();
+    let mut actions = Vec::new();
+    for v in vectors.as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let expression = v["expression"].as_str().unwrap();
+        actions.push(format!(
+            "{name}: action({{ input: {{}}, handler: () => ({expression}) }})"
+        ));
+        if v["fold"] == true {
+            declarations.push_str(&format!("const folded_{name} = {expression};\n"));
+            actions.push(format!(
+                "folded_{name}: action({{ input: {{}}, handler: () => folded_{name} }})"
+            ));
+        }
+    }
+    let entry = tmp.path().join("zero.config.ts");
+    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'zero';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
+    let node = Command::new("node")
+        .arg(root().join("tests/differential/run-node.mjs"))
+        .arg(&entry)
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-builtinparity/zero/app");
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = new \Zero\JsObject();
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\ZeroApp\\' . $action['handler'];
+            $out->p[$name] = new \Zero\JsObject(['data' => $fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user' => null]))]);
+        }
+        echo \Zero\Js::jsonStringify($out);
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+    );
+    assert_eq!(actual, expected["cases"]);
+}
+
+#[test]
+fn unsupported_builtin_overloads_are_located_in_both_phases() {
+    for expression in [
+        "'abc'.includes('a', 1)",
+        "'abc'.startsWith('b', 1)",
+        "'abc'.endsWith('b', 2)",
+        "'ä'.localeCompare('z')",
+        "'a'.trim('x')",
+        "(42).toString(16)",
+        "[1].map(n => n, {})",
+        "Array.from([1], n => n, {})",
+        "JSON.stringify({a: 1}, null, 2)",
+        "parseFloat('1', 2)",
+        "Math.abs(1, 2)",
+    ] {
+        for handler in [false, true] {
+            // JSON formatting is implemented by the emitter, but refused by the evaluator.
+            if handler && expression.starts_with("JSON.stringify") {
+                continue;
+            }
+            let tmp = tempfile::tempdir().unwrap();
+            let (declaration, result) = if handler {
+                (String::new(), expression.to_string())
+            } else {
+                (format!("const folded = {expression};"), "folded".into())
+            };
+            std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\n{declaration}\nexport default defineConfig({{name:'refusal',actions:{{probe:action({{input:{{}},handler:()=>{result}}})}}}});")).unwrap();
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
+            let diagnostic = &report["diagnostics"][0];
+            assert!(diagnostic["location"].is_object(), "{expression}: {report}");
+            assert!(diagnostic["help"].is_string(), "{expression}: {report}");
+        }
+    }
+}
+
+#[test]
+fn unsupported_features_have_positions_and_actionable_help() {
+    for (source, message) in [
+        (
+            "const helper = (value: any) => value; return helper('x');",
+            "`any` isn't allowed",
+        ),
+        ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
+        ("return fetch('https://example.com');", "fetch"),
+        ("return new Map<string, number>();", "new Map"),
+        (
+            "function identity<T>(value: T): T { return value; } return identity('x');",
+            "generic runtime functions aren't supported",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig}} from 'zero';\nexport default defineConfig({{name:'diagnostics',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let d = &report["diagnostics"][0];
+        assert!(d["message"].as_str().unwrap().contains(message), "{report}");
+        assert!(d["location"].is_object(), "{report}");
+        assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
+    }
+}

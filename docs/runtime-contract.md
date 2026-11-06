@@ -548,6 +548,26 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 }
 ```
 
+Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
+`runtime/Zero/Builtins.php` guards checked JavaScript dispatch; regenerate with
+`UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite
+checks freshness. Type/coercion guards remain at their language boundary.
+`tests/differential/builtin-vectors.json` supplies the same expressions to
+Node, captured configuration evaluation and generated PHP. Regex state is
+runtime-only because the pure evaluator has no mutable RegExp execution model.
+Build-time regex replacement accepts ASCII text/patterns without escapes,
+multiline mode, set operations or line terminators; other cases are refused
+instead of inheriting Rust regex semantics. String replacements have no such
+ASCII restriction. Replacement tokens implement GetSubstitution, including
+capture-number boundaries and named captures.
+Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
+and typed string-search positions are never silently discarded.
+
+Rust and PHP trim and numeric parsers use the explicit ECMAScript WhiteSpace
+and LineTerminator set: BOM is whitespace; U+0085 is not. Unary negation and
+Math.round preserve negative zero; round avoids the `floor(x + .5)` loss at
+large and adjacent-to-half boundaries.
+
 ## class Js — JavaScript semantics in PHP
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
@@ -636,7 +656,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `replace(string $s, string|RegExp $pattern, string|callable $replacement): string` — string pattern replaces the first occurrence; RegExp replaces all with `g`, else first. String replacements support `$$`, `$&`, `` $` ``, `$'`, `$1`..`$99`, `$<name>`. A callable receives `(match, ...groups, offset, input)` like JS (no named-groups object).
 - `replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string` (RegExp without `g` → throw `JsError` TypeError like JS)
 - `repeat(string $s, int|float $n): string`
-- `localeCompare(string $a, string $b): int` — -1/0/1 via byte comparison (documented deviation)
+- `stringCompare(string $a, string $b): int` — -1/0/1 by UTF-16 code units, shared by typed and dynamic relational operators. `localeCompare` is refused; no host-dependent collation or byte-order substitute is exposed.
 - `strIndex(string $s, int|float $i): ?string` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups null) or null; global → list of all matches or null.
 
@@ -645,7 +665,7 @@ depends on `mb_internal_encoding()`.
 
 RegExp:
 - `re(string $source, string $flags): RegExp` — cached per (source, flags). Translates the JS source to PCRE (delimiter-safe, `u` added when the `u` flag is set), maps flags `i m s u g`. `y` and `d` throw `JsError`.
-- `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`.
+- `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`, `sticky`. `test` and checked `exec` share `execMatch`: global/sticky calls read and update UTF-16 `lastIndex`, reset it on failure, and keep it unchanged after an empty match. Literal evaluation creates fresh regex identity; a captured regex keeps its own instance. Sticky replacement is explicitly refused.
 - Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 
 Arrays (`JsArray`):

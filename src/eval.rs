@@ -1675,6 +1675,7 @@ impl<'p> Evaluator<'p> {
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
         if matches!(g, "Math" | "Number" | "JSON") || matches!((g, m), ("Array", "isArray")) {
             for value in &args {
                 require_static_data(value, span)?;
@@ -1700,7 +1701,7 @@ impl<'p> Evaluator<'p> {
             })),
             ("Math", "floor") => Value::Num(num(0).floor()),
             ("Math", "ceil") => Value::Num(num(0).ceil()),
-            ("Math", "round") => Value::Num((num(0) + 0.5).floor()),
+            ("Math", "round") => Value::Num(crate::num::round(num(0))),
             ("Math", "trunc") => Value::Num(num(0).trunc()),
             ("Math", "abs") => Value::Num(num(0).abs()),
             ("Math", "sqrt") => Value::Num(num(0).sqrt()),
@@ -1829,16 +1830,21 @@ impl<'p> Evaluator<'p> {
         match recv {
             Value::Column(c) => column_method(c, m, &args, span),
             Value::Str(s) => string_method(s, m, &args, span),
-            Value::Num(n) => match m {
-                "toString" => Ok(Value::str(&js_number_to_string(*n))),
-                _ => err(span, format!("numbers have no method `{m}` at build time")),
-            },
+            Value::Num(n) => {
+                crate::builtins::check("number", m, args.len(), crate::builtins::Phase::Evaluator, span)
+                    .map_err(Ctl::Err)?;
+                match m {
+                    "toString" => Ok(Value::str(&js_number_to_string(*n))),
+                    _ => err(span, format!("numbers have no method `{m}` at build time")),
+                }
+            }
             Value::Array(a) => self.array_method(a, m, args, span),
             other => err(span, format!("{} has no method `{m}`", other.describe())),
         }
     }
 
     fn array_method(&mut self, a: &Arr, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        crate::builtins::check("array", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
         if matches!(m, "join" | "includes" | "indexOf") {
             require_static_data(&Value::Array(a.clone()), span)?;
         }
@@ -2185,17 +2191,14 @@ fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
 }
 
 fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
-    if matches!(g, "encodeURI" | "encodeURIComponent") && args.len() != 1 {
-        return err(span, format!("`{g}` needs exactly one string argument"));
-    }
-    if g == "isFinite" && args.len() > 1 {
-        return err(span, "isFinite() accepts at most one argument in Zero code");
-    }
+    crate::builtins::check("global", g, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     for value in args {
         require_static_data(value, span)?;
     }
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     Ok(match g {
+        "String" if args.is_empty() => Value::str(""),
+        "Number" if args.is_empty() => Value::Num(0.0),
         "String" => Value::str(&arg(0).to_js_string().unwrap_or_else(|| "[object]".into())),
         "Number" => Value::Num(to_number(&arg(0))),
         "Boolean" => Value::Bool(arg(0).truthy()),
@@ -2511,11 +2514,25 @@ pub fn to_number(v: &Value) -> f64 {
         Value::Null => 0.0,
         Value::Array(a) => array_number(a, &mut HashSet::new()),
         Value::Str(s) => {
-            let t = s.trim();
+            let t = s.trim_matches(crate::num::is_js_whitespace);
             if t.is_empty() {
                 0.0
-            } else if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-                i64::from_str_radix(h, 16).map(|n| n as f64).unwrap_or(f64::NAN)
+            } else if let Some((radix, digits)) =
+                [("0x", "0X", 16), ("0o", "0O", 8), ("0b", "0B", 2)]
+                    .iter()
+                    .find_map(|(lower, upper, radix)| {
+                        t.strip_prefix(lower)
+                            .or_else(|| t.strip_prefix(upper))
+                            .map(|digits| (*radix, digits))
+                    })
+            {
+                if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+                    f64::NAN
+                } else {
+                    digits
+                        .chars()
+                        .fold(0.0, |value, c| value * radix as f64 + c.to_digit(radix).unwrap() as f64)
+                }
             } else if t == "Infinity" || t == "+Infinity" {
                 f64::INFINITY
             } else if t == "-Infinity" {
@@ -2531,7 +2548,7 @@ pub fn to_number(v: &Value) -> f64 {
 }
 
 fn parse_float(s: &str) -> f64 {
-    let t = s.trim_start();
+    let t = s.trim_start_matches(crate::num::is_js_whitespace);
     if t.starts_with("Infinity") || t.starts_with("+Infinity") {
         return f64::INFINITY;
     }
@@ -2552,7 +2569,7 @@ fn parse_float(s: &str) -> f64 {
 }
 
 fn parse_int(s: &str, radix: &Value) -> f64 {
-    let mut t = s.trim();
+    let mut t = s.trim_start_matches(crate::num::is_js_whitespace);
     let mut sign = 1.0;
     if let Some(r) = t.strip_prefix('-') {
         sign = -1.0;
@@ -2562,7 +2579,7 @@ fn parse_int(s: &str, radix: &Value) -> f64 {
     }
     let mut radix = match radix {
         Value::Undef => 0,
-        v => to_number(v) as u32,
+        v => crate::num::to_int32(to_number(v)),
     };
     if (radix == 0 || radix == 16) && (t.starts_with("0x") || t.starts_with("0X")) {
         t = &t[2..];
@@ -2574,9 +2591,12 @@ fn parse_int(s: &str, radix: &Value) -> f64 {
     if !(2..=36).contains(&radix) {
         return f64::NAN;
     }
-    let digits: Vec<u32> = t.chars().map_while(|c| c.to_digit(radix)).collect();
+    let digits: Vec<u32> = t.chars().map_while(|c| c.to_digit(radix as u32)).collect();
     if digits.is_empty() {
         return f64::NAN;
+    }
+    if radix == 10 {
+        return sign * t[..digits.len()].parse::<f64>().unwrap_or(f64::INFINITY);
     }
     sign * digits.iter().fold(0.0, |n, d| n * radix as f64 + *d as f64)
 }
@@ -2627,15 +2647,84 @@ fn utf16_value(units: &[u16], span: Span) -> R<Value> {
     })
 }
 
+/// ECMAScript GetSubstitution. Captures are 1-based; $0 stays literal.
+fn get_substitution(
+    template: &str,
+    input: &str,
+    start: usize,
+    end: usize,
+    groups: &[Option<&str>],
+    names: Option<&IndexMap<&str, Option<&str>>>,
+) -> String {
+    let mut out = String::new();
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '$' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some('$') => {
+                chars.next();
+                out.push('$');
+            }
+            Some('&') => {
+                chars.next();
+                out.push_str(&input[start..end]);
+            }
+            Some('`') => {
+                chars.next();
+                out.push_str(&input[..start]);
+            }
+            Some('\'') => {
+                chars.next();
+                out.push_str(&input[end..]);
+            }
+            Some('0'..='9') => {
+                let first = chars.next().unwrap();
+                let one = first.to_digit(10).unwrap() as usize;
+                let two = chars.peek().and_then(|c| c.to_digit(10)).map(|n| one * 10 + n as usize);
+                if let Some(n) = two.filter(|n| *n > 0 && *n <= groups.len()) {
+                    chars.next();
+                    out.push_str(groups[n - 1].unwrap_or(""));
+                } else if one > 0 && one <= groups.len() {
+                    out.push_str(groups[one - 1].unwrap_or(""));
+                } else {
+                    out.push('$');
+                    out.push(first);
+                }
+            }
+            Some('<') if names.is_some() => {
+                let rest: String = chars.clone().collect();
+                if let Some(close) = rest.find('>') {
+                    let name = &rest[1..close];
+                    out.push_str(names.unwrap().get(name).copied().flatten().unwrap_or(""));
+                    for _ in 0..rest[..=close].chars().count() {
+                        chars.next();
+                    }
+                } else {
+                    out.push('$');
+                }
+            }
+            _ => out.push('$'),
+        }
+    }
+    out
+}
+
 fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
+    crate::builtins::check("string", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
     let str_arg = |i: usize| arg(i).to_js_string().unwrap_or_default();
+    if matches!(m, "includes" | "startsWith" | "endsWith") && matches!(arg(0), Value::Regex(..)) {
+        return err(span, "string search needs a string, not a regular expression");
+    }
     Ok(match m {
         "toLowerCase" => Value::str(&s.to_lowercase()),
         "toUpperCase" => Value::str(&s.to_uppercase()),
-        "trim" => Value::str(s.trim()),
-        "trimStart" => Value::str(s.trim_start()),
-        "trimEnd" => Value::str(s.trim_end()),
+        "trim" => Value::str(s.trim_matches(crate::num::is_js_whitespace)),
+        "trimStart" => Value::str(s.trim_start_matches(crate::num::is_js_whitespace)),
+        "trimEnd" => Value::str(s.trim_end_matches(crate::num::is_js_whitespace)),
         "startsWith" => Value::Bool(s.starts_with(&str_arg(0))),
         "endsWith" => Value::Bool(s.ends_with(&str_arg(0))),
         "includes" => Value::Bool(s.contains(&str_arg(0))),
@@ -2647,14 +2736,7 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
         "split" => {
             let limit = match arg(1) {
                 Value::Undef => u32::MAX as usize,
-                v => {
-                    let n = to_number(&v);
-                    if n.is_finite() {
-                        n.trunc().rem_euclid(4294967296.0) as usize
-                    } else {
-                        0
-                    }
-                }
+                v => crate::num::to_uint32(to_number(&v)) as usize,
             };
             match arg(0) {
                 Value::Str(sep) if sep.is_empty() => Value::array(
@@ -2675,25 +2757,83 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
                 }
             }
         }
-        "repeat" => Value::str(&s.repeat(to_number(&arg(0)).max(0.0) as usize)),
+        "repeat" => {
+            let count = to_number(&arg(0));
+            let count = if count.is_nan() { 0.0 } else { count.trunc() };
+            if !(0.0..=536870888.0).contains(&count) || count * s.len() as f64 > 536870888.0 {
+                return err(span, "repeat() count or result length is out of range");
+            }
+            Value::str(&s.repeat(count as usize))
+        }
         "replace" | "replaceAll" => {
             let Value::Str(rep) = arg(1) else {
                 return err(span, format!("{m}() at build time needs a string replacement"));
             };
             match arg(0) {
-                Value::Str(p) => Value::str(&if m == "replace" {
-                    s.replacen(&*p, &rep, 1)
-                } else {
-                    s.replace(&*p, &rep)
-                }),
+                Value::Str(p) => {
+                    let mut out = String::new();
+                    let mut last = 0;
+                    // Empty string patterns match at every UTF-16 boundary. Inserting inside
+                    // an astral pair cannot be represented; refuse that case explicitly.
+                    if p.is_empty() && m == "replaceAll" && s.chars().any(|c| c.len_utf16() == 2) {
+                        return err(span, "empty replaceAll on astral text isn't supported at build time");
+                    }
+                    for (start, matched) in s.match_indices(&*p) {
+                        let end = start + matched.len();
+                        out.push_str(&s[last..start]);
+                        out.push_str(&get_substitution(&rep, s, start, end, &[], None));
+                        last = end;
+                        if m == "replace" {
+                            break;
+                        }
+                    }
+                    out.push_str(&s[last..]);
+                    Value::str(&out)
+                }
                 Value::Regex(p, f) => {
+                    if m == "replaceAll" && !f.contains('g') {
+                        return err(span, "replaceAll() needs a global regular expression");
+                    }
+                    if !s.is_ascii()
+                        || !p.is_ascii()
+                        || p.contains('\\')
+                        || f.contains('m')
+                        || s.contains(['\r', '\n'])
+                        || ["&&", "~~", "||"].iter().any(|token| p.contains(token))
+                    {
+                        return err(
+                            span,
+                            "build-time regex replacement supports ASCII text and patterns without escapes, set operations, multiline mode or line terminators; move this replacement into a handler",
+                        );
+                    }
                     let re = build_regex(&p, &f, span)?;
-                    let rep = rep.replace("$&", "${0}");
-                    Value::str(&if f.contains('g') {
-                        re.replace_all(s, rep.as_str())
-                    } else {
-                        re.replace(s, rep.as_str())
-                    })
+                    let mut out = String::new();
+                    let mut last = 0;
+                    for caps in re.captures_iter(s) {
+                        let matched = caps.get(0).expect("complete match");
+                        let (start, end) = (matched.start(), matched.end());
+                        let groups: Vec<_> = caps.iter().skip(1).map(|m| m.map(|m| m.as_str())).collect();
+                        let names: IndexMap<_, _> = re
+                            .capture_names()
+                            .flatten()
+                            .map(|name| (name, caps.name(name).map(|m| m.as_str())))
+                            .collect();
+                        out.push_str(&s[last..start]);
+                        out.push_str(&get_substitution(
+                            &rep,
+                            s,
+                            start,
+                            end,
+                            &groups,
+                            if names.is_empty() { None } else { Some(&names) },
+                        ));
+                        last = end;
+                        if !f.contains('g') {
+                            break;
+                        }
+                    }
+                    out.push_str(&s[last..]);
+                    Value::str(&out)
                 }
                 other => return err(span, format!("can't replace {}", other.describe())),
             }

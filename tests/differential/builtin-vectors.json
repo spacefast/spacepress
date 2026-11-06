@@ -1,0 +1,87 @@
+[
+  {
+    "name": "stringOrder",
+    "expression": "['😀' < '\\uE000', '😀' <= '\\uE000', '😀' > '\\uE000', '😀' >= '\\uE000', 'ab' < 'aba']",
+    "fold": true
+  },
+  {
+    "name": "regexState",
+    "expression": "(() => { const re = /a/g; return [re.test('a'), re.test('a'), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexSticky",
+    "expression": "(() => { const re = /a/y; return [re.test('ba'), re.test('a'), re.test('a'), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexZeroLength",
+    "expression": "(() => { const re = /a*/g; return [re.test('b'), re.test('b'), re.test(''), re.test('a'), re.test(''), re.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "regexFresh",
+    "expression": "[1, 2, 3].map(() => /a/g.test('a'))",
+    "fold": false
+  },
+  {
+    "name": "regexIndependent",
+    "expression": "(() => { const a = /a/g; const b = /a/g; return [a.test('a'), b.test('a'), a.test('a'), b.test('a')]; })()",
+    "fold": false
+  },
+  {
+    "name": "buildReplace",
+    "expression": "['abc'.replace('b', '$&'), 'abc'.replace('b', \"$$|$&|$`|$'|$0|$1|$01|$10|$99|$<x>\"), 'abc'.replace(/(b)/, \"$1|$01|$10|$12|$00|$02|$99|$$&\"), 'b'.replace(/(a)?b/, '$1x'), 'ab'.replace(/(a)(b)/, '$2$1$02$20$03'), 'abab'.replaceAll(/(a)b/g, '$1$&'), 'aba'.replaceAll('a', \"$`-$'\"), 'ab'.replaceAll('', '-')]",
+    "fold": true
+  },
+  {
+    "name": "replacementCaptureBoundaries",
+    "expression": "'abcdefghijk'.replace(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)/, '$1|$10|$11|$12|$99|$09|$00|$01|$0|$$1')",
+    "fold": true
+  },
+  {
+    "name": "buildTrim",
+    "expression": "['\\uFEFFhello\\uFEFF'.trim(), '\\u0085hello\\u0085'.trim(), '\\uFEFF x\\u0085'.trimStart(), '\\u0085x \\uFEFF'.trimEnd()]",
+    "fold": true
+  },
+  {
+    "name": "numericWhitespace",
+    "expression": "[String(Number('\\uFEFF42\\uFEFF')), String(Number('\\u008542')), String(parseFloat('\\uFEFF3.5x')), String(parseFloat('\\u00853.5')), String(parseInt('\\uFEFF10')), String(parseInt('\\u008510'))]",
+    "fold": true
+  },
+  {
+    "name": "allWhitespace",
+    "expression": "['\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000\\u2001\\u2002\\u2003\\u2004\\u2005\\u2006\\u2007\\u2008\\u2009\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff'.trim(), '\\u0085\\u180e\\u200b'.trim()]",
+    "fold": true
+  },
+  {
+    "name": "buildRadix",
+    "expression": "[String(parseInt('10', 4294967298)), String(parseInt('10', -4294967294)), String(parseInt('10', 4294967296)), String(parseInt('10', -2)), String(parseInt('10', Infinity)), String(parseInt('10', NaN)), String(parseInt('10', -0)), String(parseInt('10', 2.9))]",
+    "fold": true
+  },
+  {
+    "name": "signedZero",
+    "expression": "[String(1 / -0), String(1 / Math.round(-0.1)), String(1 / Math.round(-0.5)), String(1 / Math.round(-0)), String(Math.round(4503599627370497)), String(Math.round(0.49999999999999994)), String(Math.round(-1.5)), String(Math.round(Infinity)), String(Math.round(NaN))]",
+    "fold": true
+  },
+  {
+    "name": "runtimeNeg",
+    "expression": "[0, -0, 1, -1].map(n => String(1 / -n))",
+    "fold": false
+  },
+  {
+    "name": "literalTypeEffects",
+    "expression": "(() => { let calls = 0; function value(): 0 { calls++; return 0; } const result = String(1 / -value()); return [result, calls]; })()",
+    "fold": false
+  },
+  {
+    "name": "replacementNames",
+    "expression": "'ab'.replace(/(?<first>a)(b)/, '$<first>|$<missing>|$1|$2')",
+    "fold": true
+  },
+  {
+    "name": "numericConstructors",
+    "expression": "[String(), String(Number()), String(Boolean()), String(isNaN()), String(Number('0b10')), String(Number('0o10')), String(Number('0xFFFFFFFFFFFFFFFF'))]",
+    "fold": true
+  }
+]

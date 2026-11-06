@@ -21,9 +21,6 @@ final class Js
 
     private const MAX_TIME = 8.64e15;
 
-    /** @var array<string, RegExp> */
-    private static array $regexCache = [];
-
     // ---------------------------------------------------------------- conversions
 
     public static function str(mixed $v): string
@@ -285,7 +282,7 @@ final class Js
 
     public static function neg(int|float $a): int|float
     {
-        return -self::n($a);
+        return -(float) self::n($a);
     }
 
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
@@ -348,8 +345,9 @@ final class Js
     }
 
     /** Truncate toward zero, keeping float type (and -0). */
-    private static function trunc(float $f): float
+    public static function trunc(int|float $f): float
     {
+        $f = (float) self::n($f);
         return $f < 0 ? ceil($f) : floor($f);
     }
 
@@ -373,7 +371,7 @@ final class Js
     }
 
     /** ToIntegerOrInfinity: NaN → 0, truncation toward zero. */
-    private static function toInteger(int|float $n): int|float
+    public static function toInteger(int|float $n): int|float
     {
         if (is_int($n)) {
             return $n;
@@ -842,6 +840,7 @@ final class Js
     public static function replace(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
     {
         if ($pattern instanceof RegExp) {
+            if ($pattern->sticky) { throw new JsError('Sticky replacement is not supported', 'TypeError'); }
             if ($pattern->global) { $pattern->lastIndex = 0; }
             $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->matchAt($s, 0)]);
 
@@ -965,10 +964,23 @@ final class Js
         return str_repeat($s, (int) $n);
     }
 
-    /** Byte comparison (documented deviation from locale-aware collation). */
-    public static function localeCompare(string $a, string $b): int
+    /** JavaScript string ordering compares UTF-16 code units. */
+    public static function stringCompare(string $a, string $b): int
     {
-        return strcmp($a, $b) <=> 0;
+        return strcmp(mb_convert_encoding($a, 'UTF-16BE', 'UTF-8'), mb_convert_encoding($b, 'UTF-16BE', 'UTF-8')) <=> 0;
+    }
+
+    public static function sign(int|float $value): int|float
+    {
+        return is_nan((float) $value) || $value == 0 ? $value : ($value < 0 ? -1 : 1);
+    }
+
+    public static function round(int|float $value): int|float
+    {
+        if (!is_finite((float) $value) || $value == 0) { return $value; }
+        if ($value < 0 && $value >= -0.5) { return -0.0; }
+        $floor = floor($value);
+        return self::n($value - $floor < 0.5 ? $floor : $floor + 1);
     }
 
     /** @return ?list<?string> */
@@ -991,7 +1003,7 @@ final class Js
 
     public static function re(string $source, string $flags): RegExp
     {
-        return self::$regexCache[$flags . '/' . $source] ??= new RegExp($source, $flags);
+        return new RegExp($source, $flags);
     }
 
     // ---------------------------------------------------------------- arrays

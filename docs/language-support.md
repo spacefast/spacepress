@@ -231,3 +231,19 @@ Status: **supported**.
 Global isFinite accepts zero or one argument and applies numeric coercion; Number.isFinite checks numbers without coercion. Number.isFinite is available as a stable function value, including local and captured aliases and feature detection. The differential numeric owner compares NaN, infinities, numbers, strings, null, booleans and arrays in pure configuration evaluation and PHP. Typed missing values retain the documented nullable boundary; explicit undefined is distinct from null.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
+
+## builtin-overloads
+
+Status: **supported**.
+
+src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Unsupported arguments are refused at the call site; runtime-only dynamic receivers throw a TypeError. Captured and runtime vectors compare UTF-16 ordering, replacement substitution, ECMAScript whitespace, modulo radix conversion and signed-zero rounding to Node. Positioned includes/startsWith/endsWith are refused in typed code and configuration evaluation; checked imported JavaScript implements those positions. Callback thisArg and nondecimal numeric toString are refused.
+
+[Evidence](../tests/compiler_contracts.rs) (`builtin_vectors_agree_in_evaluation_generated_php_and_node`)
+
+## locale-collation
+
+Status: **refused**. Diagnostic: `Z4001`.
+
+Locale collation depends on the host and cannot be reproduced deterministically. localeCompare is refused in configuration and typed handlers; checked imported JavaScript throws TypeError. Use < or > for deterministic UTF-16 ordering. No byte-order substitute is exposed under the localeCompare name.
+
+[Evidence](../tests/fixtures/reject-locale-compare)

@@ -2357,8 +2357,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             self.need_num(&v, x.span, "`-`")?;
                         }
                         match v.ty {
-                            Ty::NumLit(n) | Ty::FreshNumLit(n) => {
-                                Out::new(format!("-{}", v.wrapped()), Ty::FreshNumLit(-n))
+                            Ty::NumLit(n) | Ty::FreshNumLit(n) if matches!(x.kind, ExprKind::Num(_)) => {
+                                Out::atom(php_number(-n), Ty::FreshNumLit(-n))
                             }
                             // Js::neg: the operand as a JS number, like the binary operators.
                             _ => Out::atom(format!("\\Zero\\Js::neg({})", v.php), Ty::Num),
@@ -2643,9 +2643,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if a.ty.is_num() && b.ty.is_num() {
                     Out::new(format!("{} {sym} {}", a.wrapped(), b.wrapped()), Ty::Bool)
                 } else if a.ty.is_str() && b.ty.is_str() {
-                    // JS compares strings by UTF-16 code units; for UTF-8 that matches byte order
-                    // except across surrogate pairs, which strcmp handles consistently enough.
-                    Out::new(format!("strcmp({}, {}) {sym} 0", a.php, b.php), Ty::Bool)
+                    Out::new(
+                        format!("\\Zero\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
+                        Ty::Bool,
+                    )
                 } else {
                     return err(
                         span,
@@ -2791,7 +2792,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
             ),
-            Value::Regex(p, f) if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
+            Value::Regex(p, f) => {
                 let key = (2, Rc::as_ptr(p) as *const () as usize);
                 let name = if let Some(name) = self.data_helpers.get(&key) {
                     name.clone()
@@ -2806,12 +2807,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                     name
                 };
-                Ok(Out::atom(format!("\\ZeroApp\\{name}()"), Ty::Dynamic))
+                Ok(Out::atom(
+                    format!("\\ZeroApp\\{name}()"),
+                    if self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                        Ty::Dynamic
+                    } else {
+                        Ty::Regex
+                    },
+                ))
             }
-            Value::Regex(p, f) => Ok(Out::atom(
-                format!("\\Zero\\Js::re({}, {})", php_str(p), php_str(f)),
-                Ty::Regex,
-            )),
             data => {
                 validate_captured_data(data, span, &mut HashSet::new())?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
@@ -3030,6 +3034,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {
+        if !f.type_params.is_empty() {
+            return err_help(
+                f.span,
+                "generic runtime functions aren't supported",
+                "use a concrete signature, for example function identity(value: string): string",
+            );
+        }
         let module = f.module;
         let mut param_tys = Vec::new();
         for (i, p) in f.params.iter().enumerate() {
@@ -3880,7 +3891,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 "create HttpError directly in a `throw`: `throw new HttpError(404, \"not_found\", \"...\")`",
             ),
-            _ => err(span, format!("`new {n}` isn't supported")),
+            _ => err_help(
+                span,
+                format!("`new {n}` isn't supported"),
+                if n == "Map" {
+                    "use Record<string, T> for string keys, or an array for simple membership; these do not provide Map key identity"
+                } else {
+                    "use plain objects and arrays, or a supported named class"
+                },
+            ),
         }
     }
 
@@ -4255,7 +4274,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
+    fn builtin_args(&self, surface: &str, name: &str, args: &[ArrEl], span: Span) -> Result<()> {
+        if args.iter().any(|arg| matches!(arg, ArrEl::Spread(_))) {
+            return Ok(());
+        }
+        let phase = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            crate::builtins::Phase::Runtime
+        } else {
+            crate::builtins::Phase::Emitter
+        };
+        crate::builtins::check(surface, name, args.len(), phase, span)
+    }
+
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        self.builtin_args("global", g, args, span)?;
         if matches!(g, "Error" | "TypeError" | "RangeError") {
             return self.error_constructor(g, args);
         }
@@ -4271,14 +4303,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Out::atom(format!("\\Zero\\Js::dynamicRegExpCall({argv})"), Ty::Dynamic));
         }
         let argv = self.plain_args(args)?;
-        if matches!(g, "encodeURI" | "encodeURIComponent") && argv.len() != 1 {
-            return err(span, format!("`{g}` needs exactly one string argument"));
-        }
-        if g == "isFinite" && argv.len() > 1 {
-            return err(span, "isFinite() accepts at most one argument in Zero code");
-        }
         let a0 = argv.first();
         Ok(match (g, a0) {
+            ("String", None) => Out::atom("''", Ty::Str),
+            ("Number", None) => Out::atom("0", Ty::Num),
+            ("Boolean", None) | ("isFinite", None) => Out::atom("false", Ty::Bool),
+            ("isNaN", None) => Out::atom("true", Ty::Bool),
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
             ("structuredClone", Some(v)) => {
                 Out::atom(format!("\\Zero\\Js::clone({})", v.php), classes::wire_type(&v.ty))
@@ -4310,19 +4340,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\Zero\\Js::isFinite(\\Zero\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
-            ("isFinite", None) => Out::atom("false", Ty::Bool),
             (
                 "fetch" | "process" | "require" | "eval" | "Function" | "setTimeout" | "crypto" | "globalThis"
                 | "Promise",
                 _,
             ) => {
-                return err(span, format!("`{g}` isn't available in Zero code"));
+                return err_help(
+                    span,
+                    format!("`{g}` isn't available in Zero code"),
+                    if g == "fetch" {
+                        "use a job or webhook for network effects; fetch is not a supported HTTP capability"
+                    } else {
+                        "use supported server capabilities in a hook or action"
+                    },
+                );
             }
             _ => return err(span, format!("`{g}(...)` isn't supported")),
         })
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        self.builtin_args(g, m, args, span)?;
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
             && matches!(g, "Math" | "Array" | "Object" | "Number" | "JSON")
@@ -4458,9 +4496,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "ceil" => format!("ceil({x})"),
                     "abs" => format!("abs({x})"),
                     "sqrt" => format!("sqrt({x})"),
-                    "trunc" => format!("(({x}) < 0 ? ceil({x}) : floor({x}))"),
-                    "round" => format!("floor(({x}) + 0.5)"),
-                    "sign" => format!("(({x}) <=> 0)"),
+                    "trunc" => format!("\\Zero\\Js::trunc({x})"),
+                    "round" => format!("\\Zero\\Js::round({x})"),
+                    "sign" => format!("\\Zero\\Js::sign({x})"),
                     "pow" => format!(
                         "\\Zero\\Js::pow({}, {})",
                         argv[0].php,
@@ -4583,6 +4621,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::DbGlobals => return err(m_span, format!("use `db.globals.<global>.{m}(...)`")),
             Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
             _ => {}
+        }
+        let family = match recv.ty.non_null() {
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => Some("number"),
+            Ty::Date => Some("date"),
+            Ty::Regex => Some("regex"),
+            _ => None,
+        };
+        if let Some(family) = family {
+            self.builtin_args(family, m, args, span)?;
         }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_string_replace = self.javascript_module(self.fx.as_ref().expect("fn").module)
@@ -4710,6 +4757,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn string_method(&mut self, s: &Out, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        self.builtin_args("string", m, args, span)?;
         if matches!(m, "replace" | "replaceAll") {
             let pat_e = self.arg(args, 0, span, "a pattern")?;
             let pat = self.expr(pat_e)?;
@@ -4807,10 +4855,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ty: Ty::Array(Box::new(Ty::Str)),
                 ..js("split", &[a(0), a(1)])
             },
-            "localeCompare" => Out {
-                ty: Ty::Num,
-                ..js("localeCompare", &[Some(need_str(0, self)?)])
-            },
+            "localeCompare" => {
+                return err_help(
+                    span,
+                    "localeCompare() isn't supported",
+                    "use < or > for deterministic UTF-16 ordering; locale collation depends on the host",
+                );
+            }
             "match" => {
                 if argv.first().map(|x| &x.ty) != Some(&Ty::Regex) {
                     return err(span, "match() needs a regular expression");
@@ -4835,6 +4886,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         span: Span,
         m_span: Span,
     ) -> Result<Out> {
+        self.builtin_args("array", m, args, span)?;
         let el = match a.ty.non_null() {
             Ty::Array(t) | Ty::NonEmptyArray(t) => *t,
             Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Ty::union(ts),

@@ -290,8 +290,12 @@ final class Accounts
         if (strlen($hash) <= 32) {
             return 'md5';
         }
-        if (str_starts_with($hash, '$P$') && strlen($hash) === 34) {
-            return substr($hash, 0, 4);
+        if (str_starts_with($hash, '$P$')) {
+            if (!preg_match('/^\$P\$[.\/A-Za-z0-9]{31}$/D', $hash)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            $cost = strpos('./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', $hash[3]);
+            return $cost >= 7 && $cost <= 30 ? substr($hash, 0, 4) : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         $prefixed = str_starts_with($hash, '$wp');
         $encoded = $prefixed ? substr($hash, 3) : $hash;
@@ -304,14 +308,23 @@ final class Accounts
                 ? json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]])
                 : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
-        if (preg_match('/^\$([56])\$(?:rounds=(\d+)\$)?/', $encoded, $match)) {
-            return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => (int) ($match[2] ?? 5000)]]);
+        if (str_starts_with($encoded, '$5$') || str_starts_with($encoded, '$6$')) {
+            if (!preg_match('/^\$([56])\$(?:rounds=([1-9][0-9]*)\$)?[.\/A-Za-z0-9]{0,16}\$([.\/A-Za-z0-9]+)$/D', $encoded, $match)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            $rounds = $match[2] === '' ? 5000 : (int) $match[2];
+            if ($rounds < 1000 || $rounds > 999999999 || strlen($match[3]) !== ($match[1] === '5' ? 43 : 86)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => $rounds]]);
         }
         if (str_starts_with($encoded, '$1$')) {
-            return json_encode([$prefixed, 'md5-crypt']);
+            return preg_match('/^\$1\$[.\/A-Za-z0-9]{0,8}\$[.\/A-Za-z0-9]{22}$/D', $encoded)
+                ? json_encode([$prefixed, 'md5-crypt'])
+                : self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         // PHP's Argon encoder emits v19, a 16-byte salt and a 32-byte digest.
-        if (!preg_match('/^\$(argon2i|argon2id)\$v=19\$m=(\d+),t=(\d+),p=(\d+)\$([A-Za-z0-9+\/]+)\$([A-Za-z0-9+\/]+)$/D', $encoded, $match)) {
+        if (!preg_match('/^\$(argon2i|argon2id)\$v=19\$m=([1-9][0-9]*),t=([1-9][0-9]*),p=([1-9][0-9]*)\$([A-Za-z0-9+\/]+)\$([A-Za-z0-9+\/]+)$/D', $encoded, $match)) {
             return self::UNSUPPORTED_PASSWORD_PROFILE;
         }
         $salt = base64_decode($match[5], true);

@@ -144,7 +144,8 @@ declare(strict_types=1);
         crypt($legacyPassword, '$6$rounds=5000$saltsaltsalt$'),
     ];
     if (in_array('argon2id', password_algos(), true)) {
-        $legacyHashes[] = password_hash($legacyPassword, 'argon2id', ['memory_cost' => 8192, 'time_cost' => 1, 'threads' => 1]);
+        $validArgon = password_hash($legacyPassword, 'argon2id', ['memory_cost' => 8192, 'time_cost' => 1, 'threads' => 1]);
+        $legacyHashes[] = $validArgon;
     }
     foreach ($legacyHashes as $i => $hash) {
         $legacyId = wp_create_user('legacy-' . $i . '-' . $tag, $legacyPassword);
@@ -155,14 +156,23 @@ declare(strict_types=1);
         $legacyUsers[] = $legacyId;
     }
     $unsupportedUsers = [];
-    foreach ([
+    $unsupportedHashes = [
         str_repeat('!', 60),
         '$2y$99$' . str_repeat('a', 53),
         '$wp$2y$12$' . str_repeat('!', 53),
         '$2y$99$' . str_repeat('!', 53),
         '$argon2id$v=19$m=1,t=2,p=1$' . str_repeat('!', 43),
         '$argon2id$v=19$m=8192,t=1,p=1$' . str_repeat('A', 22) . '$' . str_repeat('!', 43),
-    ] as $i => $hash) {
+        '$5$rounds=0005000$saltsaltsalt$' . str_repeat('a', 43),
+        '$6$rounds=0005000$saltsaltsalt$' . str_repeat('a', 86),
+        '$1$bad!salt$' . str_repeat('a', 22),
+    ];
+    if (isset($validArgon)) {
+        foreach (['m=8192' => 'm=08192', 't=1' => 't=01', 'p=1' => 'p=01'] as $canonical => $malformed) {
+            $unsupportedHashes[] = str_replace($canonical, $malformed, $validArgon);
+        }
+    }
+    foreach ($unsupportedHashes as $i => $hash) {
         $invalidId = wp_create_user('disabled-' . $i . '-' . $tag, $legacyPassword);
         $old = get_userdata($invalidId);
         $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $invalidId]);

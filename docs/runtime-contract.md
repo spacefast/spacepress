@@ -788,6 +788,10 @@ method handles share identity across functions, arrays and other reference famil
 scalar and Date valueOf retain their own prototype methods. Inherited Object toString
 handles also share identity across Set, Map, Math and ordinary objects, while Error
 uses its own prototype method. Borrowed Object toString reports the receiver tag.
+Unregistered native-property reads refuse instead of fabricating undefined for
+unimplemented JavaScript methods. Missing ordinary-object and arguments-object fields
+remain undefined, and explicitly assigned array properties retain their values. Known absent native
+length fields remain undefined for array-like conversion; function metadata still refuses.
 
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 

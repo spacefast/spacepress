@@ -633,5 +633,11 @@
     "name": "numberStringTies",
     "expression": "[String(1000000000000000.25), String(-1000000000000000.25), String(1e21), String(1e-7), Object.keys({[1000000000000000.25]:1})]",
     "fold": true
+  },
+  {
+    "name": "computedWriteKey",
+    "expression": "(() => { let n=0; const o={x:1}; const key={toString(){n++; return 'x';}}; const before=o[key]++; const added=(o[key] += (n+=10, 2)); const assigned=(o[key] = (n+=100, 9)); return [n,before,added,assigned,o.x]; })()",
+    "fold": false,
+    "javascript": true
   }
 ]

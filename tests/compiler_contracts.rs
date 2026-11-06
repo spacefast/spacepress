@@ -618,7 +618,7 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
 
 #[test]
 fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() {
-    let expression = r#"[typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1), typeof [][0]]"#;
+    let expression = r#"[{ omitted: undefined, nested: { omitted: undefined, keep: 1 }, slots: [undefined] }, typeof undefined, typeof null, "🙂a".slice(2), "🙂".length, "🙂a"[2], "x🙂".split("", 1), [1, 2].includes(1, 1), [1, 2, 1].indexOf(1, -1), typeof [][0]]"#;
     let node = Command::new("node")
         .args(["-e", &format!("process.stdout.write(JSON.stringify({expression}));")])
         .output()
@@ -626,7 +626,7 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     assert!(node.status.success());
     assert_eq!(
         serde_json::from_slice::<Value>(&node.stdout).unwrap(),
-        json!(["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
+        json!([{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
     );
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("zero.config.ts"), format!(r#"
@@ -652,8 +652,8 @@ export default defineConfig({{ name: "differences", collections: {{ notes }}, ac
     assert_eq!(
         result,
         json!([
-            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"],
-            ["undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"]
+            [{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"],
+            [{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"]
         ])
     );
     std::fs::write(tmp.path().join("zero.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
@@ -1329,5 +1329,19 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         );
         assert_eq!(d["location"]["line"], 2);
         assert!(d["help"].as_str().unwrap().contains("null"));
+    }
+}
+
+#[test]
+fn action_results_refuse_implicit_typed_date_serialization() {
+    for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let d = &report["diagnostics"][0];
+        assert_eq!(d["message"], "typed Dates require explicit JSON serialization");
+        assert_eq!(d["location"]["line"], 2);
+        assert!(d["help"].as_str().unwrap().contains("action"));
     }
 }

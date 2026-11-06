@@ -525,6 +525,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Promise(t) => (**t).clone(),
                     t => t.clone(),
                 };
+                crate::builtins::check_json_serialization_type(&ret, root.closure.func.span)?;
                 self.action_results.insert(action.clone(), ret);
             }
             self.helpers.entry((key, no_db)).or_insert_with(|| name.clone());

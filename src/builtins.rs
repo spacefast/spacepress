@@ -174,11 +174,11 @@ pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Resul
     }
     if date(ty) {
         return Err(Diag::new(span, "typed Dates require explicit JSON serialization")
-            .help("call toISOString() or toJSON() before passing a Date to JSON.stringify"));
+            .help("call toISOString() or toJSON() before JSON.stringify or returning a Date from an action"));
     }
     if custom(ty) {
         Err(Diag::new(span, "custom toJSON callbacks aren't supported")
-            .help("serialize the callback's result explicitly before passing data to JSON.stringify"))
+            .help("serialize the callback's result explicitly before JSON.stringify or returning data from an action"))
     } else {
         Ok(())
     }

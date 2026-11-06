@@ -148,39 +148,7 @@ pub fn radix_number(digits: &[u32], radix: u32) -> f64 {
 
 /// `Number.prototype.toString()` for any f64.
 pub fn js_number_to_string(x: f64) -> String {
-    if x.is_nan() {
-        return "NaN".into();
-    }
-    if x.is_infinite() {
-        return if x > 0.0 { "Infinity".into() } else { "-Infinity".into() };
-    }
-    if x == 0.0 {
-        return "0".into();
-    }
-    // Shortest round-trip digits via Rust's `{:e}`: "d.ddde[-]x".
-    let sci = format!("{:e}", x.abs());
-    let (mantissa, exp) = sci.split_once('e').expect("exponent form");
-    let exp: i32 = exp.parse().expect("exponent");
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
-    let k = digits.len() as i32;
-    let n = exp + 1; // position of the decimal point relative to the digits
-    let sign = if x < 0.0 { "-" } else { "" };
-    let body = if k <= n && n <= 21 {
-        format!("{digits}{}", "0".repeat((n - k) as usize))
-    } else if 0 < n && n <= 21 {
-        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
-    } else if -6 < n && n <= 0 {
-        format!("0.{}{digits}", "0".repeat((-n) as usize))
-    } else {
-        let e = n - 1;
-        let e = if e >= 0 { format!("+{e}") } else { e.to_string() };
-        if k == 1 {
-            format!("{digits}e{e}")
-        } else {
-            format!("{}.{}e{e}", &digits[..1], &digits[1..])
-        }
-    };
-    format!("{sign}{body}")
+    ryu_js::Buffer::new().format(x).to_owned()
 }
 
 /// True when `x` is an integer PHP can hold exactly and JS prints without exponent.

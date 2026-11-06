@@ -628,5 +628,10 @@
     "name": "unicodeRegexSplit",
     "expression": "['😀'.split(/(?:)/u), 'a😀b'.split(/(?:)/u)]",
     "fold": false
+  },
+  {
+    "name": "numberStringTies",
+    "expression": "[String(1000000000000000.25), String(-1000000000000000.25), String(1e21), String(1e-7), Object.keys({[1000000000000000.25]:1})]",
+    "fold": true
   }
 ]

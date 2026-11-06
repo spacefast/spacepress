@@ -3278,7 +3278,9 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
         Value::Object(o) => {
             let mut map = serde_json::Map::new();
             for (k, x) in o.borrow().iter() {
-                map.insert(k.clone(), to_json(x)?);
+                if !matches!(x, Value::Undef) {
+                    map.insert(k.clone(), to_json(x)?);
+                }
             }
             J::Object(map)
         }

@@ -2558,13 +2558,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// The value as a PHP string expression, safe to join with `.`.
     fn to_string_php(&self, v: &Out, span: Span) -> Result<String> {
-        if crate::builtins::contains_typed_date(&v.ty) {
-            return err_help(
-                span,
-                "typed Date string coercion isn't supported",
-                "call toISOString() or toJSON() explicitly",
-            );
-        }
+        crate::builtins::check_string_coercion_type(&v.ty, span)?;
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
             Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\Zero\\Js::numStr({})", v.php),
@@ -2601,6 +2595,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn binary(&mut self, op: BinOp, a: Out, b: Out, span: Span) -> Result<Out> {
+        if op == BinOp::Add {
+            crate::builtins::check_string_coercion_type(&a.ty, span)?;
+            crate::builtins::check_string_coercion_type(&b.ty, span)?;
+        }
         if a.ty == Ty::Dynamic || b.ty == Ty::Dynamic || matches!(op, BinOp::LooseEq | BinOp::LooseNe) {
             return self.javascript_binary(op, a, b, span);
         }
@@ -3669,9 +3667,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = guarded(self, &|x| format!("count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
-            (Ty::Error, "message") => Out::atom(format!("{}->getMessage()", o.wrapped()), Ty::Str),
-            (Ty::Error, "name") => Out::atom(format!("{}->jsName", o.wrapped()), Ty::Str),
-            (Ty::Regex, "source" | "flags") => Out::atom(format!("{}->{prop}", o.wrapped()), Ty::Str),
+            (Ty::Error, "message" | "name") => {
+                let php = guarded(self, &|x| {
+                    if prop == "message" {
+                        format!("({x})->getMessage()")
+                    } else {
+                        format!("({x})->jsName")
+                    }
+                });
+                Out::atom(php, suffix_null(Ty::Str))
+            }
+            (Ty::Regex, "source" | "flags") => {
+                let php = guarded(self, &|x| format!("({x})->{prop}"));
+                Out::atom(php, suffix_null(Ty::Str))
+            }
             (Ty::Obj(_) | Ty::Map(_) | Ty::Union(_), _) => {
                 let Some((ft, opt_field)) = base.field(prop) else {
                     if matches!(base, Ty::Union(_)) {
@@ -3875,6 +3884,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 && matches!(name.as_str(), "Set" | "Map" | "Date" | "RegExp")
                 && matches!(self.resolve(name, callee.span)?, Resolved::Global(_))
             {
+                if name == "Date" {
+                    crate::builtins::check_date_literal(args, span)?;
+                }
                 let argv = self.javascript_args(args)?;
                 return Ok(Out::atom(
                     format!("\\Zero\\Js::dynamicConstruct({}, {argv})", php_str(name)),
@@ -3902,10 +3914,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         match self.resolve(n, callee.span)? {
             Resolved::Global("Date") => {
+                crate::builtins::check_date_literal(args, span)?;
                 let argv = self.plain_args(args)?;
                 Ok(match argv.as_slice() {
-                    [] => Out::atom("\\Zero\\Js::now()", Ty::Date),
-                    [a] => Out::atom(format!("\\Zero\\Js::date({})", a.php), Ty::Date),
+                    [] => Out::atom("new \\Zero\\JsDate(\\Zero\\Js::now())", Ty::Date),
+                    [a] => Out::atom(format!("new \\Zero\\JsDate(\\Zero\\Js::date({}))", a.php), Ty::Date),
                     _ => {
                         return err(
                             span,
@@ -4780,12 +4793,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(m_span, format!("numbers have no method `{m}`")),
             },
             Ty::Date => match m {
-                "toISOString" => Out::atom(format!("\\Zero\\Js::iso({})", recv.php), Ty::Str),
-                "toJSON" => Out::atom(format!("\\Zero\\Js::dateJSON({})", recv.php), Ty::Str.nullable()),
-                "getTime" | "valueOf" => Out {
-                    ty: Ty::Num,
-                    ..recv.clone()
-                },
+                "toISOString" => Out::atom(format!("\\Zero\\Js::iso(({})->milliseconds)", recv.php), Ty::Str),
+                "toJSON" => Out::atom(
+                    format!("\\Zero\\Js::dateJSON(({})->milliseconds)", recv.php),
+                    Ty::Str.nullable(),
+                ),
+                "getTime" | "valueOf" => Out::atom(format!("({})->milliseconds", recv.php), Ty::Num),
                 _ => {
                     return err_help(
                         m_span,
@@ -4914,14 +4927,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )
         };
         Ok(match m {
-            "concat" => Out::atom(
-                format!(
-                    "\\Zero\\Js::dynamicCallMethod({}, 'concat', new \\Zero\\JsArray([{}]))",
-                    s.php,
-                    argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
-                ),
-                Ty::Str,
-            ),
+            "concat" => {
+                for value in &argv {
+                    crate::builtins::check_string_coercion_type(&value.ty, span)?;
+                }
+                Out::atom(
+                    format!(
+                        "\\Zero\\Js::dynamicCallMethod({}, 'concat', new \\Zero\\JsArray([{}]))",
+                        s.php,
+                        argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
+                    ),
+                    Ty::Str,
+                )
+            }
             "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
             "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
@@ -5210,13 +5228,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "includes" => Out::atom(format!("\\Zero\\Js::includes({all})"), Ty::Bool),
                     "indexOf" | "lastIndexOf" => Out::atom(format!("\\Zero\\Js::{m}({all})"), Ty::Num),
                     "join" => {
-                        if crate::builtins::contains_typed_date(&a.ty) {
-                            return err_help(
-                                span,
-                                "typed Date string coercion isn't supported",
-                                "map Dates to toISOString() or toJSON() explicitly before joining",
-                            );
-                        }
+                        crate::builtins::check_string_coercion_type(&a.ty, span)?;
                         if let Some(sep) = argv.first()
                             && !sep.ty.is_str()
                         {
@@ -5740,10 +5752,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
+            (ColType::Timestamp, Ty::Date) => format!("\\Zero\\Js::iso(({})->milliseconds)", v.php),
+            (ColType::Date, Ty::Date) => format!("substr(\\Zero\\Js::iso(({})->milliseconds), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
                 format!("\\Zero\\Js::iso({})", v.php)
             }
-            (ColType::Date, Ty::Date | Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
+            (ColType::Date, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
                 format!("substr(\\Zero\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
@@ -6339,7 +6353,6 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
-        (Ty::Date, Ty::Num) => true,
         (Ty::Undefined, Ty::Null) => true,
         (Ty::Array(x), Ty::Array(y)) => **x == Ty::Never || assignable(x, y),
         (Ty::NonEmptyArray(x), Ty::Array(y) | Ty::NonEmptyArray(y)) => assignable(x, y),

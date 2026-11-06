@@ -112,7 +112,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("number", &["toFixed"], overload("digits?: number (0..100)", None, arity(0, 1), arity(0, 1))),
     ("global", &["RegExp"], overload("pattern?: string|RegExp, flags?: string", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["RegExp"], overload("pattern?: string|RegExp, flags?: string", None, arity(0, 2), arity(0, 2))),
-    ("constructor", &["Date"], overload("value?: string|number", None, arity(0, 1), arity(0, 1))),
+    ("constructor", &["Date"], overload("value?: unknown; primitive conversion, ISO date strings only", None, arity(0, 1), arity(0, 1))),
     ("constructor", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; options without cause", None, arity(0, 2), arity(0, 2))),
     ("constructor", &["Map", "Set"], overload("entries?: iterable", None, None, arity(0, 1))),
     ("number", &["toString"], overload("decimal only", arity(0, 0), arity(0, 0), arity(0, 0))),
@@ -151,6 +151,25 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("function", &["valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
 ];
 
+pub fn check_date_literal(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
+    use crate::ir::{ArrEl, ExprKind};
+    let Some(ArrEl::Item(expr)) = args.first() else {
+        return Ok(());
+    };
+    let ExprKind::Str(text) = &expr.kind else {
+        return Ok(());
+    };
+    let syntax = regex::Regex::new(
+        r"^([+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}(?:-[0-9]{2})?)?(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?$",
+    )
+    .expect("ISO date grammar");
+    if !syntax.is_match(text) {
+        return Err(Diag::new(span, "Date strings require the supported ISO format")
+            .help("pass an ISO date/time string or an epoch timestamp; legacy date parsing isn't supported"));
+    }
+    Ok(())
+}
+
 pub fn contains_typed_date(ty: &crate::types::Ty) -> bool {
     use crate::types::Ty;
     match ty {
@@ -160,6 +179,27 @@ pub fn contains_typed_date(ty: &crate::types::Ty) -> bool {
         Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(contains_typed_date),
         _ => false,
     }
+}
+
+pub fn check_string_coercion_type(ty: &crate::types::Ty, span: Span) -> Result<(), Diag> {
+    use crate::types::Ty;
+    fn function(ty: &Ty) -> bool {
+        match ty {
+            Ty::Fn(..) => true,
+            Ty::Array(t) | Ty::NonEmptyArray(t) => function(t),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) | Ty::Union(items) => items.iter().any(function),
+            _ => false,
+        }
+    }
+    if contains_typed_date(ty) {
+        return Err(Diag::new(span, "typed Date string coercion isn't supported")
+            .help("call toISOString() or toJSON() explicitly"));
+    }
+    if function(ty) {
+        return Err(Diag::new(span, "function string coercion isn't supported")
+            .help("pass an explicit string; function source text is not preserved"));
+    }
+    Ok(())
 }
 
 pub fn check_json_serialization_type(ty: &crate::types::Ty, span: Span) -> Result<(), Diag> {

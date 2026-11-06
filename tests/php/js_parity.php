@@ -224,8 +224,8 @@ $cases = [
     ['JSON.parse("{bad")', fn () => Js::jsonParse('{bad')],
 
     // ---- dates
-    ['["2020-01-01", "2020-01-01T10:00", "2020-01-01 10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30", "2020-01-01T10Z", "nope"].map(s => new Date(s).getTime())',
-        fn () => array_map(Js::date(...), ['2020-01-01', '2020-01-01T10:00', '2020-01-01 10:00', '2020-02', '2021-02-30', '2020-13-01', '2020-01-01T24:00:00Z', '2020-01-01T24:00:01Z', '2020-01-01T24:00:00.0000Z', '2020-01-01T24:00:00.0001Z', '+002020-01-01', '-000001-01-01T00:00:00Z', '2020-01-01T10:00:00.123456Z', '2020-01-01T10:00:00+05:30', '2020-01-01T10Z', 'nope'])],
+    ['["2020-01-01", "2020-01-01T10:00", "2020-01-01 10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30"].map(s => new Date(s).getTime())',
+        fn () => array_map(Js::date(...), ['2020-01-01', '2020-01-01T10:00', '2020-01-01 10:00', '2020-02', '2021-02-30', '2020-13-01', '2020-01-01T24:00:00Z', '2020-01-01T24:00:01Z', '2020-01-01T24:00:00.0000Z', '2020-01-01T24:00:00.0001Z', '+002020-01-01', '-000001-01-01T00:00:00Z', '2020-01-01T10:00:00.123456Z', '2020-01-01T10:00:00+05:30'])],
     ['[new Date(1.9).getTime(), new Date(8.64e15 + 1).getTime(), new Date(null).getTime()]', fn () => [Js::date(1.9), Js::date(8.64e15 + 1), Js::date(null)]],
     ['[0, -1, 1e12, 8.64e15, -8.64e15, -62198755200000, 253402300800000].map(ms => new Date(ms).toISOString())',
         fn () => array_map(Js::iso(...), [0, -1, 1e12, 8.64e15, -8.64e15, -62198755200000, 253402300800000])],
@@ -240,7 +240,7 @@ $deviations = [
     ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
-    ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
+    ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
 ];
 
 // Each fixed-length helper owns a separate shrink/growth row because its walk can fail independently.
@@ -422,6 +422,11 @@ $deviations = array_merge($deviations, [
     ['array prototype writes are refused', fn () => Js::dynamicSet(new JsArray(), '__proto__', 1), ['$err' => 'TypeError']],
     ['arguments prototype writes are refused', fn () => Js::dynamicSet(Js::arguments([]), '__proto__', 1), ['$err' => 'TypeError']],
     ['prototype writes are refused by the shared setter', fn () => Js::set(new JsObject(), '__proto__', 1), ['$err' => 'TypeError']],
+    ['non-ISO invalid Date strings are refused', fn () => Js::date('nope'), ['$err' => 'RangeError']],
+    ['empty array Date strings are refused', fn () => Js::date(new JsArray()), ['$err' => 'RangeError']],
+    ['multi-element Date arrays are refused', fn () => Js::date(new JsArray(['2020-01-01','2020-01-02'])), ['$err' => 'RangeError']],
+    ['plain object Date strings are refused', fn () => Js::date(new JsObject(['x'=>1])), ['$err' => 'RangeError']],
+    ['function string conversion is refused', fn () => Js::str(static fn () => 1), ['$err' => 'TypeError']],
     ['function metadata reads are refused', fn () => Js::dynamicGet(static fn () => 1, 'length'), ['$err' => 'TypeError']],
     ['function binding values are refused', fn () => Js::dynamicGet(static fn () => 1, 'bind'), ['$err' => 'TypeError']],
     ['function own properties are refused', fn () => Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([static fn () => 1, 'length'])), ['$err' => 'TypeError']],

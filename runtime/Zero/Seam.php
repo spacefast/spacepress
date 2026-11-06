@@ -41,6 +41,10 @@ final class Seam
     {
         if (($shape['type'] ?? null) === 'json') { return ($shape['system'] ?? false) ? self::runtimeValue($value, null) : Js::detach(self::jsonJs($value)); }
         $type = is_string($shape['type'] ?? null) ? $shape['type'] : null;
+        if ($value instanceof JsDate && ($type === 'timestamp' || $type === 'date')) {
+            $iso = Js::iso($value->milliseconds);
+            return $type === 'date' ? substr($iso, 0, 10) : $iso;
+        }
         if ($type === 'query') { return self::query($shape['collection'], $value); }
         if ($type === 'sync') { return self::sync($shape['collection'], $value); }
         if ($shape !== null && ($type === null || $type === 'group') && $value instanceof JsArray) { return $value; }

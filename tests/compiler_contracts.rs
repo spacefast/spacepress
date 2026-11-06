@@ -1317,6 +1317,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "undefined[]",
         "{ required: undefined }",
         "{ nested: { values: undefined[] } }",
+        "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{json,action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json().$type<{annotation}>().notNull()}},handler:(input)=>input.values}})}}}});")).unwrap();
@@ -1354,6 +1355,8 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "`${new Date(0)}`",
         "String([new Date(0)])",
         "[new Date(0)].join()",
+        "new Date(0) + ''",
+        "''.concat(new Date(0))",
     ] {
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
         let (out, report) = checked(tmp.path());
@@ -1380,4 +1383,56 @@ fn dynamic_array_prototype_writes_are_refused() {
         ],
     );
     assert_eq!(result, json!(["TypeError", false]));
+}
+
+#[test]
+fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nexport default defineConfig({actions:{probe:action({handler:()=>String(()=>1)})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    assert_eq!(
+        report["diagnostics"][0]["message"],
+        "function string coercion isn't supported"
+    );
+    assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
+    std::fs::write(
+        tmp.path().join("helper.js"),
+        "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(),\Zero\Seam::ctx(['user'=>null])));"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-functionrefusal/zero/app"),
+        ],
+    );
+    assert_eq!(result, "TypeError");
+}
+
+#[test]
+fn non_iso_date_literals_are_refused_at_the_call() {
+    for name in ["zero.config.ts", "helper.js"] {
+        let tmp = tempfile::tempdir().unwrap();
+        if name == "helper.js" {
+            std::fs::write(
+                tmp.path().join(name),
+                "export const probe=()=>new Date('2020-1-1').getTime();",
+            )
+            .unwrap();
+            std::fs::write(tmp.path().join("zero.config.ts"),"import {action,defineConfig} from 'zero';import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
+        } else {
+            std::fs::write(tmp.path().join(name),"import {action,defineConfig} from 'zero';export default defineConfig({actions:{probe:action({handler:()=>new Date('2020-1-1').getTime()})}});").unwrap();
+        }
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        assert_eq!(
+            report["diagnostics"][0]["message"],
+            "Date strings require the supported ISO format"
+        );
+        assert_eq!(report["diagnostics"][0]["location"]["file"], name);
+    }
 }

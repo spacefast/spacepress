@@ -660,7 +660,7 @@ non-enumerable length); arrows inherit the surrounding arguments. Parameters
 are not sloppy-mode mapped aliases. Function-scoped `var`, comma expressions,
 loose equality and own-key `for…in` share the evaluator's lowering.
 
-Dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
+Typed and dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
 These support the small constructor/method subset exercised by imported
 helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
 groups and undefined captures. Typed and dynamic non-global string match share that metadata; global match returns only matched strings. Dynamic string match/split/replace preserve
@@ -679,9 +679,10 @@ explicitly. Array string conversion and `join` suppress recursive array visits
 while expanding repeated nonrecursive references.
 See the [npm probes](../examples/npm-compat/README.md)
 for exact library exports and inputs qualified against Node.
-Object string formatting currently uses the default object tag without invoking
-an authored `toString` method. Pass primitive strings to formatting helpers;
-custom string coercion is not qualified by the package probes.
+Object string conversion uses supported `toString`/`valueOf` hooks in JavaScript order.
+Function source-text conversion is refused at known call sites or explicitly at
+runtime. Date construction applies object primitive conversion before parsing
+or numeric clipping.
 
 Configuration evaluation uses the same UTF-16 units for numeric string indexes,
 `slice` and `split("")`; a result containing a lone surrogate is rejected with a
@@ -770,7 +771,7 @@ JSON:
 - `jsonParse(string $s): mixed` — handles; invalid → `JsError` named `SyntaxError`.
 
 Misc:
-- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; unlike V8 it has no legacy fallback (`10/30/2026` → NAN). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
+- `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC), unparseable → NAN. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
 - `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[zero] ` prefix.

@@ -36,7 +36,7 @@ final class Js
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
-            $v instanceof \Closure => 'function () { [native code] }',
+            $v instanceof \Closure => throw new JsError('Function string coercion is not supported', 'TypeError'),
             $v instanceof \Stringable => (string) $v,
             default => '[object Object]',
         };
@@ -1900,16 +1900,14 @@ final class Js
     /** new Date(v).getTime() */
     public static function date(mixed $v): int|float
     {
+        if ($v instanceof JsDate) { return $v->milliseconds; }
+        $v = self::dynamicPrimitive($v);
         if (is_int($v) || is_float($v)) {
             return self::timeClip((float) $v);
         }
         if ($v === null || is_bool($v)) {
             return (int) $v;
         }
-        if ($v instanceof JsArray) {
-            $v = self::str($v);
-        }
-
         return is_string($v) ? self::parseDate($v) : NAN;
     }
 
@@ -1928,7 +1926,7 @@ final class Js
         $re = '/^([+-]\d{6}|\d{4})(?:-(\d{2})(?:-(\d{2}))?)?'
             . '(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?$/D';
         if (!preg_match($re, $s, $m)) {
-            return NAN;
+            throw new JsError('Date strings require the supported ISO format', 'RangeError');
         }
         if ($m[1] === '-000000') {
             return NAN;

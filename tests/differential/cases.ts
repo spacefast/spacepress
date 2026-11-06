@@ -275,9 +275,6 @@ const laneRefs = {
   refsDateArrayCoercion: run(() => [
     new Date(["2020-01-01"]).getTime(),
     new Date([["2020-01-01"]]).getTime(),
-    isNaN(new Date([]).getTime()),
-    isNaN(new Date(["2020-01-01", "2020-01-02"]).getTime()),
-    isNaN(new Date({ x: 1 }).getTime()),
   ]),
   refsContainerCoercion: run(() => {
     const nested = [1, null, [2, null], { x: 3 }];

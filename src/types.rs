@@ -217,7 +217,7 @@ impl Ty {
     }
 
     pub fn is_num(&self) -> bool {
-        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) | Ty::Date))
+        self.all(|t| matches!(t, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)))
     }
 
     pub fn is_str(&self) -> bool {
@@ -744,6 +744,7 @@ fn wire_present(t: &Ty) -> Ty {
 pub fn json_wire_type(t: &Ty) -> Ty {
     match t {
         Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Null,
+        Ty::Date => Ty::Str.nullable(),
         Ty::NumLit(n) | Ty::FreshNumLit(n) if !n.is_finite() => Ty::Null,
         Ty::Array(t) => Ty::Array(Box::new(json_wire_type(t))),
         Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(json_wire_type(t))),

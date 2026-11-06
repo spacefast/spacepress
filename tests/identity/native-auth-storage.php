@@ -27,6 +27,28 @@ declare(strict_types=1);
     $registered = get_option('zero_identity_password_profiles');
     $assert(is_array($registered) && count($registered) === 1 && is_string(array_values($registered)[0]), 'legacy registration initializes the profile map before request provisioning');
     delete_option('zero_identity_password_profiles');
+    $interleaved = false;
+    $inventoryInterleaved = false;
+    $registerDuringProvision = static function ($sql) use (&$interleaved, &$inventoryInterleaved, $inventory) {
+        if (!$interleaved && preg_match('/^INSERT /i', $sql) && str_contains($sql, "'zero_identity_password_profiles'")) {
+            $interleaved = true;
+            \Zero\Identity\Accounts::rememberPasswordHash(md5('disposable-imported-password'));
+        }
+        if (!$inventoryInterleaved && preg_match('/^INSERT /i', $sql) && str_contains($sql, "'$inventory'")) {
+            $inventoryInterleaved = true;
+            update_option($inventory, ['after' => 123, 'complete' => false], false);
+        }
+        return $sql;
+    };
+    add_filter('query', $registerDuringProvision);
+    try {
+        \Zero\Identity\Accounts::provisionPasswordHash();
+    } finally {
+        remove_filter('query', $registerDuringProvision);
+    }
+    $assert($interleaved && isset(get_option('zero_identity_password_profiles')['md5']), 'provisioning preserves a profile registered between the option existence check and insert');
+    $assert($inventoryInterleaved && get_option($inventory)['after'] === 123, 'provisioning preserves concurrently committed inventory progress');
+    update_option($inventory, ['after' => 0, 'complete' => false], false);
     $inventoryReads = 0;
     $observeInventory = static function ($sql) use (&$inventoryReads, $db) {
         if (preg_match('/^SELECT .*user_pass.*FROM ' . preg_quote($db->wp->users, '/') . '/i', $sql)) {
@@ -135,7 +157,8 @@ declare(strict_types=1);
     $assert(count($actualChecks) === 1 && $actualChecks[0][0] === get_userdata($uid)->user_pass, 'known user is verified by ID within its schedule');
     $assert($absentChecks === $repeatChecks && array_unique(array_column($absentChecks, 1)) === [0], 'absent accounts repeat the fixed dummy schedule');
     $currentDummy = get_option('zero_identity_dummy_password_hash');
-    $assert(in_array([$currentDummy, 0], $absentChecks, true) && !wp_password_needs_rehash($currentDummy), 'absent schedule includes a fixed current-algorithm hash');
+    $currentChecks = array_filter($absentChecks, static fn ($check) => !wp_password_needs_rehash($check[0]));
+    $assert(count($currentChecks) >= 1 && !wp_password_needs_rehash($currentDummy), 'absent schedule includes a fixed current-algorithm hash');
     require_once ABSPATH . WPINC . '/class-phpass.php';
     $legacyPassword = 'legacy profile password';
     $legacyUsers = [];

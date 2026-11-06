@@ -191,9 +191,13 @@ final class Accounts
             $hash = wp_hash_password(Security::token(48));
             update_option(self::DUMMY_PASSWORD_HASH, $hash, false);
         }
-        add_option(self::PASSWORD_PROFILES, [self::passwordProfile($hash) => $hash], '', false);
-        add_option(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false], '', false);
+        if (get_option(self::PASSWORD_PROFILES) === false) {
+            self::initializePasswordOption(self::PASSWORD_PROFILES, [self::passwordProfile($hash) => $hash]);
+        }
         self::rememberPasswordHash($hash);
+        if (get_option(self::PASSWORD_INVENTORY) === false) {
+            self::initializePasswordOption(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false]);
+        }
         if (!get_option(self::PASSWORD_INVENTORY)['complete'] && !wp_next_scheduled(self::PASSWORD_INVENTORY)) {
             wp_schedule_event(time() + 60, 'zero_identity_minute', self::PASSWORD_INVENTORY);
         }
@@ -246,6 +250,15 @@ final class Accounts
         Plugin::$db->run("UPDATE {$wpdb->options} SET option_value=%s WHERE option_name=%s", serialize($value), $name);
     }
 
+    /** WordPress add_option can overwrite a row inserted after its existence check. */
+    private static function initializePasswordOption(string $name, array $value): void
+    {
+        global $wpdb;
+        Plugin::$db->run("INSERT INTO {$wpdb->options} (option_name,option_value,autoload) VALUES (%s,%s,'off') ON DUPLICATE KEY UPDATE option_name=VALUES(option_name)", $name, serialize($value));
+        wp_cache_delete($name, 'options');
+        wp_cache_delete('notoptions', 'options');
+    }
+
     /** Read from storage after acquiring the row lock, never from a pre-lock option cache. */
     private static function lockedPasswordOption(string $name): array
     {
@@ -268,9 +281,8 @@ final class Accounts
         if (!isset($profiles[$profile])) {
             try {
                 Plugin::$db->transaction(static function () use ($profile, $hash): void {
-                    global $wpdb;
                     // Importers may register before plugins_loaded provisions the options.
-                    Plugin::$db->run("INSERT INTO {$wpdb->options} (option_name,option_value,autoload) VALUES (%s,%s,'off') ON DUPLICATE KEY UPDATE option_name=VALUES(option_name)", self::PASSWORD_PROFILES, serialize([]));
+                    self::initializePasswordOption(self::PASSWORD_PROFILES, []);
                     $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
                     if (isset($profiles[$profile])) {
                         return;

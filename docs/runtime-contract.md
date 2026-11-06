@@ -576,7 +576,10 @@ capture-number boundaries and named captures.
 Repeated groups containing captures are refused in every phase: Rust/PCRE
 retain captures from earlier iterations where JavaScript clears them. Capturing
 lookbehind is also refused because JavaScript matches its groups backward. Regex
-literals receive located diagnostics; dynamically constructed patterns throw.
+literals receive located diagnostics; dynamically constructed patterns throw. Literal patterns are parsed by Oxc's JavaScript regex parser before lowering;
+JavaScript-invalid syntax never reaches Rust or PCRE. Checked runtime constructors
+refuse unsupported quantifier chains. Legacy class identity escapes consume only
+the escaped character, leaving following class members intact.
 Large parseInt results are supported for base 10 and power-of-two bases; other
 radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
@@ -675,7 +678,9 @@ stored message as an own property. RegExp snapshots persist source, flags and
 lastIndex; restoration rebuilds translation caches, including for older snapshots.
 Stack metadata is refused.
 Configuration evaluation refuses restricted arguments access because it does
-not model native Error descriptors. `Array.from` interleaves reads with its mapper,
+not model native Error descriptors. Undefined remains distinct inside JavaScript. Storage validation treats it as
+null for schema fields, including nested fields. Required storage fields still
+reject it. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.
 
 This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,

@@ -1024,6 +1024,35 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
 }
 
 #[test]
+fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
+    for expression in ["/a++a/g", r"/[\k<a>]/u"] {
+        let mut node = Command::new("node")
+            .args(["--check", "--input-type=module"])
+            .stdin(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(node.stdin.as_mut().unwrap(), expression.as_bytes()).unwrap();
+        drop(node.stdin.take());
+        let node = node.wait_with_output().unwrap();
+        assert!(!node.status.success(), "{expression}");
+        assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{expression}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(diagnostic["category"], "invalid-source", "{report}");
+        assert_eq!(diagnostic["code"], "Z1001", "{report}");
+        assert!(
+            diagnostic["message"].as_str().unwrap().starts_with("syntax error:"),
+            "{report}"
+        );
+        assert_eq!(diagnostic["location"]["file"], "zero.config.ts");
+    }
+}
+
+#[test]
 fn unsupported_features_have_positions_and_actionable_help() {
     for (source, message) in [
         (

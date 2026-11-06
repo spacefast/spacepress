@@ -131,6 +131,15 @@ eq('undefined generators become nullable storage values', Schema::validateInput(
 problem('undefined generators still enforce required fields', fn () => Schema::validateInput([
     'note' => $undefinedDefault + ['notNull' => true],
 ], []), 422, 'invalid_input', '/note');
+$undefinedInput = new \Zero\JsObject(['note' => \Zero\Js::undefined(), 'payload' => \Zero\Js::undefined(),
+    'nested' => new \Zero\JsObject(['note' => \Zero\Js::undefined()])]);
+$undefinedFields = ['note' => ['type' => 'text'], 'payload' => ['type' => 'json'],
+    'nested' => ['type' => 'group', 'fields' => ['note' => ['type' => 'text']]]];
+eq('explicit undefined becomes null at shaped storage boundaries', Schema::validateInput($undefinedFields, $undefinedInput),
+    ['note' => null, 'payload' => null, 'nested' => ['note' => null]]);
+problem('explicit undefined still enforces required storage fields', fn () => Schema::validateInput([
+    'note' => ['type' => 'text', 'notNull' => true],
+], new \Zero\JsObject(['note' => \Zero\Js::undefined()])), 422, 'invalid_input', '/note');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

@@ -290,10 +290,27 @@ final class RegExp implements \Stringable
         $stack = []; $captures = 0; $inClass = false;
         for ($i = 0, $length = strlen($source); $i < $length; $i++) {
             $c = $source[$i];
-            if ($c === '\\') { $i++; continue; }
+            if ($c === '\\') {
+                $kind = $source[++$i] ?? '';
+                if ($this->unicode && in_array($kind, ['u', 'p', 'P'], true) && ($source[$i + 1] ?? '') === '{') {
+                    $end = strpos($source, '}', $i + 2);
+                    if ($end !== false) { $i = $end; }
+                }
+                continue;
+            }
             if ($c === '[') { $inClass = true; continue; }
             if ($c === ']') { $inClass = false; continue; }
             if ($inClass) { continue; }
+            $quantifier = in_array($c, ['*', '+', '?'], true);
+            if ($c === '{' && preg_match('/\G[0-9]+(?:,[0-9]*)?\}/A', $source, $bound, 0, $i + 1)) {
+                $i += strlen($bound[0]);
+                $quantifier = true;
+            }
+            $next = $source[$i + 1] ?? '';
+            if ($quantifier && (in_array($next, ['*', '+', '{'], true)
+                || $next === '?' && in_array($source[$i + 2] ?? '', ['*', '+', '?', '{'], true))) {
+                throw new JsError('This RegExp quantifier sequence is not supported', 'SyntaxError');
+            }
             if ($c === '(') {
                 $tail = substr($source, $i + 1);
                 $special = str_starts_with($tail, '?');
@@ -427,10 +444,14 @@ final class RegExp implements \Stringable
             case 'u':
                 return $this->unicodeEscape();
             case 'k':
+                if ($inClass) {
+                    if ($this->unicode) { throw new JsError('Invalid class escape \\k', 'SyntaxError'); }
+                    return 'k';
+                }
                 if (preg_match('/\G<([^>]+)>/A', $this->src, $m, 0, $this->pos)) {
                     $this->pos += strlen($m[0]);
 
-                    return $inClass ? 'k' : "(?:\\k<{$m[1]}>|(?(<{$m[1]}>)(?!)))";
+                    return "(?:\\k<{$m[1]}>|(?(<{$m[1]}>)(?!)))";
                 }
 
                 return 'k';

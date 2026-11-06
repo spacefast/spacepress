@@ -743,5 +743,10 @@
       "parity-reader.ts": "import {sharedArray,sharedObject} from './parity-state.ts'; import {mutateSharedCapture} from './parity-mutator.js'; export function readSharedCapture(){sharedArray[0]=1;sharedObject.n=1;return [sharedArray[0],sharedObject.n,mutateSharedCapture(),sharedArray[0],sharedObject.n];}"
     },
     "fold": true
+  },
+  {
+    "name": "legacyNamedClassEscape",
+    "expression": "[/[\\k<a>]/.test('a'),/[\\k<a>]/.test('<'),/[\\k<a>]/.test('k'),/[\\k<a>]/.test('z')]",
+    "fold": false
   }
 ]

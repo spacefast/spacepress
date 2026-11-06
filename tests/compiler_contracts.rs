@@ -1687,3 +1687,32 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
         }
     }
 }
+
+#[test]
+fn missing_reads_cannot_satisfy_nullable_required_arguments() {
+    for source in [
+        "const a:number[]=[];f(a[0]);",
+        "const a:[number]=[1];a.pop();f(a[0]);",
+        "const a:Record<string,number>={};f(a.x);",
+        "const a:Record<string,number>={};f(a['x']);",
+        "const a:{x?:number}={};f(a.x);",
+        "const a:{x?:number}={};f(a['x']);",
+        "function g(a:{x:number}|null){f(a?.x);}g(null);",
+        "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("function expects"),
+            "{report}"
+        );
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("undefined"),
+            "{report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{report}");
+    }
+}

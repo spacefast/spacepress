@@ -781,6 +781,12 @@ contribute to inferred map value types. Optional chains permit guarded steps and
 single optional method calls. Non-optional continuations after a short-circuiting
 link refuse at source; parenthesized chain boundaries retain ordinary access semantics.
 
+Missing indexed/optional arguments retain undefined in call constraints.
+Tuple destructuring widens later element/rest types after potentially effectful defaults,
+including nested defaults that can change the original array. Inherited Object valueOf
+method handles share identity across functions, arrays and other reference families;
+scalar and Date valueOf retain their own prototype methods.
+
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 
 RegExp:

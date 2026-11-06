@@ -864,5 +864,21 @@
     "expression": "(() => {let n=0;const a=null;const b={child:{value:2}};return [a?.child?.[n++],b?.child?.value,n,(b?.child).value];})()",
     "fold": true,
     "javascript": true
+  },
+  {
+    "name": "undefinedNumericArgumentConversions",
+    "expression": "(() => {function f(v:number|null|undefined){return v===null?'null':typeof Number(v);}const a:number[]=[];const m:Record<string,number>={};return [f(a[0]),f(m.x),f(null)];})()",
+    "fold": true
+  },
+  {
+    "name": "destructuringDefaultMutationTypes",
+    "expression": "(() => {const a:[number|undefined,number]=[undefined,2];const [x=(a.pop(),1),y]=a;return [x,typeof Number(y),String(Number(y))];})()",
+    "fold": false
+  },
+  {
+    "name": "inheritedValueOfIdentity",
+    "expression": "(() => {const f=()=>1;const o={};const a=[];const d=new Date(0);const math=Math;return [f.valueOf===o.valueOf,a.valueOf===o.valueOf,math.valueOf===o.valueOf,/x/.valueOf===o.valueOf,new Set().valueOf===o.valueOf,new Map().valueOf===o.valueOf,d.valueOf===o.valueOf,f.valueOf.call(f)===f,o.valueOf.call(a)===a,o.valueOf.call(d)===d];})()",
+    "fold": false,
+    "javascript": true
   }
 ]

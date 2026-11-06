@@ -28,6 +28,7 @@ trait JsDynamic
         if ($receiver instanceof \Closure && in_array($name, ['bind', 'length', 'name', 'prototype', 'arguments', 'caller'], true)) {
             throw new JsError('Function metadata and binding are not supported', 'TypeError');
         }
+        if ($name === 'valueOf' && !in_array($owner, ['Number', 'String', 'Boolean', 'Date'], true)) { $owner = 'Object'; }
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
         if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
             if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
@@ -50,6 +51,11 @@ trait JsDynamic
 
     private static function dynamicBorrowedMethod(string $owner, mixed $receiver, string $name, JsArray $args): mixed
     {
+        if ($owner === 'Object' && $name === 'valueOf') {
+            self::requirePresent($receiver);
+            if (!is_object($receiver)) { throw new JsError('Object valueOf boxing is not supported', 'TypeError'); }
+            return $receiver;
+        }
         $compatible = match ($owner) {
             'Array' => $receiver instanceof JsArray, 'String' => is_string($receiver),
             'Number' => is_int($receiver) || is_float($receiver), 'Boolean' => is_bool($receiver),

@@ -1816,22 +1816,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let done = self.tmp_var();
                 let _ = writeln!(out, "{p}{done} = false;");
+                let mut changed = false;
+                let live_element = |ty: &Ty, i: usize, changed: bool| {
+                    if changed && let Ty::Tuple(items) | Ty::ArrayLiteral(items) = ty.non_null() {
+                        Some(Ty::union(items.into_iter().chain([Ty::Undefined])))
+                    } else {
+                        element(ty, i)
+                    }
+                };
                 for (i, e) in elems.iter().enumerate() {
                     let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
                     if let Some(e) = e {
                         let access = format!("({done} ? \\Zero\\Js::undefined() : \\Zero\\Js::dynamicGet({src}, {i}))");
                         let types = BindingTypes {
-                            read: element(&ty, i).expect("array read"),
-                            constraint: element(&constraint, i).expect("authored array"),
+                            read: live_element(&ty, i, changed).expect("array read"),
+                            constraint: live_element(&constraint, i, changed).expect("authored array"),
                         };
                         self.bind_pattern_types(e, &access, types, mutable, out, indent)?;
+                        changed |= pattern_default_effects(e);
                     }
                 }
                 if let Some((name, span)) = rest {
                     let tail = |ty: &Ty| match ty.non_null() {
                         Ty::Array(t) | Ty::NonEmptyArray(t) => Ty::Array(t),
                         Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => {
-                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(elems.len()))))
+                            Ty::Array(Box::new(Ty::union(ts.into_iter().skip(if changed {
+                                0
+                            } else {
+                                elems.len()
+                            }))))
                         }
                         _ => unreachable!("array binding"),
                     };
@@ -4056,25 +4069,45 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Resolved::Local(local) => Some(local.constraint),
                 _ => None,
             },
-            ExprKind::Member { obj, prop, .. } => self
-                .argument_constraint(obj)?
-                .non_null()
-                .field(prop)
-                .map(|(ty, optional)| if optional { ty.nullable() } else { ty }),
-            ExprKind::Index { obj, index, .. } => match self.argument_constraint(obj)?.non_null() {
-                Ty::Array(ty) | Ty::NonEmptyArray(ty) | Ty::Map(ty) => Some((*ty).nullable()),
-                Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
-                    ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => {
-                        Some(ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined).nullable())
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } => {
+                let receiver = self.argument_constraint(obj)?;
+                let missing = *optional && receiver.is_nullable();
+                let shape = receiver.non_null();
+                shape.field(prop).map(|(ty, optional)| {
+                    if optional || missing || matches!(shape, Ty::Map(_)) {
+                        Ty::union([ty, Ty::Undefined])
+                    } else {
+                        ty
                     }
-                    _ => Some(Ty::union(ts).nullable()),
-                },
-                Ty::Obj(fields) => match &index.kind {
-                    ExprKind::Str(key) => fields.get(key).map(|(t, _)| t.clone()),
+                })
+            }
+            ExprKind::Index { obj, index, optional } => {
+                let receiver = self.argument_constraint(obj)?;
+                let missing = *optional && receiver.is_nullable();
+                match receiver.non_null() {
+                    Ty::Array(ty) | Ty::NonEmptyArray(ty) | Ty::Map(ty) => Some(Ty::union([*ty, Ty::Undefined])),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => match &index.kind {
+                        ExprKind::Num(n) if *n >= 0.0 && n.fract() == 0.0 => Some(Ty::union([
+                            ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined),
+                            Ty::Undefined,
+                        ])),
+                        _ => Some(Ty::union(ts.into_iter().chain([Ty::Undefined]))),
+                    },
+                    Ty::Obj(fields) => match &index.kind {
+                        ExprKind::Str(key) => fields.get(key).map(|(t, optional)| {
+                            if *optional || missing {
+                                Ty::union([t.clone(), Ty::Undefined])
+                            } else {
+                                t.clone()
+                            }
+                        }),
+                        _ => None,
+                    },
                     _ => None,
-                },
-                _ => None,
-            },
+                }
+            }
             ExprKind::NonNull(e) => self.argument_constraint(e).map(|ty| ty.non_null()),
             _ => None,
         }
@@ -6682,6 +6715,15 @@ fn check_optional_chain(e: &Expr) -> Result<bool> {
         );
     }
     Ok(short || optional)
+}
+
+fn pattern_default_effects(pat: &Pat) -> bool {
+    match pat {
+        Pat::Default(inner, value) => !pure_read(value) || pattern_default_effects(inner),
+        Pat::Obj { props, .. } => props.iter().any(|(_, pat)| pattern_default_effects(pat)),
+        Pat::Arr { elems, .. } => elems.iter().flatten().any(pattern_default_effects),
+        Pat::Id(..) => false,
+    }
 }
 
 /// Direct PHP comparisons are safe only when evaluating the right side cannot replace the left.

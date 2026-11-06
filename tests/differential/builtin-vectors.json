@@ -748,5 +748,15 @@
     "name": "legacyNamedClassEscape",
     "expression": "[/[\\k<a>]/.test('a'),/[\\k<a>]/.test('<'),/[\\k<a>]/.test('k'),/[\\k<a>]/.test('z')]",
     "fold": false
+  },
+  {
+    "name": "optionalMethodUndefined",
+    "expression": "((s: string|null, a: number[]|null) => {const r=s?.trim();const n=a?.indexOf(1);return [r!==null&&Boolean(r),r===undefined,n!==null&&Boolean(n),n===undefined];})(null,null)",
+    "fold": true
+  },
+  {
+    "name": "conditionalVarPresence",
+    "expression": "(() => {if(false) var missing=1;var present=2;if(false)var present=3;return [typeof missing,String(missing),present];})()",
+    "fold": true
   }
 ]

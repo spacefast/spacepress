@@ -457,6 +457,24 @@ pub fn row(schema: &Schema, table: &str) -> Ty {
     row_of(&schema.collections[table])
 }
 
+/// Storage validation normalizes undefined to null only within nullable fields.
+pub fn storage_input(ty: Ty) -> Ty {
+    match ty {
+        Ty::Null => Ty::union([Ty::Null, Ty::Undefined]),
+        Ty::Union(items) => Ty::union(items.into_iter().map(storage_input)),
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .into_iter()
+                .map(|(key, (ty, optional))| (key, (storage_input(ty), optional)))
+                .collect(),
+        ),
+        Ty::Array(ty) => Ty::Array(Box::new(storage_input(*ty))),
+        Ty::NonEmptyArray(ty) => Ty::NonEmptyArray(Box::new(storage_input(*ty))),
+        Ty::Tuple(items) => Ty::Tuple(items.into_iter().map(storage_input).collect()),
+        other => other,
+    }
+}
+
 pub fn insert(schema: &Schema, table: &str) -> Ty {
     insert_with(schema, table, &json_ty)
 }

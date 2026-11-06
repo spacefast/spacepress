@@ -934,7 +934,7 @@ impl<'p> Evaluator<'p> {
             ExprKind::Null => Value::Null,
             ExprKind::Undefined => Value::Undef,
             ExprKind::Regex { pattern, flags } => {
-                crate::builtins::check_regex(pattern, e.span).map_err(Ctl::Err)?;
+                crate::builtins::check_regex(pattern, flags, e.span).map_err(Ctl::Err)?;
                 Value::Regex(Rc::from(pattern.as_str()), Rc::from(flags.as_str()))
             }
             ExprKind::Template(quasis, exprs) => {

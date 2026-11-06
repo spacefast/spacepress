@@ -431,6 +431,8 @@ $deviations = array_merge($deviations, [
     ['engine-dependent reciprocal powers are refused', fn () => Js::pow(45.29, -1), ['$err' => 'RangeError']],
     ['possessive RegExp quantifiers are refused', fn () => Js::re('a++a', 'g'), ['$err' => 'SyntaxError']],
     ['Unicode class identity escapes are refused', fn () => Js::re('[\\k<a>]', 'u'), ['$err' => 'SyntaxError']],
+    ['case-insensitive negated Unicode properties are refused', fn () => Js::re('\\P{Ll}', 'iu'), ['$err' => 'SyntaxError']],
+    ['case-insensitive negated class properties are refused', fn () => Js::re('[\\P{Ll}]', 'iu'), ['$err' => 'SyntaxError']],
     ['capturing lookbehind is refused', fn () => Js::re('(?<=([ab]{1,2})([bc]{1,2}))$', ''), ['$err' => 'SyntaxError']],
     ['custom toJSON callbacks are refused', fn () => Js::jsonStringify(new JsObject(['toJSON' => static fn () => 42])), ['$err' => 'TypeError']],
     ['array prototype writes are refused', fn () => Js::dynamicSet(new JsArray(), '__proto__', 1), ['$err' => 'TypeError']],

@@ -468,7 +468,7 @@ pub fn regex_source(pattern: &str) -> String {
 }
 
 /// Refuse engine-specific capture retention rather than emulate a regex engine.
-pub fn check_regex(pattern: &str, span: Span) -> Result<(), Diag> {
+pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
     let bytes = pattern.as_bytes();
     let mut stack = Vec::new();
     let mut captures = 0;
@@ -476,7 +476,15 @@ pub fn check_regex(pattern: &str, span: Span) -> Result<(), Diag> {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            b'\\' => i += 1,
+            b'\\' => {
+                if bytes.get(i + 1) == Some(&b'P') && flags.contains('i') && flags.contains('u') {
+                    return Err(
+                        Diag::new(span, "case-insensitive negated Unicode properties aren't supported")
+                            .help("remove ignore-case matching or use a positive Unicode property"),
+                    );
+                }
+                i += 1;
+            }
             b'[' => in_class = true,
             b']' => in_class = false,
             b'(' if !in_class => {

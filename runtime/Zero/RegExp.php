@@ -456,6 +456,9 @@ final class RegExp implements \Stringable
 
                 return 'k';
             case 'p': case 'P':
+                if ($c === 'P' && $this->unicode && str_contains($this->flags, 'i')) {
+                    throw new JsError('Case-insensitive negated Unicode properties are not supported', 'SyntaxError');
+                }
                 if ($this->unicode && preg_match('/\G\{[^}]*\}/A', $this->src, $m, 0, $this->pos)) {
                     $this->pos += strlen($m[0]);
 

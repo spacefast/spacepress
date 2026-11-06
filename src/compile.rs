@@ -258,6 +258,7 @@ struct FnCtx {
     tmp: usize,
     /// Switches between the current statement and the nearest loop (PHP counts them for `continue`).
     switch_depth: usize,
+    conditional_depth: usize,
     /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
     no_db: bool,
     /// Set while compiling an access rule's own body: (collection table, op). Its returns are
@@ -623,6 +624,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
+            conditional_depth: 0,
             no_db,
             access: match slot {
                 Some(Slot::FieldAccess { .. }) => Some((None, "field".into())),
@@ -1053,6 +1055,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(out)
     }
 
+    fn conditional_stmts(&mut self, stmts: &[Stmt], indent: usize) -> Result<String> {
+        self.fx().conditional_depth += 1;
+        let result = self.stmts(stmts, indent);
+        self.fx().conditional_depth -= 1;
+        result
+    }
+
     fn stmt(&mut self, s: &Stmt, indent: usize) -> Result<String> {
         let p = pad(indent);
         let mut out = String::new();
@@ -1082,11 +1091,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         let _ = writeln!(out, "{p}{} = {};", local.php, value.php);
                         if local.constraint != Ty::Dynamic {
-                            let ty = widen_fresh_literals(&value.ty);
+                            let value_ty = widen_fresh_literals(&value.ty);
+                            let ty = if self.fx().conditional_depth > 0 {
+                                Ty::union([local.ty.clone(), value_ty.clone()])
+                            } else {
+                                value_ty.clone()
+                            };
                             for scope in self.fx().scopes.iter_mut().rev() {
                                 if let Some(local) = scope.get_mut(name) {
                                     if local.constraint == Ty::Unknown {
-                                        local.constraint = ty.clone();
+                                        local.constraint = value_ty.clone();
                                     }
                                     local.ty = ty;
                                     break;
@@ -1190,14 +1204,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let _ = writeln!(out, "{p}if ({t}) {{");
                 self.fx().scopes.push(HashMap::new());
                 self.apply_narrowing(&narrow, true);
-                out.push_str(&self.stmts(then, indent + 1)?);
+                out.push_str(&self.conditional_stmts(then, indent + 1)?);
                 self.fx().scopes.pop();
                 let then_exits = ends_with_exit(then);
                 if let Some(o) = otherwise {
                     let _ = writeln!(out, "{p}}} else {{");
                     self.fx().scopes.push(HashMap::new());
                     self.apply_narrowing(&narrow, false);
-                    out.push_str(&self.stmts(o, indent + 1)?);
+                    out.push_str(&self.conditional_stmts(o, indent + 1)?);
                     self.fx().scopes.pop();
                 }
                 let _ = writeln!(out, "{p}}}");
@@ -1437,7 +1451,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 finalizer,
             } => {
                 let _ = writeln!(out, "{p}try {{");
-                out.push_str(&self.block(block, indent + 1)?);
+                self.fx().conditional_depth += 1;
+                let inner = self.block(block, indent + 1);
+                self.fx().conditional_depth -= 1;
+                out.push_str(&inner?);
                 if let Some(h) = handler {
                     self.fx().scopes.push(HashMap::new());
                     let var = match param {
@@ -1446,7 +1463,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     // Database and validation errors propagate: they must roll back the request.
                     let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {var}) {{");
-                    out.push_str(&self.stmts(h, indent + 1)?);
+                    out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
                 }
                 if let Some(f) = finalizer {
@@ -1485,7 +1502,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     }
                     self.fx().switch_depth += 1;
+                    self.fx().conditional_depth += 1;
                     let inner = self.block(body, indent + 2);
+                    self.fx().conditional_depth -= 1;
                     self.fx().switch_depth -= 1;
                     out.push_str(&inner?);
                 }
@@ -1528,7 +1547,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .flat_map(|scope| scope.values().map(|l| l.binding))
             .collect();
         self.fx().loop_bindings.extend(bindings);
+        self.fx().conditional_depth += 1;
         let r = self.block(body, indent);
+        self.fx().conditional_depth -= 1;
         self.fx().loop_bindings = saved_bindings;
         self.fx().switch_depth = saved;
         r
@@ -2188,7 +2209,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Undefined => Out::atom("\\Zero\\Js::undefined()", Ty::Undefined),
             ExprKind::Null => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => {
-                crate::builtins::check_regex(pattern, span)?;
+                crate::builtins::check_regex(pattern, flags, span)?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 Out::atom(
                     if javascript {
@@ -3097,6 +3118,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             outer: None,
             tmp: 0,
             switch_depth: 0,
+            conditional_depth: 0,
             no_db: self.fx().no_db,
             access: None,
         };
@@ -4840,7 +4862,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "(\\Zero\\Js::isNullish({tmp} = {}) ? \\Zero\\Js::undefined() : {php})",
                     recv.php
                 ),
-                r.ty.nullable(),
+                Ty::union([r.ty, Ty::Undefined]),
             ));
         }
         Ok(r)
@@ -5780,7 +5802,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("update", [ArrEl::Item(patch)]) => {
                 let v = self.expr(patch)?;
                 let v = self.finish_value(v, patch.span)?;
-                let want = types::partial(row.clone());
+                let want = types::storage_input(types::partial(row.clone()));
                 if !assignable(&v.ty, &want) {
                     if let (Ty::Obj(have), Ty::Obj(need)) = (&v.ty, &want) {
                         for (k, (t, _)) in have {
@@ -5928,6 +5950,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             types::partial(types::insert(self.schema, table))
         };
+        let want = types::storage_input(want);
         let ok = match (&v.ty, insert) {
             (Ty::Array(el) | Ty::NonEmptyArray(el), true) => assignable(el, &want),
             (t, _) => assignable(t, &want),
@@ -6360,7 +6383,6 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::StrLit(x), Ty::FreshStrLit(y)) | (Ty::FreshStrLit(x), Ty::StrLit(y)) => x == y,
         (Ty::Union(xs), _) => xs.iter().all(|x| assignable(x, b)),
         (_, Ty::Union(ys)) => ys.iter().any(|y| assignable(a, y)),
-        (Ty::Undefined, Ty::Null) => true,
         (Ty::Array(x), Ty::Array(y)) => **x == Ty::Never || assignable(x, y),
         (Ty::NonEmptyArray(x), Ty::Array(y) | Ty::NonEmptyArray(y)) => assignable(x, y),
         (Ty::Tuple(xs) | Ty::ArrayLiteral(xs), Ty::NonEmptyArray(y)) => {

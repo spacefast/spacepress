@@ -468,9 +468,9 @@ function strictNull(value?: { count: number } | null) { return value !== null ? 
 function strictUndefined(value?: { count: number } | null) { return value !== undefined ? value?.count ?? 'null' : 'undefined'; }
 function strictNullArray(value?: string[]) { return value !== null ? value?.length ?? -1 : -2; }
 function nullishValues() {
-  const object: { count: number } | null = undefined;
-  const array: string[] | null = undefined;
-  const text: string | null = undefined;
+  const object: { count: number } | null | undefined = undefined;
+  const array: string[] | null | undefined = undefined;
+  const text: string | null | undefined = undefined;
   return [optionalObject(undefined), optionalArray(undefined), optionalString(undefined), defaultArray(undefined), Boolean(object), Boolean(array), Boolean(text), addressPatch({}), addressPatch({ address: null }), addressPatch({ address: { city: 'Oslo' } }), strictNull(undefined), strictNull(null), strictUndefined(undefined), strictUndefined(null), strictNullArray(undefined)];
 }
 function nonempty() {
@@ -983,6 +983,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "'abc'.startsWith('b', 1)",
         "'abc'.endsWith('b', 2)",
         "'ä'.localeCompare('z')",
+        r"/\P{Ll}/iu.test('a')",
+        r"/[\P{Ll}]/iu.test('a')",
         "'a'.trim('x')",
         "(42).toString(16)",
         "[1].map(n => n, {})",
@@ -1518,4 +1520,24 @@ fn native_error_inspection_is_refused_during_configuration_evaluation() {
         "restricted arguments properties aren't supported during configuration evaluation"
     );
     assert_eq!(report["diagnostics"][0]["location"]["file"], "helper.js");
+}
+
+#[test]
+fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
+    for body in [
+        "const r: string|null = ['a'].find(()=>false); return r!==null && Boolean(r);",
+        "if(false) var x=1; return String(x+1);",
+        "if(false) var x:number=1; return String(x+1);",
+        "while(false) {var x=1;} return String(x+1);",
+        "for(;false;) {var x=1;} return String(x+1);",
+        "switch(0) {case 1: var x=1;} return String(x+1);",
+        "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';\nexport default defineConfig({{name:'undefinedflow',actions:{{probe:action({{input:{{}},handler:()=>{{{body}}}}})}}}});" )).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{body}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(diagnostic["location"].is_object(), "{body}: {report}");
+    }
 }

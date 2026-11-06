@@ -653,7 +653,9 @@ Optional parameters accept undefined; null requires an explicit nullable type.
 Parameter and destructuring defaults run only for undefined. Typed object
 property reads distinguish missing properties from explicit null. Strict
 null/undefined comparisons refine only the value being compared; `!= null`
-excludes both.
+excludes both. Undefined cannot be assigned to a null-only annotation. Optional method
+results include undefined. Conditional var initializers retain the prior type,
+including the hoisted undefined path.
 
 Raw `.js`/`.mjs`/`.cjs` functions use a separate `Dynamic` compiler type. It
 does not weaken authored TypeScript `unknown`. `JsDynamic` checks properties,
@@ -707,6 +709,10 @@ inherited prototype properties; use `Object.hasOwn` before reading those names. 
 and ambiguous regex class delimiters are refused during evaluation. Optional
 regex groups containing captures require a nonempty body; the engines disagree
 about capture participation when that body can match empty text.
+
+Case-insensitive negated Unicode regex properties (`\P{...}` with `iu`) are
+refused because JavaScript folds the complement while PCRE complements the fold.
+Use a positive Unicode property or remove ignore-case matching.
 
 `Math.log` and `Math.exp` accept only IEEE special values and exact identities
 (log(1), exp(0)). Other inputs receive a located literal refusal or a checked

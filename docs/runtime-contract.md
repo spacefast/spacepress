@@ -810,9 +810,12 @@ or nested functions, or referencing the current/later parameter, refuse at sourc
 destructuring defaults. These limits preserve parameter initialization and closure scope.
 Bindings named `undefined` refuse at their declaration; reads consistently denote the built-in missing value.
 
+Ordinary functions create their own arguments object before parameter defaults are compiled and run; defaults do not capture or overwrite a caller's arguments binding. Arrow defaults retain lexical arguments.
+
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 
 RegExp:
+- Named-capture group objects have no prototype. Missing names stay undefined; absent conversion methods throw TypeError. Internal snapshots preserve that shape, while structuredClone creates ordinary objects.
 - `re(string $source, string $flags): RegExp` — creates a fresh instance and translates the supported JS regex subset to UTF-aware, delimiter-safe PCRE. Accepts `g i m s u y`; `d` and `v` throw `JsError`.
 - `dateJSON(int|float $ms): ?string` returns null for invalid dates and otherwise ISO text.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`, `sticky`. `test` and checked `exec` share `execMatch`: global/sticky calls read and update UTF-16 `lastIndex`, reset it on failure, and keep it unchanged after an empty match. Literal evaluation creates fresh regex identity; a captured regex keeps its own instance. Sticky replacement is explicitly refused.

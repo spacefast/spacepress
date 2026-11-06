@@ -939,5 +939,28 @@
     "name": "ownPrototypeDestructuringDefaults",
     "expression": "(() => {const own={toString:undefined};const {toString='fallback'}=own;return toString;})()",
     "fold": true
+  },
+  {
+    "name": "namedCaptureGroupsHaveNullPrototype",
+    "expression": "(() => {const groups=/(?<x>a)/.exec('a').groups;const result=[typeof groups.toString,typeof groups.valueOf,typeof groups.__proto__,Object.keys(groups)];try{result.push(String(groups));}catch(e){result.push(e.name);}try{result.push(Number(groups));}catch(e){result.push(e.name);}try{result.push(groups.toString());}catch(e){result.push(e.name);}groups.extra='own';const copy=structuredClone(groups);return [result,Object.hasOwn(groups,'extra'),groups.extra,typeof copy.toString,copy.x];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "namedReplacementGroupsHaveNullPrototype",
+    "expression": "['a'.replace(/(?<x>a)/,(match,x,offset,input,groups)=>typeof groups.toString),'a'.replaceAll(/(?<x>a)/g,(match,x,offset,input,groups)=>typeof groups.valueOf)]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "defaultParametersOwnArgumentsBeforeInitialization",
+    "expression": "(function(a,b){const f=function(x=arguments.length){return x;};return [f(),arguments.length,arguments[0],arguments[1]];})(1,2)",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "typedDefaultParametersOwnArgumentsBeforeInitialization",
+    "expression": "(function(a:number,b:number){const f=function(x:number=arguments.length){return x;};return [f(),arguments.length,arguments[0],arguments[1]];})(1,2)",
+    "fold": true
   }
 ]

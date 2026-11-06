@@ -790,6 +790,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         param_tys: &[Ty],
         _slot: Option<&Slot>,
     ) -> Result<(String, String)> {
+        let arguments = self.javascript_arguments(f, 1)?;
         let mut params_php = Vec::new();
         let mut prologue = String::new();
         for (i, p) in f.params.iter().enumerate() {
@@ -837,7 +838,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
-        let mut body = self.javascript_prologue(f, 1)?;
+        let mut body = arguments + &self.javascript_prologue(f, 1)?;
         body.push_str(&prologue);
         match &f.body {
             FnBody::Expr(e) => {
@@ -3011,6 +3012,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn closure_body(&mut self, f: &Func, param_tys: &[Ty]) -> Result<(String, String)> {
+        let arguments = self.javascript_arguments(f, 2)?;
         let mut params = Vec::new();
         let mut body = String::new();
         for (i, p) in f.params.iter().enumerate() {
@@ -3055,7 +3057,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
-        body = self.javascript_prologue(f, 2)? + &body;
+        body = arguments + &self.javascript_prologue(f, 2)? + &body;
         match &f.body {
             FnBody::Expr(e) => {
                 let v = self.expr(e)?;

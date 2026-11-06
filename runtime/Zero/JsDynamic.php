@@ -17,6 +17,7 @@ trait JsDynamic
 
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
+        if ($receiver instanceof JsObject && $receiver->nullPrototype) { return JsUndefined::Value; }
         $owner = match (true) {
             $receiver instanceof JsNamespace => $receiver->name,
             $receiver instanceof JsArray => 'Array', is_string($receiver) => 'String',
@@ -109,7 +110,7 @@ trait JsDynamic
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
         if ($value instanceof JsObject) {
-            if ($key === '__proto__' && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
+            if ($key === '__proto__' && !$value->nullPrototype && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
             return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
         }
         if ($value instanceof JsClass) { return $value->get($key); }
@@ -152,7 +153,7 @@ trait JsDynamic
     {
         self::requirePresent($value);
         $key = self::key($key);
-        if ($value instanceof JsObject && !array_key_exists($key, $value->p) && Builtins::has('object', $key)) {
+        if ($value instanceof JsObject && !$value->nullPrototype && !array_key_exists($key, $value->p) && Builtins::has('object', $key)) {
             throw new JsError('Inherited properties are not supported by typed data reads', 'TypeError');
         }
         return self::dynamicGet($value, $key);
@@ -271,6 +272,9 @@ trait JsDynamic
             $method = $properties[$name];
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
+        if ($receiver instanceof JsObject && $receiver->nullPrototype) {
+            return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));
+        }
         return static fn (...$args) => self::dynamicCallMethod($receiver, $name, new JsArray($args), true);
     }
 
@@ -280,6 +284,7 @@ trait JsDynamic
         $a = $args->a;
         $get = static fn (int $index, mixed $default = JsUndefined::Value): mixed => array_key_exists($index, $a) ? $a[$index] : $default;
         if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if (!$builtin && $receiver instanceof JsObject && $receiver->nullPrototype) { return self::dynamicCall(JsUndefined::Value, $args); }
         if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
@@ -572,7 +577,7 @@ trait JsDynamic
         if ($match === null) { return null; }
         [$start, $end, $captures, $groups] = $match;
         $result = new JsArray([substr($value, $start, $end - $start), ...array_map(static fn ($v) => $v ?? JsUndefined::Value, $captures)]);
-        $result->p = ['index' => self::length(substr($value, 0, $start)), 'input' => $value, 'groups' => $regexp->hasNamedGroups() ? new JsObject(array_map(static fn ($v) => $v ?? JsUndefined::Value, $groups)) : JsUndefined::Value];
+        $result->p = ['index' => self::length(substr($value, 0, $start)), 'input' => $value, 'groups' => $regexp->hasNamedGroups() ? new JsObject(array_map(static fn ($v) => $v ?? JsUndefined::Value, $groups), null, true) : JsUndefined::Value];
         return $result;
     }
 
@@ -632,7 +637,8 @@ trait JsDynamic
                 if (array_key_exists($method, $value->p)) {
                     if (!$value->p[$method] instanceof \Closure) { continue; }
                     $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
-                } else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
+                } elseif ($value instanceof JsObject && $value->nullPrototype) { continue; }
+                else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
                 if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');

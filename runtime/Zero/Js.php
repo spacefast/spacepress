@@ -960,7 +960,7 @@ final class Js
             } else {
                 $captures = array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups);
                 $args = [...$captures, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s];
-                if ($named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names)); }
+                if ($named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names), null, true); }
                 $rep = self::str($replacement($matched, ...$args));
             }
             if ($between && $rep !== '') {
@@ -1120,7 +1120,7 @@ final class Js
             if ($key === '__proto__' && !$o->has($key)) { throw new JsError('Prototype mutation is not supported', 'TypeError'); }
             return $o->set($key, $value);
         }
-        if ($key === '__proto__' && !array_key_exists($key, $o->p)) {
+        if ($key === '__proto__' && !$o->nullPrototype && !array_key_exists($key, $o->p)) {
             throw new JsError('Prototype mutation is not supported', 'TypeError');
         }
         $o->p[$key] = $value;
@@ -1620,7 +1620,7 @@ final class Js
                 $seen[$value] = $copy;
                 return $copy;
             }
-            $copy = $value instanceof JsObject ? new JsObject() : new JsArray();
+            $copy = $value instanceof JsObject ? new JsObject(nullPrototype: !$structured && $value->nullPrototype) : new JsArray();
             $seen[$value] = $copy;
             if ($value instanceof JsObject) {
                 foreach (self::ownKeys($value->p) as $key) { $copy->p[$key] = self::copyGraph($value->p[$key], $seen, $structured); }

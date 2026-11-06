@@ -1163,6 +1163,12 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "db.insert(notes).values({count: 1}, n++)",
         "db.delete(notes).where({id: 1}, n++)",
         "db.insert(notes).values({count: 1}).returning(n++)",
+        "(n++, db.query.notes).findMany({})",
+        "(n++, db.query).notes.findFirst({})",
+        "(n++, db).query.notes.findMany({})",
+        "(n++, db).insert(notes).values({count: 1})",
+        "(n++, db.insert(notes)).values({count: 1})",
+        "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action, defineConfig, table, id, integer, db}} from 'zero';\nconst notes=table({{id:id(),count:integer()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();

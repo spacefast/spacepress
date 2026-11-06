@@ -590,6 +590,9 @@ Node and native math libraries can round them differently. Known literals have
 source diagnostics; dynamic values throw RangeError. Missing reads and built-in
 results preserve undefined separately from null in both language modes.
 Unknown built-in properties and Object.freeze are refused during configuration evaluation.
+Database namespace, query and builder receivers must be direct references or calls;
+computed receiver expressions refuse at their source position before effects can be discarded.
+
 Database builders, configuration/schema factories and column modifiers also use
 the shared source arity contract, including runtime arguments to `$type`. Database
 collection arguments must resolve to static references; effectful expressions
@@ -794,7 +797,7 @@ Arrays (`JsArray`):
 - `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
 - `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
 - `flat(JsArray $a, int|float $depth = 1): JsArray` (typed calls accept depths 0 and 1, with null selecting 0 and undefined selecting 1), `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
-- `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument.
+- `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument. Element inference preserves null and undefined, including nullable array operands.
 - `from(JsArray|string $source, ?callable $f = null): JsArray` uses live iterator length; strings iterate code points. `range(int $n, callable $f): JsArray` is the fixed-count `{ length: n }` path, passing `(null, index)`.
 - `max(int|float ...$n): int|float`, `min(...)` are JS Math helpers.
 

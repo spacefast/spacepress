@@ -2538,6 +2538,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out { ty: t, ..v }
             }
         };
+        let database_receiver = match &out.ty {
+            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => Some("\\Zero\\db()"),
+            Ty::Builder(_) => Some(""),
+            _ => None,
+        };
+        if let Some(expected) = database_receiver
+            && out.php != expected
+        {
+            return err_help(
+                span,
+                "unsupported database receiver expression",
+                "call database operations directly; evaluate side effects in a preceding statement",
+            );
+        }
         if out.ty == Ty::Never {
             self.fx().diverging.insert(span);
         }
@@ -5279,14 +5293,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let mut t = vec![el];
                         let mut parts = vec![a.php.clone()];
                         for x in &argv {
-                            match x.ty.non_null() {
-                                Ty::Array(e) | Ty::NonEmptyArray(e) => t.push(*e),
-                                other => {
-                                    t.push(other);
-                                    parts.push(x.php.clone());
-                                    continue;
-                                }
-                            }
+                            let flatten = |ty| match ty {
+                                Ty::Array(e) | Ty::NonEmptyArray(e) => *e,
+                                Ty::Tuple(items) | Ty::ArrayLiteral(items) => Ty::union(items),
+                                other => other,
+                            };
+                            t.push(match x.ty.clone() {
+                                Ty::Union(items) => Ty::union(items.into_iter().map(flatten)),
+                                ty => flatten(ty),
+                            });
                             parts.push(x.php.clone());
                         }
                         Out::atom(

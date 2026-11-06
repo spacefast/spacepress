@@ -842,5 +842,10 @@
     "name": "shortestDecimalBinaryBoundaries",
     "expression": "[String(2 ** -24),String(-(2 ** -24)),String(2 ** -25),String(2 ** -24 - 2 ** -77),String(2 ** -24 + 2 ** -76),String(2 ** -24 - 2 ** -78),String(1e-7),String(1e21)]",
     "fold": true
+  },
+  {
+    "name": "concatNullishElementTypes",
+    "expression": "(() => {const get=(flag:boolean):string[]|null=>flag?['b']:null;return [['a'].concat(null).map(x=>Boolean(x)),['a'].concat(undefined).map(x=>Boolean(x)),['a'].concat(get(false)).map(x=>Boolean(x)),['a'].concat(get(true)).map(x=>Boolean(x))];})()",
+    "fold": true
   }
 ]

@@ -249,9 +249,8 @@ struct FnCtx {
     /// The closure whose captured environment resolves free names.
     env: Rc<Scope>,
     module: usize,
-    /// Parameter names that need `&` because the function mutates them.
-    /// Locals declared so far in this PHP function (for closure `use` lists).
-    declared: Vec<String>,
+    /// PHP names reserved by locals, temporaries and enclosing capture candidates.
+    php_names: HashSet<String>,
     /// Inside a nested closure: names from the enclosing function it uses.
     captures: Option<Vec<(String, bool)>>,
     outer: Option<Box<FnCtx>>,
@@ -619,7 +618,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             loop_bindings: HashSet::new(),
             env: closure.env.clone(),
             module: f.module,
-            declared: Vec::new(),
+            php_names: HashSet::new(),
             captures: None,
             outer: None,
             tmp: 0,
@@ -800,8 +799,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(p.span, "rest parameters need a plain name");
                 };
                 let php = self.declare_local(name, t, true, p.pat.span());
-                params_php.push(format!("...$__rest{i}"));
-                let _ = writeln!(prologue, "    {php} = new \\Zero\\JsArray($__rest{i});");
+                let rest = self.tmp_var();
+                params_php.push(format!("...{rest}"));
+                let _ = writeln!(prologue, "    {php} = new \\Zero\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -816,7 +816,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     params_php.push(format!("{hint}{php}{default}"));
                 }
                 pat => {
-                    let tmp = format!("$__arg{i}");
+                    let tmp = self.tmp_var();
                     params_php.push(format!(
                         "{}{tmp}{}",
                         php_hint(&t),
@@ -895,18 +895,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool, binding: Span) -> String {
         let read_ty = self.effects.parameter_type(binding, &ty);
         let fx = self.fx();
-        let shadow = fx.scopes.iter().any(|s| s.contains_key(name)) || fx.declared.iter().any(|d| d == name);
-        let php = if shadow && !fx.scopes.last().expect("scope").contains_key(name) {
-            fx.tmp += 1;
-            format!("${}_{}", name, fx.tmp)
+        let php = if let Some(local) = fx.scopes.last().expect("scope").get(name) {
+            local.php.clone()
         } else {
-            if name == "this" {
-                "$__zero_this".into()
-            } else {
-                format!("${name}")
+            let base = if name == "this" { "__zero_this" } else { name };
+            let mut candidate = base.to_string();
+            while !fx.php_names.insert(candidate.clone()) {
+                fx.tmp += 1;
+                candidate = format!("{base}_{}", fx.tmp);
             }
+            format!("${candidate}")
         };
-        fx.declared.push(php.trim_start_matches('$').to_string());
         fx.scopes.last_mut().expect("scope").insert(
             name.to_string(),
             Local {
@@ -963,6 +962,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if c.scopes.iter().any(|s| s.values().any(|x| x.php == l.php)) {
                     break;
                 }
+                c.php_names.insert(var.clone());
                 if let Some(caps) = &mut c.captures
                     && !caps.iter().any(|(n, _)| *n == var)
                 {
@@ -1558,10 +1558,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn tmp_var(&mut self) -> String {
         let fx = self.fx();
-        fx.tmp += 1;
-        let name = format!("__t{}", fx.tmp);
-        fx.declared.push(name.clone());
-        format!("${name}")
+        loop {
+            fx.tmp += 1;
+            let name = format!("__t{}", fx.tmp);
+            if fx.php_names.insert(name.clone()) {
+                return format!("${name}");
+            }
+        }
     }
 
     /// A `return` operand. In an access rule it must be a boolean or a filter literal (§1.6).
@@ -3021,8 +3024,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(p.span, "rest parameters need a plain name");
                 };
                 let php = self.declare_local(name, param_tys[i].clone(), true, p.pat.span());
-                params.push(format!("...$__rest{i}"));
-                let _ = writeln!(body, "        {php} = new \\Zero\\JsArray($__rest{i});");
+                let rest = self.tmp_var();
+                params.push(format!("...{rest}"));
+                let _ = writeln!(body, "        {php} = new \\Zero\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -3036,7 +3040,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     params.push(format!("{php}{default}"));
                 }
                 pat => {
-                    let tmp = format!("$__arg{i}");
+                    let tmp = self.tmp_var();
                     params.push(format!(
                         "{tmp}{}",
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
@@ -3150,7 +3154,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             loop_bindings: HashSet::new(),
             env: self.fx().env.clone(),
             module,
-            declared: Vec::new(),
+            php_names: self.fx().php_names.clone(),
             captures: Some(Vec::new()),
             outer: None,
             tmp: 0,

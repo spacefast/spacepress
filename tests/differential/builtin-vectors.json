@@ -962,5 +962,30 @@
     "name": "typedDefaultParametersOwnArgumentsBeforeInitialization",
     "expression": "(function(a:number,b:number){const f=function(x:number=arguments.length){return x;};return [f(),arguments.length,arguments[0],arguments[1]];})(1,2)",
     "fold": true
+  },
+  {
+    "name": "parameterDefaultCaptureSlots",
+    "expression": "(() => {let x=1;const f=(a=x)=>{var x=2;return a;};const first=[f(),x];const y=3;const g=function(a=y){var y=4;return a;};return [first,g(),y];})()",
+    "fold": true,
+    "javascript": true
+  },
+  {
+    "name": "authoredTemporarySlots",
+    "expression": "(() => {let __t1=5;const before=__t1++;return [before,__t1];})()",
+    "fold": true
+  },
+  {
+    "name": "parameterTemporarySlots",
+    "expression": "[destructureSlots(7,{x:9}),restSlots(7,8,9)]",
+    "fold": true,
+    "declarations": "import {destructureSlots,restSlots} from './parameter-slots.ts';",
+    "files": {
+      "parameter-slots.ts": "export function destructureSlots(__arg1:number,{x}:{x:number}){return [__arg1,x]}export function restSlots(__rest1:number,...tail:number[]){return [__rest1,tail.length]}"
+    }
+  },
+  {
+    "name": "captureAfterAuthoredShadowSlot",
+    "expression": "(() => {const x=1;{let x=2;return (()=>{let x_1=3;return [x,x_1];})()}})()",
+    "fold": true
   }
 ]

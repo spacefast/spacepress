@@ -17,6 +17,9 @@ trait JsDynamic
 
     private static function dynamicMethodValue(mixed $receiver, string $name): mixed
     {
+        if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
+            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
+        }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) { return JsUndefined::Value; }
         $owner = match (true) {
             $receiver instanceof JsNamespace => $receiver->name,
@@ -271,6 +274,9 @@ trait JsDynamic
         if (array_key_exists($name, $properties)) {
             $method = $properties[$name];
             return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+        }
+        if ($receiver instanceof JsObject && ($receiver->class?->hasMethod($name) ?? false)) {
+            throw new JsError('Class method values are not supported by checked JavaScript', 'TypeError');
         }
         if ($receiver instanceof JsObject && $receiver->nullPrototype) {
             return static fn (...$args) => self::dynamicCall(JsUndefined::Value, new JsArray($args));

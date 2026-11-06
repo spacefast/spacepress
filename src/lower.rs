@@ -534,10 +534,18 @@ impl Lowerer {
             a::Statement::SwitchStatement(s) => {
                 let mut cases = Vec::new();
                 for c in &s.cases {
-                    cases.push((
-                        c.test.as_ref().map(|e| self.expr(e)).transpose()?,
-                        self.block(&c.consequent)?,
-                    ));
+                    let body = self.block(&c.consequent)?;
+                    if body.iter().any(|stmt| {
+                        matches!(stmt, Stmt::Decl { kind, .. } if *kind != DeclKind::Var)
+                            || matches!(stmt, Stmt::Func(_))
+                    }) {
+                        return self.unsupported(
+                            c.span,
+                            "lexical declarations directly under switch cases",
+                            "wrap the case body in braces; switch cases otherwise share one lexical scope",
+                        );
+                    }
+                    cases.push((c.test.as_ref().map(|e| self.expr(e)).transpose()?, body));
                 }
                 Stmt::Switch {
                     disc: self.expr(&s.discriminant)?,

@@ -1039,5 +1039,10 @@
     "expression": "['(*ACCEPT)','(*FAIL)','(*SKIP)','(*MARK:x)'].map(pattern=>{try{new RegExp(pattern);return 'accepted';}catch(e){return e.name;}})",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "bracedSwitchCasesPreserveOuterBindings",
+    "expression": "(() => {let x='outer';let result='';switch(1){case 1:{let x='inner';result=x;}case 2:result+=x;}return [x,result];})()",
+    "fold": true
   }
 ]

@@ -898,6 +898,53 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
 }
 
 #[test]
+fn checked_javascript_refuses_class_method_values_instead_of_fabricating_undefined() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("helper.js"),
+        r#"
+        class C { m() { return 4; } }
+        class D extends C {}
+        function read(x, name) { return typeof x[name]; }
+        function invoke(x, name) { return x[name](); }
+        export function test() {
+            const instance = new D();
+            const results = [];
+            for (const f of [() => read(instance, 'm'), () => invoke(instance, 'm')]) {
+                try { results.push(f()); } catch (e) { results.push([e.name, e.message]); }
+            }
+            return results;
+        }
+    "#,
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; import {test} from './helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-classboundary/zero/app");
+    let actual = php(
+        r#"
+        require $argv[1];
+        require $argv[2] . '/functions.php';
+        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+    );
+    assert_eq!(
+        actual,
+        json!([
+            [
+                "TypeError",
+                "Class method values are not supported by checked JavaScript"
+            ],
+            [
+                "TypeError",
+                "Class method values are not supported by checked JavaScript"
+            ]
+        ])
+    );
+}
+
+#[test]
 fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     let vectors: Value = serde_json::from_str(include_str!("differential/builtin-vectors.json")).unwrap();
     let tmp = tempfile::tempdir().unwrap();
@@ -964,6 +1011,10 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "(() => {let x='outer';switch(1){case 1:let x='inner';case 2:return x;}})()",
+        "(() => {switch(1){case 1:const x=1;return x;}})()",
+        "(() => {switch(1){case 1:function f(){return 1;}return f();}})()",
+        "(() => {switch(1){case 1:class C{}return new C();}})()",
         r#"new RegExp("(*ACCEPT)")"#,
         "typeof process",
         "typeof require",

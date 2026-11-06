@@ -555,6 +555,12 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 }
 ```
 
+Switch cases containing lexical declarations or functions require an explicit
+braced body. Unbraced case declarations are refused before either phase can give
+them independent scopes. Checked JavaScript refuses class-method property reads
+and calls through erased dynamic receivers; typed class dispatch stays supported.
+Own data fields continue to take precedence over inherited methods.
+
 Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
 `runtime/Zero/Builtins.php` guards checked JavaScript dispatch; regenerate with
 `UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite

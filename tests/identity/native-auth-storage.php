@@ -43,8 +43,14 @@ declare(strict_types=1);
     } finally {
         remove_filter('check_password', $observe);
     }
-    $assert(count($verified) === 3 && $verified[0][1] === $uid && $verified[1][1] === 0, 'both known and absent accounts verify passwords');
-    $assert($verified[1][0] === $verified[2][0] && !wp_password_needs_rehash($verified[1][0]), 'absent account uses a fixed current-algorithm hash');
+    $profileCount = count(get_option('zero_identity_password_profiles'));
+    $assert(count($verified) === 3 * $profileCount, 'each attempt verifies every stored password profile');
+    [$knownChecks, $absentChecks, $repeatChecks] = array_chunk($verified, $profileCount);
+    $actualChecks = array_values(array_filter($knownChecks, static fn ($check) => (int) $check[1] === $uid));
+    $assert(count($actualChecks) === 1 && $actualChecks[0][0] === get_userdata($uid)->user_pass, 'known user is verified by ID within its schedule');
+    $assert($absentChecks === $repeatChecks && array_unique(array_column($absentChecks, 1)) === [0], 'absent accounts repeat the fixed dummy schedule');
+    $currentDummy = get_option('zero_identity_dummy_password_hash');
+    $assert(in_array([$currentDummy, 0], $absentChecks, true) && !wp_password_needs_rehash($currentDummy), 'absent schedule includes a fixed current-algorithm hash');
     require_once ABSPATH . WPINC . '/class-phpass.php';
     $legacyPassword = 'legacy profile password';
     $legacyUsers = [];

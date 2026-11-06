@@ -23,6 +23,10 @@ declare(strict_types=1);
     }
     delete_option($inventory);
     delete_option('zero_identity_password_profiles');
+    \Zero\Identity\Accounts::rememberPasswordHash($fixtureHash);
+    $registered = get_option('zero_identity_password_profiles');
+    $assert(is_array($registered) && count($registered) === 1 && is_string(array_values($registered)[0]), 'legacy registration initializes the profile map before request provisioning');
+    delete_option('zero_identity_password_profiles');
     $inventoryReads = 0;
     $observeInventory = static function ($sql) use (&$inventoryReads, $db) {
         if (preg_match('/^SELECT .*user_pass.*FROM ' . preg_quote($db->wp->users, '/') . '/i', $sql)) {

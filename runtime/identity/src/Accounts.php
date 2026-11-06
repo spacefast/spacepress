@@ -268,6 +268,9 @@ final class Accounts
         if (!isset($profiles[$profile])) {
             try {
                 Plugin::$db->transaction(static function () use ($profile, $hash): void {
+                    global $wpdb;
+                    // Importers may register before plugins_loaded provisions the options.
+                    Plugin::$db->run("INSERT INTO {$wpdb->options} (option_name,option_value,autoload) VALUES (%s,%s,'off') ON DUPLICATE KEY UPDATE option_name=VALUES(option_name)", self::PASSWORD_PROFILES, serialize([]));
                     $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
                     if (isset($profiles[$profile])) {
                         return;
@@ -281,6 +284,7 @@ final class Accounts
                 });
             } finally {
                 wp_cache_delete(self::PASSWORD_PROFILES, 'options');
+                wp_cache_delete('notoptions', 'options');
             }
         }
     }

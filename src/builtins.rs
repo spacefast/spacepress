@@ -467,6 +467,11 @@ pub fn regex_source(pattern: &str) -> String {
     out
 }
 
+pub const REGEX_CATEGORIES: &[&str] = &[
+    "C", "Cc", "Cf", "Cn", "Co", "Cs", "L", "LC", "Ll", "Lm", "Lo", "Lt", "Lu", "M", "Mc", "Me", "Mn", "N", "Nd", "Nl",
+    "No", "P", "Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps", "S", "Sc", "Sk", "Sm", "So", "Z", "Zl", "Zp", "Zs",
+];
+
 /// Refuse engine-specific capture retention rather than emulate a regex engine.
 pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
     let bytes = pattern.as_bytes();
@@ -477,11 +482,22 @@ pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => {
-                if bytes.get(i + 1) == Some(&b'P') && flags.contains('i') && flags.contains('u') {
-                    return Err(
-                        Diag::new(span, "case-insensitive negated Unicode properties aren't supported")
-                            .help("remove ignore-case matching or use a positive Unicode property"),
-                    );
+                if bytes.get(i + 1).is_some_and(|c| matches!(c, b'p' | b'P'))
+                    && flags.contains('i')
+                    && flags.contains('u')
+                {
+                    return Err(Diag::new(span, "case-insensitive Unicode properties aren't supported")
+                        .help("remove ignore-case matching or use an explicit character class"));
+                }
+                if flags.contains('u') && bytes.get(i + 1).is_some_and(|c| matches!(c, b'p' | b'P')) {
+                    let category = pattern[i + 2..]
+                        .strip_prefix('{')
+                        .and_then(|s| s.split_once('}'))
+                        .map(|(name, _)| name);
+                    if !category.is_some_and(|name| REGEX_CATEGORIES.contains(&name)) {
+                        return Err(Diag::new(span, "this Unicode regex property isn't supported")
+                            .help("use a short General_Category alias, such as Lu, Ll or N"));
+                    }
                 }
                 i += 1;
             }
@@ -570,6 +586,15 @@ mod tests {
     fn runtime_contract_is_current() {
         let mut php = String::from(
             "<?php\n\ndeclare(strict_types=1);\n\nnamespace Zero;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n    private const ARITIES = [\n",
+        );
+        let categories = REGEX_CATEGORIES
+            .iter()
+            .map(|name| format!("'{name}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        php = php.replace(
+            "    private const ARITIES",
+            &format!("    public const REGEX_CATEGORIES = [{categories}];\n\n    private const ARITIES"),
         );
         let mut keys = std::collections::HashSet::new();
         for (surface, names, c) in CONTRACTS {

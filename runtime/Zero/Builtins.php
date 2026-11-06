@@ -7,6 +7,8 @@ namespace Zero;
 // Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests
 final class Builtins
 {
+    public const REGEX_CATEGORIES = ['C', 'Cc', 'Cf', 'Cn', 'Co', 'Cs', 'L', 'LC', 'Ll', 'Lm', 'Lo', 'Lt', 'Lu', 'M', 'Mc', 'Me', 'Mn', 'N', 'Nd', 'Nl', 'No', 'P', 'Pc', 'Pd', 'Pe', 'Pf', 'Pi', 'Po', 'Ps', 'S', 'Sc', 'Sk', 'Sm', 'So', 'Z', 'Zl', 'Zp', 'Zs'];
+
     private const ARITIES = [
         'zero.collection' => null,
         'zero.table' => null,

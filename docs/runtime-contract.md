@@ -714,9 +714,14 @@ about capture participation when that body can match empty text.
 Legacy regex braces that do not form JavaScript quantifiers remain literal text;
 Unicode mode refuses those malformed or unmatched braces.
 
-Case-insensitive negated Unicode regex properties (`\P{...}` with `iu`) are
-refused because JavaScript folds the complement while PCRE complements the fold.
-Use a positive Unicode property or remove ignore-case matching.
+Case-insensitive Unicode regex properties (`\p{...}` or `\P{...}` with `iu`) are
+refused because JavaScript and PCRE fold those property sets differently.
+Remove ignore-case matching or use an explicit character class. Without ignore-case,
+property escapes accept the generated contract’s short General_Category aliases
+(such as Lu, Ll and N); other property names are refused. Unicode-mode
+constructors reject malformed hex, Unicode, named-reference and identity escapes;
+trailing backslashes are syntax errors in both modes;
+legacy-mode identity escapes retain their JavaScript literal behavior.
 
 `Math.log` and `Math.exp` accept only IEEE special values and exact identities
 (log(1), exp(0)). Other inputs receive a located literal refusal or a checked

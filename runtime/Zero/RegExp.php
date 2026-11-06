@@ -419,7 +419,8 @@ final class RegExp implements \Stringable
     /** Escape sequence after a backslash. Inside a class, returns a class-body fragment. */
     private function escape(bool $inClass): string
     {
-        $c = $this->src[$this->pos++] ?? '\\';
+        if ($this->pos >= strlen($this->src)) { throw new JsError('Trailing regular expression escape', 'SyntaxError'); }
+        $c = $this->src[$this->pos++];
         if (in_array($c, ['D', 'W', 'S'], true)) {
             $this->requiresUnicodeOnAstral = true;
         }
@@ -434,6 +435,7 @@ final class RegExp implements \Stringable
             case 'b':
                 return $inClass ? '\x{8}' : '(?:(?<=[' . self::WORD . '])(?![' . self::WORD . '])|(?<![' . self::WORD . '])(?=[' . self::WORD . ']))';
             case 'B':
+                if ($this->unicode && $inClass) { throw new JsError('Invalid Unicode class escape', 'SyntaxError'); }
                 return $inClass ? 'B' : '(?:(?<=[' . self::WORD . '])(?=[' . self::WORD . '])|(?<![' . self::WORD . '])(?![' . self::WORD . ']))';
             case 'n': case 'r': case 't': case 'f':
                 return '\\' . $c;
@@ -454,6 +456,7 @@ final class RegExp implements \Stringable
                     return '\x{' . $m[0] . '}';
                 }
 
+                if ($this->unicode) { throw new JsError('Invalid Unicode hex escape', 'SyntaxError'); }
                 return 'x';
             case 'u':
                 return $this->unicodeEscape();
@@ -468,17 +471,22 @@ final class RegExp implements \Stringable
                     return "(?:\\k<{$m[1]}>|(?(<{$m[1]}>)(?!)))";
                 }
 
+                if ($this->unicode) { throw new JsError('Invalid Unicode named reference', 'SyntaxError'); }
                 return 'k';
             case 'p': case 'P':
-                if ($c === 'P' && $this->unicode && str_contains($this->flags, 'i')) {
-                    throw new JsError('Case-insensitive negated Unicode properties are not supported', 'SyntaxError');
+                if ($this->unicode && str_contains($this->flags, 'i')) {
+                    throw new JsError('Case-insensitive Unicode properties are not supported', 'SyntaxError');
                 }
                 if ($this->unicode && preg_match('/\G\{[^}]*\}/A', $this->src, $m, 0, $this->pos)) {
+                    if (!in_array(substr($m[0], 1, -1), Builtins::REGEX_CATEGORIES, true)) {
+                        throw new JsError('This Unicode property is not supported; use a short General_Category alias', 'SyntaxError');
+                    }
                     $this->pos += strlen($m[0]);
 
-                    return '\\' . $c . str_replace('Script=', 'sc=', $m[0]);
+                    return '\\' . $c . $m[0];
                 }
 
+                if ($this->unicode) { throw new JsError('Invalid Unicode property escape', 'SyntaxError'); }
                 return $c;
         }
         if ($c === '0' && !ctype_digit($this->src[$this->pos] ?? '')) {
@@ -516,6 +524,10 @@ final class RegExp implements \Stringable
             return $c; // legacy identity escape
         }
 
+        if ($this->unicode && !str_contains('^$\\.*+?()[]{}|/', $c) && !($inClass && $c === '-')) {
+            throw new JsError('Invalid Unicode identity escape', 'SyntaxError');
+        }
+
         // Punctuation (and any UTF-8 lead byte): keep it literal.
         if (ord($c) >= 0x80) {
             $this->pos--;
@@ -537,6 +549,7 @@ final class RegExp implements \Stringable
             return '\x{' . $m[1] . '}';
         }
         if (!preg_match('/\G[0-9A-Fa-f]{4}/A', $this->src, $m, 0, $this->pos)) {
+            if ($this->unicode) { throw new JsError('Invalid Unicode escape', 'SyntaxError'); }
             return 'u';
         }
         $this->pos += 4;

@@ -774,5 +774,11 @@
     "declarations": "class ParityOptionalArity {constructor(x?:number|null){} read(x?:number|null){return x===undefined;} static read(x?:number|null){return x===undefined;}} class ParityNullableDefault {constructor(x:number|null=null){} read(x:number|null=null){return x===null;}}",
     "expression": "[new ParityOptionalArity() instanceof ParityOptionalArity,new ParityOptionalArity(null).read(),ParityOptionalArity.read(),new ParityNullableDefault().read()]",
     "fold": false
+  },
+  {
+    "name": "unicodeEscapeErrors",
+    "expression": "[ ['\\\\x','\\\\u','\\\\u{','\\\\q','\\\\-','[\\\\B]','\\\\p','\\\\k','\\\\é','\\\\p{Xan}','\\\\p{Yi}','\\\\p{L&}'].map(pattern=>{try{return new RegExp(pattern,'u').test('x');}catch(e){return e.name;}}), ['\\\\x','\\\\u','\\\\q','\\\\-','[\\\\B]','\\\\p','\\\\k'].map(pattern=>new RegExp(pattern).test('xuq-Bpk')), [['Lu','A'],['Ll','a'],['N','9'],['LC','A'],['Zs',' ']].map(pair=>new RegExp('\\\\p{'+pair[0]+'}','u').test(pair[1])), ['', 'u'].map(flags=>{try{new RegExp('\\\\',flags);return 'accepted';}catch(e){return e.name;}}) ]",
+    "javascript": true,
+    "fold": false
   }
 ]

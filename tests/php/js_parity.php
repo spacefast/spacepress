@@ -441,6 +441,8 @@ $deviations = array_merge($deviations, [
     ['space-separated Date extension is refused', fn () => Js::date('2000-01-01 24:00:00.0001Z'), ['$err' => 'RangeError']],
     ['compact Date offset extension is refused', fn () => Js::date('2000-01-01T00:00:00+0100'), ['$err' => 'RangeError']],
     ['partial Date with time is refused', fn () => Js::date('2000T00:00:00Z'), ['$err' => 'RangeError']],
+    ['nullable repeated noncapturing groups are refused', fn () => Js::replace('b', Js::re('(?:a*|b)*', ''), 'X'), ['$err' => 'SyntaxError']],
+    ['nullable optional noncapturing groups are refused', fn () => Js::replace('b', Js::re('(?:a*|b)?', ''), 'X'), ['$err' => 'SyntaxError']],
     ['Unicode category version differences are refused', fn () => Js::re('\\p{Lu}', 'u')->test('Ᲊ'), ['$err' => 'SyntaxError']],
     ['Unicode class properties are refused', fn () => Js::re('[\\P{Ll}]', 'u'), ['$err' => 'SyntaxError']],
     ['case-insensitive positive Unicode properties are refused', fn () => Js::re('\\p{Lu}', 'iu'), ['$err' => 'SyntaxError']],

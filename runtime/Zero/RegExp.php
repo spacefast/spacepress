@@ -332,15 +332,21 @@ final class RegExp implements \Stringable
                 }
                 if ($captures > $before && ($source[$i + 1] ?? '') === '?') {
                     $body = substr($source, $start + 1, $i - $start - 1);
-                    if (!$this->optionalCaptureBody($body)) {
+                    if (!$this->consumingGroupBody($body)) {
                         throw new JsError('Optional regex groups containing captures must have a nonempty body', 'SyntaxError');
+                    }
+                }
+                if ($captures === $before && in_array($source[$i + 1] ?? '', ['*', '+', '?', '{'], true)) {
+                    $body = substr($source, $start + 1, $i - $start - 1);
+                    if (!$this->consumingGroupBody($body)) {
+                        throw new JsError('Quantified regex groups must have a provably nonempty body', 'SyntaxError');
                     }
                 }
             }
         }
     }
 
-    private function optionalCaptureBody(string $body): bool
+    private function consumingGroupBody(string $body): bool
     {
         if (str_starts_with($body, '?<')) { $body = substr($body, strpos($body, '>') + 1); }
         elseif (str_starts_with($body, '?:')) { $body = substr($body, 2); }

@@ -399,7 +399,7 @@ pub fn check(surface: &str, name: &str, count: usize, phase: Phase, span: Span) 
     Err(Diag::new(span, message).help(format!("accepted contract: {}", c.overload)))
 }
 
-fn optional_capture_body(body: &str) -> bool {
+fn consuming_group_body(body: &str) -> bool {
     let body = if let Some(named) = body.strip_prefix("?<") {
         let Some((_, body)) = named.split_once('>') else {
             return false;
@@ -549,25 +549,34 @@ pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
                 }
             }
             b')' if !in_class => {
-                if let Some((before, start)) = stack.pop()
-                    && captures > before
-                {
-                    if pattern[start + 1..].starts_with("?<=") || pattern[start + 1..].starts_with("?<!") {
-                        return Err(Diag::new(span, "capturing lookbehind isn't supported")
-                            .help("use noncapturing lookbehind or match the prefix outside the assertion"));
-                    }
-                    if bytes.get(i + 1).is_some_and(|b| matches!(b, b'*' | b'+' | b'{')) {
-                        return Err(
-                            Diag::new(span, "repeated regex groups containing captures aren't supported")
-                                .help("remove the capture or repeat the captured text outside the group"),
-                        );
-                    }
-                    if bytes.get(i + 1) == Some(&b'?') && !optional_capture_body(&pattern[start + 1..i]) {
-                        return Err(Diag::new(
-                            span,
-                            "optional regex groups containing captures must have a nonempty body",
-                        )
-                        .help("remove the optional group or require a nonempty capture"));
+                if let Some((before, start)) = stack.pop() {
+                    if captures == before {
+                        if bytes.get(i + 1).is_some_and(|b| matches!(b, b'*' | b'+' | b'?' | b'{'))
+                            && !consuming_group_body(&pattern[start + 1..i])
+                        {
+                            return Err(
+                                Diag::new(span, "quantified regex groups must have a provably nonempty body")
+                                    .help("make each group iteration consume a character or remove its quantifier"),
+                            );
+                        }
+                    } else {
+                        if pattern[start + 1..].starts_with("?<=") || pattern[start + 1..].starts_with("?<!") {
+                            return Err(Diag::new(span, "capturing lookbehind isn't supported")
+                                .help("use noncapturing lookbehind or match the prefix outside the assertion"));
+                        }
+                        if bytes.get(i + 1).is_some_and(|b| matches!(b, b'*' | b'+' | b'{')) {
+                            return Err(
+                                Diag::new(span, "repeated regex groups containing captures aren't supported")
+                                    .help("remove the capture or repeat the captured text outside the group"),
+                            );
+                        }
+                        if bytes.get(i + 1) == Some(&b'?') && !consuming_group_body(&pattern[start + 1..i]) {
+                            return Err(Diag::new(
+                                span,
+                                "optional regex groups containing captures must have a nonempty body",
+                            )
+                            .help("remove the optional group or require a nonempty capture"));
+                        }
                     }
                 }
             }

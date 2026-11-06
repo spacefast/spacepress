@@ -709,7 +709,9 @@ Configuration object reads preserve absent own values as undefined and refuse
 inherited prototype properties; use `Object.hasOwn` before reading those names. Noncanonical array index strings
 and ambiguous regex class delimiters are refused during evaluation. Optional
 regex groups containing captures require a nonempty body; the engines disagree
-about capture participation when that body can match empty text.
+about capture participation when that body can match empty text. Noncapturing
+groups with any quantifier also require a provably nonempty body; JavaScript and
+PCRE choose different alternatives when a group iteration can match empty text.
 
 Legacy regex braces that do not form JavaScript quantifiers remain literal text;
 Unicode mode refuses those malformed or unmatched braces.

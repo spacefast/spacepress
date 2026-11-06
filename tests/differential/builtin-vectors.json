@@ -810,5 +810,10 @@
     "name": "constructedUnicodeClosingBracket",
     "expression": "['u',''].map(flags=>{try{return new RegExp(']',flags).test(']');}catch(e){return e.name;}})",
     "fold": false
+  },
+  {
+    "name": "consumingNoncapturingQuantifiers",
+    "expression": "['baba'.replace(/(?:a|b)*/g,'X'),'abc'.replace(/(?:a|b)+/g,'X'),'bc'.replace(/(?:a|b)?/g,'X'),'baba'.replace(/(?:a|b){2}/g,'X')]",
+    "fold": true
   }
 ]

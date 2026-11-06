@@ -16,7 +16,7 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/auth/schema.json'), true, 512, JSON_THROW_ON_ERROR);
-$wp = wpSite('auth', ['schema' => $schema, 'functions' => '']);
+$wp = wpSite('auth', ['schema' => $schema, 'functions' => '', 'identity' => true]);
 $app = $wp->app();
 $db = $app->db;
 
@@ -126,4 +126,5 @@ $gone = $db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone'
 $db->delete('members', ['id' => $gone['id']]);
 eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id']), $db->findFirst('members', ['where' => ['id' => $gone['id']]])], [false, null]);
 
+require dirname(__DIR__) . '/identity/native-auth-storage.php';
 finish('auth_test');

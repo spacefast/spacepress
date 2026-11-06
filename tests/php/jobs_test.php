@@ -292,4 +292,33 @@ putenv('ZERO_NOW=' . $at(7 * 86400 + 360, 1));
 $left = (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__receipts');
 eq('receipts older than 7 days are swept', [Runner::maintain()['swept'], (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}zero__receipts')], [$left, 0]);
 
+// Sweep more than a keyset page, including work committed while dispatch is in flight.
+$seedTicket = static function (int $n) use ($wp, $pid, $at): string {
+    $id = sprintf('10000000-0000-4000-8000-%012d', $n);
+    $wp->exec('INSERT INTO {prefix}zero__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), 'pending', $at(0), $at(0)]);
+    $wp->exec('INSERT INTO {prefix}zero__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $at(0), $at(0)]);
+    return $id;
+};
+$expectedTickets = [];
+for ($i = 1; $i <= 105; $i++) { $expectedTickets[] = $seedTicket($i); }
+$originalQueue = \Zero\Jobs\Outbox::queue();
+$queue = new class($seedTicket) implements \Zero\Jobs\Queue {
+    public array $deliveries = [];
+    public function __construct(private \Closure $seed) {}
+    public function schedule(string $id, string $runAtIso): void
+    {
+        if ($this->deliveries === []) { ($this->seed)(106); }
+        $this->deliveries[$id] = $runAtIso;
+    }
+};
+\Zero\Jobs\Outbox::useQueue($queue);
+try {
+    eq('keyset sweep dispatches every page and later committed work', \Zero\Jobs\Outbox::dispatch(), 106);
+    $expectedTickets[] = sprintf('10000000-0000-4000-8000-%012d', 106);
+    eq('each swept ticket reaches the queue with its schedule', $queue->deliveries, array_fill_keys($expectedTickets, $at(0)));
+    eq('multi-page sweep leaves no outstanding tickets', $outbox(), 0);
+} finally {
+    \Zero\Jobs\Outbox::useQueue($originalQueue);
+}
+
 finish('jobs');

@@ -8,17 +8,33 @@ final class Plugin
 {
     /** Equal to the zero-runtime version built alongside it (`Runtime::identity()` compares them). */
     public const VERSION = "0.3.0";
+    private static ?\WP_Error $authenticationError = null;
     public static DB $db;
     public static Accounts $accounts;
     public static Sessions $sessions;
     public static Security $security;
     public static Api $api;
+    public static function authenticationError(): ?\WP_Error
+    {
+        $application = $GLOBALS["wp_rest_application_password_status"] ?? null;
+        return self::$authenticationError ?? (is_wp_error($application) && $application->get_error_code() === "storage_unavailable" ? $application : null);
+    }
+    private static function refusal(Failure $error): \WP_Error
+    {
+        return new \WP_Error($error->kind, $error->getMessage(), ["status" => $error->status]);
+    }
     public static function boot(string $file): void
     {
         global $wpdb;
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
+        add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        add_filter('cron_schedules', static function (array $schedules): array {
+            $schedules['zero_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
+            return $schedules;
+        });
+        add_action('zero_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,
@@ -92,7 +108,7 @@ final class Plugin
                 try {
                     $uid = self::$accounts->owner($login);
                 } catch (Failure $e) {
-                    return $user;
+                    return self::refusal($e);
                 }
                 $account = $uid ? get_userdata($uid) : false;
                 return $account
@@ -110,12 +126,16 @@ final class Plugin
             "authenticate",
             static function ($user) {
                 if ($user instanceof \WP_User) {
-                    $row = self::$db->row(
-                        "SELECT status FROM " .
-                            self::$db->prefix .
-                            "accounts WHERE wp_user_id=%d",
-                        $user->ID,
-                    );
+                    try {
+                        $row = self::$db->row(
+                            "SELECT status FROM " .
+                                self::$db->prefix .
+                                "accounts WHERE wp_user_id=%d",
+                            $user->ID,
+                        );
+                    } catch (Failure $e) {
+                        return self::refusal($e);
+                    }
                     if ($row && $row["status"] !== "active") {
                         return new \WP_Error(
                             "account_unavailable",
@@ -130,21 +150,34 @@ final class Plugin
         add_filter(
             "wp_authenticate_user",
             static function ($user) {
-                if (
-                    $user instanceof \WP_User &&
-                    (new Mfa(self::$db, self::$security))->enabled(
-                        (int) $user->ID,
-                    )
-                ) {
-                    return new \WP_Error(
-                        "identity_mfa_required",
-                        "Use the Identity sign-in page to complete multifactor authentication.",
-                    );
+                try {
+                    if (
+                        $user instanceof \WP_User &&
+                        (new Mfa(self::$db, self::$security))->enabled(
+                            (int) $user->ID,
+                        )
+                    ) {
+                        return new \WP_Error(
+                            "identity_mfa_required",
+                            "Use the Identity sign-in page to complete multifactor authentication.",
+                        );
+                    }
+                    return $user;
+                } catch (Failure $e) {
+                    return self::refusal($e);
                 }
-                return $user;
             },
             100,
         );
+        $rememberPassword = static function ($uid): void {
+            $user = get_userdata((int) $uid);
+            if ($user instanceof \WP_User) {
+                Accounts::rememberPasswordHash($user->user_pass);
+            }
+        };
+        add_action("user_register", $rememberPassword);
+        add_action("profile_update", $rememberPassword);
+        add_action("wp_set_password", static fn ($password, $uid) => $rememberPassword($uid), 10, 2);
         // Every WordPress user write inside an identity transaction is recorded, so a rollback
         // (identity's own or its host's) clears what the object cache learned from it.
         $touched = static function ($uid): void {
@@ -184,8 +217,12 @@ final class Plugin
         add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("zero_guest", (array) $user->roles, true)), 10, 2);
         // Application passwords skip the `authenticate` filter; refuse inactive accounts here too.
         add_action("wp_authenticate_application_password_errors", static function ($error, $user) {
-            if ($user instanceof \WP_User && !in_array(self::$accounts->status((int) $user->ID), ["active", "none"], true)) {
-                $error->add("account_unavailable", "This account is unavailable.", ["status" => 403]);
+            try {
+                if ($user instanceof \WP_User && !in_array(self::$accounts->status((int) $user->ID), ["active", "none"], true)) {
+                    $error->add("account_unavailable", "This account is unavailable.", ["status" => 403]);
+                }
+            } catch (Failure $e) {
+                $error->add($e->kind, $e->getMessage(), ["status" => $e->status]);
             }
         }, 10, 2);
         // Core's users controller ignores an error from rest_pre_insert_user on update, so stop
@@ -208,6 +245,24 @@ final class Plugin
         // Access tokens on the REST API (`Authorization: Bearer`), after core's own resolvers.
         add_filter("determine_current_user", [Bearer::class, "resolve"], 20);
         add_filter("rest_authentication_errors", [Bearer::class, "errors"], 20);
+        // Core cookies and application passwords must also pass the live account check.
+        add_filter("determine_current_user", static function ($uid) {
+            self::$authenticationError = null;
+            if (!$uid) {
+                return $uid;
+            }
+            try {
+                if (!in_array(self::$accounts->status((int) $uid), ["active", "none"], true)) {
+                    self::$authenticationError = new \WP_Error("suspended", "This account is suspended.", ["status" => 403]);
+                    return 0;
+                }
+            } catch (Failure $e) {
+                self::$authenticationError = self::refusal($e);
+                return 0;
+            }
+            return $uid;
+        }, PHP_INT_MAX);
+        add_filter("rest_authentication_errors", static fn ($error) => self::authenticationError() ?? $error, 99);
         add_action(
             "zero_identity_maintenance",
             fn() => (new Maintenance(self::$db, self::$security))->run(),

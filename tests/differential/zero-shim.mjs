@@ -23,11 +23,34 @@ export const action = (a) => a;
 export const job = (j) => j;
 // Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
 const receipts = new Map();
+let rollbackOnly = false;
+export const transaction = async (fn) => {
+  const previousReceipts = new Map(receipts), previousPending = new Map(pending);
+  rollbackOnly = false;
+  try {
+    const result = await fn();
+    if (rollbackOnly) throw new Error("Internal server error");
+    return result;
+  } catch (error) {
+    receipts.clear();
+    pending.clear();
+    for (const [key, value] of previousReceipts) receipts.set(key, value);
+    for (const [key, value] of previousPending) pending.set(key, value);
+    throw error;
+  } finally {
+    rollbackOnly = false;
+  }
+};
 export const once = async (key, fn) => {
-  if (receipts.has(key)) return structuredClone(receipts.get(key));
-  const result = (await fn()) ?? null;
-  receipts.set(key, structuredClone(result));
-  return result;
+  try {
+    if (receipts.has(key)) return structuredClone(receipts.get(key));
+    const result = (await fn()) ?? null;
+    receipts.set(key, structuredClone(result));
+    return result;
+  } catch (error) {
+    rollbackOnly = true;
+    throw error;
+  }
 };
 const pending = new Map();
 export const jobs = new Proxy({}, {

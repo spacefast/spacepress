@@ -261,7 +261,11 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Two things are outside that guarantee: an
+back every write of the request. Nested runtime transactions join without
+savepoints. Any failed joined operation marks the outer transaction rollback-only,
+even if an application hook catches its exception. Attempting the outer commit
+rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
+the outer operation fail and retry the complete unit of work. Two things are outside that guarantee: an
 `afterCommit` callback runs after the commit, so its failure propagates without
 undoing the request; and `wp zero migrate` records each DDL statement as it
 succeeds (MySQL DDL commits implicitly), so a later statement's failure leaves
@@ -780,3 +784,47 @@ This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the
 supported runtime. Package source resolution has its own [import contract](config-api.md). Existing documented PHP null/undefined and Unicode string
 semantics are unchanged. Class behavior has its own implementation contract.
+
+## Identity password verification inventory
+
+Normal requests provision a fixed current-algorithm dummy hash and enqueue a
+one-minute WordPress cron event; they never enumerate user password hashes.
+Each background invocation reads at most 1,000 users in ascending `ID` order. An
+option row locked within the database transaction serializes workers. The
+profile map and cursor commit together without publishing uncommitted values to
+the shared option cache, so an interrupted page is retried from
+the previous committed cursor. Password-write hooks merge profiles under the
+same profile-map row lock. Stored profiles contain independent random-password
+hashes, never copies of user credentials.
+
+Before the inventory completes, password sign-in verifies the fixed current
+hash plus the user's own hash (or the fixed hash again for an absent user).
+This keeps login available and prevents an absent account from skipping costly
+verification. Legacy algorithm costs can differ during this initial inventory.
+Once complete, every attempt verifies the full stored algorithm/cost schedule,
+substituting the user's hash in its matching slot. Retaining all profiles gives
+matching verification costs across heterogeneous legacy accounts; checking only
+the most expensive legacy profile would not give that property. Sites disabling
+WP-Cron must run the scheduled event through their external cron or WP-CLI.
+
+Identity password sign-in accepts encodings whose algorithm/cost can be
+reproduced with independent verification material. Unsupported pluggable or
+malformed encodings fail with the same generic refusal after the shared dummy
+schedule; they cannot replace a costly dummy with a fast rejection. Such users
+must reset their password to a supported WordPress encoding to use Identity
+password sign-in. Core WordPress authentication remains owned by WordPress.
+The [operational password ceilings](identity-security.md#password-verification-budgets)
+also apply to imports, both login schedules, and previously stored profiles.
+They cover plain bcrypt and WordPress's `$wp$2y$` SHA-384-prefixed format,
+phpass, SHA-crypt, and PHP Argon2. Over-budget profiles are never generated or
+verified; supported profiles remain even when their last user upgrades.
+
+Legacy importers can detect the registration capability with
+`is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])` and call
+`\Zero\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
+user import. The `zero_identity_password_profiles` option remains an associative
+map from algorithm/cost profile keys to independent random-password hash strings.
+Registration merges into that map using the importer's existing database
+transaction. Importers must include the option in their rollback cache cleanup.
+The initial inventory's background scheduling does not replace registration for
+imports performed after inventory completion.

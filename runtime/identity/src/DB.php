@@ -32,11 +32,15 @@ final class DB
     }
     public function row(string $sql, mixed ...$args): ?array
     {
-        return $this->wp->get_row($this->sql($sql, ...$args), ARRAY_A);
+        return $this->rows($sql, ...$args)[0] ?? null;
     }
     public function rows(string $sql, mixed ...$args): array
     {
-        return $this->wp->get_results($this->sql($sql, ...$args), ARRAY_A);
+        $result = $this->wp->query($this->sql($sql, ...$args));
+        if ($result === false || $this->wp->last_error !== "") {
+            throw new Failure("storage_unavailable", "Identity storage is unavailable. Please retry.", 503);
+        }
+        return array_map('get_object_vars', $this->wp->last_result);
     }
     public function insert(string $table, array $data): int
     {

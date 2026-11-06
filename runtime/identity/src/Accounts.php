@@ -177,6 +177,222 @@ final class Accounts
             $this->security->event($uid, "email.removed", ["email_id" => $id]);
         });
     }
+    private const DUMMY_PASSWORD_HASH = "zero_identity_dummy_password_hash";
+    private const PASSWORD_PROFILES = "zero_identity_password_profiles";
+
+    private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
+    private const PASSWORD_INVENTORY = "zero_identity_password_inventory";
+    // Operational ceilings, including imported hashes; see docs/identity-security.md.
+    private const MAX_BCRYPT_COST = 15;
+    private const MAX_PHPASS_LOG2 = 16;
+    private const MAX_SHA_CRYPT_ROUNDS = 1_000_000;
+    private const MAX_ARGON_MEMORY_KIB = 131_072;
+    private const MAX_ARGON_TIME = 8;
+    private const MAX_ARGON_THREADS = 2;
+
+    /** Ordinary requests only provision fixed material and enqueue the background inventory. */
+    public static function provisionPasswordHash(): void
+    {
+        $hash = get_option(self::DUMMY_PASSWORD_HASH);
+        if (!is_string($hash) || wp_password_needs_rehash($hash)) {
+            $hash = wp_hash_password(Security::token(48));
+            update_option(self::DUMMY_PASSWORD_HASH, $hash, false);
+        }
+        if (get_option(self::PASSWORD_PROFILES) === false) {
+            self::initializePasswordOption(self::PASSWORD_PROFILES, [self::passwordProfile($hash) => $hash]);
+        }
+        self::rememberPasswordHash($hash);
+        if (get_option(self::PASSWORD_INVENTORY) === false) {
+            self::initializePasswordOption(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false]);
+        }
+        if (!get_option(self::PASSWORD_INVENTORY)['complete'] && !wp_next_scheduled(self::PASSWORD_INVENTORY)) {
+            wp_schedule_event(time() + 60, 'zero_identity_minute', self::PASSWORD_INVENTORY);
+        }
+    }
+
+    /** A locked option row serializes workers/writers; the cursor and profiles commit together. */
+    public static function inventoryPasswordHashes(): void
+    {
+        if (get_option(self::PASSWORD_INVENTORY)['complete']) {
+            wp_clear_scheduled_hook(self::PASSWORD_INVENTORY);
+            return;
+        }
+        try {
+            Plugin::$db->transaction(static function (): void {
+                global $wpdb;
+                $state = self::lockedPasswordOption(self::PASSWORD_INVENTORY);
+                if ($state['complete']) {
+                    return;
+                }
+                $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
+                $previousProfiles = $profiles;
+                $page = Plugin::$db->rows("SELECT ID,user_pass FROM {$wpdb->users} WHERE ID > %d ORDER BY ID LIMIT 1000", $state['after']);
+                foreach ($page as $row) {
+                    $profile = self::passwordProfile($row['user_pass']);
+                    if ($profile !== self::UNSUPPORTED_PASSWORD_PROFILE && !isset($profiles[$profile])) {
+                        $dummy = self::dummyPasswordHash($row['user_pass']);
+                        if (self::passwordProfile($dummy) === $profile) {
+                            $profiles[$profile] = $dummy;
+                        }
+                    }
+                    $state['after'] = (int) $row['ID'];
+                }
+                $state['complete'] = count($page) < 1000;
+                if ($profiles !== $previousProfiles) {
+                    self::writePasswordOption(self::PASSWORD_PROFILES, $profiles);
+                }
+                self::writePasswordOption(self::PASSWORD_INVENTORY, $state);
+            });
+        } finally {
+            // A rollback (including a failed page commit) must discard uncommitted cached options.
+            wp_cache_delete(self::PASSWORD_PROFILES, 'options');
+            wp_cache_delete(self::PASSWORD_INVENTORY, 'options');
+        }
+    }
+
+    /** Do not publish uncommitted state through update_option's shared-cache writes. */
+    private static function writePasswordOption(string $name, array $value): void
+    {
+        global $wpdb;
+        Plugin::$db->run("UPDATE {$wpdb->options} SET option_value=%s WHERE option_name=%s", serialize($value), $name);
+    }
+
+    /** WordPress add_option can overwrite a row inserted after its existence check. */
+    private static function initializePasswordOption(string $name, array $value): void
+    {
+        global $wpdb;
+        Plugin::$db->run("INSERT INTO {$wpdb->options} (option_name,option_value,autoload) VALUES (%s,%s,'off') ON DUPLICATE KEY UPDATE option_name=VALUES(option_name)", $name, serialize($value));
+        wp_cache_delete($name, 'options');
+        wp_cache_delete('notoptions', 'options');
+    }
+
+    /** Read from storage after acquiring the row lock, never from a pre-lock option cache. */
+    private static function lockedPasswordOption(string $name): array
+    {
+        global $wpdb;
+        // SQLite has no row-level SELECT FOR UPDATE; take its write lock before reading too.
+        Plugin::$db->run("UPDATE {$wpdb->options} SET option_value=option_value WHERE option_name=%s", $name);
+        $row = Plugin::$db->row("SELECT option_value FROM {$wpdb->options} WHERE option_name=%s FOR UPDATE", $name);
+        wp_cache_delete($name, 'options');
+        return $row === null ? [] : unserialize($row['option_value'], ['allowed_classes' => false]);
+    }
+
+    /** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
+    public static function rememberPasswordHash(string $hash): void
+    {
+        $profile = self::passwordProfile($hash);
+        if ($profile === self::UNSUPPORTED_PASSWORD_PROFILE) {
+            return;
+        }
+        $profiles = get_option(self::PASSWORD_PROFILES, []);
+        if (!isset($profiles[$profile])) {
+            try {
+                Plugin::$db->transaction(static function () use ($profile, $hash): void {
+                    // Importers may register before plugins_loaded provisions the options.
+                    self::initializePasswordOption(self::PASSWORD_PROFILES, []);
+                    $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
+                    if (isset($profiles[$profile])) {
+                        return;
+                    }
+                    $dummy = self::dummyPasswordHash($hash);
+                    if (self::passwordProfile($dummy) !== $profile) {
+                        return;
+                    }
+                    $profiles[$profile] = $dummy;
+                    self::writePasswordOption(self::PASSWORD_PROFILES, $profiles);
+                });
+            } finally {
+                wp_cache_delete(self::PASSWORD_PROFILES, 'options');
+                wp_cache_delete('notoptions', 'options');
+            }
+        }
+    }
+
+    private static function passwordProfile(string $hash): string
+    {
+        if (strlen($hash) <= 32) {
+            return 'md5';
+        }
+        if (str_starts_with($hash, '$P$')) {
+            if (!preg_match('/^\$P\$[.\/A-Za-z0-9]{31}$/D', $hash)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            $cost = strpos('./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', $hash[3]);
+            return $cost >= 7 && $cost <= self::MAX_PHPASS_LOG2 ? substr($hash, 0, 4) : self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        $prefixed = str_starts_with($hash, '$wp');
+        $encoded = $prefixed ? substr($hash, 3) : $hash;
+        if (str_starts_with($encoded, '$2')) {
+            // password_get_info accepts broken bcrypt strings; require canonical encoding first.
+            if (!preg_match('/^\$2[abxy]\$(\d{2})\$[.\/A-Za-z0-9]{21}[.Oeu][.\/A-Za-z0-9]{30}[.CGKOSWaeimquy26]$/D', $encoded, $match)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            return (int) $match[1] >= 4 && (int) $match[1] <= self::MAX_BCRYPT_COST
+                ? json_encode([$prefixed, 'bcrypt', ['cost' => (int) $match[1]]])
+                : self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        if (str_starts_with($encoded, '$5$') || str_starts_with($encoded, '$6$')) {
+            if (!preg_match('/^\$([56])\$(?:rounds=([1-9][0-9]*)\$)?[.\/A-Za-z0-9]{0,16}\$([.\/A-Za-z0-9]+)$/D', $encoded, $match)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            $rounds = $match[2] === '' ? 5000 : (int) $match[2];
+            if ($rounds < 1000 || $rounds > self::MAX_SHA_CRYPT_ROUNDS || strlen($match[3]) !== ($match[1] === '5' ? 43 : 86)) {
+                return self::UNSUPPORTED_PASSWORD_PROFILE;
+            }
+            return json_encode([$prefixed, 'sha-crypt-' . $match[1], ['rounds' => $rounds]]);
+        }
+        if (str_starts_with($encoded, '$1$')) {
+            return preg_match('/^\$1\$[.\/A-Za-z0-9]{0,8}\$[.\/A-Za-z0-9]{22}$/D', $encoded)
+                ? json_encode([$prefixed, 'md5-crypt'])
+                : self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        // PHP's Argon encoder emits v19, a 16-byte salt and a 32-byte digest.
+        if (!preg_match('/^\$(argon2i|argon2id)\$v=19\$m=([1-9][0-9]*),t=([1-9][0-9]*),p=([1-9][0-9]*)\$([A-Za-z0-9+\/]+)\$([A-Za-z0-9+\/]+)$/D', $encoded, $match)) {
+            return self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        $salt = base64_decode($match[5], true);
+        $digest = base64_decode($match[6], true);
+        if ($salt === false || strlen($salt) !== 16 || rtrim(base64_encode($salt), '=') !== $match[5]
+            || $digest === false || strlen($digest) !== 32 || rtrim(base64_encode($digest), '=') !== $match[6]
+            || (int) $match[4] < 1 || (int) $match[4] > self::MAX_ARGON_THREADS
+            || (int) $match[2] < 8 * (int) $match[4] || (int) $match[2] > self::MAX_ARGON_MEMORY_KIB
+            || (int) $match[3] < 1 || (int) $match[3] > self::MAX_ARGON_TIME) {
+            return self::UNSUPPORTED_PASSWORD_PROFILE;
+        }
+        $info = password_get_info($encoded);
+        return $info['algo'] === null
+            ? self::UNSUPPORTED_PASSWORD_PROFILE
+            : json_encode([$prefixed, $info['algoName'], $info['options']]);
+    }
+
+    /** Generate independent verification material; never retain a user's credential hash. */
+    private static function dummyPasswordHash(string $hash): string
+    {
+        $password = Security::token(48);
+        if (strlen($hash) <= 32) {
+            return md5($password);
+        }
+        if (str_starts_with($hash, '$P$') && strlen($hash) === 34) {
+            require_once ABSPATH . WPINC . '/class-phpass.php';
+            return (new \PasswordHash(8, true))->crypt_private($password, $hash);
+        }
+        $prefixed = str_starts_with($hash, '$wp');
+        $encoded = $prefixed ? substr($hash, 3) : $hash;
+        if ($prefixed) {
+            $password = base64_encode(hash_hmac('sha384', $password, 'wp-sha384', true));
+        }
+        $info = password_get_info($encoded);
+        try {
+            $dummy = $info['algo'] === null ? crypt($password, $encoded) : password_hash($password, $info['algo'], $info['options']);
+        } catch (\ValueError) {
+            return ''; // Unencodable profiles cannot enter or replace a verification slot.
+        }
+        if (strlen($dummy) <= 2) {
+            return '';
+        }
+        return ($prefixed ? '$wp' : '') . $dummy;
+    }
+
     public function password(string $login, string $password): int
     {
         $uid = is_email($login) ? $this->owner($login) : 0;
@@ -185,10 +401,34 @@ final class Accounts
             : (is_email($login)
                 ? get_user_by("email", $login)
                 : get_user_by("login", $login));
-        if (
-            !$user ||
-            !wp_check_password($password, $user->user_pass, $user->ID)
-        ) {
+        $profile = $user ? self::passwordProfile($user->user_pass) : null;
+        if ($user) {
+            self::rememberPasswordHash($user->user_pass);
+        }
+        $valid = false;
+        if (!get_option(self::PASSWORD_INVENTORY)['complete']) {
+            // While the inventory is incomplete, every attempt still pays current-algorithm work.
+            $dummy = get_option(self::DUMMY_PASSWORD_HASH);
+            wp_check_password($password, $dummy, 0);
+            $supported = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE;
+            $checked = wp_check_password($password, $supported ? $user->user_pass : $dummy, $supported ? $user->ID : 0);
+            $valid = $supported && $checked;
+        } else {
+            // Complete inventories give every sign-in the same algorithm/cost schedule.
+            foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
+                $dummyProfile = self::passwordProfile($dummy);
+                // Old inventory options must not replay costs rejected by the current policy.
+                if ($dummyProfile === self::UNSUPPORTED_PASSWORD_PROFILE) {
+                    continue;
+                }
+                $actual = $user && $profile !== self::UNSUPPORTED_PASSWORD_PROFILE && $profile === $kind && $dummyProfile === $profile;
+                $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
+                if ($actual) {
+                    $valid = $checked;
+                }
+            }
+        }
+        if (!$user || !$valid) {
             throw new Failure(
                 "invalid_credentials",
                 "The sign-in details are incorrect.",

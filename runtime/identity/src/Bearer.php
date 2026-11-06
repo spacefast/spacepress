@@ -21,6 +21,8 @@ final class Bearer
 
     public static function resolve(mixed $userId): mixed
     {
+        self::$token = null;
+        self::$failure = null;
         $raw = self::header();
         // An application password (core, priority 20 before us) wins; a logged-in WordPress cookie
         // doesn't: REST discards a cookie user without a nonce, and an explicit Bearer is the
@@ -31,18 +33,23 @@ final class Bearer
         if ($raw === null) {
             return $userId;
         }
-        $token = (new OAuth(Plugin::$db, Plugin::$accounts))->access($raw);
-        if ($token === null) {
-            $claims = Keys::verify($raw, true);
-            $status = $claims !== null && is_string($claims["sub"] ?? null) && ctype_digit($claims["sub"])
-                ? Plugin::$accounts->status((int) $claims["sub"])
-                : "none";
-            self::$failure = in_array($status, ["suspended", "deletion_requested", "deleted"], true) ? "suspended" : "invalid_token";
-            return $userId;
+        try {
+            $token = (new OAuth(Plugin::$db, Plugin::$accounts))->access($raw);
+            if ($token === null) {
+                $claims = Keys::verify($raw, true);
+                $status = $claims !== null && is_string($claims["sub"] ?? null) && ctype_digit($claims["sub"])
+                    ? Plugin::$accounts->status((int) $claims["sub"])
+                    : "none";
+                self::$failure = in_array($status, ["suspended", "deletion_requested", "deleted"], true) ? "suspended" : "invalid_token";
+                return $userId;
+            }
+            self::$failure = null;
+            self::$token = $token;
+            return $token["uid"];
+        } catch (Failure $e) {
+            self::$failure = $e->kind;
+            return 0;
         }
-        self::$failure = null;
-        self::$token = $token;
-        return $token["uid"];
     }
 
     private static function appPassword(): bool
@@ -60,6 +67,9 @@ final class Bearer
         }
         if ($error !== null || self::$failure === null) {
             return $error;
+        }
+        if (self::$failure === "storage_unavailable") {
+            return new \WP_Error("storage_unavailable", "Identity storage is unavailable. Please retry.", ["status" => 503]);
         }
         $suspended = self::$failure === "suspended";
         $wpError = new \WP_Error(

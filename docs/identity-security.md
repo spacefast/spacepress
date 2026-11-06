@@ -6,6 +6,8 @@ The durable account identifier is `wp_users.ID`. The plugin stores normalized ve
 
 Existing WordPress `user_email` is a legacy recovery route. Successful email-code recovery of that address attaches it to its existing WordPress user, and duplicate legacy addresses require administrator resolution. Password checks use WordPress's password verifier. Existing WordPress roles and authored content remain attached to the same ID when the primary email changes.
 
+Password sign-in verifies one fixed hash for every algorithm/cost profile present on the site, substituting the account's own hash only in its matching profile. Missing accounts perform the same schedule. Stored verification hashes encode independent random passwords; user credential hashes are never retained. The current-algorithm dummy is generated once; existing MD5, phpass, imported crypt and PHP password hashes retain their WordPress verification semantics. Profiles are seeded from existing users and recorded on WordPress password writes, and remain after upgrades. Sites with mixed profiles spend more work on every sign-in; this avoids revealing which account still uses a cheaper hash. Generic errors and sign-in rate limits still apply.
+
 Sensitive credential mutations lock account then initiating session and recheck account state, session ownership, expiry, revocation and five-minute reverification. Revocation uses the same lock order. Nested operations use savepoints. One-use challenges expire in five minutes and permit at most five attempts; invitation secrets expire in seven days. Challenge failures are committed independently before credential transactions so failed-attempt counts are not rolled back.
 
 Guests (`zero_guest`, created by the Zero runtime) are ordinary WordPress users without an email. Verifying an email while signed in as a guest attaches it to that user; an address owned by another account never merges into a guest. Passwords, email codes, provider sign-in and passkeys all enter the same MFA gate before creating an identity session. Native WordPress password sign-in is denied for MFA-enabled accounts, directing them to Identity. Authenticator TOTP accepts only the current timestep; reuse is rejected. Recovery codes are high-entropy, hashed and single-use. A primary verified recovery address is required before removing provider/passkey credentials.
@@ -28,6 +30,31 @@ WordPress REST requests with `Authorization: Bearer` run the same live checks as
 An application sign-in is one refresh family. It lives until it is revoked (`/identity/revoke`, RP logout, global revocation, password change, suspension) or its refresh token goes unused for 30 days. The identity session's 24-hour expiry bounds the hosted screens, not the families it started. Refresh tokens and authorization codes are stored as SHA-256 digests. A rotated refresh token is kept with `used_at`/`replaced_by`, so presenting it again is detected as theft and ends the family.
 
 Identity session secrets contain 256 random bits and are stored as domain-separated SHA-256 digests. They do not depend on WordPress salts. WordPress salts protect challenges and encrypted secrets (signing keys, MFA secrets, webhook secrets): **rotating the `SECURE_AUTH` salt makes them unreadable**. Back up salts with the database; fixing this with a sealed root key of the plugin's own is a follow-up.
+
+## Password verification budgets
+
+Identity password profiles have operational ceilings. They apply before dummy
+generation and in both verification schedules; older stored profiles above the
+ceilings are ignored. Above-budget credentials receive the generic sign-in
+refusal and require a password reset. They cannot increase other users' work.
+
+| Encoding | Maximum accepted cost | Basis |
+| --- | --- | --- |
+| Plain bcrypt and WordPress `$wp$2y$` | cost 15 | PHP defaults are 10 on PHP 8.2 and 12 since PHP 8.4. WordPress 6.8+ uses PHP's bcrypt default with SHA-384 pre-hashing and the `$wp` prefix. The ceiling allows eight times the work of cost 12. |
+| Portable phpass `$P$` | encoded exponent 16 (65,536 iterations) | WordPress's `PasswordHash(8, true)` emits exponent 13 (8,192 iterations); the ceiling allows eight times that work. |
+| SHA-256/SHA-512 crypt | 1,000,000 rounds | The crypt default is 5,000 rounds; this permits imported configurations up to 200 times that default. |
+| PHP Argon2i/Argon2id | memory 131,072 KiB (128 MiB), time 8, parallelism 2 | Each parameter is at most twice PHP's defaults: 65,536 KiB, time 4, parallelism 1. WordPress uses these defaults when configured for Argon. |
+
+Plain MD5 and MD5-crypt have no configurable work parameter. All formats must
+also pass encoding validation. Default-cost MD5, phpass and real WordPress 7.1
+`wp_hash_password()` output remain supported, including `$wp$2y$` verification
+with SHA-384 pre-hashing. Custom password settings must stay within these limits.
+
+Supported profiles remain after their last user upgrades or is deleted. This
+keeps the shared verification schedule stable without a second user-table scan
+or profile reference counts. The ceilings bound each profile, not total sign-in
+latency: heterogeneous sites still pay for each distinct supported profile.
+Inventory runs and raw-import registration cannot add an over-budget profile.
 
 ## Browser and protocol boundaries
 

@@ -21,6 +21,7 @@ namespace Zero\Wp;
 final class Connection
 {
     private int $depth = 0;
+    private bool $rollbackOnly = false;
     /** Core writes in flight: editor-save hooks ignore posts Zero itself is writing (§4.9). */
     private int $busy = 0;
     /** @var array<int, true> */
@@ -456,6 +457,9 @@ final class Connection
             $this->depth++;
             try {
                 return $fn();
+            } catch (\Throwable $e) {
+                $this->rollbackOnly = true;
+                throw $e;
             } finally {
                 $this->depth--;
             }
@@ -488,6 +492,10 @@ final class Connection
     /** Commit the outermost transaction, then run its afterCommit callbacks. A failed COMMIT rolls back. */
     public function commit(): void
     {
+        if ($this->rollbackOnly) {
+            $this->rollback();
+            throw new \RuntimeException('Cannot commit: a joined transaction failed');
+        }
         try {
             $this->query('COMMIT');
         } catch (\Throwable $e) {
@@ -587,6 +595,7 @@ final class Connection
 
     private function reset(): void
     {
+        $this->rollbackOnly = false;
         $this->touchedPosts = $this->touchedOptions = [];
         $this->afterCommit = $this->onRollback = [];
     }

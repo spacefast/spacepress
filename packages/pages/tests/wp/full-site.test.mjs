@@ -88,6 +88,17 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   const wp = (...args) => run(['dev', 'wp', project, '--', ...args]);
   const built = await buildPages({ project, out: content });
   assert.deepEqual(built.diagnostics.filter((d) => d.severity === 'error'), []);
+  const pagesPlugin = join(content, 'plugins/zero-pages-fullsite');
+  const pagesTree = async (directory) => {
+    const files = {};
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      files[entry.name] = entry.isDirectory() ? await pagesTree(join(directory, entry.name)) : (await readFile(join(directory, entry.name))).toString('base64');
+    }
+    return files;
+  };
+  const pagesBefore = await pagesTree(pagesPlugin);
+  await run(['build', project]);
+  assert.deepEqual(await pagesTree(pagesPlugin), pagesBefore, 'backend rebuild preserves the real Pages plugin byte for byte');
   await cp(join(content, 'plugins/zero-pages-fullsite'), join(site, 'wp-content/plugins/zero-pages-fullsite'), { recursive: true });
   await wp('plugin', 'activate', 'zero-pages-fullsite');
   await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });

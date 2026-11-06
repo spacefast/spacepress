@@ -26,6 +26,9 @@ final class WpPostStore implements Store
 
     /** @var array<string, Source> */
     private array $sources = [];
+    /** @var array<string, array> Request-local SQL visibility guards. */
+    private array $visibility = [];
+    private int $visibilityGeneration = -1;
 
     /** @var ?array{collection: string, viewer: \Zero\Viewer, password: string} */
     private ?array $readPassword = null;
@@ -66,22 +69,34 @@ final class WpPostStore implements Store
 
     public function readGuards(string $collection, \Zero\Viewer $viewer): array
     {
+        if ($this->visibilityGeneration !== CoreAccess::generation()) {
+            $this->visibility = [];
+            $this->visibilityGeneration = CoreAccess::generation();
+        }
+        $key = serialize([$collection, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null, $this->readPassword]);
+        if (array_key_exists($key, $this->visibility)) {
+            return $this->visibility[$key];
+        }
         $spec = $this->schema->collection($collection);
         $hidden = [];
         $posts = $this->db->run(
             'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND post_password NOT IN (?, ?)',
             [$spec['wp']['postType'], '', '0'],
         );
+        _prime_post_caches(array_map('intval', array_column($posts, 'ID')), false, false);
         foreach ($posts as $row) {
             $id = (int) $row['ID'];
             $post = get_post($id);
-            if ($post instanceof \WP_Post && !$this->passwordAccepted($post, $collection, $viewer)
+            if (!$post instanceof \WP_Post) {
+                throw new HttpError(503, 'storage_unavailable', 'Post storage is unavailable. Please retry.');
+            }
+            if (!$this->passwordAccepted($post, $collection, $viewer)
                 && ($viewer->user === null || !user_can($viewer->user['id'], 'edit_post', $id))) {
                 $hidden[] = $id;
             }
         }
 
-        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
+        return $this->visibility[$key] = $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
     }
 
     /** Native REST's password proof belongs only to its collection and explicit viewer, including nested dispatches. */

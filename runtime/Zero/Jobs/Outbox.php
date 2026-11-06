@@ -32,7 +32,24 @@ final class Outbox
     public static function dispatch(?array $ids = null): int
     {
         // A plain read sees only committed rows, so in-flight transactions' outbox rows never block this.
-        $ids ??= array_column(Storage::run('SELECT "id" FROM {outbox} ORDER BY "createdAt", "id"'), 'id');
+        if ($ids === null) {
+            $cursor = null;
+            $moved = 0;
+            do {
+                $page = Storage::run(
+                    'SELECT "id", "createdAt" FROM {outbox}' . ($cursor === null ? '' : ' WHERE "createdAt" > ? OR ("createdAt" = ? AND "id" > ?)') . ' ORDER BY "createdAt", "id" LIMIT 100',
+                    $cursor === null ? [] : [$cursor['createdAt'], $cursor['createdAt'], $cursor['id']],
+                );
+                if ($page === []) {
+                    break;
+                }
+                // Advance even past a failed dispatch: its ticket waits for the next sweep.
+                $cursor = $page[count($page) - 1];
+                $moved += self::dispatch(array_column($page, 'id'));
+            } while (count($page) === 100);
+
+            return $moved;
+        }
         $moved = 0;
         foreach ($ids as $id) {
             try {

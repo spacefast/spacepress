@@ -37,6 +37,7 @@ final class CoreAccess
     private static ?array $primitives = null;
     /** @var array<string, ?list<int|string>|false> "collection op user" => keys (null = all, false = denied) */
     private static array $keys = [];
+    private static int $generation = 0;
 
     public static function register(): void
     {
@@ -68,6 +69,12 @@ final class CoreAccess
     public static function flush(): void
     {
         self::$keys = [];
+        self::$generation++;
+    }
+
+    public static function generation(): int
+    {
+        return self::$generation;
     }
 
     // ================================================================ capabilities
@@ -199,7 +206,7 @@ final class CoreAccess
      */
     public static function keys(string $collection, string $op, Viewer $viewer): array|null|false
     {
-        $key = $collection . ' ' . $op . ' ' . ($viewer->user['id'] ?? 0) . ' ' . ($viewer->user['role'] ?? '');
+        $key = $collection . ' ' . $op . ' ' . ($viewer->user['id'] ?? 0) . ' ' . ($viewer->user['role'] ?? '') . ' ' . serialize($_COOKIE['wp-postpass_' . COOKIEHASH] ?? null);
         if (!array_key_exists($key, self::$keys)) {
             try {
                 self::$keys[$key] = Plugin::instance()?->db()->permittedKeys($collection, $op, $viewer);
@@ -221,6 +228,9 @@ final class CoreAccess
 
     private static function viewerFor(int $userId): ?Viewer
     {
+        if (IdentityBridge::available() && (\Zero\Identity\Plugin::authenticationError() !== null || \Zero\Identity\Bearer::failure() !== null)) {
+            return null;
+        }
         $user = $userId > 0 ? get_userdata($userId) : false;
         if (!$user instanceof \WP_User) {
             return new Viewer(null);

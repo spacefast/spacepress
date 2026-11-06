@@ -17,17 +17,7 @@ final class WpAuth implements Auth
 {
     public function resolve(array $headers): ?array
     {
-        $user = self::current(); // runs determine_current_user, so a Bearer failure is known below
-        if (IdentityBridge::available()) {
-            // A Bearer token was presented but didn't resolve: an error, not an anonymous request.
-            match (\Zero\Identity\Bearer::failure()) {
-                'suspended' => throw new HttpError(403, 'suspended', 'This account is suspended'),
-                'invalid_token' => throw new HttpError(401, 'unauthenticated', 'The access token is invalid, expired or revoked'),
-                default => null,
-            };
-        }
-
-        return $user;
+        return self::current();
     }
 
     /**
@@ -37,11 +27,26 @@ final class WpAuth implements Auth
     public static function current(): ?array
     {
         $user = wp_get_current_user();
+        if (IdentityBridge::available()) {
+            match (\Zero\Identity\Bearer::failure()) {
+                'storage_unavailable' => throw new HttpError(503, 'storage_unavailable', 'Identity storage is unavailable. Please retry.'),
+                'suspended' => throw new HttpError(403, 'suspended', 'This account is suspended'),
+                'invalid_token' => throw new HttpError(401, 'unauthenticated', 'The access token is invalid, expired or revoked'),
+                default => null,
+            };
+        }
+        if (IdentityBridge::available() && ($error = \Zero\Identity\Plugin::authenticationError()) !== null) {
+            throw new HttpError((int) ($error->get_error_data()['status'] ?? 503), $error->get_error_code(), $error->get_error_message());
+        }
         if (!$user->exists()) {
             return null;
         }
-        if (IdentityBridge::suspended((int) $user->ID)) {
-            throw new HttpError(403, 'suspended', 'This account is suspended');
+        try {
+            if (IdentityBridge::suspended((int) $user->ID)) {
+                throw new HttpError(403, 'suspended', 'This account is suspended');
+            }
+        } catch (\Zero\Identity\Failure $e) {
+            throw new HttpError($e->status, $e->kind, $e->getMessage());
         }
 
         return self::map($user);

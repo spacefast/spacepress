@@ -479,7 +479,8 @@ impl<'p> Evaluator<'p> {
                     for (local, exported) in names {
                         let v = match from {
                             None => match scope.lookup(local) {
-                                Some(b) => b.value,
+                                Some(b) if b.initialized => b.value,
+                                Some(_) => return err(*span, format!("`{local}` isn't initialized")),
                                 None => return err(*span, format!("can't export `{local}`: it isn't defined")),
                             },
                             Some(src) => self.import_value(id, src, local, *span)?,
@@ -563,6 +564,7 @@ impl<'p> Evaluator<'p> {
             scope.vars.borrow_mut().insert(
                 spec.local.clone(),
                 Binding {
+                    initialized: true,
                     value,
                     mutable: false,
                     module_level: true,
@@ -715,6 +717,7 @@ impl<'p> Evaluator<'p> {
                     })
                 );
                 if let Some(init) = init {
+                    hoist(std::slice::from_ref(init), &loop_scope);
                     self.exec(init, &loop_scope)?;
                 }
                 if per_iteration {
@@ -747,7 +750,11 @@ impl<'p> Evaluator<'p> {
                 body,
                 span,
             } => {
-                let mut items = ValueIterator::new(self.eval(iter, scope)?, iter.span)?;
+                let head = Scope::new(Some(scope.clone()), scope.module);
+                if *kind != DeclKind::Var {
+                    predeclare(pat, &head, *kind == DeclKind::Let);
+                }
+                let mut items = ValueIterator::new(self.eval(iter, &head)?, iter.span)?;
                 while let Some(item) = items.next(iter.span)? {
                     self.tick(*span)?;
                     let iter_scope = Scope::new(Some(scope.clone()), scope.module);
@@ -771,7 +778,14 @@ impl<'p> Evaluator<'p> {
                 body,
                 span,
             } => {
-                let source = self.eval(iter, scope)?;
+                let head = Scope::new(Some(scope.clone()), scope.module);
+                if let Some(kind) = kind.filter(|kind| *kind != DeclKind::Var) {
+                    let ExprKind::Ident(name) = &target.kind else {
+                        unreachable!("declared for-in identifier")
+                    };
+                    predeclare(&Pat::Id(name.clone(), target.span), &head, kind == DeclKind::Let);
+                }
+                let source = self.eval(iter, &head)?;
                 let keys = enumerable_keys(&source, iter.span)?;
                 for key in keys {
                     self.tick(*span)?;
@@ -865,6 +879,13 @@ impl<'p> Evaluator<'p> {
 
     fn lookup(&self, name: &str, scope: &Rc<Scope>, span: Span) -> R<Value> {
         if let Some(b) = scope.lookup(name) {
+            if !b.initialized {
+                return err_help(
+                    span,
+                    format!("`{name}` isn't initialized"),
+                    "initialize the lexical binding before reading or assigning it",
+                );
+            }
             return Ok(b.value);
         }
         if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
@@ -893,6 +914,13 @@ impl<'p> Evaluator<'p> {
         let mut s = Some(scope.clone());
         while let Some(sc) = s {
             if let Some(b) = sc.vars.borrow_mut().get_mut(name) {
+                if !b.initialized {
+                    return err_help(
+                        span,
+                        format!("`{name}` isn't initialized"),
+                        "initialize the lexical binding before reading or assigning it",
+                    );
+                }
                 if !b.mutable {
                     return err(span, format!("can't assign to `{name}`: it's a constant"));
                 }
@@ -1518,6 +1546,9 @@ impl<'p> Evaluator<'p> {
                 unreachable!()
             };
             declare(&scope, "arguments", Value::Arguments(arguments), true);
+        }
+        for p in &f.func.params {
+            predeclare(&p.pat, &scope, true);
         }
         let mut args = args.into_iter();
         for p in &f.func.params {
@@ -2350,18 +2381,20 @@ fn zero_export(name: &str, span: Span) -> R<Value> {
     }))
 }
 
-/// Function declarations are visible in their whole block.
+/// Functions are ready immediately; lexical names are reserved until initialized.
 fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
     let module_level = scope.is_module_scope();
     for stmt in body {
-        let f = match stmt {
-            Stmt::Func(f) => f,
-            Stmt::Exported(inner) => match inner.as_ref() {
-                Stmt::Func(f) => f,
-                _ => continue,
-            },
-            _ => continue,
+        let stmt = match stmt {
+            Stmt::Exported(inner) => inner.as_ref(),
+            other => other,
         };
+        if let Stmt::Decl { kind, pat, .. } = stmt
+            && *kind != DeclKind::Var
+        {
+            predeclare(pat, scope, *kind == DeclKind::Let);
+        }
+        let Stmt::Func(f) = stmt else { continue };
         let closure = Value::Closure(Rc::new(Closure {
             func: f.clone(),
             env: scope.clone(),
@@ -2370,6 +2403,7 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
         scope.vars.borrow_mut().insert(
             name,
             Binding {
+                initialized: true,
                 value: closure,
                 mutable: false,
                 module_level,
@@ -2388,6 +2422,7 @@ fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
         for (name, _) in names {
             let mut vars = scope.vars.borrow_mut();
             let b = vars.entry(name.to_string()).or_insert_with(|| Binding {
+                initialized: true,
                 value: Value::Undef,
                 mutable: true,
                 module_level: scope.is_module_scope(),
@@ -2513,11 +2548,21 @@ fn enumerable_keys(value: &Value, span: Span) -> R<Vec<String>> {
     })
 }
 
+fn predeclare(pat: &Pat, scope: &Rc<Scope>, mutable: bool) {
+    let mut names = Vec::new();
+    pat.bindings(&mut names);
+    for (name, _) in names {
+        declare(scope, name, Value::Undef, mutable);
+        scope.vars.borrow_mut().get_mut(name).expect("declared").initialized = false;
+    }
+}
+
 fn declare(scope: &Rc<Scope>, name: &str, value: Value, mutable: bool) {
     let module_level = scope.is_module_scope();
     scope.vars.borrow_mut().insert(
         name.to_string(),
         Binding {
+            initialized: true,
             value,
             mutable,
             module_level,

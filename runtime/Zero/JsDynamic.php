@@ -596,7 +596,8 @@ trait JsDynamic
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
             $text = $message === JsUndefined::Value ? '' : self::str($message);
             $options = $a[1] ?? JsUndefined::Value;
-            if (($options instanceof JsObject || $options instanceof JsArray || $options instanceof JsArguments) && array_key_exists('cause', $options->p)) {
+            if (($options instanceof JsObject || $options instanceof JsArray || $options instanceof JsArguments)
+                && (array_key_exists('cause', $options->p) || $options instanceof JsObject && ($options->class?->hasMethod('cause') ?? false))) {
                 throw new JsError('Error cause is not supported', 'TypeError');
             }
             return new JsError($text, $constructor, $message !== JsUndefined::Value);

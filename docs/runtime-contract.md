@@ -555,6 +555,12 @@ class HttpError extends \Exception {    // `throw new HttpError(404, "not_found"
 }
 ```
 
+Lexical bindings carry initialization state during evaluation and emission.
+Reads and assignments before initialization are refused at source; they never
+fall through to an outer binding. Loop-head bindings shadow outer names while
+for/of/in source expressions run, and parameter defaults cannot read later
+uninitialized parameters. Error options refuse both own and inherited causes.
+
 Switch cases containing lexical declarations or functions require an explicit
 braced body. Unbraced case declarations are refused before either phase can give
 them independent scopes. Checked JavaScript refuses class-method property reads

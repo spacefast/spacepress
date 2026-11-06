@@ -245,6 +245,7 @@ $deviations = [
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
     ['negative zero Date year is refused', fn () => Js::date('-000000-01-01'), ['$err' => 'RangeError']],
+    ['inherited Error cause is refused', function () { $base = new \Zero\JsClass(null, null, static fn ($i) => null, ['cause' => static fn ($i) => null], [], new JsObject()); $class = new \Zero\JsClass($base, null, static fn ($i) => null, [], [], new JsObject()); return Js::dynamicConstruct('Error', new JsArray(['x', $class->construct()])); }, ['$err' => 'TypeError']],
     ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
     ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
     ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],

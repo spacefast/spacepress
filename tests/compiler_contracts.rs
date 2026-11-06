@@ -2010,3 +2010,64 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         );
     }
 }
+
+#[test]
+fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
+    for body in [
+        "const x=7;for(const x of [x])return x;return 0;",
+        "const x='key';for(const x in {[x]:1})return x;return '';",
+        "let x=7;for(let x of [(x=2)])return x;return 0;",
+        "const x=7;for(const x of [()=>x])return x();return 0;",
+        "const x=7;for(let x=x;false;){}return x;",
+        "const x=7;{const y=x;let x=2;return y;}",
+        "let x=7;{x=2;let x=3;return x;}",
+    ] {
+        for handler in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (declaration, result) = if handler {
+                (String::new(), format!("(()=>{{{body}}})()"))
+            } else {
+                (format!("const folded=(()=>{{{body}}})();"), "folded".into())
+            };
+            std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>{result}}})}}}});")).unwrap();
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
+            let diagnostic = &report["diagnostics"][0];
+            let message = if handler {
+                "before its lexical declaration"
+            } else {
+                "isn't initialized"
+            };
+            assert!(diagnostic["message"].as_str().unwrap().contains(message), "{report}");
+            assert!(diagnostic["location"].is_object(), "{report}");
+            assert!(
+                diagnostic["help"].as_str().is_some_and(|help| !help.is_empty()),
+                "{report}"
+            );
+        }
+    }
+}
+
+#[test]
+fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {read} from './helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
+    let content = build_wp(tmp.path());
+    let app = content.join("plugins/zero-app-errorcause/zero/app");
+    let actual = php(
+        r#"
+        require $argv[1];
+        require $argv[2] . '/functions.php';
+        echo \Zero\Js::jsonStringify(\ZeroApp\action__test());
+    "#,
+        &[&content.join("plugins/zero-runtime/zero/bootstrap.php"), &app],
+    );
+    assert_eq!(
+        actual,
+        json!([
+            ["TypeError", "Error cause is not supported"],
+            ["TypeError", "Error cause is not supported"]
+        ])
+    );
+}

@@ -1044,5 +1044,10 @@
     "name": "bracedSwitchCasesPreserveOuterBindings",
     "expression": "(() => {let x='outer';let result='';switch(1){case 1:{let x='inner';result=x;}case 2:result+=x;}return [x,result];})()",
     "fold": true
+  },
+  {
+    "name": "loopSourcesKeepDistinctOuterBindingsAndVarSharing",
+    "expression": "(() => {const values=[7];const keys={key:1};const out=[];for(const item of values)out.push(item);for(const key in keys)out.push(key);var x=8;for(var x of [x])out.push(x);return out;})()",
+    "fold": true
   }
 ]

@@ -100,6 +100,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         env.vars.borrow_mut().insert(
             ":class".into(),
             Binding {
+                initialized: true,
                 value: Value::Class(class.clone()),
                 mutable: false,
                 module_level: false,
@@ -247,6 +248,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         constructing_env.vars.borrow_mut().insert(
             ":constructing".into(),
             Binding {
+                initialized: true,
                 value: Value::Bool(true),
                 mutable: false,
                 module_level: false,

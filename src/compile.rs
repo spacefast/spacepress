@@ -1004,6 +1004,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Resolved::Local(l));
         }
         if let Some(b) = fx.env.lookup(name) {
+            if !b.initialized {
+                return err_help(
+                    span,
+                    format!("`{name}` isn't initialized"),
+                    "initialize the lexical binding before reading or assigning it",
+                );
+            }
             return Ok(Resolved::Value(b.value.clone(), b));
         }
         if let Some(g) = GLOBALS.iter().find(|g| **g == name) {
@@ -1273,6 +1280,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } => {
                 self.fx().scopes.push(HashMap::new());
                 if let Some(init) = init {
+                    if let Stmt::Decl { kind, pat, .. } = init.as_ref()
+                        && *kind != DeclKind::Var
+                    {
+                        self.predeclare_lexical(pat, *kind == DeclKind::Let);
+                    }
                     out.push_str(&self.stmt(init, indent)?);
                 }
                 self.invalidate_loop(*span);
@@ -1334,6 +1346,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 body,
                 span,
             } => {
+                self.fx().scopes.push(HashMap::new());
+                if *kind != DeclKind::Var {
+                    self.predeclare_lexical(pat, *kind == DeclKind::Let);
+                }
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
@@ -1350,7 +1366,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "check it first, or use `?? []`",
                     );
                 }
-                self.fx().scopes.push(HashMap::new());
                 let el = widen_fresh_literals(&el);
                 let mutable = *kind != DeclKind::Const;
                 let source = self.tmp_var();
@@ -1396,10 +1411,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 body,
                 span,
             } => {
+                self.fx().scopes.push(HashMap::new());
+                if let Some(kind) = kind.filter(|kind| *kind != DeclKind::Var) {
+                    let ExprKind::Ident(name) = &target.kind else {
+                        return err(*span, "for-in declarations need a plain name");
+                    };
+                    self.predeclare_lexical(&Pat::Id(name.clone(), target.span), kind == DeclKind::Let);
+                }
                 let value = self.expr(iter)?;
                 let source = self.tmp_var();
                 let index = self.tmp_var();
-                self.fx().scopes.push(HashMap::new());
                 let mut previous = None;
                 let php = if let Some(kind) = kind {
                     let ExprKind::Ident(name) = &target.kind else {
@@ -6179,7 +6200,7 @@ fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()
         return err_help(
             span,
             format!("`{name}` is referenced before its lexical declaration"),
-            "declare the binding before creating a closure that captures it",
+            "initialize the lexical binding before reading it or creating a closure that captures it",
         );
     }
     Ok(())

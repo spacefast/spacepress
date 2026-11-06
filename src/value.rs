@@ -228,6 +228,7 @@ pub struct Scope {
 
 #[derive(Debug, Clone)]
 pub struct Binding {
+    pub initialized: bool,
     pub value: Value,
     pub mutable: bool,
     /// Declared at module top level (vs. inside a build-time function call).

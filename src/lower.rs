@@ -899,6 +899,16 @@ impl Lowerer {
                 span: self.sp(r.span),
             });
         }
+        for (index, parameter) in out.iter().enumerate() {
+            let mut uninitialized = Vec::new();
+            for later in &out[index..] {
+                later.pat.bindings(&mut uninitialized);
+            }
+            if let Some(value) = &parameter.default {
+                check_parameter_default(value, &uninitialized)?;
+            }
+            check_parameter_pattern(&parameter.pat, &uninitialized)?;
+        }
         Ok(out)
     }
 
@@ -1613,4 +1623,98 @@ fn contains_constructor_return(body: &[Stmt]) -> bool {
         Stmt::Switch { cases, .. } => cases.iter().any(|(_, b)| contains_constructor_return(b)),
         _ => false,
     })
+}
+
+fn check_parameter_pattern(pattern: &Pat, uninitialized: &[(&str, Span)]) -> Result<()> {
+    match pattern {
+        Pat::Default(inner, value) => {
+            check_parameter_default(value, uninitialized)?;
+            check_parameter_pattern(inner, uninitialized)?;
+        }
+        Pat::Obj { props, .. } => {
+            for (_, value) in props {
+                check_parameter_pattern(value, uninitialized)?;
+            }
+        }
+        Pat::Arr { elems, .. } => {
+            for value in elems.iter().flatten() {
+                check_parameter_pattern(value, uninitialized)?;
+            }
+        }
+        Pat::Id(..) => {}
+    }
+    Ok(())
+}
+
+fn check_parameter_default(value: &Expr, uninitialized: &[(&str, Span)]) -> Result<()> {
+    let children: Vec<&Expr> = match &value.kind {
+        ExprKind::Func(_) | ExprKind::Class(_) => {
+            return Err(Diag::new(
+                value.span,
+                "parameter defaults that create functions or classes aren't supported",
+            )
+            .help("define the function or class outside the parameter list and pass its name"));
+        }
+        ExprKind::Ident(name) if uninitialized.iter().any(|(binding, _)| *binding == name) => {
+            return Err(Diag::new(
+                value.span,
+                "parameter defaults can't reference the current or a later parameter",
+            )
+            .help("initialize that value in the function body or pass it explicitly"));
+        }
+        ExprKind::Array(values) => values
+            .iter()
+            .map(|v| match v {
+                ArrEl::Item(v) | ArrEl::Spread(v) => v,
+            })
+            .collect(),
+        ExprKind::Object(properties) => {
+            let mut children = Vec::new();
+            for property in properties {
+                match property {
+                    Prop::KV(key, value) => {
+                        if let PropKey::Computed(key) = key {
+                            children.push(key);
+                        }
+                        children.push(value);
+                    }
+                    Prop::Spread(value) => children.push(value),
+                }
+            }
+            children
+        }
+        ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args } => std::iter::once(callee.as_ref())
+            .chain(args.iter().map(|v| match v {
+                ArrEl::Item(v) | ArrEl::Spread(v) => v,
+            }))
+            .collect(),
+        ExprKind::Unary(_, value)
+        | ExprKind::IsNullish(value, _)
+        | ExprKind::Chain(value)
+        | ExprKind::Await(value)
+        | ExprKind::As(value, _)
+        | ExprKind::NonNull(value)
+        | ExprKind::Member { obj: value, .. }
+        | ExprKind::Update { target: value, .. } => vec![value],
+        ExprKind::Binary(_, a, b)
+        | ExprKind::Logical(_, a, b)
+        | ExprKind::Instanceof(a, b)
+        | ExprKind::Index { obj: a, index: b, .. }
+        | ExprKind::Assign {
+            target: a, value: b, ..
+        } => vec![a, b],
+        ExprKind::Cond(a, b, c) => vec![a, b, c],
+        ExprKind::Template(_, values) | ExprKind::Sequence(values) => values.iter().collect(),
+        ExprKind::Ident(_)
+        | ExprKind::Num(_)
+        | ExprKind::Str(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Null
+        | ExprKind::Undefined
+        | ExprKind::Regex { .. } => Vec::new(),
+    };
+    for child in children {
+        check_parameter_default(child, uninitialized)?;
+    }
+    Ok(())
 }

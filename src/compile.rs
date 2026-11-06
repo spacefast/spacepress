@@ -3306,7 +3306,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 AssignOp::Bin(b) => {
                     let mut left = Out::atom(old.clone(), place.read.ty.clone());
                     if let Some(present) = &present {
-                        left.ty = place.constraint.non_null();
                         if place.constraint.non_null().is_num() {
                             left = Out::atom(format!("({present} ? \\Zero\\Js::toNumber({old}) : NAN)"), Ty::Num);
                         }
@@ -3519,7 +3518,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let read_ty = self
                     .path_of(target)
                     .and_then(|path| self.narrowed_path(&path))
-                    .unwrap_or_else(|| if optional { Ty::union([ft, Ty::Undefined]) } else { ft });
+                    .unwrap_or_else(|| {
+                        if optional || matches!(o.ty.non_null(), Ty::Map(_)) {
+                            Ty::union([ft, Ty::Undefined])
+                        } else {
+                            ft
+                        }
+                    });
                 let read = Out::atom(format!("\\Zero\\Js::dataGet({}, {})", o.php, php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
                     constraint,
@@ -4917,7 +4922,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             },
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
-                let f = self.member_of_out(&recv, m, m_span)?;
+                let mut f = self.member_of_out(&recv, m, m_span)?;
+                f.php = format!("\\Zero\\Js::dataMethod({}, {})", recv.php, php_str(m));
                 return self.call_value(f, args, span, m_span);
             }
             other => return err(m_span, format!("{} has no method `{m}`", other.describe())),

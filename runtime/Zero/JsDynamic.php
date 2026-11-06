@@ -244,6 +244,20 @@ trait JsDynamic
         return $function(...$args->a);
     }
 
+    private static function dynamicInvoke(mixed $function, mixed $receiver, JsArray $args): mixed
+    {
+        if ($function instanceof \Closure && self::$dynamicMethodReceivers !== null && isset(self::$dynamicMethodReceivers[$function])) {
+            return (self::$dynamicMethodReceivers[$function])($receiver, $args);
+        }
+        return self::dynamicCall($function, $args);
+    }
+
+    public static function dataMethod(mixed $receiver, mixed $name): \Closure
+    {
+        $method = self::dataGet($receiver, $name);
+        return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+    }
+
     /** Resolve the callee before evaluating arguments, including an own method override. */
     public static function dynamicMethod(mixed $receiver, mixed $name): \Closure
     {
@@ -255,7 +269,7 @@ trait JsDynamic
         };
         if (array_key_exists($name, $properties)) {
             $method = $properties[$name];
-            return static fn (...$args) => self::dynamicCall($method, new JsArray($args));
+            return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
         }
         return static fn (...$args) => self::dynamicCallMethod($receiver, $name, new JsArray($args), true);
     }
@@ -265,8 +279,8 @@ trait JsDynamic
         if (self::isNullish($receiver)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
         $a = $args->a;
         $get = static fn (int $index, mixed $default = JsUndefined::Value): mixed => array_key_exists($index, $a) ? $a[$index] : $default;
-        if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicCall($receiver->p[$name], $args); }
-        if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicCall($receiver->p[$name], $args); }
+        if (!$builtin && $receiver instanceof JsObject && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
+        if (!$builtin && ($receiver instanceof JsArray || $receiver instanceof JsArguments) && array_key_exists($name, $receiver->p)) { return self::dynamicInvoke($receiver->p[$name], $receiver, $args); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -289,8 +303,7 @@ trait JsDynamic
         if ($name === 'valueOf') { return $receiver instanceof JsDate ? $receiver->milliseconds : $receiver; }
         if ($receiver instanceof \Closure && ($name === 'call' || $name === 'apply')) {
             $values = $name === 'call' ? array_slice($a, 1) : self::dynamicApplyArguments($get(1));
-            if (self::$dynamicMethodReceivers !== null && isset(self::$dynamicMethodReceivers[$receiver])) { return (self::$dynamicMethodReceivers[$receiver])($get(0), new JsArray($values)); }
-            return self::dynamicCall($receiver, new JsArray($values));
+            return self::dynamicInvoke($receiver, $get(0), new JsArray($values));
         }
         if ($receiver instanceof JsDate) {
             return match ($name) {
@@ -618,7 +631,7 @@ trait JsDynamic
             foreach ($hint === 'string' ? ['toString', 'valueOf'] : ['valueOf', 'toString'] as $method) {
                 if (array_key_exists($method, $value->p)) {
                     if (!$value->p[$method] instanceof \Closure) { continue; }
-                    $result = self::dynamicCall($value->p[$method], new JsArray());
+                    $result = self::dynamicInvoke($value->p[$method], $value, new JsArray());
                 } else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
                 if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
             }

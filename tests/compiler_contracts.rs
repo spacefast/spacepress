@@ -1792,3 +1792,60 @@ process.stdout.write(JSON.stringify(methods));
         );
     }
 }
+
+#[test]
+fn parameter_default_scope_limits_are_located_refusals() {
+    for source in [
+        "const x=1;function f(a=()=>x){var x=2;return a();}f();",
+        "const b=7;function f(a=b,b=1){return [a,b];}f();",
+        "const a=7;function f(a=a){return a;}f();",
+        "const x=1;function f({a=()=>x}={}){var x=2;return a();}f();",
+    ] {
+        for javascript in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let body = if javascript {
+                std::fs::write(
+                    tmp.path().join("helper.js"),
+                    format!("export function probe(){{{source}return 0;}}"),
+                )
+                .unwrap();
+                "import {probe} from './helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+            } else {
+                format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
+            };
+            std::fs::write(
+                tmp.path().join("zero.config.ts"),
+                format!("import {{action,defineConfig}} from 'zero';{body}"),
+            )
+            .unwrap();
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+            let diagnostic = &report["diagnostics"][0];
+            assert!(
+                diagnostic["message"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("parameter defaults"),
+                "{report}"
+            );
+            assert!(diagnostic["location"].is_object(), "{report}");
+            assert!(diagnostic["help"].as_str().unwrap().contains("pass"), "{report}");
+        }
+    }
+}
+
+#[test]
+fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
+    for access in ["o.x", "o['x']"] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{const o:Record<string,string>={{}};const v=({access}+=1);return [String(v),`${{v}}`];}}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains("ambiguous"),
+            "{report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{report}");
+    }
+}

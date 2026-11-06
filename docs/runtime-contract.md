@@ -798,6 +798,12 @@ unmodeled Object prototype property, the read refuses before type-based optimiza
 can consume it. Member/index reads, destructuring, method fields and assignment reads
 share this boundary. Checked JavaScript retains inherited method lookup.
 
+Stored builtin method handles retain the property receiver for typed and checked JavaScript
+calls and primitive conversion. Missing typed compound reads retain undefined; ambiguous
+string/numeric additions refuse instead of fabricating a string result type.
+Parameter defaults may reference earlier parameters. Defaults creating functions/classes or
+referencing the current/later parameter refuse at source, including nested destructuring defaults.
+
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 
 RegExp:

@@ -8,7 +8,7 @@ namespace Zero;
  * JavaScript semantics in PHP. See docs/runtime-contract.md ("class Js").
  *
  * Strings use UTF-8 storage and UTF-16 indexes. Arrays and objects retain handle
- * identity; explicit undefined has a sentinel (typed missing reads may be null).
+ * identity; explicit undefined has a sentinel.
  */
 final class Js
 {
@@ -1052,8 +1052,7 @@ final class Js
 
             return $all === [] ? null : new JsArray($all);
         }
-        $m = $re->execMatch($s);
-        return $m === null ? null : new JsArray([substr($s, $m[0], $m[1] - $m[0]), ...array_map(static fn ($v) => $v ?? JsUndefined::Value, $m[2])]);
+        return self::dynamicRegExpExec($re, $s);
     }
 
     // ---------------------------------------------------------------- regexp
@@ -1519,7 +1518,7 @@ final class Js
     public static function hasOwn(JsObject|JsArray $o, mixed $key): bool
     {
         $key = self::key($key);
-        if ($o instanceof JsObject) { return array_key_exists($key, $o->p); }
+        if ($o instanceof JsObject || array_key_exists($key, $o->p)) { return array_key_exists($key, $o->p); }
         if ($key === 'length') { return true; }
         if (!preg_match('/^(?:0|[1-9][0-9]*)$/D', $key)) { return false; }
         $index = self::index((float) $key);

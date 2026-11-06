@@ -805,7 +805,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let default = if self.javascript_module(f.module) {
                         " = \\Zero\\JsUndefined::Value"
                     } else {
-                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                        parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
                     let hint = php_hint(&t);
                     params_php.push(format!("{hint}{php}{default}"));
@@ -815,7 +815,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     params_php.push(format!(
                         "{}{tmp}{}",
                         php_hint(&t),
-                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                        parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     ));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
                     prologue.push_str(&initialization);
@@ -1747,7 +1747,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let original = constraint.non_null();
                     let (ct, optional) = original.field(key).expect("authored field");
                     let constraint = if optional || matches!(original, Ty::Map(_)) {
-                        ct.nullable()
+                        Ty::union([ct, Ty::Undefined])
                     } else {
                         ct
                     };
@@ -1780,8 +1780,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
                 let element = |ty: &Ty, i: usize| match ty.non_null() {
-                    Ty::Array(t) | Ty::NonEmptyArray(t) => Some((*t).nullable()),
-                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Null)),
+                    Ty::Array(t) | Ty::NonEmptyArray(t) => Some(Ty::union([*t, Ty::Undefined])),
+                    Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => Some(ts.get(i).cloned().unwrap_or(Ty::Undefined)),
                     _ => None,
                 };
                 if element(&ty, 0).is_none() {
@@ -2963,7 +2963,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let default = if self.javascript_module(f.module) {
                         " = \\Zero\\JsUndefined::Value"
                     } else {
-                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                        parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
                     params.push(format!("{php}{default}"));
                 }
@@ -2971,7 +2971,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let tmp = format!("$__arg{i}");
                     params.push(format!(
                         "{tmp}{}",
-                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                        parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     ));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;
                     body.push_str(&initialization);
@@ -6198,8 +6198,12 @@ fn accepts_omission(ty: &Ty) -> bool {
     }
 }
 
-fn parameter_default_suffix(parameters: &[Ty]) -> &'static str {
-    if parameters.iter().all(accepts_omission) {
+fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str {
+    if parameters
+        .iter()
+        .zip(types)
+        .all(|(parameter, ty)| parameter.rest || accepts_omission(ty))
+    {
         " = \\Zero\\JsUndefined::Value"
     } else {
         ""

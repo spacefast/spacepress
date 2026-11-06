@@ -1928,7 +1928,6 @@ impl<'p> Evaluator<'p> {
                     );
                 }
             },
-            ("Object", "freeze") => arg(0),
             ("Object", "hasOwn") => {
                 let key = arg(1);
                 if !matches!(

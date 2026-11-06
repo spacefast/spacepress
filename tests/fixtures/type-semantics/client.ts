@@ -82,3 +82,8 @@ declare const wireObject: Actions["wireUndefinedObject"]["output"];
 const omittedObject: Actions["wireUndefinedObject"]["output"] = {};
 const missingObjectValue: undefined = wireObject.x;
 void [serializedTuple, unserializedTuple, omittedObject, missingObjectValue];
+
+declare const destructuredObject: Actions["wireDestructuredObject"]["output"];
+const omittedDestructured: Actions["wireDestructuredObject"]["output"] = {};
+const missingDestructured: undefined = destructuredObject.x;
+void [omittedDestructured, missingDestructured];

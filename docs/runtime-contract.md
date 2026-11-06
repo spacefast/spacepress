@@ -583,7 +583,7 @@ reciprocals, square roots and IEEE special values. Other powers are refused:
 Node and native math libraries can round them differently. Known literals have
 source diagnostics; dynamic values throw RangeError. Missing reads and built-in
 results preserve undefined separately from null in both language modes.
-Unknown built-in properties are refused during configuration evaluation.
+Unknown built-in properties and Object.freeze are refused during configuration evaluation.
 Database builders, configuration/schema factories and column modifiers also use
 the shared source arity contract, including runtime arguments to `$type`. Database
 collection arguments must resolve to static references; effectful expressions
@@ -625,6 +625,7 @@ JSON arrays. This distinction does not change schema nullability. Public client
 result types describe serialization: undefined array slots become null, and
 properties whose values may be undefined become optional with undefined removed
 from the present value domain.
+Array and object destructuring retain undefined for absent entries. Optional/default parameters before rest parameters remain omittable.
 Optional parameters accept undefined; null requires an explicit nullable type.
 Parameter and destructuring defaults run only for undefined. Typed object
 property reads distinguish missing properties from explicit null. Strict
@@ -645,7 +646,7 @@ loose equality and own-key `for…in` share the evaluator's lowering.
 Dynamic dates use `JsDate`; Set and Map use ordered `JsSet`/`JsMap` handles.
 These support the small constructor/method subset exercised by imported
 helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
-groups and undefined captures. Dynamic string match/split/replace preserve
+groups and undefined captures. Typed and dynamic non-global string match share that metadata; global match returns only matched strings. Dynamic string match/split/replace preserve
 these semantics. Literal regexes allocate distinct objects; captured regexes
 keep one instance for their shared state. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.

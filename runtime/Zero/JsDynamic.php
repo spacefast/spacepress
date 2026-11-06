@@ -280,7 +280,7 @@ trait JsDynamic
                 'lastIndexOf' => count($a) < 2 ? self::lastIndexOf($receiver, self::str($get(0))) : self::lastIndexOf($receiver, self::str($get(0)), self::toNumber($get(1))),
                 'split' => self::dynamicSplit($receiver, $get(0), $get(1)),
                 'replace', 'replaceAll' => self::{$name}($receiver, $get(0) instanceof RegExp ? $get(0) : self::str($get(0)), $get(1) instanceof \Closure ? $get(1) : self::str($get(1))),
-                'match' => self::dynamicStringMatch($receiver, $get(0) instanceof RegExp ? $get(0) : new RegExp($get(0) === JsUndefined::Value ? '' : self::str($get(0)))),
+                'match' => self::strMatch($receiver, $get(0) instanceof RegExp ? $get(0) : new RegExp($get(0) === JsUndefined::Value ? '' : self::str($get(0)))),
                 'repeat' => self::repeat($receiver, self::toNumber($get(0, 0))),
                 'concat' => $receiver . implode('', array_map(self::str(...), $a)),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
@@ -428,13 +428,6 @@ trait JsDynamic
         $result = self::split($source, $separator, $limit);
         $result->a = array_map(static fn ($value) => $value ?? JsUndefined::Value, $result->a);
         return $result;
-    }
-
-    private static function dynamicStringMatch(string $source, RegExp $regexp): ?JsArray
-    {
-        if (!$regexp->global) { return self::dynamicRegExpExec($regexp, $source); }
-        $regexp->lastIndex = 0;
-        return self::strMatch($source, $regexp);
     }
 
     public static function dynamicStaticCall(string $owner, string $method, JsArray $args): mixed

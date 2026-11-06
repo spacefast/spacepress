@@ -513,5 +513,27 @@
     "name": "nonemptyOptionalCaptures",
     "expression": "['x'.replace(/(a|bc)?/, '[$1]'), 'ab'.replace(/([^}]+)?/, '$1!'), 'b'.replace(/(a?b)?/, '[$1]') ]",
     "fold": true
+  },
+  {
+    "name": "restParameterDefaults",
+    "declarations": "function parityRestDefault(value: number = 1, ...rest: number[]) { return [value, rest.length]; }",
+    "expression": "[parityRestDefault(), parityRestDefault(undefined, 2), ((value?: number, ...rest: number[]) => [typeof value, rest.length])()]",
+    "fold": true
+  },
+  {
+    "name": "destructuredUndefined",
+    "expression": "(() => { const [value] = []; return [typeof value, {value}]; })()",
+    "fold": true
+  },
+  {
+    "name": "matchMetadata",
+    "expression": "(() => { const m = 'a'.match(/(a)/); const g = 'a'.match(/a/g); return m === null ? false : [Object.hasOwn(m, 'index'), Object.hasOwn(m, 'input'), Object.hasOwn(m, 'groups'), g === null ? true : Object.hasOwn(g, 'index')]; })()",
+    "fold": false
+  },
+  {
+    "name": "javascriptMatchMetadata",
+    "expression": "(() => { const m = 'ba'.match(/(?<x>a)/); return m === null ? null : [m.index, m.input, m.groups.x, Object.hasOwn(m, 'groups')]; })()",
+    "fold": false,
+    "javascript": true
   }
 ]

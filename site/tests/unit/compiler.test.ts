@@ -178,10 +178,10 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     }
     const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(typed.status, 0, typed.stdout + typed.stderr);
-    const wire = spawnSync("php", ["-r", String.raw`require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$out=[];foreach(['wireUndefinedTuple','wireUndefinedObject'] as $name){$fn='\ZeroApp\\'.$schema['actions'][$name]['handler'];$out[]=\Zero\Seam::toWire($fn());}echo json_encode($out);`, path.join(plugins, "zero-runtime/zero/bootstrap.php"), path.join(plugins, app, "zero/app")], { encoding: "utf8" });
+    const wire = spawnSync("php", ["-r", String.raw`require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$out=[];foreach(['wireUndefinedTuple','wireUndefinedObject','wireDestructuredObject'] as $name){$fn='\ZeroApp\\'.$schema['actions'][$name]['handler'];$out[]=\Zero\Seam::toWire($fn());}echo json_encode($out);`, path.join(plugins, "zero-runtime/zero/bootstrap.php"), path.join(plugins, app, "zero/app")], { encoding: "utf8" });
     assert.equal(wire.status, 0, wire.stderr);
     assert.equal(wire.stderr, "");
-    assert.deepEqual(JSON.parse(wire.stdout), JSON.parse(JSON.stringify([[undefined], { x: undefined }])));
+    assert.deepEqual(JSON.parse(wire.stdout), JSON.parse(JSON.stringify([[undefined], { x: undefined }, { x: undefined }])));
     const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
 

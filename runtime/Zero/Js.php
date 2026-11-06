@@ -296,7 +296,7 @@ final class Js
 
     public static function mul(int|float $a, int|float $b): int|float
     {
-        return self::n(self::n($a) * self::n($b));
+        return self::num((float) self::n($a) * (float) self::n($b));
     }
 
     public static function neg(int|float $a): int|float
@@ -317,6 +317,22 @@ final class Js
     public static function preStep(int|float &$x, int $step): int|float
     {
         return $x = self::add($x, $step);
+    }
+
+    public static function mathTranscendental(string $method, int|float $x): int|float
+    {
+        if (is_nan($x)) { return NAN; }
+        if ($method === 'log') {
+            if ($x < 0) { return NAN; }
+            if ($x == 0) { return -INF; }
+            if ($x == 1) { return 0; }
+            if ($x === INF) { return INF; }
+        } elseif ($method === 'exp') {
+            if ($x == 0) { return 1; }
+            if ($x === -INF) { return 0; }
+            if ($x === INF) { return INF; }
+        }
+        throw new JsError('Math.' . $method . ' requires an IEEE special value or an exact identity; engine-dependent rounding is not supported', 'RangeError');
     }
 
     /** Exact powers, square roots and IEEE special values; refuse engine-dependent rounding. */

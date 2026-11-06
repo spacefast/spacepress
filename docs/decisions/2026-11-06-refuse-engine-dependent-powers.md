@@ -16,3 +16,8 @@ libraries is smaller but preserves silent differences. We accept a narrower
 power domain; callers can reformulate their calculation or compute it outside
 Zero. Existing negative decimal-power coverage now tests an explicit refusal,
 while a binary negative power retains executable accepted-case coverage.
+
+The same restriction applies to `Math.log` and `Math.exp`: log(1), exp(0) and
+IEEE special values have deterministic results; other inputs are refused.
+For example, Node and PHP disagree in the last digits of log(3). Keeping a
+method available does not qualify its host math library for arbitrary inputs.

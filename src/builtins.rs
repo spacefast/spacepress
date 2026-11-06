@@ -75,7 +75,8 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("global", &["Error", "TypeError", "RangeError"], overload("runtime-only message?: string; JavaScript: options without cause", None, arity(0, 1), arity(0, 2))),
     ("Math", &["min", "max"], overload("...values: number[]", arity(0, VARIADIC), arity(0, VARIADIC), arity(0, VARIADIC))),
     ("Math", &["floor", "ceil", "abs", "sqrt", "trunc", "round"], overload("value: number", arity(0, 1), arity(1, 1), arity(0, 1))),
-    ("Math", &["sign", "log", "exp"], overload("value: number", None, arity(1, 1), arity(0, 1))),
+    ("Math", &["sign"], overload("value: number", None, arity(1, 1), arity(0, 1))),
+    ("Math", &["log", "exp"], overload("value: number; exact identities and IEEE special values only", None, arity(1, 1), arity(0, 1))),
     ("Math", &["pow"], overload("base: number, exponent: number; exact powers, square roots and IEEE special values only", arity(0, 2), arity(2, 2), arity(0, 2))),
     ("Math", &["random"], overload("no arguments", None, arity(0, 0), arity(0, 0))),
     ("Date", &["now"], overload("no arguments", None, arity(0, 0), arity(0, 0))),
@@ -142,6 +143,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("regex", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
     ("set", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
     ("map", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
+    ("object", &["constructor", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "__proto__"], overload("inherited Object prototype properties are unsupported", None, None, None)),
     ("object", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
     ("boolean", &["toString", "valueOf"], overload("no semantic arguments", None, None, arity(0, VARIADIC))),
     ("function", &["call"], overload("thisArg?: unknown, ...arguments: unknown[]", None, None, arity(0, VARIADIC))),
@@ -190,20 +192,33 @@ pub fn check_power(a: f64, b: f64, span: Span) -> Result<(), Diag> {
     Ok(())
 }
 
-pub fn check_power_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
-    use crate::ir::{ArrEl, Expr, ExprKind, UnOp};
-    fn number(e: &Expr) -> Option<f64> {
-        match &e.kind {
-            ExprKind::Num(n) => Some(*n),
-            ExprKind::Unary(UnOp::Neg, e) => number(e).map(|n| -n),
-            ExprKind::Unary(UnOp::Plus, e) | ExprKind::As(e, _) | ExprKind::NonNull(e) => number(e),
-            ExprKind::Ident(n) if n == "NaN" => Some(f64::NAN),
-            ExprKind::Ident(n) if n == "Infinity" => Some(f64::INFINITY),
-            _ => None,
-        }
+fn literal_number(e: &crate::ir::Expr) -> Option<f64> {
+    use crate::ir::{ExprKind, UnOp};
+    match &e.kind {
+        ExprKind::Num(n) => Some(*n),
+        ExprKind::Unary(UnOp::Neg, e) => literal_number(e).map(|n| -n),
+        ExprKind::Unary(UnOp::Plus, e) | ExprKind::As(e, _) | ExprKind::NonNull(e) => literal_number(e),
+        ExprKind::Ident(n) if n == "NaN" => Some(f64::NAN),
+        ExprKind::Ident(n) if n == "Infinity" => Some(f64::INFINITY),
+        _ => None,
     }
+}
+
+pub fn check_transcendental_literals(method: &str, args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
+    if let Some(crate::ir::ArrEl::Item(e)) = args.first()
+        && let Some(x) = literal_number(e)
+        && crate::num::transcendental(method, x).is_none()
+    {
+        return Err(Diag::new(span, format!("Math.{method} requires an IEEE special value or an exact identity; engine-dependent rounding isn't supported"))
+            .help("compute this value outside Zero"));
+    }
+    Ok(())
+}
+
+pub fn check_power_literals(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {
+    use crate::ir::ArrEl;
     if let [ArrEl::Item(a), ArrEl::Item(b)] = args
-        && let (Some(a), Some(b)) = (number(a), number(b))
+        && let (Some(a), Some(b)) = (literal_number(a), literal_number(b))
     {
         check_power(a, b, span)?;
     }

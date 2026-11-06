@@ -25,7 +25,10 @@ trait JsDynamic
             is_int($receiver), is_float($receiver) => 'Number', default => 'Object',
         };
         $surface = match ($owner) { 'Math' => 'Math', 'RegExp' => 'regex', default => strtolower($owner) };
-        if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) { return JsUndefined::Value; }
+        if (!Builtins::has($surface, $name) && !in_array($name, ['toString', 'valueOf'], true)) {
+            if (Builtins::has('object', $name)) { throw new JsError('Unsupported inherited method ' . $name, 'TypeError'); }
+            return JsUndefined::Value;
+        }
         $key = $owner . ':' . $name;
         if (!isset(self::$dynamicMethods[$key])) {
             $invoke = match (true) {
@@ -473,7 +476,7 @@ trait JsDynamic
                 'random' => self::random(), 'abs' => abs($x), 'floor' => self::n(floor($x)), 'ceil' => self::n(ceil($x)), 'trunc' => self::trunc($x),
                 'round' => self::round($x),
                 'min' => self::min(...$n), 'max' => self::max(...$n), 'pow' => self::pow($x, $n[1] ?? NAN),
-                'log' => log($x), 'exp' => exp($x), 'sqrt' => sqrt($x), 'sign' => self::sign($x),
+                'log', 'exp' => self::mathTranscendental($method, $x), 'sqrt' => sqrt($x), 'sign' => self::sign($x),
                 default => throw new JsError('Unsupported Math method ' . $method, 'TypeError'),
             };
         }

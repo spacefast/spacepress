@@ -840,9 +840,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
                 self.note_fallthrough(stmts, f.span)?;
-                if self.javascript_module(f.module) {
-                    body.push_str("    return \\Zero\\Js::undefined();\n");
-                }
+                body.push_str("    return \\Zero\\Js::undefined();\n");
             }
         }
         Ok((params_php.join(", "), body))
@@ -878,7 +876,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
         let fx = self.fx();
         if block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal) {
-            self.note_return(&Ty::Null, span)?;
+            self.note_return(&Ty::Undefined, span)?;
         }
         Ok(())
     }
@@ -1178,13 +1176,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let _ = writeln!(out, "{p}return {};", v.php);
                 }
                 None => {
-                    let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
-                    self.note_return(&if javascript { Ty::Dynamic } else { Ty::Null }, *span)?;
-                    let _ = writeln!(
-                        out,
-                        "{p}return {};",
-                        if javascript { "\\Zero\\Js::undefined()" } else { "null" }
-                    );
+                    self.note_return(&Ty::Undefined, *span)?;
+                    let _ = writeln!(out, "{p}return \\Zero\\Js::undefined();");
                 }
             },
             Stmt::If(test, then, otherwise) => {
@@ -1717,11 +1710,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let tmp = self.tmp_var();
                 let assigned = format!("{tmp} = {src}");
-                let missing = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
-                    format!("({assigned}) === \\Zero\\Js::undefined()")
-                } else {
-                    format!("\\Zero\\Js::isNullish({assigned})")
-                };
+                let missing = format!("({assigned}) === \\Zero\\Js::undefined()");
                 let _ = writeln!(out, "{p}{tmp} = ({missing} ? {} : {tmp});", d.php);
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
@@ -2916,25 +2905,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
             );
         }
-        let present = read.non_null();
+        let present = defined_type(&read);
         let initialized = if assignable(&value.ty, &present) {
             present
         } else {
             Ty::union([present, value.ty])
         };
-        let initialization = if self.javascript_module(self.fx.as_ref().expect("fn").module) {
-            format!(
-                "{}if ({php} === \\Zero\\JsUndefined::Value) {{ {php} = {}; }}\n",
-                pad(indent),
-                value.php
-            )
-        } else {
-            format!(
-                "{}if (\\Zero\\Js::isNullish({php})) {{ {php} = {}; }}\n",
-                pad(indent),
-                value.php
-            )
-        };
+        let initialization = format!(
+            "{}if ({php} === \\Zero\\JsUndefined::Value) {{ {php} = {}; }}\n",
+            pad(indent),
+            value.php
+        );
         Ok((initialized, initialization))
     }
 
@@ -3014,9 +2995,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
                 self.note_fallthrough(stmts, f.span)?;
-                if self.javascript_module(f.module) {
-                    body.push_str("        return \\Zero\\Js::undefined();\n");
-                }
+                body.push_str("        return \\Zero\\Js::undefined();\n");
             }
         }
         Ok((params.join(", "), body))
@@ -4388,6 +4367,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if (g, m) == ("Math", "pow") {
             crate::builtins::check_power_literals(args, span)?;
         }
+        if g == "Math" && matches!(m, "log" | "exp") {
+            crate::builtins::check_transcendental_literals(m, args, span)?;
+        }
         if (g, m) == ("Number", "parseInt") {
             crate::builtins::check_parse_int_literals(args, span)?;
         }
@@ -4537,8 +4519,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         argv[0].php,
                         argv.get(1).map(|a| a.php.as_str()).unwrap_or("NAN")
                     ),
-                    "log" => format!("log({x})"),
-                    _ => format!("exp({x})"),
+                    "log" | "exp" => format!("\\Zero\\Js::mathTranscendental('{}', {x})", m),
+                    _ => unreachable!(),
                 };
                 Out::atom(php, Ty::Num)
             }
@@ -6081,8 +6063,21 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
     }
 }
 
+fn defined_type(ty: &Ty) -> Ty {
+    match ty {
+        Ty::Union(items) => Ty::union(
+            items
+                .iter()
+                .filter(|item| !matches!(item, Ty::Undefined | Ty::Void))
+                .cloned(),
+        ),
+        Ty::Undefined | Ty::Void => Ty::Never,
+        _ => ty.clone(),
+    }
+}
+
 fn default_binding_type(ty: &Ty, default: &Ty, mutable: bool) -> Ty {
-    let present = ty.non_null();
+    let present = defined_type(ty);
     if assignable(default, &present) {
         present
     } else {
@@ -6185,7 +6180,7 @@ fn callable_argument(parameters: &[Ty], index: usize) -> Option<Ty> {
 
 fn parameter_default_suffix(parameter: &Param) -> &'static str {
     if parameter.optional || parameter.default.is_some() {
-        " = null"
+        " = \\Zero\\JsUndefined::Value"
     } else {
         ""
     }
@@ -6193,7 +6188,7 @@ fn parameter_default_suffix(parameter: &Param) -> &'static str {
 
 fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
     if parameter.optional || parameter.default.is_some() {
-        Ty::union([ty.nullable(), Ty::Undefined])
+        Ty::union([ty, Ty::Undefined])
     } else {
         ty
     }

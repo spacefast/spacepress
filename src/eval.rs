@@ -1304,14 +1304,24 @@ impl<'p> Evaluator<'p> {
                 error_object("TypeError", &[Value::str("restricted arguments property")]),
                 span,
             )),
-            Value::Object(o) | Value::Arguments(o) => {
-                self.stored_property(o.borrow().get(prop).cloned().unwrap_or(Value::Undef), span)
-            }
+            Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop) {
+                Some(value) => self.stored_property(value.clone(), span),
+                None if crate::builtins::contract("object", prop).is_some() => err_help(
+                    span,
+                    "reading inherited configuration properties isn't supported",
+                    "use Object.hasOwn before reading a property, or store an own property",
+                ),
+                None => Ok(Value::Undef),
+            },
             Value::Array(a) => match prop {
                 "length" => Ok(Value::Num(a.borrow().len() as f64)),
-                _ => match prop.parse::<usize>() {
-                    Ok(i) => self.stored_property(a.borrow().get(i).cloned().unwrap_or(Value::Undef), span),
-                    Err(_) => bound(),
+                _ => match prop
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|i| *i < u32::MAX && i.to_string() == prop)
+                {
+                    Some(i) => self.stored_property(a.borrow().get(i as usize).cloned().unwrap_or(Value::Undef), span),
+                    None => bound(),
                 },
             },
             Value::Str(s) => match prop {
@@ -3042,6 +3052,13 @@ fn string_method(s: &str, m: &str, args: &[Value], span: Span) -> R<Value> {
                             }
                             in_class = true;
                         } else if c == ']' {
+                            if !in_class {
+                                return err_help(
+                                    span,
+                                    "unmatched regex class delimiters aren't supported at build time",
+                                    "move this replacement into a handler",
+                                );
+                            }
                             in_class = false;
                         }
                     }

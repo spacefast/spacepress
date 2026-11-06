@@ -464,8 +464,8 @@ function addressPatch(patch: { address?: { city: string } | null }) {
   if (patch.address !== undefined) { touched = true; city = patch.address?.city ?? 'null'; }
   return [touched, city];
 }
-function strictNull(value?: { count: number }) { return value !== null ? value?.count ?? 'undefined' : 'null'; }
-function strictUndefined(value?: { count: number }) { return value !== undefined ? value?.count ?? 'null' : 'undefined'; }
+function strictNull(value?: { count: number } | null) { return value !== null ? value?.count ?? 'undefined' : 'null'; }
+function strictUndefined(value?: { count: number } | null) { return value !== undefined ? value?.count ?? 'null' : 'undefined'; }
 function strictNullArray(value?: string[]) { return value !== null ? value?.length ?? -1 : -2; }
 function nullishValues() {
   const object: { count: number } | null = undefined;
@@ -808,7 +808,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         (
             "class C { constructor(public n: number = 1, public prior: number = this.n) {} }",
             "new C()",
-            "can't assign number | null",
+            "this default is number",
         ),
         (
             "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
@@ -938,6 +938,8 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "Math.log(3)",
+        "Math.exp(1)",
         "Math.pow(3, 35)",
         "10 ** -2",
         "Math.pow(1.3, 0.3)",
@@ -952,6 +954,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "[2, 1].sort(...[(x: number, y: number) => y - x])",
         "[1].map(n => n, ...[{}])",
         "'a]'.replace(/[a[b]]/, 'X')",
+        "'a]'.replace(/[^]]/, 'X')",
         "'abc'.includes('a', 1)",
         "'abc'.startsWith('b', 1)",
         "'abc'.endsWith('b', 2)",
@@ -973,6 +976,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
                     || expression.starts_with("Error(")
                     || expression.starts_with("new Error(")
                     || expression.contains("[a[b]]")
+                    || expression.contains("[^]]")
                     || expression.contains("[a-z--x]"))
             {
                 continue;
@@ -1206,6 +1210,8 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [].notReal",
         "typeof Math.notReal",
         "typeof /x/.global",
+        "typeof [1, 2]['01']",
+        "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
@@ -1247,16 +1253,38 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 }
 
 #[test]
-fn dynamic_unsupported_powers_fail_explicitly() {
+fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>power(3,35)})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];try{$fn();echo '"accepted"';}catch(\Zero\JsError $e){echo json_encode($e->jsName);}"#,
+        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn());"#,
         &[
             &content.join("plugins/zero-runtime/zero/bootstrap.php"),
             &content.join("plugins/zero-app-powerrefusal/zero/app"),
         ],
     );
-    assert_eq!(result, "RangeError");
+    assert_eq!(result, json!(["power", "log", "exp"]));
+}
+
+#[test]
+fn configuration_refuses_unmodeled_inherited_properties() {
+    for expression in [
+        "typeof ({}).toString",
+        "typeof ({}).constructor",
+        "typeof ({}).hasOwnProperty",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
+        assert!(
+            report["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("inherited configuration properties"),
+            "{report}"
+        );
+        assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
+    }
 }

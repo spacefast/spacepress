@@ -25,6 +25,22 @@ pub fn round(x: f64) -> f64 {
     if x - floor < 0.5 { floor } else { floor + 1.0 }
 }
 
+pub fn transcendental(method: &str, x: f64) -> Option<f64> {
+    if x.is_nan() {
+        return Some(f64::NAN);
+    }
+    match method {
+        "log" if x < 0.0 => Some(f64::NAN),
+        "log" if x == 0.0 => Some(f64::NEG_INFINITY),
+        "log" if x == 1.0 => Some(0.0),
+        "log" if x == f64::INFINITY => Some(f64::INFINITY),
+        "exp" if x == 0.0 => Some(1.0),
+        "exp" if x == f64::NEG_INFINITY => Some(0.0),
+        "exp" if x == f64::INFINITY => Some(f64::INFINITY),
+        _ => None,
+    }
+}
+
 pub const UNSUPPORTED_POWER: &str =
     "power requires an exact supported result; engine-dependent rounding isn't supported";
 

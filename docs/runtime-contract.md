@@ -618,14 +618,13 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
-Some typed missing reads and annotation-only `undefined`/`void` still normalize
-to PHP null. Explicit undefined expressions and imported JavaScript's dynamic
-operations preserve undefined identity: it is falsy, has typeof `undefined`,
+Runtime `void` results use undefined. Missing reads, optional arguments, bare
+returns and function fallthrough preserve undefined identity: it is falsy, has typeof `undefined`,
 stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
 JSON arrays. This distinction does not change schema nullability.
-Optional object and array parameters accept explicit undefined as well as null;
-truthiness checks and typed default initializers treat both as absent. Typed
-object property reads distinguish missing properties from explicit null. Strict
+Optional parameters accept undefined; null requires an explicit nullable type.
+Parameter and destructuring defaults run only for undefined. Typed object
+property reads distinguish missing properties from explicit null. Strict
 null/undefined comparisons refine only the value being compared; `!= null`
 excludes both.
 
@@ -661,6 +660,13 @@ custom string coercion is not qualified by the package probes.
 Configuration evaluation uses the same UTF-16 units for numeric string indexes,
 `slice` and `split("")`; a result containing a lone surrogate is rejected with a
 located build diagnostic. `split` applies its limit before converting units.
+Configuration object reads preserve absent own values as undefined and refuse
+inherited prototype properties; use `Object.hasOwn` before reading those names. Noncanonical array index strings
+and ambiguous regex class delimiters are refused during evaluation.
+
+`Math.log` and `Math.exp` accept only IEEE special values and exact identities
+(log(1), exp(0)). Other inputs receive a located literal refusal or a checked
+runtime RangeError, avoiding engine-dependent transcendental rounding.
 
 String `lastIndexOf` accepts only literal number/null/undefined positions; a
 runtime position can hide the erased null/undefined distinction behind an alias,
@@ -752,7 +758,7 @@ code with strict TypeScript as well as `zero check`.
 | Surface | Support | Boundary |
 |---|---|---|
 | Interfaces | Supported for finite objects | Multiple `extends` bases, imported named types, generic arguments and inherited optional fields. Reachable merged declarations are refused. Class references use the separate nominal class dispatch described below; finite object operations do not model class prototype keys. |
-| Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation normalizes annotation-only `undefined`/`void` to null at every runtime boundary, including reentrant class compilation. This does not add generic classes or class-prototype type introspection. |
+| Class/type interoperability | Supported within the existing class subset | Local/imported class references retain identity through concrete aliases and object wrappers. Class fields, constructor parameter properties and method signatures can use the finite type operations in this table. PHP compilation preserves `undefined` identity, including reentrant class compilation; runtime `void` results are undefined. This does not add generic classes or class-prototype type introspection. |
 | Intersections | Partial | Named finite objects merge recursively; compatible scalar/literal intersections narrow. Optional properties include implicit `undefined` in overlapping value domains under strict TypeScript without `exactOptionalPropertyTypes`; required presence does not remove that value. Conflicting optional domains still allow absence. Impossible object intersections and function/array intersections are refused. |
 | Generic aliases/interfaces | Supported for concrete instantiations | Required arguments, scalar/array/finite-object structural constraints, defaults that reference earlier parameters, and nested applications. Constraint checks do not use PHP runtime conversions such as Date-to-number. Missing/extra arguments fail. PHP-reachable generic functions are refused, rather than compiling a signature widened to `unknown`. |
 | `keyof` | Supported for finite objects | Literal string keys; object unions retain only common keys. Open maps, arrays, primitive/prototype keys, numeric property names and symbols are refused. |

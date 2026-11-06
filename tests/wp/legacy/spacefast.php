@@ -62,7 +62,13 @@ if ($phase === 'seed') {
 $f = json_decode(file_get_contents('/tmp/spacefast-fixture.json'), true);
 extract($f, EXTR_SKIP);
 proof(wp_salt('auth') === $salt, 'auth salt retained across prefix bind');
-if ($phase === 'dry') {
+if ($phase === 'comments') {
+    $wpdb->insert('wp_comments', ['comment_post_ID' => $post, 'comment_content' => 'Unsupported comment']);
+} elseif ($phase === 'clear-comments') {
+    $wpdb->delete('wp_comments', ['comment_post_ID' => $post]);
+} elseif ($phase === 'drift') {
+    $wpdb->update('wp_posts', ['post_modified_gmt' => '2099-01-01 00:00:00'], ['ID' => $post]);
+} elseif ($phase === 'dry') {
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}posts")===0 && (int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}users")===0, 'dry run leaves data empty');
     proof(!$wpdb->get_var($wpdb->prepare('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s',$target.'zero_spacefast_migrations')), 'dry run creates no receipt table');
 } elseif ($phase === 'conflict') {
@@ -73,6 +79,7 @@ if ($phase === 'dry') {
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations")===0, 'failed group has no receipt');
     $wpdb->delete($target.'posts', ['ID'=>$post]);
 } elseif ($phase === 'copied') {
+    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE LENGTH(fingerprint)=64")===3, 'each group receipt stores a source fingerprint');
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}posts")===5, 'only fenced native and collection posts, revisions and attachment copied');
     $p = get_post($post);
     proof($p->post_type==='zero_posts' && $p->post_content==='<p>Preserved body</p>' && (int)$p->post_author===$uid, 'post ID, body and author retained with candidate type');

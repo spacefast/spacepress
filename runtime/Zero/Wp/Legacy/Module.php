@@ -40,7 +40,7 @@ final class Module
 
             return 0;
         } catch (\Throwable $e) {
-            \WP_CLI::line((string) Js::jsonStringify(['error' => App::problem($e)]));
+            \WP_CLI::line((string) Js::jsonStringify(['error' => App::problem($e) + ($e instanceof SpacefastDrift ? ['groups' => $e->groups] : [])]));
 
             return 1;
         }
@@ -48,15 +48,16 @@ final class Module
 
     private static function spacefast(Plugin $plugin, array $args, array $flags): array
     {
-        $unknown = array_diff(array_keys($flags), ['space', 'source-prefix', 'target-prefix', 'dry-run']);
-        if ($args !== [] || $unknown !== [] || (isset($flags['dry-run']) && $flags['dry-run'] !== true)) {
-            throw new HttpError(400, 'invalid_command', 'Usage: migrate-spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--dry-run]');
+        $unknown = array_diff(array_keys($flags), ['space', 'source-prefix', 'target-prefix', 'dry-run', 'verify']);
+        if ($args !== [] || $unknown !== [] || (isset($flags['dry-run']) && $flags['dry-run'] !== true)
+            || (isset($flags['verify']) && ($flags['verify'] !== true || isset($flags['dry-run'])))) {
+            throw new HttpError(400, 'invalid_command', 'Usage: migrate-spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--dry-run | --verify]');
         }
         foreach (['space', 'source-prefix', 'target-prefix'] as $key) {
             if (!is_string($flags[$key] ?? null) || $flags[$key] === '') { throw new HttpError(400, 'invalid_command', "--$key is required", '/' . $key); }
         }
         $plugin->app();
-        return (new Spacefast($plugin->connection(), $plugin->schema))->run($flags['space'], $flags['source-prefix'], $flags['target-prefix'], isset($flags['dry-run']));
+        return (new Spacefast($plugin->connection(), $plugin->schema))->run($flags['space'], $flags['source-prefix'], $flags['target-prefix'], isset($flags['dry-run']), isset($flags['verify']));
     }
 
     private static function run(Plugin $plugin, array $args, array $flags): array

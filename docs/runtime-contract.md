@@ -604,7 +604,7 @@ and typed string-search positions are never silently discarded.
 
 Rust and PHP trim and numeric parsers use the explicit ECMAScript WhiteSpace
 and LineTerminator set: BOM is whitespace; U+0085 is not. Unary negation and
-Math.round preserve negative zero; round avoids the `floor(x + .5)` loss at
+Math.round and multiplication preserve negative zero; round avoids the `floor(x + .5)` loss at
 large and adjacent-to-half boundaries.
 
 ## class Js — JavaScript semantics in PHP
@@ -618,10 +618,13 @@ The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
 
-Runtime `void` results use undefined. Missing reads, optional arguments, bare
+Runtime `void` results use undefined. Missing reads, uninitialized class fields, optional arguments, bare
 returns and function fallthrough preserve undefined identity: it is falsy, has typeof `undefined`,
 stringifies as `"undefined"`, is omitted from JSON objects and becomes null in
-JSON arrays. This distinction does not change schema nullability.
+JSON arrays. This distinction does not change schema nullability. Public client
+result types describe serialization: undefined array slots become null, and
+properties whose values may be undefined become optional with undefined removed
+from the present value domain.
 Optional parameters accept undefined; null requires an explicit nullable type.
 Parameter and destructuring defaults run only for undefined. Typed object
 property reads distinguish missing properties from explicit null. Strict
@@ -662,7 +665,9 @@ Configuration evaluation uses the same UTF-16 units for numeric string indexes,
 located build diagnostic. `split` applies its limit before converting units.
 Configuration object reads preserve absent own values as undefined and refuse
 inherited prototype properties; use `Object.hasOwn` before reading those names. Noncanonical array index strings
-and ambiguous regex class delimiters are refused during evaluation.
+and ambiguous regex class delimiters are refused during evaluation. Optional
+regex groups containing captures require a nonempty body; the engines disagree
+about capture participation when that body can match empty text.
 
 `Math.log` and `Math.exp` accept only IEEE special values and exact identities
 (log(1), exp(0)). Other inputs receive a located literal refusal or a checked
@@ -791,8 +796,9 @@ Their dependencies resolve
 independently of registry order. Recursive model dependencies and chains exceeding
 96 JSON annotations receive located refusals. Copying inferred model fields and
 cached JSON types also consumes the root's 16,384-step work budget, before cloning.
-PHP compilation, public client types and generated backend query types retain
-the authored null/undefined domain after model expansion.
+PHP compilation and generated backend query types retain the authored
+null/undefined domain after model expansion. Public client types apply JSON
+serialization rules after that expansion.
 
 The executable [strict fixture](../tests/fixtures/type-semantics/zero.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
@@ -807,13 +813,13 @@ The fixture also imports a derived class with public constructor parameter
 properties typed through `Projection`, a `Required` snapshot result, and an
 `undefined` field and `void` method. Its class reference is nested in a generic
 object alias before construction; this exercises class compilation reached
-from type normalization. The generated client exposes `classView.missing: undefined`
+from type normalization. The generated client exposes `classView.missing?: never`
 and `classView.label: "draft"`, and omits class methods at the JSON boundary.
 
 It also captures `{ note: undefined }` under
-`{ note?: string } & { note: string | undefined }`. The required output property
-is `note: string | undefined`, including after `Required` because its presence was
-already required. In contrast, `Required<{ label?: string | undefined }>`
+`{ note?: string } & { note: string | undefined }`. The authored property remains required with `note: string | undefined`,
+including after `Required`. JSON omits an undefined value, so the public client
+uses `note?: string`. In contrast, `Required<{ label?: string | undefined }>`
 removes optional undefined and keeps `label: string`. Direct mapped labels
 retain optional presence and return `{}`. Conflicting optional intersections
 also accept `{}` and admit only undefined when present.

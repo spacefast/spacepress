@@ -88,6 +88,8 @@ function read(item: Draft, key: keyof Projection<Draft, "title" | "state">): str
 export default defineConfig({
   tables: {},
   actions: {
+    wireUndefinedTuple: action({ input: {}, handler: () => [undefined] }),
+    wireUndefinedObject: action({ input: {}, handler: () => ({ x: undefined }) }),
     nonemptyValues: action({
       input: {},
       handler: () => Array.from(["first"]).map(value => value.toUpperCase()),

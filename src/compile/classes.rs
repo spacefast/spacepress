@@ -43,7 +43,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 && let Pat::Id(name, _) = &p.pat
                 && let Some((ty, _)) = fields.get_mut(name)
             {
-                *ty = ty.clone().nullable();
+                *ty = Ty::union([ty.clone(), Ty::Undefined]);
             }
         }
         Ty::Instance(identity.clone(), Box::new(Ty::Obj(fields)))
@@ -189,7 +189,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .as_ref()
                 .is_some_and(|f| f.params.iter().skip(1).any(|p| p.span == field.span));
             let ty = if field.init.is_none() && !parameter_property {
-                ty.nullable()
+                Ty::union([ty, Ty::Undefined])
             } else {
                 ty
             };
@@ -278,7 +278,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     format!("\\ZeroApp\\{helper}($__zero_this)")
                 }
-                None => "null".into(),
+                None => "\\Zero\\Js::undefined()".into(),
             };
             field_body.push_str(&format!("    $__zero_this->p[{}] = {value};\n", php_str(&field.name)));
         }
@@ -608,7 +608,7 @@ fn initializing_instance(instance: &Ty) -> Ty {
         Box::new(Ty::Obj(
             fields
                 .iter()
-                .map(|(k, (t, _))| (k.clone(), (t.clone().nullable(), true)))
+                .map(|(k, (t, _))| (k.clone(), (Ty::union([t.clone(), Ty::Undefined]), true)))
                 .collect(),
         )),
     )

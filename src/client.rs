@@ -99,7 +99,7 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
         ColType::Email | ColType::Url | ColType::Slug | ColType::RichText | ColType::Timestamp | ColType::Date => {
             "string".into()
         }
-        ColType::Json => ty_ts(&json_type(c), &[]),
+        ColType::Json => ty_ts(&wire_type(&json_type(c)), &[]),
         ColType::MediaList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
@@ -345,6 +345,44 @@ fn names(schema: &Schema) -> ClientNames {
     out
 }
 
+fn wire_omits(t: &Ty) -> bool {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) | Ty::Unknown | Ty::Dynamic => true,
+        Ty::Union(items) => items.iter().any(wire_omits),
+        _ => false,
+    }
+}
+
+fn wire_present(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Never,
+        Ty::Union(items) => Ty::union(items.iter().map(wire_present)),
+        _ => t.clone(),
+    }
+}
+
+/// JSON nulls array slots and omits object properties without serializable values.
+fn wire_type(t: &Ty) -> Ty {
+    match t {
+        Ty::Undefined | Ty::Void | Ty::Fn(..) => Ty::Null,
+        Ty::NumLit(n) | Ty::FreshNumLit(n) if !n.is_finite() => Ty::Null,
+        Ty::Array(t) => Ty::Array(Box::new(wire_type(t))),
+        Ty::NonEmptyArray(t) => Ty::NonEmptyArray(Box::new(wire_type(t))),
+        Ty::Tuple(items) => Ty::Tuple(items.iter().map(wire_type).collect()),
+        Ty::ArrayLiteral(items) => Ty::ArrayLiteral(items.iter().map(wire_type).collect()),
+        Ty::Obj(fields) => Ty::Obj(
+            fields
+                .iter()
+                .map(|(key, (ty, optional))| (key.clone(), (wire_type(&wire_present(ty)), *optional || wire_omits(ty))))
+                .collect(),
+        ),
+        Ty::Map(t) => Ty::Map(Box::new(wire_type(&wire_present(t)))),
+        Ty::Union(items) => Ty::union(items.iter().map(wire_type)),
+        Ty::Instance(id, fields) => Ty::Instance(id.clone(), Box::new(wire_type(fields))),
+        _ => t.clone(),
+    }
+}
+
 /// A compiler type as TypeScript, for action results. Row-shaped results are named when they match.
 fn ty_ts(t: &Ty, rows: &[(String, Ty)]) -> String {
     if let Some((name, _)) = rows.iter().find(|(_, r)| r == t) {
@@ -452,7 +490,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
         }
         let out = results
             .get(&a.name)
-            .map(|t| ty_ts(t, &rows))
+            .map(|t| ty_ts(&wire_type(t), &rows))
             .unwrap_or_else(|| "unknown".into());
         let _ = writeln!(s, "export type {n}Output = {out};\n");
     }

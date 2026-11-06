@@ -486,5 +486,22 @@
     "name": "runtimeUnmatchedClassDelimiter",
     "expression": "'a]'.replace(/[^]]/, 'X')",
     "fold": false
+  },
+  {
+    "name": "uninitializedClassFields",
+    "declarations": "class ParityEmpty { value: number; static item: number; }",
+    "expression": "(() => { const value=new ParityEmpty(); return [typeof value.value, value.value===undefined, Object.hasOwn(value, \"value\"), typeof ParityEmpty.item, ParityEmpty.item===undefined]; })()",
+    "fold": false
+  },
+  {
+    "name": "atMutationDuringCoercion",
+    "expression": "(() => { const a=[1,2]; const index={valueOf:()=>{a.pop();return 1;}}; const result=a.at(index); return [typeof result,result===undefined,result===null,a]; })()",
+    "fold": false
+  },
+  {
+    "name": "omissionWithUndefinedDomain",
+    "declarations": "function parityUndefinedDomain(value: string | undefined) {return typeof value;}",
+    "expression": "[parityUndefinedDomain(),parityUndefinedDomain(undefined),parityUndefinedDomain('x')]",
+    "fold": true
   }
 ]

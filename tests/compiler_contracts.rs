@@ -808,7 +808,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         (
             "class C { constructor(public n: number = 1, public prior: number = this.n) {} }",
             "new C()",
-            "this default is number",
+            "can't assign number | undefined",
         ),
         (
             "class C {} class D extends C { constructor(public n: number = this.n) { super(); } }",
@@ -938,12 +938,20 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        "new Date(0).getTime(1)",
+        "new Date(0).toISOString(1)",
+        "new Date(0).toJSON(1)",
         "Math.log(3)",
         "Math.exp(1)",
         "Math.pow(3, 35)",
         "10 ** -2",
         "Math.pow(1.3, 0.3)",
         "'aba'.replace(/(a(b)?)+/, '[$2]')",
+        "'x'.replace(/(a*)?/, 'X')",
+        r"'x'.replace(/(a*\b)?/, 'X')",
+        r"'x'.replace(/(\b)?/, 'X')",
+        "'x'.replace(/()?/, 'X')",
+        "'x'.replace(/(?<g>a*)?/, 'X')",
         "'x'.replace(/[a-z--x]/g, '!')",
         "Object.hasOwn(() => 1, 'length')",
         "JSON.stringify({x: undefined})",
@@ -1007,6 +1015,10 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ("outer: for (const n of [1]) { break outer; } return true;", "labels"),
         ("return fetch('https://example.com');", "fetch"),
         ("return new Map<string, number>();", "new Map"),
+        (
+            "const f=(value:string)=>typeof value; return f();",
+            "missing required function arguments",
+        ),
         (
             "function identity<T>(value: T): T { return value; } return identity('x');",
             "generic runtime functions aren't supported",

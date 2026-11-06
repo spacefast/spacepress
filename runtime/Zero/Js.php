@@ -1275,7 +1275,7 @@ final class Js
         $len = count($a->a);
         $i = self::toInteger(self::toNumber($i));
         if ($i < 0) { $i += $len; }
-        return $i >= 0 && $i < $len ? $a->a[(int) $i] : JsUndefined::Value;
+        return $i >= 0 && $i < $len && array_key_exists((int) $i, $a->a) ? $a->a[(int) $i] : JsUndefined::Value;
     }
 
     public static function push(JsArray $a, mixed ...$values): int

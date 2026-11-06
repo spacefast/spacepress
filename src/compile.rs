@@ -805,14 +805,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let default = if self.javascript_module(f.module) {
                         " = \\Zero\\JsUndefined::Value"
                     } else {
-                        parameter_default_suffix(p)
+                        parameter_default_suffix(&param_tys[i..f.params.len()])
                     };
                     let hint = php_hint(&t);
                     params_php.push(format!("{hint}{php}{default}"));
                 }
                 pat => {
                     let tmp = format!("$__arg{i}");
-                    params_php.push(format!("{}{tmp}{}", php_hint(&t), parameter_default_suffix(p)));
+                    params_php.push(format!(
+                        "{}{tmp}{}",
+                        php_hint(&t),
+                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                    ));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &t, 1)?;
                     prologue.push_str(&initialization);
                     self.bind_pattern_types(
@@ -2961,13 +2965,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let default = if self.javascript_module(f.module) {
                         " = \\Zero\\JsUndefined::Value"
                     } else {
-                        parameter_default_suffix(p)
+                        parameter_default_suffix(&param_tys[i..f.params.len()])
                     };
                     params.push(format!("{php}{default}"));
                 }
                 pat => {
                     let tmp = format!("$__arg{i}");
-                    params.push(format!("{tmp}{}", parameter_default_suffix(p)));
+                    params.push(format!(
+                        "{tmp}{}",
+                        parameter_default_suffix(&param_tys[i..f.params.len()])
+                    ));
                     let (read, initialization) = self.initialize_parameter(p, &tmp, &param_tys[i], 2)?;
                     body.push_str(&initialization);
                     self.bind_pattern_types(
@@ -4222,6 +4229,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(params, ret) = f.ty.clone() else {
             return err(callee_span, format!("{} isn't a function", f.ty.describe()));
         };
+        if params.iter().skip(args.len()).any(|ty| !accepts_omission(ty)) {
+            return err_help(
+                span,
+                "missing required function arguments",
+                "pass every required argument, or declare the parameter optional",
+            );
+        }
         let mut argv = Vec::new();
         for (i, a) in args.iter().enumerate() {
             let ArrEl::Item(x) = a else {
@@ -4666,10 +4680,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => {}
         }
         let family = match recv.ty.non_null() {
+            Ty::Date => Some("date"),
             t if t.is_num() => Some("number"),
             t if t.is_str() => Some("string"),
             Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => Some("array"),
-            Ty::Date => Some("date"),
             Ty::Regex => Some("regex"),
             _ => None,
         };
@@ -6178,8 +6192,16 @@ fn callable_argument(parameters: &[Ty], index: usize) -> Option<Ty> {
     parameters.get(index).cloned()
 }
 
-fn parameter_default_suffix(parameter: &Param) -> &'static str {
-    if parameter.optional || parameter.default.is_some() {
+fn accepts_omission(ty: &Ty) -> bool {
+    match ty {
+        Ty::Unknown | Ty::Dynamic | Ty::Undefined | Ty::Void | Ty::Rest(_) => true,
+        Ty::Union(items) => items.iter().any(accepts_omission),
+        _ => false,
+    }
+}
+
+fn parameter_default_suffix(parameters: &[Ty]) -> &'static str {
+    if parameters.iter().all(accepts_omission) {
         " = \\Zero\\JsUndefined::Value"
     } else {
         ""

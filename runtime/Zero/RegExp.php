@@ -256,12 +256,22 @@ final class RegExp implements \Stringable
                 if ($special && !$named && !preg_match('/^\?(?::|=|!|<=|<!)/', $tail)) {
                     throw new JsError('This regex group syntax is not supported', 'SyntaxError');
                 }
-                $stack[] = $captures;
+                $stack[] = [$captures, $i];
                 if (!$special || $named) { $captures++; }
             } elseif ($c === ')' && $stack !== []) {
-                $before = array_pop($stack);
+                [$before, $start] = array_pop($stack);
                 if ($captures > $before && in_array($source[$i + 1] ?? '', ['*', '+', '{'], true)) {
                     throw new JsError('Repeated regex groups containing captures are not supported', 'SyntaxError');
+                }
+                if ($captures > $before && ($source[$i + 1] ?? '') === '?') {
+                    $body = substr($source, $start + 1, $i - $start - 1);
+                    if (str_starts_with($body, '?<')) { $body = substr($body, strpos($body, '>') + 1); }
+                    elseif (str_starts_with($body, '?:')) { $body = substr($body, 2); }
+                    if ($body === '' || strpbrk($body, '*?|^$') !== false
+                        || str_contains($body, '()') || str_contains($body, '{0')
+                        || preg_match('/\\\\[bBk1-9]/', $body)) {
+                        throw new JsError('Optional regex groups containing captures must have a nonempty body', 'SyntaxError');
+                    }
                 }
             }
         }

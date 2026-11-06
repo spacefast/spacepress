@@ -51,7 +51,7 @@ const requiredIntersection: Actions["typeReport"]["output"]["intersected"] = { n
 const optionalConflict: Actions["typeReport"]["output"]["optionalConflict"] = {};
 // @ts-expect-error required presence retains the optional side's allowed undefined
 const definiteIntersection: string = report.intersected.note;
-// @ts-expect-error Required does not make the intersection property optional
+// Serialization omits undefined even when the source property is required.
 const absentIntersection: Actions["typeReport"]["output"]["intersected"] = {};
 // @ts-expect-error conflicting optional value domains admit no string
 const conflictString: Actions["typeReport"]["output"]["optionalConflict"] = { note: "value" };
@@ -72,3 +72,13 @@ declare const nonemptyValues: Actions["nonemptyValues"]["output"];
 const firstValue: string = nonemptyValues[0];
 const remainingValues: string[] = nonemptyValues.slice(1);
 void [firstValue, remainingValues];
+
+// Public action types describe the serialized response.
+declare const wireTuple: Actions["wireUndefinedTuple"]["output"];
+const serializedTuple: [null] = wireTuple;
+// @ts-expect-error undefined array slots become null on the wire
+const unserializedTuple: [undefined] = wireTuple;
+declare const wireObject: Actions["wireUndefinedObject"]["output"];
+const omittedObject: Actions["wireUndefinedObject"]["output"] = {};
+const missingObjectValue: undefined = wireObject.x;
+void [serializedTuple, unserializedTuple, omittedObject, missingObjectValue];

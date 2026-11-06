@@ -320,7 +320,7 @@ final class RegExp implements \Stringable
                 $tail = substr($source, $i + 1);
                 $special = str_starts_with($tail, '?');
                 $named = str_starts_with($tail, '?<') && !str_starts_with($tail, '?<=') && !str_starts_with($tail, '?<!');
-                if ($special && !$named && !preg_match('/^\?(?::|=|!|<=|<!)/', $tail)) {
+                if (str_starts_with($tail, '*') || $special && !$named && !preg_match('/^\?(?::|=|!|<=|<!)/', $tail)) {
                     throw new JsError('This regex group syntax is not supported', 'SyntaxError');
                 }
                 $stack[] = [$captures, $i];

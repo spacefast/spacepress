@@ -1023,5 +1023,21 @@
     "name": "initializedLexicalShadowCapturesLocal",
     "expression": "(() => {const x=1;const read=()=>{const x=2;const f=()=>x;return f();};return [x,read()];})()",
     "fold": true
+  },
+  {
+    "name": "optionalObjectMethodsGuardReceiverAndArguments",
+    "expression": "(() => {let calls=0;let args=0;const get=(live:boolean):{f:(v:number)=>number}|null=>{calls++;return live?{f:(v:number)=>v}:null;};const a=typeof get(false)?.f(++args);const b=get(true)?.f(++args);return [a,b,calls,args];})()",
+    "fold": true
+  },
+  {
+    "name": "omittedCatchBindingKeepsAuthoredLocals",
+    "expression": "(() => {const __e=1;let caught=0;try{throw new Error('x');}catch{caught++;}try{throw new Error('y');}catch{caught++;}return [typeof __e,__e,caught];})()",
+    "fold": false
+  },
+  {
+    "name": "computedPcreVerbsHaveJavascriptSyntaxErrors",
+    "expression": "['(*ACCEPT)','(*FAIL)','(*SKIP)','(*MARK:x)'].map(pattern=>{try{new RegExp(pattern);return 'accepted';}catch(e){return e.name;}})",
+    "fold": false,
+    "javascript": true
   }
 ]

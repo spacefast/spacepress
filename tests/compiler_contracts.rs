@@ -964,6 +964,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
 #[test]
 fn unsupported_builtin_overloads_are_located_in_both_phases() {
     for expression in [
+        r#"new RegExp("(*ACCEPT)")"#,
         "typeof process",
         "typeof require",
         "typeof globalThis",

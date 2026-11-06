@@ -591,7 +591,9 @@ pub fn check_regex(pattern: &str, flags: &str, span: Span) -> Result<(), Diag> {
                 let tail = &pattern[i + 1..];
                 let special = tail.starts_with('?');
                 let named = tail.starts_with("?<") && !tail.starts_with("?<=") && !tail.starts_with("?<!");
-                if special && !named && !["?:", "?=", "?!", "?<=", "?<!"].iter().any(|p| tail.starts_with(p)) {
+                if tail.starts_with('*')
+                    || special && !named && !["?:", "?=", "?!", "?<=", "?<!"].iter().any(|p| tail.starts_with(p))
+                {
                     return Err(Diag::new(span, "this regex group syntax isn't supported")
                         .help("use JavaScript capture, noncapturing or lookaround groups"));
                 }

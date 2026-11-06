@@ -1499,7 +1499,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.fx().scopes.push(HashMap::new());
                     let var = match param {
                         Some((n, span)) => self.declare_local(n, Ty::Error, false, *span),
-                        None => "$__e".to_string(),
+                        None => self.tmp_var(),
                     };
                     // Database and validation errors propagate: they must roll back the request.
                     let _ = writeln!(out, "{p}}} catch (\\Zero\\JsError {var}) {{");
@@ -4925,6 +4925,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
         }
+        let nullish_guard = if optional && recv.ty.is_nullable() {
+            let receiver = self.tmp_var();
+            let source = std::mem::replace(&mut recv.php, receiver.clone());
+            recv.atomic = true;
+            Some((receiver, source))
+        } else {
+            None
+        };
         let base = recv.ty.non_null();
         let r = match &base {
             t if t.is_str() => self.string_method(&recv, m, args, span, m_span)?,
@@ -4971,17 +4979,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // Calling a function stored in an object field.
                 let mut f = self.member_of_out(&recv, m, m_span)?;
                 f.php = format!("\\Zero\\Js::dataMethod({}, {})", recv.php, php_str(m));
-                return self.call_value(f, args, span, m_span);
+                self.call_value(f, args, span, m_span)?
             }
             other => return err(m_span, format!("{} has no method `{m}`", other.describe())),
         };
-        if optional && recv.ty.is_nullable() {
-            let tmp = self.tmp_var();
-            let php = r.php.replacen(&recv.php, &tmp, 1);
+        if let Some((receiver, source)) = nullish_guard {
             return Ok(Out::new(
                 format!(
-                    "(\\Zero\\Js::isNullish({tmp} = {}) ? \\Zero\\Js::undefined() : {php})",
-                    recv.php
+                    "(\\Zero\\Js::isNullish({receiver} = {source}) ? \\Zero\\Js::undefined() : {})",
+                    r.php
                 ),
                 Ty::union([r.ty, Ty::Undefined]),
             ));

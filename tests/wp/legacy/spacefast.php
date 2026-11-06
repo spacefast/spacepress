@@ -15,6 +15,21 @@ if ($phase === 'seed') {
     // A raw legacy hash arrives after identity provisioned its native profile schedule.
     $wpdb->update('wp_users', ['user_pass' => md5('disposable-member-password')], ['ID' => $uid]);
     clean_user_cache($uid);
+    require_once ABSPATH . WPINC . '/class-phpass.php';
+    $passwordUsers = [];
+    $phpass = (new \PasswordHash(8, true))->HashPassword('disposable-member-password');
+    $bcrypt = wp_hash_password('disposable-member-password');
+    proof(str_starts_with($phpass, '$P$') && str_starts_with($bcrypt, '$wp$2y$'), 'fixtures use WordPress phpass $P$ and WordPress 6.8+ $wp$2y$ encodings');
+    foreach (['MD5' => md5('disposable-member-password'), 'phpass $P$' => $phpass, 'WordPress $wp$2y$' => $bcrypt] as $encoding => $hash) {
+        $login = 'imported-password-' . count($passwordUsers);
+        $id = wp_insert_user(['user_login' => $login, 'user_email' => $login . '@example.test', 'user_pass' => 'disposable-member-password', 'role' => 'subscriber']);
+        if (is_wp_error($id)) { throw new RuntimeException($id->get_error_message()); }
+        add_user_meta($id, '_spacefast_app_user', 'imported-space');
+        proof($wpdb->update('wp_users', ['user_pass' => $hash], ['ID' => $id]) !== false, "$encoding source hash stored");
+        clean_user_cache($id);
+        $profile = strlen($hash) === 32 ? 'md5' : (str_starts_with($hash, '$P$') ? substr($hash, 0, 4) : json_encode([true, 'bcrypt', password_get_info(substr($hash, 3))['options']]));
+        $passwordUsers[$encoding] = compact('id', 'login', 'hash', 'profile');
+    }
     $foreign = wp_insert_user(['user_login'=>'foreign-member','user_email'=>'foreign@example.test','user_pass'=>'disposable-foreign-password','role'=>'subscriber']);
     add_user_meta($foreign, '_spacefast_app_user', 'foreign-space');
     $post = wp_insert_post(['post_title'=>'Imported post','post_content'=>'<p>Preserved body</p>','post_type'=>'post','post_status'=>'publish','post_author'=>$uid]);
@@ -58,7 +73,7 @@ if ($phase === 'seed') {
     }
     $wpdb->query("INSERT INTO `{$target}options` SELECT * FROM wp_options");
     $wpdb->query($wpdb->prepare("UPDATE `{$target}options` SET option_name=%s WHERE option_name='wp_user_roles'", $target.'user_roles'));
-    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now')+['salt'=>wp_salt('auth')]));
+    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now','passwordUsers')+['salt'=>wp_salt('auth')]));
     proof($wpdb->last_error === '', 'legacy rows and empty scoped tables seeded');
     return;
 }
@@ -80,6 +95,29 @@ if ($phase === 'nested') {
         proof($db->inTransaction(), 'copier leaves the owner transaction intact');
     });
     proof(!$db->inTransaction(), 'refusing nested copy does not poison the owner transaction');
+} elseif ($phase === 'password-rollback') {
+    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $profiles = get_option('zero_identity_password_profiles');
+        proof(!isset($profiles['md5']) && !isset($profiles[$passwordUsers['phpass $P$']['profile']]), 'imported legacy profiles are absent before copy');
+        $warmed = false;
+        $observe = static function ($sql) use (&$warmed) {
+            if (!$warmed && str_starts_with($sql, 'UPDATE ') && str_contains($sql, "'zero_identity_password_profiles'")) {
+                $warmed = isset(get_option('zero_identity_password_profiles')['md5']);
+            }
+            return $sql;
+        };
+        add_filter('query', $observe);
+        try {
+            $plugin = \Zero\Wp\Runtime::plugin();
+            $report = (new \Zero\Wp\Legacy\Spacefast($plugin->connection(), $plugin->schema))->run('imported-space', 'wp_', $target, true);
+        } finally {
+            remove_filter('query', $observe);
+        }
+        proof($report['groups']['users']['status'] === 'dry-run' && $warmed, 'dry run registers imported hashes and warms the uncommitted profile cache');
+        proof(get_option('zero_identity_password_profiles') === $profiles, 'dry rollback discards uncommitted password profiles from the option cache');
+        proof(maybe_unserialize($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$target}options WHERE option_name=%s", 'zero_identity_password_profiles'))) === $profiles, 'dry rollback restores stored password profiles');
+        proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}users") === 0, 'dry rollback removes every imported user');
+    }
 } elseif ($phase === 'storage-failure') {
     // The pending security release makes failed reads distinct from an absent session.
     if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
@@ -162,6 +200,20 @@ if ($phase === 'nested') {
     proof(get_post($project)->post_type==='zero_projects' && get_post_meta($project,'zero_budget',true)==='42.5' && get_post_meta($project,'zero_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
     proof(get_post_meta($projectRevision,'zero_budget',true)==='12.5' && get_post_meta($projectRevision,'zero_active',true)==='0', 'collection revision fields use parent mapping');
     if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $profiles = get_option('zero_identity_password_profiles');
+        foreach ($passwordUsers as $encoding => $fixture) {
+            proof(isset($profiles[$fixture['profile']]) && is_string($profiles[$fixture['profile']]) && $profiles[$fixture['profile']] !== $fixture['hash'], "$encoding copier profile registered before any imported sign-in");
+        }
+        if (is_callable([\Zero\Identity\Accounts::class, 'inventoryPasswordHashes'])) {
+            proof(get_option('zero_identity_password_inventory')['complete'] === false, 'background inventory is incomplete before imported sign-in');
+            foreach ($passwordUsers as $encoding => $fixture) {
+                proof(Plugin::$accounts->password($fixture['login'], 'disposable-member-password') === $fixture['id'], "$encoding authenticates after migration before inventory completes");
+            }
+            for ($page = 0; $page < 10 && !get_option('zero_identity_password_inventory')['complete']; $page++) {
+                do_action('zero_identity_password_inventory');
+            }
+            proof(get_option('zero_identity_password_inventory')['complete'] === true, 'cron inventory completes before fixed-profile schedule comparison');
+        }
         $schedules = [];
         foreach (['missing-imported-member', 'imported-member'] as $login) {
             $work = [];
@@ -182,7 +234,14 @@ if ($phase === 'nested') {
             sort($work);
             $schedules[] = $work;
         }
-        proof(in_array('md5', $schedules[0], true) && count($schedules[0]) >= 2 && $schedules[0] === $schedules[1], 'copier registers legacy password cost before any imported sign-in');
+        proof(in_array('md5', $schedules[0], true) && count($schedules[0]) >= 2 && $schedules[0] === $schedules[1], 'completed inventory gives imported and absent users identical verification schedules');
+    }
+    foreach ($passwordUsers as $encoding => $fixture) {
+        proof($wpdb->get_var($wpdb->prepare("SELECT user_pass FROM {$target}users WHERE ID=%d", $fixture['id'])) === $fixture['hash'], "$encoding migration preserves the exact stored encoding");
+        proof(Plugin::$accounts->password($fixture['login'], 'disposable-member-password') === $fixture['id'], "$encoding authenticates after migration");
+        $authenticated = wp_authenticate($fixture['login'], 'disposable-member-password');
+        proof($authenticated instanceof \WP_User && $authenticated->ID === $fixture['id'], "$encoding authenticates through native WordPress sign-in");
+        proof($wpdb->get_var($wpdb->prepare('SELECT user_pass FROM wp_users WHERE ID=%d', $fixture['id'])) === $fixture['hash'], "$encoding authentication leaves the source hash unchanged");
     }
     $u = get_userdata($uid);
     proof($u->user_email==='verified@example.test' && wp_check_password('disposable-member-password',$u->user_pass,$uid) && $u->roles===['subscriber'], 'user ID, verified email, password and scoped role retained');

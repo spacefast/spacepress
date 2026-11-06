@@ -54,6 +54,7 @@ done
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php clear-comments
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php nested
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php password-rollback
 "$wp/harness.sh" wp "${command[@]}" --dry-run > "$app/dry.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
 # A conflict rolls back the entire posts group; no receipt is written.

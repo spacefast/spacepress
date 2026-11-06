@@ -18,9 +18,15 @@ if ($phase === 'seed') {
     require_once ABSPATH . WPINC . '/class-phpass.php';
     $passwordUsers = [];
     $phpass = (new \PasswordHash(8, true))->HashPassword('disposable-member-password');
-    $bcrypt = wp_hash_password('disposable-member-password');
-    proof(str_starts_with($phpass, '$P$') && str_starts_with($bcrypt, '$wp$2y$'), 'fixtures use WordPress phpass $P$ and WordPress 6.8+ $wp$2y$ encodings');
-    foreach (['MD5' => md5('disposable-member-password'), 'phpass $P$' => $phpass, 'WordPress $wp$2y$' => $bcrypt] as $encoding => $hash) {
+    $costTen = static fn ($options) => array_replace($options, ['cost' => 10]);
+    add_filter('wp_hash_password_options', $costTen);
+    try {
+        $bcrypt = wp_hash_password('disposable-member-password');
+    } finally {
+        remove_filter('wp_hash_password_options', $costTen);
+    }
+    proof(str_starts_with($phpass, '$P$B') && str_starts_with($bcrypt, '$wp$2y$10$'), 'fixtures use default WordPress phpass $P$B and actual wp_hash_password $wp$2y$10$ encodings');
+    foreach (['MD5' => md5('disposable-member-password'), 'phpass $P$B' => $phpass, 'WordPress $wp$2y$10$' => $bcrypt] as $encoding => $hash) {
         $login = 'imported-password-' . count($passwordUsers);
         $id = wp_insert_user(['user_login' => $login, 'user_email' => $login . '@example.test', 'user_pass' => 'disposable-member-password', 'role' => 'subscriber']);
         if (is_wp_error($id)) { throw new RuntimeException($id->get_error_message()); }
@@ -30,6 +36,15 @@ if ($phase === 'seed') {
         $profile = strlen($hash) === 32 ? 'md5' : (str_starts_with($hash, '$P$') ? substr($hash, 0, 4) : json_encode([true, 'bcrypt', password_get_info(substr($hash, 3))['options']]));
         $passwordUsers[$encoding] = compact('id', 'login', 'hash', 'profile');
     }
+    $login = 'imported-over-ceiling';
+    $id = wp_insert_user(['user_login' => $login, 'user_email' => $login . '@example.test', 'user_pass' => 'disposable-member-password', 'role' => 'subscriber']);
+    if (is_wp_error($id)) { throw new RuntimeException($id->get_error_message()); }
+    add_user_meta($id, '_spacefast_app_user', 'imported-space');
+    $hash = password_hash('disposable-member-password', PASSWORD_BCRYPT, ['cost' => 16]);
+    proof(str_starts_with($hash, '$2y$16$') && $wpdb->update('wp_users', ['user_pass' => $hash], ['ID' => $id]) !== false, 'canonical over-ceiling bcrypt $2y$16$ source hash stored');
+    clean_user_cache($id);
+    $profile = json_encode([false, 'bcrypt', ['cost' => 16]]);
+    $overCeilingUser = compact('id', 'login', 'hash', 'profile');
     $foreign = wp_insert_user(['user_login'=>'foreign-member','user_email'=>'foreign@example.test','user_pass'=>'disposable-foreign-password','role'=>'subscriber']);
     add_user_meta($foreign, '_spacefast_app_user', 'foreign-space');
     $post = wp_insert_post(['post_title'=>'Imported post','post_content'=>'<p>Preserved body</p>','post_type'=>'post','post_status'=>'publish','post_author'=>$uid]);
@@ -73,7 +88,7 @@ if ($phase === 'seed') {
     }
     $wpdb->query("INSERT INTO `{$target}options` SELECT * FROM wp_options");
     $wpdb->query($wpdb->prepare("UPDATE `{$target}options` SET option_name=%s WHERE option_name='wp_user_roles'", $target.'user_roles'));
-    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now','passwordUsers')+['salt'=>wp_salt('auth')]));
+    file_put_contents('/tmp/spacefast-fixture.json', json_encode(compact('uid','foreign','post','revision','project','projectRevision','attachment','other','parent','child','now','passwordUsers','overCeilingUser')+['salt'=>wp_salt('auth')]));
     proof($wpdb->last_error === '', 'legacy rows and empty scoped tables seeded');
     return;
 }
@@ -98,7 +113,9 @@ if ($phase === 'nested') {
 } elseif ($phase === 'password-rollback') {
     if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
         $profiles = get_option('zero_identity_password_profiles');
-        proof(!isset($profiles['md5']) && !isset($profiles[$passwordUsers['phpass $P$']['profile']]), 'imported legacy profiles are absent before copy');
+        foreach ($passwordUsers as $encoding => $fixture) {
+            proof(!isset($profiles[$fixture['profile']]), "$encoding profile is absent before copy");
+        }
         $warmed = false;
         $observe = static function ($sql) use (&$warmed) {
             if (!$warmed && str_starts_with($sql, 'UPDATE ') && str_contains($sql, "'zero_identity_password_profiles'")) {
@@ -204,16 +221,35 @@ if ($phase === 'nested') {
         foreach ($passwordUsers as $encoding => $fixture) {
             proof(isset($profiles[$fixture['profile']]) && is_string($profiles[$fixture['profile']]) && $profiles[$fixture['profile']] !== $fixture['hash'], "$encoding copier profile registered before any imported sign-in");
         }
+        $refuseOverCeiling = static function (string $stage) use ($overCeilingUser, $wpdb, $target): void {
+            proof($wpdb->get_var($wpdb->prepare("SELECT user_pass FROM {$target}users WHERE ID=%d", $overCeilingUser['id'])) === $overCeilingUser['hash'], "over-ceiling bcrypt $2y$16$ is copied unchanged $stage");
+            try {
+                Plugin::$accounts->password($overCeilingUser['login'], 'disposable-member-password');
+                throw new RuntimeException('Over-ceiling imported password accepted');
+            } catch (\Zero\Identity\Failure $e) {
+                proof($e->kind === 'invalid_credentials' && $e->status === 401, "over-ceiling bcrypt $2y$16$ fails closed $stage");
+            }
+            proof(!isset(get_option('zero_identity_password_profiles')[$overCeilingUser['profile']]), "over-ceiling bcrypt $2y$16$ never enters the profile schedule $stage");
+        };
         if (is_callable([\Zero\Identity\Accounts::class, 'inventoryPasswordHashes'])) {
             proof(get_option('zero_identity_password_inventory')['complete'] === false, 'background inventory is incomplete before imported sign-in');
             foreach ($passwordUsers as $encoding => $fixture) {
                 proof(Plugin::$accounts->password($fixture['login'], 'disposable-member-password') === $fixture['id'], "$encoding authenticates after migration before inventory completes");
             }
+            $refuseOverCeiling('before inventory completes');
             for ($page = 0; $page < 10 && !get_option('zero_identity_password_inventory')['complete']; $page++) {
                 do_action('zero_identity_password_inventory');
             }
             proof(get_option('zero_identity_password_inventory')['complete'] === true, 'cron inventory completes before fixed-profile schedule comparison');
         }
+        $refuseOverCeiling('after inventory completes');
+        $request = new \WP_REST_Request('POST', '/zero-identity/v1/sign-in/password');
+        $request->set_header('origin', home_url());
+        $request->set_body_params(['operation' => 'sign-in/password', 'login' => $overCeilingUser['login'], 'password' => 'disposable-member-password']);
+        $response = Plugin::$api->dispatch($request);
+        proof($response->get_status() === 401 && $response->get_data()['error']['code'] === 'invalid_credentials', 'Identity password API refuses the copied over-ceiling user');
+        proof((int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$target}zero_identity_sessions WHERE wp_user_id=%d", $overCeilingUser['id'])) === 0, 'over-ceiling sign-in issues no session');
+        proof($wpdb->get_var($wpdb->prepare('SELECT user_pass FROM wp_users WHERE ID=%d', $overCeilingUser['id'])) === $overCeilingUser['hash'], 'over-ceiling refusal leaves the source hash unchanged');
         $schedules = [];
         foreach (['missing-imported-member', 'imported-member'] as $login) {
             $work = [];

@@ -106,7 +106,7 @@ trait JsDynamic
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) { 'PI' => M_PI, 'E' => M_E, default => self::dynamicMethodValue($value, $key) };
         }
-        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), default => self::dynamicMethodValue($value, $key) }; }
+        if ($value instanceof JsError) { return match ($key) { 'name' => $value->jsName, 'message' => $value->getMessage(), 'stack' => throw new JsError('Error stack metadata is not supported', 'TypeError'), default => self::dynamicMethodValue($value, $key) }; }
         if ($value instanceof JsArray || $value instanceof JsArguments) {
             if ($value instanceof JsArguments && $key === 'callee') { throw new JsError('Restricted arguments property', 'TypeError'); }
             if ($key === 'length') { return $value instanceof JsArguments ? $value->length : count($value->a); }
@@ -474,6 +474,10 @@ trait JsDynamic
             if ($method === 'hasOwn') {
                 self::requirePresent($source); $key = self::key($get(1));
                 if ($source instanceof \Closure || $source instanceof JsClass) { throw new JsError('Object.hasOwn on functions is not supported', 'TypeError'); }
+                if ($source instanceof JsError) {
+                    if ($key === 'stack') { throw new JsError('Error stack metadata is not supported', 'TypeError'); }
+                    return $key === 'message' && $source->hasMessage;
+                }
                 if ($key === 'length' && ($source instanceof JsArray || $source instanceof JsArguments || is_string($source))) { return true; }
                 if ($key === 'callee' && $source instanceof JsArguments || $key === 'lastIndex' && $source instanceof RegExp) { return true; }
                 return in_array($key, self::dynamicKeys($source)->a, true);
@@ -540,7 +544,7 @@ trait JsDynamic
                 throw new JsError('Error cause is not supported', 'TypeError');
             }
             $message = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;
-            return new JsError($message === JsUndefined::Value ? '' : self::str($message), $constructor);
+            return new JsError($message === JsUndefined::Value ? '' : self::str($message), $constructor, $message !== JsUndefined::Value);
         }
         if ($constructor === 'RegExp') {
             $source = array_key_exists(0, $a) ? $a[0] : JsUndefined::Value;

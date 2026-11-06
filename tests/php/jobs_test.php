@@ -228,6 +228,7 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
     $map->set($map, $point);
     $date = new \Zero\JsDate(0);
     $source = new \Zero\JsObject(['nested' => new \Zero\JsArray([1]), 'error' => new \Zero\JsError('snapshot'),
+        'emptyError' => \Zero\Js::dynamicConstruct('Error', new \Zero\JsArray()),
         'point' => $point, 'set' => $set, 'map' => $map, 'date' => $date, 'again' => $date, 'absent' => \Zero\Js::undefined()]);
     $runs = 0;
     $load = static function () use ($source, &$runs): \Zero\JsObject { $runs++; return $source; };
@@ -247,13 +248,15 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
     eq('once() returns the original first and an independent snapshot on every replay', [
         'runs' => $runs, 'original' => $first === $source, 'independent' => $first !== $second,
         'nested' => $third->p['nested']->a,
-        'error' => [$third->p['error'] !== $source->p['error'], $third->p['error']->getMessage()],
+        'error' => [$third->p['error'] !== $source->p['error'], $third->p['error']->getMessage(),
+            \Zero\Js::dynamicStaticCall('Object', 'hasOwn', new \Zero\JsArray([$third->p['error'], 'message'])),
+            \Zero\Js::dynamicStaticCall('Object', 'hasOwn', new \Zero\JsArray([$third->p['emptyError'], 'message']))],
         'point' => $third->p['point']->p['x'],
         'set' => [count($third->p['set']->values), $third->p['set']->has($third->p['point']), $third->p['set']->has($third->p['set'])],
         'map' => [count($third->p['map']->entries), $third->p['map']->get($third->p['point']) === $third->p['set'], $third->p['map']->get($third->p['map']) === $third->p['point']],
         'date' => [$third->p['date'] instanceof \Zero\JsDate, $third->p['date'] !== $date, $third->p['date'] === $third->p['again'], $third->p['date']->milliseconds],
         'undefined' => $third->p['absent'] === \Zero\Js::undefined(),
-    ], ['runs' => 1, 'original' => true, 'independent' => true, 'nested' => [1], 'error' => [true, 'snapshot'],
+    ], ['runs' => 1, 'original' => true, 'independent' => true, 'nested' => [1], 'error' => [true, 'snapshot', true, false],
         'point' => 1, 'set' => [2, true, true], 'map' => [2, true, true], 'date' => [true, true, true, 0], 'undefined' => true]);
 })();
 

@@ -665,7 +665,11 @@ These support the small constructor/method subset exercised by imported
 helpers. RegExp exec tracks global `lastIndex` and exposes match index, input,
 groups and undefined captures. Typed and dynamic non-global string match share that metadata; global match returns only matched strings. Dynamic string match/split/replace preserve
 these semantics. Literal regexes allocate distinct objects; captured regexes
-keep one instance for their shared state. `Array.from` interleaves reads with its mapper,
+keep one instance for their shared state. Errors inherit `name`; a defined message
+creates an own nonenumerable `message`, including an empty string. Cloning and
+receipt snapshots preserve message ownership. Stack metadata is refused.
+Configuration evaluation refuses restricted arguments access because it does
+not model native Error descriptors. `Array.from` interleaves reads with its mapper,
 and arrays use live length. The standard Math namespace has stable identity.
 
 This is not a JavaScript host. Node/browser APIs, arbitrary prototypes,

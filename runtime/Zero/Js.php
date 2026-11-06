@@ -1600,7 +1600,7 @@ final class Js
         if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             if ($value instanceof JsError) {
-                $copy = new JsError($value->getMessage(), $value->jsName);
+                $copy = new JsError($value->getMessage(), $value->jsName, $value->hasMessage);
                 $seen[$value] = $copy;
                 return $copy;
             }

@@ -1468,3 +1468,17 @@ fn effectful_sorting_is_refused_at_the_callback() {
         assert_eq!(report["diagnostics"][0]["location"]["file"], name);
     }
 }
+
+#[test]
+fn native_error_inspection_is_refused_during_configuration_evaluation() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';import {probe} from './helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    assert_eq!(
+        report["diagnostics"][0]["message"],
+        "restricted arguments properties aren't supported during configuration evaluation"
+    );
+    assert_eq!(report["diagnostics"][0]["location"]["file"], "helper.js");
+}

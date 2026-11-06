@@ -398,10 +398,11 @@ impl<'p> Evaluator<'p> {
 
     fn set_key(&mut self, obj: &Value, key: &str, value: Value, span: Span) -> R<()> {
         match obj {
-            Value::Arguments(_) if key == "callee" => Err(Ctl::Throw(
-                error_object("TypeError", &[Value::str("restricted arguments property")]),
+            Value::Arguments(_) if key == "callee" => err_help(
                 span,
-            )),
+                "restricted arguments properties aren't supported during configuration evaluation",
+                "access arguments.callee inside a runtime handler; native Error descriptors aren't modeled while building",
+            ),
             Value::Object(map) | Value::Arguments(map) => {
                 if key == "__proto__" && !map.borrow().contains_key(key) {
                     return err_help(
@@ -1387,10 +1388,11 @@ impl<'p> Evaluator<'p> {
         };
         match v {
             Value::Undef | Value::Null => err(span, format!("can't read `{prop}` of {}", v.describe())),
-            Value::Arguments(_) if prop == "callee" => Err(Ctl::Throw(
-                error_object("TypeError", &[Value::str("restricted arguments property")]),
+            Value::Arguments(_) if prop == "callee" => err_help(
                 span,
-            )),
+                "restricted arguments properties aren't supported during configuration evaluation",
+                "access arguments.callee inside a runtime handler; native Error descriptors aren't modeled while building",
+            ),
             Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop) {
                 Some(value) => self.stored_property(value.clone(), span),
                 None if crate::builtins::contract("object", prop).is_some() => err_help(
@@ -2801,22 +2803,6 @@ fn returns_new_date(f: &Func) -> bool {
     };
     matches!(&body.kind, ExprKind::New { callee, args }
         if args.is_empty() && matches!(&callee.kind, ExprKind::Ident(n) if n == "Date"))
-}
-
-fn error_object(name: &str, args: &[Value]) -> Value {
-    let mut map = IndexMap::new();
-    map.insert("name".into(), Value::str(name));
-    map.insert(
-        "message".into(),
-        Value::str(
-            &args
-                .first()
-                .filter(|v| !matches!(v, Value::Undef))
-                .and_then(Value::to_js_string)
-                .unwrap_or_default(),
-        ),
-    );
-    Value::object(map)
 }
 
 pub fn to_number(v: &Value) -> f64 {

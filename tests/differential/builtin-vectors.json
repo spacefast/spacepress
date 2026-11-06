@@ -721,5 +721,16 @@
     "expression": "(() => { const s=' hi '; return s['trim'](); })()",
     "fold": true,
     "javascript": true
+  },
+  {
+    "name": "errorPropertyOwnership",
+    "expression": "[Object.hasOwn(new Error('x'),'message'),Object.hasOwn(new Error(),'message'),Object.hasOwn(new Error(undefined),'message'),Object.hasOwn(new Error(''),'message'),Object.hasOwn(new Error(null),'message'),Object.hasOwn(new TypeError('x'),'name'),Object.hasOwn(structuredClone(new Error()),'message'),Object.hasOwn(structuredClone(new Error('x')),'message')]",
+    "fold": false
+  },
+  {
+    "name": "caughtErrorDescriptors",
+    "expression": "(function(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}})()",
+    "javascript": true,
+    "fold": false
   }
 ]

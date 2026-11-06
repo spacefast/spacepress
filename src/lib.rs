@@ -37,8 +37,8 @@ pub mod config_migrate;
 mod emit;
 #[cfg(feature = "host")]
 pub mod host;
-#[cfg(feature = "cli")]
-mod sync;
+#[cfg(any(feature = "cli", feature = "host"))]
+pub mod sync;
 #[cfg(target_arch = "wasm32")]
 mod wasm_host_fs;
 #[cfg(feature = "host")]

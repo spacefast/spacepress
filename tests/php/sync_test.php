@@ -129,6 +129,10 @@ foreach (glob(dirname(__DIR__) . '/fixtures/canon/*.json') as $file) {
 
 // ================================================================ uid
 
+foreach (json_decode(file_get_contents(__DIR__ . '/../fixtures/sync-file-uid.json'), true, 512, JSON_THROW_ON_ERROR) as $case) {
+    eq('file uid ' . $case['collection'] . '/' . $case['basename'], \Zero\Sync\Uid::forFile($case['collection'], $case['basename']), $case['uid']);
+}
+
 $ada = $db->insert('people', ['name' => 'Ada'], true)[0];
 check('uid minted on insert', preg_match('/^zr_[0-9a-f]{20}$/D', $ada['uid']) === 1, $ada);
 isProblem('uid is immutable', req('PATCH', "/people/{$ada['id']}", ['uid' => 'zr_00000000000000000000']), 422, 'invalid_input', '/uid');

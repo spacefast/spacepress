@@ -141,6 +141,18 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
             recording.read_to_string(&path).map_err(io)?;
         }
     }
+    let mut sync_bytes = 0usize;
+    for collection in built.schema.collections.values() {
+        let Some(sync) = &collection.sync else { continue };
+        for path in sync_files(&*fs, &project, sync)? {
+            let text = recording.read_to_string(&path).map_err(io)?;
+            sync_bytes += text.len();
+            if sync_bytes > 8 * 1024 * 1024 {
+                return Err(failure("synced files exceed the 8 MiB source bundle limit")
+                    .code(crate::diag::Code::SyncFilesTooLarge));
+            }
+        }
+    }
     for path in recording.files.borrow().iter() {
         safe_input(path)?;
         let bundle = if is_vendor(path) { &mut vendor } else { &mut app };
@@ -171,6 +183,25 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
         manifest: serde_json::to_string(&manifest).unwrap(),
         public_files,
     })
+}
+
+/// Sync globs are a single project-relative directory and extension, validated by extraction.
+fn sync_files(fs: &dyn Fs, root: &Path, sync: &serde_json::Value) -> Result<Vec<PathBuf>, Diag> {
+    let directory = root.join(sync["dir"].as_str().unwrap());
+    if !fs.exists(&directory) {
+        return Ok(Vec::new());
+    }
+    let mut paths = fs.read_dir(&directory).map_err(io)?;
+    paths.retain(|p| p.extension().and_then(|e| e.to_str()) == sync["format"].as_str());
+    paths.sort();
+    for path in &paths {
+        safe_input(&relative(root, path).map_err(io)?)?;
+        safe_input(&relative(root, &fs.canonicalize(path).map_err(io)?).map_err(io)?)?;
+        if !fs.is_file(path) {
+            return Err(failure(format!("sync input must be a file: {}", path.display())));
+        }
+    }
+    Ok(paths)
 }
 
 fn capture_assets(fs: &dyn Fs, from: &Path, root: &Path, files: &mut Vec<String>) -> Result<(), Diag> {
@@ -288,6 +319,23 @@ impl CapturedFs {
 }
 #[cfg(feature = "host")]
 impl Fs for CapturedFs {
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
+        let prefix = self
+            .key(path)
+            .ok_or_else(|| std::io::Error::other("input escapes source bundle"))?;
+        let prefix = if prefix.is_empty() { prefix } else { prefix + "/" };
+        let children: BTreeSet<_> = self
+            .sources
+            .files
+            .keys()
+            .chain(self.sources.canonical.keys())
+            .filter_map(|p| p.strip_prefix(&prefix))
+            .filter_map(|p| p.split('/').next())
+            .map(|p| path.join(p))
+            .collect();
+        Ok(children.into_iter().collect())
+    }
+
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         let real = self.canonicalize(path)?;
         self.sources
@@ -383,7 +431,7 @@ pub fn compile(
         root: root.clone(),
         sources,
     });
-    let program = loader::load_from(fs, &root.join("zero.config.ts")).map_err(|mut d| d.remove(0))?;
+    let program = loader::load_from(fs.clone(), &root.join("zero.config.ts")).map_err(|mut d| d.remove(0))?;
     let snapshot = previous
         .map(|p| {
             std::fs::read(p.join("snapshot.json"))
@@ -409,6 +457,57 @@ pub fn compile(
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
+    let mut seeds = Vec::new();
+    for (name, collection) in &built.schema.collections {
+        let Some(sync) = &collection.sync else { continue };
+        let mut records = Vec::new();
+        let mut uids = BTreeSet::new();
+        for path in sync_files(&*fs, &root, sync)? {
+            let text = fs.read_to_string(&path).map_err(io)?;
+            let parsed = if sync["format"] == "md" {
+                crate::sync::files::md_record(&text)
+            } else {
+                crate::sync::files::json_record(&text, collection.content.is_some())
+            };
+            let diagnostic = |line: usize, message: String| {
+                let file = crate::diag::register_file(&path, &text);
+                let start = text
+                    .split_inclusive('\n')
+                    .take(line.saturating_sub(1))
+                    .map(str::len)
+                    .sum::<usize>() as u32;
+                Diag::new(
+                    Span {
+                        file,
+                        start,
+                        end: start,
+                    },
+                    message,
+                )
+            };
+            let (mut fields, body) = parsed.map_err(|(line, message)| diagnostic(line, message))?;
+            let uid = match fields.shift_remove("uid") {
+                None => crate::sync::uid::for_file(name, &path.file_name().unwrap_or_default().to_string_lossy()),
+                Some(serde_json::Value::String(uid)) if crate::sync::uid::valid(&uid) => uid,
+                Some(_) => {
+                    return Err(diagnostic(
+                        1,
+                        "uid must be zr_ followed by 20 lowercase hex characters".into(),
+                    ));
+                }
+            };
+            if !uids.insert(uid.clone()) {
+                return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
+            }
+            records.push(
+                serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(&root,&path).map_err(io)?}),
+            );
+        }
+        seeds.push((
+            name,
+            serde_json::json!({"collection":name,"format":sync["format"],"records":records}),
+        ));
+    }
     public_assets(&assets.join("public"), None)?;
     std::fs::create_dir(output).map_err(io)?;
     if !source_migrations.is_empty() {
@@ -416,6 +515,16 @@ pub fn compile(
         std::fs::create_dir(&archive).map_err(io)?;
         for (name, text) in source_migrations {
             std::fs::write(archive.join(name), text).map_err(io)?;
+        }
+    }
+    if !seeds.is_empty() {
+        std::fs::create_dir(output.join("seed")).map_err(io)?;
+        for (name, records) in seeds {
+            std::fs::write(
+                output.join("seed").join(format!("{name}.json")),
+                serde_json::to_vec(&records).unwrap(),
+            )
+            .map_err(io)?;
         }
     }
     let migrations = output.join("migrations");
@@ -462,7 +571,7 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("{}", e.message);
+            eprintln!("{}", crate::diag::render(&e, Path::new(".")));
             std::process::ExitCode::FAILURE
         }
     }
@@ -486,7 +595,7 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
     match result {
         Ok(_) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("{}", e.message);
+            eprintln!("{}", crate::diag::render(&e, Path::new(".")));
             std::process::ExitCode::FAILURE
         }
     }

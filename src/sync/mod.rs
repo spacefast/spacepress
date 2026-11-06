@@ -2,21 +2,34 @@
 //! merges run on the server (`/sync/{c}/convert`, `/sync/{c}/merge`); this side reads and writes
 //! files, keeps bases, merges fields and writes conflict files.
 
+#[cfg(feature = "cli")]
 pub mod apply;
+#[cfg(feature = "cli")]
 pub mod base;
 pub mod canon;
+#[cfg(feature = "cli")]
 pub mod client;
+#[cfg(feature = "cli")]
 pub mod conflict;
+pub mod files;
 pub mod front_matter;
+#[cfg(feature = "cli")]
 pub mod git;
+#[cfg(feature = "cli")]
 pub mod merge;
+#[cfg(feature = "cli")]
 pub mod plan;
+pub mod uid;
+#[cfg(any(feature = "cli", test))]
 pub mod yaml_out;
 
+#[cfg(feature = "cli")]
 use sha2::{Digest, Sha256};
+#[cfg(feature = "cli")]
 use std::path::{Path, PathBuf};
 
 /// A push waiting for a reference to land.
+#[cfg(feature = "cli")]
 #[derive(Clone)]
 pub struct Deferred {
     pub collection: String,
@@ -33,6 +46,7 @@ pub struct Deferred {
 }
 
 /// What a run did, for the summary, the exit code and the commit.
+#[cfg(feature = "cli")]
 pub struct Report {
     project: PathBuf,
     pub written: Vec<PathBuf>,
@@ -50,6 +64,7 @@ pub struct Report {
     pub identities: usize,
 }
 
+#[cfg(feature = "cli")]
 impl Report {
     pub fn new(project: &Path) -> Report {
         Report {
@@ -117,6 +132,7 @@ impl Report {
 }
 
 /// A fresh uid, the same shape the runtime mints: `zr_` + 20 hex of a random sha256.
+#[cfg(feature = "cli")]
 pub fn uid_mint() -> String {
     let mut seed = [0u8; 16];
     getrandom(&mut seed);
@@ -125,6 +141,7 @@ pub fn uid_mint() -> String {
     format!("zr_{}", &hex[..20])
 }
 
+#[cfg(feature = "cli")]
 fn getrandom(buf: &mut [u8]) {
     use std::io::Read;
     if std::fs::File::open("/dev/urandom")
@@ -147,6 +164,7 @@ fn getrandom(buf: &mut [u8]) {
 }
 
 /// Write through a temporary file in the same directory and rename it into place.
+#[cfg(feature = "cli")]
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("a file needs a directory")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;

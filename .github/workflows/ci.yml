@@ -252,6 +252,8 @@ jobs:
       - run: tests/wp/run.sh
       - name: Spacefast cross-prefix migration and session continuity
         run: ZERO_WP_PROJECT=zero-wp-spacefast ZERO_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+      - name: First-publish seed and sync adoption
+        run: ZERO_WP_PROJECT=zero-wp-seed ZERO_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Shared S3 storage across disposable replicas
         run: ZERO_WP_PROJECT=zero-wp-s3 ZERO_WP_PORT=8792 ZERO_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
       - name: Preserve failed native admin browser evidence

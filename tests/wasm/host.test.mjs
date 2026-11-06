@@ -42,3 +42,27 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
   } });
   assert.equal(response.check.diagnostics[0].code, 'zero_source_needs_local_capture');
 });
+
+test('wasm and native capture include the same synced Markdown files', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zero-wasm-sync-'));
+  try {
+    const project = path.join(temp, 'project');
+    const files = {
+      'zero.config.ts': "import { defineConfig, collection, id, text, richText } from 'zero'; const posts = collection({ id: id(), title: text().notNull(), body: richText() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
+      'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
+      'content/posts/ignored.txt': 'not synced',
+    };
+    for (const [name, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(project, name)), { recursive: true });
+      fs.writeFileSync(path.join(project, name), text);
+    }
+    execFileSync(zero, ['sources', project, '--out', path.join(temp, 'native')]);
+    const native = fs.readFileSync(path.join(temp, 'native/app.zero.json'), 'utf8');
+    const disk = call(exports, 'zero_sources', { project });
+    const memory = call(exports, 'zero_sources', { project: '/project', files });
+    assert.equal(disk.app, native);
+    assert.equal(memory.app, native);
+    assert.equal(JSON.parse(disk.app).files['content/posts/hello.md'], files['content/posts/hello.md']);
+    assert.equal(JSON.parse(disk.app).files['content/posts/ignored.txt'], undefined);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});

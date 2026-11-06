@@ -414,6 +414,10 @@ guest's rows when they sign up.
 
 ## Sync
 
+Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
+Existing editable records keep their site content; the publish reports `zero_seed_skipped_existing` for differing files, and `zero sync` merges them.
+For `editor: false` collections the file wins; files without a `uid` use a stable identity derived from the collection and basename, so republishes and later syncs match the same record.
+
 ```ts
 { sync: "content/posts/*.md" }
 ```

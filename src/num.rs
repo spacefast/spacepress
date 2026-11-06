@@ -60,9 +60,6 @@ pub fn pow(a: f64, b: f64) -> Option<f64> {
     if b == 2.0 {
         return Some(a * a);
     }
-    if b == -1.0 {
-        return Some(1.0 / a);
-    }
     if b == 0.5 {
         return Some(a.sqrt());
     }

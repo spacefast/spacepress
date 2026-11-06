@@ -947,6 +947,8 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "Math.log(3)",
         "Math.exp(1)",
         "Math.pow(3, 35)",
+        "Math.pow(45.29, -1)",
+        "45.29 ** -1",
         "10 ** -2",
         "Math.pow(1.3, 0.3)",
         "'aba'.replace(/(a(b)?)+/, '[$2]')",
@@ -1270,7 +1272,7 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\ZeroApp\\'.$schema['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn());"#,
@@ -1279,7 +1281,7 @@ fn dynamic_engine_dependent_math_fails_explicitly() {
             &content.join("plugins/zero-app-powerrefusal/zero/app"),
         ],
     );
-    assert_eq!(result, json!(["power", "log", "exp"]));
+    assert_eq!(result, json!(["power", "reciprocal", "log", "exp"]));
 }
 
 #[test]

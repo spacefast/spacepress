@@ -579,7 +579,7 @@ radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
 PHP and Rust power-of-two parsing round once from the significant bits.
 Powers accept safe integer powers, integral powers of binary bases, squares,
-reciprocals, square roots and IEEE special values. Other powers are refused:
+square roots and IEEE special values. Other powers are refused:
 Node and native math libraries can round them differently. Known literals have
 source diagnostics; dynamic values throw RangeError. Missing reads and built-in
 results preserve undefined separately from null in both language modes.

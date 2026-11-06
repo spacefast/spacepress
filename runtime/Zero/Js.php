@@ -354,7 +354,6 @@ final class Js
         if ($a < 0 && floor($b) != $b) { return NAN; }
         if ($b == 1) { return self::num($a); }
         if ($b == 2) { return self::num($a * $a); }
-        if ($b == -1) { return self::num(fdiv(1.0, $a)); }
         if ($b == 0.5) { return self::num(sqrt($a)); }
         $binary = unpack('Nhi/Nlo', pack('E', abs($a)));
         $exponent = ($binary['hi'] >> 20) & 2047;

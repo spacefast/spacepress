@@ -6,7 +6,7 @@ make the result match Node, and the previous documented exception contradicted
 the accepted-program parity contract.
 
 We accept safe integer powers, integral powers of binary bases, squares,
-reciprocals, square roots and IEEE special values. Unsupported literal operands
+square roots and IEEE special values. Unsupported literal operands
 receive source diagnostics; dynamic operands throw RangeError. The same rule
 covers `**`, compound exponentiation and `Math.pow`.
 
@@ -19,5 +19,6 @@ while a binary negative power retains executable accepted-case coverage.
 
 The same restriction applies to `Math.log` and `Math.exp`: log(1), exp(0) and
 IEEE special values have deterministic results; other inputs are refused.
-For example, Node and PHP disagree in the last digits of log(3). Keeping a
+Nonbinary reciprocal powers are refused too: Node can round `45.29 ** -1`
+differently from `1 / 45.29`. Node and PHP also differ for log(3). Keeping a
 method available does not qualify its host math library for arbitrary inputs.

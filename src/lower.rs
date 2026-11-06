@@ -40,6 +40,17 @@ impl Lowerer {
         Err(d)
     }
 
+    fn binding_name(&self, name: &str, span: oxc_span::Span) -> Result<String> {
+        if name == "undefined" {
+            return self.unsupported(
+                span,
+                "bindings named `undefined`",
+                "choose a different name; undefined is the built-in missing value",
+            );
+        }
+        Ok(name.to_string())
+    }
+
     pub fn program(&self, p: &a::Program<'_>) -> Result<Vec<Stmt>> {
         let mut out = Vec::new();
         for s in &p.body {
@@ -83,20 +94,20 @@ impl Lowerer {
                             };
                             specs.push(ImportSpec {
                                 imported,
-                                local: s.local.name.to_string(),
+                                local: self.binding_name(s.local.name.as_str(), s.local.span)?,
                                 type_only: type_only || s.import_kind == a::ImportOrExportKind::Type,
                                 span: self.sp(s.span),
                             });
                         }
                         a::ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => specs.push(ImportSpec {
                             imported: ImportName::Default,
-                            local: s.local.name.to_string(),
+                            local: self.binding_name(s.local.name.as_str(), s.local.span)?,
                             type_only,
                             span: self.sp(s.span),
                         }),
                         a::ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => specs.push(ImportSpec {
                             imported: ImportName::Namespace,
-                            local: s.local.name.to_string(),
+                            local: self.binding_name(s.local.name.as_str(), s.local.span)?,
                             type_only,
                             span: self.sp(s.span),
                         }),
@@ -450,7 +461,10 @@ impl Lowerer {
                                 "declare a key identifier",
                             );
                         };
-                        (Some(kind), self.mk(id.span, ExprKind::Ident(id.name.to_string())))
+                        (
+                            Some(kind),
+                            self.mk(id.span, ExprKind::Ident(self.binding_name(id.name.as_str(), id.span)?)),
+                        )
                     }
                     target => {
                         let Some(target) = target.as_simple_assignment_target() else {
@@ -496,7 +510,7 @@ impl Lowerer {
                             None => None,
                             Some(p) => match &p.pattern {
                                 a::BindingPattern::BindingIdentifier(id) => {
-                                    Some((id.name.to_string(), self.sp(id.span)))
+                                    Some((self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span)))
                                 }
                                 _ => {
                                     return self.unsupported(
@@ -572,6 +586,7 @@ impl Lowerer {
         let Some(id) = &c.id else {
             return self.unsupported(c.span, "anonymous classes", "name the class");
         };
+        self.binding_name(id.name.as_str(), id.span)?;
         let base = match &c.heritage {
             None => None,
             Some(h) => match &h.expression {
@@ -815,6 +830,9 @@ impl Lowerer {
     }
 
     fn function_inner(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
+        if let Some(id) = &f.id {
+            self.binding_name(id.name.as_str(), id.span)?;
+        }
         if f.generator {
             return self.unsupported(f.span, "generators", "return an array");
         }
@@ -909,7 +927,9 @@ impl Lowerer {
 
     fn pattern(&self, p: &a::BindingPattern<'_>) -> Result<Pat> {
         Ok(match p {
-            a::BindingPattern::BindingIdentifier(id) => Pat::Id(id.name.to_string(), self.sp(id.span)),
+            a::BindingPattern::BindingIdentifier(id) => {
+                Pat::Id(self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span))
+            }
             a::BindingPattern::ObjectPattern(o) => {
                 let mut props = Vec::new();
                 for prop in &o.properties {
@@ -922,7 +942,9 @@ impl Lowerer {
                 let rest = match &o.rest {
                     None => None,
                     Some(r) => match &r.argument {
-                        a::BindingPattern::BindingIdentifier(id) => Some((id.name.to_string(), self.sp(id.span))),
+                        a::BindingPattern::BindingIdentifier(id) => {
+                            Some((self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span)))
+                        }
                         _ => return self.unsupported(r.span, "nested rest patterns", ""),
                     },
                 };
@@ -940,7 +962,9 @@ impl Lowerer {
                 let rest = match &arr.rest {
                     None => None,
                     Some(r) => match &r.argument {
-                        a::BindingPattern::BindingIdentifier(id) => Some((id.name.to_string(), self.sp(id.span))),
+                        a::BindingPattern::BindingIdentifier(id) => {
+                            Some((self.binding_name(id.name.as_str(), id.span)?, self.sp(id.span)))
+                        }
                         _ => return self.unsupported(r.span, "nested rest patterns", ""),
                     },
                 };

@@ -1372,6 +1372,8 @@ fn dynamic_engine_dependent_math_fails_explicitly() {
 #[test]
 fn configuration_refuses_unmodeled_inherited_properties() {
     for expression in [
+        "(() => { const {toString='fallback'}={}; return typeof toString; })()",
+        "(() => { const {valueOf}={}; return typeof valueOf; })()",
         "typeof ({}).toString",
         "typeof ({}).constructor",
         "typeof ({}).hasOwnProperty",
@@ -1854,5 +1856,71 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
             "{report}"
         );
         assert!(diagnostic["location"].is_object(), "{report}");
+    }
+}
+
+#[test]
+fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
+    for source in [
+        "function f(undefined){return String(undefined);}f(3);",
+        "const undefined=3;String(undefined);",
+        "const {a:undefined}={a:3};String(undefined);",
+        "const {...undefined}={a:3};String(undefined);",
+        "const [...undefined]=[3];String(undefined);",
+        "function f(...undefined){return String(undefined);}f(3);",
+        "try{throw 3;}catch(undefined){String(undefined);}",
+        "for(const undefined in {a:3}){String(undefined);}",
+        "for(const undefined of [3]){String(undefined);}",
+        "function undefined(){return 3;}undefined();",
+        "class undefined{};new undefined();",
+        "import {n as undefined} from './binding-helper.js';String(undefined);",
+        "import undefined from './binding-helper.js';String(undefined);",
+        "import * as undefined from './binding-helper.js';String(undefined);",
+    ] {
+        for javascript in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            std::fs::write(
+                tmp.path().join("binding-helper.js"),
+                "export const n=3;export default 3;",
+            )
+            .unwrap();
+            let body = if javascript {
+                std::fs::write(
+                    tmp.path().join("binding-probe.js"),
+                    format!("{source}export function probe(){{return 0;}}"),
+                )
+                .unwrap();
+                "import {probe} from './binding-probe.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+            } else {
+                format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
+            };
+            std::fs::write(
+                tmp.path().join("zero.config.ts"),
+                format!("import {{action,defineConfig}} from 'zero';{body}"),
+            )
+            .unwrap();
+            let (out, report) = checked(tmp.path());
+            assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+            let diagnostic = &report["diagnostics"][0];
+            if source.starts_with("class undefined") && !javascript {
+                assert!(
+                    diagnostic["message"].as_str().unwrap().contains("Class name cannot be"),
+                    "{report}"
+                );
+            } else {
+                assert!(
+                    diagnostic["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("bindings named `undefined`"),
+                    "{source}: {report}"
+                );
+                assert!(
+                    diagnostic["help"].as_str().unwrap().contains("different name"),
+                    "{report}"
+                );
+            }
+            assert!(diagnostic["location"].is_object(), "{report}");
+        }
     }
 }

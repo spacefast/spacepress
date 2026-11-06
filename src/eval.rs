@@ -602,7 +602,7 @@ impl<'p> Evaluator<'p> {
                     return err(*span, format!("can't destructure {} as an object", value.describe()));
                 };
                 for (key, p) in props {
-                    let v = obj.borrow().get(key).cloned().unwrap_or(Value::Undef);
+                    let v = self.get_prop(&value, key, p.span())?;
                     self.initialize_pattern(p, v, scope, declaration)?;
                 }
                 if let Some((name, _)) = rest {

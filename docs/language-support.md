@@ -263,3 +263,11 @@ Status: **supported**.
 Defaults may reference earlier parameters. Closure defaults require a function body without new bindings and cannot refer to the current/later parameter. Classes and nested function creation in defaults are refused. These source diagnostics also cover nested destructuring defaults, preserving parameter initialization and closure scope.
 
 [Evidence](../tests/compiler_contracts.rs) (`parameter_default_scope_limits_are_located_refusals`)
+
+## undefined-bindings
+
+Status: **supported**.
+
+undefined denotes the built-in missing value. Runtime bindings named undefined are refused at source, including function/class names, parameters, local declarations, imports, catch variables, loop variables and rest/destructuring bindings. Use a different local name.
+
+[Evidence](../tests/compiler_contracts.rs) (`undefined_bindings_are_located_refusals_in_all_runtime_binding_forms`)

@@ -1745,7 +1745,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Pat::Obj { props, rest, span } => {
                 let source = self.tmp_var();
-                let _ = writeln!(out, "{p}{source} = {src};");
+                let _ = writeln!(out, "{p}{source} = \\Zero\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
                 if ty.is_nullable() {

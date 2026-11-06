@@ -797,7 +797,9 @@ Explicitly assigned array properties retain their values.
 Typed object/record reads accept own data fields. If an absent field resolves to an
 unmodeled Object prototype property, the read refuses before type-based optimizations
 can consume it. Member/index reads, destructuring, method fields and assignment reads
-share this boundary. Checked JavaScript retains inherited method lookup.
+share this boundary. Configuration destructuring uses the same property reader as direct reads,
+including inherited-property refusals. Every object pattern checks for null/undefined even when empty.
+Checked JavaScript retains inherited method lookup.
 
 Stored builtin method handles retain the property receiver for typed and checked JavaScript
 calls and primitive conversion. Missing typed compound reads retain undefined; ambiguous
@@ -806,6 +808,7 @@ Parameter defaults may reference earlier parameters. Closure defaults require a 
 without new bindings and cannot reference the current/later parameter. Defaults creating classes
 or nested functions, or referencing the current/later parameter, refuse at source, including nested
 destructuring defaults. These limits preserve parameter initialization and closure scope.
+Bindings named `undefined` refuse at their declaration; reads consistently denote the built-in missing value.
 
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 

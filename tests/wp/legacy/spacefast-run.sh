@@ -44,6 +44,15 @@ done
 "$wp/harness.sh" wp zero migrate >/dev/null
 prefix="$(python3 -c 'import hashlib; print("sfz_"+hashlib.sha256(b"imported-space").hexdigest()[:24]+"_")')"
 command=(zero migrate-spacefast --space=imported-space --source-prefix=wp_ --target-prefix="$prefix")
+"$wp/harness.sh" wp "${command[@]}" --verify > "$app/missing.json" && { echo 'Expected missing receipts to refuse verify' >&2; exit 1; }
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php comments
+for mode in --dry-run ''; do
+  if "$wp/harness.sh" wp "${command[@]}" $mode > "$app/comments.json"; then
+    echo 'Expected comments to refuse migration' >&2; exit 1
+  fi
+done
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php clear-comments
 "$wp/harness.sh" wp "${command[@]}" --dry-run > "$app/dry.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php dry
 # A conflict rolls back the entire posts group; no receipt is written.
@@ -53,12 +62,18 @@ if "$wp/harness.sh" wp "${command[@]}" > "$app/conflict.json"; then
 fi
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php rollback
 "$wp/harness.sh" wp "${command[@]}" > "$app/first.json"
+"$wp/harness.sh" wp "${command[@]}" --verify > "$app/verify.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php copied
 "$wp/harness.sh" wp "${command[@]}" > "$app/second.json"
 python3 - "$app" <<'CHECK'
 import json,sys
 from pathlib import Path
 p=Path(sys.argv[1])
+assert all(g['status']=='missing' and g['stored'] is None for g in json.loads((p/'missing.json').read_text())['error']['groups'].values())
+assert json.loads((p/'missing.json').read_text())['error']['code']=='zero_spacefast_drift'
+assert json.loads((p/'comments.json').read_text())['error']['code']=='zero_spacefast_unsupported_comments'
+assert json.loads((p/'comments.json').read_text())['error']['pointer']=='/comments'
+assert all(g['status']=='verified' and g['stored']==g['current'] for g in json.loads((p/'verify.json').read_text())['data']['groups'].values())
 assert json.loads((p/'conflict.json').read_text())['error']['code']=='zero_spacefast_conflict'
 assert all(g['status']=='dry-run' for g in json.loads((p/'dry.json').read_text())['data']['groups'].values())
 assert all(g['status']=='copied' and g['copied']>0 for g in json.loads((p/'first.json').read_text())['data']['groups'].values())
@@ -73,3 +88,16 @@ import json,sys
 assert all(g=={'copied':0,'status':'already-migrated'} for g in json.load(open(sys.argv[1]))['data']['groups'].values())
 CHECK
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php authenticated
+
+"$wp/harness.sh" wp eval-file /tmp/spacefast.php drift
+if "$wp/harness.sh" wp "${command[@]}" --verify > "$app/drift.json"; then
+  echo 'Expected source post change to refuse verify' >&2; exit 1
+fi
+python3 - "$app/drift.json" <<'CHECK'
+import json,sys
+error=json.load(open(sys.argv[1]))['error']
+assert error['status']==409 and error['code']=='zero_spacefast_drift'
+assert error['groups']['posts']['status']=='drifted'
+assert error['groups']['posts']['stored']!=error['groups']['posts']['current']
+assert all(error['groups'][g]['status']=='verified' for g in ['users','sessions'])
+CHECK

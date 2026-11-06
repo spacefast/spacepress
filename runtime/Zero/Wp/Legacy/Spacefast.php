@@ -12,7 +12,7 @@ final class Spacefast
 {
     public function __construct(private readonly Connection $db, private readonly Schema $schema) {}
 
-    public function run(string $space, string $source, string $target, bool $dry): array
+    public function run(string $space, string $source, string $target, bool $dry, bool $verify = false): array
     {
         if ($space === '' || !preg_match('/\A[A-Za-z0-9_]{1,32}\z/', $source)
             || $target !== 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_' || $source === $target
@@ -24,28 +24,27 @@ final class Spacefast
             throw new HttpError(409, 'migration_busy', 'Another Space data migration is running.');
         }
         try {
-            return $this->copy($space, $source, $target, $dry);
+            return $this->copy($space, $source, $target, $dry, $verify);
         } finally {
             $this->db->run('SELECT RELEASE_LOCK(?)', [$lock]);
         }
     }
 
-    private function copy(string $space, string $source, string $target, bool $dry): array
+    private function copy(string $space, string $source, string $target, bool $dry, bool $verify): array
     {
         $receipts = $target . 'zero_spacefast_migrations';
         $legacy = $target . 'zero_identity_legacy_sessions';
-        if (!$dry) {
-            $this->db->run("CREATE TABLE IF NOT EXISTS `$receipts` (space_id varchar(191) NOT NULL, table_group varchar(20) NOT NULL, completed_at bigint NOT NULL, PRIMARY KEY(space_id,table_group)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        [$posts, $ids, $users] = $this->scope($space, $source);
+        if ($ids !== [] && $this->db->run("SELECT comment_ID FROM `{$source}comments` WHERE comment_post_ID IN ({$this->marks($ids)}) LIMIT 1", $ids) !== []) {
+            throw new HttpError(409, 'zero_spacefast_unsupported_comments', 'This Space has comments; migrate-spacefast does not copy comments.', '/comments');
+        }
+        if (!$dry && !$verify) {
+            $this->db->run("CREATE TABLE IF NOT EXISTS `$receipts` (space_id varchar(191) NOT NULL, table_group varchar(20) NOT NULL, completed_at bigint NOT NULL, fingerprint varchar(128) NOT NULL, PRIMARY KEY(space_id,table_group)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             $this->db->run("CREATE TABLE IF NOT EXISTS `$legacy` (session_id varbinary(32) NOT NULL, pending tinyint NOT NULL DEFAULT 1, PRIMARY KEY(session_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         }
         foreach ([$receipts, $legacy] as $table) {
             if ($this->exists($table)) { $this->transactional($table); }
         }
-        $seed = array_map('intval', array_column($this->db->run("SELECT DISTINCT post_id FROM `{$source}postmeta` WHERE meta_key=? AND meta_value=?", ['_spacefast_space_id', $space]), 'post_id'));
-        $posts = $seed === [] ? [] : $this->db->run("SELECT * FROM `{$source}posts` WHERE ID IN ({$this->marks($seed)}) OR (post_parent IN ({$this->marks($seed)}) AND post_type IN ('revision','attachment')) ORDER BY ID", [...$seed, ...$seed]);
-        $ids = array_column($posts, 'ID');
-        $users = array_map('intval', array_column($this->db->run("SELECT DISTINCT user_id FROM `{$source}usermeta` WHERE meta_key=? AND meta_value=?", ['_spacefast_app_user', $space]), 'user_id'));
-        $users = array_values(array_unique([...$users, ...array_filter(array_map('intval', array_column($posts, 'post_author')))]));
         $groups = [
             'posts' => ['posts', 'postmeta', 'terms', 'termmeta', 'term_taxonomy', 'term_relationships'],
             'users' => ['users', 'usermeta'],
@@ -62,8 +61,15 @@ final class Spacefast
         $report = ['space' => $space, 'sourcePrefix' => $source, 'targetPrefix' => $target, 'dryRun' => $dry, 'groups' => []];
         foreach (['posts', 'users', 'sessions'] as $group) {
             try {
-            $report['groups'][$group] = $this->db->transaction(function () use ($space, $source, $target, $dry, $group, $receipts, $legacy, $posts, $ids, $users) {
-                if ($this->exists($receipts) && $this->db->run("SELECT table_group FROM `$receipts` WHERE space_id=? AND table_group=? FOR UPDATE", [$space, $group]) !== []) {
+            $report['groups'][$group] = $this->db->transaction(function () use ($space, $source, $target, $dry, $verify, $group, $receipts, $legacy) {
+                $stored = $this->exists($receipts) ? $this->db->run("SELECT fingerprint FROM `$receipts` WHERE space_id=? AND table_group=?" . ($verify ? '' : ' FOR UPDATE'), [$space, $group]) : [];
+                [$posts, $ids, $users] = $this->scope($space, $source);
+                $current = $this->fingerprint($group, $source, $ids, $users);
+                if ($verify) {
+                    $fingerprint = $stored[0]['fingerprint'] ?? null;
+                    return ['status' => $fingerprint === null ? 'missing' : (hash_equals($fingerprint, $current) ? 'verified' : 'drifted'), 'stored' => $fingerprint, 'current' => $current];
+                }
+                if ($stored !== []) {
                     return ['copied' => 0, 'status' => 'already-migrated'];
                 }
                 $count = match ($group) {
@@ -72,12 +78,47 @@ final class Spacefast
                     'sessions' => $this->sessions($source, $target, $legacy, $users, $dry),
                 };
                 if ($dry) { throw new SpacefastDryRun(['copied' => $count, 'status' => 'dry-run']); }
-                $this->db->run("INSERT INTO `$receipts` (space_id,table_group,completed_at) VALUES (?,?,?)", [$space, $group, time()]);
+                $this->db->run("INSERT INTO `$receipts` (space_id,table_group,completed_at,fingerprint) VALUES (?,?,?,?)", [$space, $group, time(), $current]);
                 return ['copied' => $count, 'status' => 'copied'];
             });
             } catch (SpacefastDryRun $rollback) { $report['groups'][$group] = $rollback->report; }
         }
-        return $report;
+        if ($verify && array_filter($report['groups'], static fn ($g) => $g['status'] !== 'verified') !== []) {
+            throw new SpacefastDrift($report['groups']);
+        }
+        return $verify ? ['groups' => $report['groups']] : $report;
+    }
+
+    private function scope(string $space, string $source): array
+    {
+        $seed = array_map('intval', array_column($this->db->run("SELECT DISTINCT post_id FROM `{$source}postmeta` WHERE meta_key=? AND meta_value=?", ['_spacefast_space_id', $space]), 'post_id'));
+        $posts = $seed === [] ? [] : $this->db->run("SELECT * FROM `{$source}posts` WHERE ID IN ({$this->marks($seed)}) OR (post_parent IN ({$this->marks($seed)}) AND post_type IN ('revision','attachment')) ORDER BY ID", [...$seed, ...$seed]);
+        $ids = array_column($posts, 'ID');
+        $users = array_map('intval', array_column($this->db->run("SELECT DISTINCT user_id FROM `{$source}usermeta` WHERE meta_key=? AND meta_value=?", ['_spacefast_app_user', $space]), 'user_id'));
+        $users = array_values(array_unique([...$users, ...array_filter(array_map('intval', array_column($posts, 'post_author')))]));
+        return [$posts, $ids, $users];
+    }
+
+    private function fingerprint(string $group, string $source, array $posts, array $users): string
+    {
+        $ids = $group === 'posts' ? $posts : $users;
+        $values = [];
+        if ($ids !== []) {
+            $where = $this->marks($ids);
+            $values = match ($group) {
+                'posts' => [
+                    $this->db->run("SELECT COUNT(*) AS count, MAX(post_modified_gmt) AS modified FROM `{$source}posts` WHERE ID IN ($where)", $ids)[0],
+                    $this->db->run("SELECT MAX(meta_id) AS meta FROM `{$source}postmeta` WHERE post_id IN ($where)", $ids)[0],
+                    $this->db->run("SELECT COUNT(*) AS relationships FROM `{$source}term_relationships` WHERE object_id IN ($where)", $ids)[0],
+                ],
+                'users' => [
+                    $this->db->run("SELECT COUNT(*) AS count, MAX(ID) AS id FROM `{$source}users` WHERE ID IN ($where)", $ids)[0],
+                    $this->db->run("SELECT MAX(umeta_id) AS meta FROM `{$source}usermeta` WHERE user_id IN ($where)", $ids)[0],
+                ],
+                'sessions' => $this->exists($source . 'sfi_sessions') ? $this->db->run("SELECT COUNT(*) AS count, MAX(id) AS id, MAX(revoked_at) AS revoked FROM `{$source}sfi_sessions` WHERE wp_user_id IN ($where)", $ids) : [],
+            };
+        }
+        return hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
     }
 
     private function posts(string $source, string $target, array $posts, array $ids): int
@@ -223,4 +264,12 @@ final class Spacefast
 final class SpacefastDryRun extends \RuntimeException
 {
     public function __construct(public readonly array $report) { parent::__construct('rollback dry run'); }
+}
+
+final class SpacefastDrift extends HttpError
+{
+    public function __construct(public readonly array $groups)
+    {
+        parent::__construct(409, 'zero_spacefast_drift', 'Source data differs from the migration receipts.', '/groups');
+    }
 }

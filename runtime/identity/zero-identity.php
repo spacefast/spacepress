@@ -29,5 +29,6 @@ register_activation_hook(__FILE__, static function (): void {
 });
 register_deactivation_hook(__FILE__, static function (): void {
     wp_clear_scheduled_hook("zero_identity_maintenance");
+    wp_clear_scheduled_hook("zero_identity_password_inventory");
 });
 \Zero\Identity\Plugin::boot(__FILE__);

@@ -784,3 +784,24 @@ This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the
 supported runtime. Package source resolution has its own [import contract](config-api.md). Existing documented PHP null/undefined and Unicode string
 semantics are unchanged. Class behavior has its own implementation contract.
+
+## Identity password verification inventory
+
+Normal requests provision a fixed current-algorithm dummy hash and enqueue a
+one-minute WordPress cron event; they never enumerate user password hashes.
+Each background invocation reads at most 1,000 users in ascending `ID` order. An
+option row locked within the database transaction serializes workers. The
+profile map and cursor commit together, so an interrupted page is retried from
+the previous committed cursor. Password-write hooks merge profiles under the
+same profile-map row lock. Stored profiles contain independent random-password
+hashes, never copies of user credentials.
+
+Before the inventory completes, password sign-in verifies the fixed current
+hash plus the user's own hash (or the fixed hash again for an absent user).
+This keeps login available and prevents an absent account from skipping costly
+verification. Legacy algorithm costs can differ during this initial inventory.
+Once complete, every attempt verifies the full stored algorithm/cost schedule,
+substituting the user's hash in its matching slot. Retaining all profiles gives
+matching verification costs across heterogeneous legacy accounts; checking only
+the most expensive legacy profile would not give that property. Sites disabling
+WP-Cron must run the scheduled event through their external cron or WP-CLI.

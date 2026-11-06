@@ -8,3 +8,30 @@ $mfa=new Mfa(Plugin::$db,Plugin::$security);$setup=$mfa->setup($uid,'Native test
 echo "PASS native WordPress password sign-in accepts any verified email, preserves account/roles and enforces MFA\n";
 
 require __DIR__.'/native-auth-storage.php';
+
+// Real process death rolls back only the interrupted page; concurrent workers share a row lock.
+$inventory = 'zero_identity_password_inventory';
+update_option($inventory, ['after' => 0, 'complete' => false], false);
+$worker = worker('password-inventory-worker.php', ['crash' => true]);
+fgets($worker[1][1]);
+[$out, $err, $code] = finish_worker($worker);
+wp_cache_delete($inventory, 'options');
+check($code === 9 && $err === '' && get_option($inventory) === ['after' => 0, 'complete' => false], 'process death leaves the inventory cursor uncommitted');
+$db = Plugin::$db;
+$db->run('START TRANSACTION');
+$db->row("SELECT option_value FROM {$db->wp->options} WHERE option_name=%s FOR UPDATE", $inventory);
+$worker = worker('password-inventory-worker.php', []);
+$thread = (int) trim(fgets($worker[1][1]));
+$deadline = microtime(true) + 10;
+while (!str_contains((string) ($db->row("SELECT INFO FROM information_schema.PROCESSLIST WHERE ID=%d AND COMMAND='Query'", $thread)['INFO'] ?? ''), $db->wp->options)) {
+    if (microtime(true) > $deadline) {
+        throw new RuntimeException('Inventory worker never waited on the progress row lock');
+    }
+}
+echo "PASS concurrent inventory worker waits on the progress row lock\n";
+do_action('zero_identity_password_inventory');
+$committed = get_option($inventory);
+$db->run('COMMIT');
+[$out, $err, $code] = finish_worker($worker);
+wp_cache_delete($inventory, 'options');
+check($code === 0 && $err === '' && $out === 'completed' && get_option($inventory)['after'] >= $committed['after'], 'waiting worker resumes from the committed page after a process crash');

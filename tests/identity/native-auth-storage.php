@@ -10,6 +10,60 @@ declare(strict_types=1);
             throw new RuntimeException($label);
         }
     };
+    // Exercise an upgrade inventory on real users without password hashing per fixture row.
+    $inventory = 'zero_identity_password_inventory';
+    $fixtureTag = 'inventory-' . bin2hex(random_bytes(6)) . '-';
+    $fixtureHash = get_option('zero_identity_dummy_password_hash');
+    for ($batch = 0; $batch < 25; $batch++) {
+        $values = [];
+        for ($i = 0; $i < 100; $i++) {
+            $values[] = $db->wp->prepare('(%s,%s)', $fixtureTag . ($batch * 100 + $i), $fixtureHash);
+        }
+        $db->run("INSERT INTO {$db->wp->users} (user_login,user_pass) VALUES " . implode(',', $values));
+    }
+    delete_option($inventory);
+    delete_option('zero_identity_password_profiles');
+    $inventoryReads = 0;
+    $observeInventory = static function ($sql) use (&$inventoryReads, $db) {
+        if (preg_match('/^SELECT .*user_pass.*FROM ' . preg_quote($db->wp->users, '/') . '/i', $sql)) {
+            $inventoryReads++;
+        }
+        return $sql;
+    };
+    add_filter('query', $observeInventory);
+    \Zero\Identity\Accounts::provisionPasswordHash();
+    remove_filter('query', $observeInventory);
+    $assert($inventoryReads === 0, 'ordinary requests never inventory WordPress password hashes');
+    $peak = 0;
+    $page = static function () use (&$peak): void {
+        memory_reset_peak_usage();
+        $start = memory_get_usage();
+        do_action('zero_identity_password_inventory');
+        $peak = max($peak, memory_get_peak_usage() - $start);
+    };
+    $page();
+    $first = get_option($inventory);
+    $assert(is_array($first) && $first['after'] > 0 && !$first['complete'], 'first bounded page persists a resumable cursor');
+    $crash = static function () { throw new RuntimeException('simulated inventory crash'); };
+    add_filter('pre_update_option_' . $inventory, $crash);
+    try {
+        $page();
+        throw new RuntimeException('Inventory crash was not injected');
+    } catch (RuntimeException $e) {
+        $assert($e->getMessage() === 'simulated inventory crash', 'inventory interruption reached the page commit');
+    } finally {
+        remove_filter('pre_update_option_' . $inventory, $crash);
+    }
+    $assert(get_option($inventory) === $first, 'interrupted page preserves the last committed cursor');
+    $page();
+    $assert(get_option($inventory)['after'] > $first['after'], 'next worker resumes beyond the committed page');
+    for ($attempt = 0; $attempt < 100 && !get_option($inventory)['complete']; $attempt++) {
+        $page();
+    }
+    $assert(get_option($inventory)['complete'], 'multi-page inventory eventually completes');
+    $assert($peak < 2 * 1024 * 1024, 'inventory holds less than 2 MiB of transient memory with 2500 users');
+    $db->run("DELETE FROM {$db->wp->users} WHERE user_login LIKE %s", $db->wp->esc_like($fixtureTag) . '%');
+    echo "PASS password inventory: 2500 users, resumable crash, peak transient bytes=$peak\n";
     $_SERVER['REMOTE_ADDR'] ??= '127.0.0.1';
     $_SERVER['REQUEST_METHOD'] ??= 'GET';
     $tag = bin2hex(random_bytes(6));
@@ -25,6 +79,28 @@ declare(strict_types=1);
     [$appPassword] = WP_Application_Passwords::create_new_application_password($uid, ['name' => 'storage']);
     $appLogin = static fn () => wp_authenticate_application_password(null, 'storage-' . $tag, $appPassword);
     $assert($appLogin() instanceof WP_User, 'application password without identity works');
+    $completeInventory = get_option($inventory);
+    update_option($inventory, ['after' => 0, 'complete' => false], false);
+    $fallbackChecks = [];
+    $observeFallback = static function ($valid, $plain, $hash, $id) use (&$fallbackChecks) {
+        $fallbackChecks[] = [$hash, $id];
+        return $valid;
+    };
+    add_filter('check_password', $observeFallback, 10, 4);
+    try {
+        $assert($accounts->password('storage-' . $tag, $password) === $uid, 'correct login works before inventory completes');
+        try {
+            $accounts->password('absent-' . $tag, 'incorrect-password');
+            throw new RuntimeException('Missing account accepted during inventory');
+        } catch (\Zero\Identity\Failure $e) {
+            $assert($e->kind === 'invalid_credentials', 'incomplete inventory keeps generic refusal');
+        }
+    } finally {
+        remove_filter('check_password', $observeFallback);
+        update_option($inventory, $completeInventory, false);
+    }
+    $fixedDummy = get_option('zero_identity_dummy_password_hash');
+    $assert($fallbackChecks === [[$fixedDummy, 0], [get_userdata($uid)->user_pass, $uid], [$fixedDummy, 0], [$fixedDummy, 0]], 'incomplete inventory always verifies the current dummy plus own hash or dummy');
     $verified = [];
     $observe = static function ($valid, $plain, $hash, $userId) use (&$verified) {
         $verified[] = [$hash, $userId];

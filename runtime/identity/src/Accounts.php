@@ -180,7 +180,9 @@ final class Accounts
     private const DUMMY_PASSWORD_HASH = "zero_identity_dummy_password_hash";
     private const PASSWORD_PROFILES = "zero_identity_password_profiles";
 
-    /** Persist fixed verification hashes once, including the site's existing WordPress hash profiles. */
+    private const PASSWORD_INVENTORY = "zero_identity_password_inventory";
+
+    /** Ordinary requests only provision fixed material and enqueue the background inventory. */
     public static function provisionPasswordHash(): void
     {
         $hash = get_option(self::DUMMY_PASSWORD_HASH);
@@ -188,16 +190,60 @@ final class Accounts
             $hash = wp_hash_password(Security::token(48));
             update_option(self::DUMMY_PASSWORD_HASH, $hash, false);
         }
-        if (!is_array(get_option(self::PASSWORD_PROFILES))) {
-            global $wpdb;
-            $profiles = [self::passwordProfile($hash) => $hash];
-            foreach (Plugin::$db->rows("SELECT user_pass FROM {$wpdb->users}") as $row) {
-                $profile = self::passwordProfile($row['user_pass']);
-                $profiles[$profile] ??= self::dummyPasswordHash($row['user_pass']);
-            }
-            update_option(self::PASSWORD_PROFILES, $profiles, false);
-        }
+        add_option(self::PASSWORD_PROFILES, [self::passwordProfile($hash) => $hash], '', false);
+        add_option(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false], '', false);
         self::rememberPasswordHash($hash);
+        if (!get_option(self::PASSWORD_INVENTORY)['complete'] && !wp_next_scheduled(self::PASSWORD_INVENTORY)) {
+            wp_schedule_event(time() + 60, 'zero_identity_minute', self::PASSWORD_INVENTORY);
+        }
+    }
+
+    /** A locked option row serializes workers/writers; the cursor and profiles commit together. */
+    public static function inventoryPasswordHashes(): void
+    {
+        if (get_option(self::PASSWORD_INVENTORY)['complete']) {
+            wp_clear_scheduled_hook(self::PASSWORD_INVENTORY);
+            return;
+        }
+        try {
+            Plugin::$db->transaction(static function (): void {
+                global $wpdb;
+                $state = self::lockedPasswordOption(self::PASSWORD_INVENTORY);
+                if ($state['complete']) {
+                    return;
+                }
+                $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
+                $previousProfiles = $profiles;
+                $page = Plugin::$db->rows("SELECT ID,user_pass FROM {$wpdb->users} WHERE ID > %d ORDER BY ID LIMIT 1000", $state['after']);
+                foreach ($page as $row) {
+                    $profile = self::passwordProfile($row['user_pass']);
+                    $profiles[$profile] ??= self::dummyPasswordHash($row['user_pass']);
+                    $state['after'] = (int) $row['ID'];
+                }
+                $state['complete'] = count($page) < 1000;
+                if ($profiles !== $previousProfiles && !update_option(self::PASSWORD_PROFILES, $profiles, false)) {
+                    throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
+                }
+                if (!update_option(self::PASSWORD_INVENTORY, $state, false)) {
+                    throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
+                }
+            });
+        } finally {
+            // A rollback (including a failed page commit) must discard uncommitted cached options.
+            wp_cache_delete(self::PASSWORD_PROFILES, 'options');
+            wp_cache_delete(self::PASSWORD_INVENTORY, 'options');
+        }
+    }
+
+    /** Read from storage after acquiring the row lock, never from a pre-lock option cache. */
+    private static function lockedPasswordOption(string $name): array
+    {
+        global $wpdb;
+        // SQLite has no row-level SELECT FOR UPDATE; take its write lock before reading too.
+        Plugin::$db->run("UPDATE {$wpdb->options} SET option_value=option_value WHERE option_name=%s", $name);
+        $row = Plugin::$db->row("SELECT option_value FROM {$wpdb->options} WHERE option_name=%s FOR UPDATE", $name);
+        wp_cache_delete($name, 'options');
+        return $row === null ? [] : unserialize($row['option_value'], ['allowed_classes' => false]);
     }
 
     /** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
@@ -206,13 +252,20 @@ final class Accounts
         $profile = self::passwordProfile($hash);
         $profiles = get_option(self::PASSWORD_PROFILES, []);
         if (!isset($profiles[$profile])) {
-            Plugin::$db->transaction(static function () use ($profile, $hash): void {
-                global $wpdb;
-                $row = Plugin::$db->row("SELECT option_value FROM {$wpdb->options} WHERE option_name=%s FOR UPDATE", self::PASSWORD_PROFILES);
-                $profiles = $row === null ? [] : unserialize($row['option_value'], ['allowed_classes' => false]);
-                $profiles[$profile] ??= self::dummyPasswordHash($hash);
-                update_option(self::PASSWORD_PROFILES, $profiles, false);
-            });
+            try {
+                Plugin::$db->transaction(static function () use ($profile, $hash): void {
+                    $profiles = self::lockedPasswordOption(self::PASSWORD_PROFILES);
+                    if (isset($profiles[$profile])) {
+                        return;
+                    }
+                    $profiles[$profile] = self::dummyPasswordHash($hash);
+                    if (!update_option(self::PASSWORD_PROFILES, $profiles, false)) {
+                        throw new Failure('storage_unavailable', 'Identity storage is unavailable. Please retry.', 503);
+                    }
+                });
+            } finally {
+                wp_cache_delete(self::PASSWORD_PROFILES, 'options');
+            }
         }
     }
 
@@ -280,12 +333,19 @@ final class Accounts
             self::rememberPasswordHash($user->user_pass);
         }
         $valid = false;
-        // Every sign-in performs the same algorithm/cost schedule, including missing accounts.
-        foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
-            $actual = $user && $profile === $kind;
-            $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
-            if ($actual) {
-                $valid = $checked;
+        if (!get_option(self::PASSWORD_INVENTORY)['complete']) {
+            // While the inventory is incomplete, every attempt still pays current-algorithm work.
+            $dummy = get_option(self::DUMMY_PASSWORD_HASH);
+            wp_check_password($password, $dummy, 0);
+            $valid = wp_check_password($password, $user ? $user->user_pass : $dummy, $user ? $user->ID : 0);
+        } else {
+            // Complete inventories give every sign-in the same algorithm/cost schedule.
+            foreach (get_option(self::PASSWORD_PROFILES) as $kind => $dummy) {
+                $actual = $user && $profile === $kind;
+                $checked = wp_check_password($password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0);
+                if ($actual) {
+                    $valid = $checked;
+                }
             }
         }
         if (!$user || !$valid) {

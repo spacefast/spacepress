@@ -30,6 +30,11 @@ final class Plugin
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
         add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        add_filter('cron_schedules', static function (array $schedules): array {
+            $schedules['zero_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
+            return $schedules;
+        });
+        add_action('zero_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,

@@ -383,5 +383,29 @@
     "name": "regexSubtractionSyntax",
     "expression": " 'x'.replace(/[a-z--x]/g, '!') ",
     "fold": false
+  },
+  {
+    "name": "joinSeparatorCoercion",
+    "expression": "[(() => {const a=[1,2]; return a.join({toString:()=>{a.push(3);return '-';}});})(), (() => {const a=[1,2]; return a.join({toString:()=>{a.pop();return '-';}});})()]",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "arrayPrimitiveOverrides",
+    "expression": "(() => { const a=[1,2]; a.toString=()=> 'OWN'; a.valueOf=()=>9; const b=[3]; b.join=()=> 'JOIN'; return [String(a), Number(a), String([a]), ''+a, a==9, String(b), [b].join(',')]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "applyUsesArrayLikeData",
+    "expression": "(() => {const f=(a,b)=>[a,b]; let errorName=''; try { f.apply(null,'ab'); } catch(error) {errorName=error.name;} return [errorName, f.apply(null,{length:2,0:'a',1:'b'}), f.apply(null,new Set([1,2]))];})()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "computedProtoDataProperty",
+    "expression": "Object.hasOwn({['__proto__']:null}, '__proto__')",
+    "fold": true,
+    "javascript": true
   }
 ]

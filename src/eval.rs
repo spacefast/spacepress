@@ -1104,7 +1104,13 @@ impl<'p> Evaluator<'p> {
                     c.ts_type = Some((t.clone(), scope.module));
                     return Ok(Value::Column(Rc::new(c)));
                 }
-                self.call(&f, argv, call_span)?
+                if let Value::Bound(receiver, method) = &f
+                    && matches!(callee.kind, ExprKind::Member { .. } | ExprKind::Index { .. })
+                {
+                    self.call_method(receiver, method, argv, call_span)?
+                } else {
+                    self.call(&f, argv, call_span)?
+                }
             }
             ExprKind::New { callee, args } => {
                 let f = self.eval(callee, scope)?;
@@ -1377,7 +1383,11 @@ impl<'p> Evaluator<'p> {
         match f {
             Value::Closure(c) => self.call_closure(c, args, span),
             Value::Builtin(b) => self.call_builtin(b, args, span),
-            Value::Bound(recv, m) => self.call_method(recv, m, args, span),
+            Value::Bound(..) => err_help(
+                span,
+                "calling extracted methods isn't supported during configuration evaluation",
+                "call the method on its receiver, or wrap that call in an arrow function",
+            ),
             other => err(span, format!("{} isn't a function", other.describe())),
         }
     }

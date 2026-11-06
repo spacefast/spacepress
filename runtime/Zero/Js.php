@@ -31,9 +31,8 @@ final class Js
             $v === null => 'null',
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
-            $v instanceof JsArray => self::join($v),
-            $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
-            $v instanceof JsArguments, $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
+            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -117,7 +116,7 @@ final class Js
     public static function toNumber(mixed $v): int|float
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
-        if ($v instanceof JsObject) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
+        if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
             return self::n($v);
         }
@@ -129,9 +128,6 @@ final class Js
         }
         if (is_bool($v)) {
             return (int) $v;
-        }
-        if ($v instanceof JsArray) {
-            return self::toNumber(self::str($v));
         }
         if (!is_string($v)) {
             return NAN;
@@ -1215,20 +1211,20 @@ final class Js
         return false;
     }
 
-    public static function join(JsArray $a, string $sep = ','): string
-    {
-        return self::arrayString($a, $sep, new \SplObjectStorage());
-    }
+    private static ?\SplObjectStorage $stringArrays = null;
 
-    private static function arrayString(JsArray $a, string $sep, \SplObjectStorage $stack): string
+    public static function join(JsArray $a, mixed $sep = JsUndefined::Value): string
     {
+        $len = count($a->a);
+        $sep = $sep === JsUndefined::Value ? ',' : self::str($sep);
+        $stack = self::$stringArrays ??= new \SplObjectStorage();
         if ($stack->offsetExists($a)) { return ''; }
         $stack->offsetSet($a);
         try {
             $parts = [];
-            for ($i = 0, $len = count($a->a); $i < $len; $i++) {
-                $value = $a->a[$i];
-                $parts[] = self::isNullish($value) ? '' : ($value instanceof JsArray ? self::arrayString($value, ',', $stack) : self::str($value));
+            for ($i = 0; $i < $len; $i++) {
+                $value = $a->a[$i] ?? JsUndefined::Value;
+                $parts[] = self::isNullish($value) ? '' : self::str($value);
             }
             return implode($sep, $parts);
         } finally { $stack->offsetUnset($a); }

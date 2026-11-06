@@ -1057,6 +1057,8 @@ fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
 fn database_builders_refuse_discarded_arguments_at_the_call_site() {
     for expression in [
         "db.insert(notes, n++).values({count: 1})",
+        "db.insert((n++, notes)).values({count: 1})",
+        "db.update(notes).where({id: n++}).set({count: n++})",
         "db.insert(notes).values({count: 1}, n++)",
         "db.delete(notes).where({id: 1}, n++)",
         "db.insert(notes).values({count: 1}).returning(n++)",
@@ -1067,11 +1069,11 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
         assert!(
-            diagnostic["message"].as_str().unwrap().contains("unsupported overload"),
+            diagnostic["message"].as_str().unwrap().contains("unsupported"),
             "{report}"
         );
         assert_eq!(diagnostic["location"]["line"], 3);
-        assert!(diagnostic["help"].as_str().unwrap().contains("accepted contract"));
+        assert!(diagnostic["help"].is_string());
     }
 }
 
@@ -1135,5 +1137,49 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
             "{report}"
         );
         assert_eq!(diagnostic["location"]["line"], 2, "{report}");
+    }
+}
+
+#[test]
+fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), "import {action,defineConfig} from 'zero';\nconst trim=' x '.trim; const result=trim();\nexport default defineConfig({actions:{probe:action({handler:()=>result})}});").unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert!(
+        diagnostic["message"].as_str().unwrap().contains("extracted methods"),
+        "{report}"
+    );
+    assert_eq!(diagnostic["location"]["line"], 2);
+}
+
+#[test]
+fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
+    for (expression, folded) in [("{__proto__: null}", true), ("{'__proto__': null}", false)] {
+        let tmp = tempfile::tempdir().unwrap();
+        let declaration = if folded {
+            format!("const result = Object.hasOwn({expression}, '__proto__');")
+        } else {
+            String::new()
+        };
+        let body = if folded {
+            "result".into()
+        } else {
+            format!("Object.hasOwn({expression}, '__proto__')")
+        };
+        std::fs::write(tmp.path().join("zero.config.ts"), format!("import {{action,defineConfig}} from 'zero';\n{declaration}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"]
+                .as_str()
+                .unwrap()
+                .contains("prototype setter syntax"),
+            "{report}"
+        );
+        assert!(diagnostic["location"].is_object());
+        assert!(diagnostic["help"].as_str().unwrap().contains("computed"));
     }
 }

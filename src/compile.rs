@@ -5766,6 +5766,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Collection(table) = v.ty else {
             return err(t.span, format!("db.{m}() needs a collection, not {}", v.ty.describe()));
         };
+        if v.php != php_str(&table) {
+            return err_help(
+                t.span,
+                "unsupported database collection expression",
+                "pass a static collection reference; evaluate side effects in a preceding statement",
+            );
+        }
         Ok(Out::atom(
             "",
             Ty::Builder(Box::new(Builder {
@@ -5791,6 +5798,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 b.set = Some(self.write_values(&b.table, x, false)?);
             }
             (BuilderKind::Update | BuilderKind::Delete, "where") if b.filter.is_none() => {
+                if b.kind == BuilderKind::Update && b.set.is_none() {
+                    return err_help(
+                        span,
+                        "unsupported update builder order",
+                        "call set(...) before where(...) so argument effects retain their order",
+                    );
+                }
                 let x = self.arg(args, 0, span, "a filter")?;
                 b.filter = Some(self.filter(&b.table, x, false)?);
             }

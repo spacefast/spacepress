@@ -579,11 +579,20 @@ radices require safe integer results to avoid engine-specific approximations.
 Known unsupported literals are refused at source; dynamic values throw explicitly.
 PHP and Rust power-of-two parsing round once from the significant bits.
 Database builders, configuration/schema factories and column modifiers also use
-the shared source arity contract, including runtime arguments to `$type`.
+the shared source arity contract, including runtime arguments to `$type`. Database
+collection arguments must resolve to static references; effectful expressions
+are refused instead of discarded. Updates require `set(...)` before `where(...)`
+to preserve argument evaluation order. Extracted methods cannot be invoked during
+configuration evaluation because the evaluator does not model lost receivers.
 Callbacks are validated before empty-input shortcuts in configuration evaluation.
 `Object.fromEntries` follows live array/Set/Map/arguments iterators and reads both
 entry values before key coercion. String splitting and regex replacement retain
 conversion effects even when a zero limit or non-global pattern makes them inert.
+Array conversions honor own `toString`, `valueOf` and `join`; join snapshots
+length before converting its separator. Function `apply` reads an array-like
+object, with primitive argument lists refused. Prototype setter literals and
+dynamic prototype access/mutation are refused; computed `__proto__` data keys
+remain ordinary own properties.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 

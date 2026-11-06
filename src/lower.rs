@@ -1032,6 +1032,13 @@ impl Lowerer {
                                     "use a plain property or a function",
                                 );
                             }
+                            if !p.computed
+                                && !p.shorthand
+                                && !p.method
+                                && p.key.static_name().as_deref() == Some("__proto__")
+                            {
+                                return self.unsupported(p.span, "prototype setter syntax", "use a computed ['__proto__'] key for an own data property; custom prototypes aren't supported");
+                            }
                             let key = if p.computed {
                                 PropKey::Computed(self.expr(p.key.to_expression())?)
                             } else {

@@ -83,7 +83,10 @@ trait JsDynamic
     {
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
-        if ($value instanceof JsObject) { return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key); }
+        if ($value instanceof JsObject) {
+            if ($key === '__proto__' && !array_key_exists($key, $value->p)) { throw new JsError('Prototype access is not supported', 'TypeError'); }
+            return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
+        }
         if ($value instanceof JsClass) { return $value->get($key); }
         if ($value instanceof JsNamespace && $value->name === 'Math') {
             return match ($key) { 'PI' => M_PI, 'E' => M_E, default => self::dynamicMethodValue($value, $key) };
@@ -119,7 +122,10 @@ trait JsDynamic
     {
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
         $key = self::key($key);
-        if ($target instanceof JsObject || $target instanceof JsClass) { return self::set($target, $key, $value); }
+        if ($target instanceof JsObject || $target instanceof JsClass) {
+            if ($target instanceof JsObject && $key === '__proto__' && !array_key_exists($key, $target->p)) { throw new JsError('Prototype mutation is not supported', 'TypeError'); }
+            return self::set($target, $key, $value);
+        }
         if ($target instanceof RegExp && $key === 'lastIndex') { $target->lastIndex = $value; return $value; }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === 'length') {
@@ -231,13 +237,16 @@ trait JsDynamic
         if ($name === 'toFixed' && (is_int($receiver) || is_float($receiver))) { return self::toFixed($receiver, $get(0, 0)); }
         if ($name === 'toString') {
             if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
-            if ($receiver instanceof JsArray) { return self::join($receiver, ','); }
+            if ($receiver instanceof JsArray) {
+                if (array_key_exists('join', $receiver->p) && !$receiver->p['join'] instanceof \Closure) { return self::dynamicObjectTag($receiver); }
+                return self::dynamicCallMethod($receiver, 'join', new JsArray());
+            }
             if ($receiver instanceof JsArguments || $receiver instanceof JsObject || $receiver instanceof JsSet || $receiver instanceof JsMap || $receiver instanceof JsNamespace) { return self::dynamicObjectTag($receiver); }
             return self::str($receiver);
         }
         if ($name === 'valueOf') { return $receiver instanceof JsDate ? $receiver->milliseconds : $receiver; }
         if ($receiver instanceof \Closure && ($name === 'call' || $name === 'apply')) {
-            $values = $name === 'call' ? array_slice($a, 1) : (self::isNullish($get(1)) ? [] : self::dynamicArrayFrom($get(1))->a);
+            $values = $name === 'call' ? array_slice($a, 1) : self::dynamicApplyArguments($get(1));
             if (self::$dynamicMethodReceivers !== null && isset(self::$dynamicMethodReceivers[$receiver])) { return (self::$dynamicMethodReceivers[$receiver])($get(0), new JsArray($values)); }
             return self::dynamicCall($receiver, new JsArray($values));
         }
@@ -294,7 +303,7 @@ trait JsDynamic
                 'slice' => self::dynamicBorrowedSlice($receiver, $args),
                 'at' => self::dynamicArrayAt($receiver, $get(0)),
                 'indexOf', 'lastIndexOf', 'includes' => self::{$name}($receiver, $get(0), ...array_slice($a, 1, 1)),
-                'join' => self::join($receiver, $get(0) === JsUndefined::Value ? ',' : self::str($get(0))),
+                'join' => self::join($receiver, $get(0)),
                 'splice' => self::dynamicSplice($receiver, $args),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
@@ -392,6 +401,17 @@ trait JsDynamic
             for ($i = 0; $i < $length; $i++) { $value = self::dynamicGet($source, (string) $i); $result->a[] = $callback === null ? $value : $callback($value, $i); }
         }
         return $result;
+    }
+
+    private static function dynamicApplyArguments(mixed $source): array
+    {
+        if (self::isNullish($source)) { return []; }
+        if (!is_object($source) || $source instanceof \Closure) { throw new JsError('apply requires an array-like data object', 'TypeError'); }
+        $length = max(0, self::toInteger(self::toNumber(self::dynamicGet($source, 'length'))));
+        if ($length > 5000000) { throw new JsError('apply argument list is too large', 'RangeError'); }
+        $values = [];
+        for ($i = 0; $i < $length; $i++) { $values[] = self::dynamicGet($source, (string) $i); }
+        return $values;
     }
 
     private static function dynamicStringSearch(string $source, string $method, mixed $search, mixed $position): bool
@@ -554,12 +574,12 @@ trait JsDynamic
             if ($hint !== 'number') { throw new JsError('Date string coercion is not supported', 'TypeError'); }
             return $value->milliseconds;
         }
-        if ($value instanceof JsObject) {
+        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments) {
             foreach ($hint === 'string' ? ['toString', 'valueOf'] : ['valueOf', 'toString'] as $method) {
                 if (array_key_exists($method, $value->p)) {
                     if (!$value->p[$method] instanceof \Closure) { continue; }
                     $result = self::dynamicCall($value->p[$method], new JsArray());
-                } else { $result = $method === 'toString' ? '[object Object]' : $value; }
+                } else { $result = self::dynamicCallMethod($value, $method, new JsArray(), true); }
                 if ($result === JsUndefined::Value || !is_object($result)) { return $result; }
             }
             throw new JsError('Cannot convert object to primitive value', 'TypeError');

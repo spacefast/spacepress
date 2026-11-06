@@ -6400,7 +6400,14 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
             need.iter().all(|(k, (t, optional))| match have.get(k) {
                 Some((ht, have_optional)) => {
                     (!have_optional || *optional)
-                        && assignable(ht, &if *optional { t.clone().nullable() } else { t.clone() })
+                        && assignable(
+                            ht,
+                            &if *optional {
+                                Ty::union([t.clone(), Ty::Undefined])
+                            } else {
+                                t.clone()
+                            },
+                        )
                 }
                 None => *optional,
             }) && have.keys().all(|k| need.contains_key(k))

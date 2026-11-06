@@ -317,18 +317,6 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     }
     prepared.install_into(&stage.join("plugins"))?;
     let plugins = stage.join("plugins");
-    for entry in std::fs::read_dir(&plugins)? {
-        let entry = entry?;
-        if entry.file_name().to_string_lossy().starts_with("zero-") {
-            if entry.file_type()?.is_dir() {
-                std::fs::remove_dir_all(entry.path())?;
-            } else {
-                std::fs::remove_file(entry.path())?;
-            }
-        }
-    }
-    emit_generated(project, &migrations_dir(project), &plugins, built)?;
-    let mut versions = serde_json::Map::new();
     let mut generated = vec![
         "zero-runtime".to_string(),
         "zero-identity".to_string(),
@@ -337,6 +325,23 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     if built.schema.admin {
         generated.push("zero-admin".to_string());
     }
+    // Admin is also owned here when its opt-in is removed.
+    for slug in generated
+        .iter()
+        .map(String::as_str)
+        .chain((!built.schema.admin).then_some("zero-admin"))
+    {
+        let directory = plugins.join(slug);
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory)?;
+        }
+        let archive = directory.with_extension("zip");
+        if archive.exists() {
+            std::fs::remove_file(archive)?;
+        }
+    }
+    emit_generated(project, &migrations_dir(project), &plugins, built)?;
+    let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
         php_lint_tree(&directory)?;

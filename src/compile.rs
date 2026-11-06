@@ -218,6 +218,7 @@ struct Local {
     mutable: bool,
     binding: Span,
     view: Vec<effects::Step>,
+    initialized: bool,
 }
 
 /// Binding reads may be widened by runtime effects independently of what the
@@ -895,7 +896,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn declare_local(&mut self, name: &str, ty: Ty, mutable: bool, binding: Span) -> String {
         let read_ty = self.effects.parameter_type(binding, &ty);
         let fx = self.fx();
-        let php = if let Some(local) = fx.scopes.last().expect("scope").get(name) {
+        let php = if let Some(local) = fx.scopes.last().expect("scope").get(name)
+            && local.binding == binding
+        {
             local.php.clone()
         } else {
             let base = php_local_base(name);
@@ -915,9 +918,35 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 mutable,
                 binding,
                 view: Vec::new(),
+                initialized: true,
             },
         );
         php
+    }
+
+    fn predeclare_lexical(&mut self, pat: &Pat, mutable: bool) {
+        let mut bindings = Vec::new();
+        pat.bindings(&mut bindings);
+        for (name, binding) in bindings {
+            if self
+                .fx()
+                .scopes
+                .last()
+                .expect("scope")
+                .get(name)
+                .is_some_and(|local| local.binding == binding)
+            {
+                continue;
+            }
+            self.declare_local(name, Ty::Unknown, mutable, binding);
+            self.fx()
+                .scopes
+                .last_mut()
+                .expect("scope")
+                .get_mut(name)
+                .expect("binding")
+                .initialized = false;
+        }
     }
 
     fn set_local_ty(&mut self, name: &str, ty: Ty) {
@@ -934,6 +963,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let fx = self.fx.as_mut().expect("fn");
         for s in fx.scopes.iter().rev() {
             if let Some(l) = s.get(name) {
+                require_initialized_local(name, l, span)?;
                 return Ok(Resolved::Local(l.clone()));
             }
         }
@@ -942,6 +972,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut found = None;
         while let Some(o) = outer {
             if let Some(l) = o.scopes.iter().rev().find_map(|s| s.get(name)) {
+                require_initialized_local(name, l, span)?;
                 found = Some(l.clone());
                 break;
             }
@@ -1032,6 +1063,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn stmts(&mut self, stmts: &[Stmt], indent: usize) -> Result<String> {
         let mut out = String::new();
+        for stmt in stmts {
+            if let Stmt::Decl { kind, pat, .. } = stmt
+                && *kind != DeclKind::Var
+            {
+                self.predeclare_lexical(pat, *kind == DeclKind::Let);
+            }
+        }
         // Local function declarations are hoisted: compile them first.
         for s in stmts {
             if let Stmt::Func(f) = s {
@@ -1111,6 +1149,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     return Ok(out);
                 }
+                self.predeclare_lexical(pat, *kind == DeclKind::Let);
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 let declared = match ann {
                     Some(a) => {
@@ -2119,6 +2158,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         mutable: false,
                         binding,
                         view,
+                        initialized: true,
                     },
                 );
                 continue;
@@ -6128,6 +6168,17 @@ fn pad(n: usize) -> String {
     "    ".repeat(n)
 }
 
+fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()> {
+    if !local.initialized {
+        return err_help(
+            span,
+            format!("`{name}` is referenced before its lexical declaration"),
+            "declare the binding before creating a closure that captures it",
+        );
+    }
+    Ok(())
+}
+
 fn php_local_base(name: &str) -> String {
     if name == "this" {
         return "__zero_this".into();
@@ -6370,7 +6421,14 @@ fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Resul
             }
             break;
         }
-        check_parameter_argument(given.get(i).unwrap_or(&Ty::Null), declared, span)?;
+        if given.get(i).is_none() && !accepts_omission(declared) {
+            return err_help(
+                span,
+                format!("this callback never supplies required parameter {}", i + 1),
+                "remove the parameter, make it optional, or accept undefined",
+            );
+        }
+        check_parameter_argument(given.get(i).unwrap_or(&Ty::Undefined), declared, span)?;
     }
     Ok(())
 }

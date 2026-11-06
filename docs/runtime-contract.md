@@ -129,6 +129,10 @@ The evaluator also forks lexical header bindings before the first test and befor
 each update. Copying a handle preserves the referenced container. Source bindings
 use valid local PHP names; dollar signs, Unicode and superglobal names are encoded.
 Captures, authored locals and compiler temporaries share one reserved name pool.
+Lexical declarations reserve scope before runtime closure compilation. References
+to bindings not yet initialized receive a source refusal; declare them before
+creating the closure. Callback validation treats missing arguments as undefined
+and refuses missing required slots, including null-only parameters.
 
 Arrays remain dense. Indexed writes may replace an existing element or append
 at the current length; writes past the end throw a catchable `RangeError`.

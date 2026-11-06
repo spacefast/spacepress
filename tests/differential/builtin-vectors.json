@@ -1013,5 +1013,15 @@
     "name": "phpSuperglobalNamesStayLocal",
     "expression": "(() => {let GLOBALS=1;const _GET=2;const read=(_POST:number)=>{const _SERVER=3;return [GLOBALS,_GET,_POST,_SERVER];};return [GLOBALS,_GET,read(4)];})()",
     "fold": true
+  },
+  {
+    "name": "omittedCallbackParameterStaysUndefined",
+    "expression": "(() => {function cb(x:number,i:number,a:number[],missing:undefined){return String(missing);}return [1].map(cb);})()",
+    "fold": true
+  },
+  {
+    "name": "initializedLexicalShadowCapturesLocal",
+    "expression": "(() => {const x=1;const read=()=>{const x=2;const f=()=>x;return f();};return [x,read()];})()",
+    "fold": true
   }
 ]

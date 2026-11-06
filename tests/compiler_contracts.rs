@@ -1928,3 +1928,33 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
         }
     }
 }
+
+#[test]
+fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_refusals() {
+    for (source, message) in [
+        (
+            "const x=1;function foo(){const f=()=>x;const x=2;return f();}return foo();",
+            "before its lexical declaration",
+        ),
+        (
+            "const x=1;{const f=()=>x;const {x}={x:2};return f();}",
+            "before its lexical declaration",
+        ),
+        (
+            "function cb(x:number,i:number,a:number[],missing:null){return String(missing);}return [1].map(cb);",
+            "never supplies required parameter 4",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("zero.config.ts"),format!("import {{action,defineConfig}} from 'zero';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{source}}}}})}}}});")).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(diagnostic["message"].as_str().unwrap().contains(message), "{report}");
+        assert!(diagnostic["location"].is_object(), "{report}");
+        assert!(
+            diagnostic["help"].as_str().is_some_and(|help| !help.is_empty()),
+            "{report}"
+        );
+    }
+}

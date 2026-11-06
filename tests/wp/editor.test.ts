@@ -192,3 +192,18 @@ test("presentation metadata survives native SCF registration with stable nested 
     label: "Search title", help: "&lt;b&gt;Plain text&lt;/b&gt;", placeholder: "Write a title", width: 50,
   });
 });
+
+test("editor password writes invalidate visibility and keep relations private", async () => {
+  const row = await ok("POST", "/posts", { as: "editor", body: { title: `Password write ${run}`, status: "published" } });
+  const id = row.id;
+  await ok("POST", "/comments", { as: "editor", body: { postId: id, name: "Visibility", body: "Related" } });
+  const comments = () => ok("GET", `/comments?with=post&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
+  assert.equal((await comments())[0].post.id, id);
+  const protectedPost = await http("POST", `${core}/zero_posts/${id}`, { as: "editor", body: { password: "editor-secret" } });
+  assert.equal(protectedPost.status, 200);
+  assert.equal((await comments())[0].post, null);
+  assert.equal((await http("GET", `${core}/zero_posts/${id}?password=editor-secret`)).status, 200);
+  const cleared = await http("POST", `${core}/zero_posts/${id}`, { as: "editor", body: { password: "" } });
+  assert.equal(cleared.status, 200);
+  assert.equal((await comments())[0].post.id, id);
+});

@@ -173,15 +173,58 @@ $hasher = new \PasswordHash(8, true);
 $_COOKIE['wp-postpass_' . COOKIEHASH] = $hasher->HashPassword('wrong-password');
 eq('wrong native cookie keeps protected rows hidden', [post_password_required($protected['id']), $db->findMany('posts', ['where' => $protectedWhere], $anon)], [true, []]);
 $_COOKIE['wp-postpass_' . COOKIEHASH] = $hasher->HashPassword('native-secret');
-\Zero\Wp\CoreAccess::flush();
 eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_password_required($protected['id']), $db->findFirst('posts', ['where' => $protectedWhere], $anon)['body'] ?? null, $coreRead()->get_status()], [false, $protected['body'], 200]);
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
-\Zero\Wp\CoreAccess::flush();
+eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
 $wire = json_decode(file_get_contents($wp->url() . '/wp-json/zero/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
+
+// Forty unrelated protected rows add one batch query, not one query per row.
+$wp->actAs(null);
+$protectedIds = [];
+for ($i = 0; $i < 40; $i++) {
+    $protectedIds[] = wp_insert_post(['post_type' => 'zero_posts', 'post_title' => "Batch protected $i", 'post_password' => "batch-secret-$i", 'post_status' => 'publish']);
+}
+wp_cache_flush();
+\Zero\Wp\CoreAccess::flush();
+$queries = $wpdb->num_queries;
+$page = $db->findMany('posts', ['where' => ['id' => ['in' => array_merge($protectedIds, [$pub['id']])]], 'orderBy' => ['id' => 'asc'], 'limit' => 1], $anon);
+$firstQueries = $wpdb->num_queries - $queries;
+eq('batch visibility preserves a full public page', array_column($page, 'id'), [$pub['id']]);
+check('protected visibility primes forty posts in a bounded query count', $firstQueries <= 5, $firstQueries);
+$proofChecks = 0;
+$countCapabilities = static function ($caps) use (&$proofChecks) { $proofChecks++; return $caps; };
+add_filter('map_meta_cap', $countCapabilities, 1);
+$viewer = new \Zero\Viewer($users['ed']);
+$db->findMany('posts', ['limit' => 1], $viewer);
+$firstChecks = $proofChecks;
+$db->findMany('posts', ['limit' => 1], $viewer);
+remove_filter('map_meta_cap', $countCapabilities, 1);
+eq('same viewer and proof reuse visibility without rechecking every protected capability', [$firstChecks > 0, $proofChecks], [true, $firstChecks]);
+wp_cache_flush();
+\Zero\Wp\CoreAccess::flush();
+$failPostLookup = static function (string $sql) use ($wpdb): string {
+    return preg_match('/^\s*SELECT\b/i', $sql) && str_contains($sql, $wpdb->posts)
+        ? 'SELECT * FROM zero_missing_post_storage'
+        : $sql;
+};
+add_filter('query', $failPostLookup);
+$suppressed = $wpdb->suppress_errors(true);
+try {
+    problem('unresolved protected posts refuse anonymous reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), 503, 'storage_unavailable');
+    problem('unresolved protected posts refuse editor reads', fn () => $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $viewer), 503, 'storage_unavailable');
+} finally {
+    remove_filter('query', $failPostLookup);
+    $wpdb->suppress_errors($suppressed);
+}
+eq('recovered lookups do not reuse permissive visibility from failed reads', $db->findMany('posts', ['where' => ['id' => $protectedIds[0]]], $anon), []);
+eq('recovered lookups do not retain failed visibility for an authorized viewer', $db->findFirst('posts', ['where' => ['id' => $protectedIds[0]]], $viewer)['id'] ?? null, $protectedIds[0]);
+wp_update_post(['ID' => $protectedIds[0], 'post_password' => '']);
+eq('a native write invalidates protected visibility', $db->findFirst('posts', ['where' => ['id' => $protectedIds[0]]], $anon)['id'] ?? null, $protectedIds[0]);
+foreach ($protectedIds as $id) { wp_delete_post($id, true); }
 
 // ================================================================ write access
 

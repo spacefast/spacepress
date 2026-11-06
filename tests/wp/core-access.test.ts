@@ -539,3 +539,73 @@ test("a save interrupted before Zero's after hooks run commits nothing", () => {
   `);
   assert.equal(out, "0");
 });
+
+test("protected visibility is batched and cached before core pagination", () => {
+  const result: unknown = JSON.parse(wp("eval", `
+    $db = \\Zero\\Wp\\Plugin::instance()->db();
+    wp_set_current_user(0);
+    $anon = new \\Zero\\Viewer(null);
+    $ids = [];
+    try {
+      for ($i = 0; $i < 40; $i++) {
+        $ids[] = wp_insert_post(['post_type' => 'zero_payroll', 'post_title' => 'Protected batch', 'post_status' => 'publish', 'post_password' => 'secret']);
+      }
+      $public = $db->insert('payroll', ['title' => 'Public batch'], true)[0]['id'];
+      $ids[] = $public;
+      wp_cache_flush();
+      \\Zero\\Wp\\CoreAccess::flush();
+      global $wpdb;
+      $before = $wpdb->num_queries;
+      $rows = $db->findMany('payroll', ['where' => ['id' => ['in' => $ids]], 'orderBy' => ['id' => 'asc'], 'limit' => 1], $anon);
+      $queries = $wpdb->num_queries - $before;
+      wp_cache_flush();
+      \\Zero\\Wp\\CoreAccess::flush();
+      $editor = new \\Zero\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
+      $failLookup = static fn ($sql) => preg_match('/^\\s*SELECT\\b/i', $sql) && str_contains($sql, $wpdb->posts)
+        ? 'SELECT * FROM zero_missing_post_storage' : $sql;
+      add_filter('query', $failLookup);
+      $suppressed = $wpdb->suppress_errors(true);
+      $refusals = [];
+      try {
+        foreach ([$anon, $editor] as $viewer) {
+          try {
+            $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $viewer);
+            $refusals[] = 'allowed';
+          } catch (\\Zero\\HttpError $e) {
+            $refusals[] = [$e->status, $e->errorCode];
+          }
+        }
+      } finally {
+        remove_filter('query', $failLookup);
+        $wpdb->suppress_errors($suppressed);
+      }
+      $recovered = [
+        $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $anon),
+        $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $editor)['id'] === $ids[0]
+      ];
+      $request = new WP_REST_Request('GET', '/wp/v2/zero_payroll');
+      $request->set_query_params(['include' => $ids, 'per_page' => 1, 'order' => 'asc', 'orderby' => 'id']);
+      $native = rest_do_request($request);
+      $hidden = rest_do_request(new WP_REST_Request('GET', '/wp/v2/zero_payroll/' . $ids[0]));
+      $request->set_param('password', 'secret');
+      $unlocked = rest_do_request($request);
+      require_once ABSPATH . WPINC . '/class-phpass.php';
+      $_COOKIE['wp-postpass_' . COOKIEHASH] = (new PasswordHash(8, true))->HashPassword('secret');
+      $cookie = $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $anon);
+      unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+      $locked = $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $anon);
+      wp_update_post(['ID' => $ids[0], 'post_password' => '']);
+      $written = $db->findFirst('payroll', ['where' => ['id' => $ids[0]]], $anon);
+      echo json_encode([
+        array_column($rows, 'id') === [$public], $queries <= 5,
+        $native->get_status(), array_column($native->get_data(), 'id') === [$public], $native->get_headers()['X-WP-Total'] ?? null,
+        $hidden->get_status(), $unlocked->get_status(), $unlocked->get_data()[0]['id'] === $ids[0],
+        $cookie['id'] === $ids[0], $locked, $written['id'] === $ids[0], $refusals, $recovered
+      ]);
+    } finally {
+      foreach ($ids as $id) { wp_delete_post($id, true); }
+    }
+  `));
+  assert.deepEqual(result, [true, true, 200, true, 1, 404, 200, true, true, null, true,
+    [[503, 'storage_unavailable'], [503, 'storage_unavailable']], [null, true]]);
+});

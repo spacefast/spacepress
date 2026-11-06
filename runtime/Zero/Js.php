@@ -801,6 +801,9 @@ final class Js
 
             return new JsArray(array_slice($parts, 0, $lim));
         }
+        if (!str_contains($sep->flags, 'u') && preg_match('/[\\x{10000}-\\x{10FFFF}]/u', $s) === 1) {
+            throw new JsError('RegExp split on astral text requires the u flag', 'RangeError');
+        }
         if ($s === '') {
             return new JsArray($sep->matchAt($s, 0) !== null ? [] : [$s]);
         }
@@ -1982,6 +1985,11 @@ final class Js
         $m = $mp + ($mp < 10 ? 3 : -9);
 
         return [$yoe + $era * 400 + ($m <= 2 ? 1 : 0), $m, $d];
+    }
+
+    public static function dateJSON(int|float $ms): ?string
+    {
+        return is_finite((float) $ms) ? self::iso($ms) : null;
     }
 
     /** Date.prototype.toISOString */

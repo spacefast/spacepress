@@ -980,7 +980,7 @@ impl<'p> Evaluator<'p> {
                                 },
                             };
                             let v = self.eval(value, scope)?;
-                            if map.shift_remove(&k).is_some() {
+                            if map.contains_key(&k) {
                                 duplicates.push((k.clone(), value.span));
                             }
                             spans.push((k.clone(), value.span));
@@ -993,7 +993,7 @@ impl<'p> Evaluator<'p> {
                                     duplicates.extend(inherited.iter().cloned());
                                 }
                                 for (k, v) in o.borrow().iter() {
-                                    if map.shift_remove(k).is_some() {
+                                    if map.contains_key(k) {
                                         duplicates.push((k.clone(), x.span));
                                     }
                                     map.insert(k.clone(), v.clone());
@@ -1004,7 +1004,7 @@ impl<'p> Evaluator<'p> {
                                 let source = Value::Arguments(object.clone());
                                 for key in enumerable_keys(&source, x.span)? {
                                     let value = object.borrow().get(&key).cloned().unwrap_or(Value::Undef);
-                                    if map.shift_remove(&key).is_some() {
+                                    if map.contains_key(&key) {
                                         duplicates.push((key.clone(), x.span));
                                     }
                                     spans.push((key.clone(), x.span));

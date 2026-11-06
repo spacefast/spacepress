@@ -607,5 +607,26 @@
     "name": "unicodeRegexCaseFolding",
     "expression": "[/k/iu.test('K'), /s/iu.test('ſ'), /k/i.test('K'), /s/i.test('S')]",
     "fold": false
+  },
+  {
+    "name": "overwrittenObjectKeyOrder",
+    "expression": "[Object.keys({...{a:1,b:2},a:3}), Object.keys({a:1,b:2,...{a:3}})]",
+    "fold": true
+  },
+  {
+    "name": "javascriptNumericUpdates",
+    "expression": "(() => { let x='1'; let y={valueOf:()=>4}; const o={n:'2'}; return [x++, x, --x, y++, y, o.n++, o.n]; })()",
+    "fold": false,
+    "javascript": true
+  },
+  {
+    "name": "typedDateJSON",
+    "expression": "[new Date(NaN).toJSON(),new Date(0).toJSON()]",
+    "fold": false
+  },
+  {
+    "name": "unicodeRegexSplit",
+    "expression": "['😀'.split(/(?:)/u), 'a😀b'.split(/(?:)/u)]",
+    "fold": false
   }
 ]

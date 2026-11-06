@@ -249,7 +249,7 @@ trait JsDynamic
         if ($receiver instanceof JsDate) {
             return match ($name) {
                 'getTime' => $receiver->milliseconds, 'toISOString' => self::iso($receiver->milliseconds),
-                'toJSON' => is_finite((float) $receiver->milliseconds) ? self::iso($receiver->milliseconds) : null,
+                'toJSON' => self::dateJSON($receiver->milliseconds),
                 default => throw new JsError($name . ' is not a function', 'TypeError'),
             };
         }

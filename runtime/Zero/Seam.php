@@ -179,7 +179,7 @@ final class Seam
         return self::inputToJs($ctx, $shape);
     }
 
-    public static function generated(array $col, mixed $value): mixed { return self::toPhp($value, $col); }
+    public static function generated(array $col, mixed $value): mixed { return self::toPhp($value === JsUndefined::Value ? null : $value, $col); }
     public static function toWire(mixed $value): mixed
     {
         $tree = Js::jsonTree($value);

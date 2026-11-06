@@ -123,6 +123,14 @@ $encoded = Schema::encode($box, ['label' => 'x', 'extra' => \Zero\Js::decodeJson
 eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \Zero\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
 eq('a json() default holding {} generates the empty object', \Zero\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
+$undefinedDefault = ['type' => 'text', 'default' => ['fn' => static fn () => \Zero\JsUndefined::Value]];
+eq('undefined generators become nullable storage values', Schema::validateInput([
+    'note' => $undefinedDefault,
+    'payload' => ['type' => 'json', 'default' => $undefinedDefault['default']],
+], []), ['note' => null, 'payload' => null]);
+problem('undefined generators still enforce required fields', fn () => Schema::validateInput([
+    'note' => $undefinedDefault + ['notNull' => true],
+], []), 422, 'invalid_input', '/note');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

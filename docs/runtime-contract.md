@@ -608,7 +608,11 @@ passing it to comparators. Typed Dates require explicit `toISOString()` or
 `toJSON()` before JSON.stringify; typed dates use a numeric timestamp internally.
 Imported JavaScript for-of consumes live iterators. Regex source and string
 conversion escape delimiters and line terminators. Non-Unicode ignore-case
-matching on non-ASCII text throws explicitly; use the u flag.
+matching on non-ASCII text throws explicitly; use the u flag. Regex split on
+astral text also requires u because returned lone surrogates are unsupported.
+Typed invalid-Date `toJSON()` returns null. Generated undefined defaults become
+null at the storage boundary; required fields still refuse null. Object
+overwrites retain key insertion order during evaluation.
 Unsupported callback `thisArg`, JSON replacer/reviver, numeric radix formatting
 and typed string-search positions are never silently discarded.
 
@@ -728,6 +732,7 @@ depends on `mb_internal_encoding()`.
 
 RegExp:
 - `re(string $source, string $flags): RegExp` — creates a fresh instance and translates the supported JS regex subset to UTF-aware, delimiter-safe PCRE. Accepts `g i m s u y`; `d` and `v` throw `JsError`.
+- `dateJSON(int|float $ms): ?string` returns null for invalid dates and otherwise ISO text.
 - `RegExp::test(string $s): bool`, readonly `source`, `flags`, `global`, `sticky`. `test` and checked `exec` share `execMatch`: global/sticky calls read and update UTF-16 `lastIndex`, reset it on failure, and keep it unchanged after an empty match. Literal evaluation creates fresh regex identity; a captured regex keeps its own instance. Sticky replacement is explicitly refused.
 - Global regex dots, complemented shorthands (`\D`, `\W`, `\S`), character classes, lookarounds, lone-surrogate escapes and astral literals on text outside the Basic Multilingual Plane require the `u` flag; otherwise they throw `RangeError` before searching. These atoms can consume surrogate halves or distinguish them from UTF-8 stand-ins; code-point matches cannot supply correct UTF-16 boundaries or callback offsets.
 

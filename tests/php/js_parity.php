@@ -412,6 +412,7 @@ $deviations = array_merge($deviations, [
     ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
     ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
+    ['non-Unicode RegExp split on astral text is refused', fn () => Js::split('😀', Js::re('(?:)', '')), ['$err' => 'RangeError']],
     ['non-Unicode Kelvin folding is refused', fn () => Js::re('k', 'i')->test('K'), ['$err' => 'RangeError']],
     ['non-Unicode long s folding is refused', fn () => Js::re('s', 'i')->test('ſ'), ['$err' => 'RangeError']],
     ['non-Unicode source folding is refused', fn () => Js::re('K', 'i')->test('k'), ['$err' => 'RangeError']],

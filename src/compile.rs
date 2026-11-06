@@ -3357,6 +3357,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let (mut steps, read, write) = self.capture_place(place.target, &place.read);
         let old = self.tmp_var();
         steps.push(format!("{old} = {read}"));
+        if place.read.ty == Ty::Dynamic {
+            steps.push(format!("{old} = \\Zero\\Js::toNumber({old})"));
+        }
         if property_number {
             let (CapturedPlace::Array { receiver, key } | CapturedPlace::Object { receiver, key }) = &write else {
                 unreachable!()
@@ -4769,7 +4772,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(m_span, format!("numbers have no method `{m}`")),
             },
             Ty::Date => match m {
-                "toISOString" | "toJSON" => Out::atom(format!("\\Zero\\Js::iso({})", recv.php), Ty::Str),
+                "toISOString" => Out::atom(format!("\\Zero\\Js::iso({})", recv.php), Ty::Str),
+                "toJSON" => Out::atom(format!("\\Zero\\Js::dateJSON({})", recv.php), Ty::Str.nullable()),
                 "getTime" | "valueOf" => Out {
                     ty: Ty::Num,
                     ..recv.clone()

@@ -1000,7 +1000,7 @@
   },
   {
     "name": "globalNamespaceKinds",
-    "declarations": "const foldedNamespaceKinds=[typeof JSON,typeof console];",
+    "declarations": "import {db as namespaceDb,jobs as namespaceJobs} from 'zero'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb,typeof namespaceJobs];",
     "expression": "[typeof Math,...foldedNamespaceKinds]",
     "fold": true
   }

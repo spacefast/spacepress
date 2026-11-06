@@ -295,7 +295,7 @@ impl Value {
             Value::Bool(_) => "boolean",
             Value::Num(_) => "number",
             Value::Str(_) => "string",
-            Value::Builtin(Builtin::Global("Math" | "JSON" | "console")) => "object",
+            Value::Builtin(Builtin::Db | Builtin::Jobs | Builtin::Global("Math" | "JSON" | "console")) => "object",
             Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
             _ => "object",
         }

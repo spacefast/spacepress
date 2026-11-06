@@ -90,7 +90,7 @@ export default defineConfig({
   actions: {
     wireUndefinedTuple: action({ input: {}, handler: () => [undefined] }),
     wireUndefinedObject: action({ input: {}, handler: () => ({ x: undefined }) }),
-    wireDestructuredObject: action({ input: {}, handler: () => { const [x] = []; return {x}; } }),
+    wireDestructuredObject: action({ input: {}, handler: () => { const [x]: undefined[] = []; return {x}; } }),
     nonemptyValues: action({
       input: {},
       handler: () => Array.from(["first"]).map(value => value.toUpperCase()),

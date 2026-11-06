@@ -1740,3 +1740,36 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
         ])
     );
 }
+
+#[test]
+fn typed_data_reads_refuse_unmodeled_inherited_values() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("zero.config.ts"), r#"
+import {action,defineConfig} from 'zero';
+export default defineConfig({name:'typeddatareads',actions:{probe:action({handler:()=>{
+    const o:Record<string,undefined>={};
+    const key='to'+'String';
+    const optional:{toString?:undefined}={};
+    const cases=[()=>typeof o.toString,()=>typeof o['valueOf'],()=>typeof o[key],()=>{const {toString}=o;return typeof toString;},()=>typeof optional.toString,()=>typeof optional['toString'],()=>{const n:Record<string,number>={};n.valueOf ||=1;return typeof 0;}];
+    return cases.map(f=>{try{return ['accepted',f()];}catch(e){return [e.name,e.message];}});
+}})}});
+"#).unwrap();
+    let content = build_wp(tmp.path());
+    let result = php(
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\ZeroApp\\'.$s['actions']['probe']['handler'];echo \Zero\Js::jsonStringify($fn(new \Zero\JsObject(), \Zero\Seam::ctx(['user'=>null])));"#,
+        &[
+            &content.join("plugins/zero-runtime/zero/bootstrap.php"),
+            &content.join("plugins/zero-app-typeddatareads/zero/app"),
+        ],
+    );
+    assert_eq!(
+        result,
+        json!(vec![
+            vec![
+                "TypeError",
+                "Inherited properties are not supported by typed data reads"
+            ];
+            7
+        ])
+    );
+}

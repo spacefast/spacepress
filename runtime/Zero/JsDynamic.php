@@ -130,7 +130,9 @@ trait JsDynamic
             if (preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) && (float) $key < 4294967295) {
                 return array_key_exists((int) $key, $value->a) ? $value->a[(int) $key] : JsUndefined::Value;
             }
-            return array_key_exists($key, $value->p) ? $value->p[$key] : self::dynamicMethodValue($value, $key);
+            if (array_key_exists($key, $value->p)) { return $value->p[$key]; }
+            if (is_numeric($key) || in_array($key, ['NaN', 'Infinity', '-Infinity'], true)) { return JsUndefined::Value; }
+            return self::dynamicMethodValue($value, $key);
         }
         if (is_string($value)) {
             if ($key === 'length') { return self::length($value); }
@@ -148,6 +150,16 @@ trait JsDynamic
             return count($value instanceof JsSet ? $value->values : $value->entries);
         }
         return self::dynamicMethodValue($value, $key);
+    }
+
+    public static function dataGet(mixed $value, mixed $key): mixed
+    {
+        self::requirePresent($value);
+        $key = self::key($key);
+        if ($value instanceof JsObject && !array_key_exists($key, $value->p) && Builtins::has('object', $key)) {
+            throw new JsError('Inherited properties are not supported by typed data reads', 'TypeError');
+        }
+        return self::dynamicGet($value, $key);
     }
 
     public static function dynamicSet(mixed $target, mixed $key, mixed $value): mixed

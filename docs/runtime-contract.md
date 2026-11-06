@@ -792,6 +792,12 @@ Unregistered native-property reads refuse instead of fabricating undefined for
 unimplemented JavaScript methods. Missing ordinary-object and arguments-object fields
 remain undefined, and explicitly assigned array properties retain their values. Known absent native
 length fields remain undefined for array-like conversion; function metadata still refuses.
+Missing numeric array properties, including fractional, negative and NaN keys, remain undefined.
+
+Typed object/record reads accept own data fields. If an absent field resolves to an
+unmodeled Object prototype property, the read refuses before type-based optimizations
+can consume it. Member/index reads, destructuring, method fields and assignment reads
+share this boundary. Checked JavaScript retains inherited method lookup.
 
 Template interpolation converts and snapshots each substitution before evaluating the next one.
 

@@ -1761,11 +1761,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         return Err(d);
                     };
-                    let access = if optional || matches!(t, Ty::Map(_)) {
-                        format!("\\Zero\\Js::dynamicGet({src}, {})", php_str(key))
-                    } else {
-                        format!("{src}->p[{}]", php_str(key))
-                    };
+                    let access = format!("\\Zero\\Js::dataGet({src}, {})", php_str(key));
                     let read = if optional || matches!(t, Ty::Map(_)) {
                         Ty::union([ft, Ty::Undefined])
                     } else {
@@ -3402,7 +3398,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("{receiver} = {}", target.receiver),
                     format!("{key} = {}", target.key),
                 ];
-                let read = format!("\\Zero\\Js::dynamicGet({receiver}, {key})");
+                let getter = if target.dynamic || target.array {
+                    "dynamicGet"
+                } else {
+                    "dataGet"
+                };
+                let read = format!("\\Zero\\Js::{getter}({receiver}, {key})");
                 let write = if target.dynamic {
                     CapturedPlace::Dynamic { receiver, key }
                 } else if target.array {
@@ -3519,7 +3520,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .path_of(target)
                     .and_then(|path| self.narrowed_path(&path))
                     .unwrap_or_else(|| if optional { Ty::union([ft, Ty::Undefined]) } else { ft });
-                let read = Out::atom(format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)), read_ty);
+                let read = Out::atom(format!("\\Zero\\Js::dataGet({}, {})", o.php, php_str(prop)), read_ty);
                 Ok(AssignmentPlace {
                     constraint,
                     read,
@@ -3562,8 +3563,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                 };
+                let getter = if array { "dynamicGet" } else { "dataGet" };
                 let read = Out::atom(
-                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                    format!("\\Zero\\Js::{getter}({}, {})", o.php, i.php),
                     Ty::union([ty, Ty::Undefined]),
                 );
                 let key = if array {
@@ -3754,7 +3756,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
-                let php = guarded(self, &|x| format!("\\Zero\\Js::dynamicGet({x}, {})", php_str(prop)));
+                let php = guarded(self, &|x| format!("\\Zero\\Js::dataGet({x}, {})", php_str(prop)));
                 let ft = if map || opt_field {
                     Ty::union([ft, Ty::Undefined])
                 } else {
@@ -3850,7 +3852,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _ => return err(index.span, "tuples are indexed by number"),
             },
             (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
-                format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\Zero\\Js::dataGet({}, {})", o.php, i.php),
                 wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
@@ -3883,7 +3885,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                 }
                 Out::atom(
-                    format!("\\Zero\\Js::dynamicGet({}, {})", o.php, i.php),
+                    format!("\\Zero\\Js::dataGet({}, {})", o.php, i.php),
                     wrap(Ty::union(values)),
                 )
             }
@@ -4939,12 +4941,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Err(self.no_field(&o.ty, prop, span));
         };
         let t = if optional || matches!(o.ty.non_null(), Ty::Map(_)) {
-            t.nullable()
+            Ty::union([t, Ty::Undefined])
         } else {
             t
         };
         Ok(Out::atom(
-            format!("\\Zero\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+            format!("\\Zero\\Js::dataGet({}, {})", o.php, php_str(prop)),
             t,
         ))
     }

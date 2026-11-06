@@ -886,5 +886,10 @@
     "expression": "(() => {const o={};const s=new Set();const m=new Map();const math=Math;const e=new Error('x');const t=new TypeError('y');const tag=o.toString;return [s.toString===o.toString,m.toString===o.toString,math.toString===o.toString,e.toString===o.toString,e.toString===t.toString,e.valueOf===o.valueOf,tag.call(s),tag.call(e),tag.call(null),tag.call(undefined),tag.call(3),e.toString.call(e),t.toString.call(t)];})()",
     "fold": false,
     "javascript": true
+  },
+  {
+    "name": "typedOwnPrototypeNames",
+    "expression": "(() => {const o:Record<string,undefined>={toString:undefined};const key='toString';const {toString}=o;return [typeof o.toString,typeof o[key],typeof toString];})()",
+    "fold": true
   }
 ]
